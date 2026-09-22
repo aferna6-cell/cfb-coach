@@ -1,3 +1,3 @@
 """cfb_coach — Xbox CFB dynasty play-caller (heuristics + seed + log learning)."""
 
-__version__ = "1.9.4"
+__version__ = "1.9.5"

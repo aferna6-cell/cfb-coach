@@ -56,7 +56,25 @@ _GL_RE = re.compile(r"\b(gl|goal\s*line|from\s*the\s*[1-3]|&goal)\b", re.I)
 _2MIN_RE = re.compile(r"\b(2\s*min|two\s*minute|hurry|no\s*huddle|tempo)\b", re.I)
 
 _SIDE_O = re.compile(r"\b(o|off|offense|our\s*ball|we\s*have\s*ball)\b", re.I)
-_SIDE_D = re.compile(r"\b(d|def|defense|their\s*ball|opp)\b", re.I)
+# Bare "opp" / "their 25" are yardlines — only treat opp/their as defense with "ball"
+_SIDE_D = re.compile(
+    r"\b(d|def|defense|their\s*ball|opp(?:onent)?\s*ball|(?:opp(?:onent)?)(?!\s*\d))\b",
+    re.I,
+)
+
+# Yardline phrases: my/our N = from own goal; opp/their N = opponent's N → 100-N
+_YL_OWN_RE = re.compile(
+    r"\b(?:my|our|own)\s*(?:yl|yard\s*line)?\s*(\d{1,2})\b",
+    re.I,
+)
+_YL_OPP_RE = re.compile(
+    r"\b(?:opp(?:onent)?s?|their|his|her)\s*(?:yl|yard\s*line)?\s*(\d{1,2})\b",
+    re.I,
+)
+_YL_BALL_ON_RE = re.compile(
+    r"\bball\s+on\s+(\d{1,2})\b",
+    re.I,
+)
 
 _COV_HINTS = [
     (re.compile(r"\bc6\b|cover\s*6", re.I), "Cover 6"),
@@ -92,6 +110,33 @@ _CONCEPT_HINTS = [
 ]
 
 
+def format_heard(sit: Situation) -> str:
+    """One-line echo of what coach understood from sit> (for Aidan + overlay)."""
+    parts: list[str] = []
+    if sit.down and sit.distance is not None:
+        parts.append(f"{sit.down}&{sit.distance}")
+    if sit.yardline is not None:
+        parts.append(f"yl{sit.yardline}")
+    if sit.red_zone:
+        parts.append("RZ")
+    if sit.goal_line:
+        parts.append("GL")
+    if sit.two_minute:
+        parts.append("2min")
+    if sit.coverage_hint:
+        src = sit.coverage_source or "none"
+        if src == "last":
+            parts.append(f"[last:{sit.coverage_hint}]")
+        elif src == "live":
+            parts.append(f"[live:{sit.coverage_hint}]")
+        else:
+            parts.append(f"[{sit.coverage_hint}]")
+    if sit.concept_hint:
+        parts.append(sit.concept_hint)
+    body = " ".join(parts) if parts else (sit.raw or "?")
+    return f"heard: {body}"
+
+
 def parse_situation(raw: str, default_side: str = "offense") -> Situation:
     text = raw.strip()
     sit = Situation(raw=text, side=default_side)
@@ -112,8 +157,31 @@ def parse_situation(raw: str, default_side: str = "offense") -> Situation:
         else:
             sit.distance = int(dist_raw)
 
+    # Prefer explicit own/opp phrases over bare yl/on
+    yl_own = _YL_OWN_RE.search(text)
+    yl_opp = _YL_OPP_RE.search(text)
+    yl_ball = _YL_BALL_ON_RE.search(text)
     yl = _YL_RE.search(text)
-    if yl:
+    if yl_own:
+        sit.yardline = int(yl_own.group(1))
+        if sit.yardline <= 20:
+            sit.red_zone = True
+        if sit.yardline <= 5:
+            sit.goal_line = True
+    elif yl_opp:
+        opp_yl = int(yl_opp.group(1))
+        sit.yardline = max(1, min(99, 100 - opp_yl))  # yards from our goal
+        if opp_yl <= 20:
+            sit.red_zone = True
+        if opp_yl <= 5:
+            sit.goal_line = True
+    elif yl_ball:
+        sit.yardline = int(yl_ball.group(1))
+        if sit.yardline <= 20:
+            sit.red_zone = True
+        if sit.yardline <= 5:
+            sit.goal_line = True
+    elif yl:
         sit.yardline = int(yl.group(1))
         if sit.yardline <= 20:
             sit.red_zone = True
@@ -139,7 +207,8 @@ def parse_situation(raw: str, default_side: str = "offense") -> Situation:
 
     last_snap = bool(
         re.search(
-            r"\b(last|prev|previous|saw|showed|was)\b",
+            r"\b(last|prev|previous|saw|showed|was|last\s+play|previous\s+play)\b"
+            r"|\(\s*this\s+was\s+the\s+last\s+play\s*\)",
             text,
             re.I,
         )

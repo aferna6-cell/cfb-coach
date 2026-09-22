@@ -14,7 +14,8 @@ cd /workspace/cfb-coach
 PYTHONPATH=. python3 -m cfb_coach opponents
 PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin          # opens browser (deltas only)
 PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin --text   # terminal delta dump
-PYTHONPATH=. python3 -m cfb_coach play --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach play --opponent gavin          # typed live + overlay browser
+PYTHONPATH=. python3 -m cfb_coach play --opponent gavin --no-overlay
 ```
 
 Optional editable install:
@@ -48,7 +49,8 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 | `python3 -m cfb_coach prep -o <id> --mark-applied` | Mark proposed deltas applied (next prep shows only NEW) |
 | `python3 -m cfb_coach prep -o <id> --offline` | Skip network meta scout (use cache/baseline `cfb27-2026-09`) |
 | `python3 -m cfb_coach prep -o <id> --refresh-meta` | Force refetch meta scout (ignore <6h cache) |
-| `python3 -m cfb_coach play --opponent <id>` | Interactive live loop (CPU = offense-only) |
+| `python3 -m cfb_coach play --opponent <id>` | Typed live loop + **browser overlay** (CPU = offense-only) |
+| `python3 -m cfb_coach play --opponent <id> --no-overlay` | Same loop without HTML overlay |
 | `python3 -m cfb_coach play --opponent <id> --once "2&7 c2 invert"` | One-shot non-interactive call |
 | `python3 -m cfb_coach call -o gavin -s "2&7 cover 2 invert" --why` | Scripted one-shot |
 | `python3 -m cfb_coach postgame --opponent gavin` | Learn from snaps; ohio_state successes → Alabama promotion notes |
@@ -153,11 +155,21 @@ Nickel Over — Cover 4 Quarters | VERT | User #3 seam
 
 Platform: Xbox. Prefer formation / play / macro **names**. Do not invent PlayStation button sequences.
 
-## Play loop
+## Play loop (typed live + overlay) — v1.9.5
+
+**Typing-only live play** is the supported game-day path. Vision `watch` screen-watching is **on hold**; keep the same browser overlay for a big PLAY glance.
+
+```bash
+PYTHONPATH=. python3 -m cfb_coach play --opponent gavin
+# overlay default ON → ~/.cfb-coach/copilot_overlay.html (auto-opens once)
+# PYTHONPATH=. python3 -m cfb_coach play --opponent gavin --no-overlay
+```
 
 ```text
 [O] sit> 1&10
 Gun Bunch X Nasty — Inside Zone | No adj | Front → Cutback
+[O] sit> 1st and 10 my 35 cover 2 (this was the last play)
+Gun Bunch X Nasty — Mesh Spot | No adj | Spot → Drag
 [O] sit> 2&7 c2 invert
 Gun Bunch X Nasty — Mesh Spot | No adj | Spot → Drag
 [O] sit> d 3&8 verts
@@ -167,10 +179,14 @@ Nickel Over — Cover 4 Quarters | VERT | User #3 seam
 [O] sit> quit
 ```
 
+- Each `sit>` line prints a **PLAY** call and refreshes the overlay (big call text).
+- Yardlines: `my 35` / `our 35` / `ball on 35` (from own goal); `opp 40` / `their 25` (opp yardline → 100−N).
+- Coverage: bare / `showing c2` / `live cover 2` = soft **live**; `last …` / `(this was the last play)` = **last** (mild bump only, no hard-counter).
 - Prefix `d ` (or type `d` / `side d`) for defense.
 - `result <text>` / `log <text>` updates SQLite tendencies.
 - `why` prints the last call's rationale.
 - After 3 failed snaps on a side, live caller tags **PIVOT:** and switches family/macro plan (no hero-shot whiplash).
+- `--no-overlay` disables the HTML strip; default is **ON** for interactive play.
 
 ## Baseline → Learn → Adjust (CFB27)
 
@@ -216,11 +232,13 @@ Ohio State / CPU = volume lab. Alabama users = prepare well + adjust live.
 
 
 
-## Screen Co-Pilot (v1.9.4)
+## Screen Co-Pilot / vision watch (on hold)
 
-**Live UX (1.9.4):** pre-snap cadence is **PLAY → ADJUST → HIKE** (playcaller `Formation — Play | Adj | Reads`), not generic “base look” tips as the main output. Pressure/shell changes print short **ADJUST** lines without replacing the play unless audible is clearly warranted (e.g. Cover 0). When the look is stable (~1.8s) or timed out (~4.5s), coach prints **HIKE — go** — you snap; coach never presses buttons.
+> **v1.9.5:** Game-day live = **`play` + typed situations + overlay**. Vision screen-watching (`watch --window` / capture) is **on hold** — overlay HTML is reused by typed `play`.
 
-**Remote Play focus:** Xbox Remote Play often **pauses/freezes when unfocused** (e.g. PowerShell focused). Keep the Remote Play / Xbox stream window focused and visible. Use the **HTML overlay** (default ON for `--window` / `--screen-region`; auto-opens browser) on the other half of the screen for a big PLAY glance. Capture card later removes this. Disable with `--no-overlay`.
+**Live UX (when watch returns):** pre-snap cadence is **PLAY → ADJUST → HIKE** (playcaller `Formation — Play | Adj | Reads`), not generic “base look” tips as the main output. Pressure/shell changes print short **ADJUST** lines without replacing the play unless audible is clearly warranted (e.g. Cover 0). When the look is stable (~1.8s) or timed out (~4.5s), coach prints **HIKE — go** — you snap; coach never presses buttons.
+
+**Remote Play focus:** Xbox Remote Play often **pauses/freezes when unfocused** (e.g. PowerShell focused). Keep the Remote Play / Xbox stream window focused and visible. Use the **HTML overlay** (`~/.cfb-coach/copilot_overlay.html`; auto-opens from `play` or live watch) on the other half of the screen for a big PLAY glance. Capture card later removes this. Disable with `--no-overlay`.
 
 Heartbeat: single overwritten line (\\r) ≤ every **5s** waiting for frames; troubleshoot once at 5s, then every **15s**. Status spam reduced when PLAY unchanged (longer gap after HIKE). `--list-windows` / dxcam→mss fallback unchanged.
 
@@ -313,7 +331,7 @@ Overlay (secondary): big PLAY text in the browser strip; keep Xbox focused.
 
 
 
-## Live Vision Milestone 2 (v1.9.4)
+## Live Vision Milestone 2 (on hold; last ship v1.9.4)
 
 **Extend M1 — do not rewrite.** Sidecar only; Remote Play = prototype capture; same pipeline for `--video`. False snaps worse than late. Sample tiers: **1=log, 2=mild, 3+=actionable, 5+=strong**. Recency windows (last 5 / last 8) + full-game. Anti-whiplash preserved.
 

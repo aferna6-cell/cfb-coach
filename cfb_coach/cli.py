@@ -8,7 +8,7 @@ import sys
 from cfb_coach.db import CoachDB, resolve_db_path_from_env
 from cfb_coach.opponents import format_opponent_list, resolve_opponent
 from cfb_coach.playcaller import make_call
-from cfb_coach.situation import parse_situation
+from cfb_coach.situation import parse_situation, format_heard
 from cfb_coach.tendency import mild_bump_concept, mild_bump_coverage
 from cfb_coach.dynasty import (
     DEFAULT_DYNASTY,
@@ -187,6 +187,8 @@ def cmd_play(args: argparse.Namespace) -> int:
     )
     dcfg = dynasty_config(dynasty)
     from cfb_coach.opponents import is_cpu_opponent
+    from cfb_coach.copilot import default_overlay_path, write_overlay_html
+    from cfb_coach.prep_browser import open_prep_html
 
     cpu_only = is_cpu_opponent(oid)
     print(f"LIVE PLAY — vs {oid}  (db: {db.path})")
@@ -195,14 +197,65 @@ def cmd_play(args: argparse.Namespace) -> int:
     print(doctrine_line())
     if cpu_only:
         print("CPU opponent — OFFENSE-ONLY coaching (no defense calls / no D macros).")
-        print("Shorthand: 1&10 | 2&7 | 3&8 | rz 3&2")
+        print("Shorthand: 1&10 | 2&7 | 3&8 | rz 3&2 | my 35 | opp 40")
         print("Commands: result <text> | why | quit  (side d disabled)")
     else:
         print("Side defaults to offense. Prefix with 'd ' for defense.")
-        print("Shorthand: 1&10 | 2&7 | 3&8 d | rz 3&2 | d 1&10")
+        print("Shorthand: 1&10 | 2&7 | 3&8 d | rz 3&2 | d 1&10 | my 35 | opp 40")
         print("Commands: side o|d | result <text> | why | quit")
     print("Doctrine: one tell = log/mild bump; hard-counter only on REPEATED tendency.")
     print("  last c2 invert / last cross wheels → does NOT auto-counter next snap")
+    print("  Natural: '1st and 10 my 35 cover 2 (this was the last play)'")
+
+    # Overlay: default ON for interactive play; --no-overlay disables; --once skips browser
+    no_overlay = bool(getattr(args, "no_overlay", False))
+    overlay_arg = getattr(args, "overlay", None)
+    if no_overlay:
+        overlay_path = None
+    elif overlay_arg:
+        from pathlib import Path as _P
+
+        overlay_path = _P(overlay_arg)
+    else:
+        overlay_path = default_overlay_path()  # ~/.cfb-coach/copilot_overlay.html
+
+    if getattr(args, "once", None):
+        # Non-interactive: still refresh overlay file if enabled, but do not auto-open
+        default_side = "offense"
+        sit = parse_situation(args.once, default_side=default_side)
+        heard = format_heard(sit)
+        print(heard)
+        call = make_call(sit, oid, db)
+        formatted = call.format()
+        print(formatted)
+        if args.why:
+            print(f"  ({call.rationale})")
+        if overlay_path is not None:
+            write_overlay_html(
+                str(overlay_path),
+                None,
+                [],
+                call_text=formatted,
+                short_line=heard,
+                mode="play",
+            )
+            print(f"  overlay → {overlay_path}")
+        db.close()
+        return 0
+
+    if overlay_path is not None:
+        write_overlay_html(
+            str(overlay_path),
+            None,
+            [],
+            call_text="waiting for sit> …",
+            short_line=f"vs {oid}",
+            mode="play",
+        )
+        open_prep_html(overlay_path, open_browser=True)
+        print(f"Overlay ON → {overlay_path}  (auto-opens browser; --no-overlay to disable)")
+    else:
+        print("Overlay OFF (--no-overlay)")
     print("-" * 60)
 
     default_side = "offense"
@@ -212,14 +265,17 @@ def cmd_play(args: argparse.Namespace) -> int:
     last_coverage: str | None = None
     last_concept: str | None = None
 
-    if getattr(args, "once", None):
-        sit = parse_situation(args.once, default_side=default_side)
-        call = make_call(sit, oid, db)
-        print(call.format())
-        if args.why:
-            print(f"  ({call.rationale})")
-        db.close()
-        return 0
+    def _refresh_overlay(call_obj, sit_obj, heard: str = "") -> None:
+        if overlay_path is None:
+            return
+        write_overlay_html(
+            str(overlay_path),
+            None,
+            [],
+            call_text=call_obj.format(),
+            short_line=heard or (sit_obj.label if sit_obj else ""),
+            mode="play",
+        )
 
     try:
         while True:
@@ -306,6 +362,8 @@ def cmd_play(args: argparse.Namespace) -> int:
                 continue
 
             sit = parse_situation(raw, default_side=default_side)
+            heard = format_heard(sit)
+            print(heard)
             # Pass previous-snap signals as last-only context (not hard-counters)
             call = make_call(
                 sit,
@@ -315,6 +373,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                 last_concept=last_concept if sit.side == "defense" else None,
             )
             print(call.format())
+            _refresh_overlay(call, sit, heard)
             last_call, last_sit = call, sit
             # If this sit itself named a live/last coverage or concept, remember for NEXT snap
             if sit.coverage_hint and sit.side == "offense":
@@ -407,7 +466,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_prep.set_defaults(func=cmd_prep)
 
-    p_play = sub.add_parser("play", help="Interactive live call loop (CPU opponents = offense-only)")
+    p_play = sub.add_parser(
+        "play",
+        help="Interactive typed live call loop + browser overlay (CPU = offense-only)",
+    )
     p_play.add_argument("--opponent", "-o", required=True)
     p_play.add_argument(
         "--once",
@@ -419,6 +481,18 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("alabama", "ohio_state"),
         default=None,
         help="Override/store dynasty: alabama (serious) | ohio_state (lab)",
+    )
+    p_play.add_argument(
+        "--overlay",
+        metavar="PATH",
+        default=None,
+        help="HTML overlay path (default ON: ~/.cfb-coach/copilot_overlay.html)",
+    )
+    p_play.add_argument(
+        "--no-overlay",
+        dest="no_overlay",
+        action="store_true",
+        help="Disable HTML overlay (interactive play defaults overlay ON)",
     )
     p_play.set_defaults(func=cmd_play)
 

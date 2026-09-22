@@ -654,6 +654,23 @@ def _pick_defense(
     return Call("defense", form, play, macro_out, user, rationale, suggest_macro=suggest_out)
 
 
+
+def _sit_stamp(sit: Situation) -> str:
+    """Compact sit tag so rationale proves make_call saw D&D / yl / coverage."""
+    bits: list[str] = []
+    if sit.down and sit.distance is not None:
+        bits.append(f"{sit.down}&{sit.distance}")
+    if sit.yardline is not None:
+        bits.append(f"yl{sit.yardline}")
+    if sit.goal_line:
+        bits.append("GL")
+    elif sit.red_zone:
+        bits.append("RZ")
+    if sit.coverage_hint:
+        src = getattr(sit, "coverage_source", "none") or "none"
+        bits.append(f"{src}:{sit.coverage_hint}" if src != "none" else sit.coverage_hint)
+    return "sit " + " ".join(bits) if bits else ""
+
 def make_call(
     sit: Situation,
     opponent_id: str,
@@ -738,6 +755,9 @@ def make_call(
     from cfb_coach.opponents import is_cpu_opponent
 
     def _with_live(call: Call) -> Call:
+        stamp = _sit_stamp(sit)
+        if stamp:
+            call.rationale = f"{call.rationale} | {stamp}" if call.rationale else stamp
         if live_note:
             call.rationale = f"{call.rationale} | {live_note}" if call.rationale else live_note
         return call

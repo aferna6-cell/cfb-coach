@@ -161,36 +161,65 @@ def format_tips_block(look: DefenseLook, tips: list[str]) -> str:
     return "\n".join(lines)
 
 
+def default_overlay_path(filename: str = "copilot_overlay.html") -> "Path":
+    """~/.cfb-coach/copilot_overlay.html (shared by watch + typed play)."""
+    from pathlib import Path
+
+    home = Path.home() / ".cfb-coach"
+    home.mkdir(parents=True, exist_ok=True)
+    return home / filename
+
+
 def write_overlay_html(
     path: str,
-    look: DefenseLook,
-    tips: list[str],
+    look: DefenseLook | None = None,
+    tips: list[str] | None = None,
     *,
     call_text: str = "",
     short_line: str = "",
+    mode: str = "watch",
 ) -> str:
-    """Tiny auto-refresh overlay — big CALL so Xbox can stay focused.
+    """Tiny auto-refresh overlay — big PLAY/CALL so Xbox can stay focused.
 
     Open on a second strip / half-screen browser while Remote Play keeps focus.
-    Refresh every 1.5s. Capture card later removes the Remote Play focus problem.
+    Refresh every 1.5s. Works without vision deps (look/tips optional for typed play).
     """
     from pathlib import Path
 
-    n = look.normalized()
+    tips = tips or []
     tip_lis = "\n".join(f"<li>{_esc(t)}</li>" for t in tips[:2])
+    # Prefer PLAY label for typed live play; CALL for watch/copilot
+    label = "PLAY" if (mode == "play" or (call_text and look is None)) else "CALL"
     call_block = ""
     if call_text:
-        call_block = f'''<div class="call-label">CALL</div>
-  <div class="call">{_esc(call_text)}</div>'''
+        # Keep multi-line SUGGEST readable
+        call_html = "<br/>".join(_esc(line) for line in str(call_text).splitlines())
+        call_block = f'''<div class="call-label">{label}</div>
+  <div class="call">{call_html}</div>'''
     short_block = (
         f'<div class="short">{_esc(short_line)}</div>' if short_line else ""
+    )
+    look_block = ""
+    if look is not None:
+        n = look.normalized()
+        look_block = f'''<div class="look">
+    front=<b>{_esc(n.front)}</b> shell=<b>{_esc(n.shell)}</b>
+    pressure=<b>{_esc(n.pressure)}</b>
+    · conf={n.confidence:.2f} · {_esc(n.source)}
+  </div>'''
+    tips_block = f"<ol>\n    {tip_lis}\n  </ol>" if tip_lis else ""
+    title = "CFB Coach — PLAY" if mode == "play" or look is None else "CFB Coach — CALL"
+    heading = (
+        "Live Play (typed)"
+        if mode == "play" or look is None
+        else "Screen Co-Pilot"
     )
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta http-equiv="refresh" content="1.5"/>
-<title>CFB Coach — CALL</title>
+<title>{title}</title>
 <style>
   :root {{ --bg:#0e1117; --fg:#e6edf3; --muted:#8b949e; --accent:#3fb950; --call:#58a6ff; }}
   html, body {{ margin:0; height:100%; background:var(--bg); color:var(--fg);
@@ -216,21 +245,15 @@ def write_overlay_html(
 </head>
 <body>
 <main>
-  <h1>Screen Co-Pilot <span class="badge">v1.9.4</span> · keep Xbox focused</h1>
+  <h1>{heading} <span class="badge">v1.9.5</span> · keep Xbox focused</h1>
   {short_block}
   {call_block}
-  <div class="look">
-    front=<b>{_esc(n.front)}</b> shell=<b>{_esc(n.shell)}</b>
-    pressure=<b>{_esc(n.pressure)}</b>
-    · conf={n.confidence:.2f} · {_esc(n.source)}
-  </div>
-  <ol>
-    {tip_lis}
-  </ol>
+  {look_block}
+  {tips_block}
   <footer>
-    Aidan keeps sticks · glance here, leave Remote Play focused<br/>
-    Remote Play often pauses when unfocused — pin this strip on the other half of the screen.
-    Capture card later removes this. Auto-refresh 1.5s.
+    Aidan keeps sticks · glance here for the PLAY call<br/>
+    Pin this strip on the other half of the screen. Auto-refresh 1.5s.
+    Typed live = <code>cfb-coach play</code> · vision watch on hold.
   </footer>
 </main>
 </body>
