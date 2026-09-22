@@ -26,6 +26,8 @@ class ThreadedCapture:
         self._frames = 0
         self._fps_t = time.time()
         self._latency_ms = 0.0
+        self._last_error: str | None = None
+        self._errors = 0
 
     @property
     def name(self) -> str:
@@ -48,6 +50,11 @@ class ThreadedCapture:
     @property
     def latency_ms(self) -> float:
         return self._latency_ms
+
+    @property
+    def last_error(self) -> str | None:
+        """Most recent capture exception (thread-swallowed) or backend-reported error."""
+        return self._last_error or getattr(self.backend, "last_error", None)
 
     def start(self) -> None:
         if self._running:
@@ -110,6 +117,8 @@ class ThreadedCapture:
             "queue": self.queue_depth,
             "latency_ms": self._latency_ms,
             "seq": self._seq,
+            "errors": self._errors,
+            "last_error": self.last_error,
         }
 
     def _loop(self) -> None:
@@ -118,7 +127,10 @@ class ThreadedCapture:
             t0 = time.time()
             try:
                 frame = self.backend.grab()
-            except Exception:
+            except Exception as e:
+                # Never kill the thread, but never hide WHY there are no frames.
+                self._last_error = f"{type(e).__name__}: {e}"
+                self._errors += 1
                 frame = None
             if frame is not None:
                 if getattr(frame, "ts", None) is None:

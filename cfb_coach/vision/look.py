@@ -307,6 +307,9 @@ Xbox Remote Play vision (ACTIVE PROTOTYPE — play stays on HDMI monitor)
    Xbox app / Remote Play may need mss (UWP/protected) — use:
      cfb-coach watch --screen-region
 8. Debug view: OpenCV window with frame, FPS, crop/ROIs, and state text.
+   Capture broken? Diagnose first:  cfb-coach watch --probe --window "XBOX"
+   (wgc/dxcam/mss → frames? black? frozen? grass?) — docs/vision-capture-rca.md
+   Occlusion-proof window capture:  cfb-coach watch --window "XBOX" --capture wgc
 9. Xbox control is SEPARATE from vision — sticks stay in your hands.
 10. Remote Play often PAUSES when the stream window is unfocused / covered.
     Keep Xbox Remote Play focused. Use the HTML overlay on the other half of

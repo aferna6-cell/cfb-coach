@@ -68,7 +68,8 @@ _TROUBLESHOOT_NO_FRAMES = """No frames for 5s — troubleshooting:
   · Leave Xbox Remote Play visible (not minimized / not covered)
   · List titles: cfb-coach watch --list-windows
   · Confirm --window title matches (case-insensitive substring; tries Xbox/Remote Play/Game Bar aliases)
-  · Xbox app / Remote Play often cannot be captured via dxcam (UWP) — auto-fallback to mss should kick in ~2–3s
+  · Run the one-shot diagnosis: cfb-coach watch --probe --window "Xbox"   (see docs/vision-capture-rca.md)
+  · dxcam "Invalid Region" = window partly off the primary monitor — auto-fallback to mss kicks in ~2–3s; or --capture wgc
   · Recalibrate: cfb-coach watch --calibrate --window "Xbox"
   · Or: cfb-coach watch --screen-region   (uses crop from ~/.cfb-coach/vision_calib.json via mss)
 """
@@ -80,8 +81,11 @@ _LIVE_CMD_HINT = (
 )
 
 
-def _waiting_frames_msg(capture_name: str) -> str:
-    return _WAITING_FRAMES.format(capture=capture_name or "?")
+def _waiting_frames_msg(capture_name: str, last_error: str | None = None) -> str:
+    msg = _WAITING_FRAMES.format(capture=capture_name or "?")
+    if last_error:
+        msg += f" · last error: {str(last_error)[:160]}"
+    return msg
 
 
 def _heartbeat_interval(troub_printed: bool) -> float:
@@ -661,13 +665,30 @@ def run_watch(args: Any) -> int:
         print(CAPTURE_SETUP_NOTES.strip())
         return 0
 
+    if getattr(args, "probe", False):
+        from cfb_coach.vision.probe import run_probe
+
+        return run_probe(getattr(args, "window", None))
+
     if getattr(args, "list_windows", False):
         from cfb_coach.vision.capture import list_visible_windows
+        from cfb_coach.vision.winenum import enumerate_windows
+
+        detailed = enumerate_windows(include_hidden=True)
+        if detailed:
+            print(f"{len(detailed)} top-level window(s) (front → back):")
+            for w in detailed:
+                print(f"  {w.describe()}")
+            print(
+                "\nCLOAKED/MINIMIZED/terminal windows are never captured. "
+                'Pick a substring for: cfb-coach watch --window "…"'
+            )
+            return 0
 
         titles = list_visible_windows()
         if titles is None:
             print(
-                "list-windows needs Windows + pywin32 (pip install pywin32).",
+                "list-windows needs native Windows Python (not WSL).",
                 file=sys.stderr,
             )
             return 2
@@ -753,6 +774,17 @@ def run_watch(args: Any) -> int:
     def _open_overlay_browser_once(path: Path) -> None:
         nonlocal overlay_browser_opened
         if overlay_browser_opened:
+            return
+        if getattr(args, "window", None) or getattr(args, "screen_region", None):
+            # Remote Play capture: webbrowser.open() steals focus from the stream
+            # (→ "Click to continue playing" pause) and, when the default browser
+            # is Edge, opens a TAB in the Edge window hosting the Xbox stream.
+            overlay_browser_opened = True
+            print(
+                f"  overlay → {path}  (NOT auto-opened: a browser would steal focus "
+                "from Remote Play. Open it in a separate window/phone, then click "
+                "back on the stream.)"
+            )
             return
         try:
             import webbrowser
@@ -1399,7 +1431,11 @@ def _run_pipeline_loop(
             typing=typing,
         ):
             return
-        _print_heartbeat_line(_waiting_frames_msg(_current_capture_name()))
+        _print_heartbeat_line(
+            _waiting_frames_msg(
+                _current_capture_name(), getattr(pipe_cap, "last_error", None)
+            )
+        )
         last_heartbeat = now
 
     def _emit_troubleshoot(now: float) -> None:

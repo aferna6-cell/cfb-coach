@@ -604,6 +604,20 @@ def build_parser() -> argparse.ArgumentParser:
         help='Capture window by title substring (e.g. "Xbox") — Windows dxcam/mss; case-insensitive',
     )
     p_watch.add_argument(
+        "--capture",
+        choices=("auto", "wgc", "dxcam", "mss"),
+        default="auto",
+        help="Window capture backend with --window: auto/dxcam (dxcam, then mss "
+        "fallback), wgc (Windows Graphics Capture; pip install windows-capture), "
+        "mss (window client rect)",
+    )
+    p_watch.add_argument(
+        "--probe",
+        action="store_true",
+        help="Diagnose live capture on this PC (wgc/dxcam/mss: frames? black? frozen? "
+        "grass?) + save snapshots to ~/.cfb-coach/probe/ — see docs/vision-capture-rca.md",
+    )
+    p_watch.add_argument(
         "--list-windows",
         dest="list_windows",
         action="store_true",

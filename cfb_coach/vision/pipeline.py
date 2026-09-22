@@ -27,6 +27,18 @@ from cfb_coach.vision.pressure import classify_pressure, classify_shell
 from cfb_coach.vision.smooth import TemporalSmoother
 
 
+def image_to_field(
+    centroids: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    """Image-normalized (y down, 0=top/far) → field (y up, 0=near camera).
+
+    CFB default offense camera sits behind our offense, so our players are at
+    the BOTTOM of the frame (large image y) and the defense's deep safeties at
+    the TOP (small image y).
+    """
+    return [(float(x), 1.0 - float(y)) for x, y in centroids]
+
+
 class VisionPipeline:
     """Classical CV pipeline targeting ~5–10 analyzed FPS (sidecar only)."""
 
@@ -107,14 +119,19 @@ class VisionPipeline:
         centroids = extract_player_centroids(
             bgr, field_roi=rois.get("field") if rois else None
         )
-        offense, defense = split_offense_defense(centroids)
+        # Centroids are IMAGE coords (y=0 top = far from camera). The
+        # classifiers use FIELD coords (y=0 near camera = our backfield,
+        # growing downfield — see formation.py). Flip before classifying;
+        # without this, offense/defense swap and "deep safeties" were our QB/RB.
+        field_pts = image_to_field(centroids)
+        offense, defense = split_offense_defense(field_pts)
 
         formation, form_side, form_conf = classify_formation(
-            offense or centroids, conf_threshold=self.conf_threshold
+            offense or field_pts, conf_threshold=self.conf_threshold
         )
-        shell, shell_conf = classify_shell(defense or centroids, conf_threshold=self.conf_threshold)
+        shell, shell_conf = classify_shell(defense or field_pts, conf_threshold=self.conf_threshold)
         pressure, press_conf = classify_pressure(
-            defense or centroids, conf_threshold=self.conf_threshold
+            defense or field_pts, conf_threshold=self.conf_threshold
         )
 
         motion = self._motion_energy(bgr)
@@ -308,6 +325,29 @@ def build_capture_from_args(args: Any) -> CaptureBackend:
         return DeviceCapture(int(device))
 
     win = window or calib.get("window_substring")
+    backend_pref = str(getattr(args, "capture", None) or "auto").lower()
+    if backend_pref == "wgc":
+        # Windows Graphics Capture of ONE window by HWND (occlusion-proof).
+        from cfb_coach.vision.capture import find_window
+        from cfb_coach.vision.wgc_capture import WgcWindowCapture
+
+        w = find_window(win or "Xbox")
+        if w is None:
+            print(
+                f"capture=wgc — no capturable window matches {win or 'Xbox'!r} "
+                "(cloaked/minimized windows are skipped) — try --list-windows",
+                file=sys.stderr,
+            )
+            return StubCapture()
+        print(f"capture=wgc — window {w.title!r} hwnd={w.hwnd}")
+        return WgcWindowCapture(hwnd=w.hwnd, title=w.title)
+    if backend_pref == "mss" and win and not prefer_mss:
+        from cfb_coach.vision.capture import resolve_mss_region_for_window
+
+        mss_reg = resolve_mss_region_for_window(win, calib_region=region_dict)
+        if mss_reg is not None:
+            print(f"capture=mss — window client rect: {mss_reg}")
+            return MssRegionCapture(region=mss_reg)
     want_live = (
         bool(win)
         or region_dict is not None
