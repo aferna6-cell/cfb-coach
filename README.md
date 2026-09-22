@@ -216,7 +216,10 @@ Ohio State / CPU = volume lab. Alabama users = prepare well + adjust live.
 
 
 
-## Screen Co-Pilot (v1.9.0)
+## Screen Co-Pilot (v1.9.1)
+
+**Live UX (1.9.1):** while `--window` / capture is running, the loop no longer blocks forever with silent `grab_fresh()` spins. You get a once/sec `waiting for frames…` heartbeat, a status line at least every 2s (fps / play_state / look), `capture OK — LIVE tips below` on first frame, and **non-blocking typed commands** (look / tips / help / q / R/P/S/I/X) without a blocking `look>` prompt. Ctrl+C still clean-shuts the pipeline.
+
 
 **Doctrine:** Aidan keeps **full Xbox control** on the HDMI monitor/console. The Windows laptop is a **sidecar** — it runs Xbox Remote Play so coach can **see** the game, analyze locally (classical CV, ~5–10 FPS, no LLM per frame), and suggest **pre-snap adjustments** only. **Never auto-play / never press buttons.**
 
@@ -297,7 +300,7 @@ CALL
 
 
 
-## Live Vision Milestone 2 (v1.9.0)
+## Live Vision Milestone 2 (v1.9.1)
 
 **Extend M1 — do not rewrite.** Sidecar only; Remote Play = prototype capture; same pipeline for `--video`. False snaps worse than late. Sample tiers: **1=log, 2=mild, 3+=actionable, 5+=strong**. Recency windows (last 5 / last 8) + full-game. Anti-whiplash preserved.
 

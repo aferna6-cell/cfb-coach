@@ -1,4 +1,4 @@
-"""cfb-coach watch / copilot — SCREEN CO-PILOT live loop (v1.9 Milestone 2).
+"""cfb-coach watch / copilot — SCREEN CO-PILOT live loop (v1.9.1).
 
 Aidan plays on Xbox via HDMI monitor + controller. Laptop runs Remote Play
 as the prototype video source. Coach is SIDE-CAR ONLY — never controls Xbox.
@@ -6,10 +6,12 @@ as the prototype video source. Coach is SIDE-CAR ONLY — never controls Xbox.
 
 from __future__ import annotations
 
+import queue
 import sys
+import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from cfb_coach.copilot import format_tips_block, tips_from_look, write_overlay_html
 from cfb_coach.vision import (
@@ -24,7 +26,7 @@ from cfb_coach.vision import (
 
 
 HELP = """
-Screen Co-Pilot v1.9 — you stay on sticks; coach suggests only.
+Screen Co-Pilot v1.9.1 — you stay on sticks; coach suggests only.
 
 Typed commands (then Enter):
   f <front>      even|odd|nickel|dime|goal_line
@@ -46,6 +48,258 @@ Manual corrections:
 Live capture: --window Xbox --debug | --image | --video | --calibrate
 Session: --opponent / --dynasty starts game_sessions + play_records
 """.strip()
+
+
+
+# --- live-loop UX helpers (heartbeat / status / non-blocking stdin) ---
+
+_WAITING_FRAMES = (
+    "waiting for frames… (is Remote Play visible? window title match?) "
+    "capture={capture}"
+)
+
+_TROUBLESHOOT_NO_FRAMES = """No frames for 5s — troubleshooting:
+  · Leave Xbox Remote Play visible (not minimized / not covered)
+  · Confirm --window title matches (e.g. "Xbox")
+  · Recalibrate: cfb-coach watch --calibrate --window "Xbox"
+  · Or try --screen-region from calib (watch --calibrate writes ~/.cfb-coach/calib.json)
+"""
+
+_CAPTURE_OK = "capture OK — LIVE tips below"
+
+_LIVE_CMD_HINT = (
+    "Type commands anytime (look nickel…, tips, help, q, R/P/S/I/X) — Enter to submit"
+)
+
+
+def _waiting_frames_msg(capture_name: str) -> str:
+    return _WAITING_FRAMES.format(capture=capture_name or "?")
+
+
+def _status_line(
+    short: str,
+    *,
+    fps: float | None = None,
+    play_state: str = "",
+    look_label: str = "",
+) -> str:
+    parts = [f"  … {short}"]
+    if fps is not None:
+        parts.append(f"fps={fps:.1f}")
+    if play_state:
+        parts.append(f"state={play_state}")
+    if look_label:
+        parts.append(f"look={look_label}")
+    return " ".join(parts)
+
+
+class StdinCommandQueue:
+    """Non-blocking stdin for the live capture loop (Windows + Unix).
+
+    A daemon thread reads complete lines so the capture while-loop never
+    blocks on input(). Works alongside status/heartbeat prints.
+    """
+
+    def __init__(self) -> None:
+        self._q: queue.Queue[str] = queue.Queue()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.enabled = False
+
+    def start(self) -> None:
+        if self._thread is not None:
+            return
+        if not sys.stdin.isatty():
+            return
+        self.enabled = True
+        self._thread = threading.Thread(
+            target=self._reader, name="cfb-stdin", daemon=True
+        )
+        self._thread.start()
+
+    def _reader(self) -> None:
+        # Prefer select on POSIX so we can wake on stop; msvcrt path for Windows
+        # character accumulation; fallback to blocking readline in this thread.
+        use_select = False
+        try:
+            import select
+
+            use_select = hasattr(select, "select") and sys.platform != "win32"
+        except ImportError:
+            use_select = False
+
+        if sys.platform == "win32":
+            self._reader_msvcrt()
+            return
+
+        while not self._stop.is_set():
+            try:
+                if use_select:
+                    import select
+
+                    ready, _, _ = select.select([sys.stdin], [], [], 0.25)
+                    if not ready:
+                        continue
+                    line = sys.stdin.readline()
+                else:
+                    line = sys.stdin.readline()
+            except (EOFError, OSError, ValueError):
+                break
+            if line == "":
+                break
+            self._q.put(line.rstrip("\r\n"))
+
+    def _reader_msvcrt(self) -> None:
+        try:
+            import msvcrt  # type: ignore
+        except ImportError:
+            # Fallback: blocking readline in this daemon thread
+            while not self._stop.is_set():
+                try:
+                    line = sys.stdin.readline()
+                except (EOFError, OSError, ValueError):
+                    break
+                if line == "":
+                    break
+                self._q.put(line.rstrip("\r\n"))
+            return
+
+        buf: list[str] = []
+        while not self._stop.is_set():
+            try:
+                if not msvcrt.kbhit():
+                    time.sleep(0.05)
+                    continue
+                ch = msvcrt.getwch()
+            except (EOFError, OSError):
+                break
+            if ch in ("\r", "\n"):
+                # echo newline for Windows console
+                try:
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                except Exception:
+                    pass
+                self._q.put("".join(buf))
+                buf.clear()
+                continue
+            if ch in ("\x08", "\x7f"):  # backspace
+                if buf:
+                    buf.pop()
+                    try:
+                        sys.stdout.write("\b \b")
+                        sys.stdout.flush()
+                    except Exception:
+                        pass
+                continue
+            if ch == "\x03":  # Ctrl+C — let main loop see KeyboardInterrupt via flag
+                self._q.put("q")
+                break
+            buf.append(ch)
+            try:
+                sys.stdout.write(ch)
+                sys.stdout.flush()
+            except Exception:
+                pass
+
+    def poll(self) -> str | None:
+        try:
+            return self._q.get_nowait()
+        except queue.Empty:
+            return None
+
+    def push(self, line: str) -> None:
+        """Test / inject helper."""
+        self._q.put(line)
+
+    def close(self) -> None:
+        self._stop.set()
+
+
+def _dispatch_live_command(
+    raw_in: str,
+    *,
+    emit: Callable[..., None],
+    look: Any,
+    tips: list[str],
+    play_tracker: Any,
+    live_engine: Any,
+    db: Any,
+    overlay_path: Path | None,
+    inventory: dict[str, Any] | None,
+    opponent: str | None,
+) -> tuple[str, Path | None]:
+    """Handle one typed command during live capture. Returns (action, overlay_path).
+
+    action: "quit" | "ok"
+    """
+    if not raw_in.strip():
+        return "ok", overlay_path
+    low = raw_in.lower().strip()
+    if low in ("q", "quit", "exit"):
+        return "quit", overlay_path
+    if low in ("h", "help", "?"):
+        print(HELP)
+        return "ok", overlay_path
+    if low == "setup":
+        print(CAPTURE_SETUP_NOTES.strip())
+        return "ok", overlay_path
+    if low == "tips":
+        print(format_tips_block(look, tips))
+        return "ok", overlay_path
+    if low == "overlay":
+        path_obj = overlay_path or _overlay_default_path()
+        path = write_overlay_html(str(path_obj), look, tips)
+        print(f"  overlay → {path}")
+        return "ok", path_obj
+    if low in ("r", "p", "s", "i", "x") or low.startswith("correct "):
+        _handle_correction(raw_in, play_tracker, live_engine, db)
+        return "ok", overlay_path
+    if low.startswith("f ") or low.startswith("front "):
+        token = raw_in.split(None, 1)[1]
+        emit(
+            DefenseLook(
+                front=token,
+                shell=look.shell,
+                pressure=look.pressure,
+                confidence=0.85,
+                source="hotkey",
+            )
+        )
+        return "ok", overlay_path
+    if low.startswith("s ") or low.startswith("shell "):
+        token = raw_in.split(None, 1)[1]
+        emit(
+            DefenseLook(
+                front=look.front,
+                shell=token,
+                pressure=look.pressure,
+                confidence=0.85,
+                source="hotkey",
+            )
+        )
+        return "ok", overlay_path
+    if low.startswith("p ") or low.startswith("press ") or low.startswith("pressure "):
+        token = raw_in.split(None, 1)[1]
+        emit(
+            DefenseLook(
+                front=look.front,
+                shell=look.shell,
+                pressure=token,
+                confidence=0.85,
+                source="hotkey",
+            )
+        )
+        return "ok", overlay_path
+    if low.startswith("look "):
+        emit(parse_look_tokens(raw_in.split(None, 1)[1]))
+        return "ok", overlay_path
+    if any(c.isalpha() for c in raw_in):
+        emit(parse_look_tokens(raw_in))
+        return "ok", overlay_path
+    print("  unknown — type help")
+    return "ok", overlay_path
+
 
 
 def _overlay_default_path() -> Path:
@@ -185,7 +439,7 @@ def run_watch(args: Any) -> int:
         live_engine = None
         session = None
 
-    print("SCREEN CO-PILOT v1.9 — Xbox stays in your hands (sidecar only)")
+    print("SCREEN CO-PILOT v1.9.1 — Xbox stays in your hands (sidecar only)")
     print("Prototype source: Xbox Remote Play on laptop · play on HDMI monitor")
     print("Future: capture-card drop-in backend. See: watch --setup")
     print("Now: demo + hotkeys + optional live/--image/--video. Type 'help'.")
@@ -195,10 +449,19 @@ def run_watch(args: Any) -> int:
         print(f"Session: {session.session_id} (dynasty={session.dynasty})")
     print("-" * 60)
 
+    live_state: dict[str, Any] = {
+        "look": look,
+        "tips": tips,
+        "overlay_path": overlay_path,
+    }
+
     def emit(current: DefenseLook, *, short_line: str | None = None) -> None:
-        nonlocal tips, look
+        nonlocal tips, look, overlay_path
         look = current.normalized()
         tips = tips_from_look(look, inventory=inventory, opponent_id=opponent)
+        live_state["look"] = look
+        live_state["tips"] = tips
+        live_state["overlay_path"] = overlay_path
         tend_lines = live_engine.top_lines(n=3) if live_engine else []
         counter = live_engine.current_counter() if live_engine else ""
         print()
@@ -245,6 +508,9 @@ def run_watch(args: Any) -> int:
             live_engine=live_engine,
             record_plays=record_plays,
             post_one_liner=post_one_liner,
+            live_state=live_state,
+            inventory=inventory,
+            opponent=opponent,
         )
 
     if image:
@@ -569,10 +835,16 @@ def _run_pipeline_loop(
     live_engine: Any = None,
     record_plays: bool = False,
     post_one_liner: bool = True,
+    live_state: dict[str, Any] | None = None,
+    inventory: dict[str, Any] | None = None,
+    opponent: str | None = None,
 ) -> int:
     from cfb_coach.vision.calibrate import load_calib
     from cfb_coach.vision.pipeline import VisionPipeline, build_capture_from_args
     from cfb_coach.vision.threaded_capture import ThreadedCapture
+
+    live_state = live_state if live_state is not None else {}
+    overlay_path: Path | None = live_state.get("overlay_path")
 
     try:
         cap = build_capture_from_args(args)
@@ -630,20 +902,108 @@ def _run_pipeline_loop(
     print(f"Pipeline capture={getattr(pipe_cap, 'name', '?')} target_fps={target_fps:.0f}")
     if session:
         print(f"Logging plays → session {session.session_id}")
+    print(_LIVE_CMD_HINT)
+
+    stdin_q = StdinCommandQueue()
+    stdin_q.start()
+
     delay = 1.0 / max(1.0, target_fps)
     frames = 0
     last_short = ""
     roll_buf: list[Any] = []
+    loop_start = time.time()
+    last_frame_wall = loop_start
+    last_heartbeat = 0.0
+    last_status = 0.0
+    saw_frame = False
+    troub_printed = False
+    last_obs: Any = None
+    last_look_obj: Any = live_state.get("look")
+    quit_requested = False
+    capture_name = getattr(pipe_cap, "name", "?")
+
+    def _poll_commands() -> bool:
+        """Drain stdin queue. Return True if quit requested."""
+        nonlocal overlay_path, quit_requested, last_look_obj
+        while True:
+            cmd = stdin_q.poll()
+            if cmd is None:
+                break
+            action, overlay_path = _dispatch_live_command(
+                cmd,
+                emit=emit,
+                look=live_state.get("look") or last_look_obj,
+                tips=list(live_state.get("tips") or []),
+                play_tracker=getattr(pipe, "lifecycle", None),
+                live_engine=live_engine,
+                db=db,
+                overlay_path=overlay_path,
+                inventory=inventory,
+                opponent=opponent,
+            )
+            live_state["overlay_path"] = overlay_path
+            last_look_obj = live_state.get("look") or last_look_obj
+            if action == "quit":
+                quit_requested = True
+                return True
+        return False
+
+    def _emit_heartbeat(now: float) -> None:
+        nonlocal last_heartbeat
+        if now - last_frame_wall > 1.0 and now - last_heartbeat >= 1.0:
+            print(_waiting_frames_msg(capture_name))
+            last_heartbeat = now
+
+    def _emit_troubleshoot(now: float) -> None:
+        nonlocal troub_printed
+        if troub_printed:
+            return
+        if not saw_frame and now - loop_start >= 5.0:
+            print(_TROUBLESHOOT_NO_FRAMES.rstrip())
+            troub_printed = True
+
+    def _emit_status(now: float, *, force: bool = False) -> None:
+        nonlocal last_status
+        if last_obs is None and not force:
+            return
+        if not force and now - last_status < 2.0:
+            return
+        short = last_obs.short_line() if last_obs is not None else last_short or "?"
+        look_lbl = ""
+        if last_look_obj is not None:
+            try:
+                look_lbl = last_look_obj.label()
+            except Exception:
+                look_lbl = ""
+        play_state = getattr(last_obs, "play_state", "") if last_obs is not None else ""
+        print(
+            _status_line(
+                short,
+                fps=getattr(pipe, "fps", None),
+                play_state=str(play_state or ""),
+                look_label=look_lbl,
+            )
+        )
+        last_status = now
 
     try:
         while True:
+            if _poll_commands():
+                break
+
             t0 = time.time()
+            obs = None
+            look = None
             try:
                 # Prefer fresh frame when threaded
                 if threaded is not None:
                     fresh = threaded.grab_fresh()
                     if fresh is None:
-                        # drop stale — still tick lightly
+                        now = time.time()
+                        _emit_heartbeat(now)
+                        _emit_troubleshoot(now)
+                        if saw_frame:
+                            _emit_status(now)
                         time.sleep(min(0.02, delay))
                         if once and frames > 0:
                             break
@@ -661,7 +1021,19 @@ def _run_pipeline_loop(
             except Exception as e:
                 print(f"pipeline error: {e}", file=sys.stderr)
                 break
+
+            if obs is None or look is None:
+                continue
+
+            now = time.time()
+            if not saw_frame:
+                print(_CAPTURE_OK)
+                saw_frame = True
+            last_frame_wall = now
+            last_obs = obs
+            last_look_obj = look
             frames += 1
+
             if log_obs is not None:
                 try:
                     log_obs(obs)
@@ -685,13 +1057,24 @@ def _run_pipeline_loop(
             if short != last_short or frames == 1:
                 last_short = short
                 emit(look, short_line=short)
-            elif debug and frames % max(1, int(target_fps)) == 0:
+                last_status = now
+            elif now - last_status >= 2.0:
+                # Always show life at least every 2s (even if short_line unchanged)
                 print(
-                    f"  … {short}  fps={pipe.fps:.1f} "
-                    f"drop={extras.get('dropped', 0)} "
-                    f"lat={extras.get('latency_ms', 0):.0f}ms "
-                    f"q={extras.get('queue', extras.get('queue_depth', '?'))}"
+                    _status_line(
+                        short,
+                        fps=pipe.fps,
+                        play_state=str(obs.play_state or ""),
+                        look_label=look.label(),
+                    )
                 )
+                last_status = now
+                if debug:
+                    print(
+                        f"      drop={extras.get('dropped', 0)} "
+                        f"lat={extras.get('latency_ms', 0):.0f}ms "
+                        f"q={extras.get('queue', extras.get('queue_depth', '?'))}"
+                    )
 
             if dbg is not None:
                 bgr = None
@@ -719,6 +1102,9 @@ def _run_pipeline_loop(
                     rois=(pipe.calib or {}).get("rois"),
                 )
 
+            if _poll_commands():
+                break
+
             if once:
                 break
             if image and not video and not getattr(args, "window", None):
@@ -739,6 +1125,7 @@ def _run_pipeline_loop(
     except KeyboardInterrupt:
         print()
     finally:
+        stdin_q.close()
         if dbg is not None:
             dbg.close()
         if threaded is not None:
