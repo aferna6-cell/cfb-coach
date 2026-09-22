@@ -520,14 +520,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--window",
         metavar="TITLE",
         default=None,
-        help='Capture window by title substring (e.g. "Xbox") — Windows dxcam/mss',
+        help='Capture window by title substring (e.g. "Xbox") — Windows dxcam/mss; case-insensitive',
+    )
+    p_watch.add_argument(
+        "--list-windows",
+        dest="list_windows",
+        action="store_true",
+        help="Print visible window titles (Windows) so you can pick --window",
     )
     p_watch.add_argument(
         "--screen-region",
         dest="screen_region",
-        metavar="L,T,W,H",
+        nargs="?",
+        const="calib",
         default=None,
-        help="Screen crop left,top,width,height (also saved via --calibrate)",
+        metavar="L,T,W,H",
+        help="Screen crop left,top,width,height via mss. "
+        "With no args: use crop from ~/.cfb-coach/vision_calib.json",
     )
     p_watch.add_argument(
         "--calibrate",

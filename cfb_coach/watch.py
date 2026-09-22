@@ -1,4 +1,4 @@
-"""cfb-coach watch / copilot — SCREEN CO-PILOT live loop (v1.9.1).
+"""cfb-coach watch / copilot — SCREEN CO-PILOT live loop (v1.9.2).
 
 Aidan plays on Xbox via HDMI monitor + controller. Laptop runs Remote Play
 as the prototype video source. Coach is SIDE-CAR ONLY — never controls Xbox.
@@ -26,7 +26,7 @@ from cfb_coach.vision import (
 
 
 HELP = """
-Screen Co-Pilot v1.9.1 — you stay on sticks; coach suggests only.
+Screen Co-Pilot v1.9.2 — you stay on sticks; coach suggests only.
 
 Typed commands (then Enter):
   f <front>      even|odd|nickel|dime|goal_line
@@ -45,7 +45,7 @@ Manual corrections:
   correct family CROSSERS | correct result completion | correct yards 12
   R = run, P = pass/completion, S = sack, I = int, X = mark explosive
 
-Live capture: --window Xbox --debug | --image | --video | --calibrate
+Live capture: --window Xbox --debug | --list-windows | --screen-region | --calibrate
 Session: --opponent / --dynasty starts game_sessions + play_records
 """.strip()
 
@@ -58,11 +58,15 @@ _WAITING_FRAMES = (
     "capture={capture}"
 )
 
+_HEARTBEAT_INTERVAL_S = 5.0
+_HEARTBEAT_AFTER_TROUBLE_S = 15.0
+
 _TROUBLESHOOT_NO_FRAMES = """No frames for 5s — troubleshooting:
   · Leave Xbox Remote Play visible (not minimized / not covered)
-  · Confirm --window title matches (e.g. "Xbox")
+  · List titles: cfb-coach watch --list-windows
+  · Confirm --window title matches (case-insensitive substring; tries Xbox/Remote Play/Game Bar aliases)
   · Recalibrate: cfb-coach watch --calibrate --window "Xbox"
-  · Or try --screen-region from calib (watch --calibrate writes ~/.cfb-coach/calib.json)
+  · Or: cfb-coach watch --screen-region   (uses crop from ~/.cfb-coach/vision_calib.json via mss)
 """
 
 _CAPTURE_OK = "capture OK — LIVE tips below"
@@ -74,6 +78,31 @@ _LIVE_CMD_HINT = (
 
 def _waiting_frames_msg(capture_name: str) -> str:
     return _WAITING_FRAMES.format(capture=capture_name or "?")
+
+
+def _heartbeat_interval(troub_printed: bool) -> float:
+    """5s until first troubleshoot, then 15s only."""
+    return _HEARTBEAT_AFTER_TROUBLE_S if troub_printed else _HEARTBEAT_INTERVAL_S
+
+
+def _should_emit_heartbeat(
+    *,
+    now: float,
+    loop_start: float,
+    last_heartbeat: float,
+    last_frame_wall: float,
+    troub_printed: bool,
+    typing: bool,
+) -> bool:
+    """Gate for waiting-for-frames heartbeat (no scroll flood, no mid-keystroke)."""
+    if typing:
+        return False
+    if now - last_frame_wall < 1.0:
+        return False
+    interval = _heartbeat_interval(troub_printed)
+    if last_heartbeat <= 0.0:
+        return (now - loop_start) >= interval
+    return (now - last_heartbeat) >= interval
 
 
 def _status_line(
@@ -105,6 +134,8 @@ class StdinCommandQueue:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.enabled = False
+        self._partial: list[str] = []
+        self._partial_lock = threading.Lock()
 
     def start(self) -> None:
         if self._thread is not None:
@@ -164,7 +195,6 @@ class StdinCommandQueue:
                 self._q.put(line.rstrip("\r\n"))
             return
 
-        buf: list[str] = []
         while not self._stop.is_set():
             try:
                 if not msvcrt.kbhit():
@@ -180,27 +210,42 @@ class StdinCommandQueue:
                     sys.stdout.flush()
                 except Exception:
                     pass
-                self._q.put("".join(buf))
-                buf.clear()
+                with self._partial_lock:
+                    line = "".join(self._partial)
+                    self._partial.clear()
+                self._q.put(line)
                 continue
             if ch in ("\x08", "\x7f"):  # backspace
-                if buf:
-                    buf.pop()
-                    try:
-                        sys.stdout.write("\b \b")
-                        sys.stdout.flush()
-                    except Exception:
-                        pass
+                with self._partial_lock:
+                    if self._partial:
+                        self._partial.pop()
+                        try:
+                            sys.stdout.write("\b \b")
+                            sys.stdout.flush()
+                        except Exception:
+                            pass
                 continue
             if ch == "\x03":  # Ctrl+C — let main loop see KeyboardInterrupt via flag
+                with self._partial_lock:
+                    self._partial.clear()
                 self._q.put("q")
                 break
-            buf.append(ch)
+            with self._partial_lock:
+                self._partial.append(ch)
             try:
                 sys.stdout.write(ch)
                 sys.stdout.flush()
             except Exception:
                 pass
+
+    def has_partial_input(self) -> bool:
+        """True when user is mid-keystroke (Windows msvcrt path)."""
+        with self._partial_lock:
+            return bool(self._partial)
+
+    def partial_text(self) -> str:
+        with self._partial_lock:
+            return "".join(self._partial)
 
     def poll(self) -> str | None:
         try:
@@ -390,12 +435,34 @@ def run_watch(args: Any) -> int:
         print(CAPTURE_SETUP_NOTES.strip())
         return 0
 
+    if getattr(args, "list_windows", False):
+        from cfb_coach.vision.capture import list_visible_windows
+
+        titles = list_visible_windows()
+        if titles is None:
+            print(
+                "list-windows needs Windows + pywin32 (pip install pywin32).",
+                file=sys.stderr,
+            )
+            return 2
+        if not titles:
+            print("(no visible windows with titles)")
+            return 0
+        print(f"{len(titles)} visible window title(s):")
+        for t in titles:
+            print(f"  {t}")
+        print('\nPick one substring for: cfb-coach watch --window "…"')
+        return 0
+
     if calibrate:
         from cfb_coach.vision.calibrate import run_calibrate
 
+        reg = getattr(args, "screen_region", None)
+        if reg in ("calib", True, ""):
+            reg = None
         return run_calibrate(
             window=getattr(args, "window", None),
-            region=getattr(args, "screen_region", None),
+            region=reg,
         )
 
     inventory = _load_inventory(opponent)
@@ -439,7 +506,7 @@ def run_watch(args: Any) -> int:
         live_engine = None
         session = None
 
-    print("SCREEN CO-PILOT v1.9.1 — Xbox stays in your hands (sidecar only)")
+    print("SCREEN CO-PILOT v1.9.2 — Xbox stays in your hands (sidecar only)")
     print("Prototype source: Xbox Remote Play on laptop · play on HDMI monitor")
     print("Future: capture-card drop-in backend. See: watch --setup")
     print("Now: demo + hotkeys + optional live/--image/--video. Type 'help'.")
@@ -900,6 +967,16 @@ def _run_pipeline_loop(
             print("Debug view needs opencv-python — continuing without window.")
 
     print(f"Pipeline capture={getattr(pipe_cap, 'name', '?')} target_fps={target_fps:.0f}")
+    matched = getattr(cap, "matched_title", None)
+    if matched:
+        print(f"Window match: {matched!r}")
+    elif getattr(args, "window", None) and getattr(cap, "name", "") in (
+        "dxcam",
+        "threaded:dxcam",
+    ):
+        print(
+            'No window title matched yet — try: cfb-coach watch --list-windows'
+        )
     if session:
         print(f"Logging plays → session {session.session_id}")
     print(_LIVE_CMD_HINT)
@@ -948,19 +1025,57 @@ def _run_pipeline_loop(
                 return True
         return False
 
+    hb_line_len = 0
+
+    def _end_heartbeat_line() -> None:
+        nonlocal hb_line_len
+        if hb_line_len > 0:
+            try:
+                sys.stdout.write("\n")
+                sys.stdout.flush()
+            except Exception:
+                pass
+            hb_line_len = 0
+
+    def _print_heartbeat_line(msg: str) -> None:
+        """Single-line status via \\r — does not flood scrollback."""
+        nonlocal hb_line_len
+        pad = max(0, hb_line_len - len(msg))
+        try:
+            sys.stdout.write("\r" + msg + (" " * pad))
+            sys.stdout.flush()
+        except Exception:
+            # Fallback if stdout odd
+            print(msg)
+        hb_line_len = len(msg)
+
     def _emit_heartbeat(now: float) -> None:
         nonlocal last_heartbeat
-        if now - last_frame_wall > 1.0 and now - last_heartbeat >= 1.0:
-            print(_waiting_frames_msg(capture_name))
-            last_heartbeat = now
+        typing = stdin_q.has_partial_input() if hasattr(stdin_q, "has_partial_input") else False
+        if not _should_emit_heartbeat(
+            now=now,
+            loop_start=loop_start,
+            last_heartbeat=last_heartbeat,
+            last_frame_wall=last_frame_wall,
+            troub_printed=troub_printed,
+            typing=typing,
+        ):
+            return
+        _print_heartbeat_line(_waiting_frames_msg(capture_name))
+        last_heartbeat = now
 
     def _emit_troubleshoot(now: float) -> None:
-        nonlocal troub_printed
+        nonlocal troub_printed, last_heartbeat
         if troub_printed:
             return
-        if not saw_frame and now - loop_start >= 5.0:
-            print(_TROUBLESHOOT_NO_FRAMES.rstrip())
-            troub_printed = True
+        if saw_frame:
+            return
+        if now - loop_start < 5.0:
+            return
+        _end_heartbeat_line()
+        print(_TROUBLESHOOT_NO_FRAMES.rstrip())
+        troub_printed = True
+        last_heartbeat = now  # next heartbeat in 15s
 
     def _emit_status(now: float, *, force: bool = False) -> None:
         nonlocal last_status
@@ -1000,8 +1115,8 @@ def _run_pipeline_loop(
                     fresh = threaded.grab_fresh()
                     if fresh is None:
                         now = time.time()
-                        _emit_heartbeat(now)
                         _emit_troubleshoot(now)
+                        _emit_heartbeat(now)
                         if saw_frame:
                             _emit_status(now)
                         time.sleep(min(0.02, delay))
@@ -1023,10 +1138,15 @@ def _run_pipeline_loop(
                 break
 
             if obs is None or look is None:
+                now = time.time()
+                _emit_troubleshoot(now)
+                _emit_heartbeat(now)
+                time.sleep(min(0.02, delay))
                 continue
 
             now = time.time()
             if not saw_frame:
+                _end_heartbeat_line()
                 print(_CAPTURE_OK)
                 saw_frame = True
             last_frame_wall = now

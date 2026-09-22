@@ -255,8 +255,15 @@ class VisionPipeline:
             self._last_t = now
 
 
+def _is_calib_region_flag(screen_region: Any) -> bool:
+    """True when --screen-region was passed with no L,T,W,H (use calib)."""
+    return screen_region in ("calib", True, "")
+
+
 def build_capture_from_args(args: Any) -> CaptureBackend:
     """Select capture backend from CLI namespace."""
+    import sys
+
     image = getattr(args, "image", None)
     video = getattr(args, "video", None)
     window = getattr(args, "window", None)
@@ -265,12 +272,31 @@ def build_capture_from_args(args: Any) -> CaptureBackend:
 
     calib = load_calib()
     region_dict = None
-    if screen_region:
+    prefer_mss = False
+    region_source = ""
+
+    if _is_calib_region_flag(screen_region):
+        prefer_mss = True
+        region_dict = calib.get("screen_region") or calib.get("crop")
+        if not isinstance(region_dict, dict):
+            print(
+                "No crop/screen_region in ~/.cfb-coach/vision_calib.json — "
+                "run: cfb-coach watch --calibrate",
+                file=sys.stderr,
+            )
+            region_dict = None
+        else:
+            region_source = "calib (~/.cfb-coach/vision_calib.json)"
+    elif isinstance(screen_region, str) and screen_region.strip():
         from cfb_coach.vision.calibrate import parse_screen_region
 
+        prefer_mss = True
         region_dict = parse_screen_region(screen_region)
+        region_source = f"CLI ({screen_region})"
     elif isinstance(calib.get("screen_region") or calib.get("crop"), dict):
+        # Soft fallback crop when capturing a window (dxcam region)
         region_dict = calib.get("screen_region") or calib.get("crop")
+        region_source = "calib crop (with window)"
 
     if image:
         return ImageFileCapture(image)
@@ -282,10 +308,28 @@ def build_capture_from_args(args: Any) -> CaptureBackend:
         return DeviceCapture(int(device))
 
     win = window or calib.get("window_substring")
-    # Prefer dxcam on Windows when window/region live capture requested
-    want_live = bool(win) or region_dict is not None or bool(getattr(args, "live", False))
+    want_live = (
+        bool(win)
+        or region_dict is not None
+        or bool(getattr(args, "live", False))
+        or _is_calib_region_flag(screen_region)
+        or (isinstance(screen_region, str) and bool(screen_region.strip()))
+    )
     if want_live:
-        # Try dxcam first
+        if prefer_mss and region_dict is not None:
+            try:
+                print(
+                    f"Using mss --screen-region from {region_source}: "
+                    f"left={region_dict.get('left')} top={region_dict.get('top')} "
+                    f"width={region_dict.get('width')} height={region_dict.get('height')}"
+                )
+                return MssRegionCapture(region=region_dict)
+            except ImportError:
+                print(
+                    "mss unavailable — falling back to dxcam/window if possible",
+                    file=sys.stderr,
+                )
+
         if win or region_dict:
             try:
                 region_tuple = None
@@ -299,13 +343,18 @@ def build_capture_from_args(args: Any) -> CaptureBackend:
                         l + int(region_dict["width"]),
                         t + int(region_dict["height"]),
                     )
-                return DxcamWindowCapture(
+                cap = DxcamWindowCapture(
                     window_substring=win or "Xbox",
                     region=region_tuple,
                 )
+                return cap
             except ImportError:
                 pass
             try:
+                if region_dict is not None:
+                    print(
+                        f"Using mss region from {region_source or 'calib'}: {region_dict}"
+                    )
                 return MssRegionCapture(region=region_dict)
             except ImportError:
                 pass

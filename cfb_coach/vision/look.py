@@ -299,12 +299,16 @@ Xbox Remote Play vision (ACTIVE PROTOTYPE — play stays on HDMI monitor)
 5. Calibrate once:
      cfb-coach watch --calibrate
    (saves window title + crop to ~/.cfb-coach/vision_calib.json)
-6. Live watch:
+6. List window titles (pick Remote Play exact title if needed):
+     cfb-coach watch --list-windows
+7. Live watch:
      cfb-coach watch --window "Xbox" --debug
-7. Debug view: OpenCV window with frame, FPS, crop/ROIs, and state text.
-8. Xbox control is SEPARATE from vision — sticks stay in your hands.
-9. Remote Play = current prototype video source (laptop sees the game).
-10. Capture card (Elgato etc.) = future drop-in CaptureBackend (same pipeline).
+   Or use calib crop via mss:
+     cfb-coach watch --screen-region
+8. Debug view: OpenCV window with frame, FPS, crop/ROIs, and state text.
+9. Xbox control is SEPARATE from vision — sticks stay in your hands.
+10. Remote Play = current prototype video source (laptop sees the game).
+11. Capture card (Elgato etc.) = future drop-in CaptureBackend (same pipeline).
 
 Also works offline:
   cfb-coach watch --demo / --image test.png / --video sample.mp4

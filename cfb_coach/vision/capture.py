@@ -200,6 +200,14 @@ class DxcamWindowCapture:
         self.output_color = output_color
         self._camera: Any = None
         self._resolved_region: tuple[int, int, int, int] | None = region
+        self.matched_title: str | None = None
+        if self._resolved_region is None and self.window_substring:
+            matched: list[str] = []
+            self._resolved_region = find_window_region(
+                self.window_substring, matched_title=matched
+            )
+            if matched:
+                self.matched_title = matched[0]
 
     def _ensure(self) -> Any:
         if self._camera is not None:
@@ -211,7 +219,12 @@ class DxcamWindowCapture:
                 "DxcamWindowCapture requires dxcam (Windows) — pip install -e '.[vision]'"
             ) from e
         if self._resolved_region is None and self.window_substring:
-            self._resolved_region = _find_window_region(self.window_substring)
+            matched: list[str] = []
+            self._resolved_region = find_window_region(
+                self.window_substring, matched_title=matched
+            )
+            if matched:
+                self.matched_title = matched[0]
         region = self._resolved_region
         self._camera = dxcam.create(output_color=self.output_color, region=region)
         return self._camera
@@ -267,31 +280,120 @@ class DeviceCapture:
         self._cap = None
 
 
-def _find_window_region(substring: str) -> tuple[int, int, int, int] | None:
-    """Windows-only: FindWindow-ish via win32gui. Returns (l,t,r,b) or None."""
+# Common Xbox / Remote Play / Game Bar title fragments (case-insensitive match).
+WINDOW_TITLE_ALIASES: tuple[str, ...] = (
+    "Xbox",
+    "Remote Play",
+    "Remote play",
+    "Xbox Remote Play",
+    "Game Bar",
+    "Xbox Game Bar",
+    "Widget",
+)
+
+
+def window_search_needles(substring: str | None) -> list[str]:
+    """Primary substring then aliases when looking for Xbox/Remote Play.
+
+    Case-insensitive substring match is applied by the finder; this only
+    expands which needles to try when the primary fails.
+    """
+    primary = (substring or "Xbox").strip() or "Xbox"
+    needles = [primary]
+    low = primary.lower()
+    try_aliases = (
+        low in {"xbox", "remote", "remote play", "game bar"}
+        or "xbox" in low
+        or "remote" in low
+        or "game bar" in low
+    )
+    if try_aliases:
+        for alias in WINDOW_TITLE_ALIASES:
+            if alias.lower() == low:
+                continue
+            if alias not in needles:
+                needles.append(alias)
+    return needles
+
+
+def list_visible_windows() -> list[str] | None:
+    """Windows-only: visible top-level window titles (non-empty). None if unavailable."""
     try:
         import win32gui  # type: ignore
     except ImportError:
         return None
 
-    needle = substring.lower()
-    found: list[tuple[int, int, int, int]] = []
+    titles: list[str] = []
 
     def _enum(hwnd: int, _: Any) -> None:
         if not win32gui.IsWindowVisible(hwnd):
             return
-        title = win32gui.GetWindowText(hwnd) or ""
-        if needle in title.lower():
-            rect = win32gui.GetWindowRect(hwnd)
-            found.append(rect)
+        title = (win32gui.GetWindowText(hwnd) or "").strip()
+        if title:
+            titles.append(title)
 
     try:
         win32gui.EnumWindows(_enum, None)
     except Exception:
         return None
-    if not found:
-        return None
-    return found[0]
+    # Stable unique order
+    seen: set[str] = set()
+    out: list[str] = []
+    for t in titles:
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def _enum_windows_matching(needle: str) -> list[tuple[str, tuple[int, int, int, int]]]:
+    """Case-insensitive substring match → [(title, (l,t,r,b)), ...]."""
+    try:
+        import win32gui  # type: ignore
+    except ImportError:
+        return []
+
+    needle_l = needle.lower()
+    found: list[tuple[str, tuple[int, int, int, int]]] = []
+
+    def _enum(hwnd: int, _: Any) -> None:
+        if not win32gui.IsWindowVisible(hwnd):
+            return
+        title = win32gui.GetWindowText(hwnd) or ""
+        if needle_l in title.lower():
+            rect = win32gui.GetWindowRect(hwnd)
+            found.append((title, rect))
+
+    try:
+        win32gui.EnumWindows(_enum, None)
+    except Exception:
+        return []
+    return found
+
+
+def find_window_region(
+    substring: str | None = "Xbox",
+    *,
+    matched_title: list[str] | None = None,
+) -> tuple[int, int, int, int] | None:
+    """Windows-only: find visible window region by case-insensitive substring.
+
+    Tries primary needle then common Xbox/Remote Play aliases when appropriate.
+    If matched_title is a list, appends the winning title for diagnostics.
+    """
+    for needle in window_search_needles(substring):
+        hits = _enum_windows_matching(needle)
+        if hits:
+            title, rect = hits[0]
+            if matched_title is not None:
+                matched_title.append(title)
+            return rect
+    return None
+
+
+def _find_window_region(substring: str) -> tuple[int, int, int, int] | None:
+    """Backward-compatible wrapper."""
+    return find_window_region(substring)
 
 
 def frame_to_bytes(frame: Frame | bytes | None) -> bytes | None:

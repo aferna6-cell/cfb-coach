@@ -216,9 +216,9 @@ Ohio State / CPU = volume lab. Alabama users = prepare well + adjust live.
 
 
 
-## Screen Co-Pilot (v1.9.1)
+## Screen Co-Pilot (v1.9.2)
 
-**Live UX (1.9.1):** while `--window` / capture is running, the loop no longer blocks forever with silent `grab_fresh()` spins. You get a once/sec `waiting for frames…` heartbeat, a status line at least every 2s (fps / play_state / look), `capture OK — LIVE tips below` on first frame, and **non-blocking typed commands** (look / tips / help / q / R/P/S/I/X) without a blocking `look>` prompt. Ctrl+C still clean-shuts the pipeline.
+**Live UX (1.9.2):** waiting-for-frames heartbeat is a **single overwritten line** (\\r) at most every **5s**; after 5s with no frames, troubleshooting prints **once**, then heartbeats every **15s**. Partial keystrokes are not interrupted. Use `watch --list-windows` to pick the Remote Play title; `--window` is case-insensitive and tries Xbox/Remote Play/Game Bar aliases. `watch --screen-region` (no args) uses calib crop via **mss**. Status every ~2s once live; non-blocking commands still work. Ctrl+C clean-shuts.
 
 
 **Doctrine:** Aidan keeps **full Xbox control** on the HDMI monitor/console. The Windows laptop is a **sidecar** — it runs Xbox Remote Play so coach can **see** the game, analyze locally (classical CV, ~5–10 FPS, no LLM per frame), and suggest **pre-snap adjustments** only. **Never auto-play / never press buttons.**
@@ -276,15 +276,20 @@ Live vision Milestone 1 — **sidecar only**. Play on HDMI; laptop sees Remote P
    ```bat
    cfb-coach watch --calibrate
    ```
-6. **Watch live:**
+6. **List window titles** (if dxcam gets zero frames):
+   ```bat
+   cfb-coach watch --list-windows
+   ```
+7. **Watch live:**
    ```bat
    cfb-coach watch --window "Xbox" --debug
    ```
+   Or calib crop via mss: `cfb-coach watch --screen-region`
    Other useful flags: `--screen-region L,T,W,H`, `--tts`, `--video sample.mp4`, `--image test.png --debug`.
-7. **Debug view meaning** — OpenCV window shows the captured frame, analyzed FPS, crop, HUD/field ROIs, and short state text (`3&7 | BUNCH R | 2-HIGH | PRESSURE L`). Console prints the same short live line + CALL tips.
-8. **Xbox control is separate from vision** — coach never injects controller input / auto-play.
-9. **Remote Play = prototype source** — convenient because the laptop already mirrors the game while you play on the HDMI monitor.
-10. **Capture card = future drop-in backend** — same `CaptureBackend` protocol / pipeline; swap Remote Play window grab for a device/index later.
+8. **Debug view meaning** — OpenCV window shows the captured frame, analyzed FPS, crop, HUD/field ROIs, and short state text (`3&7 | BUNCH R | 2-HIGH | PRESSURE L`). Console prints the same short live line + CALL tips.
+9. **Xbox control is separate from vision** — coach never injects controller input / auto-play.
+10. **Remote Play = prototype source** — convenient because the laptop already mirrors the game while you play on the HDMI monitor.
+11. **Capture card = future drop-in backend** — same `CaptureBackend` protocol / pipeline; swap Remote Play window grab for a device/index later.
 
 Full notes anytime: `cfb-coach watch --setup`.
 
@@ -300,7 +305,7 @@ CALL
 
 
 
-## Live Vision Milestone 2 (v1.9.1)
+## Live Vision Milestone 2 (v1.9.2)
 
 **Extend M1 — do not rewrite.** Sidecar only; Remote Play = prototype capture; same pipeline for `--video`. False snaps worse than late. Sample tiers: **1=log, 2=mild, 3+=actionable, 5+=strong**. Recency windows (last 5 / last 8) + full-game. Anti-whiplash preserved.
 
