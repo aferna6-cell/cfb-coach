@@ -1,4 +1,4 @@
-"""CLI: prep / play / postgame / opponents / call."""
+"""CLI: prep / play / postgame / promote / opponents / call."""
 
 from __future__ import annotations
 
@@ -76,6 +76,7 @@ def cmd_prep(args: argparse.Namespace) -> int:
             persist=True,
             open_browser=not getattr(args, "no_open", False),
             mark_applied=getattr(args, "mark_applied", False),
+            dynasty=dynasty,
         )
         n = len(plan.get("shown_deltas") or [])
         print(f"Prep vs {plan.get('display_name', oid)} → {path}")
@@ -137,15 +138,23 @@ def cmd_play(args: argparse.Namespace) -> int:
         db, getattr(args, "dynasty", None) or db.get_meta("dynasty_mode") or DEFAULT_DYNASTY
     )
     dcfg = dynasty_config(dynasty)
+    from cfb_coach.opponents import is_cpu_opponent
+
+    cpu_only = is_cpu_opponent(oid)
     print(f"LIVE PLAY — vs {oid}  (db: {db.path})")
     exp = " [experimental]" if dcfg.get("experimental_badge") else ""
     print(f"Dynasty: {dcfg['label']} ({dcfg['mode']}){exp}")
     print(doctrine_line())
-    print("Side defaults to offense. Prefix with 'd ' for defense.")
-    print("Shorthand: 1&10 | 2&7 | 3&8 d | rz 3&2 | d 1&10")
+    if cpu_only:
+        print("CPU opponent — OFFENSE-ONLY coaching (no defense calls / no D macros).")
+        print("Shorthand: 1&10 | 2&7 | 3&8 | rz 3&2")
+        print("Commands: result <text> | why | quit  (side d disabled)")
+    else:
+        print("Side defaults to offense. Prefix with 'd ' for defense.")
+        print("Shorthand: 1&10 | 2&7 | 3&8 d | rz 3&2 | d 1&10")
+        print("Commands: side o|d | result <text> | why | quit")
     print("Doctrine: one tell = log/mild bump; hard-counter only on REPEATED tendency.")
     print("  last c2 invert / last cross wheels → does NOT auto-counter next snap")
-    print("Commands: side o|d | result <text> | why | quit")
     print("-" * 60)
 
     default_side = "offense"
@@ -181,8 +190,12 @@ def cmd_play(args: argparse.Namespace) -> int:
                 print("  side → offense")
                 continue
             if low in ("d", "side d", "defense"):
-                default_side = "defense"
-                print("  side → defense")
+                if cpu_only:
+                    print("  CPU = offense-only — defense calls disabled")
+                    default_side = "offense"
+                else:
+                    default_side = "defense"
+                    print("  side → defense")
                 continue
             if low == "why" and last_call:
                 print(f"  ({last_call.rationale})")
@@ -265,6 +278,35 @@ def cmd_play(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_promote(args: argparse.Namespace) -> int:
+    """List / accept ohio_state → Alabama promotions."""
+    from cfb_coach.dynasty import format_promotions, promote
+
+    db = _db()
+    try:
+        if getattr(args, "accept_all", False) or getattr(args, "target", None):
+            result = promote(
+                db,
+                target=getattr(args, "target", None),
+                kind=getattr(args, "kind", None),
+                accept_all=bool(getattr(args, "accept_all", False)),
+            )
+            accepted = result.get("accepted") or []
+            if not accepted:
+                print("No matching pending promotions to accept.")
+            else:
+                print(f"Accepted {len(accepted)} promotion(s) for Alabama:")
+                for item in accepted:
+                    tgt = item.get("target") or item.get("macro") or item.get("key")
+                    print(f"  [{item.get('kind')}] {tgt} — {item.get('note', '')}")
+            print()
+        print(format_promotions(db=db))
+    finally:
+        db.close()
+    return 0
+
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="cfb_coach",
@@ -274,7 +316,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_prep = sub.add_parser(
         "prep",
-        help="Pregame: open browser with playbook/macro deltas only (not full recreate)",
+        help="Pregame: browser deltas + Active loadout (<=8). CPU=offense-only. No benched FLOOD/SCREEN dump.",
     )
     p_prep.add_argument("--opponent", "-o", required=True)
     p_prep.add_argument(
@@ -291,7 +333,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--dynasty",
         choices=("alabama", "ohio_state"),
         default=None,
-        help="Dynasty mode: alabama=serious (default) | ohio_state=experimental. Stored for play/postgame.",
+        help="Dynasty: alabama=serious USER (default) | ohio_state=experimental lab (promotes to Alabama on success).",
     )
     p_prep.add_argument(
         "--mark-applied",
@@ -300,7 +342,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_prep.set_defaults(func=cmd_prep)
 
-    p_play = sub.add_parser("play", help="Interactive live call loop")
+    p_play = sub.add_parser("play", help="Interactive live call loop (CPU opponents = offense-only)")
     p_play.add_argument("--opponent", "-o", required=True)
     p_play.add_argument(
         "--once",
@@ -311,20 +353,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--dynasty",
         choices=("alabama", "ohio_state"),
         default=None,
-        help="Override/store dynasty mode (default: session or alabama)",
+        help="Override/store dynasty: alabama (serious) | ohio_state (lab)",
     )
     p_play.set_defaults(func=cmd_play)
 
     p_post = sub.add_parser(
         "postgame",
-        help="Learn from recent snaps — adjust gameplan/macro weights vs opponent",
+        help="Learn from snaps; ohio_state strong results -> Alabama promotion notes",
     )
     p_post.add_argument("--opponent", "-o", required=True)
     p_post.add_argument(
         "--dynasty",
         choices=("alabama", "ohio_state"),
         default=None,
-        help="Override/store dynasty mode (default: session or alabama)",
+        help="Override/store dynasty: alabama (serious) | ohio_state (lab)",
     )
     p_post.set_defaults(func=cmd_postgame)
 
@@ -337,6 +379,27 @@ def build_parser() -> argparse.ArgumentParser:
     p_call.add_argument("--side", choices=("offense", "defense"), default=None)
     p_call.add_argument("--why", action="store_true")
     p_call.set_defaults(func=cmd_call)
+
+    p_prom = sub.add_parser(
+        "promote",
+        help="List/accept ohio_state lab -> Alabama promotions (macro loadout / gameplan overlay)",
+    )
+    p_prom.add_argument(
+        "--accept-all",
+        action="store_true",
+        help="Accept all pending Alabama promotions",
+    )
+    p_prom.add_argument(
+        "--target",
+        help="Accept one promotion by macro/overlay target name",
+    )
+    p_prom.add_argument(
+        "--kind",
+        choices=("macro_loadout", "gameplan_overlay"),
+        default=None,
+        help="Optional kind filter with --target",
+    )
+    p_prom.set_defaults(func=cmd_promote)
 
     return p
 

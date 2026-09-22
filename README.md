@@ -46,35 +46,45 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 | `python3 -m cfb_coach prep -o <id> --text` | Compact terminal delta dump (no browser) |
 | `python3 -m cfb_coach prep -o <id> --no-open` | Write HTML without opening browser |
 | `python3 -m cfb_coach prep -o <id> --mark-applied` | Mark proposed deltas applied (next prep shows only NEW) |
-| `python3 -m cfb_coach play --opponent <id>` | Interactive live loop |
+| `python3 -m cfb_coach play --opponent <id>` | Interactive live loop (CPU = offense-only) |
 | `python3 -m cfb_coach play --opponent <id> --once "2&7 c2 invert"` | One-shot non-interactive call |
 | `python3 -m cfb_coach call -o gavin -s "2&7 cover 2 invert" --why` | Scripted one-shot |
-| `python3 -m cfb_coach postgame --opponent gavin` | Learn from recent snaps — adjust weights |
+| `python3 -m cfb_coach postgame --opponent gavin` | Learn from snaps; ohio_state successes → Alabama promotion notes |
+| `python3 -m cfb_coach promote` | List pending Alabama promotions (from ohio_state lab) |
+| `python3 -m cfb_coach promote --accept-all` | Accept all pending Alabama promotions |
+| `python3 -m cfb_coach play --opponent cpu` | CPU = offense-only live loop |
 
 Opponent aliases: ids (`gavin`), display names (`Gavin`), teams (`Auburn`, `Houston`, `SMU`, …).
 
-## Prep = diffs only (v1.5.0)
+## Prep = diffs only (v1.5.1)
 
 Inventory (seed playbooks + 8 active / 2 benched macros) is the **already-stocked** book. Prep never says CREATE BAMA META O/D from scratch or re-ADD all 8 macros.
 
 - **Playbook adjustments** — ADD/REMOVE formation, EDIT audible slot (only when changed for this opponent)
 - **Macro adjustments** — EDIT field (e.g. HEAT when-to-arm), ADD one new recipe, BENCH/UNBENCH
 - If no deltas: browser says **“No playbook changes — run baseline as-is”** + short call tips
-- Collapsible **Current inventory** (formations→plays) is read-only reference, collapsed by default
+- Main view = **Active loadout only (≤8)**; collapsible inventory is read-only reference (no bench catalog dump)
 - `--mark-applied` persists applied deltas so the next prep only shows NEW changes
 
 
 
-## Dynasty modes (v1.5.0)
+## Dynasty modes (v1.5.1)
 
 ```bash
 prep --opponent gavin --dynasty alabama      # default: serious USER dynasty
-prep --opponent gavin --dynasty ohio_state   # experimental lab dynasty
+prep --opponent gavin --dynasty ohio_state   # experimental lab / practice
+prep --opponent cpu --dynasty ohio_state     # CPU = offense-only coaching
 ```
 
-- **alabama** (serious, default): stick to proven Active-8; experimental/meta-grounded macros stay benched unless postgame promotes; tighter pivots.
-- **ohio_state** (experimental): freer to suggest meta-grounded experimental macros / gameplan tweaks in prep deltas.
+- **alabama** (serious USER dynasty, default): stick to proven Active-8; experimental/meta-grounded macros stay benched unless promoted; tighter pivots. Alabama user opponents still get **O+D** coaching.
+- **ohio_state** (experimental lab / practice): freer strategies — meta-grounded experimental macros / gameplan tweaks OK in prep deltas.
+- **Promotion:** when an experimental strategy **works** in ohio_state (strong postgame weight bumps), `postgame` records an Alabama promotion note (macro loadout change or gameplan overlay). Review/accept with `cfb_coach promote` / `promote --accept-all`.
 - Dynasty is stored in the session DB for `play` / `postgame`.
+
+
+## CPU games = offense-only
+
+`prep --opponent cpu` and `play --opponent cpu` are **offense-only** coaching: no defense calls, no D macros emphasis. Active loadout D section shows **N/A — offense only**. Alabama user opponents (gavin/quen/…) still get full **O+D**.
 
 ## Exact macros (Aidan sheets)
 
@@ -84,12 +94,13 @@ Defense Active-8 copy blocks are Aidan's **exact** Custom Adjustments ticks (Gen
 - UI note: Safety Midpoint **Strong** = toward pass strength
 - Doctrine: do **not** auto-use a macro from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro.
 
-## Macros — 8-cap, click-to-copy, validation (v1.5.0)
+## Macros — Active loadout only, click-to-copy, validation (v1.5.1)
 
 - **USER Active hard cap = 8** Custom Adjustments across **Offense + Defense combined** (Aidan rule for online dynasty). EA's UI may advertise 10 — honor **8**.
 - Path: **Create & Share → Custom Adjustments → Offense/Defense** → edit/save → set Active → in-game **LB** to use.
-- Prep browser: macros are **clickable accordion** cards. Expand to see full desired settings + **Copy** button (`<pre>` checklist exact enough to rebuild the Custom Adjustments screen). Tick labels marked `confirmed` vs `approx`.
-- If prep proposes **ADD** while already at 8/8: shows an exact **swap plan** (which Active macro to deactivate) with Xbox steps.
+- Prep browser shows **ONLY the Active loadout (≤8)** clickable accordion cards — **never** dumps benched FLOOD/SCREEN (or the whole bench catalog) in the main prep view.
+- If a swap is proposed: loadout shows the **8 after the swap**, plus one line **“replacing X with Y”** (still no bench catalog dump). Expand a card for full settings + **Copy** button.
+- If prep proposes **ADD** while already at 8/8: also shows an exact **swap plan** (which Active macro to deactivate) with Xbox steps.
 - Validation badges on playbook deltas + live call suggestions: `proven` | `meta_grounded` | `failed` | `unvalidated`.
   - Temple 8D baseline (CROSS VERT BUNCH RPO SCRAM RUN-IN RUN-OUT HEAT) = **proven** (survived his games).
   - CREATE candidates grounded in CFB27 meta (GLASS, CONTAIN-SCRAM, SPOT-LOCK, PROT, O macros) = **meta_grounded** — OK to bring into game.
@@ -217,4 +228,13 @@ PYTHONPATH=. python3 -m cfb_coach postgame --opponent gavin
 
 HTML for Gavin must **not** say CREATE whole custom books or ADD all 8 macros from scratch — only opponent-specific edits. Ryan (thin) may show zero or minimal deltas.
 
-v1.5.0 smoke: `prep --opponent cpu --no-open` writes HTML without opening. Gavin HTML has clickable **CROSS** (proven) with full copy block; ADD PROT/CONTAIN-SCRAM (meta_grounded) while 8D Active shows which D macro to bench + Xbox steps. Badges are proven/meta_grounded/failed — no scary needs_lab. No full-book recreate.
+v1.5.1 smoke:
+
+```bash
+PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --dynasty ohio_state --no-open
+# → O-only; D macros N/A; Active loadout cards ≤8 (often 0 O macros for CPU)
+PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin --dynasty alabama --no-open
+# → exactly 8 D macros clickable; no FLOOD/SCREEN cards in main loadout
+```
+
+Gavin HTML has clickable Active-8 (CROSS…HEAT) with copy blocks; swap proposals show loadout *after* swap + “replacing X with Y”. CPU prep never lists D macros. Badges proven/meta_grounded/failed. No full-book recreate.

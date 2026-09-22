@@ -1,4 +1,7 @@
-"""Macro catalog — 8-cap Active budget, validation badges, swap plans, copy blocks."""
+"""Macro catalog — 8-cap Active loadout, validation badges, swap plans, copy blocks.
+
+Prep UI shows ONLY the active loadout (≤8) — never the benched catalog (FLOOD/SCREEN).
+"""
 
 from __future__ import annotations
 
@@ -317,10 +320,168 @@ def prefer_validated(candidates: list[str]) -> list[str]:
     return prefer_proven(candidates)
 
 
+
+
+def resolve_loadout_after_swaps(
+    inventory: dict[str, Any] | None = None,
+    shown_deltas: list[dict[str, Any]] | None = None,
+    *,
+    offense_only: bool = False,
+) -> dict[str, Any]:
+    """Active O+D names after applying proposed ADD/BENCH/UNBENCH swaps.
+
+    Never expands the bench catalog into the loadout — only mutates the Active set.
+    """
+    inv = inventory or {}
+    active_d = list(inv.get("macros_active") or [])
+    active_o = list(
+        inv.get("offensive_macros")
+        or inv.get("offensive_macros_active")
+        or []
+    )
+    # Default Temple Active-8 when inventory empty
+    if not active_d and not active_o and not inventory:
+        cat = load_macro_catalog()
+        default = cat.get("default_active_user") or {}
+        active_d = list(default.get("defense") or [])
+        active_o = list(default.get("offense") or [])
+
+    replacing: list[dict[str, str]] = []
+
+    for d in shown_deltas or []:
+        if d.get("kind") != "macro":
+            continue
+        action = (d.get("action") or "").upper()
+        target = (d.get("target") or "").upper().strip()
+        if not target:
+            continue
+        meta = get_macro(target) or {}
+        target_side = meta.get("side") or "defense"
+        swap = d.get("swap_plan") or {}
+
+        if action == "ADD":
+            bench = (swap.get("bench") or "").upper().strip()
+            bench_side = swap.get("bench_side") or "defense"
+            add_side = swap.get("add_side") or target_side
+            if bench:
+                if bench_side == "defense" and bench in active_d:
+                    active_d = [m for m in active_d if m != bench]
+                elif bench_side == "offense" and bench in active_o:
+                    active_o = [m for m in active_o if m != bench]
+                replacing.append(
+                    {
+                        "bench": bench,
+                        "add": target,
+                        "bench_side": bench_side,
+                        "add_side": add_side,
+                    }
+                )
+            if add_side == "offense":
+                if target not in active_o:
+                    active_o.append(target)
+            else:
+                if target not in active_d:
+                    active_d.append(target)
+        elif action == "BENCH":
+            if target in active_d:
+                active_d = [m for m in active_d if m != target]
+            if target in active_o:
+                active_o = [m for m in active_o if m != target]
+        elif action == "UNBENCH":
+            if target_side == "offense":
+                if target not in active_o:
+                    active_o.append(target)
+            else:
+                if target not in active_d:
+                    active_d.append(target)
+
+    # Hard cap 8 O+D combined
+    total = active_d + active_o
+    if len(total) > USER_ACTIVE_CAP:
+        # Prefer keeping defense order, then offense — truncate offense first
+        keep_d = active_d[:USER_ACTIVE_CAP]
+        remain = USER_ACTIVE_CAP - len(keep_d)
+        active_d = keep_d
+        active_o = active_o[: max(0, remain)]
+
+    if offense_only:
+        return {
+            "defense": [],
+            "offense": list(active_o),
+            "replacing": [
+                r
+                for r in replacing
+                if r.get("add_side") == "offense" or r.get("bench_side") == "offense"
+            ],
+            "offense_only": True,
+            "note": "N/A — offense only",
+            "total": len(active_o),
+            "cap": USER_ACTIVE_CAP,
+            "meter": f"Active {len(active_o)}/{USER_ACTIVE_CAP} (O-only)",
+        }
+
+    total_n = len(active_d) + len(active_o)
+    return {
+        "defense": list(active_d),
+        "offense": list(active_o),
+        "replacing": replacing,
+        "offense_only": False,
+        "note": "",
+        "total": total_n,
+        "cap": USER_ACTIVE_CAP,
+        "meter": f"Active {total_n}/{USER_ACTIVE_CAP}",
+    }
+
+
+def active_loadout_cards(
+    inventory: dict[str, Any] | None = None,
+    shown_deltas: list[dict[str, Any]] | None = None,
+    *,
+    offense_only: bool = False,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Prep browser cards: ONLY the active loadout (≤8). Never benched/catalog dump.
+
+    If a swap is proposed, cards reflect the 8 *after* the swap; caller shows
+    one line 'replacing X with Y'.
+    """
+    loadout = resolve_loadout_after_swaps(
+        inventory, shown_deltas, offense_only=offense_only
+    )
+    names: list[str] = []
+    if not offense_only:
+        names.extend(loadout["defense"])
+    names.extend(loadout["offense"])
+    names = names[:USER_ACTIVE_CAP]
+
+    cards: list[dict[str, Any]] = []
+    for mid in names:
+        meta = get_macro(mid) or {}
+        name = meta.get("name") or mid
+        cards.append(
+            {
+                "id": mid,
+                "name": name,
+                "side": meta.get("side") or (
+                    "offense" if mid in loadout["offense"] else "defense"
+                ),
+                "purpose": meta.get("purpose") or "",
+                "when_to_arm": meta.get("when_to_arm") or "",
+                "validated_status": normalize_status(
+                    meta.get("validated_status") or PROVEN
+                ),
+                "slot": "active",
+                "copy_block": meta.get("copy_block") or "",
+                "full_settings": meta.get("full_settings") or {},
+                "xbox_steps": meta.get("xbox_steps") or list(XBOX_PATH),
+            }
+        )
+    return cards, loadout
+
+
 def catalog_inventory_cards(
     inventory: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Cards for prep browser: Active + benched + create candidates."""
+    """Full catalog cards (Active + benched + create). Prefer active_loadout_cards for prep UI."""
     cat = load_macro_catalog()
     macros = cat.get("macros") or {}
     inv = inventory or {}

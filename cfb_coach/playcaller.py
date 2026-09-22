@@ -691,6 +691,20 @@ def make_call(
         if "last" not in (sit.raw or "").lower():
             sit.raw = f"{sit.raw} last {last_concept}".strip()
 
+    from cfb_coach.opponents import is_cpu_opponent
+
+    if is_cpu_opponent(opponent_id):
+        # CPU games = offense-only coaching — never emit D calls / D macros
+        if sit.side == "defense":
+            sit.side = "offense"
+            call = _pick_offense(sit, opp, seed, db, rng)
+            call.rationale = (
+                "CPU = offense-only (no D calls) — switched to O | "
+                + (call.rationale or "")
+            )
+            return call
+        return _pick_offense(sit, opp, seed, db, rng)
+
     if sit.side == "defense":
         return _pick_defense(sit, opp, seed, db, rng)
     return _pick_offense(sit, opp, seed, db, rng)

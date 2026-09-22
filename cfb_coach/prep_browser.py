@@ -1,8 +1,8 @@
 """Polished dark HTML prep sheet (deltas only) — open in browser.
 
-v1.4: clickable macro accordion + Copy settings, Active 8/8 meter,
-swap-plan banners when ADD would exceed Aidan's USER O+D cap,
-validation badges (proven | meta_grounded | failed | unvalidated).
+v1.5.1: Active loadout only (≤8 clickable macros) — never dump benched
+(FLOOD/SCREEN) catalog. Swap → show 8 *after* swap + "replacing X with Y".
+CPU games = offense-only (D macros N/A). Validation badges unchanged.
 """
 
 from __future__ import annotations
@@ -214,24 +214,66 @@ def _render_swap_banners(banners: list[dict[str, Any]]) -> str:
 
 
 def _render_macro_accordion(
-    cards: list[dict[str, Any]], budget: dict[str, Any]
+    cards: list[dict[str, Any]],
+    budget: dict[str, Any],
+    *,
+    offense_only: bool = False,
+    replacing_lines: list[str] | None = None,
+    loadout: dict[str, Any] | None = None,
 ) -> str:
-    if not cards:
-        return '<div class="empty">No macro catalog loaded</div>'
+    """Render ONLY active loadout cards (≤8). Never benched (FLOOD/SCREEN) catalog."""
+    # Safety: drop any non-active / benched cards if a caller passed full catalog
+    cards = [c for c in cards if (c.get("slot") or "active") == "active"]
+    # Never show FLOOD/SCREEN in main prep view
+    cards = [
+        c
+        for c in cards
+        if (c.get("name") or c.get("id") or "").upper() not in ("FLOOD", "SCREEN")
+    ]
 
-    order = {"active": 0, "benched": 1, "create": 2, "reference": 3}
-    cards = sorted(
-        cards, key=lambda c: (order.get(c.get("slot", ""), 9), c.get("name") or "")
+    if offense_only:
+        d_note = '<div class="empty">D macros: <b>N/A — offense only</b> (CPU coaching)</div>'
+        o_cards = [c for c in cards if (c.get("side") or "") == "offense"]
+        cards = o_cards
+    else:
+        d_note = ""
+
+    replace_bit = ""
+    for line in replacing_lines or []:
+        replace_bit += f'<div class="banner swap"><strong>Loadout:</strong> {_esc(line)}</div>'
+
+    meter = _esc(
+        (loadout or {}).get("meter")
+        or budget.get("meter")
+        or "Active ?/?"
+    )
+    meter_cls = "meter hot" if budget.get("at_cap") else "meter ok"
+    meter_label = (
+        "Active slot budget (offense only — CPU)"
+        if offense_only
+        else "Active loadout (USER O+D)"
     )
 
-    meter = _esc(budget.get("meter") or "Active ?/?")
-    meter_cls = "meter hot" if budget.get("at_cap") else "meter ok"
+    if not cards:
+        empty = (
+            d_note
+            or '<div class="empty">No active macros in this loadout</div>'
+        )
+        return f"""
+    {replace_bit}
+    <div class="{meter_cls}">
+      <span class="meter-label">{meter_label}</span>
+      <span class="meter-value">{meter}</span>
+      <span class="meter-note">Aidan hard cap 8 — EA UI may show 10</span>
+    </div>
+    {empty}
+    """
 
     items: list[str] = []
     for c in cards:
         mid = str(c.get("id") or c.get("name") or "?")
         name = c.get("name") or mid
-        slot = c.get("slot") or "reference"
+        slot = c.get("slot") or "active"
         side = c.get("side") or "?"
         status = c.get("validated_status") or "unvalidated"
         purpose = c.get("purpose") or ""
@@ -271,11 +313,13 @@ def _render_macro_accordion(
         )
 
     return f"""
+    {replace_bit}
     <div class="{meter_cls}">
-      <span class="meter-label">Active slot budget (USER O+D)</span>
+      <span class="meter-label">{meter_label}</span>
       <span class="meter-value">{meter}</span>
-      <span class="meter-note">Aidan hard cap 8 — EA UI may show 10</span>
+      <span class="meter-note">Aidan hard cap 8 — show only Active loadout (never benched catalog)</span>
     </div>
+    {d_note}
     <div class="macro-list">
       {"".join(items)}
     </div>
@@ -317,24 +361,37 @@ def _render_inventory(inv: dict[str, Any]) -> str:
         )
 
     macros_a = ", ".join(_esc(m) for m in inv.get("macros_active") or [])
-    macros_b = ", ".join(_esc(m) for m in inv.get("macros_benched") or [])
     o_macros = inv.get("offensive_macros") or []
     o_mac_bit = ", ".join(_esc(m) for m in o_macros) if o_macros else "(none)"
+    offense_only = bool(inv.get("_offense_only"))
+    d_book_bit = (
+        '<div><b>D book / macros:</b> N/A — offense only (CPU)</div>'
+        if offense_only
+        else (
+            f'<div><b>D book:</b> {_esc(inv.get("defense_book"))}</div>'
+            f'<div><b>D macros active (loadout):</b> {macros_a}</div>'
+            f'<div><b>O macros:</b> {o_mac_bit}</div>'
+        )
+    )
+    d_section = (
+        ""
+        if offense_only
+        else (
+            f'<h3>Defense packages → calls</h3>'
+            f'<div class="inv-grid">{"".join(d_parts)}</div>'
+        )
+    )
 
     return f"""
     <details class="inventory">
-      <summary>Current inventory <span class="muted">(read-only — already stocked)</span></summary>
+      <summary>Current inventory <span class="muted">(read-only — already stocked; Active loadout only above)</span></summary>
       <div class="inv-meta">
         <div><b>O book:</b> {_esc(inv.get("offense_book"))}</div>
-        <div><b>D book:</b> {_esc(inv.get("defense_book"))}</div>
-        <div><b>D macros active:</b> {macros_a}</div>
-        <div><b>D macros benched:</b> {macros_b}</div>
-        <div><b>O macros:</b> {o_mac_bit}</div>
+        {d_book_bit}
       </div>
       <h3>Offense formations → plays</h3>
       <div class="inv-grid">{"".join(o_parts)}</div>
-      <h3>Defense packages → calls</h3>
-      <div class="inv-grid">{"".join(d_parts)}</div>
+      {d_section}
     </details>
     """
 
@@ -613,11 +670,17 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     </section>
 
     <section>
-      <h2>Macro catalog — click to expand · Copy settings</h2>
-      {_render_macro_accordion(cards, budget)}
+      <h2>{"Active loadout — offense only (CPU)" if plan.get("offense_only") else "Active loadout (≤8) — click to expand · Copy settings"}</h2>
+      {_render_macro_accordion(
+          cards,
+          budget,
+          offense_only=bool(plan.get("offense_only")),
+          replacing_lines=list(plan.get("replacing_lines") or []),
+          loadout=plan.get("loadout") or dict(),
+      )}
     </section>
 
-    {_render_inventory(plan.get("inventory") or {})}
+    {_render_inventory({**(plan.get("inventory") or dict()), "_offense_only": bool(plan.get("offense_only"))})}
 
     <section>
       <h2>Call emphasis</h2>
@@ -627,7 +690,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     <footer>
       Inventory is already stocked from seed — only opponent-specific deltas above
       (prep suggests only <b>proven</b> / <b>meta_grounded</b> tweaks — no ungrounded invention).
-      Active Custom Adjustments hard-capped at <b>8 O+D combined</b> for USER dynasty (Aidan rule).
+      Active loadout hard-capped at <b>8 O+D combined</b> (prep shows only those 8 — never benched FLOOD/SCREEN). CPU games = offense-only.
       <b>Workflow:</b> bring a suggested macro into game → if cooked, adjust via postgame → if it holds, mark <b>proven</b>.
       Live caller prefers proven macros; tags meta_grounded / failed / unvalidated when suggesting others.
       <b>Doctrine:</b> do NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro.

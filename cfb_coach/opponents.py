@@ -83,3 +83,8 @@ def format_opponent_list() -> str:
         "(e.g. auburn→gavin, houston→quen, smu→tiano)."
     )
     return "\n".join(lines)
+
+
+def is_cpu_opponent(opponent_id: str | None) -> bool:
+    """CPU / dynasty-CPU games — offense-only coaching (no D calls / D macros)."""
+    return (opponent_id or "").strip().lower() in {"cpu", "cpu_dynasty", "notre_dame"}

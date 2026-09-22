@@ -20,7 +20,7 @@ from cfb_coach.macros import (
     PROVEN,
     META_GROUNDED,
     USER_ACTIVE_CAP,
-    catalog_inventory_cards,
+    active_loadout_cards,
     count_active,
     enrich_macro_delta,
     get_macro,
@@ -29,6 +29,7 @@ from cfb_coach.macros import (
     normalize_status,
     validation_status,
 )
+from cfb_coach.opponents import is_cpu_opponent
 
 
 # ---------------------------------------------------------------------------
@@ -450,6 +451,26 @@ def propose_deltas(
             enriched = filtered
     except Exception:
         pass
+
+    # CPU games: offense-only — drop defense macro deltas (keep O playbook edits)
+    if is_cpu_opponent(opponent_id):
+        kept: list[dict[str, Any]] = []
+        for d in enriched:
+            if d.get("kind") == "macro":
+                side = (d.get("side") or "").lower()
+                if not side:
+                    meta = get_macro(d.get("target") or "") or {}
+                    side = (meta.get("side") or "defense").lower()
+                if side == "defense":
+                    continue
+            # Drop D-package playbook edits if any slip through targeting defense packages
+            tgt = (d.get("target") or "").lower()
+            if d.get("kind") == "playbook" and any(
+                x in tgt for x in ("nickel", "dime", "4-3", "cover ", "even 6")
+            ):
+                continue
+            kept.append(d)
+        enriched = kept
     return enriched
 
 
@@ -490,9 +511,9 @@ def call_emphasis_tips(opponent_id: str, opp: dict[str, Any] | None = None) -> l
     elif oid == "cpu" or "two_high_money" in arch:
         tips.extend(
             [
+                "CPU game = offense-only coaching (no D calls / no D macros)",
                 "Take free underneath — Mesh Spot / Drive HB Under / Inside Zone",
                 "No forced Mesh Post/Whip into sticks coverage",
-                "D: mostly no macro; Quarters/Tampa on money",
             ]
         )
     else:
@@ -615,13 +636,50 @@ def build_prep_plan(
     tips = call_emphasis_tips(opponent_id, opp)
     eg = effective_gameplan(opponent_id, db)
 
+    # Dynasty default Active-8 / benched for loadout display
+    if dcfg.get("default_active"):
+        inv["macros_active"] = list(dcfg["default_active"])
+    if dcfg.get("default_benched"):
+        inv["macros_benched"] = list(dcfg["default_benched"])
+
+    offense_only = is_cpu_opponent(opponent_id)
+    if offense_only:
+        # Strip D emphasis tips already handled; tag plan
+        tips = [t for t in tips if not t.strip().lower().startswith("d:")]
+        if not any("offense-only" in t.lower() for t in tips):
+            tips.insert(0, "CPU game = offense-only coaching (no D calls / no D macros)")
+
+    # Recompute proposed with dynasty-aware inventory already done; filter shown for CPU
+    if offense_only:
+        proposed = [d for d in proposed if not (
+            d.get("kind") == "macro"
+            and ((d.get("side") or (get_macro(d.get("target") or "") or {}).get("side") or "defense") == "defense")
+        )]
+        shown = filter_new_deltas(proposed, applied)
+
     budget = count_active(inv)
-    macro_cards = catalog_inventory_cards(inv)
+    macro_cards, loadout = active_loadout_cards(
+        inv, shown, offense_only=offense_only
+    )
+    # Slot budget reflects post-swap loadout meter
+    if loadout.get("meter"):
+        budget = dict(budget)
+        budget["meter"] = loadout["meter"]
+        budget["total"] = loadout.get("total", budget.get("total"))
+        if offense_only:
+            budget["defense_count"] = 0
+            budget["offense_count"] = len(loadout.get("offense") or [])
+            budget["at_cap"] = budget["total"] >= budget.get("cap", USER_ACTIVE_CAP)
+
     # Surface any ADD-at-cap swap plan at plan level for banner
     swap_banners = [
         d["swap_plan"]
         for d in shown
         if d.get("kind") == "macro" and d.get("swap_plan")
+    ]
+    replacing_lines = [
+        f"replacing {r['bench']} with {r['add']}"
+        for r in (loadout.get("replacing") or [])
     ]
 
     plan = {
@@ -641,6 +699,9 @@ def build_prep_plan(
         "active_cap": USER_ACTIVE_CAP,
         "slot_budget": budget,
         "macro_cards": macro_cards,
+        "loadout": loadout,
+        "replacing_lines": replacing_lines,
+        "offense_only": offense_only,
         "swap_banners": swap_banners,
         "macro_catalog_version": (load_macro_catalog().get("version") or "?"),
         "dynasty": dynasty,
@@ -669,10 +730,23 @@ def format_delta_text(plan: dict[str, Any]) -> str:
         plan.get("doctrine")
         or "Doctrine: do NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro.",
         f"Books assumed stocked: {plan['inventory']['offense_book']} / {plan['inventory']['defense_book']}",
-        f"Macros assumed: {', '.join(plan['inventory']['macros_active'])}  |  BENCH {', '.join(plan['inventory']['macros_benched'])}",
-        f"Active slot budget (USER): {budget.get('meter', '?')}  — hard cap {plan.get('active_cap', USER_ACTIVE_CAP)} O+D (Aidan rule; EA may show 10)",
+        f"Active loadout: {', '.join((plan.get('loadout') or {}).get('defense') or plan['inventory'].get('macros_active') or []) or '(none)'}"
+        + (
+            "  |  O: " + ", ".join((plan.get("loadout") or {}).get("offense") or [])
+            if (plan.get("loadout") or {}).get("offense")
+            else ""
+        ),
+        (
+            "D macros: N/A — offense only (CPU)"
+            if plan.get("offense_only")
+            else f"Active slot budget (USER): {budget.get('meter', '?')}  — hard cap {plan.get('active_cap', USER_ACTIVE_CAP)} O+D (Aidan rule; EA may show 10)"
+        ),
         "",
     ]
+    for line in plan.get("replacing_lines") or []:
+        lines.append(f"  {line}")
+    if plan.get("replacing_lines"):
+        lines.append("")
     for sp in plan.get("swap_banners") or []:
         lines.append(
             f"!! SWAP PLAN: ADD {sp.get('add')} → deactivate {sp.get('bench')} ({sp.get('bench_side')}) first"

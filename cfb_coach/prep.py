@@ -105,13 +105,25 @@ def defense_vs_us(opp: dict[str, Any]) -> str:
 
 
 def macro_plan(opp: dict[str, Any], seed: dict) -> str:
+    from cfb_coach.opponents import is_cpu_opponent
+
+    oid = opp.get("_id", "")
+    if is_cpu_opponent(oid):
+        return "\n".join(
+            [
+                "## Macro plan — CPU (offense-only)",
+                "  D macros: N/A — offense only",
+                "  O macros: (none stocked — call without O macros)",
+                "  Doctrine: CPU coaching is offense-only; no defense calls.",
+            ]
+        )
+
     baseline = seed["league"]["online_baseline"]
     keep = list(baseline.get("defensive_macros_active") or _ACTIVE_MACROS)
     bench = list(baseline.get("defensive_macros_benched") or _BENCHED_MACROS)
     add: list[str] = []
     suggest: list[str] = []
 
-    oid = opp.get("_id", "")
     offense = opp.get("offense") or {}
     blob = " ".join(
         str(v)
@@ -149,9 +161,9 @@ def macro_plan(opp: dict[str, Any], seed: dict) -> str:
         suggest.append("FLOOD (benched) — only if flood/levels become primary; keep benched for now")
 
     lines = [
-        "## Macro plan (Xbox — names only, no invented button sequences)",
-        f"  KEEP active: {', '.join(keep)}",
-        f"  BENCH: {', '.join(bench)}",
+        "## Macro plan (Xbox — Active loadout only, no invented button sequences)",
+        f"  Active-8 loadout: {', '.join(keep)}",
+        "  (Benched FLOOD/SCREEN not listed in main prep — swap only if proposed)",
     ]
     if add:
         lines.append(f"  ADD (still designed): {', '.join(add)}")
@@ -242,7 +254,13 @@ def opening_menus(opp: dict[str, Any]) -> str:
     for label, form, play, adj, reads in o_menu:
         lines.append(f"    [{label}] {format_offense(form, play, adj, reads)}")
 
-    # Defense
+    # Defense — skipped for CPU (offense-only coaching)
+    from cfb_coach.opponents import is_cpu_opponent
+
+    if is_cpu_opponent(oid):
+        lines.append("  Defense: N/A — offense only (CPU)")
+        return "\n".join(lines)
+
     lines.append("  Defense (default prior: Nickel Over):")
     d_menu: list[tuple[str, str, str, str, str]] = [
         ("1st/2nd default", "Nickel Over", "Cover 3 Sky", "none", "User hook/HB"),
@@ -262,10 +280,6 @@ def opening_menus(opp: dict[str, Any]) -> str:
         )
         d_menu.append(
             ("bubble tendency", "Nickel Over", "Cover 3 Sky", "RPO", "User flat/bubble")
-        )
-    elif oid == "cpu":
-        d_menu.append(
-            ("money down", "Nickel Over", "Cover 4 Quarters", "none", "User seam")
         )
     else:
         d_menu.append(

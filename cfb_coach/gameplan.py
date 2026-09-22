@@ -528,10 +528,100 @@ def learn_from_snaps(
     }
 
 
+def evaluate_ohio_state_promotions(
+    changes: dict[str, float],
+    *,
+    opponent_id: str,
+    threshold: float | None = None,
+) -> list[dict]:
+    """If experimental strategies work in ohio_state, propose Alabama promotions."""
+    from cfb_coach.dynasty import PROMOTE_WEIGHT_THRESHOLD, OHIO_STATE
+    from cfb_coach.macros import META_GROUNDED, UNVALIDATED, validation_status, get_macro
+
+    thr = PROMOTE_WEIGHT_THRESHOLD if threshold is None else threshold
+    promotions: list[dict] = []
+    for k, v in (changes or {}).items():
+        if v < thr:
+            continue
+        if "/macro:" in k:
+            macro = k.split("/macro:", 1)[-1].upper()
+            st = validation_status(macro)
+            meta = get_macro(macro) or {}
+            # Promote experimental / meta_grounded successes into Alabama
+            if st in (META_GROUNDED, UNVALIDATED) or not meta.get("active", True):
+                promotions.append(
+                    {
+                        "kind": "macro_loadout",
+                        "target": macro,
+                        "macro": macro,
+                        "delta": round(v, 3),
+                        "source_opponent": opponent_id,
+                        "source_dynasty": OHIO_STATE,
+                        "status": "pending",
+                        "note": (
+                            f"ohio_state lab success ({v:+.2f}) — consider swapping "
+                            f"into Alabama Active-8 for {macro}"
+                        ),
+                    }
+                )
+        elif "/offense:" in k:
+            key = k.split("/offense:", 1)[-1]
+            promotions.append(
+                {
+                    "kind": "gameplan_overlay",
+                    "target": key,
+                    "key": key,
+                    "side": "offense",
+                    "delta": round(v, 3),
+                    "source_opponent": opponent_id,
+                    "source_dynasty": OHIO_STATE,
+                    "status": "pending",
+                    "note": (
+                        f"ohio_state lab success ({v:+.2f}) — elevate Alabama "
+                        f"offense overlay '{key}'"
+                    ),
+                }
+            )
+        elif "/defense:" in k:
+            # Defense overlays only promote for user (non-CPU) lab games
+            if (opponent_id or "").lower() == "cpu":
+                continue
+            key = k.split("/defense:", 1)[-1]
+            promotions.append(
+                {
+                    "kind": "gameplan_overlay",
+                    "target": key,
+                    "key": key,
+                    "side": "defense",
+                    "delta": round(v, 3),
+                    "source_opponent": opponent_id,
+                    "source_dynasty": OHIO_STATE,
+                    "status": "pending",
+                    "note": (
+                        f"ohio_state lab success ({v:+.2f}) — elevate Alabama "
+                        f"defense overlay '{key}'"
+                    ),
+                }
+            )
+    return promotions
+
+
 def postgame_summary(db: CoachDB, opponent_id: str, dynasty: str | None = None) -> str:
-    from cfb_coach.dynasty import dynasty_config, doctrine_line, normalize_dynasty, DEFAULT_DYNASTY
+    """Run learning on snaps since last postgame; print what changed.
+
+    When dynasty is ohio_state and results are strong, record Alabama promotion notes.
+    """
+    from cfb_coach.dynasty import (
+        DEFAULT_DYNASTY,
+        OHIO_STATE,
+        dynasty_config,
+        doctrine_line,
+        format_promotions,
+        normalize_dynasty,
+        record_promotions,
+    )
+
     dcfg = dynasty_config(normalize_dynasty(dynasty or DEFAULT_DYNASTY))
-    """Run learning on snaps since last postgame; print what changed."""
     meta_key = f"last_postgame_snap_id:{opponent_id}"
     row = db.conn.execute(
         "SELECT value FROM meta WHERE key = ?", (meta_key,)
@@ -580,6 +670,39 @@ def postgame_summary(db: CoachDB, opponent_id: str, dynasty: str | None = None) 
     lines.append(
         "Free reign unchanged — learning only reweights mix / macro readiness."
     )
+    lines.append("")
+    lines.append(f"Dynasty: {dcfg.get('label')} ({dcfg.get('mode')})")
+    lines.append(doctrine_line())
+
+    # ohio_state lab → Alabama promotion notes when results are strong
+    if dcfg.get("id") == OHIO_STATE and changes:
+        promos = evaluate_ohio_state_promotions(
+            {k: float(v) for k, v in changes.items()},
+            opponent_id=opponent_id,
+        )
+        if promos:
+            record_promotions(db, promos)
+            lines.append("")
+            lines.append("## Promotion note (ohio_state → Alabama)")
+            for pr in promos:
+                lines.append(f"  - {pr.get('note')}")
+            lines.append(
+                "  Pending promotions stored — "
+                "`cfb_coach promote` to review / `--accept-all` to accept."
+            )
+        else:
+            lines.append("")
+            lines.append(
+                "## Promotion note: no strong ohio_state successes this batch "
+                "(threshold not met)."
+            )
+    elif dcfg.get("id") != OHIO_STATE:
+        # Surface any pending Alabama promotions for awareness
+        pending_txt = format_promotions(db=db)
+        if "No Alabama promotions" not in pending_txt:
+            lines.append("")
+            lines.append(pending_txt)
+
     return "\n".join(lines)
 
 
