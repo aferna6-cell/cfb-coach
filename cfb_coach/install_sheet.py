@@ -15,6 +15,15 @@ from typing import Any
 from cfb_coach.db import CoachDB
 from cfb_coach.gameplan import effective_gameplan, load_baseline
 from cfb_coach.seed import load_seed
+from cfb_coach.macros import (
+    USER_ACTIVE_CAP,
+    catalog_inventory_cards,
+    count_active,
+    enrich_macro_delta,
+    get_macro,
+    load_macro_catalog,
+    validation_status,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -370,13 +379,46 @@ def propose_deltas(
 
     # Deduplicate by key while preserving order
     seen_keys: set[tuple[str, str, str, str]] = set()
-    unique: list[dict[str, str]] = []
+    unique: list[dict[str, Any]] = []
     for d in deltas:
         k = _delta_key(d)
         if k not in seen_keys:
             seen_keys.add(k)
             unique.append(d)
-    return unique
+
+    # Attach validation + copy blocks + swap plans for macro deltas
+    oid = (opponent_id or "").lower()
+    enriched: list[dict[str, Any]] = []
+    for d in unique:
+        if d.get("kind") == "macro":
+            # _delta uses "target"; enrich expects that
+            payload = {
+                "action": d.get("action", ""),
+                "target": d.get("target", ""),
+                "detail": d.get("detail", ""),
+            }
+            e = enrich_macro_delta(payload, inv, opponent_id=oid)
+            d = dict(d)
+            d["validated_status"] = e.get("validated_status") or validation_status(d.get("target", ""))
+            if e.get("copy_block"):
+                d["copy_block"] = e["copy_block"]
+            if e.get("full_settings"):
+                d["full_settings"] = e["full_settings"]
+            if e.get("swap_plan"):
+                d["swap_plan"] = e["swap_plan"]
+            if e.get("xbox_steps"):
+                d["xbox_steps"] = e["xbox_steps"]
+            if e.get("purpose"):
+                d["purpose"] = e["purpose"]
+            # Keep detail (may include swap hint)
+            if e.get("detail") and d.get("action") == "ADD":
+                d["detail"] = e["detail"]
+        else:
+            # Playbook deltas — mark validation
+            d = dict(d)
+            d["validated_status"] = d.get("validated_status") or "unvalidated"
+        enriched.append(d)
+    return enriched
 
 
 def call_emphasis_tips(opponent_id: str, opp: dict[str, Any] | None = None) -> list[str]:
@@ -525,6 +567,15 @@ def build_prep_plan(
     tips = call_emphasis_tips(opponent_id, opp)
     eg = effective_gameplan(opponent_id, db)
 
+    budget = count_active(inv)
+    macro_cards = catalog_inventory_cards(inv)
+    # Surface any ADD-at-cap swap plan at plan level for banner
+    swap_banners = [
+        d["swap_plan"]
+        for d in shown
+        if d.get("kind") == "macro" and d.get("swap_plan")
+    ]
+
     plan = {
         "opponent_id": opponent_id,
         "display_name": opp.get("display_name", opponent_id),
@@ -539,6 +590,11 @@ def build_prep_plan(
         "applied_count": len(applied),
         "tips": tips,
         "ts": datetime.now(timezone.utc).isoformat(),
+        "active_cap": USER_ACTIVE_CAP,
+        "slot_budget": budget,
+        "macro_cards": macro_cards,
+        "swap_banners": swap_banners,
+        "macro_catalog_version": (load_macro_catalog().get("version") or "?"),
     }
     if db is not None and persist:
         save_prep_deltas(db, opponent_id, proposed, shown)
@@ -550,12 +606,21 @@ def format_delta_text(plan: dict[str, Any]) -> str:
     shown = plan["shown_deltas"]
     pb = [d for d in shown if d.get("kind") == "playbook"]
     mac = [d for d in shown if d.get("kind") == "macro"]
+    budget = plan.get("slot_budget") or count_active(plan.get("inventory") or {})
     lines = [
         f"# PREP — vs {plan['display_name']} ({plan['team']})  |  {plan['game']} / {plan['version']}",
         f"Books assumed stocked: {plan['inventory']['offense_book']} / {plan['inventory']['defense_book']}",
         f"Macros assumed: {', '.join(plan['inventory']['macros_active'])}  |  BENCH {', '.join(plan['inventory']['macros_benched'])}",
+        f"Active slot budget (USER): {budget.get('meter', '?')}  — hard cap {plan.get('active_cap', USER_ACTIVE_CAP)} O+D (Aidan rule; EA may show 10)",
         "",
     ]
+    for sp in plan.get("swap_banners") or []:
+        lines.append(
+            f"!! SWAP PLAN: ADD {sp.get('add')} → deactivate {sp.get('bench')} ({sp.get('bench_side')}) first"
+        )
+        for step in sp.get("xbox_steps") or []:
+            lines.append(f"   {step}")
+        lines.append("")
     if not shown:
         lines.append("## Playbook adjustments")
         lines.append("  No playbook changes — run baseline as-is")
@@ -578,12 +643,25 @@ def format_delta_text(plan: dict[str, Any]) -> str:
         if not mac:
             lines.append("  (none)")
         for d in mac:
-            lines.append(f"  [{d['action']}] {d['target']}" + (f" · {d['field']}" if d.get("field") else ""))
+            badge = d.get("validated_status") or validation_status(d.get("target", ""))
+            lines.append(
+                f"  [{d['action']}] {d['target']}"
+                + (f" · {d['field']}" if d.get("field") else "")
+                + f"  [{badge}]"
+            )
             lines.append(f"       {d['detail']}")
             if d.get("before") or d.get("after"):
                 lines.append(f"       {d.get('before', '')}  →  {d.get('after', '')}")
             if d.get("why"):
                 lines.append(f"       why: {d['why']}")
+            if d.get("swap_plan"):
+                sp = d["swap_plan"]
+                lines.append(
+                    f"       SWAP: deactivate {sp.get('bench')} ({sp.get('bench_side')}) "
+                    f"before Activating {sp.get('add')}"
+                )
+                for step in (sp.get("xbox_steps") or [])[:8]:
+                    lines.append(f"         {step}")
 
     lines.append("")
     lines.append("## Call emphasis")

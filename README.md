@@ -44,7 +44,7 @@ Prep HTML writes to `~/.cfb-coach/prep_<opponent>.html` (same data dir as the DB
 
 Opponent aliases: ids (`gavin`), display names (`Gavin`), teams (`Auburn`, `Houston`, `SMU`, …).
 
-## Prep = diffs only (v1.3)
+## Prep = diffs only (v1.4)
 
 Inventory (seed playbooks + 8 active / 2 benched macros) is the **already-stocked** book. Prep never says CREATE BAMA META O/D from scratch or re-ADD all 8 macros.
 
@@ -53,6 +53,19 @@ Inventory (seed playbooks + 8 active / 2 benched macros) is the **already-stocke
 - If no deltas: browser says **“No playbook changes — run baseline as-is”** + short call tips
 - Collapsible **Current inventory** (formations→plays) is read-only reference, collapsed by default
 - `--mark-applied` persists applied deltas so the next prep only shows NEW changes
+
+
+## Macros — 8-cap, click-to-copy, validation (v1.4)
+
+- **USER Active hard cap = 8** Custom Adjustments across **Offense + Defense combined** (Aidan rule for online dynasty). EA's UI may advertise 10 — honor **8**.
+- Path: **Create & Share → Custom Adjustments → Offense/Defense** → edit/save → set Active → in-game **LB** to use.
+- Prep browser: macros are **clickable accordion** cards. Expand to see full desired settings + **Copy** button (`<pre>` checklist exact enough to rebuild the Custom Adjustments screen). Tick labels marked `confirmed` vs `approx`.
+- If prep proposes **ADD** while already at 8/8: shows an exact **swap plan** (which Active macro to deactivate) with Xbox steps.
+- Validation badges on playbook deltas + live call suggestions: `validated` | `needs_lab` | `unvalidated`.
+  - Temple 8D baseline (CROSS VERT BUNCH RPO SCRAM RUN-IN RUN-OUT HEAT) = **validated**.
+  - CREATE candidates (GLASS, CONTAIN-SCRAM, SPOT-LOCK, PROT, O macros) = **needs_lab**.
+  - Live caller prefers validated inventory; tags `needs_lab` / `unvalidated` when suggesting others.
+- Catalog: `cfb_coach/data/macro_catalog.json` (full_settings + copy_block per macro).
 
 ## Live call syntax (UX lock)
 
@@ -171,3 +184,5 @@ PYTHONPATH=. python3 -m cfb_coach postgame --opponent gavin
 ```
 
 HTML for Gavin must **not** say CREATE whole custom books or ADD all 8 macros from scratch — only opponent-specific edits. Ryan (thin) may show zero or minimal deltas.
+
+v1.4 smoke: Gavin HTML has clickable **CROSS** with full copy block; if ADD PROT/CONTAIN-SCRAM while 8D Active, shows which D macro to bench + exact Xbox steps. No full-book recreate.

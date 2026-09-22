@@ -30,7 +30,8 @@
         "SCREEN"
       ],
       "offensive_macros_active": [],
-      "note": "Temple playtest known-good: both custom books + 8 D macros + 0 O macros"
+      "note": "Temple playtest known-good: both custom books + 8 D macros + 0 O macros (Active 8/8 O+D). Aidan USER cap = 8 (not EA 10).",
+      "active_cap_user": 8
     }
   },
   "doctrine_priors": {

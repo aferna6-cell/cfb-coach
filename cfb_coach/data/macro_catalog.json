@@ -1,0 +1,1537 @@
+{
+  "version": "1.4.0",
+  "game": "CFB 27",
+  "platform": "Xbox",
+  "active_cap": {
+    "user_online_dynasty": 8,
+    "scope": "offense + defense Custom Adjustments combined",
+    "note": "Aidan's rule for USER games. EA UI may show 10 \u2014 honor 8 for online dynasty. CPU games may note separately; default still 8.",
+    "in_game_open": "LB opens active Custom Adjustments macros mid-playcall"
+  },
+  "xbox_path": [
+    "Create & Share",
+    "Custom Adjustments",
+    "Offense or Defense (pick side)",
+    "Create New / Edit existing macro",
+    "Set all ticks (copy block checklist) \u2192 Save",
+    "Set Active (max 8 O+D combined for USER online dynasty \u2014 Aidan's rule; EA UI may show 10)",
+    "In-game: LB to open / select among Active macros"
+  ],
+  "field_legend": {
+    "confirmed": "Seen/used in Aidan's Temple 8D baseline or explicit dynasty notes",
+    "approx": "Reasonable CFB27 Custom Adj tick inferred from purpose \u2014 verify once in lab"
+  },
+  "macros": {
+    "CROSS": {
+      "name": "CROSS",
+      "side": "defense",
+      "purpose": "Anti-cross / high-low Cross Wheels \u2014 Tampa/Mable lean with deeper flats",
+      "when_to_arm": "After 2+ live Cross Wheels / crosser tells in similar D&D",
+      "validated_status": "validated",
+      "inventory": "active",
+      "source": "Temple 8D baseline",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create/Edit macro named CROSS",
+        "Apply full_settings ticks (copy block)",
+        "Save \u2192 set Active (counts toward 8 O+D)",
+        "In-game: LB \u2192 select CROSS when armed"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Tampa 2 (Mable/Tampa lean) or Cover 4 Quarters changeup",
+          "status": "confirmed"
+        },
+        "formation_hint": {
+          "value": "Nickel Over home",
+          "status": "confirmed"
+        },
+        "coverage": {
+          "value": "Tampa 2 primary; Quarters if they clear middle",
+          "status": "confirmed"
+        },
+        "shades_leverage": {
+          "value": "Shade UNDERNEATH on outside CBs (kill crossers under)",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "Deeper flats (~15\u201320) + shallow curl defenders (Mable/Tampa anti-cross) [confirmed intent]",
+          "status": "confirmed"
+        },
+        "cb_depth": {
+          "value": "CB depth NORMAL\u2192SLIGHTLY OFF (give cushion vs whip/cross)",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "Safety depth NORMAL; width SLIGHTLY PINCHED; midpoint balanced",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "QB Contain OFF (coverage first \u2014 use SCRAM when escape is the tell)",
+          "status": "approx"
+        },
+        "front_pressure": {
+          "value": "Base front; no show-blitz",
+          "status": "confirmed"
+        },
+        "smart_zone_match": {
+          "value": "Smart Zone ON if available; Match check Stress/Box vs crossers (approx)",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "Plaster OFF unless also escape threat",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "LB/slot carry inside cross; FS help over top on dig/post",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "User inside cross",
+          "status": "confirmed"
+        },
+        "do_not": {
+          "value": "Do not arm on one Cross Wheels tell; do not drop into soft C3 flats",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "Dynasty: Tampa 2 / Mable-style anti-cross; deeper flats with shallow curl defenders",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: CROSS (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: CROSS\n[ ] Base shell: Tampa 2 (Mable/Tampa) \u2014 Nickel Over  [confirmed]\n[ ] Alt shell OK: Cover 4 Quarters if they clear middle\n[ ] Zone drop FLATS: deeper ~15\u201320 (anti-cross)  [confirmed intent]\n[ ] Zone drop CURLS: shallow (curl defenders under cross)  [confirmed intent]\n[ ] CB shade: UNDERNEATH  [approx]\n[ ] CB depth: Normal \u2192 slight OFF  [approx]\n[ ] Safety depth: Normal | Width: slight PINCH | Midpoint: balanced  [approx]\n[ ] QB Contain: OFF\n[ ] Show Pressure / Cub-Mug: OFF\n[ ] Smart Zone: ON if present  [approx]\n[ ] Match checks: Stress or Box vs crossers  [approx]\n[ ] Plaster: OFF\n[ ] Save \u2192 set ACTIVE (counts in 8 O+D)\n[ ] In-game: LB \u2192 CROSS | User JOB = inside cross\n\nDO NOT: arm on one tell; soft C3 flats\nWHEN: after 2+ live Cross Wheels / crosser tells"
+    },
+    "VERT": {
+      "name": "VERT",
+      "side": "defense",
+      "purpose": "Answer Four Verticals / seam stress",
+      "when_to_arm": "After 2+ live Four Verticals / seam tells in similar D&D",
+      "validated_status": "validated",
+      "inventory": "active",
+      "source": "Temple 8D baseline",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create/Edit VERT",
+        "Apply copy_block ticks \u2192 Save \u2192 Active",
+        "In-game LB \u2192 VERT"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Cover 4 Quarters",
+          "status": "confirmed"
+        },
+        "formation_hint": {
+          "value": "Nickel Over (Dime if true long)",
+          "status": "confirmed"
+        },
+        "coverage": {
+          "value": "Quarters \u2014 each DB 1/4; protect #2/#3 seams",
+          "status": "confirmed"
+        },
+        "shades_leverage": {
+          "value": "Shade OVERTOP / outside leverage on seams (approx)",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "Flats ~8\u201312; Curls ~10\u201312 \u2014 do not sit soft under seams",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "CB depth OFF / cushion",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "Safety depth DEEP; width SPLIT Quarters landmarks; midpoint balanced",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "QB Contain OFF unless dual-threat film",
+          "status": "approx"
+        },
+        "front_pressure": {
+          "value": "Base; no sellout",
+          "status": "confirmed"
+        },
+        "smart_zone_match": {
+          "value": "Smart Zone ON; Match Solo/Skate on seam threats [approx]",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "Plaster OFF",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "SS/#3 seam carry; FS help post",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "User #3 seam",
+          "status": "confirmed"
+        },
+        "do_not": {
+          "value": "Do not spam VERT early; do not jump Even 6-1 on verts",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "Dynasty: Quarters-based vertical protection; bunch/trips checks",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: VERT (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: VERT\n[ ] Base shell: Cover 4 Quarters \u2014 Nickel Over\n[ ] CB shade: OVERTOP / outside on seams [approx]\n[ ] Zone drop FLATS: 8\u201312 [approx]\n[ ] Zone drop CURLS: 10\u201312 [approx]\n[ ] CB depth: OFF / cushion [approx]\n[ ] Safety depth: DEEP | Width: Quarters split | Midpoint: balanced [approx]\n[ ] QB Contain: OFF (default)\n[ ] Show Pressure: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Match: Solo/Skate vs seam [approx]\n[ ] Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 VERT | User JOB = #3 seam\n\nWHEN: after 2+ live Four Verts / seam tells"
+    },
+    "BUNCH": {
+      "name": "BUNCH",
+      "side": "defense",
+      "purpose": "Answer compressed Mesh/Bunch rubs \u2014 mesh checks + hard flats lean",
+      "when_to_arm": "After repeated Mesh/Bunch compressed wins",
+      "validated_status": "validated",
+      "inventory": "active",
+      "source": "Temple 8D baseline",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create/Edit BUNCH",
+        "Apply copy_block \u2192 Save \u2192 Active",
+        "In-game LB \u2192 BUNCH"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Tampa 2 / hard flats",
+          "status": "confirmed"
+        },
+        "formation_hint": {
+          "value": "Nickel Over vs Gun Bunch / Cluster",
+          "status": "confirmed"
+        },
+        "coverage": {
+          "value": "Tampa 2 with mesh/rub awareness",
+          "status": "confirmed"
+        },
+        "shades_leverage": {
+          "value": "Shade INSIDE on bunch side (jam rubs) [approx]",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "HARD flats ~0\u20135; Curls ~8\u201310 (kill spot sits)",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "Press/short on bunch wing if UI allows; else NORMAL",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "Safety depth NORMAL; width slight PINCH to bunch",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "front_pressure": {
+          "value": "Base",
+          "status": "confirmed"
+        },
+        "smart_zone_match": {
+          "value": "Match checks: Box / Stress vs mesh [confirmed intent, approx UI names]",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "Slot/LB wall mesh; FS fill hole",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "User middle",
+          "status": "confirmed"
+        },
+        "do_not": {
+          "value": "Do not auto-arm from one Mesh Spot; do not sell out to Cub",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "BUNCH = mesh checks \u2014 Temple keep",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: BUNCH (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: BUNCH\n[ ] Base shell: Tampa 2 / hard flats \u2014 Nickel Over\n[ ] CB shade: INSIDE on bunch side [approx]\n[ ] Zone drop FLATS: 0\u20135 HARD [approx]\n[ ] Zone drop CURLS: 8\u201310 [approx]\n[ ] CB depth: Press/short on wing if available else Normal [approx]\n[ ] Safety: Normal depth | slight PINCH to bunch [approx]\n[ ] Match checks: Box / Stress vs mesh [approx UI names]\n[ ] Smart Zone: ON [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 BUNCH | User JOB = middle\n\nWHEN: after repeated Mesh/Bunch compressed wins"
+    },
+    "RPO": {
+      "name": "RPO",
+      "side": "defense",
+      "purpose": "Answer bubble / RPO alert \u2014 hard flats",
+      "when_to_arm": "After repeated RPO bubble / alert wins",
+      "validated_status": "validated",
+      "inventory": "active",
+      "source": "Temple 8D baseline",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create/Edit RPO \u2192 copy_block \u2192 Save \u2192 Active",
+        "In-game LB \u2192 RPO"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Cover 3 Sky",
+          "status": "confirmed"
+        },
+        "formation_hint": {
+          "value": "Nickel Over",
+          "status": "confirmed"
+        },
+        "coverage": {
+          "value": "C3 Sky with hard flat to bubble side",
+          "status": "confirmed"
+        },
+        "shades_leverage": {
+          "value": "Shade OUTSIDE / flat leverage on overhang [approx]",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "FLATS 0\u20135 HARD; Curls ~10",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "CB flat player CLOSE to LOS",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "Safety depth NORMAL; width to field/boundary as C3",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "OFF (unless dual-threat)",
+          "status": "approx"
+        },
+        "front_pressure": {
+          "value": "Fit run first; no auto Cub",
+          "status": "confirmed"
+        },
+        "smart_zone_match": {
+          "value": "Smart Zone ON; prioritize flat/bubble [approx]",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "Overhang / flat defender owns bubble; LB fits mesh of RPO",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "User flat/bubble",
+          "status": "confirmed"
+        },
+        "do_not": {
+          "value": "Do not leave flat empty chasing #1 vertical",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "RPO = hard flats \u2014 Temple keep",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: RPO (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RPO\n[ ] Base shell: Cover 3 Sky \u2014 Nickel Over\n[ ] Zone drop FLATS: 0\u20135 HARD [approx]\n[ ] Zone drop CURLS: ~10 [approx]\n[ ] CB/overhang: CLOSE to LOS on bubble side [approx]\n[ ] Shade: OUTSIDE / flat leverage [approx]\n[ ] Safety: C3 landmarks [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 RPO | User JOB = flat/bubble\n\nWHEN: after repeated bubble/RPO alert wins"
+    },
+    "SCRAM": {
+      "name": "SCRAM",
+      "side": "defense",
+      "purpose": "Contain integrity when QB escape beats coverage carry \u2014 contain + plaster",
+      "when_to_arm": "After repeated QB scramble escapes",
+      "validated_status": "validated",
+      "inventory": "active",
+      "source": "Temple 8D baseline",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create/Edit SCRAM \u2192 copy_block \u2192 Save \u2192 Active",
+        "In-game LB \u2192 SCRAM"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Base Nickel Over zone (C3 or C4) + contain adj",
+          "status": "confirmed"
+        },
+        "formation_hint": {
+          "value": "Nickel Over",
+          "status": "confirmed"
+        },
+        "coverage": {
+          "value": "Keep called zone; integrity > chase",
+          "status": "confirmed"
+        },
+        "shades_leverage": {
+          "value": "Default shade for called shell",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "Default for shell \u2014 do not soft-sit and abandon edge",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "Normal for shell",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "Normal; one safety ready to help contain if spy UI absent",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "QB Contain ON (patch 1.012 contain custom adj fix)",
+          "status": "confirmed"
+        },
+        "front_pressure": {
+          "value": "DE/edge CONTAIN responsibility; no wide upfield chase",
+          "status": "confirmed"
+        },
+        "smart_zone_match": {
+          "value": "Smart Zone ON",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "Plaster ON \u2014 stick to receivers if QB holds then runs [confirmed intent]",
+          "status": "confirmed"
+        },
+        "individual_assignments": {
+          "value": "Edge contain; User owns contain lane",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "User contain",
+          "status": "confirmed"
+        },
+        "do_not": {
+          "value": "Do not spin-hero chase (patch 1.012 reduced spin); do not arm from one scramble",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "SCRAM = contain + plaster \u2014 Temple keep; CONTAIN-SCRAM is stricter CREATE twin",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: SCRAM (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: SCRAM\n[ ] Base shell: Nickel Over C3 Sky or C4 Quarters (keep coverage)\n[ ] QB Contain: ON  \u2190 confirmed (1.012 contain adj)\n[ ] Plaster: ON  \u2190 confirmed intent\n[ ] Edge/DE: CONTAIN (no wild upfield) [approx tick]\n[ ] Flats/Curls/Shade: match called shell defaults\n[ ] Show Pressure: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 SCRAM | User JOB = contain\n\nWHEN: after repeated QB scramble escapes\nNOTE: if still escaping, lab CONTAIN-SCRAM (needs_lab)"
+    },
+    "RUN-IN": {
+      "name": "RUN-IN",
+      "side": "defense",
+      "purpose": "Downhill IZ/Duo sellout \u2014 pinch / Even 6-1",
+      "when_to_arm": "After repeated downhill run AND short-yardage \u2014 never one IZ tell",
+      "validated_status": "validated",
+      "inventory": "active",
+      "source": "Temple 8D baseline",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create/Edit RUN-IN \u2192 copy_block \u2192 Save \u2192 Active",
+        "In-game: call 4-3 Even 6-1 then LB \u2192 RUN-IN"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Cover 3 Buzz / Quarters from Even front",
+          "status": "confirmed"
+        },
+        "formation_hint": {
+          "value": "4-3 Even 6-1",
+          "status": "confirmed"
+        },
+        "coverage": {
+          "value": "C3 Buzz primary; C4/Tampa changeup",
+          "status": "confirmed"
+        },
+        "shades_leverage": {
+          "value": "Inside shade / gap integrity [approx]",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "Default short-yardage \u2014 stop first-level run",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "Normal / support run",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "Safety depth closer (run support); width pinched",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "OFF unless QB keep film",
+          "status": "approx"
+        },
+        "front_pressure": {
+          "value": "DL PINCH; Even 6-1 gaps [confirmed]",
+          "status": "confirmed"
+        },
+        "smart_zone_match": {
+          "value": "Smart Zone optional",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "ILB fill A/B; User cutback",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "User cutback / HB",
+          "status": "confirmed"
+        },
+        "do_not": {
+          "value": "NEVER auto on one IZ; GL don't sell out (Temple Z Smash)",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "RUN-IN = pinch / Even 6-1 \u2014 Temple keep",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: RUN-IN (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RUN-IN\n[ ] Pair with package: 4-3 Even 6-1\n[ ] Coverage lean: Cover 3 Buzz (alt C4/Tampa)\n[ ] DL: PINCH [confirmed intent]\n[ ] Front: Even 6-1 gap integrity\n[ ] Safety depth: closer (run support) | Width: pinch [approx]\n[ ] Shade: inside / gap [approx]\n[ ] QB Contain: OFF (default) | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: Even 6-1 call \u2192 LB \u2192 RUN-IN | User JOB = cutback\n\nWHEN: repeated downhill + short \u2014 NEVER one IZ tell\nGL: heavy OK but do NOT sell out run (Z Smash)"
+    },
+    "RUN-OUT": {
+      "name": "RUN-OUT",
+      "side": "defense",
+      "purpose": "Perimeter stretch / toss \u2014 edge integrity",
+      "when_to_arm": "After repeated Outside Zone / Stretch / toss",
+      "validated_status": "validated",
+      "inventory": "active",
+      "source": "Temple 8D baseline",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create/Edit RUN-OUT \u2192 copy_block \u2192 Save \u2192 Active",
+        "In-game LB \u2192 RUN-OUT"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Cover 3 Sky",
+          "status": "confirmed"
+        },
+        "formation_hint": {
+          "value": "Nickel Over",
+          "status": "confirmed"
+        },
+        "coverage": {
+          "value": "C3 Sky \u2014 force bounce then fold",
+          "status": "confirmed"
+        },
+        "shades_leverage": {
+          "value": "Outside leverage on perimeter [approx]",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "Flats ready vs toss/bubble combo ~5\u20138",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "Support edge \u2014 not deep bail",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "Safety width to stretch side; depth NORMAL",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "front_pressure": {
+          "value": "DL SPREAD / edge set \u2014 force bounce inside [confirmed intent]",
+          "status": "confirmed"
+        },
+        "smart_zone_match": {
+          "value": "Smart Zone ON",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "DE/OLB set edge; User edge",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "User edge",
+          "status": "confirmed"
+        },
+        "do_not": {
+          "value": "Do not pinch into stretch; do not abandon edge for inside scrap",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "RUN-OUT = edge \u2014 Temple keep",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: RUN-OUT (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RUN-OUT\n[ ] Base shell: Cover 3 Sky \u2014 Nickel Over\n[ ] DL: SPREAD / edge set (force bounce) [confirmed intent]\n[ ] Shade: outside leverage perimeter [approx]\n[ ] Flats: 5\u20138 (toss/bubble ready) [approx]\n[ ] Safety width: to stretch side [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 RUN-OUT | User JOB = edge\n\nWHEN: after repeated OZ / Stretch / toss"
+    },
+    "HEAT": {
+      "name": "HEAT",
+      "side": "defense",
+      "purpose": "Selective pressure \u2014 show Cub/Mug",
+      "when_to_arm": "3rd-short selective vs pressure-worthy archetype or repeated money-down need",
+      "validated_status": "validated",
+      "inventory": "active",
+      "source": "Temple 8D baseline",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create/Edit HEAT \u2192 copy_block \u2192 Save \u2192 Active",
+        "In-game: call Cub/Mug package then LB \u2192 HEAT"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Man/zero or match behind pressure (play-call dependent)",
+          "status": "approx"
+        },
+        "formation_hint": {
+          "value": "Nickel 3-3 Cub or Nickel Double Mug",
+          "status": "confirmed"
+        },
+        "coverage": {
+          "value": "Behind blitz: Cover 0 / Cover 1 lean \u2014 know hot answers",
+          "status": "approx"
+        },
+        "shades_leverage": {
+          "value": "Press / inside shade on likely hot [approx]",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "N/A under pure pressure \u2014 match/man",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "Press if man",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "Single-high or void for zero \u2014 know the call",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "Assign contain rusher OR User contain if scramble risk",
+          "status": "approx"
+        },
+        "front_pressure": {
+          "value": "SHOW PRESSURE \u2014 Cub / Mug look [confirmed]",
+          "status": "confirmed"
+        },
+        "smart_zone_match": {
+          "value": "Off under pure man-blitz; Match ON if zone-blitz variant",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "One User hot / spy job only",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "User hot",
+          "status": "confirmed"
+        },
+        "do_not": {
+          "value": "Not every snap; never early-down chase vs split-field (Gavin)",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "HEAT = show pressure Cub/Mug \u2014 Temple keep; selective",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: HEAT (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: HEAT\n[ ] Pair packages: Nickel 3-3 Cub / Nickel Double Mug\n[ ] Show Pressure: ON \u2014 Cub/Mug [confirmed]\n[ ] Coverage behind: Cover 0 / Cover 1 lean (know the play call) [approx]\n[ ] CB: Press if man [approx]\n[ ] Assign contain rusher if scramble risk [approx]\n[ ] Plaster: OFF | Smart Zone: per blitz type\n[ ] Save \u2192 ACTIVE\n[ ] In-game: Cub/Mug call \u2192 LB \u2192 HEAT | User JOB = hot\n\nWHEN: 3rd-short selective ONLY \u2014 not every snap"
+    },
+    "FLOOD": {
+      "name": "FLOOD",
+      "side": "defense",
+      "purpose": "Flood/levels specialty (BENCHED until stable)",
+      "when_to_arm": "Reactivate only if opponent makes flood primary AND online stability re-tested",
+      "validated_status": "unvalidated",
+      "inventory": "benched",
+      "source": "Temple bench",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Keep saved but NOT Active until re-test",
+        "If reactivating: swap out one Active (stay \u22648) then LB in-game"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Cover 3 match variants",
+          "status": "approx"
+        },
+        "formation_hint": {
+          "value": "Nickel Over",
+          "status": "approx"
+        },
+        "coverage": {
+          "value": "C3 match vs flood/levels",
+          "status": "approx"
+        },
+        "shades_leverage": {
+          "value": "Outside shade flat/corner [approx]",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "Flats ~5; Curls sit under flood intermediate",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "Normal",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "C3 landmarks",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "front_pressure": {
+          "value": "Base",
+          "status": "approx"
+        },
+        "smart_zone_match": {
+          "value": "Match ON",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "User flat/corner",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "User flat/corner",
+          "status": "approx"
+        },
+        "do_not": {
+          "value": "Do not Active until online-stable re-test",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "BENCHED \u2014 Temple playtest",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: FLOOD (D) \u2014 UNVALIDATED / BENCHED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\nKeep saved, NOT Active until lab re-test.\nIf activate: swap one Active first (\u22648 O+D).\nShell lean: C3 match vs flood | User flat/corner [approx]"
+    },
+    "SCREEN": {
+      "name": "SCREEN",
+      "side": "defense",
+      "purpose": "Screen/bubble specialty (BENCHED)",
+      "when_to_arm": "Reactivate only if bubbles dominate after re-test",
+      "validated_status": "unvalidated",
+      "inventory": "benched",
+      "source": "Temple bench",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Keep NOT Active until re-test"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Cover 3 Sky",
+          "status": "approx"
+        },
+        "formation_hint": {
+          "value": "Nickel Over",
+          "status": "approx"
+        },
+        "coverage": {
+          "value": "C3 hard flat to screen side",
+          "status": "approx"
+        },
+        "shades_leverage": {
+          "value": "Outside / flat",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "HARD flats 0\u20135",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "Close",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "C3",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "front_pressure": {
+          "value": "Spy screen / peel rules if UI",
+          "status": "approx"
+        },
+        "smart_zone_match": {
+          "value": "ON",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "User flat",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "User flat",
+          "status": "approx"
+        },
+        "do_not": {
+          "value": "Not Active until re-test (Temple: SCREEN off)",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "BENCHED",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: SCREEN (D) \u2014 UNVALIDATED / BENCHED\nKeep NOT Active. Prefer RPO macro for bubble until lab re-test.\nIf activate: swap one Active (\u22648)."
+    },
+    "GLASS": {
+      "name": "GLASS",
+      "side": "defense",
+      "purpose": "Soft zone glass vs Bunch mesh (hard flats + Tampa lean)",
+      "when_to_arm": "When Bunch mesh keeps winning vs base C3; install as custom adj",
+      "validated_status": "needs_lab",
+      "inventory": "create_candidate",
+      "source": "CREATE candidate",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create GLASS (new)",
+        "Apply copy_block \u2192 Save",
+        "To Active: must SWAP (bench one of 8) \u2014 see prep swap plan",
+        "In-game LB \u2192 GLASS"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Tampa 2",
+          "status": "approx"
+        },
+        "formation_hint": {
+          "value": "Nickel Over",
+          "status": "approx"
+        },
+        "coverage": {
+          "value": "Tampa glass \u2014 soft under + hard flats",
+          "status": "approx"
+        },
+        "shades_leverage": {
+          "value": "Underneath shade",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "HARD flats 0\u20135; Curls glass ~10\u201312",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "Soft cushion",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "Tampa MLB deep hole; safeties Tampa landmarks",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "front_pressure": {
+          "value": "Base",
+          "status": "approx"
+        },
+        "smart_zone_match": {
+          "value": "ON + mesh checks",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "User middle glass",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "User middle glass",
+          "status": "approx"
+        },
+        "do_not": {
+          "value": "Do not Active without swap at 8; needs lab validation",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "CREATE \u2014 needs_lab before trusting live",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: GLASS (D) \u2014 NEEDS_LAB (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: GLASS\n[ ] Base: Tampa 2 \u2014 Nickel Over\n[ ] Flats: 0\u20135 HARD | Curls glass ~10\u201312 [approx]\n[ ] Shade: UNDERNEATH [approx]\n[ ] Smart Zone + mesh checks [approx]\n[ ] QB Contain OFF | Show Pressure OFF | Plaster OFF\n[ ] Save \u2014 Active ONLY via swap (\u22648 O+D)\n[ ] User JOB = middle glass\n\nTAG live calls [needs_lab] until validated"
+    },
+    "CONTAIN-SCRAM": {
+      "name": "CONTAIN-SCRAM",
+      "side": "defense",
+      "purpose": "Explicit contain + spy lean (stricter SCRAM twin; 1.012 contain fix)",
+      "when_to_arm": "When SCRAM alone is not enough vs dual-threat",
+      "validated_status": "needs_lab",
+      "inventory": "create_candidate",
+      "source": "CREATE candidate",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create CONTAIN-SCRAM \u2192 copy_block \u2192 Save",
+        "Active requires SWAP at 8",
+        "In-game LB \u2192 CONTAIN-SCRAM"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Nickel Over C3/C4",
+          "status": "approx"
+        },
+        "formation_hint": {
+          "value": "Nickel Over",
+          "status": "approx"
+        },
+        "coverage": {
+          "value": "Zone integrity + contain",
+          "status": "approx"
+        },
+        "shades_leverage": {
+          "value": "Default shell",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "Default shell",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "Normal",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "One safety spy-lean if UI allows [approx]",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "QB Contain ON (1.012)",
+          "status": "confirmed"
+        },
+        "front_pressure": {
+          "value": "Both edges contain; spy lean",
+          "status": "approx"
+        },
+        "smart_zone_match": {
+          "value": "ON",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "ON",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "User contain",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "User contain",
+          "status": "approx"
+        },
+        "do_not": {
+          "value": "Needs lab; swap before Active at 8",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "CREATE twin of SCRAM \u2014 needs_lab",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: CONTAIN-SCRAM (D) \u2014 NEEDS_LAB (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: CONTAIN-SCRAM\n[ ] Base: Nickel Over C3 or C4\n[ ] QB Contain: ON [confirmed 1.012]\n[ ] Plaster: ON [approx]\n[ ] Both edges CONTAIN + spy lean [approx]\n[ ] Show Pressure: OFF\n[ ] Save \u2014 Active via SWAP only if at 8\n[ ] User JOB = contain\n\nPrefer validated SCRAM live until lab passes"
+    },
+    "SPOT-LOCK": {
+      "name": "SPOT-LOCK",
+      "side": "defense",
+      "purpose": "Lock the spot sit vs Mesh Spot spam",
+      "when_to_arm": "When Mesh Spot is their primary easy throw",
+      "validated_status": "needs_lab",
+      "inventory": "create_candidate",
+      "source": "CREATE candidate",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create SPOT-LOCK \u2192 Save \u2014 swap to Active"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "Tampa 2 / hard flats",
+          "status": "approx"
+        },
+        "formation_hint": {
+          "value": "Nickel Over",
+          "status": "approx"
+        },
+        "coverage": {
+          "value": "Tampa with curl/flat emphasis on spot landmark",
+          "status": "approx"
+        },
+        "shades_leverage": {
+          "value": "Underneath on spot side",
+          "status": "approx"
+        },
+        "flats_hooks_curls": {
+          "value": "HARD flats; Curls sit on spot ~8\u201310",
+          "status": "approx"
+        },
+        "cb_depth": {
+          "value": "Normal",
+          "status": "approx"
+        },
+        "safety_alignment": {
+          "value": "Tampa",
+          "status": "approx"
+        },
+        "contain_qb": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "front_pressure": {
+          "value": "Base",
+          "status": "approx"
+        },
+        "smart_zone_match": {
+          "value": "ON",
+          "status": "approx"
+        },
+        "plaster": {
+          "value": "OFF",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "User spot",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "User spot",
+          "status": "approx"
+        },
+        "do_not": {
+          "value": "needs_lab; swap at 8",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "CREATE \u2014 needs_lab",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: SPOT-LOCK (D) \u2014 NEEDS_LAB (CREATE)\nTampa/hard flats | Curls on spot landmark ~8\u201310 [approx]\nUser JOB = spot | Active only via swap at 8"
+    },
+    "PROT": {
+      "name": "PROT",
+      "side": "offense",
+      "purpose": "Protection / hot reminder tag vs pressure",
+      "when_to_arm": "vs pressure-heavy archetypes (Quen) \u2014 cue Mesh Spot/Whip/HB Base",
+      "validated_status": "needs_lab",
+      "inventory": "create_candidate",
+      "source": "CREATE candidate (O)",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Offense",
+        "Create PROT \u2192 copy_block \u2192 Save",
+        "Active counts in 8 O+D \u2014 swap a D macro if already at 8",
+        "In-game LB \u2192 PROT as reminder before snap"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "n/a \u2014 O protection/hot cue",
+          "status": "confirmed"
+        },
+        "formation_hint": {
+          "value": "Gun Bunch X Nasty primary",
+          "status": "confirmed"
+        },
+        "coverage": {
+          "value": "n/a",
+          "status": "confirmed"
+        },
+        "shades_leverage": {
+          "value": "n/a",
+          "status": "confirmed"
+        },
+        "flats_hooks_curls": {
+          "value": "n/a",
+          "status": "confirmed"
+        },
+        "contain_qb": {
+          "value": "n/a",
+          "status": "confirmed"
+        },
+        "front_pressure": {
+          "value": "Max protect / slide to pressure side [approx UI]",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "Hot routes: Mesh Spot primary; Return Whip Trail secondary; HB Base if sellout",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "Hot ready / Protection first",
+          "status": "confirmed"
+        },
+        "do_not": {
+          "value": "Do not hero deep vs Sam/Will/WS; needs_lab as Active macro",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "O-side CREATE \u2014 counts toward 8 with D macros",
+          "status": "confirmed"
+        },
+        "protection": {
+          "value": "Max protect / slide to pressure side [approx UI]",
+          "status": "approx"
+        },
+        "route_assignments": {
+          "value": "Cue Mesh Spot primary; Return Whip Trail secondary; HB Base if sellout",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: PROT (O) \u2014 NEEDS_LAB (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: PROT\n[ ] Intent: protection / hot cue (not a coverage)\n[ ] Protection: Max protect / slide to heat [approx UI]\n[ ] Hot answers reminder:\n    - Mesh Spot (primary)\n    - Return Whip Trail (secondary)\n    - HB Base (if pressure sellout)\n[ ] Save \u2014 Active counts in 8 O+D (swap a D if at 8)\n[ ] In-game: LB \u2192 PROT before snap | Hot ready\n\nTAG [needs_lab] until lab-validated"
+    },
+    "O-HEAT": {
+      "name": "HEAT",
+      "side": "offense",
+      "purpose": "Normal blitz pressure answer (O)",
+      "when_to_arm": "When needing hot menu vs blitz-heavy looks",
+      "validated_status": "needs_lab",
+      "inventory": "reference",
+      "source": "Dynasty O macro notes (not Temple-active; Temple = 0 O)",
+      "xbox_steps": [
+        "Create & Share \u2192 Custom Adjustments \u2192 Offense",
+        "Name on Xbox as HEAT (O book) \u2014 catalog id O-HEAT",
+        "Counts toward 8 if Active"
+      ],
+      "full_settings": {
+        "base_shell": {
+          "value": "n/a O",
+          "status": "approx"
+        },
+        "formation_hint": {
+          "value": "Gun Bunch X Nasty",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "Hot: Mesh Spot / Whip / quick hitches",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "Hot ready",
+          "status": "approx"
+        },
+        "do_not": {
+          "value": "Temple ran 0 O macros \u2014 lab before Active",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "Notes list HEAT among O macros \u2014 needs_lab",
+          "status": "confirmed"
+        },
+        "protection": {
+          "value": "Base protection",
+          "status": "confirmed"
+        },
+        "route_assignments": {
+          "value": "WR1 streak; WR2 zig; WR3 drag; TE chip-and-release; HB block-and-release",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: HEAT (O) \u2014 NEEDS_LAB (designed; Temple kept 0 O Active)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: HEAT\n[ ] Protection: Base protection [confirmed notes]\n[ ] WR1: streak\n[ ] WR2: zig\n[ ] WR3: drag\n[ ] TE: chip-and-release\n[ ] HB: block-and-release\n[ ] Save \u2014 Active counts in 8 O+D (swap a D if already 8/8)\n[ ] In-game: LB \u2192 HEAT\nTAG [needs_lab] until lab-validated",
+      "xbox_name": "HEAT"
+    },
+    "ZERO": {
+      "name": "ZERO",
+      "side": "offense",
+      "purpose": "vs Cover 0 / all-out \u2014 immediate hot + max protect",
+      "when_to_arm": "Confirmed Cover 0 / empty blitz",
+      "validated_status": "needs_lab",
+      "inventory": "reference",
+      "source": "Dynasty O macro notes",
+      "xbox_steps": [
+        "Custom Adjustments \u2192 Offense \u2192 Create ZERO"
+      ],
+      "full_settings": {
+        "formation_hint": {
+          "value": "Gun Bunch X Nasty / Empty",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "Immediate hot outs/whips; RB chip then release",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "Hot now",
+          "status": "approx"
+        },
+        "do_not": {
+          "value": "No slow-developing shots",
+          "status": "approx"
+        },
+        "notes": {
+          "value": "needs_lab",
+          "status": "confirmed"
+        },
+        "protection": {
+          "value": "Max protect",
+          "status": "confirmed"
+        },
+        "route_assignments": {
+          "value": "WR1 streak; WR2 zig; WR3 slant",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: ZERO (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: ZERO\n[ ] Protection: Max protect [confirmed]\n[ ] WR1 streak | WR2 zig | WR3 slant [confirmed]\n[ ] Save \u2014 Active \u22648 O+D | In-game LB \u2192 ZERO"
+    },
+    "MAN": {
+      "name": "MAN",
+      "side": "offense",
+      "purpose": "vs man coverage \u2014 rubs / mesh / stacks",
+      "when_to_arm": "Confirmed man / Cover 1",
+      "validated_status": "needs_lab",
+      "inventory": "reference",
+      "source": "Dynasty O macro notes",
+      "xbox_steps": [
+        "Custom Adjustments \u2192 Offense \u2192 Create MAN"
+      ],
+      "full_settings": {
+        "formation_hint": {
+          "value": "Gun Bunch X Nasty",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "Mesh Spot, Mesh Traffic, Return Whip Trail \u2014 rub releases",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "Pick rub \u2192 late dig",
+          "status": "approx"
+        },
+        "notes": {
+          "value": "needs_lab",
+          "status": "confirmed"
+        },
+        "route_assignments": {
+          "value": "WR1 deep cross; WR2 zig; WR3 short cross; TE wheel; HB Texas",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: MAN (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: MAN\n[ ] WR1 deep cross | WR2 zig | WR3 short cross | TE wheel | HB Texas [confirmed]\n[ ] Save \u2014 Active \u22648 O+D | LB \u2192 MAN"
+    },
+    "C3": {
+      "name": "C3",
+      "side": "offense",
+      "purpose": "vs Cover 3 \u2014 flood / high-low",
+      "when_to_arm": "Confirmed Cover 3 Sky",
+      "validated_status": "needs_lab",
+      "inventory": "reference",
+      "source": "Dynasty O macro notes",
+      "xbox_steps": [
+        "Custom Adjustments \u2192 Offense \u2192 Create C3"
+      ],
+      "full_settings": {
+        "formation_hint": {
+          "value": "Gun Bunch X Nasty",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "Deep Flood, Mtn Cross Post, Drive HB Under \u2014 high-low",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "Flat \u2192 intermediate \u2192 corner",
+          "status": "approx"
+        },
+        "notes": {
+          "value": "needs_lab \u2014 not vs C6/C9",
+          "status": "confirmed"
+        },
+        "route_assignments": {
+          "value": "WR1 streak; WR2 corner; WR3 flat; TE drag",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: C3 (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: C3\n[ ] WR1 streak | WR2 corner | WR3 flat | TE drag [confirmed]\n[ ] vs spot-drop Cover 3 \u2014 NOT vs C6/C9/Quarters\n[ ] Save \u2014 Active \u22648 | LB \u2192 C3"
+    },
+    "C2": {
+      "name": "C2",
+      "side": "offense",
+      "purpose": "vs Cover 2 / Invert Hard Flat \u2014 soft underneath",
+      "when_to_arm": "Confirmed C2 / Invert HF",
+      "validated_status": "needs_lab",
+      "inventory": "reference",
+      "source": "Dynasty O macro notes",
+      "xbox_steps": [
+        "Custom Adjustments \u2192 Offense \u2192 Create C2"
+      ],
+      "full_settings": {
+        "formation_hint": {
+          "value": "Gun Bunch X Nasty / Cluster",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "Mesh Spot, Inside Zone, Z Spot Shake \u2014 avoid blind Whip/Flood",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "Spot \u2192 drag",
+          "status": "approx"
+        },
+        "do_not": {
+          "value": "Blind Whip/Flood into hard flat (INT film)",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "needs_lab but reads match META",
+          "status": "confirmed"
+        },
+        "route_assignments": {
+          "value": "WR1 streak; WR2 corner; WR3 post; TE slot fade; HB flat",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: C2 (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: C2\n[ ] WR1 streak | WR2 corner | WR3 post | TE slot fade | HB flat [confirmed]\n[ ] Soft lean Mesh Spot/IZ live if Invert Hard Flat film \u2014 avoid blind Whip\n[ ] Save \u2014 Active \u22648 | LB \u2192 C2"
+    },
+    "MATCH": {
+      "name": "MATCH",
+      "side": "offense",
+      "purpose": "vs match/Quarters \u2014 run first + easy sit",
+      "when_to_arm": "Cover 4 / Palms / match looks",
+      "validated_status": "needs_lab",
+      "inventory": "reference",
+      "source": "Dynasty O macro notes",
+      "xbox_steps": [
+        "Custom Adjustments \u2192 Offense \u2192 Create MATCH"
+      ],
+      "full_settings": {
+        "formation_hint": {
+          "value": "Gun Bunch X Nasty",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "Inside Zone, HB Base, Mesh Spot \u2014 no seam spam early",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "Front \u2192 easy",
+          "status": "approx"
+        },
+        "notes": {
+          "value": "needs_lab",
+          "status": "confirmed"
+        },
+        "route_assignments": {
+          "value": "WR1 post; WR2 deep cross; WR3 drag; TE streak; HB Texas",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: MATCH (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: MATCH\n[ ] WR1 post | WR2 deep cross | WR3 drag | TE streak | HB Texas [confirmed]\n[ ] vs Match/Quarters/Palms \u2014 still RUN FIRST early\n[ ] Save \u2014 Active \u22648 | LB \u2192 MATCH"
+    },
+    "SHOT": {
+      "name": "SHOT",
+      "side": "offense",
+      "purpose": "Scheduled shot / PA \u2014 not every drive",
+      "when_to_arm": "After establishing run + soft coverage tell",
+      "validated_status": "needs_lab",
+      "inventory": "reference",
+      "source": "Dynasty O macro notes",
+      "xbox_steps": [
+        "Custom Adjustments \u2192 Offense \u2192 Create SHOT"
+      ],
+      "full_settings": {
+        "formation_hint": {
+          "value": "Bunch / Cluster / Deuce",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "PA shot / Cross Post \u2014 one scheduled look",
+          "status": "approx"
+        },
+        "user_job": {
+          "value": "Clear \u2192 shot",
+          "status": "approx"
+        },
+        "do_not": {
+          "value": "Not on 3-fail pivot; not vs sticky two-high without run set-up",
+          "status": "approx"
+        },
+        "notes": {
+          "value": "needs_lab",
+          "status": "confirmed"
+        },
+        "protection": {
+          "value": "TE pass block; HB chip-and-release",
+          "status": "confirmed"
+        },
+        "route_assignments": {
+          "value": "WR1 sluggo; WR2 deep cross; WR3 streak; TE pass block; HB chip-and-release",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: SHOT (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: SHOT\n[ ] WR1 sluggo | WR2 deep cross | WR3 streak [confirmed]\n[ ] TE pass block | HB chip-and-release [confirmed]\n[ ] One scheduled shot after run established \u2014 not every drive\n[ ] Save \u2014 Active \u22648 | LB \u2192 SHOT"
+    },
+    "O-RUN": {
+      "name": "RUN",
+      "side": "offense",
+      "purpose": "Run-first reminder vs two-high (Xbox name RUN)",
+      "when_to_arm": "Cover 6/9/Quarters live",
+      "validated_status": "needs_lab",
+      "inventory": "reference",
+      "source": "Dynasty O macro notes",
+      "xbox_steps": [
+        "Custom Adjustments \u2192 Offense \u2192 Create RUN"
+      ],
+      "full_settings": {
+        "formation_hint": {
+          "value": "Gun Bunch X Nasty",
+          "status": "confirmed"
+        },
+        "individual_assignments": {
+          "value": "Inside Zone, HB Base, Counter Y",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "Front \u2192 cutback",
+          "status": "approx"
+        },
+        "notes": {
+          "value": "Catalog id O-RUN; Xbox label RUN \u2014 needs_lab as Active",
+          "status": "confirmed"
+        },
+        "blocking": {
+          "value": "Base OL technique; highest-OVR double team; Mike ID; aggressive blocking; conservative ball carrier",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: RUN (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: RUN\n[ ] Base OL technique [confirmed]\n[ ] Highest-OVR double team | Mike ID [confirmed]\n[ ] Aggressive blocking | Conservative ball carrier [confirmed]\n[ ] Purpose: light box / pass-heavy personnel answer\n[ ] Save \u2014 Active \u22648 | LB \u2192 RUN",
+      "xbox_name": "RUN"
+    },
+    "O-RPO": {
+      "name": "RPO",
+      "side": "offense",
+      "purpose": "RPO alert constraint package (Xbox name RPO on O)",
+      "when_to_arm": "Soft edge / light box",
+      "validated_status": "needs_lab",
+      "inventory": "reference",
+      "source": "Dynasty O macro notes",
+      "xbox_steps": [
+        "Custom Adjustments \u2192 Offense \u2192 Create RPO"
+      ],
+      "full_settings": {
+        "formation_hint": {
+          "value": "Gun Bunch / Pistol",
+          "status": "approx"
+        },
+        "individual_assignments": {
+          "value": "Mtn RPO Zone Alert / RPO Alert TE Flat / QB Draw",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "Read overhang \u2192 pull or give",
+          "status": "approx"
+        },
+        "notes": {
+          "value": "Distinct from D macro RPO \u2014 needs_lab",
+          "status": "confirmed"
+        },
+        "blocking": {
+          "value": "Do not overwrite stock routes; clean Mike ID and balanced blocking",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: RPO (O) \u2014 NEEDS_LAB (distinct from D macro RPO)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: RPO\n[ ] Preserve stock RPO rules \u2014 do NOT overwrite stock routes [confirmed]\n[ ] Clean Mike ID | Balanced blocking [confirmed]\n[ ] Save \u2014 Active \u22648 | LB \u2192 RPO",
+      "xbox_name": "RPO"
+    },
+    "RZ": {
+      "name": "RZ",
+      "side": "offense",
+      "purpose": "Red zone possession \u2014 compressed + run bully",
+      "when_to_arm": "Inside 20",
+      "validated_status": "needs_lab",
+      "inventory": "reference",
+      "source": "Dynasty O macro notes",
+      "xbox_steps": [
+        "Custom Adjustments \u2192 Offense \u2192 Create RZ"
+      ],
+      "full_settings": {
+        "formation_hint": {
+          "value": "Bunch / Deuce Close / Cluster",
+          "status": "confirmed"
+        },
+        "individual_assignments": {
+          "value": "Mtn Duo, HB Dive, Mesh Spot, RZ PA X Whip, Z Spot GoalLine, Z Spot Shake",
+          "status": "confirmed"
+        },
+        "user_job": {
+          "value": "Possession first",
+          "status": "confirmed"
+        },
+        "do_not": {
+          "value": "Auto-whip into C2 Invert HF",
+          "status": "confirmed"
+        },
+        "notes": {
+          "value": "needs_lab as Active; call sheet already encodes RZ",
+          "status": "confirmed"
+        },
+        "route_assignments": {
+          "value": "WR1 fade; WR2 zig; WR3 slant; TE stick nod; HB flat",
+          "status": "confirmed"
+        }
+      },
+      "copy_block": "MACRO: RZ (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: RZ\n[ ] WR1 fade | WR2 zig | WR3 slant | TE stick nod | HB flat [confirmed]\n[ ] Red zone possession \u2014 tag live whip by leverage (not auto)\n[ ] Save \u2014 Active \u22648 | LB \u2192 RZ"
+    }
+  },
+  "default_active_user": {
+    "defense": [
+      "CROSS",
+      "VERT",
+      "BUNCH",
+      "RPO",
+      "SCRAM",
+      "RUN-IN",
+      "RUN-OUT",
+      "HEAT"
+    ],
+    "offense": [],
+    "note": "Temple 8D baseline \u2014 8 D + 0 O = 8/8 Active. All eight D macros validated."
+  },
+  "swap_priority_hints": {
+    "vs_gavin": {
+      "prefer_bench": [
+        "HEAT",
+        "RUN-IN"
+      ],
+      "why": "split-field patience \u2014 rare heat; RUN-IN only high conf"
+    },
+    "vs_quen": {
+      "prefer_bench": [
+        "RUN-OUT",
+        "RUN-IN"
+      ],
+      "why": "keep CROSS/RPO/SCRAM; perimeter/downhill less primary"
+    },
+    "vs_tiano": {
+      "prefer_bench": [
+        "HEAT",
+        "VERT"
+      ],
+      "why": "GL/C2 game \u2014 keep BUNCH/CROSS/RUN-IN"
+    },
+    "default": {
+      "prefer_bench": [
+        "HEAT",
+        "RUN-OUT"
+      ],
+      "why": "HEAT selective; RUN-OUT least universal"
+    }
+  }
+}

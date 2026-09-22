@@ -23,6 +23,8 @@ from cfb_coach.tendency import (
     is_repeated_coverage,
 )
 
+from cfb_coach.macros import is_validated, prefer_validated, tag_live_macro, validation_status
+
 
 @dataclass
 class Call:
@@ -46,7 +48,18 @@ class Call:
                 self.formation, self.play, self.adj_or_macro, self.read_or_user
             )
         if self.suggest_macro:
-            line += f"\n  SUGGEST macro: {self.suggest_macro}"
+            raw = self.suggest_macro
+            # Tag leading macro token only (keep rationale suffix intact)
+            parts = raw.split(" — ", 1)
+            token = parts[0].strip().split()[0] if parts[0].strip() else raw
+            tagged = tag_live_macro(token)
+            head = parts[0].strip()
+            if head.startswith(token):
+                head = tagged + head[len(token):]
+            else:
+                head = tagged
+            sug = head + ((" — " + parts[1]) if len(parts) > 1 else "")
+            line += f"\n  SUGGEST macro: {sug}"
         return line
 
 
@@ -629,7 +642,16 @@ def _pick_defense(
         except Exception:
             pass
 
-    return Call("defense", form, play, macro or "none", user, rationale, suggest_macro=suggest)
+    macro_out = tag_live_macro(macro) if macro and macro not in ("none", "") else (macro or "none")
+    suggest_out = None
+    if suggest:
+        # Tag the macro token at the start of SUGGEST text
+        parts = suggest.split(" — ", 1)
+        head = tag_live_macro(parts[0].strip().split()[0])
+        rest = parts[0].strip().split()[1:]
+        head = " ".join([head] + rest) if rest else head
+        suggest_out = head + ((" — " + parts[1]) if len(parts) > 1 else "")
+    return Call("defense", form, play, macro_out, user, rationale, suggest_macro=suggest_out)
 
 
 def make_call(
