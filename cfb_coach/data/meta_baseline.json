@@ -596,56 +596,56 @@
         "when_to_arm": "After 2+ live Cross Wheels / crosser tells in similar D&D",
         "shell_pair": "Tampa 2 or Cover 4 Quarters",
         "user_job": "User inside cross",
-        "validated_status": "validated"
+        "validated_status": "proven"
       },
       "VERT": {
         "purpose": "Answer Four Verticals / seam stress",
         "when_to_arm": "After 2+ live Four Verticals / seam tells in similar D&D",
         "shell_pair": "Cover 4 Quarters",
         "user_job": "User #3 seam",
-        "validated_status": "validated"
+        "validated_status": "proven"
       },
       "BUNCH": {
         "purpose": "Answer compressed Mesh/Bunch rubs",
         "when_to_arm": "After repeated Mesh/Bunch compressed wins",
         "shell_pair": "Tampa 2 / hard flats",
         "user_job": "User middle",
-        "validated_status": "validated"
+        "validated_status": "proven"
       },
       "RPO": {
         "purpose": "Answer bubble/RPO alert tendency",
         "when_to_arm": "After repeated RPO bubble / alert wins",
         "shell_pair": "Cover 3 Sky",
         "user_job": "User flat/bubble",
-        "validated_status": "validated"
+        "validated_status": "proven"
       },
       "SCRAM": {
         "purpose": "Contain integrity when QB escape beats coverage carry",
         "when_to_arm": "After repeated QB scramble escapes",
         "shell_pair": "base Nickel Over + contain adj",
         "user_job": "User contain",
-        "validated_status": "validated"
+        "validated_status": "proven"
       },
       "RUN-IN": {
         "purpose": "Downhill IZ/Duo sellout",
         "when_to_arm": "After repeated downhill run AND short-yardage \u2014 never one IZ tell",
         "shell_pair": "4-3 Even 6-1",
         "user_job": "User cutback",
-        "validated_status": "validated"
+        "validated_status": "proven"
       },
       "RUN-OUT": {
         "purpose": "Perimeter stretch/toss",
         "when_to_arm": "After repeated Outside Zone / Stretch / toss",
         "shell_pair": "Cover 3 Sky",
         "user_job": "User edge",
-        "validated_status": "validated"
+        "validated_status": "proven"
       },
       "HEAT": {
         "purpose": "Selective pressure package tag",
         "when_to_arm": "3rd-short selective vs pressure-worthy archetype or repeated money-down need",
         "shell_pair": "Nickel 3-3 Cub / Double Mug",
         "user_job": "User hot",
-        "validated_status": "validated"
+        "validated_status": "proven"
       },
       "FLOOD": {
         "purpose": "Flood/levels specialty (BENCHED until stable)",
@@ -666,28 +666,28 @@
         "when_to_arm": "When Bunch mesh keeps winning vs base C3; install as custom adj",
         "shell_pair": "Tampa 2",
         "user_job": "User middle glass",
-        "validated_status": "needs_lab"
+        "validated_status": "meta_grounded"
       },
       "CONTAIN-SCRAM": {
         "purpose": "CREATE candidate \u2014 explicit contain + spy lean (patch 1.012 contain custom adj fix)",
         "when_to_arm": "When SCRAM alone is not enough vs dual-threat; use contain custom adj",
         "shell_pair": "Nickel Over C3/C4",
         "user_job": "User contain",
-        "validated_status": "needs_lab"
+        "validated_status": "meta_grounded"
       },
       "SPOT-LOCK": {
         "purpose": "CREATE candidate \u2014 lock the spot sit vs Mesh Spot spam",
         "when_to_arm": "When Mesh Spot is their primary easy throw",
         "shell_pair": "Tampa 2 / hard flats",
         "user_job": "User spot",
-        "validated_status": "needs_lab"
+        "validated_status": "meta_grounded"
       },
       "PROT": {
         "purpose": "CREATE candidate \u2014 offense-side protection/hot reminder tag (not a D macro)",
         "when_to_arm": "vs pressure-heavy archetypes (Quen) \u2014 cue Mesh Spot/Whip/HB Base",
         "shell_pair": "n/a (O adj)",
         "user_job": "Hot ready / Protection first",
-        "validated_status": "needs_lab"
+        "validated_status": "meta_grounded"
       }
     },
     "reasons": {
@@ -737,7 +737,7 @@
     "active_cap_note": "Aidan USER online-dynasty hard cap: 8 Custom Adjustments O+D combined. EA UI may show 10 \u2014 honor 8. CPU may note separately; default still 8. In-game: LB opens Active macros. Path: Create & Share \u2192 Custom Adjustments.",
     "catalog": "macro_catalog.json",
     "validation": {
-      "validated": [
+      "proven": [
         "CROSS",
         "VERT",
         "BUNCH",
@@ -747,7 +747,7 @@
         "RUN-OUT",
         "HEAT"
       ],
-      "needs_lab": [
+      "meta_grounded": [
         "GLASS",
         "CONTAIN-SCRAM",
         "SPOT-LOCK",
@@ -756,11 +756,12 @@
       "unvalidated": [
         "FLOOD",
         "SCREEN"
-      ]
+      ],
+      "failed": []
     }
   },
   "meta_notes": [
-    "v1.4: USER Active Custom Adjustments hard-capped at 8 O+D (Aidan). Click-to-copy macros in prep browser. Validation badges validated|needs_lab|unvalidated.",
+    "v1.4.1: USER Active Custom Adjustments hard-capped at 8 O+D (Aidan). Click-to-copy macros in prep browser. Validation badges proven|meta_grounded|failed|unvalidated. Workflow: bring meta_grounded into game \u2192 if cooked, postgame adjust \u2192 if holds, mark proven.",
     "CFB27 (2026-09): Bunch is the passing meta \u2014 Gun Bunch X Nasty (Wazzu/OSU-style) primary; Gun Cluster changeup when Bunch overplayed.",
     "Offense families: mesh / spot / flood. Run first vs Cover 6 / Cover 9 / Quarters. Mesh Spot + Whip vs pressure. RZ = compressed + possession.",
     "Defense: Nickel Over zones home. Cover 6/9 awareness (common user shell \u2014 force runs). Tampa 2 / hard flats vs mesh/cross. Selective 3-3 Cub / Mug pressure. Even 6-1 short yardage. Dime on true long.",

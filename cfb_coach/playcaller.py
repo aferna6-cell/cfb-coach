@@ -23,7 +23,7 @@ from cfb_coach.tendency import (
     is_repeated_coverage,
 )
 
-from cfb_coach.macros import is_validated, prefer_validated, tag_live_macro, validation_status
+from cfb_coach.macros import tag_live_macro
 
 
 @dataclass

@@ -28,6 +28,15 @@ DB seeds on first run to `~/.cfb-coach/coach.db` (fallback: `/workspace/cfb-coac
 
 Prep HTML writes to `~/.cfb-coach/prep_<opponent>.html` (same data dir as the DB).
 
+**Browser open (Linux/WSL):** `prep` tries `webbrowser` → `xdg-open`, then on WSL (`/proc/version` contains Microsoft, or `WSL_DISTRO_NAME` set): `wslview <path>` → `explorer.exe $(wslpath -w <path>)` → prints the Windows path for manual open. Use `--no-open` to skip and only write the file.
+
+```bash
+PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
+# then open manually, e.g.:
+#   wslview ~/.cfb-coach/prep_cpu.html
+#   explorer.exe $(wslpath -w ~/.cfb-coach/prep_cpu.html)
+```
+
 ## Commands
 
 | Command | Purpose |
@@ -44,7 +53,7 @@ Prep HTML writes to `~/.cfb-coach/prep_<opponent>.html` (same data dir as the DB
 
 Opponent aliases: ids (`gavin`), display names (`Gavin`), teams (`Auburn`, `Houston`, `SMU`, …).
 
-## Prep = diffs only (v1.4)
+## Prep = diffs only (v1.4.1)
 
 Inventory (seed playbooks + 8 active / 2 benched macros) is the **already-stocked** book. Prep never says CREATE BAMA META O/D from scratch or re-ADD all 8 macros.
 
@@ -55,16 +64,19 @@ Inventory (seed playbooks + 8 active / 2 benched macros) is the **already-stocke
 - `--mark-applied` persists applied deltas so the next prep only shows NEW changes
 
 
-## Macros — 8-cap, click-to-copy, validation (v1.4)
+## Macros — 8-cap, click-to-copy, validation (v1.4.1)
 
 - **USER Active hard cap = 8** Custom Adjustments across **Offense + Defense combined** (Aidan rule for online dynasty). EA's UI may advertise 10 — honor **8**.
 - Path: **Create & Share → Custom Adjustments → Offense/Defense** → edit/save → set Active → in-game **LB** to use.
 - Prep browser: macros are **clickable accordion** cards. Expand to see full desired settings + **Copy** button (`<pre>` checklist exact enough to rebuild the Custom Adjustments screen). Tick labels marked `confirmed` vs `approx`.
 - If prep proposes **ADD** while already at 8/8: shows an exact **swap plan** (which Active macro to deactivate) with Xbox steps.
-- Validation badges on playbook deltas + live call suggestions: `validated` | `needs_lab` | `unvalidated`.
-  - Temple 8D baseline (CROSS VERT BUNCH RPO SCRAM RUN-IN RUN-OUT HEAT) = **validated**.
-  - CREATE candidates (GLASS, CONTAIN-SCRAM, SPOT-LOCK, PROT, O macros) = **needs_lab**.
-  - Live caller prefers validated inventory; tags `needs_lab` / `unvalidated` when suggesting others.
+- Validation badges on playbook deltas + live call suggestions: `proven` | `meta_grounded` | `failed` | `unvalidated`.
+  - Temple 8D baseline (CROSS VERT BUNCH RPO SCRAM RUN-IN RUN-OUT HEAT) = **proven** (survived his games).
+  - CREATE candidates grounded in CFB27 meta (GLASS, CONTAIN-SCRAM, SPOT-LOCK, PROT, O macros) = **meta_grounded** — OK to bring into game.
+  - **failed** / cooking — got cooked; demote via postgame.
+  - Prep deltas only include tweaks that are at least **meta_grounded** (no ungrounded invention).
+  - Live caller prefers proven inventory; tags `meta_grounded` / `failed` / `unvalidated` when suggesting others.
+- **Workflow:** bring a suggested macro into game → if cooked, adjust via postgame → if it holds, mark **proven**.
 - Catalog: `cfb_coach/data/macro_catalog.json` (full_settings + copy_block per macro).
 
 ## Live call syntax (UX lock)
@@ -185,4 +197,4 @@ PYTHONPATH=. python3 -m cfb_coach postgame --opponent gavin
 
 HTML for Gavin must **not** say CREATE whole custom books or ADD all 8 macros from scratch — only opponent-specific edits. Ryan (thin) may show zero or minimal deltas.
 
-v1.4 smoke: Gavin HTML has clickable **CROSS** with full copy block; if ADD PROT/CONTAIN-SCRAM while 8D Active, shows which D macro to bench + exact Xbox steps. No full-book recreate.
+v1.4.1 smoke: `prep --opponent cpu --no-open` writes HTML without opening. Gavin HTML has clickable **CROSS** (proven) with full copy block; ADD PROT/CONTAIN-SCRAM (meta_grounded) while 8D Active shows which D macro to bench + Xbox steps. Badges are proven/meta_grounded/failed — no scary needs_lab. No full-book recreate.

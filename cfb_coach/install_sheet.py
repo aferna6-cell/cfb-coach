@@ -2,7 +2,8 @@
 
 Assumes BAMA META O/D are already fully stocked with every formation/play in seed.json
 and the 8 active + 2 benched macros. Prep never asks to CREATE books or re-ADD all macros.
-Only opponent-specific ADD/REMOVE/EDIT/BENCH/UNBENCH deltas are emitted.
+Only opponent-specific ADD/REMOVE/EDIT/BENCH/UNBENCH deltas are emitted,
+and only when at least meta_grounded (CFB27 meta + film) — no ungrounded invention.
 """
 
 from __future__ import annotations
@@ -16,12 +17,15 @@ from cfb_coach.db import CoachDB
 from cfb_coach.gameplan import effective_gameplan, load_baseline
 from cfb_coach.seed import load_seed
 from cfb_coach.macros import (
+    META_GROUNDED,
     USER_ACTIVE_CAP,
     catalog_inventory_cards,
     count_active,
     enrich_macro_delta,
     get_macro,
+    is_prep_eligible,
     load_macro_catalog,
+    normalize_status,
     validation_status,
 )
 
@@ -414,10 +418,14 @@ def propose_deltas(
             if e.get("detail") and d.get("action") == "ADD":
                 d["detail"] = e["detail"]
         else:
-            # Playbook deltas — mark validation
+            # Playbook deltas — opponent film/meta overlays are at least meta_grounded
             d = dict(d)
-            d["validated_status"] = d.get("validated_status") or "unvalidated"
-        enriched.append(d)
+            d["validated_status"] = normalize_status(
+                d.get("validated_status") or META_GROUNDED
+            )
+        # Prep must ONLY suggest ≥ meta_grounded (no ungrounded invention)
+        if is_prep_eligible(str(d.get("validated_status") or "")):
+            enriched.append(d)
     return enriched
 
 
@@ -643,7 +651,7 @@ def format_delta_text(plan: dict[str, Any]) -> str:
         if not mac:
             lines.append("  (none)")
         for d in mac:
-            badge = d.get("validated_status") or validation_status(d.get("target", ""))
+            badge = normalize_status(d.get("validated_status") or validation_status(d.get("target", "")))
             lines.append(
                 f"  [{d['action']}] {d['target']}"
                 + (f" · {d['field']}" if d.get("field") else "")

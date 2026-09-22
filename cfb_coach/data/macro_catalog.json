@@ -1,5 +1,5 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "game": "CFB 27",
   "platform": "Xbox",
   "active_cap": {
@@ -27,7 +27,7 @@
       "side": "defense",
       "purpose": "Anti-cross / high-low Cross Wheels \u2014 Tampa/Mable lean with deeper flats",
       "when_to_arm": "After 2+ live Cross Wheels / crosser tells in similar D&D",
-      "validated_status": "validated",
+      "validated_status": "proven",
       "inventory": "active",
       "source": "Temple 8D baseline",
       "xbox_steps": [
@@ -99,14 +99,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: CROSS (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: CROSS\n[ ] Base shell: Tampa 2 (Mable/Tampa) \u2014 Nickel Over  [confirmed]\n[ ] Alt shell OK: Cover 4 Quarters if they clear middle\n[ ] Zone drop FLATS: deeper ~15\u201320 (anti-cross)  [confirmed intent]\n[ ] Zone drop CURLS: shallow (curl defenders under cross)  [confirmed intent]\n[ ] CB shade: UNDERNEATH  [approx]\n[ ] CB depth: Normal \u2192 slight OFF  [approx]\n[ ] Safety depth: Normal | Width: slight PINCH | Midpoint: balanced  [approx]\n[ ] QB Contain: OFF\n[ ] Show Pressure / Cub-Mug: OFF\n[ ] Smart Zone: ON if present  [approx]\n[ ] Match checks: Stress or Box vs crossers  [approx]\n[ ] Plaster: OFF\n[ ] Save \u2192 set ACTIVE (counts in 8 O+D)\n[ ] In-game: LB \u2192 CROSS | User JOB = inside cross\n\nDO NOT: arm on one tell; soft C3 flats\nWHEN: after 2+ live Cross Wheels / crosser tells"
+      "copy_block": "MACRO: CROSS (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: CROSS\n[ ] Base shell: Tampa 2 (Mable/Tampa) \u2014 Nickel Over  [confirmed]\n[ ] Alt shell OK: Cover 4 Quarters if they clear middle\n[ ] Zone drop FLATS: deeper ~15\u201320 (anti-cross)  [confirmed intent]\n[ ] Zone drop CURLS: shallow (curl defenders under cross)  [confirmed intent]\n[ ] CB shade: UNDERNEATH  [approx]\n[ ] CB depth: Normal \u2192 slight OFF  [approx]\n[ ] Safety depth: Normal | Width: slight PINCH | Midpoint: balanced  [approx]\n[ ] QB Contain: OFF\n[ ] Show Pressure / Cub-Mug: OFF\n[ ] Smart Zone: ON if present  [approx]\n[ ] Match checks: Stress or Box vs crossers  [approx]\n[ ] Plaster: OFF\n[ ] Save \u2192 set ACTIVE (counts in 8 O+D)\n[ ] In-game: LB \u2192 CROSS | User JOB = inside cross\n\nDO NOT: arm on one tell; soft C3 flats\nWHEN: after 2+ live Cross Wheels / crosser tells"
     },
     "VERT": {
       "name": "VERT",
       "side": "defense",
       "purpose": "Answer Four Verticals / seam stress",
       "when_to_arm": "After 2+ live Four Verticals / seam tells in similar D&D",
-      "validated_status": "validated",
+      "validated_status": "proven",
       "inventory": "active",
       "source": "Temple 8D baseline",
       "xbox_steps": [
@@ -177,14 +177,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: VERT (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: VERT\n[ ] Base shell: Cover 4 Quarters \u2014 Nickel Over\n[ ] CB shade: OVERTOP / outside on seams [approx]\n[ ] Zone drop FLATS: 8\u201312 [approx]\n[ ] Zone drop CURLS: 10\u201312 [approx]\n[ ] CB depth: OFF / cushion [approx]\n[ ] Safety depth: DEEP | Width: Quarters split | Midpoint: balanced [approx]\n[ ] QB Contain: OFF (default)\n[ ] Show Pressure: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Match: Solo/Skate vs seam [approx]\n[ ] Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 VERT | User JOB = #3 seam\n\nWHEN: after 2+ live Four Verts / seam tells"
+      "copy_block": "MACRO: VERT (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: VERT\n[ ] Base shell: Cover 4 Quarters \u2014 Nickel Over\n[ ] CB shade: OVERTOP / outside on seams [approx]\n[ ] Zone drop FLATS: 8\u201312 [approx]\n[ ] Zone drop CURLS: 10\u201312 [approx]\n[ ] CB depth: OFF / cushion [approx]\n[ ] Safety depth: DEEP | Width: Quarters split | Midpoint: balanced [approx]\n[ ] QB Contain: OFF (default)\n[ ] Show Pressure: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Match: Solo/Skate vs seam [approx]\n[ ] Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 VERT | User JOB = #3 seam\n\nWHEN: after 2+ live Four Verts / seam tells"
     },
     "BUNCH": {
       "name": "BUNCH",
       "side": "defense",
       "purpose": "Answer compressed Mesh/Bunch rubs \u2014 mesh checks + hard flats lean",
       "when_to_arm": "After repeated Mesh/Bunch compressed wins",
-      "validated_status": "validated",
+      "validated_status": "proven",
       "inventory": "active",
       "source": "Temple 8D baseline",
       "xbox_steps": [
@@ -255,14 +255,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: BUNCH (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: BUNCH\n[ ] Base shell: Tampa 2 / hard flats \u2014 Nickel Over\n[ ] CB shade: INSIDE on bunch side [approx]\n[ ] Zone drop FLATS: 0\u20135 HARD [approx]\n[ ] Zone drop CURLS: 8\u201310 [approx]\n[ ] CB depth: Press/short on wing if available else Normal [approx]\n[ ] Safety: Normal depth | slight PINCH to bunch [approx]\n[ ] Match checks: Box / Stress vs mesh [approx UI names]\n[ ] Smart Zone: ON [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 BUNCH | User JOB = middle\n\nWHEN: after repeated Mesh/Bunch compressed wins"
+      "copy_block": "MACRO: BUNCH (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: BUNCH\n[ ] Base shell: Tampa 2 / hard flats \u2014 Nickel Over\n[ ] CB shade: INSIDE on bunch side [approx]\n[ ] Zone drop FLATS: 0\u20135 HARD [approx]\n[ ] Zone drop CURLS: 8\u201310 [approx]\n[ ] CB depth: Press/short on wing if available else Normal [approx]\n[ ] Safety: Normal depth | slight PINCH to bunch [approx]\n[ ] Match checks: Box / Stress vs mesh [approx UI names]\n[ ] Smart Zone: ON [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 BUNCH | User JOB = middle\n\nWHEN: after repeated Mesh/Bunch compressed wins"
     },
     "RPO": {
       "name": "RPO",
       "side": "defense",
       "purpose": "Answer bubble / RPO alert \u2014 hard flats",
       "when_to_arm": "After repeated RPO bubble / alert wins",
-      "validated_status": "validated",
+      "validated_status": "proven",
       "inventory": "active",
       "source": "Temple 8D baseline",
       "xbox_steps": [
@@ -332,14 +332,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: RPO (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RPO\n[ ] Base shell: Cover 3 Sky \u2014 Nickel Over\n[ ] Zone drop FLATS: 0\u20135 HARD [approx]\n[ ] Zone drop CURLS: ~10 [approx]\n[ ] CB/overhang: CLOSE to LOS on bubble side [approx]\n[ ] Shade: OUTSIDE / flat leverage [approx]\n[ ] Safety: C3 landmarks [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 RPO | User JOB = flat/bubble\n\nWHEN: after repeated bubble/RPO alert wins"
+      "copy_block": "MACRO: RPO (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RPO\n[ ] Base shell: Cover 3 Sky \u2014 Nickel Over\n[ ] Zone drop FLATS: 0\u20135 HARD [approx]\n[ ] Zone drop CURLS: ~10 [approx]\n[ ] CB/overhang: CLOSE to LOS on bubble side [approx]\n[ ] Shade: OUTSIDE / flat leverage [approx]\n[ ] Safety: C3 landmarks [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 RPO | User JOB = flat/bubble\n\nWHEN: after repeated bubble/RPO alert wins"
     },
     "SCRAM": {
       "name": "SCRAM",
       "side": "defense",
       "purpose": "Contain integrity when QB escape beats coverage carry \u2014 contain + plaster",
       "when_to_arm": "After repeated QB scramble escapes",
-      "validated_status": "validated",
+      "validated_status": "proven",
       "inventory": "active",
       "source": "Temple 8D baseline",
       "xbox_steps": [
@@ -409,14 +409,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: SCRAM (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: SCRAM\n[ ] Base shell: Nickel Over C3 Sky or C4 Quarters (keep coverage)\n[ ] QB Contain: ON  \u2190 confirmed (1.012 contain adj)\n[ ] Plaster: ON  \u2190 confirmed intent\n[ ] Edge/DE: CONTAIN (no wild upfield) [approx tick]\n[ ] Flats/Curls/Shade: match called shell defaults\n[ ] Show Pressure: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 SCRAM | User JOB = contain\n\nWHEN: after repeated QB scramble escapes\nNOTE: if still escaping, lab CONTAIN-SCRAM (needs_lab)"
+      "copy_block": "MACRO: SCRAM (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: SCRAM\n[ ] Base shell: Nickel Over C3 Sky or C4 Quarters (keep coverage)\n[ ] QB Contain: ON  \u2190 confirmed (1.012 contain adj)\n[ ] Plaster: ON  \u2190 confirmed intent\n[ ] Edge/DE: CONTAIN (no wild upfield) [approx tick]\n[ ] Flats/Curls/Shade: match called shell defaults\n[ ] Show Pressure: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 SCRAM | User JOB = contain\n\nWHEN: after repeated QB scramble escapes\nNOTE: if still escaping, lab CONTAIN-SCRAM (meta_grounded)"
     },
     "RUN-IN": {
       "name": "RUN-IN",
       "side": "defense",
       "purpose": "Downhill IZ/Duo sellout \u2014 pinch / Even 6-1",
       "when_to_arm": "After repeated downhill run AND short-yardage \u2014 never one IZ tell",
-      "validated_status": "validated",
+      "validated_status": "proven",
       "inventory": "active",
       "source": "Temple 8D baseline",
       "xbox_steps": [
@@ -486,14 +486,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: RUN-IN (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RUN-IN\n[ ] Pair with package: 4-3 Even 6-1\n[ ] Coverage lean: Cover 3 Buzz (alt C4/Tampa)\n[ ] DL: PINCH [confirmed intent]\n[ ] Front: Even 6-1 gap integrity\n[ ] Safety depth: closer (run support) | Width: pinch [approx]\n[ ] Shade: inside / gap [approx]\n[ ] QB Contain: OFF (default) | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: Even 6-1 call \u2192 LB \u2192 RUN-IN | User JOB = cutback\n\nWHEN: repeated downhill + short \u2014 NEVER one IZ tell\nGL: heavy OK but do NOT sell out run (Z Smash)"
+      "copy_block": "MACRO: RUN-IN (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RUN-IN\n[ ] Pair with package: 4-3 Even 6-1\n[ ] Coverage lean: Cover 3 Buzz (alt C4/Tampa)\n[ ] DL: PINCH [confirmed intent]\n[ ] Front: Even 6-1 gap integrity\n[ ] Safety depth: closer (run support) | Width: pinch [approx]\n[ ] Shade: inside / gap [approx]\n[ ] QB Contain: OFF (default) | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: Even 6-1 call \u2192 LB \u2192 RUN-IN | User JOB = cutback\n\nWHEN: repeated downhill + short \u2014 NEVER one IZ tell\nGL: heavy OK but do NOT sell out run (Z Smash)"
     },
     "RUN-OUT": {
       "name": "RUN-OUT",
       "side": "defense",
       "purpose": "Perimeter stretch / toss \u2014 edge integrity",
       "when_to_arm": "After repeated Outside Zone / Stretch / toss",
-      "validated_status": "validated",
+      "validated_status": "proven",
       "inventory": "active",
       "source": "Temple 8D baseline",
       "xbox_steps": [
@@ -563,14 +563,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: RUN-OUT (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RUN-OUT\n[ ] Base shell: Cover 3 Sky \u2014 Nickel Over\n[ ] DL: SPREAD / edge set (force bounce) [confirmed intent]\n[ ] Shade: outside leverage perimeter [approx]\n[ ] Flats: 5\u20138 (toss/bubble ready) [approx]\n[ ] Safety width: to stretch side [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 RUN-OUT | User JOB = edge\n\nWHEN: after repeated OZ / Stretch / toss"
+      "copy_block": "MACRO: RUN-OUT (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RUN-OUT\n[ ] Base shell: Cover 3 Sky \u2014 Nickel Over\n[ ] DL: SPREAD / edge set (force bounce) [confirmed intent]\n[ ] Shade: outside leverage perimeter [approx]\n[ ] Flats: 5\u20138 (toss/bubble ready) [approx]\n[ ] Safety width: to stretch side [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 RUN-OUT | User JOB = edge\n\nWHEN: after repeated OZ / Stretch / toss"
     },
     "HEAT": {
       "name": "HEAT",
       "side": "defense",
       "purpose": "Selective pressure \u2014 show Cub/Mug",
       "when_to_arm": "3rd-short selective vs pressure-worthy archetype or repeated money-down need",
-      "validated_status": "validated",
+      "validated_status": "proven",
       "inventory": "active",
       "source": "Temple 8D baseline",
       "xbox_steps": [
@@ -640,7 +640,7 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: HEAT (D) \u2014 VALIDATED Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: HEAT\n[ ] Pair packages: Nickel 3-3 Cub / Nickel Double Mug\n[ ] Show Pressure: ON \u2014 Cub/Mug [confirmed]\n[ ] Coverage behind: Cover 0 / Cover 1 lean (know the play call) [approx]\n[ ] CB: Press if man [approx]\n[ ] Assign contain rusher if scramble risk [approx]\n[ ] Plaster: OFF | Smart Zone: per blitz type\n[ ] Save \u2192 ACTIVE\n[ ] In-game: Cub/Mug call \u2192 LB \u2192 HEAT | User JOB = hot\n\nWHEN: 3rd-short selective ONLY \u2014 not every snap"
+      "copy_block": "MACRO: HEAT (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: HEAT\n[ ] Pair packages: Nickel 3-3 Cub / Nickel Double Mug\n[ ] Show Pressure: ON \u2014 Cub/Mug [confirmed]\n[ ] Coverage behind: Cover 0 / Cover 1 lean (know the play call) [approx]\n[ ] CB: Press if man [approx]\n[ ] Assign contain rusher if scramble risk [approx]\n[ ] Plaster: OFF | Smart Zone: per blitz type\n[ ] Save \u2192 ACTIVE\n[ ] In-game: Cub/Mug call \u2192 LB \u2192 HEAT | User JOB = hot\n\nWHEN: 3rd-short selective ONLY \u2014 not every snap"
     },
     "FLOOD": {
       "name": "FLOOD",
@@ -800,7 +800,7 @@
       "side": "defense",
       "purpose": "Soft zone glass vs Bunch mesh (hard flats + Tampa lean)",
       "when_to_arm": "When Bunch mesh keeps winning vs base C3; install as custom adj",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "create_candidate",
       "source": "CREATE candidate",
       "xbox_steps": [
@@ -868,18 +868,18 @@
           "status": "confirmed"
         },
         "notes": {
-          "value": "CREATE \u2014 needs_lab before trusting live",
+          "value": "CREATE \u2014 meta_grounded \u2014 OK to bring into game live",
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: GLASS (D) \u2014 NEEDS_LAB (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: GLASS\n[ ] Base: Tampa 2 \u2014 Nickel Over\n[ ] Flats: 0\u20135 HARD | Curls glass ~10\u201312 [approx]\n[ ] Shade: UNDERNEATH [approx]\n[ ] Smart Zone + mesh checks [approx]\n[ ] QB Contain OFF | Show Pressure OFF | Plaster OFF\n[ ] Save \u2014 Active ONLY via swap (\u22648 O+D)\n[ ] User JOB = middle glass\n\nTAG live calls [needs_lab] until validated"
+      "copy_block": "MACRO: GLASS (D) \u2014 META_GROUNDED (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: GLASS\n[ ] Base: Tampa 2 \u2014 Nickel Over\n[ ] Flats: 0\u20135 HARD | Curls glass ~10\u201312 [approx]\n[ ] Shade: UNDERNEATH [approx]\n[ ] Smart Zone + mesh checks [approx]\n[ ] QB Contain OFF | Show Pressure OFF | Plaster OFF\n[ ] Save \u2014 Active ONLY via swap (\u22648 O+D)\n[ ] User JOB = middle glass\n\nTAG live calls [meta_grounded] until proven"
     },
     "CONTAIN-SCRAM": {
       "name": "CONTAIN-SCRAM",
       "side": "defense",
       "purpose": "Explicit contain + spy lean (stricter SCRAM twin; 1.012 contain fix)",
       "when_to_arm": "When SCRAM alone is not enough vs dual-threat",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "create_candidate",
       "source": "CREATE candidate",
       "xbox_steps": [
@@ -946,18 +946,18 @@
           "status": "confirmed"
         },
         "notes": {
-          "value": "CREATE twin of SCRAM \u2014 needs_lab",
+          "value": "CREATE twin of SCRAM \u2014 meta_grounded",
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: CONTAIN-SCRAM (D) \u2014 NEEDS_LAB (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: CONTAIN-SCRAM\n[ ] Base: Nickel Over C3 or C4\n[ ] QB Contain: ON [confirmed 1.012]\n[ ] Plaster: ON [approx]\n[ ] Both edges CONTAIN + spy lean [approx]\n[ ] Show Pressure: OFF\n[ ] Save \u2014 Active via SWAP only if at 8\n[ ] User JOB = contain\n\nPrefer validated SCRAM live until lab passes"
+      "copy_block": "MACRO: CONTAIN-SCRAM (D) \u2014 META_GROUNDED (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: CONTAIN-SCRAM\n[ ] Base: Nickel Over C3 or C4\n[ ] QB Contain: ON [confirmed 1.012]\n[ ] Plaster: ON [approx]\n[ ] Both edges CONTAIN + spy lean [approx]\n[ ] Show Pressure: OFF\n[ ] Save \u2014 Active via SWAP only if at 8\n[ ] User JOB = contain\n\nPrefer proven SCRAM live until proven in-game"
     },
     "SPOT-LOCK": {
       "name": "SPOT-LOCK",
       "side": "defense",
       "purpose": "Lock the spot sit vs Mesh Spot spam",
       "when_to_arm": "When Mesh Spot is their primary easy throw",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "create_candidate",
       "source": "CREATE candidate",
       "xbox_steps": [
@@ -1018,22 +1018,22 @@
           "status": "approx"
         },
         "do_not": {
-          "value": "needs_lab; swap at 8",
+          "value": "meta_grounded; swap at 8",
           "status": "confirmed"
         },
         "notes": {
-          "value": "CREATE \u2014 needs_lab",
+          "value": "CREATE \u2014 meta_grounded",
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: SPOT-LOCK (D) \u2014 NEEDS_LAB (CREATE)\nTampa/hard flats | Curls on spot landmark ~8\u201310 [approx]\nUser JOB = spot | Active only via swap at 8"
+      "copy_block": "MACRO: SPOT-LOCK (D) \u2014 META_GROUNDED (CREATE)\nTampa/hard flats | Curls on spot landmark ~8\u201310 [approx]\nUser JOB = spot | Active only via swap at 8"
     },
     "PROT": {
       "name": "PROT",
       "side": "offense",
       "purpose": "Protection / hot reminder tag vs pressure",
       "when_to_arm": "vs pressure-heavy archetypes (Quen) \u2014 cue Mesh Spot/Whip/HB Base",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "create_candidate",
       "source": "CREATE candidate (O)",
       "xbox_steps": [
@@ -1080,7 +1080,7 @@
           "status": "confirmed"
         },
         "do_not": {
-          "value": "Do not hero deep vs Sam/Will/WS; needs_lab as Active macro",
+          "value": "Do not hero deep vs Sam/Will/WS; meta_grounded as Active macro",
           "status": "confirmed"
         },
         "notes": {
@@ -1096,14 +1096,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: PROT (O) \u2014 NEEDS_LAB (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: PROT\n[ ] Intent: protection / hot cue (not a coverage)\n[ ] Protection: Max protect / slide to heat [approx UI]\n[ ] Hot answers reminder:\n    - Mesh Spot (primary)\n    - Return Whip Trail (secondary)\n    - HB Base (if pressure sellout)\n[ ] Save \u2014 Active counts in 8 O+D (swap a D if at 8)\n[ ] In-game: LB \u2192 PROT before snap | Hot ready\n\nTAG [needs_lab] until lab-validated"
+      "copy_block": "MACRO: PROT (O) \u2014 META_GROUNDED (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: PROT\n[ ] Intent: protection / hot cue (not a coverage)\n[ ] Protection: Max protect / slide to heat [approx UI]\n[ ] Hot answers reminder:\n    - Mesh Spot (primary)\n    - Return Whip Trail (secondary)\n    - HB Base (if pressure sellout)\n[ ] Save \u2014 Active counts in 8 O+D (swap a D if at 8)\n[ ] In-game: LB \u2192 PROT before snap | Hot ready\n\nTAG [meta_grounded] until proven in-game"
     },
     "O-HEAT": {
       "name": "HEAT",
       "side": "offense",
       "purpose": "Normal blitz pressure answer (O)",
       "when_to_arm": "When needing hot menu vs blitz-heavy looks",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes (not Temple-active; Temple = 0 O)",
       "xbox_steps": [
@@ -1133,7 +1133,7 @@
           "status": "confirmed"
         },
         "notes": {
-          "value": "Notes list HEAT among O macros \u2014 needs_lab",
+          "value": "Notes list HEAT among O macros \u2014 meta_grounded",
           "status": "confirmed"
         },
         "protection": {
@@ -1145,7 +1145,7 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: HEAT (O) \u2014 NEEDS_LAB (designed; Temple kept 0 O Active)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: HEAT\n[ ] Protection: Base protection [confirmed notes]\n[ ] WR1: streak\n[ ] WR2: zig\n[ ] WR3: drag\n[ ] TE: chip-and-release\n[ ] HB: block-and-release\n[ ] Save \u2014 Active counts in 8 O+D (swap a D if already 8/8)\n[ ] In-game: LB \u2192 HEAT\nTAG [needs_lab] until lab-validated",
+      "copy_block": "MACRO: HEAT (O) \u2014 META_GROUNDED (designed; Temple kept 0 O Active)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: HEAT\n[ ] Protection: Base protection [confirmed notes]\n[ ] WR1: streak\n[ ] WR2: zig\n[ ] WR3: drag\n[ ] TE: chip-and-release\n[ ] HB: block-and-release\n[ ] Save \u2014 Active counts in 8 O+D (swap a D if already 8/8)\n[ ] In-game: LB \u2192 HEAT\nTAG [meta_grounded] until proven in-game",
       "xbox_name": "HEAT"
     },
     "ZERO": {
@@ -1153,7 +1153,7 @@
       "side": "offense",
       "purpose": "vs Cover 0 / all-out \u2014 immediate hot + max protect",
       "when_to_arm": "Confirmed Cover 0 / empty blitz",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
@@ -1177,7 +1177,7 @@
           "status": "approx"
         },
         "notes": {
-          "value": "needs_lab",
+          "value": "meta_grounded",
           "status": "confirmed"
         },
         "protection": {
@@ -1189,14 +1189,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: ZERO (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: ZERO\n[ ] Protection: Max protect [confirmed]\n[ ] WR1 streak | WR2 zig | WR3 slant [confirmed]\n[ ] Save \u2014 Active \u22648 O+D | In-game LB \u2192 ZERO"
+      "copy_block": "MACRO: ZERO (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: ZERO\n[ ] Protection: Max protect [confirmed]\n[ ] WR1 streak | WR2 zig | WR3 slant [confirmed]\n[ ] Save \u2014 Active \u22648 O+D | In-game LB \u2192 ZERO"
     },
     "MAN": {
       "name": "MAN",
       "side": "offense",
       "purpose": "vs man coverage \u2014 rubs / mesh / stacks",
       "when_to_arm": "Confirmed man / Cover 1",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
@@ -1216,7 +1216,7 @@
           "status": "approx"
         },
         "notes": {
-          "value": "needs_lab",
+          "value": "meta_grounded",
           "status": "confirmed"
         },
         "route_assignments": {
@@ -1224,14 +1224,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: MAN (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: MAN\n[ ] WR1 deep cross | WR2 zig | WR3 short cross | TE wheel | HB Texas [confirmed]\n[ ] Save \u2014 Active \u22648 O+D | LB \u2192 MAN"
+      "copy_block": "MACRO: MAN (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: MAN\n[ ] WR1 deep cross | WR2 zig | WR3 short cross | TE wheel | HB Texas [confirmed]\n[ ] Save \u2014 Active \u22648 O+D | LB \u2192 MAN"
     },
     "C3": {
       "name": "C3",
       "side": "offense",
       "purpose": "vs Cover 3 \u2014 flood / high-low",
       "when_to_arm": "Confirmed Cover 3 Sky",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
@@ -1251,7 +1251,7 @@
           "status": "approx"
         },
         "notes": {
-          "value": "needs_lab \u2014 not vs C6/C9",
+          "value": "meta_grounded \u2014 not vs C6/C9",
           "status": "confirmed"
         },
         "route_assignments": {
@@ -1259,14 +1259,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: C3 (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: C3\n[ ] WR1 streak | WR2 corner | WR3 flat | TE drag [confirmed]\n[ ] vs spot-drop Cover 3 \u2014 NOT vs C6/C9/Quarters\n[ ] Save \u2014 Active \u22648 | LB \u2192 C3"
+      "copy_block": "MACRO: C3 (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: C3\n[ ] WR1 streak | WR2 corner | WR3 flat | TE drag [confirmed]\n[ ] vs spot-drop Cover 3 \u2014 NOT vs C6/C9/Quarters\n[ ] Save \u2014 Active \u22648 | LB \u2192 C3"
     },
     "C2": {
       "name": "C2",
       "side": "offense",
       "purpose": "vs Cover 2 / Invert Hard Flat \u2014 soft underneath",
       "when_to_arm": "Confirmed C2 / Invert HF",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
@@ -1290,7 +1290,7 @@
           "status": "confirmed"
         },
         "notes": {
-          "value": "needs_lab but reads match META",
+          "value": "meta_grounded but reads match META",
           "status": "confirmed"
         },
         "route_assignments": {
@@ -1298,14 +1298,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: C2 (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: C2\n[ ] WR1 streak | WR2 corner | WR3 post | TE slot fade | HB flat [confirmed]\n[ ] Soft lean Mesh Spot/IZ live if Invert Hard Flat film \u2014 avoid blind Whip\n[ ] Save \u2014 Active \u22648 | LB \u2192 C2"
+      "copy_block": "MACRO: C2 (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: C2\n[ ] WR1 streak | WR2 corner | WR3 post | TE slot fade | HB flat [confirmed]\n[ ] Soft lean Mesh Spot/IZ live if Invert Hard Flat film \u2014 avoid blind Whip\n[ ] Save \u2014 Active \u22648 | LB \u2192 C2"
     },
     "MATCH": {
       "name": "MATCH",
       "side": "offense",
       "purpose": "vs match/Quarters \u2014 run first + easy sit",
       "when_to_arm": "Cover 4 / Palms / match looks",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
@@ -1325,7 +1325,7 @@
           "status": "approx"
         },
         "notes": {
-          "value": "needs_lab",
+          "value": "meta_grounded",
           "status": "confirmed"
         },
         "route_assignments": {
@@ -1333,14 +1333,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: MATCH (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: MATCH\n[ ] WR1 post | WR2 deep cross | WR3 drag | TE streak | HB Texas [confirmed]\n[ ] vs Match/Quarters/Palms \u2014 still RUN FIRST early\n[ ] Save \u2014 Active \u22648 | LB \u2192 MATCH"
+      "copy_block": "MACRO: MATCH (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: MATCH\n[ ] WR1 post | WR2 deep cross | WR3 drag | TE streak | HB Texas [confirmed]\n[ ] vs Match/Quarters/Palms \u2014 still RUN FIRST early\n[ ] Save \u2014 Active \u22648 | LB \u2192 MATCH"
     },
     "SHOT": {
       "name": "SHOT",
       "side": "offense",
       "purpose": "Scheduled shot / PA \u2014 not every drive",
       "when_to_arm": "After establishing run + soft coverage tell",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
@@ -1364,7 +1364,7 @@
           "status": "approx"
         },
         "notes": {
-          "value": "needs_lab",
+          "value": "meta_grounded",
           "status": "confirmed"
         },
         "protection": {
@@ -1376,14 +1376,14 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: SHOT (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: SHOT\n[ ] WR1 sluggo | WR2 deep cross | WR3 streak [confirmed]\n[ ] TE pass block | HB chip-and-release [confirmed]\n[ ] One scheduled shot after run established \u2014 not every drive\n[ ] Save \u2014 Active \u22648 | LB \u2192 SHOT"
+      "copy_block": "MACRO: SHOT (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: SHOT\n[ ] WR1 sluggo | WR2 deep cross | WR3 streak [confirmed]\n[ ] TE pass block | HB chip-and-release [confirmed]\n[ ] One scheduled shot after run established \u2014 not every drive\n[ ] Save \u2014 Active \u22648 | LB \u2192 SHOT"
     },
     "O-RUN": {
       "name": "RUN",
       "side": "offense",
       "purpose": "Run-first reminder vs two-high (Xbox name RUN)",
       "when_to_arm": "Cover 6/9/Quarters live",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
@@ -1403,7 +1403,7 @@
           "status": "approx"
         },
         "notes": {
-          "value": "Catalog id O-RUN; Xbox label RUN \u2014 needs_lab as Active",
+          "value": "Catalog id O-RUN; Xbox label RUN \u2014 meta_grounded as Active",
           "status": "confirmed"
         },
         "blocking": {
@@ -1411,7 +1411,7 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: RUN (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: RUN\n[ ] Base OL technique [confirmed]\n[ ] Highest-OVR double team | Mike ID [confirmed]\n[ ] Aggressive blocking | Conservative ball carrier [confirmed]\n[ ] Purpose: light box / pass-heavy personnel answer\n[ ] Save \u2014 Active \u22648 | LB \u2192 RUN",
+      "copy_block": "MACRO: RUN (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: RUN\n[ ] Base OL technique [confirmed]\n[ ] Highest-OVR double team | Mike ID [confirmed]\n[ ] Aggressive blocking | Conservative ball carrier [confirmed]\n[ ] Purpose: light box / pass-heavy personnel answer\n[ ] Save \u2014 Active \u22648 | LB \u2192 RUN",
       "xbox_name": "RUN"
     },
     "O-RPO": {
@@ -1419,7 +1419,7 @@
       "side": "offense",
       "purpose": "RPO alert constraint package (Xbox name RPO on O)",
       "when_to_arm": "Soft edge / light box",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
@@ -1439,7 +1439,7 @@
           "status": "approx"
         },
         "notes": {
-          "value": "Distinct from D macro RPO \u2014 needs_lab",
+          "value": "Distinct from D macro RPO \u2014 meta_grounded",
           "status": "confirmed"
         },
         "blocking": {
@@ -1447,7 +1447,7 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: RPO (O) \u2014 NEEDS_LAB (distinct from D macro RPO)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: RPO\n[ ] Preserve stock RPO rules \u2014 do NOT overwrite stock routes [confirmed]\n[ ] Clean Mike ID | Balanced blocking [confirmed]\n[ ] Save \u2014 Active \u22648 | LB \u2192 RPO",
+      "copy_block": "MACRO: RPO (O) \u2014 META_GROUNDED (distinct from D macro RPO)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: RPO\n[ ] Preserve stock RPO rules \u2014 do NOT overwrite stock routes [confirmed]\n[ ] Clean Mike ID | Balanced blocking [confirmed]\n[ ] Save \u2014 Active \u22648 | LB \u2192 RPO",
       "xbox_name": "RPO"
     },
     "RZ": {
@@ -1455,7 +1455,7 @@
       "side": "offense",
       "purpose": "Red zone possession \u2014 compressed + run bully",
       "when_to_arm": "Inside 20",
-      "validated_status": "needs_lab",
+      "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
@@ -1479,7 +1479,7 @@
           "status": "confirmed"
         },
         "notes": {
-          "value": "needs_lab as Active; call sheet already encodes RZ",
+          "value": "meta_grounded as Active; call sheet already encodes RZ",
           "status": "confirmed"
         },
         "route_assignments": {
@@ -1487,7 +1487,7 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: RZ (O) \u2014 NEEDS_LAB\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: RZ\n[ ] WR1 fade | WR2 zig | WR3 slant | TE stick nod | HB flat [confirmed]\n[ ] Red zone possession \u2014 tag live whip by leverage (not auto)\n[ ] Save \u2014 Active \u22648 | LB \u2192 RZ"
+      "copy_block": "MACRO: RZ (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: RZ\n[ ] WR1 fade | WR2 zig | WR3 slant | TE stick nod | HB flat [confirmed]\n[ ] Red zone possession \u2014 tag live whip by leverage (not auto)\n[ ] Save \u2014 Active \u22648 | LB \u2192 RZ"
     }
   },
   "default_active_user": {

@@ -2,13 +2,14 @@
 
 v1.4: clickable macro accordion + Copy settings, Active 8/8 meter,
 swap-plan banners when ADD would exceed Aidan's USER O+D cap,
-validation badges (validated | needs_lab | unvalidated).
+validation badges (proven | meta_grounded | failed | unvalidated).
 """
 
 from __future__ import annotations
 
 import html
 import os
+import subprocess
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -54,11 +55,15 @@ def _action_badge(action: str) -> str:
 
 
 def _val_badge(status: str) -> str:
-    s = (status or "unvalidated").lower().replace("-", "_")
-    if s == "validated":
-        return '<span class="vbadge validated">validated</span>'
-    if s == "needs_lab":
-        return '<span class="vbadge needs-lab">needs_lab</span>'
+    from cfb_coach.macros import normalize_status
+
+    s = normalize_status(status)
+    if s == "proven":
+        return '<span class="vbadge proven">proven</span>'
+    if s == "meta_grounded":
+        return '<span class="vbadge meta-grounded">meta_grounded</span>'
+    if s == "failed":
+        return '<span class="vbadge failed">failed</span>'
     return '<span class="vbadge unvalidated">unvalidated</span>'
 
 
@@ -110,7 +115,7 @@ def _render_delta_cards(deltas: list[dict[str, Any]], empty_msg: str) -> str:
             )
         field_bit = f'<span class="field">{_esc(field)}</span>' if field else ""
         why_bit = f'<div class="why">{_esc(why)}</div>' if why else ""
-        val_bit = _val_badge(str(d.get("validated_status") or "unvalidated"))
+        val_bit = _val_badge(str(d.get("validated_status") or "meta_grounded"))
         swap = d.get("swap_plan")
         swap_bit = ""
         if swap:
@@ -353,8 +358,9 @@ _CSS = """
     font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em;
     padding: 2px 7px; border-radius: 999px; border: 1px solid var(--border);
   }
-  .vbadge.validated { background: rgba(61,154,106,0.25); color: #9fdfb8; border-color: var(--add); }
-  .vbadge.needs-lab { background: rgba(212,160,23,0.2); color: #f0d9a0; border-color: var(--edit); }
+  .vbadge.proven { background: rgba(61,154,106,0.25); color: #9fdfb8; border-color: var(--add); }
+  .vbadge.meta-grounded { background: rgba(91,159,212,0.22); color: #b8d4ec; border-color: var(--accent); }
+  .vbadge.failed { background: rgba(196,92,92,0.22); color: #f0b0b0; border-color: var(--remove); }
   .vbadge.unvalidated { background: rgba(139,155,180,0.15); color: var(--muted); }
   .target { font-size: 1rem; }
   .field {
@@ -556,9 +562,11 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     </section>
 
     <footer>
-      Inventory is already stocked from seed — only opponent-specific deltas above.
+      Inventory is already stocked from seed — only opponent-specific deltas above
+      (prep suggests only <b>proven</b> / <b>meta_grounded</b> tweaks — no ungrounded invention).
       Active Custom Adjustments hard-capped at <b>8 O+D combined</b> for USER dynasty (Aidan rule).
-      Live caller prefers validated macros; tags needs_lab / unvalidated when suggesting others.
+      <b>Workflow:</b> bring a suggested macro into game → if cooked, adjust via postgame → if it holds, mark <b>proven</b>.
+      Live caller prefers proven macros; tags meta_grounded / failed / unvalidated when suggesting others.
       Mark applied with <code>prep --opponent {oid} --mark-applied</code>.
     </footer>
   </div>
@@ -613,9 +621,83 @@ def write_prep_html(
     return out
 
 
+def _is_wsl() -> bool:
+    if os.environ.get("WSL_DISTRO_NAME"):
+        return True
+    try:
+        ver = Path("/proc/version").read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    return "microsoft" in ver.lower()
+
+
+def _windows_path(path: Path) -> str | None:
+    try:
+        r = subprocess.run(
+            ["wslpath", "-w", str(path.resolve())],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except (FileNotFoundError, OSError):
+        pass
+    return None
+
+
+def _try_cmd(argv: list[str]) -> bool:
+    try:
+        r = subprocess.run(
+            argv,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        return r.returncode == 0
+    except (FileNotFoundError, OSError):
+        return False
+
+
 def open_prep_html(path: Path, *, open_browser: bool = True) -> Path:
-    if open_browser:
-        webbrowser.open(path.resolve().as_uri())
+    """Open prep HTML. On Linux/WSL, fall back to wslview / explorer.exe / print path."""
+    resolved = path.resolve()
+    if not open_browser:
+        return path
+
+    uri = resolved.as_uri()
+    opened = False
+    try:
+        opened = bool(webbrowser.open(uri))
+    except Exception:
+        opened = False
+
+    if not opened:
+        opened = _try_cmd(["xdg-open", str(resolved)])
+
+    # On WSL, webbrowser/xdg-open often "succeed" without a real window.
+    # Always try the WSL chain when detected; print a clear Windows path if all fail.
+    if _is_wsl():
+        if _try_cmd(["wslview", str(resolved)]):
+            return path
+        win = _windows_path(resolved)
+        if win and _try_cmd(["explorer.exe", win]):
+            return path
+        if win:
+            print(
+                "Could not auto-open browser. Open this Windows path manually:\n"
+                f"  {win}"
+            )
+        else:
+            print(
+                "Could not auto-open browser (WSL). Open this file manually:\n"
+                f"  {resolved}\n"
+                f"  (or: explorer.exe $(wslpath -w {resolved}))"
+            )
+        return path
+
+    if not opened:
+        print(f"Could not auto-open browser. Open this file manually:\n  {resolved}")
     return path
 
 

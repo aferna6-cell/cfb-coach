@@ -13,9 +13,33 @@ from typing import Any
 # EA UI may advertise 10 — honor 8 for user/online dynasty.
 USER_ACTIVE_CAP = 8
 
-VALIDATED = "validated"
-NEEDS_LAB = "needs_lab"
+# Validation ladder (prep may suggest only ≥ meta_grounded):
+#   proven        — survived his games / Temple baseline
+#   meta_grounded — CREATE candidate grounded in CFB27 meta + film; OK to bring into game
+#   unvalidated   — not grounded enough for prep deltas
+#   failed        — got cooked; demote / cooking
+PROVEN = "proven"
+META_GROUNDED = "meta_grounded"
 UNVALIDATED = "unvalidated"
+FAILED = "failed"
+
+# Legacy aliases (pre-1.4.1)
+VALIDATED = PROVEN
+NEEDS_LAB = META_GROUNDED
+
+_STATUS_ALIASES = {
+    "validated": PROVEN,
+    "needs_lab": META_GROUNDED,
+    "needs-lab": META_GROUNDED,
+    "proven": PROVEN,
+    "meta_grounded": META_GROUNDED,
+    "meta-grounded": META_GROUNDED,
+    "unvalidated": UNVALIDATED,
+    "failed": FAILED,
+    "cooking": FAILED,
+}
+
+PREP_ELIGIBLE = frozenset({PROVEN, META_GROUNDED})
 
 XBOX_PATH = [
     "Create & Share",
@@ -25,6 +49,11 @@ XBOX_PATH = [
     "Set Active (max 8 O+D combined for USER dynasty)",
     "In-game: LB to open / select Active macros",
 ]
+
+
+def normalize_status(status: str | None) -> str:
+    s = (status or UNVALIDATED).lower().replace("-", "_").strip()
+    return _STATUS_ALIASES.get(s, UNVALIDATED)
 
 
 def _catalog_path() -> Path:
@@ -70,11 +99,23 @@ def validation_status(name: str) -> str:
     m = get_macro(name)
     if not m:
         return UNVALIDATED
-    return m.get("validated_status") or UNVALIDATED
+    return normalize_status(m.get("validated_status"))
+
+
+def is_proven(name: str) -> bool:
+    return validation_status(name) == PROVEN
 
 
 def is_validated(name: str) -> bool:
-    return validation_status(name) == VALIDATED
+    """Legacy alias for is_proven."""
+    return is_proven(name)
+
+
+def is_prep_eligible(status_or_name: str, *, as_name: bool = False) -> bool:
+    """True if status is proven or meta_grounded (OK for prep delta list)."""
+    if as_name:
+        return validation_status(status_or_name) in PREP_ELIGIBLE
+    return normalize_status(status_or_name) in PREP_ELIGIBLE
 
 
 def active_cap(*, cpu: bool = False) -> int:
@@ -191,10 +232,14 @@ def build_swap_plan(
         "needed": True,
         "add": add,
         "add_side": add_side,
-        "add_validation": add_meta.get("validated_status") or NEEDS_LAB,
+        "add_validation": normalize_status(
+            add_meta.get("validated_status") or META_GROUNDED
+        ),
         "bench": bench_from,
         "bench_side": bench_side,
-        "bench_validation": bench_meta.get("validated_status") or UNVALIDATED,
+        "bench_validation": normalize_status(
+            bench_meta.get("validated_status") or UNVALIDATED
+        ),
         "why": why,
         "budget_before": budget["meter"],
         "budget_after": f"Active {budget['total']}/{budget['cap']} (swap {bench_from}→{add})",
@@ -213,7 +258,7 @@ def enrich_macro_delta(
     out: dict[str, Any] = dict(delta)
     target = (delta.get("target") or "").upper()
     meta = get_macro(target) or {}
-    status = meta.get("validated_status") or UNVALIDATED
+    status = normalize_status(meta.get("validated_status") or UNVALIDATED)
     out["validated_status"] = status
     out["validation_badge"] = status
     if meta.get("copy_block"):
@@ -244,24 +289,32 @@ def enrich_macro_delta(
 
 
 def tag_live_macro(name: str | None) -> str:
-    """Prefix needs_lab / unvalidated macros for live caller display."""
+    """Tag non-proven macros for live caller display."""
     if not name or name.lower() in ("none", ""):
         return name or "none"
     status = validation_status(name)
-    if status == VALIDATED:
+    if status == PROVEN:
         return name
-    if status == NEEDS_LAB:
-        return f"{name} [needs_lab]"
+    if status == META_GROUNDED:
+        return f"{name} [meta_grounded]"
+    if status == FAILED:
+        return f"{name} [failed]"
     return f"{name} [unvalidated]"
 
 
-def prefer_validated(candidates: list[str]) -> list[str]:
+def prefer_proven(candidates: list[str]) -> list[str]:
+    rank = {PROVEN: 0, META_GROUNDED: 1, UNVALIDATED: 2, FAILED: 3}
+
     def key(n: str) -> tuple[int, str]:
         s = validation_status(n)
-        rank = 0 if s == VALIDATED else (1 if s == NEEDS_LAB else 2)
-        return (rank, n)
+        return (rank.get(s, 9), n)
 
     return sorted(candidates, key=key)
+
+
+def prefer_validated(candidates: list[str]) -> list[str]:
+    """Legacy alias for prefer_proven."""
+    return prefer_proven(candidates)
 
 
 def catalog_inventory_cards(
@@ -303,7 +356,7 @@ def catalog_inventory_cards(
                 "side": meta.get("side"),
                 "purpose": meta.get("purpose"),
                 "when_to_arm": meta.get("when_to_arm"),
-                "validated_status": meta.get("validated_status"),
+                "validated_status": normalize_status(meta.get("validated_status")),
                 "slot": slot,
                 "copy_block": meta.get("copy_block") or "",
                 "full_settings": meta.get("full_settings") or {},
