@@ -1,4 +1,4 @@
-"""Pluggable vision for SCREEN CO-PILOT (v1.9.3 — live vision Milestone 2).
+"""Pluggable vision for SCREEN CO-PILOT (v1.9.4 — live vision Milestone 2).
 
 DefenseLook remains the coach tip contract. GameObservation is the richer
 live-vision state; pipeline maps GameObservation → DefenseLook.

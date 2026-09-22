@@ -1,4 +1,4 @@
-"""Live watch UX: heartbeat cadence, window match, non-blocking stdin (v1.9.3)."""
+"""Live watch UX: heartbeat cadence, window match, non-blocking stdin (v1.9.4)."""
 
 from __future__ import annotations
 
@@ -122,7 +122,8 @@ class TestHeartbeatAndStatus(unittest.TestCase):
         self.assertIn("--screen-region", _TROUBLESHOOT_NO_FRAMES)
         self.assertIn("vision_calib.json", _TROUBLESHOOT_NO_FRAMES)
         self.assertIn("auto-fallback", _TROUBLESHOOT_NO_FRAMES)
-        self.assertEqual(_CAPTURE_OK, "capture OK — LIVE tips below")
+        self.assertIn("capture OK", _CAPTURE_OK)
+        self.assertIn("PLAY", _CAPTURE_OK)
 
 
 class TestWindowNeedles(unittest.TestCase):
@@ -305,10 +306,85 @@ class TestDemoStillWorks(unittest.TestCase):
         )
         self.assertEqual(r.returncode, 0, msg=r.stderr + r.stdout)
         self.assertIn("CO-PILOT", r.stdout)
-        self.assertIn("v1.9.3", r.stdout)
+        self.assertIn("v1.9.4", r.stdout)
         # Must not enter pipeline / waiting-for-frames path
         self.assertNotIn("waiting for frames", r.stdout)
         self.assertNotIn("Pipeline capture=", r.stdout)
+
+
+
+
+class TestLivePlayAdjustHike(unittest.TestCase):
+    """Unknown look still yields a non-empty playcaller PLAY; ADJUST/HIKE helpers."""
+
+    def test_unknown_look_still_yields_nonempty_call(self) -> None:
+        from cfb_coach.watch import compute_live_call, format_play_block
+
+        look = DefenseLook(
+            front="unknown",
+            shell="unknown",
+            pressure="unknown",
+            confidence=0.17,
+            source="capture",
+            notes="low conf",
+        )
+        call, sit = compute_live_call(look, opponent="gavin", short_line="1&10 | ? | ?-HIGH")
+        text = call.format()
+        self.assertTrue(text.strip())
+        self.assertIn("—", text)
+        self.assertIn("|", text)
+        # Must look like playcaller syntax, not generic tip
+        self.assertNotIn("base look", text.lower())
+        self.assertNotIn("wait for clearer", text.lower())
+        self.assertEqual(sit.down, 1)
+        self.assertEqual(sit.distance, 10)
+        # coverage not injected at low conf
+        self.assertTrue(sit.coverage_source in ("none", "") or sit.coverage_hint is None or float(look.confidence) < 0.4)
+
+        block = format_play_block(text, short_line="1&10 | UNKNOWN | ?-HIGH | PRESSURE ?")
+        self.assertIn("PLAY", block)
+        self.assertIn(text.split("|")[0].strip().split("—")[0].strip().split()[0], block)
+
+    def test_confident_look_injects_coverage(self) -> None:
+        from cfb_coach.watch import build_live_situation
+
+        look = DefenseLook(
+            front="nickel", shell="cover3", pressure="none", confidence=0.85, source="hotkey"
+        )
+        sit = build_live_situation(look, short_line="2&7")
+        self.assertEqual(sit.coverage_source, "live")
+        self.assertIn("Cover 3", sit.coverage_hint or "")
+
+    def test_adjust_and_audible(self) -> None:
+        from cfb_coach.watch import adjust_lines_from_look, audible_warranted, format_play_block
+
+        mild = DefenseLook("nickel", "two_high", "blitz_left", 0.8, "demo")
+        ads = adjust_lines_from_look(mild)
+        self.assertTrue(ads)
+        self.assertTrue(any("slide L" in a or "left" in a.lower() for a in ads))
+        self.assertFalse(audible_warranted(mild))
+
+        heat = DefenseLook("nickel", "man", "all_out", 0.95, "demo")
+        self.assertTrue(audible_warranted(heat))
+
+        block = format_play_block(
+            "Gun Bunch X Nasty — Mesh Spot | No adj | Spot → Drag",
+            adjusts=["pressure left — slide L, hot ready"],
+            hike=True,
+        )
+        self.assertIn("PLAY", block)
+        self.assertIn("ADJUST  pressure left", block)
+        self.assertIn("HIKE — go", block)
+
+    def test_cli_no_overlay_flag(self) -> None:
+        from cfb_coach.cli import build_parser
+
+        p = build_parser()
+        args = p.parse_args(["watch", "--window", "Xbox", "--no-overlay"])
+        self.assertTrue(args.no_overlay)
+        args = p.parse_args(["watch", "--overlay"])
+        self.assertEqual(args.overlay, "auto")
+
 
 
 if __name__ == "__main__":

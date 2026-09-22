@@ -216,9 +216,13 @@ Ohio State / CPU = volume lab. Alabama users = prepare well + adjust live.
 
 
 
-## Screen Co-Pilot (v1.9.3)
+## Screen Co-Pilot (v1.9.4)
 
-**Live UX (1.9.3):** waiting-for-frames heartbeat is a **single overwritten line** (\\r) at most every **5s**; after 5s with no frames, troubleshooting prints **once**, then heartbeats every **15s**. Partial keystrokes are not interrupted. Use `watch --list-windows` to pick the Remote Play title; `--window` is case-insensitive and tries Xbox/Remote Play/Game Bar aliases. Window mode tries **dxcam** then auto-falls back to **mss** on the window rect/calib if no frames (~2–3s). `watch --screen-region` (no args) uses calib crop via **mss** (`capture=mss`). **Xbox app / Remote Play often needs `--screen-region` / mss fallback** (UWP/protected). Status every ~2s once live; non-blocking commands still work. Ctrl+C clean-shuts.
+**Live UX (1.9.4):** pre-snap cadence is **PLAY → ADJUST → HIKE** (playcaller `Formation — Play | Adj | Reads`), not generic “base look” tips as the main output. Pressure/shell changes print short **ADJUST** lines without replacing the play unless audible is clearly warranted (e.g. Cover 0). When the look is stable (~1.8s) or timed out (~4.5s), coach prints **HIKE — go** — you snap; coach never presses buttons.
+
+**Remote Play focus:** Xbox Remote Play often **pauses/freezes when unfocused** (e.g. PowerShell focused). Keep the Remote Play / Xbox stream window focused and visible. Use the **HTML overlay** (default ON for `--window` / `--screen-region`; auto-opens browser) on the other half of the screen for a big PLAY glance. Capture card later removes this. Disable with `--no-overlay`.
+
+Heartbeat: single overwritten line (\\r) ≤ every **5s** waiting for frames; troubleshoot once at 5s, then every **15s**. Status spam reduced when PLAY unchanged (longer gap after HIKE). `--list-windows` / dxcam→mss fallback unchanged.
 
 
 **Doctrine:** Aidan keeps **full Xbox control** on the HDMI monitor/console. The Windows laptop is a **sidecar** — it runs Xbox Remote Play so coach can **see** the game, analyze locally (classical CV, ~5–10 FPS, no LLM per frame), and suggest **pre-snap adjustments** only. **Never auto-play / never press buttons.**
@@ -258,7 +262,7 @@ look> help
 
 Tips are ≤3 short lines, e.g. `slide protect left`, `hot X ready`, `two-high → run first`. Reuses macro inventory language (PROT / ZERO / C3 / RUN / Active-8 names) — does **not** change prep/play/call/meta scout.
 
-Optional overlay: open `~/.cfb-coach/copilot_overlay.html` (auto-refresh 2s) on a second monitor while you play on the TV.
+Overlay (default ON for live window/region): auto-opens `~/.cfb-coach/copilot_overlay.html` (refresh ~1.5s) — pin on the other half of the screen; **keep Xbox Remote Play focused**. `--no-overlay` to disable.
 
 ## Xbox Remote Play Vision
 
@@ -294,19 +298,22 @@ Live vision Milestone 1 — **sidecar only**. Play on HDMI; laptop sees Remote P
 
 Full notes anytime: `cfb-coach watch --setup`.
 
-Live lines look like:
+Live terminal cadence:
 
 ```text
-3&7 | BUNCH R | 2-HIGH | PRESSURE L
-CALL
-  1. slide protect LEFT
-  2. hot X ready (Sam/edge)
-  3. …
+1&10 | BUNCH | 2-HIGH | PRESSURE ?
+PLAY
+Gun Bunch X Nasty — Mesh Spot | No adj | Spot → Drag
+…
+ADJUST  pressure show left — slide L, hot ready
+HIKE — go
 ```
 
+Overlay (secondary): big PLAY text in the browser strip; keep Xbox focused.
 
 
-## Live Vision Milestone 2 (v1.9.3)
+
+## Live Vision Milestone 2 (v1.9.4)
 
 **Extend M1 — do not rewrite.** Sidecar only; Remote Play = prototype capture; same pipeline for `--video`. False snaps worse than late. Sample tiers: **1=log, 2=mild, 3+=actionable, 5+=strong**. Recency windows (last 5 / last 8) + full-game. Anti-whiplash preserved.
 
@@ -329,6 +336,8 @@ cd cfb-coach
 pip install -e ".[vision]"
 cfb-coach watch --calibrate
 cfb-coach watch --window "Xbox" --opponent gavin --dynasty alabama --debug
+:: overlay auto-opens (big PLAY). Keep Xbox Remote Play focused.
+:: optional: --no-overlay   or   --screen-region
 :: optional clips when low-conf / explosive:
 cfb-coach watch --window "Xbox" --opponent gavin --record-plays --debug
 cfb-coach postgame -o gavin --report
@@ -339,7 +348,7 @@ cfb-coach postgame -o gavin --report
 1. Remote Play open on laptop; play on HDMI + Xbox controller (coach never drives sticks).
 2. Calibrate window/crop once (`--calibrate`).
 3. Confirm debug view shows FPS, state, short line (`3&7 | BUNCH R | 2-HIGH | …`).
-4. Confirm console shows **LIVE GAME** + top tendencies + **CURRENT COUNTER** (not a 40-stat dump).
+4. Confirm console shows **PLAY** (real Formation — Play | Adj | Reads), then **ADJUST** / **HIKE — go** (not generic base-look tips as the main line).
 5. After a few snaps, verify `~/.cfb-coach/coach.db` has `game_sessions` / `play_records` rows.
 6. Manual correct last play: type `R` / `P` / `S` / `I` / `X` or `correct family CROSSERS`.
 7. Postgame: `cfb-coach postgame -o <opp> --report` for tendency summary.
@@ -358,6 +367,7 @@ PYTHONPATH=. python3 -m unittest discover -s tests -v
 - **HUD OCR is weak** — down/distance/score/yards often unknown; we never invent yards.
 - **Concept families are coarse** — CROSSERS/VERTICALS/MESH/… tags, not exact route grading.
 - **Field / formation accuracy is unmeasured** on real Remote Play; treat live looks as soft evidence.
+- **Remote Play often pauses when unfocused** — keep stream focused; use overlay strip; capture card later.
 - No LLM every frame, no controller automation, no huge NN training.
 - Cover 3 vs Quarters still hard from pixels (M1 honesty unchanged).
 

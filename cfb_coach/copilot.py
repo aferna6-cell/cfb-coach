@@ -161,42 +161,77 @@ def format_tips_block(look: DefenseLook, tips: list[str]) -> str:
     return "\n".join(lines)
 
 
-def write_overlay_html(path: str, look: DefenseLook, tips: list[str]) -> str:
-    """Tiny auto-refresh overlay page for a second monitor / browser tab."""
+def write_overlay_html(
+    path: str,
+    look: DefenseLook,
+    tips: list[str],
+    *,
+    call_text: str = "",
+    short_line: str = "",
+) -> str:
+    """Tiny auto-refresh overlay — big CALL so Xbox can stay focused.
+
+    Open on a second strip / half-screen browser while Remote Play keeps focus.
+    Refresh every 1.5s. Capture card later removes the Remote Play focus problem.
+    """
     from pathlib import Path
 
     n = look.normalized()
-    tip_lis = "\n".join(f"<li>{_esc(t)}</li>" for t in tips)
+    tip_lis = "\n".join(f"<li>{_esc(t)}</li>" for t in tips[:2])
+    call_block = ""
+    if call_text:
+        call_block = f'''<div class="call-label">CALL</div>
+  <div class="call">{_esc(call_text)}</div>'''
+    short_block = (
+        f'<div class="short">{_esc(short_line)}</div>' if short_line else ""
+    )
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta http-equiv="refresh" content="2"/>
-<title>CFB Coach — Screen Co-Pilot</title>
+<meta http-equiv="refresh" content="1.5"/>
+<title>CFB Coach — CALL</title>
 <style>
-  :root {{ --bg:#0e1117; --fg:#e6edf3; --muted:#8b949e; --accent:#3fb950; --warn:#d29922; }}
-  body {{ margin:0; font-family: ui-sans-serif, system-ui, sans-serif; background:var(--bg); color:var(--fg); }}
-  main {{ max-width: 520px; margin: 1.5rem auto; padding: 1rem 1.25rem; }}
-  h1 {{ font-size: 1rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }}
-  .look {{ font-family: ui-monospace, monospace; font-size: .95rem; margin: .75rem 0 1rem; padding: .75rem; border: 1px solid #30363d; border-radius: 8px; }}
-  .look .src {{ color: var(--muted); font-size: .8rem; }}
-  ol {{ margin: 0; padding-left: 1.25rem; }}
-  li {{ margin: .55rem 0; font-size: 1.15rem; font-weight: 600; }}
-  footer {{ margin-top: 1.5rem; font-size: .75rem; color: var(--muted); }}
-  .badge {{ display:inline-block; padding:.15rem .45rem; border-radius:4px; background:#21262d; color:var(--accent); font-size:.75rem; }}
+  :root {{ --bg:#0e1117; --fg:#e6edf3; --muted:#8b949e; --accent:#3fb950; --call:#58a6ff; }}
+  html, body {{ margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font-family: ui-sans-serif, system-ui, Segoe UI, sans-serif; }}
+  main {{ padding: .75rem 1rem 1.25rem; max-width: 900px; }}
+  h1 {{ font-size: .7rem; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; margin: 0 0 .35rem; }}
+  .short {{ font-family: ui-monospace, Consolas, monospace; font-size: .95rem;
+    color: var(--muted); margin-bottom: .5rem; }}
+  .call-label {{ font-size: .7rem; letter-spacing: .1em; color: var(--accent);
+    text-transform: uppercase; font-weight: 700; margin-top: .25rem; }}
+  .call {{ font-size: clamp(1.35rem, 3.2vw, 2.15rem); font-weight: 800; line-height: 1.25;
+    color: var(--call); margin: .2rem 0 .85rem; word-break: break-word; }}
+  .look {{ font-family: ui-monospace, Consolas, monospace; font-size: .8rem;
+    margin: .4rem 0 .75rem; padding: .5rem .65rem; border: 1px solid #30363d;
+    border-radius: 6px; color: var(--muted); }}
+  ol {{ margin: 0; padding-left: 1.2rem; }}
+  li {{ margin: .35rem 0; font-size: 1.05rem; font-weight: 600; }}
+  footer {{ margin-top: 1rem; font-size: .72rem; color: var(--muted); line-height: 1.4; }}
+  .badge {{ display:inline-block; padding:.1rem .4rem; border-radius:4px;
+    background:#21262d; color:var(--accent); font-size:.7rem; }}
 </style>
 </head>
 <body>
 <main>
-  <h1>Screen Co-Pilot <span class="badge">v0</span></h1>
+  <h1>Screen Co-Pilot <span class="badge">v1.9.4</span> · keep Xbox focused</h1>
+  {short_block}
+  {call_block}
   <div class="look">
-    <div>front=<b>{_esc(n.front)}</b> shell=<b>{_esc(n.shell)}</b> pressure=<b>{_esc(n.pressure)}</b></div>
-    <div class="src">conf={n.confidence:.2f} · {_esc(n.source)}{_esc(' · ' + n.notes if n.notes else '')}</div>
+    front=<b>{_esc(n.front)}</b> shell=<b>{_esc(n.shell)}</b>
+    pressure=<b>{_esc(n.pressure)}</b>
+    · conf={n.confidence:.2f} · {_esc(n.source)}
   </div>
   <ol>
     {tip_lis}
   </ol>
-  <footer>Aidan keeps Xbox control · tips only · refresh 2s · capture-card later</footer>
+  <footer>
+    Aidan keeps sticks · glance here, leave Remote Play focused<br/>
+    Remote Play often pauses when unfocused — pin this strip on the other half of the screen.
+    Capture card later removes this. Auto-refresh 1.5s.
+  </footer>
 </main>
 </body>
 </html>

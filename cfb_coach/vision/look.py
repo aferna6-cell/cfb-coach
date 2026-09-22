@@ -308,8 +308,15 @@ Xbox Remote Play vision (ACTIVE PROTOTYPE — play stays on HDMI monitor)
      cfb-coach watch --screen-region
 8. Debug view: OpenCV window with frame, FPS, crop/ROIs, and state text.
 9. Xbox control is SEPARATE from vision — sticks stay in your hands.
-10. Remote Play = current prototype video source (laptop sees the game).
-11. Capture card (Elgato etc.) = future drop-in CaptureBackend (same pipeline).
+10. Remote Play often PAUSES when the stream window is unfocused / covered.
+    Keep Xbox Remote Play focused. Use the HTML overlay on the other half of
+    the screen (auto-opens; big PLAY text, refresh ~1.5s). Glance there —
+    do not focus PowerShell if frames freeze.
+11. Live cadence: PLAY (playcaller) → ADJUST (pressure/shell) → HIKE — go.
+    Coach never presses buttons / never snaps for you.
+12. Remote Play = current prototype video source (laptop sees the game).
+13. Capture card (Elgato etc.) = future drop-in CaptureBackend (same pipeline)
+    and removes the Remote Play focus/pause problem.
 
 Also works offline:
   cfb-coach watch --demo / --image test.png / --video sample.mp4

@@ -497,7 +497,13 @@ def build_parser() -> argparse.ArgumentParser:
         const="auto",
         default=None,
         metavar="PATH",
-        help="Write tiny auto-refresh HTML overlay (default ~/.cfb-coach/copilot_overlay.html)",
+        help="HTML overlay path (default ON for --window/--screen-region: ~/.cfb-coach/copilot_overlay.html)",
+    )
+    p_watch.add_argument(
+        "--no-overlay",
+        dest="no_overlay",
+        action="store_true",
+        help="Disable HTML overlay (live modes default overlay ON)",
     )
     p_watch.add_argument(
         "--opponent",
