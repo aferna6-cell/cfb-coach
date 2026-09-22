@@ -1,0 +1,237 @@
+{
+  "version": "cfb26-2026-09",
+  "description": "Generic META baseline gameplan + macros for every user/CPU game. Opponent overlays stack on top as dynasty evidence accumulates; thin opponents stay near baseline.",
+  "offense_gameplan": {
+    "home_formations": [
+      "Gun Bunch X Nasty",
+      "Gun Cluster"
+    ],
+    "changeup_formations": [
+      "Pistol U Off Trips",
+      "Singleback Deuce Close",
+      "Gun Empty Quads"
+    ],
+    "opening_menu": [
+      {
+        "label": "1st&10 open",
+        "formation": "Gun Bunch X Nasty",
+        "play": "Inside Zone",
+        "adj": "No adj",
+        "reads": "Front → Cutback"
+      },
+      {
+        "label": "Easy completion",
+        "formation": "Gun Bunch X Nasty",
+        "play": "Mesh Spot",
+        "adj": "No adj",
+        "reads": "Spot → Drag"
+      },
+      {
+        "label": "Counterpunch",
+        "formation": "Gun Cluster",
+        "play": "Outside Zone",
+        "adj": "No adj",
+        "reads": "Reach → Cut"
+      },
+      {
+        "label": "Cluster sticks",
+        "formation": "Gun Cluster",
+        "play": "Z Spot Shake",
+        "adj": "No adj",
+        "reads": "Shake → Spot"
+      }
+    ],
+    "early_down_mix": {
+      "run_pct_target": 0.45,
+      "easy_pass_pct_target": 0.25,
+      "intermediate_pct_target": 0.20,
+      "changeup_pct_target": 0.10,
+      "run_family": [
+        {"formation": "Gun Bunch X Nasty", "play": "Inside Zone"},
+        {"formation": "Gun Bunch X Nasty", "play": "HB Base"},
+        {"formation": "Gun Bunch X Nasty", "play": "Counter Y"},
+        {"formation": "Gun Bunch X Nasty", "play": "Mtn RPO Zone Alert"},
+        {"formation": "Gun Cluster", "play": "Outside Zone"},
+        {"formation": "Gun Cluster", "play": "HB Counter"}
+      ],
+      "easy_pass_family": [
+        {"formation": "Gun Bunch X Nasty", "play": "Mesh Spot"},
+        {"formation": "Gun Bunch X Nasty", "play": "Drive HB Under"},
+        {"formation": "Gun Bunch X Nasty", "play": "Mesh Traffic"}
+      ],
+      "intermediate_family": [
+        {"formation": "Gun Bunch X Nasty", "play": "Deep Flood"},
+        {"formation": "Gun Bunch X Nasty", "play": "Mtn Cross Post"},
+        {"formation": "Gun Bunch X Nasty", "play": "Mtn Speed Dig Under"},
+        {"formation": "Gun Cluster", "play": "Mesh Post"},
+        {"formation": "Gun Cluster", "play": "Verticals"}
+      ],
+      "changeup_family": [
+        {"formation": "Gun Cluster", "play": "Z Spot Shake"},
+        {"formation": "Pistol U Off Trips", "play": "HB Stretch"},
+        {"formation": "Pistol U Off Trips", "play": "RPO Alert TE Flat"},
+        {"formation": "Gun Empty Quads", "play": "Out Double Under"}
+      ]
+    },
+    "two_high_rule": "Run first vs Cover 4 / Cover 6 / Cover 9 / Quarters / Palms. Prefer Inside Zone, HB Base, Counter Y from Gun Bunch X Nasty before forcing Mesh Post or Deep Flood.",
+    "pressure_answers": [
+      {
+        "label": "Mesh Spot (quick)",
+        "formation": "Gun Bunch X Nasty",
+        "play": "Mesh Spot",
+        "adj": "Hot ready",
+        "note": "Primary pressure answer — easy completion under heat"
+      },
+      {
+        "label": "Whip Trail",
+        "formation": "Gun Bunch X Nasty",
+        "play": "Return Whip Trail",
+        "adj": "Hot ready",
+        "note": "Secondary pressure / man answer — whip then trail"
+      },
+      {
+        "label": "HB Base protection",
+        "formation": "Gun Bunch X Nasty",
+        "play": "HB Base",
+        "adj": "Protection first",
+        "note": "When pressure is selling out — run behind protection"
+      }
+    ],
+    "red_zone": {
+      "priority": "possession over hero",
+      "run": [
+        {"formation": "Singleback Deuce Close", "play": "Mtn Duo"},
+        {"formation": "Singleback Deuce Close", "play": "HB Dive"},
+        {"formation": "Gun Bunch X Nasty", "play": "Inside Zone"}
+      ],
+      "pass": [
+        {"formation": "Gun Bunch X Nasty", "play": "Mesh Spot"},
+        {"formation": "Gun Bunch X Nasty", "play": "RZ PA X Whip"},
+        {"formation": "Gun Bunch X Nasty", "play": "Z Spot GoalLine"},
+        {"formation": "Gun Cluster", "play": "Z Spot Shake"}
+      ],
+      "note": "Tag by coverage — C2 Invert Hard Flat ≠ always whip (film INTs). Prefer Mesh Spot / Z Spot Shake / run."
+    },
+    "anti_repeat": "Never become 80% one concept vs sticky opponent. Track last calls in-game; if same play called 2+ times in last 4 snaps, rotate to constraint family (run↔easy pass↔Cluster changeup).",
+    "emphasis_keys": {
+      "run_first": 1.0,
+      "mesh_family": 1.0,
+      "cluster_changeup": 0.8,
+      "flood_family": 0.6,
+      "whip_hot": 0.7,
+      "empty_stress": 0.3,
+      "deuce_bully": 0.5
+    }
+  },
+  "defense_gameplan": {
+    "home_package": "Nickel Over",
+    "home_calls": [
+      "Cover 3 Sky",
+      "Cover 4 Quarters",
+      "Tampa 2"
+    ],
+    "home_rotation": {
+      "Cover 3 Sky": 0.55,
+      "Cover 4 Quarters": 0.25,
+      "Tampa 2": 0.20
+    },
+    "situational": {
+      "short_yardage": {
+        "package": "4-3 Even 6-1",
+        "calls": ["Cover 3 Buzz", "Cover 4 Quarters", "Tampa 2"],
+        "note": "Even 6-1 only true short; no auto RUN-IN on one IZ tell"
+      },
+      "goal_line": {
+        "package": "4-3 Even 6-1",
+        "calls": ["Cover 3 Buzz"],
+        "note": "Heavy front; don't sell out run (Temple Z Smash lesson)"
+      },
+      "long_yardage": {
+        "package": "Nickel Over",
+        "calls": ["Cover 4 Quarters"],
+        "alt": {"package": "Dime Normal", "when": "distance >= 12"},
+        "note": "Protect seams; force underneath"
+      },
+      "money_down": {
+        "package": "Nickel Over",
+        "calls": ["Cover 4 Quarters", "Tampa 2"],
+        "note": "Patience — Cover 6/two-high patience applies to us too"
+      }
+    },
+    "selective_pressure": {
+      "packages": ["Nickel 3-3 Cub", "Nickel Double Mug"],
+      "when": "3rd-and-short with repeated pressure-worthy tendency OR high-confidence opponent archetype",
+      "macro": "HEAT",
+      "note": "Selective — not every snap. One user job on hot."
+    },
+    "default_macro": "none",
+    "emphasis_keys": {
+      "nickel_over_home": 1.0,
+      "c3_sky": 1.0,
+      "c4_quarters": 0.9,
+      "tampa_2": 0.8,
+      "even_61_short": 0.7,
+      "selective_heat": 0.4,
+      "dime_long": 0.5
+    }
+  },
+  "macros_baseline": {
+    "keep": [
+      "CROSS",
+      "VERT",
+      "BUNCH",
+      "RPO",
+      "SCRAM",
+      "RUN-IN",
+      "RUN-OUT",
+      "HEAT"
+    ],
+    "bench": [
+      "FLOOD",
+      "SCREEN"
+    ],
+    "reasons": {
+      "CROSS": "META keep — answers Cross Wheels / high-low crossers after repeated tendency",
+      "VERT": "META keep — answers Four Verticals / seam stress after repeated tendency",
+      "BUNCH": "META keep — answers compressed Mesh/Bunch rubs after repeated wins",
+      "RPO": "META keep — answers bubble/RPO alert tendency",
+      "SCRAM": "META keep — contain integrity when QB escape beats coverage carry",
+      "RUN-IN": "META keep — downhill IZ/Duo sellout only at high confidence + short",
+      "RUN-OUT": "META keep — perimeter stretch/toss when repeated",
+      "HEAT": "META keep — selective pressure package tag, not every snap",
+      "FLOOD": "BENCH — flood/levels not primary META answer; reactivate only if opponent makes flood primary AND online stability re-tested",
+      "SCREEN": "BENCH — screen/bubble specialty; Temple playtest kept 0 O macros + SCREEN off D; reactivate only if bubbles dominate after re-test"
+    },
+    "arm_doctrine": "Macros situational, not every snap. Default = no macro. Arm only after REPEATED tendency in similar D&D/field zone. One tell = log + mild bump only. Free reign preserved — any designed call remains legal.",
+    "when_to_arm": {
+      "CROSS": "After 2+ live Cross Wheels / crosser tells in similar D&D",
+      "VERT": "After 2+ live Four Verticals / seam tells in similar D&D",
+      "BUNCH": "After repeated Mesh/Bunch compressed wins",
+      "RPO": "After repeated RPO bubble / alert wins",
+      "SCRAM": "After repeated QB scramble escapes beat coverage",
+      "RUN-IN": "After repeated downhill run AND short-yardage context — never one IZ tell",
+      "RUN-OUT": "After repeated Outside Zone / Stretch / toss",
+      "HEAT": "3rd-short selective vs pressure-worthy archetype or repeated money-down need"
+    },
+    "weights": {
+      "CROSS": 1.0,
+      "VERT": 1.0,
+      "BUNCH": 1.0,
+      "RPO": 1.0,
+      "SCRAM": 1.0,
+      "RUN-IN": 0.8,
+      "RUN-OUT": 0.8,
+      "HEAT": 0.7,
+      "FLOOD": 0.0,
+      "SCREEN": 0.0
+    }
+  },
+  "meta_notes": [
+    "Bunch / Mesh families are the META core — Gun Bunch X Nasty primary, Gun Cluster counterpunch. Preserve both.",
+    "Constraint theory: run to set up play-action; verticals to open underneath; underneath to set up shots. Do not spam one family.",
+    "Cover 6 / split-field patience: vs two-high, run first and take easy Mesh Spot. Do NOT spam Mesh Post into Cover 6 (INT film).",
+    "Defense: Nickel Over home (C3 Sky / C4 Quarters / Tampa 2). Force long drives; explosives kill you more than dinks.",
+    "Soft competitive meta only — Xbox formation/play/macro NAMES. No invented PlayStation or Xbox button sequences.",
+    "Every game starts from this baseline. Opponent overlays adjust mix rates and macro emphasis as snaps accumulate; thin film stays near baseline."
+  ]
+}

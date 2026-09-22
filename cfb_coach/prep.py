@@ -263,6 +263,8 @@ def opening_menus(opp: dict[str, Any]) -> str:
 
 
 def build_prep(opponent_id: str, db: CoachDB | None = None) -> str:
+    from cfb_coach.gameplan import format_gameplan_block, format_pivot_hints
+
     seed = load_seed()
     opp = _opp(seed, opponent_id)
     if db:
@@ -280,9 +282,12 @@ def build_prep(opponent_id: str, db: CoachDB | None = None) -> str:
         f"(D call target {league['timing']['defense_call_target_seconds']}s)  pause={league['timing']['pause']}",
         f"Books: {league['online_baseline']['custom_offense']} / "
         f"{league['online_baseline']['custom_defense']}",
+        "Architecture: BASELINE → LEARN → ADJUST (opponent overlay stacks on META)",
         "",
     ]
     sections = [
+        format_gameplan_block(opponent_id, db),
+        "",
         threat_sheet(opp),
         "",
         defense_vs_us(opp),
@@ -293,4 +298,7 @@ def build_prep(opponent_id: str, db: CoachDB | None = None) -> str:
         "",
         opening_menus(opp),
     ]
+    pivot = format_pivot_hints(db, opponent_id)
+    if pivot:
+        sections.extend(["", pivot])
     return "\n".join(header + sections)

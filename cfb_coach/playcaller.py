@@ -320,6 +320,26 @@ def _pick_offense(
         )
         rationale = "Empty changeup / QB stress | " + rationale
     form, play = _validate_play(form, play, pb)
+
+    # Anti-repeat: if same play flooded recent snaps, rotate to constraint changeup
+    if db is not None:
+        try:
+            from cfb_coach.gameplan import anti_repeat_penalty
+
+            pen = anti_repeat_penalty(db, _opp_id(opp), form, play, side="offense")
+            if pen >= 1.0:
+                alt_form, alt_play = "Gun Cluster", rng.choice(
+                    ["Z Spot Shake", "Outside Zone", "Mesh Post"]
+                )
+                alt_form, alt_play = _validate_play(alt_form, alt_play, pb)
+                rationale = (
+                    f"anti-repeat pivot → {alt_form}/{alt_play} "
+                    f"(pen={pen:.1f}) | {rationale}"
+                )
+                form, play = alt_form, alt_play
+        except Exception:
+            pass
+
     return Call("offense", form, play, adj, _reads_for(play), rationale)
 
 

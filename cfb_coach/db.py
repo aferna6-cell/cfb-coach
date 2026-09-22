@@ -89,6 +89,20 @@ class CoachDB:
                 success INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (opponent_id, bucket, key)
             );
+            CREATE TABLE IF NOT EXISTS gameplan_weights (
+                opponent_id TEXT NOT NULL,
+                side TEXT NOT NULL,
+                key TEXT NOT NULL,
+                weight REAL NOT NULL DEFAULT 0.0,
+                PRIMARY KEY (opponent_id, side, key)
+            );
+            CREATE TABLE IF NOT EXISTS macro_weights (
+                opponent_id TEXT NOT NULL,
+                macro TEXT NOT NULL,
+                weight REAL NOT NULL DEFAULT 0.0,
+                armed INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (opponent_id, macro)
+            );
             """
         )
         self.conn.commit()
@@ -241,6 +255,118 @@ class CoachDB:
         )
         self.conn.commit()
         return int(cur.lastrowid)
+
+
+    def count_snaps(self, opponent_id: str, *, side: str | None = None) -> int:
+        if side:
+            row = self.conn.execute(
+                "SELECT COUNT(*) AS n FROM snaps WHERE opponent_id = ? AND side = ?",
+                (opponent_id, side),
+            ).fetchone()
+        else:
+            row = self.conn.execute(
+                "SELECT COUNT(*) AS n FROM snaps WHERE opponent_id = ?",
+                (opponent_id,),
+            ).fetchone()
+        return int(row["n"] if row else 0)
+
+    def get_recent_snaps(
+        self,
+        opponent_id: str,
+        *,
+        side: str | None = None,
+        since_id: int | None = None,
+        limit: int = 50,
+    ) -> list[sqlite3.Row]:
+        clauses = ["opponent_id = ?"]
+        params: list[Any] = [opponent_id]
+        if side:
+            clauses.append("side = ?")
+            params.append(side)
+        if since_id is not None:
+            clauses.append("id > ?")
+            params.append(since_id)
+        params.append(limit)
+        sql = (
+            "SELECT * FROM snaps WHERE "
+            + " AND ".join(clauses)
+            + " ORDER BY id DESC LIMIT ?"
+        )
+        return list(self.conn.execute(sql, params))
+
+    def bump_gameplan_weight(
+        self,
+        opponent_id: str,
+        side: str,
+        key: str,
+        delta: float,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO gameplan_weights (opponent_id, side, key, weight)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(opponent_id, side, key) DO UPDATE SET
+                weight = weight + excluded.weight
+            """,
+            (opponent_id, side, key, delta),
+        )
+        self.conn.commit()
+
+    def get_gameplan_weights(
+        self, opponent_id: str, side: str | None = None
+    ) -> list[sqlite3.Row]:
+        if side:
+            return list(
+                self.conn.execute(
+                    "SELECT * FROM gameplan_weights WHERE opponent_id = ? AND side = ? "
+                    "ORDER BY ABS(weight) DESC",
+                    (opponent_id, side),
+                )
+            )
+        return list(
+            self.conn.execute(
+                "SELECT * FROM gameplan_weights WHERE opponent_id = ? "
+                "ORDER BY ABS(weight) DESC",
+                (opponent_id,),
+            )
+        )
+
+    def bump_macro_weight(
+        self,
+        opponent_id: str,
+        macro: str,
+        delta: float,
+        *,
+        armed: bool | None = None,
+    ) -> None:
+        macro = macro.upper()
+        self.conn.execute(
+            """
+            INSERT INTO macro_weights (opponent_id, macro, weight, armed)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(opponent_id, macro) DO UPDATE SET
+                weight = weight + excluded.weight,
+                armed = COALESCE(?, armed)
+            """,
+            (
+                opponent_id,
+                macro,
+                delta,
+                1 if armed else 0,
+                None if armed is None else (1 if armed else 0),
+            ),
+        )
+        self.conn.commit()
+
+    def get_macro_weights(self, opponent_id: str) -> list[sqlite3.Row]:
+        return list(
+            self.conn.execute(
+                "SELECT * FROM macro_weights WHERE opponent_id = ? "
+                "ORDER BY ABS(weight) DESC",
+                (opponent_id,),
+            )
+        )
+
 
 
 def _extract_seed_tendencies(opp: dict[str, Any]) -> dict[str, dict[str, int]]:

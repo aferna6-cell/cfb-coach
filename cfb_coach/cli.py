@@ -1,4 +1,4 @@
-"""CLI: prep / play / opponents / call."""
+"""CLI: prep / play / postgame / opponents / call."""
 
 from __future__ import annotations
 
@@ -38,6 +38,19 @@ def cmd_prep(args: argparse.Namespace) -> int:
     db = _db()
     try:
         print(build_prep(oid, db))
+    finally:
+        db.close()
+    return 0
+
+
+
+def cmd_postgame(args: argparse.Namespace) -> int:
+    from cfb_coach.gameplan import postgame_summary
+
+    oid = _require_opponent(args.opponent)
+    db = _db()
+    try:
+        print(postgame_summary(db, oid))
     finally:
         db.close()
     return 0
@@ -157,6 +170,13 @@ def cmd_play(args: argparse.Namespace) -> int:
                     )
                 else:
                     print(f"  logged: {result}")
+                from cfb_coach.gameplan import format_pivot_hints
+
+                tip = format_pivot_hints(db, oid)
+                if tip:
+                    for line in tip.splitlines()[1:]:
+                        if line.strip():
+                            print(f"  {line.strip()}")
                 continue
 
             sit = parse_situation(raw, default_side=default_side)
@@ -187,7 +207,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_prep = sub.add_parser("prep", help="Pregame threat sheet + menus")
+    p_prep = sub.add_parser("prep", help="Pregame: baseline → overlay → effective + threat sheet")
     p_prep.add_argument("--opponent", "-o", required=True)
     p_prep.set_defaults(func=cmd_prep)
 
@@ -199,6 +219,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_play.add_argument("--why", action="store_true", help="Show rationale")
     p_play.set_defaults(func=cmd_play)
+
+    p_post = sub.add_parser(
+        "postgame",
+        help="Learn from recent snaps — adjust gameplan/macro weights vs opponent",
+    )
+    p_post.add_argument("--opponent", "-o", required=True)
+    p_post.set_defaults(func=cmd_postgame)
 
     p_ops = sub.add_parser("opponents", help="List opponents + aliases")
     p_ops.set_defaults(func=cmd_opponents)
