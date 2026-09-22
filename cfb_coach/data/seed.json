@@ -1,0 +1,563 @@
+{
+  "league": {
+    "name": "Alabama online Dynasty Year 1",
+    "platform": "Xbox",
+    "rules": {
+      "play_cooldown": false,
+      "per_play_usage_cap": null
+    },
+    "timing": {
+      "offense_seconds": 30,
+      "defense_seconds": 15,
+      "defense_call_target_seconds": "2-5",
+      "pause": false
+    },
+    "online_baseline": {
+      "custom_offense": "BAMA META O",
+      "custom_defense": "BAMA META D",
+      "defensive_macros_active": [
+        "CROSS",
+        "VERT",
+        "BUNCH",
+        "RPO",
+        "SCRAM",
+        "RUN-IN",
+        "RUN-OUT",
+        "HEAT"
+      ],
+      "defensive_macros_benched": [
+        "FLOOD",
+        "SCREEN"
+      ],
+      "offensive_macros_active": [],
+      "note": "Temple playtest known-good: both custom books + 8 D macros + 0 O macros"
+    }
+  },
+  "doctrine_priors": {
+    "free_reign": true,
+    "ignore_rosters_new_season": true,
+    "offense": "Scheme healthy; mix easy runs vs two-high; INTs mostly read/throw; preserve Bunch X Nasty + Cluster.",
+    "defense_default": "Prefer simple Nickel Over zones (C3 Sky / C4 Quarters / Tampa 2) unless high-confidence tendency justifies macro/pressure. One user job. Macros situational not every snap.",
+    "prediction_rule": "Update probs after one strong tell; hard-counter only at high confidence."
+  },
+  "playbooks": {
+    "offense_formations": {
+      "Gun Bunch X Nasty": {
+        "role": "primary",
+        "core": [
+          "Inside Zone",
+          "HB Base",
+          "Counter Y",
+          "QB Sweep",
+          "Mtn RPO Zone Alert",
+          "Mesh Spot",
+          "Mesh Traffic",
+          "Mesh Corner",
+          "Drive HB Under",
+          "Deep Flood",
+          "Return Whip Trail",
+          "Whip Double Spot",
+          "Mtn Cross Post",
+          "Mtn HB Choice",
+          "Mtn Speed Dig Under",
+          "RZ PA X Whip",
+          "Z Spot GoalLine"
+        ],
+        "audibles": [
+          "Inside Zone",
+          "Mesh Spot",
+          "Deep Flood",
+          "Mtn Cross Post"
+        ]
+      },
+      "Gun Cluster": {
+        "role": "counterpunch",
+        "core": [
+          "Mesh",
+          "Mesh Post",
+          "Verticals",
+          "Z Spot",
+          "Z Spot Shake",
+          "PA Read",
+          "Outside Zone",
+          "HB Counter",
+          "HB Mid Draw",
+          "HB Slip Screen",
+          "Spacing",
+          "Irish Mesh Whip",
+          "518 Hook"
+        ],
+        "audibles": [
+          "Outside Zone",
+          "Mesh Post",
+          "Verticals",
+          "Z Spot Shake"
+        ]
+      },
+      "Pistol U Off Trips": {
+        "role": "run_rpo",
+        "core": [
+          "DBL Post",
+          "HB Slam",
+          "HB Stretch",
+          "HB Zone WK",
+          "Inside Zone Split",
+          "PA Boot",
+          "PA Boot Over",
+          "PA Corner Dig",
+          "Quick Slants",
+          "RPO Alert TE Flat",
+          "Shock",
+          "TE Cross"
+        ]
+      },
+      "Singleback Deuce Close": {
+        "role": "bully_rz",
+        "core": [
+          "Mtn Duo",
+          "HB Dive",
+          "HB Stretch",
+          "Inside Zone Split",
+          "Counter Y",
+          "Motion Power",
+          "PA RZ Crossers",
+          "PA Stretch Shot",
+          "PA Mtn Spider Y Leak",
+          "PA Z Cross",
+          "Bench",
+          "Spacing Switch"
+        ]
+      },
+      "Gun Empty Quads": {
+        "role": "spread_qb",
+        "core": [
+          "Cross Z Post",
+          "Curl Pivot Dig",
+          "All Go",
+          "Out Double Under",
+          "QB Blast",
+          "QB Draw",
+          "RPO Alert QB Draw",
+          "Vert Double Under",
+          "WR Screen"
+        ]
+      }
+    },
+    "defense_packages": {
+      "Nickel Over": {
+        "role": "primary_home",
+        "calls": [
+          "Cover 3 Sky",
+          "Cover 4 Quarters",
+          "Tampa 2",
+          "Field Sim 3"
+        ]
+      },
+      "Nickel 3-3 Cub": {
+        "role": "pressure",
+        "calls": [
+          "Cover 3 Buzz",
+          "Cover 4 Show 2",
+          "Cover 1 Robber",
+          "Mike Blitz 0"
+        ]
+      },
+      "Nickel Double Mug": {
+        "role": "same_look_pressure",
+        "calls": [
+          "Cover 3 Match",
+          "Tampa 2",
+          "Nickel 2 Trap",
+          "Mid Blitz 0"
+        ]
+      },
+      "4-2-5 Over G": {
+        "role": "balanced",
+        "calls": [
+          "Cover 3 Sky",
+          "Cover 4 Quarters",
+          "Cover 2 Man",
+          "Mike SS 3"
+        ]
+      },
+      "4-3 Even 6-1": {
+        "role": "short_yardage",
+        "calls": [
+          "Cover 3 Buzz",
+          "Cover 4 Quarters",
+          "Tampa 2",
+          "Mike Will Blitz"
+        ]
+      },
+      "Dime Normal": {
+        "role": "passing_downs",
+        "calls": [
+          "3 Double Buzz",
+          "Cover 4 Quarters",
+          "Cover 4 Palms",
+          "Dime Blitz 3"
+        ]
+      }
+    }
+  },
+  "opponents": {
+    "gavin": {
+      "display_name": "Gavin",
+      "team_now": "Auburn",
+      "prev": null,
+      "skill": "best_in_league",
+      "offense": {
+        "early_down": [
+          "Inside Zone",
+          "split zone"
+        ],
+        "explosives": [
+          "Four Verticals",
+          "Cross Wheels"
+        ],
+        "intermediate": [
+          "Mesh Spot",
+          "Mesh Traffic",
+          "Flood Drive",
+          "Levels Sail"
+        ],
+        "escape": "QB scramble when coverage carries",
+        "rpo": [
+          "RPO Alert Bubble"
+        ],
+        "goal_line": [
+          "Quick Fork Zig",
+          "Z Mesh Goal Line",
+          "compressed + IZ"
+        ]
+      },
+      "defense_vs_us": {
+        "archetype": "split_field_zone",
+        "coverages": [
+          "Cover 6",
+          "Cover 9",
+          "Cover 4 Quarters",
+          "Cover 3 Sky",
+          "3 Double Cloud"
+        ],
+        "man_blitz": "rare",
+        "vs_bunch_cluster": "Safeties high; bracket verticals; force run/checkdown. Do NOT spam Mesh Post into Cover 6 (INTs on film)."
+      },
+      "sample_snaps": [
+        {
+          "sit": "2nd&20",
+          "cov": "Cover 6",
+          "our": "Mesh Post",
+          "note": "attacked ok as changeup"
+        },
+        {
+          "sit": "3rd&20",
+          "cov": "Cover 4 Quarters",
+          "our": "Mtn Cross Post",
+          "note": "incomplete"
+        },
+        {
+          "sit": "4th&10",
+          "cov": "Cover 4 Quarters",
+          "our": "Cluster Mesh Post",
+          "note": "incomplete"
+        },
+        {
+          "sit": "scoring",
+          "cov": "Cover 9",
+          "our": "Cluster Z Spot Shake",
+          "note": "TD/explosive"
+        },
+        {
+          "sit": "later drives",
+          "cov": "heavy Cover 6",
+          "our": "kept throwing",
+          "note": "INTs \u2014 should have run"
+        }
+      ],
+      "confidence": "high"
+    },
+    "quen": {
+      "display_name": "Quen",
+      "team_now": "Houston",
+      "prev": null,
+      "skill": "strong",
+      "offense": {
+        "core": [
+          "Cross Wheels",
+          "RPO bubbles",
+          "Inside Zone",
+          "slot/post",
+          "Flood",
+          "High-Low Cross",
+          "Verticals"
+        ],
+        "qb": "mobile scramble threat",
+        "result": "beat ALA 31-7"
+      },
+      "defense_vs_us": {
+        "archetype": "pressure_heavy",
+        "pressures": [
+          "Sam Blitz",
+          "Will Blitz",
+          "Sam Blitz 3",
+          "WS Blitz 3",
+          "Nickel 2 Trap"
+        ],
+        "coverages": [
+          "Cover 2",
+          "Cover 3 Sky",
+          "Cover 3 Match",
+          "Cover 3 Buzz",
+          "3 Double Cloud"
+        ],
+        "vs_bunch_cluster": "Attack protection more than Auburn/Temple. Load hot/protection answers."
+      },
+      "sample_snaps": [
+        {
+          "sit": "3rd&2",
+          "cov": "run look",
+          "our": "HB Base",
+          "note": "converted"
+        },
+        {
+          "sit": "3rd&5",
+          "cov": "Cover 2",
+          "our": "Mesh Traffic",
+          "note": "drive ended soon after"
+        },
+        {
+          "sit": "3rd&6",
+          "cov": "WS Blitz 3",
+          "our": "Return Whip Trail",
+          "note": "right family"
+        },
+        {
+          "sit": "GL/TD drive",
+          "cov": "pressure/zone mix",
+          "our": "Mesh Spot/Deep Flood",
+          "note": "eventually scored"
+        }
+      ],
+      "confidence": "high"
+    },
+    "tiano": {
+      "display_name": "Tiano",
+      "team_now": "SMU",
+      "prev": "Temple",
+      "offense": {
+        "money": [
+          "HB Angle"
+        ],
+        "stress": [
+          "Cross Wheels",
+          "mesh/drive-post"
+        ],
+        "runs": [
+          "HB Base",
+          "Inside Zone",
+          "Outside Zone",
+          "Duo",
+          "Zone Weak",
+          "Mid Draw",
+          "Trap"
+        ],
+        "rpo": [
+          "Zone Read Bubble"
+        ],
+        "tempo": "no-huddle to trap personnel",
+        "goal_line": [
+          "Z Smash Goal Line vs run sellout"
+        ]
+      },
+      "defense_vs_us": {
+        "archetype": "c2_c3_mixer",
+        "coverages": [
+          "Cover 2 Invert Hard Flat",
+          "Cover 2",
+          "Cover 3 Sky",
+          "Cover 3 Cloud",
+          "Cover 1 Hole",
+          "Nickel Sim"
+        ],
+        "vs_bunch_cluster": "More Cover-2-heavy near scoring territory."
+      },
+      "sample_snaps": [
+        {
+          "sit": "RZ ~14",
+          "cov": "Cover 2",
+          "our": "RZ PA X Whip",
+          "note": "advanced near GL"
+        },
+        {
+          "sit": "RZ ~3",
+          "cov": "Cover 3 Cloud",
+          "our": "Inside Zone",
+          "note": "TD"
+        },
+        {
+          "sit": "RZ ~16",
+          "cov": "Cover 2 Invert Hard Flat",
+          "our": "RZ PA X Whip",
+          "note": "INT"
+        },
+        {
+          "sit": "RZ ~13",
+          "cov": "Cover 2 Invert Hard Flat",
+          "our": "Cluster Z Spot Shake",
+          "note": "TD"
+        }
+      ],
+      "confidence": "high"
+    },
+    "gio": {
+      "display_name": "Gio",
+      "team_now": "TCU",
+      "prev": "Florida",
+      "offense": {},
+      "defense_vs_us": {},
+      "notes": "Miami-era Florida: defense-too-slow lesson; thin current film",
+      "confidence": "low"
+    },
+    "michael": {
+      "display_name": "Michael",
+      "team_now": "South Carolina",
+      "prev": null,
+      "offense": {},
+      "defense_vs_us": {},
+      "notes": "ALA W 22-21 late TD+2pt+INT seal; low concept detail",
+      "confidence": "low"
+    },
+    "harrison": {
+      "display_name": "Harrison",
+      "team_now": "Duke",
+      "prev": "LSU",
+      "offense": {},
+      "defense_vs_us": {},
+      "notes": "thin",
+      "confidence": "low"
+    },
+    "jaxon": {
+      "display_name": "Jaxon",
+      "team_now": "UCF",
+      "prev": "Kentucky",
+      "offense": {},
+      "defense_vs_us": {},
+      "notes": "thin",
+      "confidence": "low"
+    },
+    "ryan": {
+      "display_name": "Ryan",
+      "team_now": "NC State",
+      "prev": null,
+      "offense": {},
+      "defense_vs_us": {},
+      "notes": "empty seed",
+      "confidence": "none"
+    },
+    "james": {
+      "display_name": "James",
+      "team_now": "Arizona State",
+      "prev": null,
+      "offense": {},
+      "defense_vs_us": {},
+      "notes": "empty seed",
+      "confidence": "none"
+    },
+    "cpu": {
+      "display_name": "CPU Dynasty",
+      "team_now": "CPU",
+      "prev": null,
+      "defense_vs_us": {
+        "archetype": "two_high_money_downs",
+        "example_nd": [
+          "Cover 4 Palms 3rd-long",
+          "Cover 2 Man 4th",
+          "Tampa 2",
+          "Cover 2 Hard Flat",
+          "Cover 2 Invert Hard Flat"
+        ],
+        "lesson": "Take free underneath; don't force Mesh Post/Whip into sticks coverage (catch-short failures)."
+      },
+      "confidence": "medium"
+    }
+  },
+  "meta_priors": {
+    "source": "General CFB/NCAA situational football + common EA CFB online meta concepts as soft priors; always subordinate to logged dynasty evidence.",
+    "offense_by_coverage": {
+      "Cover 3 / single-high": [
+        "Deep Flood",
+        "crossers",
+        "seam stress \u2014 confirm leverage"
+      ],
+      "Cover 1 / man": [
+        "Mesh Spot",
+        "Whip/zig/drag/rub",
+        "RB mismatch"
+      ],
+      "Cover 2": [
+        "seam/hole + run; don't force high-risk hole shots"
+      ],
+      "Cover 4 / 6 / 9 / two-high": [
+        "RUN FIRST more often; checkdowns; then split-field beaters"
+      ],
+      "pressure / Cover 0": [
+        "quick game",
+        "Mesh Spot",
+        "Return Whip Trail",
+        "protection first"
+      ]
+    },
+    "defense_by_offense_concept": {
+      "Four Verticals / seams": [
+        "Nickel Over Cover 4 Quarters",
+        "VERT macro if repeated"
+      ],
+      "Cross Wheels / crossers": [
+        "Tampa 2 or Quarters",
+        "CROSS only after real tendency"
+      ],
+      "Mesh / Bunch rubs": [
+        "Tampa 2 changeup",
+        "BUNCH if repeated compressed wins"
+      ],
+      "Inside Zone / Duo": [
+        "fit sound from C3 Sky",
+        "Even 6-1 only short-yardage",
+        "RUN-IN only high confidence"
+      ],
+      "RPO bubble": [
+        "RPO macro if tendency",
+        "else base zone + hard flats selectively"
+      ],
+      "QB scramble": [
+        "contain integrity",
+        "SCRAM situational",
+        "one user job on escape"
+      ]
+    },
+    "situational": {
+      "1st_and_10": "Establish run or easy completion; don't open with hero shot unless opponent profile demands.",
+      "3rd_and_short": "Run or quick man-beater; Houston-style pressure answers ready.",
+      "3rd_and_long": "Protect football vs two-high; underneath to sticks; avoid catch-short.",
+      "red_zone": "Possession > hero; run + whip/zig + compressed; tag by coverage (C2 Invert HF \u2260 always whip).",
+      "two_minute": "Ball security + clock; no force into covered windows."
+    },
+    "pro_style_principles": [
+      "Beats coverage families, not single named plays in isolation.",
+      "Constraint theory: run to set up play-action; verticals to open underneath; underneath to set up shots.",
+      "Mix rates: never become 80% one concept vs sticky opponent.",
+      "Against zone-heavy split-field (Auburn archetype): patience and runs; against pressure (Houston archetype): protection and hot answers.",
+      "Defense: force long drives; explosives kill you more than dinks."
+    ]
+  },
+  "call_syntax": {
+    "offense": "Formation \u2014 Play | Adj if needed | Read1 \u2192 Read2",
+    "defense": "Formation \u2014 Play | Macro if needed | User one job",
+    "examples": {
+      "offense": "Gun Bunch X Nasty \u2014 Mesh Spot | No adj | Spot \u2192 Drag",
+      "defense": "Nickel Over \u2014 Cover 4 Quarters | VERT | User #3 seam"
+    },
+    "controller": "Xbox \u2014 prefer formation/play/macro names; include Xbox button sequences only when mapped (doc had PS \u2014 do not invent wrong buttons)."
+  }
+}

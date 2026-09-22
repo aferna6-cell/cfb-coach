@@ -1,0 +1,1 @@
+# No third-party deps — stdlib only (sqlite3, argparse, json, pathlib).
