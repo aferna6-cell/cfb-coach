@@ -21,6 +21,7 @@ from cfb_coach.vision.hud import extract_hud
 from cfb_coach.vision.look import DefenseLook, naive_roi_heuristic
 from cfb_coach.vision.observation import GameObservation, SituationHUD
 from cfb_coach.vision.play_state import PlayStateTracker
+from cfb_coach.vision.play_tracker import PlayTracker
 from cfb_coach.vision.players import extract_player_centroids, split_offense_defense
 from cfb_coach.vision.pressure import classify_pressure, classify_shell
 from cfb_coach.vision.smooth import TemporalSmoother
@@ -45,7 +46,10 @@ class VisionPipeline:
         self.use_ocr = use_ocr
         self.smoother = TemporalSmoother(window=smooth_window, threshold=smooth_threshold)
         self.play_tracker = PlayStateTracker()
+        self.lifecycle = PlayTracker(state=self.play_tracker)
+        self._last_play = None
         self._last_gray: Any = None
+        self._thread_stats: dict[str, Any] = {}
         self._fps = 0.0
         self._last_t = 0.0
         self._frames = 0
@@ -114,11 +118,31 @@ class VisionPipeline:
         )
 
         motion = self._motion_energy(bgr)
-        play_state = self.play_tracker.update(
+        # Lifecycle (snap/end) drives state machine with multi-signal evidence
+        hud_dict = {}
+        if isinstance(sit, SituationHUD):
+            hud_dict = {
+                "down": sit.down,
+                "distance": sit.distance,
+                "quarter": sit.quarter,
+                "score_us": sit.score_us,
+                "score_them": sit.score_them,
+                "yardline": None,
+            }
+        cents = [(float(c[0]), float(c[1])) for c in (centroids or [])[:22]]
+        play_state, completed = self.lifecycle.feed(
             now=now,
             motion=motion,
-            hud_visible=True,
+            centroids=cents,
+            play_clock=getattr(sit, "clock", None) if isinstance(sit, SituationHUD) else None,
+            hud=hud_dict,
+            formation=formation,
+            formation_side=form_side,
+            shell=shell,
+            pressure=pressure,
         )
+        if completed is not None:
+            self._last_play = completed
 
         raw_vals = {
             "formation": formation,
@@ -127,6 +151,31 @@ class VisionPipeline:
             "play_state": play_state,
         }
         smoothed = self.smoother.update(raw_vals)
+
+        extras = {
+            "n_centroids": len(centroids),
+            "motion": motion,
+            "fps": self._fps,
+            "last_play_id": getattr(self._last_play, "play_id", None),
+        }
+        cap = self.capture
+        if hasattr(cap, "debug_stats"):
+            try:
+                extras.update(cap.debug_stats())
+            except Exception:
+                pass
+        else:
+            for a, k in (
+                ("capture_fps", "capture_fps"),
+                ("dropped", "dropped"),
+                ("latency_ms", "latency_ms"),
+                ("queue_depth", "queue"),
+            ):
+                if hasattr(cap, a):
+                    try:
+                        extras[k] = getattr(cap, a)
+                    except Exception:
+                        pass
 
         obs = GameObservation(
             situation=sit if isinstance(sit, SituationHUD) else SituationHUD(),
@@ -143,11 +192,7 @@ class VisionPipeline:
             },
             source=getattr(self.capture, "name", "capture"),
             notes="",
-            extras={
-                "n_centroids": len(centroids),
-                "motion": motion,
-                "fps": self._fps,
-            },
+            extras=extras,
             ts=now,
         )
         return obs.normalized(conf_threshold=self.conf_threshold)

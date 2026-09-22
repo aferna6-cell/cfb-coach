@@ -663,6 +663,8 @@ def make_call(
     rng: random.Random | None = None,
     last_coverage: str | None = None,
     last_concept: str | None = None,
+    live_engine: Any | None = None,
+    live_tendencies: list | None = None,
 ) -> Call:
     """
     Build one call. Optional last_coverage / last_concept are PREVIOUS-snap
@@ -691,7 +693,54 @@ def make_call(
         if "last" not in (sit.raw or "").lower():
             sit.raw = f"{sit.raw} last {last_concept}".strip()
 
+    # Milestone 2: weight LiveTendency evidence (does NOT hardcode final calls)
+    live_note = ""
+    try:
+        from cfb_coach.counter_evidence import (
+            live_concept_from_engine,
+            strongest_signal,
+            tendencies_for_situation,
+            weight_for_tendency,
+        )
+        from cfb_coach.live_tendency import SAMPLE_ACTIONABLE
+
+        ts = list(live_tendencies or [])
+        if live_engine is not None and not ts:
+            ts = tendencies_for_situation(live_engine, sit)
+        best = strongest_signal(ts)
+        if best is not None and best.sample_size >= 2:
+            w = weight_for_tendency(best)
+            live_note = (
+                f"live_tend {best.signal} n={best.sample_size} "
+                f"w={w:.2f} [{best.confidence}]"
+            )
+            # Soft: fill concept_hint only when empty and sample mild+
+            if not sit.concept_hint and best.sample_size >= 2:
+                hint = live_concept_from_engine(live_engine, sit) if live_engine else None
+                if hint is None and best.signal:
+                    hint = best.signal.lower().replace("_", " ")
+                if hint and not str(best.signal).startswith(("SHELL", "PRESSURE", "MOTION", "EXPLOSIVE")):
+                    sit.concept_hint = hint
+                    # Mark as live so REPEATED path can unlock when n>=2
+                    if "live" not in (sit.raw or "").lower():
+                        sit.raw = f"{sit.raw} live {hint}".strip()
+            # Stronger sample → register for counter validation path via gameplan
+            if live_engine is not None and best.sample_size >= SAMPLE_ACTIONABLE:
+                try:
+                    from cfb_coach.gameplan import note_live_tendency_pivot
+
+                    note_live_tendency_pivot(best)
+                except Exception:
+                    pass
+    except Exception:
+        live_note = ""
+
     from cfb_coach.opponents import is_cpu_opponent
+
+    def _with_live(call: Call) -> Call:
+        if live_note:
+            call.rationale = f"{call.rationale} | {live_note}" if call.rationale else live_note
+        return call
 
     if is_cpu_opponent(opponent_id):
         # CPU games = offense-only coaching — never emit D calls / D macros
@@ -702,12 +751,12 @@ def make_call(
                 "CPU = offense-only (no D calls) — switched to O | "
                 + (call.rationale or "")
             )
-            return call
-        return _pick_offense(sit, opp, seed, db, rng)
+            return _with_live(call)
+        return _with_live(_pick_offense(sit, opp, seed, db, rng))
 
     if sit.side == "defense":
-        return _pick_defense(sit, opp, seed, db, rng)
-    return _pick_offense(sit, opp, seed, db, rng)
+        return _with_live(_pick_defense(sit, opp, seed, db, rng))
+    return _with_live(_pick_offense(sit, opp, seed, db, rng))
 
 
 def one_shot(

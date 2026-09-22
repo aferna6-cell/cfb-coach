@@ -754,9 +754,12 @@ def active_pivot(
     """
     Stronger mid-game pivot: last 3 snaps fail on a side → PIVOT tag +
     switch family/macro plan. No single-snap whiplash (needs 3 fails).
+
+    Milestone 2: also surfaces live tendency explosive/scramble pivots.
     """
+    live_tip = live_tendency_pivot_tip(side)
     if not db:
-        return None
+        return live_tip
     from cfb_coach.tendency import is_user_opponent
 
     user = is_user_opponent(opponent_id)
@@ -768,7 +771,7 @@ def active_pivot(
     elif user and fails2 >= 2:
         hard = False
     else:
-        return None
+        return live_tip
     if side == "offense":
         if hard:
             msg = (
@@ -868,3 +871,62 @@ def format_pivot_hints(
     for t in tips:
         lines.append(f"  - {t.message}")
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Milestone 2 — live tendency pivots (explosive / counter validation)
+# ---------------------------------------------------------------------------
+
+_LIVE_PIVOT_NOTE: dict[str, Any] = {}
+
+
+def note_live_tendency_pivot(tendency: Any) -> None:
+    """Record strongest live tendency for active_pivot extension (process-local)."""
+    try:
+        _LIVE_PIVOT_NOTE["signal"] = getattr(tendency, "signal", str(tendency))
+        _LIVE_PIVOT_NOTE["sample_size"] = int(getattr(tendency, "sample_size", 0))
+        _LIVE_PIVOT_NOTE["confidence"] = str(getattr(tendency, "confidence", ""))
+        _LIVE_PIVOT_NOTE["hit_rate"] = float(getattr(tendency, "hit_rate", 0.0))
+    except Exception:
+        pass
+
+
+def clear_live_tendency_pivot() -> None:
+    _LIVE_PIVOT_NOTE.clear()
+
+
+def live_tendency_pivot_tip(side: str) -> PivotSuggestion | None:
+    """If live engine shows strong explosive / confirmed tendency → soft pivot tip."""
+    sig = str(_LIVE_PIVOT_NOTE.get("signal") or "")
+    n = int(_LIVE_PIVOT_NOTE.get("sample_size") or 0)
+    conf = str(_LIVE_PIVOT_NOTE.get("confidence") or "")
+    if n < 3 or conf not in ("actionable", "strong"):
+        return None
+    if sig == "EXPLOSIVE" or "EXPLOSIVE" in sig:
+        return PivotSuggestion(
+            kind="offense_pivot" if side == "offense" else "defense_pivot",
+            family="explosive",
+            message=(
+                f"PIVOT (live): EXPLOSIVE trend n={n} — "
+                "constrain hero shots / tighten leverage. No single-snap whiplash."
+            ),
+        )
+    if "SCRAMBLE" in sig:
+        return PivotSuggestion(
+            kind="defense_macro",
+            family="scramble",
+            macro="SCRAM",
+            message=f"PIVOT (live): QB escape n={n} — SCRAM/contain now legal.",
+        )
+    return None
+
+
+
+def postgame_live_report(engine: Any | None) -> str | None:
+    """Concise live-tendency summary for `postgame --report`."""
+    if engine is None:
+        return None
+    try:
+        return engine.summary_report()
+    except Exception:
+        return None

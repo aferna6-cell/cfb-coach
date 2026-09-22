@@ -131,6 +131,33 @@ def cmd_postgame(args: argparse.Namespace) -> int:
         exp = " [experimental]" if dcfg.get("experimental_badge") else ""
         print(f"Dynasty: {dcfg['label']} ({dcfg['mode']}){exp}")
         print(postgame_summary(db, oid, dynasty=dynasty))
+        if getattr(args, "report", False):
+            # Concise live-tendency summary from play_records if present
+            from cfb_coach.live_tendency import LiveTendencyEngine
+            from cfb_coach.vision.play_record import PlayRecord
+
+            eng = LiveTendencyEngine()
+            # Prefer latest session for opponent
+            rows = list(
+                db.conn.execute(
+                    "SELECT session_id FROM game_sessions WHERE opponent_id = ? "
+                    "ORDER BY started_ts DESC LIMIT 1",
+                    (oid,),
+                )
+            )
+            if rows:
+                sid = rows[0]["session_id"]
+                for pr in db.get_session_plays(sid):
+                    try:
+                        payload = __import__("json").loads(pr["payload_json"])
+                        eng.add_play(PlayRecord.from_dict(payload))
+                    except Exception:
+                        pass
+                print()
+                print(eng.summary_report())
+            else:
+                print()
+                print("# LIVE TENDENCY REPORT\n  (no game_sessions / play_records yet)")
     finally:
         db.close()
     return 0
@@ -406,6 +433,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override/store dynasty: alabama (serious) | ohio_state (lab)",
     )
+    p_post.add_argument(
+        "--report",
+        action="store_true",
+        help="Also print concise this-game live tendency summary from play_records",
+    )
     p_post.set_defaults(func=cmd_postgame)
 
     p_ops = sub.add_parser("opponents", help="List opponents + aliases")
@@ -530,6 +562,25 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=8.0,
         help="Target analyzed FPS for live/video pipeline (default 8)",
+    )
+    p_watch.add_argument(
+        "--dynasty",
+        choices=("alabama", "ohio_state"),
+        default=None,
+        help="Dynasty for watch session logging (alabama|ohio_state)",
+    )
+    p_watch.add_argument(
+        "--record-plays",
+        dest="record_plays",
+        action="store_true",
+        help="Optional: save short clips under ~/.cfb-coach/games/<id>/plays/ when low-conf/explosive",
+    )
+    p_watch.add_argument(
+        "--no-post-play-line",
+        dest="post_play_line",
+        action="store_false",
+        default=True,
+        help="Disable post-play one-liner on play end",
     )
     p_watch.set_defaults(func=cmd_watch)
 

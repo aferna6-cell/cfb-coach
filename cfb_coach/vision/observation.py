@@ -21,11 +21,15 @@ OBS_SHELLS = ("one_high", "two_high", "unknown")
 OBS_PRESSURES = ("none", "show", "left", "right", "middle", "all_out", "unknown")
 
 PLAY_STATES = (
+    "UNKNOWN",
+    "MENU",
     "BETWEEN_PLAYS",
     "PRE_SNAP",
     "PLAY_ACTIVE",
+    "PLAY_ENDING",
+    "POST_PLAY",
+    # M1 compat aliases (accepted in normalize)
     "PLAY_ENDED",
-    "MENU",
     "OTHER",
 )
 
@@ -120,8 +124,15 @@ class GameObservation:
             shell = "unknown"
         if pressure not in OBS_PRESSURES:
             pressure = "unknown"
-        if play_state not in PLAY_STATES:
-            play_state = "OTHER"
+        # Canonicalize M1 aliases
+        _alias = {"OTHER": "UNKNOWN", "PLAY_ENDED": "PLAY_ENDING"}
+        play_state = _alias.get(play_state, play_state)
+        _canonical = (
+            "UNKNOWN", "MENU", "BETWEEN_PLAYS", "PRE_SNAP",
+            "PLAY_ACTIVE", "PLAY_ENDING", "POST_PLAY",
+        )
+        if play_state not in _canonical:
+            play_state = "UNKNOWN"
 
         conf = {k: max(0.0, min(1.0, float(v))) for k, v in (self.confidence or {}).items()}
 
@@ -132,8 +143,8 @@ class GameObservation:
             shell = "unknown"
         if pressure != "unknown" and conf.get("pressure", 1.0) < conf_threshold:
             pressure = "unknown"
-        if play_state not in ("OTHER", "MENU") and conf.get("play_state", 1.0) < conf_threshold:
-            play_state = "OTHER"
+        if play_state not in ("UNKNOWN", "MENU") and conf.get("play_state", 1.0) < conf_threshold:
+            play_state = "UNKNOWN"
 
         side = (self.formation_side or "").upper().strip()
         if side not in ("L", "R", ""):

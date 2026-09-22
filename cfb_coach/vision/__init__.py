@@ -1,4 +1,4 @@
-"""Pluggable vision for SCREEN CO-PILOT (v1.8 — live vision Milestone 1).
+"""Pluggable vision for SCREEN CO-PILOT (v1.9 — live vision Milestone 2).
 
 DefenseLook remains the coach tip contract. GameObservation is the richer
 live-vision state; pipeline maps GameObservation → DefenseLook.
@@ -49,8 +49,13 @@ from cfb_coach.vision.capture import (
 from cfb_coach.vision.smooth import TemporalSmoother, majority_vote
 from cfb_coach.vision.formation import classify_formation
 from cfb_coach.vision.pressure import classify_pressure, classify_shell
-from cfb_coach.vision.play_state import PlayStateTracker
+from cfb_coach.vision.play_state import PlayStateTracker, canonicalize, to_compat
 from cfb_coach.vision.pipeline import VisionPipeline, build_capture_from_args
+from cfb_coach.vision.play_tracker import PlayTracker
+from cfb_coach.vision.play_record import PlayRecord
+from cfb_coach.vision.snap_detect import SnapDetector
+from cfb_coach.vision.play_end import PlayEndDetector
+from cfb_coach.vision.threaded_capture import ThreadedCapture
 
 __all__ = [
     "CAPTURE_SETUP_NOTES",
@@ -83,6 +88,13 @@ __all__ = [
     "classify_pressure",
     "classify_shell",
     "PlayStateTracker",
+    "canonicalize",
+    "to_compat",
+    "PlayTracker",
+    "PlayRecord",
+    "SnapDetector",
+    "PlayEndDetector",
+    "ThreadedCapture",
     "VisionPipeline",
     "build_capture_from_args",
     # legacy aliases

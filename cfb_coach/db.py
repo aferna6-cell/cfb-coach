@@ -129,9 +129,60 @@ class CoachDB:
             );
             CREATE INDEX IF NOT EXISTS idx_vision_obs_ts
                 ON vision_observations(ts);
+            CREATE TABLE IF NOT EXISTS game_sessions (
+                session_id TEXT PRIMARY KEY,
+                opponent_id TEXT NOT NULL,
+                dynasty TEXT,
+                started_ts TEXT NOT NULL,
+                ended_ts TEXT,
+                notes TEXT,
+                play_count INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS play_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                game_id TEXT,
+                play_id TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                opponent_id TEXT NOT NULL,
+                side TEXT,
+                down INTEGER,
+                distance INTEGER,
+                yardline INTEGER,
+                quarter INTEGER,
+                field_zone TEXT,
+                formation TEXT,
+                shell TEXT,
+                pressure TEXT,
+                play_family TEXT,
+                concept_tags TEXT,
+                result_type TEXT,
+                yards INTEGER,
+                coach_rec TEXT,
+                macro TEXT,
+                our_call TEXT,
+                confidence_json TEXT,
+                payload_json TEXT NOT NULL,
+                corrected INTEGER NOT NULL DEFAULT 0,
+                UNIQUE(session_id, play_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_play_records_session
+                ON play_records(session_id);
+            CREATE TABLE IF NOT EXISTS live_tendency_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                signal TEXT,
+                message TEXT,
+                payload_json TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_live_tend_session
+                ON live_tendency_events(session_id);
             """
         )
         self.conn.commit()
+        self._migrate_m2_columns()
 
     def _seed_if_empty(self) -> None:
         row = self.conn.execute(
@@ -516,6 +567,166 @@ class CoachDB:
                 "SELECT * FROM install_diffs WHERE opponent_id = ? "
                 "ORDER BY id DESC LIMIT ?",
                 (opponent_id, limit),
+            )
+        )
+
+
+
+    def _migrate_m2_columns(self) -> None:
+        """Additive column guards for older DBs (never destroy data)."""
+        # snaps: optional session_id
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(snaps)").fetchall()}
+        if "session_id" not in cols:
+            try:
+                self.conn.execute("ALTER TABLE snaps ADD COLUMN session_id TEXT")
+                self.conn.commit()
+            except sqlite3.Error:
+                pass
+
+    def start_game_session(self, sess: Any) -> str:
+        d = sess.to_dict() if hasattr(sess, "to_dict") else dict(sess)
+        self.conn.execute(
+            """
+            INSERT OR REPLACE INTO game_sessions
+                (session_id, opponent_id, dynasty, started_ts, ended_ts, notes, play_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                d["session_id"],
+                d["opponent_id"],
+                d.get("dynasty"),
+                d["started_ts"],
+                d.get("ended_ts"),
+                d.get("notes") or "",
+                int(d.get("play_count") or 0),
+            ),
+        )
+        self.conn.commit()
+        return str(d["session_id"])
+
+    def end_game_session(self, session_id: str, *, play_count: int | None = None) -> None:
+        if play_count is not None:
+            self.conn.execute(
+                """
+                UPDATE game_sessions SET ended_ts = ?, play_count = ?
+                WHERE session_id = ?
+                """,
+                (datetime.now(timezone.utc).isoformat(), int(play_count), session_id),
+            )
+        else:
+            self.conn.execute(
+                """
+                UPDATE game_sessions SET ended_ts = ? WHERE session_id = ?
+                """,
+                (datetime.now(timezone.utc).isoformat(), session_id),
+            )
+        self.conn.commit()
+
+    def log_play_record(self, rec: Any) -> int:
+        """Persist PlayRecord (dict or dataclass). Idempotent on session+play_id."""
+        d = rec.to_dict() if hasattr(rec, "to_dict") else dict(rec)
+        ts = datetime.now(timezone.utc).isoformat()
+        tags = d.get("concept_tags") or []
+        if isinstance(tags, list):
+            tags_s = json.dumps(tags)
+        else:
+            tags_s = str(tags)
+        conf = d.get("confidence") or {}
+        cur = self.conn.execute(
+            """
+            INSERT INTO play_records (
+                session_id, game_id, play_id, ts, opponent_id, side,
+                down, distance, yardline, quarter, field_zone,
+                formation, shell, pressure, play_family, concept_tags,
+                result_type, yards, coach_rec, macro, our_call,
+                confidence_json, payload_json, corrected
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_id, play_id) DO UPDATE SET
+                result_type = excluded.result_type,
+                yards = excluded.yards,
+                play_family = excluded.play_family,
+                concept_tags = excluded.concept_tags,
+                coach_rec = excluded.coach_rec,
+                confidence_json = excluded.confidence_json,
+                payload_json = excluded.payload_json,
+                corrected = excluded.corrected
+            """,
+            (
+                d.get("session_id") or "",
+                d.get("game_id") or d.get("session_id") or "",
+                d.get("play_id") or "",
+                ts,
+                d.get("opponent_id") or "",
+                d.get("side"),
+                d.get("down"),
+                d.get("distance"),
+                d.get("yardline"),
+                d.get("quarter"),
+                d.get("field_zone"),
+                d.get("formation"),
+                d.get("shell"),
+                d.get("pressure"),
+                d.get("play_family"),
+                tags_s,
+                d.get("result_type"),
+                d.get("yards"),
+                d.get("coach_rec"),
+                d.get("macro"),
+                d.get("our_call"),
+                json.dumps(conf),
+                json.dumps(d),
+                1 if d.get("corrected") else 0,
+            ),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def get_session_plays(
+        self, session_id: str, *, limit: int = 200
+    ) -> list[sqlite3.Row]:
+        return list(
+            self.conn.execute(
+                "SELECT * FROM play_records WHERE session_id = ? "
+                "ORDER BY id ASC LIMIT ?",
+                (session_id, limit),
+            )
+        )
+
+    def log_live_tendency_event(
+        self,
+        *,
+        session_id: str,
+        kind: str,
+        signal: str = "",
+        message: str = "",
+        payload: dict[str, Any] | None = None,
+    ) -> int:
+        cur = self.conn.execute(
+            """
+            INSERT INTO live_tendency_events
+                (session_id, ts, kind, signal, message, payload_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                datetime.now(timezone.utc).isoformat(),
+                kind,
+                signal,
+                message,
+                json.dumps(payload or {}),
+            ),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def get_live_tendency_events(
+        self, session_id: str, *, limit: int = 50
+    ) -> list[sqlite3.Row]:
+        return list(
+            self.conn.execute(
+                "SELECT * FROM live_tendency_events WHERE session_id = ? "
+                "ORDER BY id DESC LIMIT ?",
+                (session_id, limit),
             )
         )
 

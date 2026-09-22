@@ -216,7 +216,7 @@ Ohio State / CPU = volume lab. Alabama users = prepare well + adjust live.
 
 
 
-## Screen Co-Pilot (v1.8.0)
+## Screen Co-Pilot (v1.9.0)
 
 **Doctrine:** Aidan keeps **full Xbox control** on the HDMI monitor/console. The Windows laptop is a **sidecar** — it runs Xbox Remote Play so coach can **see** the game, analyze locally (classical CV, ~5–10 FPS, no LLM per frame), and suggest **pre-snap adjustments** only. **Never auto-play / never press buttons.**
 
@@ -229,7 +229,7 @@ Ohio State / CPU = volume lab. Alabama users = prepare well + adjust live.
 | `--demo` + typed hotkeys | Always available (Linux/WSL/Windows) — no vision deps. |
 | `--image` / `--video` | Offline pipeline / naive heuristic testing. |
 
-**Honesty:** Cover 3 vs Quarters (and fine shell calls) is hard from pixels. Milestone 1 is coarse **formation / shell / pressure / play_state**. Hotkeys remain first-class.
+**Honesty:** Cover 3 vs Quarters (and fine shell calls) is hard from pixels. Milestone 1 = coarse **formation / shell / pressure / play_state**. Milestone 2 adds snap/play-end, PlayRecord, and this-game live tendencies. Hotkeys remain first-class.
 
 ### Try it (WSL / Linux — no vision extras)
 
@@ -295,6 +295,63 @@ CALL
   3. …
 ```
 
+
+
+## Live Vision Milestone 2 (v1.9.0)
+
+**Extend M1 — do not rewrite.** Sidecar only; Remote Play = prototype capture; same pipeline for `--video`. False snaps worse than late. Sample tiers: **1=log, 2=mild, 3+=actionable, 5+=strong**. Recency windows (last 5 / last 8) + full-game. Anti-whiplash preserved.
+
+### What M2 adds
+
+| Piece | Role |
+|-------|------|
+| Play state machine | `UNKNOWN/MENU/BETWEEN_PLAYS/PRE_SNAP/PLAY_ACTIVE/PLAY_ENDING/POST_PLAY` (+ M1 compat) with timestamps |
+| `snap_detect` / `play_end` / `play_tracker` | Multi-signal snap + debounced end → one `PlayRecord` per snap |
+| `play_family` / `result_detect` | Coarse families + results; yards only from confident HUD delta (never fabricate) |
+| `session` + DB | `game_sessions`, `play_records`, `live_tendency_events` (additive migrations) |
+| `live_tendency` | This-game contextual buckets, alerts, counter validation → feeds playcaller |
+| Watch UX | Threaded capture (drop stale), compact LIVE GAME overlay, R/P/S/I/X corrections, optional `--record-plays` |
+| `postgame --report` | Concise tendency summary from session play_records |
+
+### Windows — first live test checklist
+
+```bat
+cd cfb-coach
+pip install -e ".[vision]"
+cfb-coach watch --calibrate
+cfb-coach watch --window "Xbox" --opponent gavin --dynasty alabama --debug
+:: optional clips when low-conf / explosive:
+cfb-coach watch --window "Xbox" --opponent gavin --record-plays --debug
+cfb-coach postgame -o gavin --report
+```
+
+**Checklist**
+
+1. Remote Play open on laptop; play on HDMI + Xbox controller (coach never drives sticks).
+2. Calibrate window/crop once (`--calibrate`).
+3. Confirm debug view shows FPS, state, short line (`3&7 | BUNCH R | 2-HIGH | …`).
+4. Confirm console shows **LIVE GAME** + top tendencies + **CURRENT COUNTER** (not a 40-stat dump).
+5. After a few snaps, verify `~/.cfb-coach/coach.db` has `game_sessions` / `play_records` rows.
+6. Manual correct last play: type `R` / `P` / `S` / `I` / `X` or `correct family CROSSERS`.
+7. Postgame: `cfb-coach postgame -o <opp> --report` for tendency summary.
+8. `--video sample.mp4` uses the **same** analysis path as live (no Xbox required for dry runs).
+
+### Linux / WSL smoke (no vision extras)
+
+```bash
+cd /workspace/cfb-coach
+PYTHONPATH=. python3 -m cfb_coach watch --demo --once
+PYTHONPATH=. python3 -m unittest discover -s tests -v
+```
+
+### Known limitations (honest)
+
+- **HUD OCR is weak** — down/distance/score/yards often unknown; we never invent yards.
+- **Concept families are coarse** — CROSSERS/VERTICALS/MESH/… tags, not exact route grading.
+- **Field / formation accuracy is unmeasured** on real Remote Play; treat live looks as soft evidence.
+- No LLM every frame, no controller automation, no huge NN training.
+- Cover 3 vs Quarters still hard from pixels (M1 honesty unchanged).
+
 ## Package layout
 
 ```text
@@ -317,7 +374,10 @@ cfb-coach/
     gameplan.py         # baseline + overlays + postgame learning + pivot
     install_sheet.py    # delta engine (inventory vs proposed; mark_prep_applied)
     tendency.py
-    vision/             # DefenseLook + GameObservation + live CV pipeline (Remote Play prototype)
+    vision/             # DefenseLook + GameObservation + live CV + M2 play tracker
+    live_tendency.py    # this-game LiveTendency engine (M2)
+    counter_evidence.py # tendency API for playcaller
+    session.py          # game session ids for watch
     copilot.py          # pre-snap tip engine + tiny HTML overlay
     watch.py            # `watch` / `copilot` live loop
     data/seed.json
@@ -333,6 +393,7 @@ PYTHONPATH=. python3 -m cfb_coach watch --demo --once
 PYTHONPATH=. python3 -m cfb_coach watch --setup
 PYTHONPATH=. python3 -m unittest discover -s tests -v
 # or: pip install pytest && pytest -q
+PYTHONPATH=. python3 -m cfb_coach postgame -o cpu --report   # tendency report if session logged
 ```
 
-Offline prep must succeed. With network, prep HTML includes **Live meta scout** (fetch budget ≤~12s). `watch --demo --once` must print sample pre-snap tips (stdlib only — no dxcam/cv2 required on Linux).
+Offline prep must succeed. M2: all old + new tests pass; `watch --demo --once` still works. With network, prep HTML includes **Live meta scout** (fetch budget ≤~12s). `watch --demo --once` must print sample pre-snap tips (stdlib only — no dxcam/cv2 required on Linux).

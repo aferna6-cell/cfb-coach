@@ -20,6 +20,7 @@ class Frame:
     width: int = 0
     height: int = 0
     source: str = ""
+    ts: float | None = None
     extras: dict[str, Any] = field(default_factory=dict)
 
     @property
