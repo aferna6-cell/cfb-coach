@@ -1,6 +1,108 @@
 {
-  "version": "cfb26-2026-09",
-  "description": "Generic META baseline gameplan + macros for every user/CPU game. Opponent overlays stack on top as dynasty evidence accumulates; thin opponents stay near baseline.",
+  "version": "cfb27-2026-09",
+  "description": "CFB27 META baseline (Sep 2026) for every user/CPU game. Bunch-first Wazzu/OSU-style offense; Nickel Over zone home on D. Opponent overlays stack on top; thin film stays near baseline. Patch 1.012 notes baked in.",
+  "game": "CFB 27",
+  "patch": "1.012 (2026-09-22)",
+  "offense_concepts": {
+    "core_identity": "Bunch is CFB27 passing meta — Gun Bunch X Nasty (Wazzu/OSU-style) primary; Gun Cluster changeup when Bunch overplayed.",
+    "families": {
+      "mesh": {
+        "plays": ["Mesh Spot", "Mesh Traffic", "Mesh Post", "Irish Mesh Whip"],
+        "purpose": "Easy completions + man/pressure beaters; Mesh Spot is the home easy throw",
+        "when": "Early downs needing a completion; vs pressure; vs C2 Invert (not Flood)"
+      },
+      "spot": {
+        "plays": ["Mesh Spot", "Z Spot Shake", "Z Spot", "Z Spot GoalLine", "Whip Double Spot"],
+        "purpose": "Compressed rubs + intermediate sits vs zone",
+        "when": "Bunch/Cluster vs soft zones; RZ possession"
+      },
+      "flood": {
+        "plays": ["Deep Flood", "Mtn Cross Post", "Mtn Speed Dig Under"],
+        "purpose": "High-low / corner-flat vs single-high C3",
+        "when": "Confirmed Cover 3 / single-high — NOT vs Cover 6/9/Quarters"
+      },
+      "run": {
+        "plays": ["Inside Zone", "HB Base", "Counter Y", "Outside Zone", "HB Counter", "Mtn Duo", "HB Dive", "HB Stretch"],
+        "purpose": "Force box fits; set up PA; punish two-high shells",
+        "when": "vs Cover 6 / Cover 9 / Quarters / Palms — RUN FIRST"
+      },
+      "rpo_alert": {
+        "plays": ["Mtn RPO Zone Alert", "RPO Alert TE Flat", "RPO Alert QB Draw"],
+        "purpose": "Constraint vs overhang / light box",
+        "when": "Early-down mix; vs soft edge leverage"
+      },
+      "whip_hot": {
+        "plays": ["Return Whip Trail", "Whip Double Spot", "RZ PA X Whip", "Irish Mesh Whip"],
+        "purpose": "Hot / man answers under pressure",
+        "when": "vs blitz / Cover 1 / Cover 0 — Mesh Spot first, Whip second"
+      },
+      "cluster_changeup": {
+        "plays": ["Outside Zone", "Z Spot Shake", "Mesh Post", "Verticals", "HB Counter"],
+        "purpose": "Break Bunch-overplay; same mesh/spot DNA from different look",
+        "when": "Bunch getting jumped or bracketed"
+      },
+      "rz_compressed": {
+        "plays": ["Mtn Duo", "HB Dive", "Mesh Spot", "RZ PA X Whip", "Z Spot GoalLine", "Z Spot Shake"],
+        "purpose": "Possession red zone — compressed + run bully",
+        "when": "Inside 20; priority = possession over hero ball"
+      }
+    },
+    "constraint_pairs": [
+      {"a": "Inside Zone / HB Base", "b": "Mesh Spot", "why": "Run to set up underneath; underneath to keep box honest"},
+      {"a": "Mesh Spot / Drive HB Under", "b": "Deep Flood / Mtn Cross Post", "why": "Easy throws open intermediate flood vs C3"},
+      {"a": "Gun Bunch X Nasty mesh", "b": "Gun Cluster Z Spot Shake", "why": "Same family, different look when Bunch overplayed"},
+      {"a": "Verticals / seam stress", "b": "Mesh Spot / Drive HB Under", "why": "Seams open underneath; underneath sets up shots"},
+      {"a": "HB Base protection", "b": "Return Whip Trail / Mesh Spot", "why": "Pressure sellout → hot answers; hot → run again"}
+    ],
+    "coverage_beater_matrix": {
+      "Cover 6": {"prefer": ["Inside Zone", "HB Base", "Counter Y", "Mesh Spot"], "avoid": ["Mesh Post spam", "Deep Flood force"], "note": "Common user shell — RUN FIRST"},
+      "Cover 9": {"prefer": ["Inside Zone", "HB Base", "Mesh Spot", "Drive HB Under"], "avoid": ["Forced verticals into brackets"], "note": "Split-field patience; take the easy"},
+      "Cover 4 Quarters": {"prefer": ["Inside Zone", "HB Base", "Counter Y", "Mesh Spot"], "avoid": ["Seam spam early"], "note": "Run first; easy completion second"},
+      "Cover 3 Sky": {"prefer": ["Deep Flood", "Mtn Cross Post", "Drive HB Under", "Outside Zone"], "avoid": ["Sitting under hard flats forever"], "note": "Flood/crossers once C3 confirmed"},
+      "Cover 2 / Invert Hard Flat": {"prefer": ["Mesh Spot", "Inside Zone", "Z Spot Shake", "Mtn Speed Dig Under"], "avoid": ["Deep Flood force", "Blind Whip into HF"], "note": "Soft lean Mesh Spot/IZ — film INTs on Whip/Flood"},
+      "Cover 1 / Pressure / Cover 0": {"prefer": ["Mesh Spot", "Return Whip Trail", "HB Base", "Mesh Traffic"], "avoid": ["Deep developing shots"], "note": "Hot ready; Mesh Spot primary, Whip secondary"},
+      "Tampa 2": {"prefer": ["Outside Zone", "HB Stretch", "Curl Pivot Dig", "HB Mid Draw"], "avoid": ["Seam sits into MLB drop"], "note": "Attack flats/perimeter; intermediate digs late"}
+    }
+  },
+  "defense_concepts": {
+    "core_identity": "Nickel Over zones home — force long drives; explosives kill you more than dinks. Cover 6/9 awareness: users live there — force runs.",
+    "packages": {
+      "Nickel Over": {
+        "role": "home",
+        "calls": ["Cover 3 Sky", "Cover 4 Quarters", "Tampa 2"],
+        "purpose": "Base early-down + money patience"
+      },
+      "Nickel 3-3 Cub": {
+        "role": "selective_pressure",
+        "calls": ["Mike Blitz 0", "Field Sim 3"],
+        "purpose": "Selective HEAT on 3rd-short / pressure-worthy archetypes"
+      },
+      "Nickel Double Mug": {
+        "role": "selective_pressure",
+        "calls": ["Mid Blitz 0"],
+        "purpose": "A-gap mug look — rare, purposeful"
+      },
+      "4-3 Even 6-1": {
+        "role": "short_yardage",
+        "calls": ["Cover 3 Buzz", "Cover 4 Quarters", "Tampa 2"],
+        "purpose": "True short / GL only — no auto RUN-IN on one IZ tell"
+      },
+      "Dime Normal": {
+        "role": "long_yardage",
+        "calls": ["Cover 4 Quarters"],
+        "purpose": "Distance >= 12 — protect seams"
+      }
+    },
+    "vs_offense_families": {
+      "mesh_cross": {"shell": "Tampa 2 / hard flats", "macro": "BUNCH or CROSS after repeated", "user": "User middle / inside cross"},
+      "four_verts": {"shell": "Cover 4 Quarters", "macro": "VERT after repeated", "user": "User #3 seam"},
+      "rpo_bubble": {"shell": "Cover 3 Sky", "macro": "RPO after repeated", "user": "User flat/bubble"},
+      "qb_scramble": {"shell": "base zone + contain", "macro": "SCRAM after repeated", "user": "User contain"},
+      "downhill_run": {"shell": "Cover 3 Sky fit; Even 6-1 if short+repeated", "macro": "RUN-IN only high conf + short", "user": "User HB / cutback"},
+      "perimeter_run": {"shell": "Cover 3 Sky", "macro": "RUN-OUT after repeated", "user": "User edge"}
+    },
+    "cover_6_9_awareness": "Users live in Cover 6/9 — on OUR offense run first; on OUR defense do not gift explosives chasing; force them into long drives and underneath."
+  },
   "offense_gameplan": {
     "home_formations": [
       "Gun Bunch X Nasty",
@@ -39,12 +141,19 @@
         "play": "Z Spot Shake",
         "adj": "No adj",
         "reads": "Shake → Spot"
+      },
+      {
+        "label": "vs C6/C9 run",
+        "formation": "Gun Bunch X Nasty",
+        "play": "HB Base",
+        "adj": "No adj",
+        "reads": "Front → Bounce"
       }
     ],
     "early_down_mix": {
-      "run_pct_target": 0.45,
-      "easy_pass_pct_target": 0.25,
-      "intermediate_pct_target": 0.20,
+      "run_pct_target": 0.48,
+      "easy_pass_pct_target": 0.24,
+      "intermediate_pct_target": 0.18,
       "changeup_pct_target": 0.10,
       "run_family": [
         {"formation": "Gun Bunch X Nasty", "play": "Inside Zone"},
@@ -73,7 +182,7 @@
         {"formation": "Gun Empty Quads", "play": "Out Double Under"}
       ]
     },
-    "two_high_rule": "Run first vs Cover 4 / Cover 6 / Cover 9 / Quarters / Palms. Prefer Inside Zone, HB Base, Counter Y from Gun Bunch X Nasty before forcing Mesh Post or Deep Flood.",
+    "two_high_rule": "CFB27: Run first vs Cover 6 / Cover 9 / Cover 4 Quarters / Palms. Prefer Inside Zone, HB Base, Counter Y from Gun Bunch X Nasty before forcing Mesh Post or Deep Flood. Users live in C6/C9 — punish with run.",
     "pressure_answers": [
       {
         "label": "Mesh Spot (quick)",
@@ -94,7 +203,7 @@
         "formation": "Gun Bunch X Nasty",
         "play": "HB Base",
         "adj": "Protection first",
-        "note": "When pressure is selling out — run behind protection"
+        "note": "When pressure is selling out — run behind protection (patch 1.012 run-action blocking improved)"
       }
     ],
     "red_zone": {
@@ -110,17 +219,18 @@
         {"formation": "Gun Bunch X Nasty", "play": "Z Spot GoalLine"},
         {"formation": "Gun Cluster", "play": "Z Spot Shake"}
       ],
-      "note": "Tag by coverage — C2 Invert Hard Flat ≠ always whip (film INTs). Prefer Mesh Spot / Z Spot Shake / run."
+      "note": "RZ compressed + possession. Tag by coverage — C2 Invert Hard Flat ≠ always whip (film INTs). Prefer Mesh Spot / Z Spot Shake / run."
     },
     "anti_repeat": "Never become 80% one concept vs sticky opponent. Track last calls in-game; if same play called 2+ times in last 4 snaps, rotate to constraint family (run↔easy pass↔Cluster changeup).",
     "emphasis_keys": {
-      "run_first": 1.0,
-      "mesh_family": 1.0,
-      "cluster_changeup": 0.8,
-      "flood_family": 0.6,
-      "whip_hot": 0.7,
+      "run_first": 1.15,
+      "mesh_family": 1.1,
+      "cluster_changeup": 0.85,
+      "flood_family": 0.55,
+      "whip_hot": 0.75,
       "empty_stress": 0.3,
-      "deuce_bully": 0.5
+      "deuce_bully": 0.55,
+      "spot_family": 1.0
     }
   },
   "defense_gameplan": {
@@ -131,9 +241,9 @@
       "Tampa 2"
     ],
     "home_rotation": {
-      "Cover 3 Sky": 0.55,
-      "Cover 4 Quarters": 0.25,
-      "Tampa 2": 0.20
+      "Cover 3 Sky": 0.50,
+      "Cover 4 Quarters": 0.28,
+      "Tampa 2": 0.22
     },
     "situational": {
       "short_yardage": {
@@ -156,6 +266,11 @@
         "package": "Nickel Over",
         "calls": ["Cover 4 Quarters", "Tampa 2"],
         "note": "Patience — Cover 6/two-high patience applies to us too"
+      },
+      "vs_mesh": {
+        "package": "Nickel Over",
+        "calls": ["Tampa 2"],
+        "note": "Tampa 2 / hard flats vs mesh/cross families"
       }
     },
     "selective_pressure": {
@@ -167,12 +282,13 @@
     "default_macro": "none",
     "emphasis_keys": {
       "nickel_over_home": 1.0,
-      "c3_sky": 1.0,
-      "c4_quarters": 0.9,
-      "tampa_2": 0.8,
+      "c3_sky": 0.95,
+      "c4_quarters": 0.95,
+      "tampa_2": 0.9,
       "even_61_short": 0.7,
       "selective_heat": 0.4,
-      "dime_long": 0.5
+      "dime_long": 0.5,
+      "hard_flats_mesh": 0.85
     }
   },
   "macros_baseline": {
@@ -190,6 +306,98 @@
       "FLOOD",
       "SCREEN"
     ],
+    "create_candidates": [
+      "GLASS",
+      "CONTAIN-SCRAM",
+      "SPOT-LOCK",
+      "PROT"
+    ],
+    "recipes": {
+      "CROSS": {
+        "purpose": "Answer Cross Wheels / high-low crossers",
+        "when_to_arm": "After 2+ live Cross Wheels / crosser tells in similar D&D",
+        "shell_pair": "Tampa 2 or Cover 4 Quarters",
+        "user_job": "User inside cross"
+      },
+      "VERT": {
+        "purpose": "Answer Four Verticals / seam stress",
+        "when_to_arm": "After 2+ live Four Verticals / seam tells in similar D&D",
+        "shell_pair": "Cover 4 Quarters",
+        "user_job": "User #3 seam"
+      },
+      "BUNCH": {
+        "purpose": "Answer compressed Mesh/Bunch rubs",
+        "when_to_arm": "After repeated Mesh/Bunch compressed wins",
+        "shell_pair": "Tampa 2 / hard flats",
+        "user_job": "User middle"
+      },
+      "RPO": {
+        "purpose": "Answer bubble/RPO alert tendency",
+        "when_to_arm": "After repeated RPO bubble / alert wins",
+        "shell_pair": "Cover 3 Sky",
+        "user_job": "User flat/bubble"
+      },
+      "SCRAM": {
+        "purpose": "Contain integrity when QB escape beats coverage carry",
+        "when_to_arm": "After repeated QB scramble escapes",
+        "shell_pair": "base Nickel Over + contain adj",
+        "user_job": "User contain"
+      },
+      "RUN-IN": {
+        "purpose": "Downhill IZ/Duo sellout",
+        "when_to_arm": "After repeated downhill run AND short-yardage — never one IZ tell",
+        "shell_pair": "4-3 Even 6-1",
+        "user_job": "User cutback"
+      },
+      "RUN-OUT": {
+        "purpose": "Perimeter stretch/toss",
+        "when_to_arm": "After repeated Outside Zone / Stretch / toss",
+        "shell_pair": "Cover 3 Sky",
+        "user_job": "User edge"
+      },
+      "HEAT": {
+        "purpose": "Selective pressure package tag",
+        "when_to_arm": "3rd-short selective vs pressure-worthy archetype or repeated money-down need",
+        "shell_pair": "Nickel 3-3 Cub / Double Mug",
+        "user_job": "User hot"
+      },
+      "FLOOD": {
+        "purpose": "Flood/levels specialty (BENCHED until stable)",
+        "when_to_arm": "Reactivate only if opponent makes flood primary AND online stability re-tested",
+        "shell_pair": "Cover 3 match variants",
+        "user_job": "User flat/corner"
+      },
+      "SCREEN": {
+        "purpose": "Screen/bubble specialty (BENCHED until stable)",
+        "when_to_arm": "Reactivate only if bubbles dominate after re-test",
+        "shell_pair": "Cover 3 Sky",
+        "user_job": "User flat"
+      },
+      "GLASS": {
+        "purpose": "CREATE candidate — soft zone glass vs Bunch mesh (hard flats + Tampa lean)",
+        "when_to_arm": "When Bunch mesh keeps winning vs base C3; install as custom adj",
+        "shell_pair": "Tampa 2",
+        "user_job": "User middle glass"
+      },
+      "CONTAIN-SCRAM": {
+        "purpose": "CREATE candidate — explicit contain + spy lean (patch 1.012 contain custom adj fix)",
+        "when_to_arm": "When SCRAM alone is not enough vs dual-threat; use contain custom adj",
+        "shell_pair": "Nickel Over C3/C4",
+        "user_job": "User contain"
+      },
+      "SPOT-LOCK": {
+        "purpose": "CREATE candidate — lock the spot sit vs Mesh Spot spam",
+        "when_to_arm": "When Mesh Spot is their primary easy throw",
+        "shell_pair": "Tampa 2 / hard flats",
+        "user_job": "User spot"
+      },
+      "PROT": {
+        "purpose": "CREATE candidate — offense-side protection/hot reminder tag (not a D macro)",
+        "when_to_arm": "vs pressure-heavy archetypes (Quen) — cue Mesh Spot/Whip/HB Base",
+        "shell_pair": "n/a (O adj)",
+        "user_job": "Hot ready / Protection first"
+      }
+    },
     "reasons": {
       "CROSS": "META keep — answers Cross Wheels / high-low crossers after repeated tendency",
       "VERT": "META keep — answers Four Verticals / seam stress after repeated tendency",
@@ -200,9 +408,13 @@
       "RUN-OUT": "META keep — perimeter stretch/toss when repeated",
       "HEAT": "META keep — selective pressure package tag, not every snap",
       "FLOOD": "BENCH — flood/levels not primary META answer; reactivate only if opponent makes flood primary AND online stability re-tested",
-      "SCREEN": "BENCH — screen/bubble specialty; Temple playtest kept 0 O macros + SCREEN off D; reactivate only if bubbles dominate after re-test"
+      "SCREEN": "BENCH — screen/bubble specialty; Temple playtest kept 0 O macros + SCREEN off D; reactivate only if bubbles dominate after re-test",
+      "GLASS": "CREATE — custom adj candidate for mesh/spot soft zones",
+      "CONTAIN-SCRAM": "CREATE — patch 1.012 contain custom adj fix enables cleaner contain recipes",
+      "SPOT-LOCK": "CREATE — Mesh Spot counter when it becomes their home throw",
+      "PROT": "CREATE — offense protection/hot cue for pressure games"
     },
-    "arm_doctrine": "Macros situational, not every snap. Default = no macro. Arm only after REPEATED tendency in similar D&D/field zone. One tell = log + mild bump only. Free reign preserved — any designed call remains legal.",
+    "arm_doctrine": "Macros situational, not every snap. Default = no macro. Arm only after REPEATED tendency in similar D&D/field zone. One tell = log + mild bump only. Free reign preserved — any designed call remains legal. Prepper may CREATE/EDIT/BENCH macros on the install sheet.",
     "when_to_arm": {
       "CROSS": "After 2+ live Cross Wheels / crosser tells in similar D&D",
       "VERT": "After 2+ live Four Verticals / seam tells in similar D&D",
@@ -223,15 +435,21 @@
       "RUN-OUT": 0.8,
       "HEAT": 0.7,
       "FLOOD": 0.0,
-      "SCREEN": 0.0
+      "SCREEN": 0.0,
+      "GLASS": 0.0,
+      "CONTAIN-SCRAM": 0.0,
+      "SPOT-LOCK": 0.0,
+      "PROT": 0.0
     }
   },
   "meta_notes": [
-    "Bunch / Mesh families are the META core — Gun Bunch X Nasty primary, Gun Cluster counterpunch. Preserve both.",
-    "Constraint theory: run to set up play-action; verticals to open underneath; underneath to set up shots. Do not spam one family.",
-    "Cover 6 / split-field patience: vs two-high, run first and take easy Mesh Spot. Do NOT spam Mesh Post into Cover 6 (INT film).",
-    "Defense: Nickel Over home (C3 Sky / C4 Quarters / Tampa 2). Force long drives; explosives kill you more than dinks.",
+    "CFB27 (2026-09): Bunch is the passing meta — Gun Bunch X Nasty (Wazzu/OSU-style) primary; Gun Cluster changeup when Bunch overplayed.",
+    "Offense families: mesh / spot / flood. Run first vs Cover 6 / Cover 9 / Quarters. Mesh Spot + Whip vs pressure. RZ = compressed + possession.",
+    "Defense: Nickel Over zones home. Cover 6/9 awareness (common user shell — force runs). Tampa 2 / hard flats vs mesh/cross. Selective 3-3 Cub / Mug pressure. Even 6-1 short yardage. Dime on true long.",
+    "Macros KEEP: CROSS VERT BUNCH RPO SCRAM RUN-IN RUN-OUT HEAT. BENCH FLOOD + SCREEN until online-stable. Prep may CREATE GLASS / CONTAIN-SCRAM / SPOT-LOCK / PROT.",
+    "Patch 1.012 (Sep 22 2026): improved run-action blocking; reduced QB spin effectiveness; contain custom adj fix — lean run-action more; scram less spin-hero; CONTAIN-SCRAM installs cleaner.",
+    "Constraint theory: run ↔ easy pass ↔ Cluster changeup. Do not spam one family. Anti-repeat + PIVOT on 3-fail streaks.",
     "Soft competitive meta only — Xbox formation/play/macro NAMES. No invented PlayStation or Xbox button sequences.",
-    "Every game starts from this baseline. Opponent overlays adjust mix rates and macro emphasis as snaps accumulate; thin film stays near baseline."
+    "Every game starts from this baseline. Opponent overlays + install diffs adjust as snaps accumulate; thin film stays near baseline."
   ]
 }

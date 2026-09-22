@@ -340,6 +340,28 @@ def _pick_offense(
         except Exception:
             pass
 
+    # Mid-game PIVOT: last 3 O snaps failed → force constraint family switch
+    if db is not None:
+        try:
+            from cfb_coach.gameplan import active_pivot
+
+            tip = active_pivot(db, _opp_id(opp), "offense")
+            if tip:
+                alt_form, alt_play = "Gun Cluster", rng.choice(
+                    ["Z Spot Shake", "Outside Zone", "Mesh Spot"]
+                )
+                # Prefer easy Mesh Spot from Bunch if Cluster just failed too
+                if "Cluster" in (form or "") or rng.random() < 0.45:
+                    alt_form, alt_play = "Gun Bunch X Nasty", rng.choice(
+                        ["Inside Zone", "HB Base", "Mesh Spot"]
+                    )
+                alt_form, alt_play = _validate_play(alt_form, alt_play, pb)
+                form, play = alt_form, alt_play
+                adj = "No adj"
+                rationale = f"{tip.message} → {form}/{play} | {rationale}"
+        except Exception:
+            pass
+
     return Call("offense", form, play, adj, _reads_for(play), rationale)
 
 
@@ -590,6 +612,22 @@ def _pick_defense(
         suggest = suggest or f"{macro} — low film; keep base zone"
         macro = "none"
         rationale += " | low-confidence opponent — strip macro"
+
+    # Mid-game PIVOT: last 3 D snaps failed → reset to Nickel Over base, clear chase macros
+    if db is not None:
+        try:
+            from cfb_coach.gameplan import active_pivot
+
+            tip = active_pivot(db, _opp_id(opp), "defense")
+            if tip:
+                form, play, macro = "Nickel Over", rng.choice(
+                    ["Cover 3 Sky", "Cover 4 Quarters", "Tampa 2"]
+                ), "none"
+                user = _USER_FOR_PLAY.get(play, "User hook")
+                rationale = f"{tip.message} → {form}/{play} | {rationale}"
+                suggest = suggest or "macros cleared — re-arm only on repeated tendency"
+        except Exception:
+            pass
 
     return Call("defense", form, play, macro or "none", user, rationale, suggest_macro=suggest)
 

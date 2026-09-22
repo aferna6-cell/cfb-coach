@@ -1,17 +1,19 @@
 # cfb_coach
 
-Xbox CFB dynasty play-caller for Aidan's Alabama online Dynasty (Year 1).
+Xbox **CFB 27** dynasty play-caller for Aidan's Alabama online Dynasty.
 
-Heuristics + packaged `seed.json` + meta priors + SQLite log learning. No neural net.
+Heuristics + packaged `seed.json` + CFB27 META baseline + SQLite log learning. No neural net.
+
+**Prepper + live caller.** Prep emits an **INSTALL SHEET** (CREATE/ADD/EDIT/BENCH steps for Xbox custom O/D books + macros + custom adjs) and remembers per-opponent install diffs in SQLite. Live caller stays sharp: two reads on O, one user job on D, anti-repeat, no single-snap whiplash. Mid-game **PIVOT** fires when the last 3 snaps fail on a side.
 
 ## Install / run
 
 ```bash
 cd /workspace/cfb-coach
 # stdlib only — no pip deps required
-PYTHONPATH=. python -m cfb_coach opponents
-PYTHONPATH=. python -m cfb_coach prep --opponent gavin
-PYTHONPATH=. python -m cfb_coach play --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach opponents
+PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach play --opponent gavin
 ```
 
 Optional editable install:
@@ -27,12 +29,12 @@ DB seeds on first run to `~/.cfb-coach/coach.db` (fallback: `/workspace/cfb-coac
 
 | Command | Purpose |
 |--------|---------|
-| `python -m cfb_coach opponents` | List IDs, teams, aliases |
-| `python -m cfb_coach prep --opponent <id>` | Threat sheet, D-vs-us, macros, emphasis, opening O+D menus |
-| `python -m cfb_coach play --opponent <id>` | Interactive live loop |
-| `python -m cfb_coach play --opponent <id> --once "2&7 c2 invert"` | One-shot non-interactive call |
-| `python -m cfb_coach call -o gavin -s "2&7 cover 2 invert" --why` | Scripted one-shot |
-| `python -m cfb_coach postgame --opponent gavin` | Learn from recent snaps — adjust weights |
+| `python3 -m cfb_coach opponents` | List IDs, teams, aliases |
+| `python3 -m cfb_coach prep --opponent <id>` | INSTALL SHEET → BASELINE META → OVERLAY → EFFECTIVE → OPENING → THREATS |
+| `python3 -m cfb_coach play --opponent <id>` | Interactive live loop |
+| `python3 -m cfb_coach play --opponent <id> --once "2&7 c2 invert"` | One-shot non-interactive call |
+| `python3 -m cfb_coach call -o gavin -s "2&7 cover 2 invert" --why` | Scripted one-shot |
+| `python3 -m cfb_coach postgame --opponent gavin` | Learn from recent snaps — adjust weights |
 
 Opponent aliases: ids (`gavin`), display names (`Gavin`), teams (`Auburn`, `Houston`, `SMU`, …).
 
@@ -81,22 +83,26 @@ Nickel Over — Cover 4 Quarters | VERT | User #3 seam
 - Prefix `d ` (or type `d` / `side d`) for defense.
 - `result <text>` / `log <text>` updates SQLite tendencies.
 - `why` prints the last call's rationale.
+- After 3 failed snaps on a side, live caller tags **PIVOT:** and switches family/macro plan (no hero-shot whiplash).
 
+## Baseline → Learn → Adjust (CFB27)
 
-## Baseline → Learn → Adjust
+Every user/CPU game starts from a **generic CFB27 META baseline** (`cfb_coach/data/meta_baseline.json`, version `cfb27-2026-09`) — Bunch-first Wazzu/OSU-style offense; Nickel Over zones home on D.
 
-Every user/CPU game starts from a **generic META baseline** (`cfb_coach/data/meta_baseline.json`, version `cfb26-2026-09`) — not empty, not fully custom per opponent yet.
+1. **INSTALL SHEET** — prepper has full permission to CREATE/ADD/EDIT/BENCH Xbox custom books, macros, and custom adjs. Concrete steps printed first. Per-opponent install diffs saved in SQLite so next prep remembers.
+2. **Baseline** — offense opening menu / early-down mix / run-first vs Cover 6/9/Quarters / Mesh Spot + Whip Trail pressure answers / RZ possession; defense Nickel Over home (C3 Sky / C4 Quarters / Tampa 2) + situational Even 6-1 + selective Cub/Mug pressure; macros KEEP CROSS VERT BUNCH RPO SCRAM RUN-IN RUN-OUT HEAT, BENCH FLOOD + SCREEN; CREATE candidates GLASS / CONTAIN-SCRAM / SPOT-LOCK / PROT.
+3. **Learn** — logged snaps and `postgame --opponent X` bump gameplan / macro weights in SQLite for that opponent, plus soft `global` (and `cpu`) buckets. Successes up-weight what worked; failures down-weight. Anti-repeat penalizes spamming the same play. Free reign is never removed.
+4. **Adjust** — opponent overlays stack **on top** of baseline. Thin film (few snaps) stays near META. `prep` prints **INSTALL → BASELINE → OVERLAY → EFFECTIVE → OPENING → THREATS**.
 
-1. **Baseline** — offense opening menu / early-down mix / two-high run-first / Mesh Spot + Whip Trail pressure answers / RZ; defense Nickel Over home (C3 Sky / C4 Quarters / Tampa 2) + situational Even 6-1 + selective pressure; macros KEEP the 8 (CROSS VERT BUNCH RPO SCRAM RUN-IN RUN-OUT HEAT), BENCH FLOOD + SCREEN.
-2. **Learn** — logged snaps and `postgame --opponent X` bump `gameplan_weights` / `macro_weights` in SQLite for that opponent, plus soft `global` (and `cpu`) buckets. Successes up-weight what worked; failures down-weight. Anti-repeat penalizes spamming the same play. Free reign is never removed.
-3. **Adjust** — opponent overlays stack **on top** of baseline. Thin film (few snaps) stays near META. `prep` prints **BASELINE → OPPONENT OVERLAY → EFFECTIVE** macros/emphasis.
+**Opponent install leans:** Gavin → run-vs-C6; Quen → protection/hot macros (PROT); CPU → patience / no forced Mesh Post on money.
 
-Mid-game stub: last 3 O snaps poor → suggest PIVOT to constraint family; same D concept twice → macro consideration (no single-snap whiplash).
+**Patch 1.012 (Sep 22 2026):** improved run-action blocking; reduced QB spin effectiveness; contain custom adj fix — lean run-action more; scram less spin-hero; CONTAIN-SCRAM installs cleaner.
 
 ```bash
-PYTHONPATH=. python -m cfb_coach prep --opponent gavin   # rich film → deeper overlay potential
-PYTHONPATH=. python -m cfb_coach prep --opponent cpu     # same baseline; overlay depth differs
-PYTHONPATH=. python -m cfb_coach postgame --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin   # rich film → run-vs-C6 install lean
+PYTHONPATH=. python3 -m cfb_coach prep --opponent quen    # protection macro lean
+PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu     # same baseline; overlay depth differs
+PYTHONPATH=. python3 -m cfb_coach postgame --opponent gavin
 ```
 
 ## Doctrine (from seed)
@@ -111,6 +117,7 @@ PYTHONPATH=. python -m cfb_coach postgame --opponent gavin
   - Do **not** hard-counter the previous coverage/concept every snap.
   - Targeted macro / coverage-specific beater only when the same signal is a **REPEATED** tendency in a similar D&D/field zone.
   - Default next snap = base situational call (D&D, field, opponent archetype priors).
+- **PIVOT:** last 3 snaps fail on a side → switch family (O: run ↔ Mesh Spot ↔ Cluster) or reset D to Nickel Over base (clear chase macros). No single-snap whiplash.
 
 ## Package layout
 
@@ -126,20 +133,22 @@ cfb-coach/
     seed.py / db.py
     opponents.py
     situation.py
-    playcaller.py
+    playcaller.py       # live caller + PIVOT
     format_call.py      # UX lock formatter
-    prep.py
-    gameplan.py         # baseline + overlays + postgame learning
-    data/seed.json      # source of truth (copied from cfb-coach-seed)
-    data/meta_baseline.json  # META gameplan + macros (cfb26-2026-09)
+    prep.py             # INSTALL → BASELINE → OVERLAY → EFFECTIVE → OPENING → THREATS
+    gameplan.py         # baseline + overlays + postgame learning + pivot
+    install_sheet.py    # CREATE/ADD/EDIT/BENCH recipes + SQLite install diffs
+    tendency.py
+    data/seed.json
+    data/meta_baseline.json  # CFB27 META (cfb27-2026-09)
 ```
 
 ## Smoke
 
 ```bash
-PYTHONPATH=. python -m cfb_coach prep --opponent gavin
-PYTHONPATH=. python -m cfb_coach prep --opponent quen
-PYTHONPATH=. python -m cfb_coach prep --opponent cpu
-PYTHONPATH=. python -m cfb_coach call -o gavin -s "2&7 cover 2 invert" --why
-PYTHONPATH=. python -m cfb_coach postgame --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach prep --opponent quen
+PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu
+PYTHONPATH=. python3 -m cfb_coach call -o gavin -s "2&7 cover 2 invert" --why
+PYTHONPATH=. python3 -m cfb_coach postgame --opponent gavin
 ```

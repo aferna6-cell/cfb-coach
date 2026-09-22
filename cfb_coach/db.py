@@ -103,6 +103,20 @@ class CoachDB:
                 armed INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (opponent_id, macro)
             );
+            CREATE TABLE IF NOT EXISTS install_sheets (
+                opponent_id TEXT PRIMARY KEY,
+                sheet_json TEXT NOT NULL,
+                updated_ts TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS install_diffs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                opponent_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target TEXT NOT NULL,
+                detail TEXT NOT NULL,
+                why TEXT
+            );
             """
         )
         self.conn.commit()
@@ -364,6 +378,72 @@ class CoachDB:
                 "SELECT * FROM macro_weights WHERE opponent_id = ? "
                 "ORDER BY ABS(weight) DESC",
                 (opponent_id,),
+            )
+        )
+
+
+
+
+    def get_install_sheet(self, opponent_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT sheet_json FROM install_sheets WHERE opponent_id = ?",
+            (opponent_id,),
+        ).fetchone()
+        if not row:
+            return None
+        return json.loads(row["sheet_json"])
+
+    def save_install_sheet(self, opponent_id: str, sheet: dict[str, Any]) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO install_sheets (opponent_id, sheet_json, updated_ts)
+            VALUES (?, ?, ?)
+            ON CONFLICT(opponent_id) DO UPDATE SET
+                sheet_json = excluded.sheet_json,
+                updated_ts = excluded.updated_ts
+            """,
+            (
+                opponent_id,
+                json.dumps(sheet),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        self.conn.commit()
+
+    def log_install_diff(
+        self,
+        *,
+        opponent_id: str,
+        action: str,
+        target: str,
+        detail: str,
+        why: str = "",
+    ) -> int:
+        cur = self.conn.execute(
+            """
+            INSERT INTO install_diffs (ts, opponent_id, action, target, detail, why)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                datetime.now(timezone.utc).isoformat(),
+                opponent_id,
+                action,
+                target,
+                detail,
+                why,
+            ),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def get_install_diffs(
+        self, opponent_id: str, *, limit: int = 50
+    ) -> list[sqlite3.Row]:
+        return list(
+            self.conn.execute(
+                "SELECT * FROM install_diffs WHERE opponent_id = ? "
+                "ORDER BY id DESC LIMIT ?",
+                (opponent_id, limit),
             )
         )
 

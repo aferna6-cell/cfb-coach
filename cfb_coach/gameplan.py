@@ -193,11 +193,15 @@ def format_baseline_section(bl: dict[str, Any] | None = None) -> str:
     og = bl["offense_gameplan"]
     dg = bl["defense_gameplan"]
     mb = bl["macros_baseline"]
+    oc = bl.get("offense_concepts") or {}
+    dc = bl.get("defense_concepts") or {}
     lines = [
-        f"## BASELINE (META {bl.get('version', '?')})",
+        f"## BASELINE META (CFB27 / {bl.get('version', '?')})",
+        f"  Game: {bl.get('game', 'CFB 27')}  |  Patch: {bl.get('patch', 'n/a')}",
         "  Generic starting point for every user/CPU game.",
         "",
         "  Offense home: " + ", ".join(og["home_formations"]),
+        f"  Identity: {oc.get('core_identity', 'Bunch meta')}",
         f"  Two-high rule: {og['two_high_rule']}",
         "  Pressure answers: "
         + ", ".join(p["play"] for p in og["pressure_answers"]),
@@ -207,11 +211,29 @@ def format_baseline_section(bl: dict[str, Any] | None = None) -> str:
         ),
         f"  Anti-repeat: {og['anti_repeat']}",
         "",
+        "  Coverage beater matrix (sample):",
+    ]
+    matrix = (oc.get("coverage_beater_matrix") or {})
+    for cov in ("Cover 6", "Cover 9", "Cover 3 Sky", "Cover 1 / Pressure / Cover 0"):
+        row = matrix.get(cov)
+        if row:
+            lines.append(
+                f"    {cov}: prefer {', '.join(row['prefer'][:3])} — {row.get('note', '')}"
+            )
+    pairs = oc.get("constraint_pairs") or []
+    if pairs:
+        lines.append("  Constraint pairs:")
+        for p in pairs[:4]:
+            lines.append(f"    {p['a']} ↔ {p['b']} ({p['why']})")
+    lines += [
+        "",
         "  Opening menu:",
         *_fmt_menu_o(og["opening_menu"]),
         "",
         f"  Defense home: {dg['home_package']} — "
         + " / ".join(dg["home_calls"]),
+        f"  Identity: {dc.get('core_identity', 'Nickel Over home')}",
+        f"  C6/C9 awareness: {dc.get('cover_6_9_awareness', '')}",
         f"  Situational: Even 6-1 short/GL; "
         f"selective pressure ({', '.join(dg['selective_pressure']['packages'])})",
         f"  Default macro: {dg['default_macro']}",
@@ -219,6 +241,20 @@ def format_baseline_section(bl: dict[str, Any] | None = None) -> str:
         f"  Macros KEEP: {', '.join(mb['keep'])}",
         f"  Macros BENCH: {', '.join(mb['bench'])} — "
         + "; ".join(f"{m}: {mb['reasons'][m]}" for m in mb["bench"]),
+    ]
+    create = mb.get("create_candidates") or []
+    if create:
+        lines.append(f"  Macros CREATE candidates: {', '.join(create)}")
+    # Recipe PURPOSE lines for keep set
+    recipes = mb.get("recipes") or {}
+    if recipes:
+        lines.append("  Macro recipes (PURPOSE / when-to-arm):")
+        for m in mb["keep"]:
+            rec = recipes.get(m) or {}
+            lines.append(
+                f"    {m}: {rec.get('purpose', '')} | WHEN {rec.get('when_to_arm', mb.get('when_to_arm', {}).get(m, ''))}"
+            )
+    lines += [
         f"  Arm doctrine: {mb['arm_doctrine']}",
         "",
         "  Soft META notes:",
@@ -576,37 +612,67 @@ class PivotSuggestion:
     macro: str | None = None
 
 
+def _side_fail_streak(
+    db: CoachDB, opponent_id: str, side: str, n: int = 3
+) -> int:
+    snaps = db.get_recent_snaps(opponent_id, side=side, limit=n)
+    if len(snaps) < n:
+        return 0
+    return sum(
+        1 for s in snaps if _result_success(s["result"], side) is False
+    )
+
+
+def active_pivot(
+    db: CoachDB | None, opponent_id: str, side: str
+) -> PivotSuggestion | None:
+    """
+    Stronger mid-game pivot: last 3 snaps fail on a side → PIVOT tag +
+    switch family/macro plan. No single-snap whiplash (needs 3 fails).
+    """
+    if not db:
+        return None
+    fails = _side_fail_streak(db, opponent_id, side, n=3)
+    if fails < 3:
+        return None
+    if side == "offense":
+        return PivotSuggestion(
+            kind="offense_pivot",
+            family="constraint",
+            message=(
+                "PIVOT: last 3 O snaps failed — switch family now "
+                "(run ↔ Mesh Spot easy ↔ Gun Cluster changeup). "
+                "No hero-shot whiplash."
+            ),
+        )
+    return PivotSuggestion(
+        kind="defense_pivot",
+        family="shell_reset",
+        macro="none",
+        message=(
+            "PIVOT: last 3 D snaps failed — reset to Nickel Over base "
+            "(C3 Sky / C4 Quarters / Tampa), clear chase macros, "
+            "re-arm only on repeated tendency. No single-snap whiplash."
+        ),
+    )
+
+
 def midgame_pivot_stub(
     db: CoachDB | None,
     opponent_id: str,
 ) -> list[PivotSuggestion]:
     """
-    Stub: if last 3 O snaps poor → suggest PIVOT to constraint family.
+    If last 3 snaps fail on a side → PIVOT (switch family/macro plan).
     If same D concept hits twice → allow macro consideration (no single-snap whiplash).
     """
     out: list[PivotSuggestion] = []
     if not db:
         return out
 
-    o_snaps = db.get_recent_snaps(opponent_id, side="offense", limit=3)
-    if len(o_snaps) >= 3:
-        fails = sum(
-            1
-            for s in o_snaps
-            if _result_success(s["result"], "offense") is False
-        )
-        if fails >= 3:
-            out.append(
-                PivotSuggestion(
-                    kind="offense_pivot",
-                    family="constraint",
-                    message=(
-                        "PIVOT: last 3 O snaps poor — rotate to constraint family "
-                        "(run ↔ Mesh Spot easy ↔ Gun Cluster changeup). "
-                        "Do not whiplash to a hero shot."
-                    ),
-                )
-            )
+    for side in ("offense", "defense"):
+        tip = active_pivot(db, opponent_id, side)
+        if tip:
+            out.append(tip)
 
     d_snaps = db.get_recent_snaps(opponent_id, side="defense", limit=6)
     concepts: dict[str, int] = {}
@@ -616,7 +682,6 @@ def midgame_pivot_stub(
             concepts[c.lower()] = concepts.get(c.lower(), 0) + 1
     for concept, n in concepts.items():
         if n >= 2:
-            # Map to macro family without auto-arming
             macro = None
             cl = concept
             if "vert" in cl or "seam" in cl or "four" in cl:
