@@ -155,7 +155,7 @@ Nickel Over — Cover 4 Quarters | VERT | User #3 seam
 
 Platform: Xbox. Prefer formation / play / macro **names**. Do not invent PlayStation button sequences.
 
-## Play loop (typed live + overlay) — v1.9.5
+## Play loop (typed live + overlay) — v1.9.6
 
 **Typing-only live play** is the supported game-day path. Vision `watch` screen-watching is **on hold**; keep the same browser overlay for a big PLAY glance.
 
@@ -167,22 +167,41 @@ PYTHONPATH=. python3 -m cfb_coach play --opponent gavin
 
 ```text
 [O] sit> 1&10
+heard: 1&10
 Gun Bunch X Nasty — Inside Zone | No adj | Front → Cutback
-[O] sit> 1st and 10 my 35 cover 2 (this was the last play)
+[O] sit> 1&10 my 35 mesh spot
+heard: 1&10 yl35 [prev:Mesh Spot]
+Gun Bunch X Nasty — HB Base | No adj | Front → Cutback
+[O] sit> 2&7 deep flood
+heard: 2&7 [prev:Deep Flood]
 Gun Bunch X Nasty — Mesh Spot | No adj | Spot → Drag
-[O] sit> 2&7 c2 invert
+[O] sit> 1&10 cover 2
+heard: 1&10 [prev:Cover 2]
+Gun Bunch X Nasty — Inside Zone | No adj | Front → Cutback
+[O] sit> 1&10 showing cover 2
+heard: 1&10 [live:Cover 2]
 Gun Bunch X Nasty — Mesh Spot | No adj | Spot → Drag
-[O] sit> d 3&8 verts
-Nickel Over — Cover 4 Quarters | VERT | User #3 seam
 [O] sit> result +4 run
   logged: +4 run
 [O] sit> quit
 ```
 
-- Each `sit>` line prints a **PLAY** call and refreshes the overlay (big call text).
+**Aidan UX (CPU offense typing):** type **down/distance** (+ optional yardline) + **previous play name only**. Do **not** say `last`.
+
+| You type | Coach hears |
+|---|---|
+| `1&10 my 35 mesh spot` | `[prev:Mesh Spot]` — mild bump only |
+| `2&7 deep flood` | `[prev:Deep Flood]` |
+| `1&10 cover 2` | `[prev:Cover 2]` |
+| `1&10 showing cover 2` | `[live:Cover 2]` — soft live lean |
+| `1&10 live cover 2` / `pre-snap c2` / `aligned c2` | live |
+
+Bare book names map to concept hints: Mesh Spot, Deep Flood, Mtn RPO, HB Base, Counter Y, Inside Zone, Four Verticals, Cross Wheels, Whip Trail, etc.
+
+- Each `sit>` line prints `heard:` then a **PLAY** call and refreshes the overlay (big call text).
 - Yardlines: `my 35` / `our 35` / `ball on 35` (from own goal); `opp 40` / `their 25` (opp yardline → 100−N).
-- Coverage: bare / `showing c2` / `live cover 2` = soft **live**; `last …` / `(this was the last play)` = **last** (mild bump only, no hard-counter).
-- Prefix `d ` (or type `d` / `side d`) for defense.
+- **Prev vs live:** bare coverage/play name = **prev** (mild bump, never hard-counter). Only `showing` / `live` / `pre-snap` / `aligned` / `they're in` force **live**.
+- CPU (`--opponent cpu`) stays **offense-only**; user opponents still accept `d ` for defense.
 - `result <text>` / `log <text>` updates SQLite tendencies.
 - `why` prints the last call's rationale.
 - After 3 failed snaps on a side, live caller tags **PIVOT:** and switches family/macro plan (no hero-shot whiplash).
@@ -234,7 +253,7 @@ Ohio State / CPU = volume lab. Alabama users = prepare well + adjust live.
 
 ## Screen Co-Pilot / vision watch (on hold)
 
-> **v1.9.5:** Game-day live = **`play` + typed situations + overlay**. Vision screen-watching (`watch --window` / capture) is **on hold** — overlay HTML is reused by typed `play`.
+> **v1.9.6:** Game-day live = **`play` + typed situations + overlay**. Vision screen-watching (`watch --window` / capture) is **on hold** — overlay HTML is reused by typed `play`.
 
 **Live UX (when watch returns):** pre-snap cadence is **PLAY → ADJUST → HIKE** (playcaller `Formation — Play | Adj | Reads`), not generic “base look” tips as the main output. Pressure/shell changes print short **ADJUST** lines without replacing the play unless audible is clearly warranted (e.g. Cover 0). When the look is stable (~1.8s) or timed out (~4.5s), coach prints **HIKE — go** — you snap; coach never presses buttons.
 

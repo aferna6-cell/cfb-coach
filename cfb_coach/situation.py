@@ -24,6 +24,8 @@ class Situation:
     #   none = no coverage signal
     coverage_source: str = "none"  # live | last | none
     concept_hint: str | None = None
+    # Parallel to coverage_source for offense/defense play-name tells
+    concept_source: str = "none"  # live | last | none
     notes: str = ""
     extras: dict = field(default_factory=dict)
 
@@ -98,14 +100,45 @@ _COV_HINTS = [
     (re.compile(r"blitz|pressure|heat", re.I), "pressure"),
 ]
 
+# Book / seed play-name aliases → concept_hint (specific before generic)
 _CONCEPT_HINTS = [
-    (re.compile(r"4\s*verts?|four\s*vert|verticals", re.I), "Four Verticals"),
-    (re.compile(r"cross\s*wheels?|crossers?", re.I), "Cross Wheels"),
+    # Mesh family
+    (re.compile(r"mesh\s*spot", re.I), "Mesh Spot"),
+    (re.compile(r"mesh\s*traffic", re.I), "Mesh Traffic"),
+    (re.compile(r"mesh\s*corner", re.I), "Mesh Corner"),
+    (re.compile(r"mesh\s*post", re.I), "Mesh Post"),
+    (re.compile(r"irish\s*mesh(?:\s*whip)?", re.I), "Irish Mesh Whip"),
     (re.compile(r"\bmesh\b", re.I), "Mesh"),
+    # Flood / verticals / cross
+    (re.compile(r"deep\s*flood|flood\s*drive", re.I), "Deep Flood"),
+    (re.compile(r"\bflood\b", re.I), "Flood"),
+    (re.compile(r"4\s*verts?|four\s*vert(?:ical)?s?|\bverticals\b|\bverts\b", re.I), "Four Verticals"),
+    (re.compile(r"cross\s*wheels?|crossers?|cross\s*z\s*post", re.I), "Cross Wheels"),
+    # Whip / spot
+    (re.compile(r"return\s*whip(?:\s*trail)?|whip\s*trail", re.I), "Return Whip Trail"),
+    (re.compile(r"whip\s*double(?:\s*spot)?", re.I), "Whip Double Spot"),
+    (re.compile(r"rz\s*pa\s*x\s*whip|pa\s*x\s*whip", re.I), "RZ PA X Whip"),
+    (re.compile(r"z\s*spot\s*shake", re.I), "Z Spot Shake"),
+    (re.compile(r"z\s*spot(?:\s*goal\s*line)?", re.I), "Z Spot"),
+    # RPO / mountain
+    (re.compile(r"mtn\s*rpo(?:\s*zone\s*alert)?|mountain\s*rpo|rpo\s*zone\s*alert", re.I), "Mtn RPO Zone Alert"),
+    (re.compile(r"mtn\s*cross\s*post", re.I), "Mtn Cross Post"),
+    (re.compile(r"mtn\s*hb\s*choice", re.I), "Mtn HB Choice"),
+    (re.compile(r"mtn\s*speed\s*dig", re.I), "Mtn Speed Dig Under"),
+    (re.compile(r"mtn\s*duo|mountain\s*duo", re.I), "Mtn Duo"),
     (re.compile(r"\brpo\b|bubble", re.I), "RPO bubble"),
-    (re.compile(r"inside\s*zone|\biz\b|duo", re.I), "Inside Zone"),
-    (re.compile(r"scram|scramble|qb\s*run", re.I), "QB scramble"),
-    (re.compile(r"flood", re.I), "Flood"),
+    # Run game
+    (re.compile(r"inside\s*zone(?:\s*split)?|\biz\b|\bduo\b", re.I), "Inside Zone"),
+    (re.compile(r"outside\s*zone|\boz\b|stretch", re.I), "Outside Zone"),
+    (re.compile(r"hb\s*base", re.I), "HB Base"),
+    (re.compile(r"counter\s*y|\bhb\s*counter\b", re.I), "Counter Y"),
+    (re.compile(r"hb\s*dive", re.I), "HB Dive"),
+    (re.compile(r"hb\s*mid\s*draw|qb\s*draw", re.I), "HB Mid Draw"),
+    (re.compile(r"drive\s*hb\s*under", re.I), "Drive HB Under"),
+    (re.compile(r"qb\s*sweep|qb\s*run|scram(?:ble)?", re.I), "QB scramble"),
+    # Misc book names
+    (re.compile(r"quick\s*slants?", re.I), "Quick Slants"),
+    (re.compile(r"\bspacing\b", re.I), "Spacing"),
     (re.compile(r"bunch|cluster", re.I), "Bunch/Cluster"),
 ]
 
@@ -126,13 +159,19 @@ def format_heard(sit: Situation) -> str:
     if sit.coverage_hint:
         src = sit.coverage_source or "none"
         if src == "last":
-            parts.append(f"[last:{sit.coverage_hint}]")
+            parts.append(f"[prev:{sit.coverage_hint}]")
         elif src == "live":
             parts.append(f"[live:{sit.coverage_hint}]")
         else:
             parts.append(f"[{sit.coverage_hint}]")
     if sit.concept_hint:
-        parts.append(sit.concept_hint)
+        src = getattr(sit, "concept_source", "none") or "none"
+        if src == "last":
+            parts.append(f"[prev:{sit.concept_hint}]")
+        elif src == "live":
+            parts.append(f"[live:{sit.concept_hint}]")
+        else:
+            parts.append(sit.concept_hint)
     body = " ".join(parts) if parts else (sit.raw or "?")
     return f"heard: {body}"
 
@@ -205,14 +244,8 @@ def parse_situation(raw: str, default_side: str = "offense") -> Situation:
         elif sit.down == 1 and sit.distance >= 15:
             sit.long_yardage = True
 
-    last_snap = bool(
-        re.search(
-            r"\b(last|prev|previous|saw|showed|was|last\s+play|previous\s+play)\b"
-            r"|\(\s*this\s+was\s+the\s+last\s+play\s*\)",
-            text,
-            re.I,
-        )
-    )
+    # Explicit last markers still count as prev; only live markers force live.
+    # Aidan UX (CPU offense): bare play name / coverage = previous snap — no need to say "last".
     live_mark = bool(
         re.search(
             r"\b(showing|pre[- ]?snap|live|they.?re\s+in|aligned)\b",
@@ -224,16 +257,13 @@ def parse_situation(raw: str, default_side: str = "offense") -> Situation:
     for rx, label in _COV_HINTS:
         if rx.search(text):
             sit.coverage_hint = label
-            if last_snap and not live_mark:
-                sit.coverage_source = "last"
-            else:
-                # Bare coverage in the sit string = soft live look, still not a hard-counter
-                sit.coverage_source = "live"
+            sit.coverage_source = "live" if live_mark else "last"
             break
 
     for rx, label in _CONCEPT_HINTS:
         if rx.search(text):
             sit.concept_hint = label
+            sit.concept_source = "live" if live_mark else "last"
             break
 
     return sit

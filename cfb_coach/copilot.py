@@ -245,7 +245,7 @@ def write_overlay_html(
 </head>
 <body>
 <main>
-  <h1>{heading} <span class="badge">v1.9.5</span> · keep Xbox focused</h1>
+  <h1>{heading} <span class="badge">v1.9.6</span> · keep Xbox focused</h1>
   {short_block}
   {call_block}
   {look_block}

@@ -451,13 +451,15 @@ def _concept_family(concept: str) -> str | None:
         return "vert"
     if "cross" in c or "wheel" in c:
         return "cross"
-    if "mesh" in c or "bunch" in c or "cluster" in c:
+    if "mesh" in c or "bunch" in c or "cluster" in c or "whip" in c or "spot" in c:
         return "mesh"
-    if "rpo" in c or "bubble" in c:
+    if "flood" in c:
+        return "flood"
+    if "rpo" in c or "bubble" in c or "mtn rpo" in c:
         return "rpo"
-    if "scram" in c:
+    if "scram" in c or "qb sweep" in c:
         return "scram"
-    if "inside zone" in c or "duo" in c or c in ("iz", "zone"):
+    if "inside zone" in c or "duo" in c or "hb base" in c or "counter" in c or c in ("iz", "zone"):
         return "run_in"
     if "stretch" in c or "outside zone" in c or "toss" in c:
         return "run_out"
@@ -489,11 +491,18 @@ def _soft_concept_lean(
         return form, play, macro, user, rationale, None
 
     family = _concept_family(concept)
-    # Treat bare concept in sit as a "tell" — need LIVE repeats for macro.
+    # Bare / prev play-name = last-snap context (Aidan UX — no need to say "last").
+    # Only showing/live/pre-snap/aligned force a live tell.
+    src = getattr(sit, "concept_source", "none") or "none"
     raw = (sit.raw or "").lower()
-    last_only = bool(
-        __import__("re").search(r"\b(last|prev|previous|saw|showed|was)\b", raw)
-    )
+    if src == "live":
+        last_only = False
+    elif src == "last":
+        last_only = True
+    else:
+        last_only = bool(
+            __import__("re").search(r"\b(last|prev|previous|saw|showed|was)\b", raw)
+        )
     repeated = is_repeated_concept(db, oid, concept, threshold=2)
     if not repeated and family and db:
         # Sum live tells for same family only (seed buckets excluded by helper)
@@ -594,6 +603,7 @@ def _macro_for_family(family: str | None) -> str:
         "vert": "VERT",
         "cross": "CROSS",
         "mesh": "BUNCH",
+        "flood": "FLOOD",
         "rpo": "RPO",
         "run_in": "RUN-IN",
         "run_out": "RUN-OUT",
@@ -705,10 +715,8 @@ def make_call(
         sit.coverage_source = "last"
 
     if last_concept and not sit.concept_hint:
-        # Encode as last via raw tag so defense lean treats it as last-only
         sit.concept_hint = last_concept
-        if "last" not in (sit.raw or "").lower():
-            sit.raw = f"{sit.raw} last {last_concept}".strip()
+        sit.concept_source = "last"
 
     # Milestone 2: weight LiveTendency evidence (does NOT hardcode final calls)
     live_note = ""

@@ -204,8 +204,9 @@ def cmd_play(args: argparse.Namespace) -> int:
         print("Shorthand: 1&10 | 2&7 | 3&8 d | rz 3&2 | d 1&10 | my 35 | opp 40")
         print("Commands: side o|d | result <text> | why | quit")
     print("Doctrine: one tell = log/mild bump; hard-counter only on REPEATED tendency.")
-    print("  last c2 invert / last cross wheels → does NOT auto-counter next snap")
-    print("  Natural: '1st and 10 my 35 cover 2 (this was the last play)'")
+    print("  Aidan UX: type D&D (+ yl) + previous play/coverage name — no need to say 'last'.")
+    print("  Examples: '1&10 my 35 mesh spot' | '2&7 deep flood' | '1&10 cover 2'")
+    print("  Live look only with: showing / live / pre-snap / aligned (e.g. 'showing cover 2')")
 
     # Overlay: default ON for interactive play; --no-overlay disables; --once skips browser
     no_overlay = bool(getattr(args, "no_overlay", False))

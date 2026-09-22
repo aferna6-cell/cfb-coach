@@ -1,4 +1,4 @@
-"""Typed live play overlay + natural situation phrases (v1.9.5)."""
+"""Typed live play overlay + natural situation phrases (v1.9.6)."""
 
 from __future__ import annotations
 
@@ -52,14 +52,73 @@ class TestNaturalSituationPhrases(unittest.TestCase):
         self.assertEqual(live_show.coverage_hint, "Cover 2")
         self.assertEqual(live_show.coverage_source, "live")
 
-        live_bare = parse_situation("1&10 cover 2")
-        self.assertEqual(live_bare.coverage_source, "live")
+        # Bare coverage = previous-play context (Aidan UX — no need to say last)
+        bare = parse_situation("1&10 cover 2")
+        self.assertEqual(bare.coverage_source, "last")
 
         live_word = parse_situation("1&10 live cover 2")
         self.assertEqual(live_word.coverage_source, "live")
 
         last = parse_situation("1&10 last cover 2")
         self.assertEqual(last.coverage_source, "last")
+
+        showing = parse_situation("1&10 showing cover 2")
+        self.assertEqual(showing.coverage_source, "live")
+        self.assertEqual(showing.coverage_hint, "Cover 2")
+
+
+
+class TestAidanCpuOffenseTyping(unittest.TestCase):
+    """CPU offense: D&D (+ yl) + previous play name only — no 'last' word."""
+
+    def test_mesh_spot_prev_concept(self) -> None:
+        sit = parse_situation("1&10 my 35 mesh spot")
+        self.assertEqual(sit.down, 1)
+        self.assertEqual(sit.distance, 10)
+        self.assertEqual(sit.yardline, 35)
+        self.assertIn("Mesh", sit.concept_hint or "")
+        self.assertEqual(sit.concept_source, "last")
+        self.assertEqual(sit.coverage_source, "none")
+        from cfb_coach.situation import format_heard
+        self.assertIn("[prev:Mesh Spot]", format_heard(sit))
+
+    def test_showing_cover_2_live(self) -> None:
+        sit = parse_situation("1&10 showing cover 2")
+        self.assertEqual(sit.coverage_hint, "Cover 2")
+        self.assertEqual(sit.coverage_source, "live")
+        from cfb_coach.situation import format_heard
+        self.assertIn("[live:Cover 2]", format_heard(sit))
+
+    def test_deep_flood_prev_concept(self) -> None:
+        sit = parse_situation("2&7 deep flood")
+        self.assertEqual(sit.down, 2)
+        self.assertEqual(sit.distance, 7)
+        self.assertEqual(sit.concept_hint, "Deep Flood")
+        self.assertEqual(sit.concept_source, "last")
+        from cfb_coach.situation import format_heard
+        self.assertIn("[prev:Deep Flood]", format_heard(sit))
+
+    def test_bare_cover_2_prev(self) -> None:
+        sit = parse_situation("1&10 cover 2")
+        self.assertEqual(sit.coverage_hint, "Cover 2")
+        self.assertEqual(sit.coverage_source, "last")
+        from cfb_coach.situation import format_heard
+        self.assertEqual(format_heard(sit), "heard: 1&10 [prev:Cover 2]")
+
+    def test_book_play_aliases(self) -> None:
+        cases = [
+            ("1&10 hb base", "HB Base"),
+            ("2&5 counter y", "Counter Y"),
+            ("1&10 inside zone", "Inside Zone"),
+            ("3&8 four verticals", "Four Verticals"),
+            ("2&7 cross wheels", "Cross Wheels"),
+            ("1&10 whip trail", "Return Whip Trail"),
+            ("1&10 mtn rpo", "Mtn RPO Zone Alert"),
+        ]
+        for raw, want in cases:
+            sit = parse_situation(raw)
+            self.assertEqual(sit.concept_hint, want, msg=raw)
+            self.assertEqual(sit.concept_source, "last", msg=raw)
 
 
 class TestPlayOverlay(unittest.TestCase):
@@ -78,7 +137,7 @@ class TestPlayOverlay(unittest.TestCase):
             self.assertIn("PLAY", html)
             self.assertIn("Inside Zone", html)
             self.assertIn("1&amp;10 my 35", html)
-            self.assertIn("v1.9.5", html)
+            self.assertIn("v1.9.6", html)
             self.assertNotIn("front=", html)
 
     def test_default_overlay_path(self) -> None:
@@ -138,7 +197,7 @@ class TestSituationAwareCalls(unittest.TestCase):
         )
         self.assertEqual(
             format_heard(parse_situation("1st and 10 my 35 cover 2 last")),
-            "heard: 1&10 yl35 [last:Cover 2]",
+            "heard: 1&10 yl35 [prev:Cover 2]",
         )
         self.assertEqual(
             format_heard(
@@ -147,12 +206,20 @@ class TestSituationAwareCalls(unittest.TestCase):
             "heard: 1&10 yl35 [live:Cover 2]",
         )
         self.assertEqual(
+            format_heard(parse_situation("1&10 my 35 mesh spot")),
+            "heard: 1&10 yl35 [prev:Mesh Spot]",
+        )
+        self.assertEqual(
+            format_heard(parse_situation("1&10 cover 2")),
+            "heard: 1&10 [prev:Cover 2]",
+        )
+        self.assertEqual(
             format_heard(
                 parse_situation(
                     "1st and 10 my 35 cover 2 (this was the last play)"
                 )
             ),
-            "heard: 1&10 yl35 [last:Cover 2]",
+            "heard: 1&10 yl35 [prev:Cover 2]",
         )
 
     def test_make_call_uses_first_and_ten_not_gl(self) -> None:
