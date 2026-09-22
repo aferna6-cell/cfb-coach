@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 import io
 import unittest
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 from types import SimpleNamespace
 from unittest import mock
 
@@ -298,11 +301,11 @@ class TestDemoStillWorks(unittest.TestCase):
 
         r = subprocess.run(
             [sys.executable, "-m", "cfb_coach", "watch", "--demo", "--once"],
-            cwd="/workspace/cfb-coach",
+            cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
             timeout=30,
-            env={**dict(os.environ), "PYTHONPATH": "/workspace/cfb-coach"},
+            env={**dict(os.environ), "PYTHONPATH": str(REPO_ROOT)},
         )
         self.assertEqual(r.returncode, 0, msg=r.stderr + r.stdout)
         self.assertIn("CO-PILOT", r.stdout)

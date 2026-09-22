@@ -200,6 +200,7 @@ class DxcamWindowCapture:
         self.output_color = output_color
         self._camera: Any = None
         self._resolved_region: tuple[int, int, int, int] | None = region
+        self._grab_region: tuple[int, int, int, int] | None = None
         self.matched_title: str | None = None
         if self._resolved_region is None and self.window_substring:
             matched: list[str] = []
@@ -218,20 +219,38 @@ class DxcamWindowCapture:
             raise ImportError(
                 "DxcamWindowCapture requires dxcam (Windows) — pip install -e '.[vision]'"
             ) from e
-        if self._resolved_region is None and self.window_substring:
+        from cfb_coach.vision.winenum import ensure_dpi_aware, to_output_local
+
+        ensure_dpi_aware()
+        if self.window_substring and self.region is None:
+            # Re-resolve AFTER DPI awareness: earlier rects may be logical px.
             matched: list[str] = []
-            self._resolved_region = find_window_region(
-                self.window_substring, matched_title=matched
-            )
+            rect = find_window_region(self.window_substring, matched_title=matched)
+            if rect is not None:
+                self._resolved_region = rect
             if matched:
                 self.matched_title = matched[0]
-        region = self._resolved_region
-        self._camera = dxcam.create(output_color=self.output_color, region=region)
+        # dxcam default output = primary monitor, origin (0,0) on the desktop.
+        # Create full-output camera, then clamp: dxcam raises "Invalid Region"
+        # for any rect outside 0..width/0..height (snapped windows are -7px).
+        self._camera = dxcam.create(output_color=self.output_color)
+        rect = self._resolved_region
+        if rect is not None:
+            local = to_output_local(
+                rect, (0, 0), (int(self._camera.width), int(self._camera.height))
+            )
+            if local is None:
+                raise RuntimeError(
+                    f"window rect {rect} is not on the primary monitor "
+                    f"({self._camera.width}x{self._camera.height}) — dxcam only "
+                    "captures the primary output; use --capture wgc or mss"
+                )
+            self._grab_region = local
         return self._camera
 
     def grab(self) -> Frame | None:
         cam = self._ensure()
-        frame = cam.grab()
+        frame = cam.grab(region=self._grab_region) if self._grab_region else cam.grab()
         if frame is None:
             return None
         h, w = int(frame.shape[0]), int(frame.shape[1])
@@ -246,8 +265,10 @@ class DeviceCapture:
 
     name = "device"
 
-    def __init__(self, index: int = 0) -> None:
+    def __init__(self, index: int = 0, *, width: int = 1920, height: int = 1080) -> None:
         self.index = index
+        self.width = width
+        self.height = height
         self._cap: Any = None
 
     def _ensure(self) -> bool:
@@ -259,7 +280,14 @@ class DeviceCapture:
             raise ImportError(
                 "DeviceCapture requires opencv-python — pip install -e '.[vision]'"
             ) from e
-        self._cap = cv2.VideoCapture(self.index)
+        import sys as _sys
+
+        # DirectShow opens UVC capture cards fast on Windows; MSMF can stall.
+        api = getattr(cv2, "CAP_DSHOW", 0) if _sys.platform == "win32" else 0
+        self._cap = cv2.VideoCapture(self.index, api) if api else cv2.VideoCapture(self.index)
+        # Many UVC cards default to 640x480 — too small for HUD digits.
+        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         return bool(self._cap.isOpened())
 
     def grab(self) -> Frame | None:
@@ -280,95 +308,15 @@ class DeviceCapture:
         self._cap = None
 
 
-# Common Xbox / Remote Play / Game Bar title fragments (case-insensitive match).
-WINDOW_TITLE_ALIASES: tuple[str, ...] = (
-    "Xbox",
-    "Remote Play",
-    "Remote play",
-    "Xbox Remote Play",
-    "Game Bar",
-    "Xbox Game Bar",
-    "Widget",
+# Window-title helpers live in winenum (ctypes, DPI-aware); re-exported here
+# for backward compatibility with existing imports.
+from cfb_coach.vision.winenum import (  # noqa: E402
+    WINDOW_TITLE_ALIASES,
+    _enum_windows_matching,
+    find_window,
+    list_visible_windows,
+    window_search_needles,
 )
-
-
-def window_search_needles(substring: str | None) -> list[str]:
-    """Primary substring then aliases when looking for Xbox/Remote Play.
-
-    Case-insensitive substring match is applied by the finder; this only
-    expands which needles to try when the primary fails.
-    """
-    primary = (substring or "Xbox").strip() or "Xbox"
-    needles = [primary]
-    low = primary.lower()
-    try_aliases = (
-        low in {"xbox", "remote", "remote play", "game bar"}
-        or "xbox" in low
-        or "remote" in low
-        or "game bar" in low
-    )
-    if try_aliases:
-        for alias in WINDOW_TITLE_ALIASES:
-            if alias.lower() == low:
-                continue
-            if alias not in needles:
-                needles.append(alias)
-    return needles
-
-
-def list_visible_windows() -> list[str] | None:
-    """Windows-only: visible top-level window titles (non-empty). None if unavailable."""
-    try:
-        import win32gui  # type: ignore
-    except ImportError:
-        return None
-
-    titles: list[str] = []
-
-    def _enum(hwnd: int, _: Any) -> None:
-        if not win32gui.IsWindowVisible(hwnd):
-            return
-        title = (win32gui.GetWindowText(hwnd) or "").strip()
-        if title:
-            titles.append(title)
-
-    try:
-        win32gui.EnumWindows(_enum, None)
-    except Exception:
-        return None
-    # Stable unique order
-    seen: set[str] = set()
-    out: list[str] = []
-    for t in titles:
-        if t not in seen:
-            seen.add(t)
-            out.append(t)
-    return out
-
-
-def _enum_windows_matching(needle: str) -> list[tuple[str, tuple[int, int, int, int]]]:
-    """Case-insensitive substring match → [(title, (l,t,r,b)), ...]."""
-    try:
-        import win32gui  # type: ignore
-    except ImportError:
-        return []
-
-    needle_l = needle.lower()
-    found: list[tuple[str, tuple[int, int, int, int]]] = []
-
-    def _enum(hwnd: int, _: Any) -> None:
-        if not win32gui.IsWindowVisible(hwnd):
-            return
-        title = win32gui.GetWindowText(hwnd) or ""
-        if needle_l in title.lower():
-            rect = win32gui.GetWindowRect(hwnd)
-            found.append((title, rect))
-
-    try:
-        win32gui.EnumWindows(_enum, None)
-    except Exception:
-        return []
-    return found
 
 
 def find_window_region(
@@ -489,6 +437,7 @@ class DxcamMssFallbackCapture:
         self._fallback_done = False
         self._fallback_msg_printed = False
         self.matched_title: str | None = None
+        self.last_error: str | None = None
 
         # Construct dxcam wrapper (does not import dxcam until grab)
         self._dxcam = DxcamWindowCapture(
@@ -560,7 +509,8 @@ class DxcamMssFallbackCapture:
                 except Exception:
                     return None
             raise
-        except Exception:
+        except Exception as e:
+            self.last_error = f"{self._mode}: {type(e).__name__}: {e}"
             frame = None
 
         if frame is not None:
