@@ -57,7 +57,9 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 | `python3 -m cfb_coach play --opponent cpu` | CPU = offense-only live loop |
 | `python3 -m cfb_coach watch --demo` | Screen co-pilot demo: sample DefenseLooks → ≤3 tips |
 | `python3 -m cfb_coach watch` | Live tip loop (typed look injection) |
-| `python3 -m cfb_coach watch --setup` | Capture-card / WSL setup notes |
+| `python3 -m cfb_coach watch --setup` | Remote Play / capture setup notes |
+| `python3 -m cfb_coach watch --window Xbox --debug` | Live vision (Windows + `[vision]`) |
+| `python3 -m cfb_coach watch --calibrate` | Save window/crop → `~/.cfb-coach/vision_calib.json` |
 | `python3 -m cfb_coach copilot --demo --once` | Alias of `watch` |
 
 Opponent aliases: ids (`gavin`), display names (`Gavin`), teams (`Auburn`, `Houston`, `SMU`, …).
@@ -214,29 +216,29 @@ Ohio State / CPU = volume lab. Alabama users = prepare well + adjust live.
 
 
 
-## Screen Co-Pilot (v1.7.0)
+## Screen Co-Pilot (v1.8.0)
 
-**Doctrine:** Aidan keeps **full Xbox control** on the TV/console. The laptop is a **sidecar** — coach watches the game picture and suggests **pre-snap adjustments** only (audible / hot / protection / macro tip). **Never auto-play.**
+**Doctrine:** Aidan keeps **full Xbox control** on the HDMI monitor/console. The Windows laptop is a **sidecar** — it runs Xbox Remote Play so coach can **see** the game, analyze locally (classical CV, ~5–10 FPS, no LLM per frame), and suggest **pre-snap adjustments** only. **Never auto-play / never press buttons.**
 
 ### Capture architecture
 
 | Path | Role |
 |------|------|
-| **HDMI capture card** (Elgato Cam Link / HD60 / 4K X / …) | **PRIMARY.** Xbox HDMI → card → laptop. Play stays on Xbox controller + TV. |
-| OBS Virtual Cam / DirectShow device index | Future `--device` / `--window` hooks (Windows native Python). |
-| Xbox Remote Play mirror | **Optional alternate only** if you choose to mirror — not how you play. |
-| `--demo` + typed hotkeys | **v0 now** — works while vision is immature. |
-| `--image path.png` | Naive ROI heuristic stub (no heavy deps). |
+| **Xbox Remote Play** on Windows laptop | **Active prototype video source.** Play stays on direct HDMI monitor + Xbox controller. |
+| **HDMI capture card** (Elgato Cam Link / HD60 / 4K X / …) | **Future drop-in** `CaptureBackend` (same pipeline). |
+| `--demo` + typed hotkeys | Always available (Linux/WSL/Windows) — no vision deps. |
+| `--image` / `--video` | Offline pipeline / naive heuristic testing. |
 
-**Honesty:** Cover 3 vs Quarters (and fine shell calls) is hard from pixels. v0 starts with coarse **front / shell / pressure**. Hotkeys until models improve.
+**Honesty:** Cover 3 vs Quarters (and fine shell calls) is hard from pixels. Milestone 1 is coarse **formation / shell / pressure / play_state**. Hotkeys remain first-class.
 
-### Try it (WSL / Linux)
+### Try it (WSL / Linux — no vision extras)
 
 ```bash
 cd /workspace/cfb-coach   # or your clone
 PYTHONPATH=. python3 -m cfb_coach watch --demo --once
 PYTHONPATH=. python3 -m cfb_coach watch --demo --overlay   # also writes ~/.cfb-coach/copilot_overlay.html
 PYTHONPATH=. python3 -m cfb_coach watch                    # interactive: type looks
+PYTHONPATH=. python3 -m cfb_coach watch --image tests/fixtures/synthetic_field.png --once
 ```
 
 Interactive injection examples:
@@ -253,18 +255,45 @@ look> help
 
 Tips are ≤3 short lines, e.g. `slide protect left`, `hot X ready`, `two-high → run first`. Reuses macro inventory language (PROT / ZERO / C3 / RUN / Active-8 names) — does **not** change prep/play/call/meta scout.
 
-### Capture-card setup (Windows laptop + WSL)
-
-1. Xbox HDMI → capture card → laptop USB. Confirm the device in Camera app, Elgato utility, or OBS.
-2. Optional: OBS → **Start Virtual Camera** (stable DirectShow name).
-3. **WSL note:** USB/capture devices are awkward across the WSL boundary. Prefer:
-   - run a future device grabber on **native Windows Python**, or
-   - dump a frame to a shared folder and tip from WSL:
-     `PYTHONPATH=. python3 -m cfb_coach watch --image /mnt/c/Users/<you>/Videos/frame.png`
-4. Full notes: `python3 -m cfb_coach watch --setup`
-5. Future (not v0): `watch --device 0` / `watch --window "OBS"` via dxcam/mss/OpenCV — stubs documented in `cfb_coach/vision.py`.
-
 Optional overlay: open `~/.cfb-coach/copilot_overlay.html` (auto-refresh 2s) on a second monitor while you play on the TV.
+
+## Xbox Remote Play Vision
+
+Live vision Milestone 1 — **sidecar only**. Play on HDMI; laptop sees Remote Play.
+
+1. **Enable Xbox remote features** — Xbox Settings → Devices & connections → Remote features → enable.
+2. **Open Remote Play on the Windows laptop** — Xbox app → Remote Play → connect to your console.
+3. **Keep playing via direct HDMI monitor** with the Xbox controller. Laptop is tips-only.
+4. **Install vision extras on native Windows Python** (not WSL for live dxcam grab):
+   ```bat
+   cd cfb-coach
+   pip install -e ".[vision]"
+   ```
+5. **Calibrate** (saves window title + crop to `%USERPROFILE%\.cfb-coach\vision_calib.json`):
+   ```bat
+   cfb-coach watch --calibrate
+   ```
+6. **Watch live:**
+   ```bat
+   cfb-coach watch --window "Xbox" --debug
+   ```
+   Other useful flags: `--screen-region L,T,W,H`, `--tts`, `--video sample.mp4`, `--image test.png --debug`.
+7. **Debug view meaning** — OpenCV window shows the captured frame, analyzed FPS, crop, HUD/field ROIs, and short state text (`3&7 | BUNCH R | 2-HIGH | PRESSURE L`). Console prints the same short live line + CALL tips.
+8. **Xbox control is separate from vision** — coach never injects controller input / auto-play.
+9. **Remote Play = prototype source** — convenient because the laptop already mirrors the game while you play on the HDMI monitor.
+10. **Capture card = future drop-in backend** — same `CaptureBackend` protocol / pipeline; swap Remote Play window grab for a device/index later.
+
+Full notes anytime: `cfb-coach watch --setup`.
+
+Live lines look like:
+
+```text
+3&7 | BUNCH R | 2-HIGH | PRESSURE L
+CALL
+  1. slide protect LEFT
+  2. hot X ready (Sam/edge)
+  3. …
+```
 
 ## Package layout
 
@@ -288,7 +317,7 @@ cfb-coach/
     gameplan.py         # baseline + overlays + postgame learning + pivot
     install_sheet.py    # delta engine (inventory vs proposed; mark_prep_applied)
     tendency.py
-    vision.py           # DefenseLook + capture stubs (capture-card later)
+    vision/             # DefenseLook + GameObservation + live CV pipeline (Remote Play prototype)
     copilot.py          # pre-snap tip engine + tiny HTML overlay
     watch.py            # `watch` / `copilot` live loop
     data/seed.json
@@ -302,6 +331,8 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --dynasty ohio_state --off
 PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --dynasty ohio_state --no-open   # live scout section even if some URLs 404
 PYTHONPATH=. python3 -m cfb_coach watch --demo --once
 PYTHONPATH=. python3 -m cfb_coach watch --setup
+PYTHONPATH=. python3 -m unittest discover -s tests -v
+# or: pip install pytest && pytest -q
 ```
 
-Offline prep must succeed. With network, prep HTML includes **Live meta scout** (fetch budget ≤~12s). `watch --demo --once` must print sample pre-snap tips (stdlib only).
+Offline prep must succeed. With network, prep HTML includes **Live meta scout** (fetch budget ≤~12s). `watch --demo --once` must print sample pre-snap tips (stdlib only — no dxcam/cv2 required on Linux).

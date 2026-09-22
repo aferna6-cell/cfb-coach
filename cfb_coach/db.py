@@ -117,6 +117,18 @@ class CoachDB:
                 detail TEXT NOT NULL,
                 why TEXT
             );
+            CREATE TABLE IF NOT EXISTS vision_observations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                source TEXT,
+                play_state TEXT,
+                formation TEXT,
+                shell TEXT,
+                pressure TEXT,
+                payload_json TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_vision_obs_ts
+                ON vision_observations(ts);
             """
         )
         self.conn.commit()
@@ -395,6 +407,53 @@ class CoachDB:
         )
 
 
+
+
+
+    def log_vision_observation(self, payload: dict[str, Any]) -> int:
+        """Persist a GameObservation (or dict) for later game reconstruct."""
+        ts = datetime.now(timezone.utc).isoformat()
+        source = str(payload.get("source") or "")
+        play_state = str(payload.get("play_state") or "")
+        formation = str(payload.get("formation") or "")
+        shell = str(payload.get("shell") or "")
+        pressure = str(payload.get("pressure") or "")
+        cur = self.conn.execute(
+            """
+            INSERT INTO vision_observations
+                (ts, source, play_state, formation, shell, pressure, payload_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                ts,
+                source,
+                play_state,
+                formation,
+                shell,
+                pressure,
+                json.dumps(payload),
+            ),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def get_vision_observations(
+        self, *, limit: int = 100, since_ts: str | None = None
+    ) -> list[sqlite3.Row]:
+        if since_ts:
+            return list(
+                self.conn.execute(
+                    "SELECT * FROM vision_observations WHERE ts >= ? "
+                    "ORDER BY id DESC LIMIT ?",
+                    (since_ts, limit),
+                )
+            )
+        return list(
+            self.conn.execute(
+                "SELECT * FROM vision_observations ORDER BY id DESC LIMIT ?",
+                (limit,),
+            )
+        )
 
 
     def get_install_sheet(self, opponent_id: str) -> dict[str, Any] | None:

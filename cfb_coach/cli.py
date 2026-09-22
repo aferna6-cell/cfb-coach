@@ -329,7 +329,7 @@ def cmd_promote(args: argparse.Namespace) -> int:
 
 
 def cmd_watch(args: argparse.Namespace) -> int:
-    """Screen co-pilot: DefenseLook → pre-snap tips (demo/hotkeys/image)."""
+    """Screen co-pilot: DefenseLook → tips (demo/hotkeys/image/live vision)."""
     from cfb_coach.watch import run_watch
 
     return run_watch(args)
@@ -442,7 +442,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_watch = sub.add_parser(
         "watch",
         aliases=("copilot",),
-        help="Screen co-pilot: pre-snap tips from defense look (demo/hotkeys; capture-card later)",
+        help="Screen co-pilot: pre-snap tips from defense look / live Remote Play vision",
     )
     p_watch.add_argument(
         "--demo",
@@ -482,7 +482,54 @@ def build_parser() -> argparse.ArgumentParser:
     p_watch.add_argument(
         "--setup",
         action="store_true",
-        help="Print capture-card / WSL setup notes and exit",
+        help="Print Xbox Remote Play / capture setup notes and exit",
+    )
+    p_watch.add_argument(
+        "--window",
+        metavar="TITLE",
+        default=None,
+        help='Capture window by title substring (e.g. "Xbox") — Windows dxcam/mss',
+    )
+    p_watch.add_argument(
+        "--screen-region",
+        dest="screen_region",
+        metavar="L,T,W,H",
+        default=None,
+        help="Screen crop left,top,width,height (also saved via --calibrate)",
+    )
+    p_watch.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="Interactive calibrate → ~/.cfb-coach/vision_calib.json",
+    )
+    p_watch.add_argument(
+        "--video",
+        metavar="PATH",
+        default=None,
+        help="Offline video file for vision pipeline (needs opencv)",
+    )
+    p_watch.add_argument(
+        "--debug",
+        action="store_true",
+        help="OpenCV debug view (FPS, crop, ROIs, state) + pipeline on --image",
+    )
+    p_watch.add_argument(
+        "--tts",
+        action="store_true",
+        help="Optional Windows SAPI TTS for tip lines",
+    )
+    p_watch.add_argument(
+        "--device",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Future: OpenCV capture-card device index",
+    )
+    p_watch.add_argument(
+        "--fps",
+        type=float,
+        default=8.0,
+        help="Target analyzed FPS for live/video pipeline (default 8)",
     )
     p_watch.set_defaults(func=cmd_watch)
 

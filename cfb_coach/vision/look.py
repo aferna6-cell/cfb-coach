@@ -1,13 +1,12 @@
-"""Pluggable vision interface for SCREEN CO-PILOT (v0).
+"""DefenseLook contract + demo/hotkey/image stubs (vision package core).
 
-DefenseLook is the contract. Capture backends are stubs for v0:
-  - Demo / hotkey injection (works now)
-  - Optional PNG path + naive ROI heuristic
-  - Capture-card / DirectShow / OBS hooks documented for Windows later
+DefenseLook is the coach tip contract. Live vision (Milestone 1) lives in sibling
+modules and maps GameObservation → DefenseLook.
 
-Aidan plays on Xbox + TV (controller). Laptop is a sidecar tip display.
-Primary future capture path = HDMI capture card (Elgato etc.) into the laptop,
-NOT Xbox Remote Play as the play method. Remote Play is an optional mirror only.
+Aidan plays CFB 27 on Xbox via DIRECT HDMI to monitor + Xbox controller.
+Separately, Windows laptop runs Xbox Remote Play so the laptop sees the game.
+CFB Coach captures Remote Play (prototype source) — SIDE-CAR ONLY, never controls Xbox.
+Capture card is a FUTURE drop-in CaptureBackend.
 """
 
 from __future__ import annotations
@@ -163,26 +162,14 @@ class ImageFileCapture:
         return None
 
 
-# --- Windows capture-card path (documented hooks; not wired on Linux v0) ---
+# --- Windows capture path (Milestone 1) ---
 #
-# Primary (Aidan plays on Xbox/TV; laptop is sidecar):
-#   HDMI out (Xbox) → capture card (Elgato Cam Link / HD60 / 4K X etc.)
-#   → Windows host sees DirectShow / UVC device
-#   → OBS (optional) Virtual Camera, or OpenCV VideoCapture(index)
-#   → cfb-coach watch --device N   (future) or --window "OBS"
+# Active prototype: Xbox Remote Play window on the laptop (dxcam / mss).
+#   cfb-coach watch --window "Xbox" --debug
+# Play remains on direct HDMI monitor + Xbox controller (sidecar only).
 #
-# Suggested future backends (do NOT import heavy deps in v0):
-#   - dxcam / mss: fast desktop ROI grab of the capture preview window
-#   - cv2.VideoCapture(device_index): DirectShow index for the card
-#   - FindWindow + BitBlt: grab OBS/Elgato preview HWND
-#
-# Optional alternate: Xbox Remote Play mirror on the laptop — only if he
-# chooses to mirror; he still plays on the TV controller. Not the default.
-#
-# WSL note: USB/capture devices are awkward across the WSL boundary.
-# Prefer running the watch loop on native Windows Python against the
-# DirectShow device, or grab frames in Windows and pass --image / a shared
-# folder PNG into WSL for the tip engine.
+# Future drop-in: HDMI capture card → DeviceCapture / window grab of preview.
+# Heavy deps (dxcam, mss, cv2, win32) are LAZY — never imported at package init.
 
 
 def parse_look_tokens(tokens: list[str] | str) -> DefenseLook:
@@ -301,19 +288,28 @@ def demo_sequence() -> list[DefenseLook]:
 
 
 CAPTURE_SETUP_NOTES = """
-Capture-card path (PRIMARY — Aidan plays on Xbox/TV; laptop is sidecar)
+Xbox Remote Play vision (ACTIVE PROTOTYPE — play stays on HDMI monitor)
 -----------------------------------------------------------------------
-1. Xbox HDMI → capture card (Elgato Cam Link / HD60 / 4K X / similar) → laptop USB.
-2. Confirm Windows sees the device (Camera app, Elgato Wave Link / 4K Capture Utility, or OBS).
-3. Optional: OBS → Start Virtual Camera (stable name for OpenCV/DirectShow).
-4. Future CLI (not in v0):  cfb-coach watch --device 0
-   or grab the preview window: cfb-coach watch --window "OBS" / "4K Capture Utility"
-5. WSL: USB capture is painful across the boundary. Prefer native Windows Python for
-   device grab, OR dump a frame to a shared folder and use:
-     cfb-coach watch --image /mnt/c/Users/.../frame.png
-6. v0 today: --demo and typed hotkeys (f/s/p) inject DefenseLook without any camera.
+1. On Xbox: enable remote features (Settings → Devices & connections → Remote features).
+2. On Windows laptop: open Xbox app → Remote Play → connect to console.
+3. Keep PLAYING on the direct-HDMI monitor with the Xbox controller.
+   Laptop is a sidecar tip display — coach NEVER presses buttons / auto-plays.
+4. Native Windows Python (not WSL for live grab):
+     pip install -e ".[vision]"
+5. Calibrate once:
+     cfb-coach watch --calibrate
+   (saves window title + crop to ~/.cfb-coach/vision_calib.json)
+6. Live watch:
+     cfb-coach watch --window "Xbox" --debug
+7. Debug view: OpenCV window with frame, FPS, crop/ROIs, and state text.
+8. Xbox control is SEPARATE from vision — sticks stay in your hands.
+9. Remote Play = current prototype video source (laptop sees the game).
+10. Capture card (Elgato etc.) = future drop-in CaptureBackend (same pipeline).
 
-Optional alternate: Xbox Remote Play mirror on the laptop (only if you choose to
-mirror). You still play on the TV controller — Remote Play is NOT the default
-play method. If mirroring, mss/dxcam/FindWindow can grab the Remote Play HWND later.
+Also works offline:
+  cfb-coach watch --demo / --image test.png / --video sample.mp4
+  Typed hotkeys (f/s/p/look) still inject DefenseLook without any camera.
+
+WSL note: prefer native Windows Python for dxcam/mss window grab, OR dump a
+frame to a shared folder and tip from WSL via --image.
 """
