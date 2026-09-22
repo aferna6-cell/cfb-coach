@@ -8,7 +8,7 @@ from typing import Any, Callable
 from cfb_coach.vision.calibrate import load_calib
 from cfb_coach.vision.capture import (
     CaptureBackend,
-    DxcamWindowCapture,
+    DxcamMssFallbackCapture,
     Frame,
     ImageFileCapture,
     MssRegionCapture,
@@ -316,10 +316,11 @@ def build_capture_from_args(args: Any) -> CaptureBackend:
         or (isinstance(screen_region, str) and bool(screen_region.strip()))
     )
     if want_live:
+        # Explicit --screen-region (incl. no-args calib): mss only, print capture=mss
         if prefer_mss and region_dict is not None:
             try:
                 print(
-                    f"Using mss --screen-region from {region_source}: "
+                    f"capture=mss — screen-region from {region_source}: "
                     f"left={region_dict.get('left')} top={region_dict.get('top')} "
                     f"width={region_dict.get('width')} height={region_dict.get('height')}"
                 )
@@ -331,31 +332,47 @@ def build_capture_from_args(args: Any) -> CaptureBackend:
                 )
 
         if win or region_dict:
+            region_tuple = None
+            calib_mss = None
+            if region_dict and all(
+                k in region_dict for k in ("left", "top", "width", "height")
+            ):
+                l, t = int(region_dict["left"]), int(region_dict["top"])
+                region_tuple = (
+                    l,
+                    t,
+                    l + int(region_dict["width"]),
+                    t + int(region_dict["height"]),
+                )
+                calib_mss = {
+                    "left": l,
+                    "top": t,
+                    "width": int(region_dict["width"]),
+                    "height": int(region_dict["height"]),
+                }
+            # Window mode: try dxcam briefly, auto-fallback to mss on window bbox / calib
             try:
-                region_tuple = None
-                if region_dict and all(
-                    k in region_dict for k in ("left", "top", "width", "height")
-                ):
-                    l, t = int(region_dict["left"]), int(region_dict["top"])
-                    region_tuple = (
-                        l,
-                        t,
-                        l + int(region_dict["width"]),
-                        t + int(region_dict["height"]),
-                    )
-                cap = DxcamWindowCapture(
+                return DxcamMssFallbackCapture(
                     window_substring=win or "Xbox",
                     region=region_tuple,
+                    calib_mss_region=calib_mss,
                 )
-                return cap
             except ImportError:
                 pass
             try:
-                if region_dict is not None:
+                from cfb_coach.vision.capture import resolve_mss_region_for_window
+
+                mss_reg = resolve_mss_region_for_window(
+                    win or "Xbox", calib_region=calib_mss
+                )
+                if mss_reg is None and region_dict is not None:
+                    mss_reg = region_dict
+                if mss_reg is not None:
                     print(
-                        f"Using mss region from {region_source or 'calib'}: {region_dict}"
+                        f"capture=mss — window bbox/calib from "
+                        f"{region_source or 'GetWindowRect'}: {mss_reg}"
                     )
-                return MssRegionCapture(region=region_dict)
+                    return MssRegionCapture(region=mss_reg)
             except ImportError:
                 pass
         # Fall through to stub if deps missing

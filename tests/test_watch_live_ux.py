@@ -1,4 +1,4 @@
-"""Live watch UX: heartbeat cadence, window match, non-blocking stdin (v1.9.2)."""
+"""Live watch UX: heartbeat cadence, window match, non-blocking stdin (v1.9.3)."""
 
 from __future__ import annotations
 
@@ -121,6 +121,7 @@ class TestHeartbeatAndStatus(unittest.TestCase):
         self.assertIn("calibrate", _TROUBLESHOOT_NO_FRAMES.lower())
         self.assertIn("--screen-region", _TROUBLESHOOT_NO_FRAMES)
         self.assertIn("vision_calib.json", _TROUBLESHOOT_NO_FRAMES)
+        self.assertIn("auto-fallback", _TROUBLESHOOT_NO_FRAMES)
         self.assertEqual(_CAPTURE_OK, "capture OK — LIVE tips below")
 
 
@@ -253,19 +254,39 @@ class TestScreenRegionCalib(unittest.TestCase):
             device=None,
             live=False,
         )
+        buf = io.StringIO()
         with mock.patch("cfb_coach.vision.pipeline.load_calib", return_value=calib):
             with mock.patch(
                 "cfb_coach.vision.pipeline.MssRegionCapture"
             ) as mss_cls:
-                mss_cls.return_value = mock.Mock(name="mss")
-                # Dxcam may or may not import — prefer_mss should hit mss first
-                with mock.patch(
-                    "cfb_coach.vision.pipeline.DxcamWindowCapture",
-                    side_effect=ImportError("skip"),
-                ):
+                mss_inst = mock.Mock()
+                mss_inst.name = "mss"
+                mss_cls.return_value = mss_inst
+                with mock.patch("sys.stdout", buf):
                     cap = build_capture_from_args(args)
         mss_cls.assert_called_once()
         self.assertIs(cap, mss_cls.return_value)
+        self.assertIn("capture=mss", buf.getvalue())
+
+    def test_window_mode_uses_dxcam_mss_fallback(self) -> None:
+        from cfb_coach.vision.pipeline import build_capture_from_args
+
+        args = SimpleNamespace(
+            image=None,
+            video=None,
+            window="Xbox",
+            screen_region=None,
+            device=None,
+            live=False,
+        )
+        with mock.patch("cfb_coach.vision.pipeline.load_calib", return_value={}):
+            with mock.patch(
+                "cfb_coach.vision.pipeline.DxcamMssFallbackCapture"
+            ) as fb_cls:
+                fb_cls.return_value = mock.Mock(name="fallback", matched_title="Xbox App")
+                cap = build_capture_from_args(args)
+        fb_cls.assert_called_once()
+        self.assertIs(cap, fb_cls.return_value)
 
 
 class TestDemoStillWorks(unittest.TestCase):
@@ -284,7 +305,7 @@ class TestDemoStillWorks(unittest.TestCase):
         )
         self.assertEqual(r.returncode, 0, msg=r.stderr + r.stdout)
         self.assertIn("CO-PILOT", r.stdout)
-        self.assertIn("v1.9.2", r.stdout)
+        self.assertIn("v1.9.3", r.stdout)
         # Must not enter pipeline / waiting-for-frames path
         self.assertNotIn("waiting for frames", r.stdout)
         self.assertNotIn("Pipeline capture=", r.stdout)

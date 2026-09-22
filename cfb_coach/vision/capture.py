@@ -414,3 +414,177 @@ def frame_to_bytes(frame: Frame | bytes | None) -> bytes | None:
         except Exception:
             return None
     return None
+
+
+# --- dxcam → mss auto-fallback (Xbox UWP / protected windows) ---
+
+DXCAM_NO_FRAMES_FALLBACK_MSG = (
+    "dxcam got no frames — falling back to mss screen region"
+)
+
+# Seconds of empty grabs after start before switching to mss (~2–3s).
+DXCAM_FALLBACK_AFTER_S = 2.5
+
+
+def ltrb_to_mss_region(rect: tuple[int, int, int, int]) -> dict[str, int]:
+    """Convert win32 (left, top, right, bottom) → mss {left, top, width, height}."""
+    left, top, right, bottom = (int(rect[0]), int(rect[1]), int(rect[2]), int(rect[3]))
+    return {
+        "left": left,
+        "top": top,
+        "width": max(1, right - left),
+        "height": max(1, bottom - top),
+    }
+
+
+def resolve_mss_region_for_window(
+    window_substring: str | None,
+    *,
+    calib_region: dict[str, int] | None = None,
+    matched_title: list[str] | None = None,
+) -> dict[str, int] | None:
+    """Prefer calib crop if set; else matched window GetWindowRect → mss dict."""
+    if isinstance(calib_region, dict) and all(
+        k in calib_region for k in ("left", "top", "width", "height")
+    ):
+        return {
+            "left": int(calib_region["left"]),
+            "top": int(calib_region["top"]),
+            "width": int(calib_region["width"]),
+            "height": int(calib_region["height"]),
+        }
+    rect = find_window_region(window_substring, matched_title=matched_title)
+    if rect is None:
+        return None
+    return ltrb_to_mss_region(rect)
+
+
+class DxcamMssFallbackCapture:
+    """Window capture: try dxcam briefly; if no frames, mss on window rect / calib.
+
+    Xbox PC app / Remote Play are often UWP/protected and yield empty dxcam
+    grabs even when the window title matches. After ~2.5s with no frame,
+    switches once to mss screen-region capture and prints
+    DXCAM_NO_FRAMES_FALLBACK_MSG.
+    """
+
+    def __init__(
+        self,
+        *,
+        window_substring: str | None = "Xbox",
+        region: tuple[int, int, int, int] | None = None,
+        calib_mss_region: dict[str, int] | None = None,
+        fallback_after_s: float = DXCAM_FALLBACK_AFTER_S,
+    ) -> None:
+        self.window_substring = window_substring
+        self._region_ltrb = region
+        self._calib_mss_region = calib_mss_region
+        self._fallback_after_s = float(fallback_after_s)
+        self._dxcam: DxcamWindowCapture | None = None
+        self._mss: MssRegionCapture | None = None
+        self._backend: Any = None
+        self._mode = "dxcam"
+        self._t0: float | None = None
+        self._got_frame = False
+        self._fallback_done = False
+        self._fallback_msg_printed = False
+        self.matched_title: str | None = None
+
+        # Construct dxcam wrapper (does not import dxcam until grab)
+        self._dxcam = DxcamWindowCapture(
+            window_substring=window_substring,
+            region=region,
+        )
+        self.matched_title = getattr(self._dxcam, "matched_title", None)
+        self._backend = self._dxcam
+
+        # If window already matched but no region was passed, stash ltrb for mss
+        if self._region_ltrb is None and self._dxcam._resolved_region is not None:
+            self._region_ltrb = self._dxcam._resolved_region
+
+    @property
+    def name(self) -> str:
+        return self._mode
+
+    def _print_fallback_once(self) -> None:
+        if self._fallback_msg_printed:
+            return
+        print(DXCAM_NO_FRAMES_FALLBACK_MSG)
+        self._fallback_msg_printed = True
+
+    def _switch_to_mss(self) -> bool:
+        """Build mss backend from calib crop or window rect. True if switched."""
+        if self._fallback_done and self._mss is not None:
+            return True
+        titles: list[str] = []
+        region = resolve_mss_region_for_window(
+            self.window_substring,
+            calib_region=self._calib_mss_region,
+            matched_title=titles,
+        )
+        if region is None and self._region_ltrb is not None:
+            region = ltrb_to_mss_region(self._region_ltrb)
+        if titles and not self.matched_title:
+            self.matched_title = titles[0]
+        if region is None:
+            return False
+        try:
+            self._mss = MssRegionCapture(region=region)
+        except ImportError:
+            return False
+        if self._dxcam is not None:
+            try:
+                self._dxcam.close()
+            except Exception:
+                pass
+        self._backend = self._mss
+        self._mode = "mss"
+        self._fallback_done = True
+        self._print_fallback_once()
+        return True
+
+    def grab(self) -> Frame | None:
+        import time as _time
+
+        if self._t0 is None:
+            self._t0 = _time.time()
+
+        frame: Frame | None = None
+        try:
+            frame = self._backend.grab() if self._backend is not None else None
+        except ImportError:
+            # dxcam (or current backend) missing — fall back immediately
+            if self._mode == "dxcam" and self._switch_to_mss():
+                try:
+                    return self._backend.grab() if self._backend is not None else None
+                except Exception:
+                    return None
+            raise
+        except Exception:
+            frame = None
+
+        if frame is not None:
+            self._got_frame = True
+            return frame
+
+        if (
+            not self._got_frame
+            and not self._fallback_done
+            and self._mode == "dxcam"
+            and (_time.time() - self._t0) >= self._fallback_after_s
+        ):
+            if self._switch_to_mss():
+                try:
+                    return self._backend.grab() if self._backend is not None else None
+                except Exception:
+                    return None
+        return None
+
+    def close(self) -> None:
+        for b in (self._mss, self._dxcam):
+            if b is not None:
+                try:
+                    b.close()
+                except Exception:
+                    pass
+        self._backend = None

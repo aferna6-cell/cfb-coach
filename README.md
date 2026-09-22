@@ -216,9 +216,9 @@ Ohio State / CPU = volume lab. Alabama users = prepare well + adjust live.
 
 
 
-## Screen Co-Pilot (v1.9.2)
+## Screen Co-Pilot (v1.9.3)
 
-**Live UX (1.9.2):** waiting-for-frames heartbeat is a **single overwritten line** (\\r) at most every **5s**; after 5s with no frames, troubleshooting prints **once**, then heartbeats every **15s**. Partial keystrokes are not interrupted. Use `watch --list-windows` to pick the Remote Play title; `--window` is case-insensitive and tries Xbox/Remote Play/Game Bar aliases. `watch --screen-region` (no args) uses calib crop via **mss**. Status every ~2s once live; non-blocking commands still work. Ctrl+C clean-shuts.
+**Live UX (1.9.3):** waiting-for-frames heartbeat is a **single overwritten line** (\\r) at most every **5s**; after 5s with no frames, troubleshooting prints **once**, then heartbeats every **15s**. Partial keystrokes are not interrupted. Use `watch --list-windows` to pick the Remote Play title; `--window` is case-insensitive and tries Xbox/Remote Play/Game Bar aliases. Window mode tries **dxcam** then auto-falls back to **mss** on the window rect/calib if no frames (~2–3s). `watch --screen-region` (no args) uses calib crop via **mss** (`capture=mss`). **Xbox app / Remote Play often needs `--screen-region` / mss fallback** (UWP/protected). Status every ~2s once live; non-blocking commands still work. Ctrl+C clean-shuts.
 
 
 **Doctrine:** Aidan keeps **full Xbox control** on the HDMI monitor/console. The Windows laptop is a **sidecar** — it runs Xbox Remote Play so coach can **see** the game, analyze locally (classical CV, ~5–10 FPS, no LLM per frame), and suggest **pre-snap adjustments** only. **Never auto-play / never press buttons.**
@@ -284,7 +284,8 @@ Live vision Milestone 1 — **sidecar only**. Play on HDMI; laptop sees Remote P
    ```bat
    cfb-coach watch --window "Xbox" --debug
    ```
-   Or calib crop via mss: `cfb-coach watch --screen-region`
+   dxcam tries first; if the Xbox app yields no frames (~2–3s), coach auto-falls back to mss on the matched window rect (or calib crop). **Xbox app may need `--screen-region` / mss fallback** (UWP/protected content).
+   Calib crop via mss: `cfb-coach watch --screen-region` (prints `capture=mss`).
    Other useful flags: `--screen-region L,T,W,H`, `--tts`, `--video sample.mp4`, `--image test.png --debug`.
 8. **Debug view meaning** — OpenCV window shows the captured frame, analyzed FPS, crop, HUD/field ROIs, and short state text (`3&7 | BUNCH R | 2-HIGH | PRESSURE L`). Console prints the same short live line + CALL tips.
 9. **Xbox control is separate from vision** — coach never injects controller input / auto-play.
@@ -305,7 +306,7 @@ CALL
 
 
 
-## Live Vision Milestone 2 (v1.9.2)
+## Live Vision Milestone 2 (v1.9.3)
 
 **Extend M1 — do not rewrite.** Sidecar only; Remote Play = prototype capture; same pipeline for `--video`. False snaps worse than late. Sample tiers: **1=log, 2=mild, 3+=actionable, 5+=strong**. Recency windows (last 5 / last 8) + full-game. Anti-whiplash preserved.
 

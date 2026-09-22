@@ -1,4 +1,4 @@
-"""cfb-coach watch / copilot — SCREEN CO-PILOT live loop (v1.9.2).
+"""cfb-coach watch / copilot — SCREEN CO-PILOT live loop (v1.9.3).
 
 Aidan plays on Xbox via HDMI monitor + controller. Laptop runs Remote Play
 as the prototype video source. Coach is SIDE-CAR ONLY — never controls Xbox.
@@ -26,7 +26,7 @@ from cfb_coach.vision import (
 
 
 HELP = """
-Screen Co-Pilot v1.9.2 — you stay on sticks; coach suggests only.
+Screen Co-Pilot v1.9.3 — you stay on sticks; coach suggests only.
 
 Typed commands (then Enter):
   f <front>      even|odd|nickel|dime|goal_line
@@ -65,6 +65,7 @@ _TROUBLESHOOT_NO_FRAMES = """No frames for 5s — troubleshooting:
   · Leave Xbox Remote Play visible (not minimized / not covered)
   · List titles: cfb-coach watch --list-windows
   · Confirm --window title matches (case-insensitive substring; tries Xbox/Remote Play/Game Bar aliases)
+  · Xbox app / Remote Play often cannot be captured via dxcam (UWP) — auto-fallback to mss should kick in ~2–3s
   · Recalibrate: cfb-coach watch --calibrate --window "Xbox"
   · Or: cfb-coach watch --screen-region   (uses crop from ~/.cfb-coach/vision_calib.json via mss)
 """
@@ -506,7 +507,7 @@ def run_watch(args: Any) -> int:
         live_engine = None
         session = None
 
-    print("SCREEN CO-PILOT v1.9.2 — Xbox stays in your hands (sidecar only)")
+    print("SCREEN CO-PILOT v1.9.3 — Xbox stays in your hands (sidecar only)")
     print("Prototype source: Xbox Remote Play on laptop · play on HDMI monitor")
     print("Future: capture-card drop-in backend. See: watch --setup")
     print("Now: demo + hotkeys + optional live/--image/--video. Type 'help'.")
@@ -970,10 +971,7 @@ def _run_pipeline_loop(
     matched = getattr(cap, "matched_title", None)
     if matched:
         print(f"Window match: {matched!r}")
-    elif getattr(args, "window", None) and getattr(cap, "name", "") in (
-        "dxcam",
-        "threaded:dxcam",
-    ):
+    elif getattr(args, "window", None) and "dxcam" in str(getattr(cap, "name", "")):
         print(
             'No window title matched yet — try: cfb-coach watch --list-windows'
         )
@@ -997,7 +995,9 @@ def _run_pipeline_loop(
     last_obs: Any = None
     last_look_obj: Any = live_state.get("look")
     quit_requested = False
-    capture_name = getattr(pipe_cap, "name", "?")
+
+    def _current_capture_name() -> str:
+        return str(getattr(pipe_cap, "name", "?") or "?")
 
     def _poll_commands() -> bool:
         """Drain stdin queue. Return True if quit requested."""
@@ -1061,7 +1061,7 @@ def _run_pipeline_loop(
             typing=typing,
         ):
             return
-        _print_heartbeat_line(_waiting_frames_msg(capture_name))
+        _print_heartbeat_line(_waiting_frames_msg(_current_capture_name()))
         last_heartbeat = now
 
     def _emit_troubleshoot(now: float) -> None:

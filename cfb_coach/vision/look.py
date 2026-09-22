@@ -303,7 +303,8 @@ Xbox Remote Play vision (ACTIVE PROTOTYPE — play stays on HDMI monitor)
      cfb-coach watch --list-windows
 7. Live watch:
      cfb-coach watch --window "Xbox" --debug
-   Or use calib crop via mss:
+   (dxcam tries first; if no frames ~2–3s → auto mss on window rect / calib)
+   Xbox app / Remote Play may need mss (UWP/protected) — use:
      cfb-coach watch --screen-region
 8. Debug view: OpenCV window with frame, FPS, crop/ROIs, and state text.
 9. Xbox control is SEPARATE from vision — sticks stay in your hands.
