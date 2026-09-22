@@ -65,6 +65,58 @@ def concept_count(db: CoachDB | None, opponent_id: str, concept: str) -> int:
     return _sum_live(db, opponent_id, ["offense_concept"], concept, match_cov=False)
 
 
+
+def is_user_opponent(opponent_id: str | None) -> bool:
+    """True for human dynasty opponents (not CPU volume-lab)."""
+    from cfb_coach.opponents import is_cpu_opponent
+
+    return not is_cpu_opponent(opponent_id)
+
+
+def in_game_coverage_count(
+    db: CoachDB | None,
+    opponent_id: str,
+    coverage: str,
+    *,
+    window: int = 12,
+) -> int:
+    """Count coverage_seen in the most recent snaps (this-game proxy)."""
+    if not db or not coverage:
+        return 0
+    snaps = db.get_recent_snaps(opponent_id, limit=window)
+    n = 0
+    want = coverage.lower()
+    for s in snaps:
+        seen = (s["coverage_seen"] or "").lower()
+        if not seen:
+            continue
+        if want == seen or want in seen or seen in want:
+            n += 1
+    return n
+
+
+def in_game_concept_count(
+    db: CoachDB | None,
+    opponent_id: str,
+    concept: str,
+    *,
+    window: int = 12,
+) -> int:
+    """Count concept_seen in the most recent snaps (this-game proxy)."""
+    if not db or not concept:
+        return 0
+    snaps = db.get_recent_snaps(opponent_id, limit=window)
+    n = 0
+    want = concept.lower()
+    for s in snaps:
+        seen = (s["concept_seen"] or "").lower()
+        if not seen:
+            continue
+        if want == seen or want in seen or seen in want:
+            n += 1
+    return n
+
+
 def is_repeated_coverage(
     db: CoachDB | None,
     opponent_id: str,
@@ -73,8 +125,17 @@ def is_repeated_coverage(
     *,
     threshold: int = 2,
 ) -> bool:
-    """True only after the same shell recurred enough in LIVE logs."""
+    """True after the same shell recurred enough in LIVE logs.
+
+    For user opponents (Alabama humans ~once/season): prefer THIS-game window
+    (recent snaps) so we can pivot macros after 2+ tells mid-game without
+    needing a thick career dataset. Still no single-snap whiplash.
+    """
+    if is_user_opponent(opponent_id):
+        if in_game_coverage_count(db, opponent_id, coverage) >= threshold:
+            return True
     return coverage_count(db, opponent_id, coverage, sit) >= threshold
+
 
 
 def is_repeated_concept(
@@ -84,8 +145,16 @@ def is_repeated_concept(
     *,
     threshold: int = 2,
 ) -> bool:
-    """True only after the same concept recurred enough in LIVE logs."""
+    """True after the same concept recurred enough in LIVE logs.
+
+    User opponents: 2+ tells in the current-game window unlock targeted macros.
+    Still no single-snap whiplash. CPU/lab keeps career live counts.
+    """
+    if is_user_opponent(opponent_id):
+        if in_game_concept_count(db, opponent_id, concept) >= threshold:
+            return True
     return concept_count(db, opponent_id, concept) >= threshold
+
 
 
 def mild_bump_coverage(

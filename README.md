@@ -42,10 +42,12 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 | Command | Purpose |
 |--------|---------|
 | `python3 -m cfb_coach opponents` | List IDs, teams, aliases |
-| `python3 -m cfb_coach prep --opponent <id>` | Open browser: **deltas only** + call tips + collapsible inventory |
+| `python3 -m cfb_coach prep --opponent <id>` | Open browser: **Live meta scout** + deltas only + call tips + Active loadout |
 | `python3 -m cfb_coach prep -o <id> --text` | Compact terminal delta dump (no browser) |
 | `python3 -m cfb_coach prep -o <id> --no-open` | Write HTML without opening browser |
 | `python3 -m cfb_coach prep -o <id> --mark-applied` | Mark proposed deltas applied (next prep shows only NEW) |
+| `python3 -m cfb_coach prep -o <id> --offline` | Skip network meta scout (use cache/baseline `cfb27-2026-09`) |
+| `python3 -m cfb_coach prep -o <id> --refresh-meta` | Force refetch meta scout (ignore <6h cache) |
 | `python3 -m cfb_coach play --opponent <id>` | Interactive live loop (CPU = offense-only) |
 | `python3 -m cfb_coach play --opponent <id> --once "2&7 c2 invert"` | One-shot non-interactive call |
 | `python3 -m cfb_coach call -o gavin -s "2&7 cover 2 invert" --why` | Scripted one-shot |
@@ -56,19 +58,26 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 
 Opponent aliases: ids (`gavin`), display names (`Gavin`), teams (`Auburn`, `Houston`, `SMU`, …).
 
-## Prep = diffs only (v1.5.1)
+## Prep = rich opening plan (v1.6.0)
+
+Alabama user games are ~**once per season** — you cannot lean on thick per-user datasets. Prep is the main edge:
+
+1. **Live meta scout** (default on) hits trusted CFB 27 patch/meta URLs, caches ~6h under `~/.cfb-coach/meta_cache.json`, and maps hits into Aidan's book language as soft **Meta-grounded (live scout)** suggestions.
+2. **Thin seeds + baseline** (`cfb27-2026-09`) still drive the stocked inventory.
+3. Browser top section: **Patch radar**, **What's meta (O/D)**, **How it affects THIS prep** (ties to any deltas). Offline/failed → "Scout unavailable — using cached/baseline cfb27-2026-09" without breaking prep.
+4. Lightly biases gameplan/macro **deltas only** (still ≤8 active macros, CPU O-only, alabama vs ohio_state rules).
 
 Inventory (seed playbooks + 8 active / 2 benched macros) is the **already-stocked** book. Prep never says CREATE BAMA META O/D from scratch or re-ADD all 8 macros.
 
 - **Playbook adjustments** — ADD/REMOVE formation, EDIT audible slot (only when changed for this opponent)
 - **Macro adjustments** — EDIT field (e.g. HEAT when-to-arm), ADD one new recipe, BENCH/UNBENCH
-- If no deltas: browser says **“No playbook changes — run baseline as-is”** + short call tips
+- If no deltas: browser says **"No playbook changes — run baseline as-is"** + short call tips
 - Main view = **Active loadout only (≤8)**; collapsible inventory is read-only reference (no bench catalog dump)
 - `--mark-applied` persists applied deltas so the next prep only shows NEW changes
+- `--offline` skips network; `--refresh-meta` forces refetch
 
 
-
-## Dynasty modes (v1.5.1)
+## Dynasty modes (v1.6.0)
 
 ```bash
 prep --opponent gavin --dynasty alabama      # default: serious USER dynasty
@@ -94,7 +103,7 @@ Defense Active-8 copy blocks are Aidan's **exact** Custom Adjustments ticks (Gen
 - UI note: Safety Midpoint **Strong** = toward pass strength
 - Doctrine: do **not** auto-use a macro from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro.
 
-## Macros — Active loadout only, click-to-copy, validation (v1.5.1)
+## Macros — Active loadout only, click-to-copy, validation (v1.6.0)
 
 - **USER Active hard cap = 8** Custom Adjustments across **Offense + Defense combined** (Aidan rule for online dynasty). EA's UI may advertise 10 — honor **8**.
 - Path: **Create & Share → Custom Adjustments → Offense/Defense** → edit/save → set Active → in-game **LB** to use.
@@ -177,19 +186,28 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent quen
 PYTHONPATH=. python3 -m cfb_coach postgame --opponent gavin
 ```
 
-## Doctrine (from seed)
+## Doctrine (Aidan)
+
+**Priority stack**
+
+1. **Rich prep** — live meta scout + patch notes + thin seeds = strong opening gameplan.
+2. **Mid-game adaptation THIS game** — after a few snaps of their tendencies (2+ tells), pivot calls/macros for *this* game. Still no single-snap whiplash.
+3. **Per-user long-term learning** — light carry-forward only, not the main edge.
+
+Ohio State / CPU = volume lab. Alabama users = prepare well + adjust live.
 
 - Free reign: any playbook call is legal.
 - Default defense prior: **Nickel Over** (C3 Sky / C4 Quarters / Tampa 2). Macros situational.
-- Meta priors are soft weights; **dynasty evidence outranks**.
+- Meta priors are soft weights; **in-game evidence outranks** thin career film.
 - Ignore rosters (new season).
 - Cover 2 Invert / Invert Hard Flat as a *live* soft lean → prefer **Mesh Spot / easy underneath or Inside Zone** — not forced Deep Flood.
 - **Tendency discipline (symmetric O + D):**
-  - One tell (one Cross Wheels, one IZ, one C2 Invert) = **log + mild probability bump only**.
+  - One tell = **log + mild probability bump only**.
   - Do **not** hard-counter the previous coverage/concept every snap.
-  - Targeted macro / coverage-specific beater only when the same signal is a **REPEATED** tendency in a similar D&D/field zone.
+  - Targeted macro / coverage-specific beater only when the same signal is a **REPEATED** tendency (2+) in a similar D&D/field zone — for user opponents, the **this-game window** (recent snaps) counts first.
   - Default next snap = base situational call (D&D, field, opponent archetype priors).
-- **PIVOT:** last 3 snaps fail on a side → switch family (O: run ↔ Mesh Spot ↔ Cluster) or reset D to Nickel Over base (clear chase macros). No single-snap whiplash.
+- **PIVOT:** user games soft-pivot after **2** fails on a side; hard PIVOT at **3** for everyone (switch family / reset Nickel Over). No single-snap whiplash.
+
 
 ## Package layout
 
@@ -209,6 +227,7 @@ cfb-coach/
     format_call.py      # UX lock formatter
     prep.py             # text prep helpers + --text dump
     prep_browser.py     # dark HTML deltas → ~/.cfb-coach/prep_<opp>.html
+    meta_scout.py       # live CFB27 patch/meta scout (urllib, 6h cache)
     gameplan.py         # baseline + overlays + postgame learning + pivot
     install_sheet.py    # delta engine (inventory vs proposed; mark_prep_applied)
     tendency.py
@@ -219,22 +238,8 @@ cfb-coach/
 ## Smoke
 
 ```bash
-PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin --no-open
-PYTHONPATH=. python3 -m cfb_coach prep --opponent ryan --no-open
-PYTHONPATH=. python3 -m cfb_coach prep --opponent quen --text
-PYTHONPATH=. python3 -m cfb_coach call -o gavin -s "2&7 cover 2 invert" --why
-PYTHONPATH=. python3 -m cfb_coach postgame --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --dynasty ohio_state --offline --no-open
+PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --dynasty ohio_state --no-open   # live scout section even if some URLs 404
 ```
 
-HTML for Gavin must **not** say CREATE whole custom books or ADD all 8 macros from scratch — only opponent-specific edits. Ryan (thin) may show zero or minimal deltas.
-
-v1.5.1 smoke:
-
-```bash
-PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --dynasty ohio_state --no-open
-# → O-only; D macros N/A; Active loadout cards ≤8 (often 0 O macros for CPU)
-PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin --dynasty alabama --no-open
-# → exactly 8 D macros clickable; no FLOOD/SCREEN cards in main loadout
-```
-
-Gavin HTML has clickable Active-8 (CROSS…HEAT) with copy blocks; swap proposals show loadout *after* swap + “replacing X with Y”. CPU prep never lists D macros. Badges proven/meta_grounded/failed. No full-book recreate.
+Offline prep must succeed. With network, prep HTML includes **Live meta scout** (fetch budget ≤~12s).

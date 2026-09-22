@@ -609,8 +609,13 @@ def build_prep_plan(
     db: CoachDB | None = None,
     persist: bool = True,
     dynasty: str | None = None,
+    offline: bool = False,
+    refresh_meta: bool = False,
 ) -> dict[str, Any]:
-    """Build inventory + proposed deltas + tips; optionally persist."""
+    """Build inventory + proposed deltas + tips; optionally persist.
+
+    Runs live meta scout by default (unless offline) to enrich tips/deltas.
+    """
     from cfb_coach.dynasty import (
         DEFAULT_DYNASTY,
         allow_experimental,
@@ -635,6 +640,35 @@ def build_prep_plan(
     shown = filter_new_deltas(proposed, applied)
     tips = call_emphasis_tips(opponent_id, opp)
     eg = effective_gameplan(opponent_id, db)
+
+    # Live meta scout — rich prep edge (Alabama users ~once/season)
+    scout_dict: dict[str, Any] = {}
+    try:
+        from cfb_coach.meta_scout import apply_scout_bias, run_meta_scout
+
+        scout = run_meta_scout(offline=offline, refresh=refresh_meta)
+        proposed, tips, affect = apply_scout_bias(
+            proposed, scout, dynasty=dynasty, tips=tips
+        )
+        scout.affect_this_prep = list(affect)
+        scout_dict = scout.to_dict() if hasattr(scout, "to_dict") else dict(
+            getattr(scout, "__dict__", {})
+        )
+        shown = filter_new_deltas(proposed, applied)
+    except Exception as exc:  # noqa: BLE001 — never break prep
+        scout_dict = {
+            "available": False,
+            "offline": offline,
+            "message": f"Scout unavailable — using cached/baseline cfb27-2026-09 ({type(exc).__name__})",
+            "baseline_fallback": "cfb27-2026-09",
+            "patch_notes": [],
+            "meta_offense": [],
+            "meta_defense": [],
+            "suggestions": [],
+            "sources": [],
+            "affect_this_prep": [],
+            "confidence": "low",
+        }
 
     # Dynasty default Active-8 / benched for loadout display
     if dcfg.get("default_active"):
@@ -707,6 +741,7 @@ def build_prep_plan(
         "dynasty": dynasty,
         "dynasty_config": dcfg,
         "doctrine": doctrine_line(),
+        "meta_scout": scout_dict,
     }
     if db is not None and persist:
         save_prep_deltas(db, opponent_id, proposed, shown)
@@ -797,6 +832,18 @@ def format_delta_text(plan: dict[str, Any]) -> str:
                     lines.append(f"         {step}")
 
     lines.append("")
+    try:
+        from cfb_coach.meta_scout import MetaScoutResult, format_scout_text
+
+        raw = plan.get("meta_scout") or {}
+        if raw:
+            scout_obj = MetaScoutResult(**{
+                k: raw[k] for k in MetaScoutResult.__dataclass_fields__ if k in raw
+            })
+            lines.append(format_scout_text(scout_obj))
+            lines.append("")
+    except Exception:
+        pass
     lines.append("## Call emphasis")
     for t in plan["tips"]:
         lines.append(f"  - {t}")

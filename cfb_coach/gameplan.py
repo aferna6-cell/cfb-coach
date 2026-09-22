@@ -757,28 +757,51 @@ def active_pivot(
     """
     if not db:
         return None
-    fails = _side_fail_streak(db, opponent_id, side, n=3)
-    if fails < 3:
+    from cfb_coach.tendency import is_user_opponent
+
+    user = is_user_opponent(opponent_id)
+    fails3 = _side_fail_streak(db, opponent_id, side, n=3)
+    fails2 = _side_fail_streak(db, opponent_id, side, n=2)
+    # Hard PIVOT at 3 for everyone; user soft PIVOT at 2 (this-game adaptation)
+    if fails3 >= 3:
+        hard = True
+    elif user and fails2 >= 2:
+        hard = False
+    else:
         return None
     if side == "offense":
-        return PivotSuggestion(
-            kind="offense_pivot",
-            family="constraint",
-            message=(
+        if hard:
+            msg = (
                 "PIVOT: last 3 O snaps failed — switch family now "
                 "(run ↔ Mesh Spot easy ↔ Gun Cluster changeup). "
                 "No hero-shot whiplash."
-            ),
+            )
+        else:
+            msg = (
+                "PIVOT (user game): last 2 O snaps failed — start switching family "
+                "(run ↔ Mesh Spot easy ↔ Gun Cluster). Still no single-snap whiplash."
+            )
+        return PivotSuggestion(
+            kind="offense_pivot",
+            family="constraint",
+            message=msg,
+        )
+    if hard:
+        msg = (
+            "PIVOT: last 3 D snaps failed — reset to Nickel Over base "
+            "(C3 Sky / C4 Quarters / Tampa), clear chase macros, "
+            "re-arm only on repeated tendency. No single-snap whiplash."
+        )
+    else:
+        msg = (
+            "PIVOT (user game): last 2 D snaps failed — lean back to Nickel Over base, "
+            "drop chase macros until 2+ tells THIS game. No single-snap whiplash."
         )
     return PivotSuggestion(
         kind="defense_pivot",
         family="shell_reset",
         macro="none",
-        message=(
-            "PIVOT: last 3 D snaps failed — reset to Nickel Over base "
-            "(C3 Sky / C4 Quarters / Tampa), clear chase macros, "
-            "re-arm only on repeated tendency. No single-snap whiplash."
-        ),
+        message=msg,
     )
 
 

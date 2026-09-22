@@ -56,7 +56,13 @@ def cmd_prep(args: argparse.Namespace) -> int:
             from cfb_coach.install_sheet import build_prep_plan
 
             plan = build_prep_plan(
-                oid, opp, db=db, persist=True, dynasty=dynasty
+                oid,
+                opp,
+                db=db,
+                persist=True,
+                dynasty=dynasty,
+                offline=getattr(args, "offline", False),
+                refresh_meta=getattr(args, "refresh_meta", False),
             )
             if getattr(args, "mark_applied", False):
                 mark_prep_applied(db, oid, plan["proposed_deltas"])
@@ -77,6 +83,8 @@ def cmd_prep(args: argparse.Namespace) -> int:
             open_browser=not getattr(args, "no_open", False),
             mark_applied=getattr(args, "mark_applied", False),
             dynasty=dynasty,
+            offline=getattr(args, "offline", False),
+            refresh_meta=getattr(args, "refresh_meta", False),
         )
         n = len(plan.get("shown_deltas") or [])
         print(f"Prep vs {plan.get('display_name', oid)} → {path}")
@@ -92,6 +100,19 @@ def cmd_prep(args: argparse.Namespace) -> int:
             print("No playbook changes — run baseline as-is (tips in browser).")
         else:
             print(f"{n} adjustment(s) shown (deltas only).")
+        scout = plan.get("meta_scout") or {}
+        if scout.get("available"):
+            tag = "cached" if scout.get("from_cache") else "live"
+            print(
+                f"Meta scout ({tag}, conf={scout.get('confidence', '?')}): "
+                f"{len(scout.get('patch_notes') or [])} patch note(s), "
+                f"{len(scout.get('suggestions') or [])} book suggestion(s)."
+            )
+        else:
+            print(
+                scout.get("message")
+                or "Scout unavailable — using cached/baseline cfb27-2026-09"
+            )
     finally:
         db.close()
     return 0
@@ -339,6 +360,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--mark-applied",
         action="store_true",
         help="Mark current proposed deltas as applied (next prep shows only NEW)",
+    )
+    p_prep.add_argument(
+        "--offline",
+        action="store_true",
+        help="Skip live meta scout network fetch (use cache/baseline cfb27-2026-09)",
+    )
+    p_prep.add_argument(
+        "--refresh-meta",
+        action="store_true",
+        help="Force refetch meta scout (ignore <6h cache)",
     )
     p_prep.set_defaults(func=cmd_prep)
 

@@ -1,6 +1,6 @@
 """Polished dark HTML prep sheet (deltas only) — open in browser.
 
-v1.5.1: Active loadout only (≤8 clickable macros) — never dump benched
+v1.6.0: Active loadout only (≤8 clickable macros) — never dump benched
 (FLOOD/SCREEN) catalog. Swap → show 8 *after* swap + "replacing X with Y".
 CPU games = offense-only (D macros N/A). Validation badges unchanged.
 """
@@ -581,9 +581,110 @@ _CSS = """
     font-size: 0.78rem; line-height: 1.4; white-space: pre-wrap; color: #c5d0e0;
     max-height: 420px; overflow: auto;
   }
+  .scout-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
+  @media (min-width: 720px) {
+    .scout-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .scout-card {
+    background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .scout-card h3 {
+    margin: 0 0 8px; font-size: 0.88rem; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .scout-card ul { margin: 0; padding-left: 1.1rem; font-size: 0.86rem; }
+  .scout-card li { margin-bottom: 4px; }
+  .scout-src { font-size: 0.78rem; margin-top: 8px; }
+  .scout-src a { color: var(--accent); }
+  .scout-affect { grid-column: 1 / -1; }
   footer { margin-top: 24px; color: var(--muted); font-size: 0.8rem; text-align: center; }
   code { background: rgba(0,0,0,0.35); padding: 1px 5px; border-radius: 4px; }
 """
+
+
+
+def _render_meta_scout(scout: dict[str, Any] | None) -> str:
+    """Top-of-prep Live meta scout panel (rich)."""
+    scout = scout or {}
+    available = bool(scout.get("available"))
+    msg = scout.get("message") or ""
+    if not available and not (
+        scout.get("patch_notes")
+        or scout.get("meta_offense")
+        or scout.get("meta_defense")
+    ):
+        fallback = scout.get("baseline_fallback") or "cfb27-2026-09"
+        return f"""
+    <section>
+      <h2>Live meta scout</h2>
+      <div class="empty">Scout unavailable — using cached/baseline {_esc(fallback)}
+        <span class="muted">({_esc(msg)})</span>
+      </div>
+    </section>
+    """
+    conf = _esc(scout.get("confidence") or "low")
+    tags = []
+    if scout.get("offline"):
+        tags.append("offline")
+    if scout.get("from_cache"):
+        tags.append("cached")
+    tag_html = " · ".join(_esc(t) for t in tags) if tags else "live"
+    # Patch radar
+    patch_bits = []
+    for pn in (scout.get("patch_notes") or [])[:4]:
+        bullets = "".join(
+            f"<li>{_esc(b)}</li>" for b in (pn.get("bullets") or [])[:4]
+        )
+        patch_bits.append(
+            f"<div><strong>{_esc(pn.get('version') or '?')}</strong> "
+            f"<span class='muted'>{_esc(pn.get('date') or '')}</span> — "
+            f"{_esc(pn.get('title') or '')}"
+            f"<ul>{bullets}</ul></div>"
+        )
+    patch_html = "".join(patch_bits) or "<div class='empty'>No patch bullets this pass</div>"
+    o_lis = "".join(f"<li>{_esc(t)}</li>" for t in (scout.get("meta_offense") or [])[:6])
+    d_lis = "".join(f"<li>{_esc(t)}</li>" for t in (scout.get("meta_defense") or [])[:6])
+    affect_lis = "".join(
+        f"<li>{_esc(t)}</li>" for t in (scout.get("affect_this_prep") or [])[:8]
+    )
+    src_bits = []
+    for s in (scout.get("sources") or []):
+        if not s.get("fetched"):
+            continue
+        url = s.get("url") or ""
+        title = s.get("title") or url
+        src_bits.append(
+            f'<div class="scout-src"><a href="{_esc(url)}" target="_blank" rel="noopener">'
+            f"{_esc(title)}</a></div>"
+        )
+        if len(src_bits) >= 6:
+            break
+    return f"""
+    <section>
+      <h2>Live meta scout
+        <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">
+          ({tag_html} · confidence={conf})
+        </span>
+      </h2>
+      <div class="scout-grid">
+        <div class="scout-card">
+          <h3>Patch radar</h3>
+          {patch_html}
+        </div>
+        <div class="scout-card">
+          <h3>What's meta right now</h3>
+          <div><b>O</b><ul>{o_lis or "<li class='muted'>(thin)</li>"}</ul></div>
+          <div style="margin-top:8px"><b>D</b><ul>{d_lis or "<li class='muted'>(thin)</li>"}</ul></div>
+          {"".join(src_bits)}
+        </div>
+        <div class="scout-card scout-affect">
+          <h3>How it affects THIS prep</h3>
+          <ul>{affect_lis or "<li class='muted'>Soft priors only — baseline still primary</li>"}</ul>
+        </div>
+      </div>
+    </section>
+    """
 
 
 def render_prep_html(plan: dict[str, Any]) -> str:
@@ -657,6 +758,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
 
     {status}
     {dynasty_banner}
+    {_render_meta_scout(plan.get("meta_scout") or {})}
     {_render_swap_banners(banners)}
 
     <section>
@@ -838,11 +940,19 @@ def generate_and_open(
     open_browser: bool = True,
     mark_applied: bool = False,
     dynasty: str | None = None,
+    offline: bool = False,
+    refresh_meta: bool = False,
 ) -> tuple[Path, dict[str, Any]]:
     from cfb_coach.install_sheet import mark_prep_applied
 
     plan = build_prep_plan(
-        opponent_id, opp, db=db, persist=persist, dynasty=dynasty
+        opponent_id,
+        opp,
+        db=db,
+        persist=persist,
+        dynasty=dynasty,
+        offline=offline,
+        refresh_meta=refresh_meta,
     )
     if mark_applied and db is not None:
         mark_prep_applied(db, opponent_id, plan["proposed_deltas"])

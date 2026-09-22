@@ -204,6 +204,8 @@ def format_promotions(promotions: list[dict[str, Any]] | None = None, db: Any = 
 
 def doctrine_line() -> str:
     return (
-        "Doctrine: do NOT auto-use macros from one concept appearance — "
-        "most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro."
+        "Doctrine: Alabama users ~once/season — rich prep (live meta scout + thin seeds) "
+        "is the opening edge; mid-game adapt after 2+ tells THIS game (no single-snap whiplash). "
+        "Per-user long-term learning is light carry-forward only. Ohio State/CPU = volume lab. "
+        "Most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro."
     )
