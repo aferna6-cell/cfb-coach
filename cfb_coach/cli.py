@@ -8,7 +8,6 @@ import sys
 from cfb_coach.db import CoachDB, resolve_db_path_from_env
 from cfb_coach.opponents import format_opponent_list, resolve_opponent
 from cfb_coach.playcaller import make_call
-from cfb_coach.prep import build_prep
 from cfb_coach.situation import parse_situation
 from cfb_coach.tendency import mild_bump_concept, mild_bump_coverage
 
@@ -34,14 +33,43 @@ def cmd_opponents(_args: argparse.Namespace) -> int:
 
 
 def cmd_prep(args: argparse.Namespace) -> int:
+    from cfb_coach.install_sheet import format_delta_text, mark_prep_applied
+    from cfb_coach.prep import load_opponent_profile
+    from cfb_coach.prep_browser import generate_and_open
+
     oid = _require_opponent(args.opponent)
     db = _db()
     try:
-        print(build_prep(oid, db))
+        opp = load_opponent_profile(oid, db)
+        if getattr(args, "text", False):
+            from cfb_coach.install_sheet import build_prep_plan
+
+            plan = build_prep_plan(oid, opp, db=db, persist=True)
+            if getattr(args, "mark_applied", False):
+                mark_prep_applied(db, oid, plan["proposed_deltas"])
+                print(f"Marked {len(plan['proposed_deltas'])} deltas applied for {oid}.")
+            print(format_delta_text(plan))
+            return 0
+
+        path, plan = generate_and_open(
+            oid,
+            opp,
+            db=db,
+            persist=True,
+            open_browser=not getattr(args, "no_open", False),
+            mark_applied=getattr(args, "mark_applied", False),
+        )
+        n = len(plan.get("shown_deltas") or [])
+        print(f"Prep vs {plan.get('display_name', oid)} → {path}")
+        if getattr(args, "mark_applied", False):
+            print(f"Marked proposed deltas applied for {oid}.")
+        elif n == 0:
+            print("No playbook changes — run baseline as-is (tips in browser).")
+        else:
+            print(f"{n} adjustment(s) shown (deltas only).")
     finally:
         db.close()
     return 0
-
 
 
 def cmd_postgame(args: argparse.Namespace) -> int:
@@ -207,8 +235,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_prep = sub.add_parser("prep", help="Pregame: baseline → overlay → effective + threat sheet")
+    p_prep = sub.add_parser(
+        "prep",
+        help="Pregame: open browser with playbook/macro deltas only (not full recreate)",
+    )
     p_prep.add_argument("--opponent", "-o", required=True)
+    p_prep.add_argument(
+        "--text",
+        action="store_true",
+        help="Print compact terminal delta dump instead of opening browser",
+    )
+    p_prep.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Write HTML but do not open a browser",
+    )
+    p_prep.add_argument(
+        "--mark-applied",
+        action="store_true",
+        help="Mark current proposed deltas as applied (next prep shows only NEW)",
+    )
     p_prep.set_defaults(func=cmd_prep)
 
     p_play = sub.add_parser("play", help="Interactive live call loop")

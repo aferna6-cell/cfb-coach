@@ -1,420 +1,498 @@
-"""INSTALL SHEET — prepper has full permission to CREATE/EDIT/BENCH playbooks + macros.
+"""Playbook delta engine — inventory (seed books) vs opponent-aware proposed tweaks.
 
-Emits concrete Xbox custom-book steps (offense/defense books + custom adjustments).
-Persists per-opponent install diffs in SQLite so the next prep remembers prior choices.
+Assumes BAMA META O/D are already fully stocked with every formation/play in seed.json
+and the 8 active + 2 benched macros. Prep never asks to CREATE books or re-ADD all macros.
+Only opponent-specific ADD/REMOVE/EDIT/BENCH/UNBENCH deltas are emitted.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 from datetime import datetime, timezone
 from typing import Any
 
 from cfb_coach.db import CoachDB
 from cfb_coach.gameplan import effective_gameplan, load_baseline
+from cfb_coach.seed import load_seed
 
 
 # ---------------------------------------------------------------------------
-# Step builders
+# Inventory (current books — already stocked)
 # ---------------------------------------------------------------------------
 
-def _step(action: str, target: str, detail: str, *, why: str = "") -> dict[str, str]:
+def build_inventory(seed: dict[str, Any] | None = None, bl: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Current inventory = seed playbooks + baseline macro set."""
+    seed = seed or load_seed()
+    bl = bl or load_baseline()
+    pb = seed["playbooks"]
+    league = seed["league"]["online_baseline"]
+    mb = bl["macros_baseline"]
+
+    offense: dict[str, Any] = {}
+    for name, meta in (pb.get("offense_formations") or {}).items():
+        offense[name] = {
+            "role": meta.get("role", ""),
+            "plays": list(meta.get("core") or []),
+            "audibles": list(meta.get("audibles") or []),
+        }
+
+    defense: dict[str, Any] = {}
+    for name, meta in (pb.get("defense_packages") or {}).items():
+        defense[name] = {
+            "role": meta.get("role", ""),
+            "calls": list(meta.get("calls") or []),
+        }
+
+    macros_active = list(league.get("defensive_macros_active") or mb.get("keep") or [])
+    macros_benched = list(league.get("defensive_macros_benched") or mb.get("bench") or [])
+    o_macros = list(league.get("offensive_macros_active") or [])
+    recipes = copy.deepcopy(mb.get("recipes") or {})
+
     return {
-        "action": action.upper(),  # CREATE | ADD | EDIT | BENCH
+        "offense_book": league.get("custom_offense", "BAMA META O"),
+        "defense_book": league.get("custom_defense", "BAMA META D"),
+        "offense": offense,
+        "defense": defense,
+        "macros_active": macros_active,
+        "macros_benched": macros_benched,
+        "offensive_macros": o_macros,
+        "macro_recipes": recipes,
+        "note": league.get("note", ""),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Delta helpers
+# ---------------------------------------------------------------------------
+
+def _delta(
+    action: str,
+    target: str,
+    detail: str,
+    *,
+    kind: str = "playbook",
+    field: str = "",
+    before: str = "",
+    after: str = "",
+    why: str = "",
+) -> dict[str, str]:
+    return {
+        "action": action.upper(),
+        "kind": kind,  # playbook | macro
         "target": target,
+        "field": field,
+        "before": before,
+        "after": after,
         "detail": detail,
         "why": why,
     }
 
 
-def _baseline_macro_steps(bl: dict[str, Any]) -> list[dict[str, str]]:
-    mb = bl["macros_baseline"]
-    recipes = mb.get("recipes") or {}
-    steps: list[dict[str, str]] = []
-
-    steps.append(
-        _step(
-            "CREATE",
-            "Custom Defense book",
-            f"Ensure book exists: BAMA META D (or rename to CFB27 META D). Home package Nickel Over.",
-            why="CFB27 defense home",
-        )
-    )
-    steps.append(
-        _step(
-            "CREATE",
-            "Custom Offense book",
-            f"Ensure book exists: BAMA META O (or rename to CFB27 META O). Home: Gun Bunch X Nasty + Gun Cluster.",
-            why="CFB27 Bunch meta",
-        )
-    )
-
-    for m in mb["keep"]:
-        rec = recipes.get(m) or {}
-        purpose = rec.get("purpose") or mb["reasons"].get(m, "")
-        when = rec.get("when_to_arm") or mb.get("when_to_arm", {}).get(m, "")
-        shell = rec.get("shell_pair", "")
-        user = rec.get("user_job", "")
-        steps.append(
-            _step(
-                "ADD",
-                f"D macro {m}",
-                f"Arm recipe: shell={shell or 'Nickel Over'}; user={user or 'one job'}; "
-                f"PURPOSE={purpose}. WHEN={when}",
-                why="baseline KEEP",
-            )
-        )
-
-    for m in mb["bench"]:
-        reason = mb["reasons"].get(m, "benched until stable")
-        steps.append(
-            _step(
-                "BENCH",
-                f"D macro {m}",
-                f"Leave OFF / do not bind until online-stable. Reason: {reason}",
-                why="baseline BENCH",
-            )
-        )
-
-    # CREATE candidates (invented names with clear purpose)
-    for m in mb.get("create_candidates") or []:
-        rec = recipes.get(m) or {}
-        steps.append(
-            _step(
-                "CREATE",
-                f"Custom adj / macro {m}",
-                f"PURPOSE={rec.get('purpose', m)}. WHEN={rec.get('when_to_arm', 'situational')}. "
-                f"Shell={rec.get('shell_pair', 'n/a')}; User={rec.get('user_job', 'n/a')}",
-                why="CFB27 create-candidate",
-            )
-        )
-
-    # Offense playbook edits
-    og = bl["offense_gameplan"]
-    steps.append(
-        _step(
-            "EDIT",
-            "O book — Gun Bunch X Nasty",
-            "Pin core: Inside Zone, HB Base, Counter Y, Mesh Spot, Mesh Traffic, Drive HB Under, "
-            "Deep Flood, Return Whip Trail, Mtn Cross Post, Mtn RPO Zone Alert, RZ PA X Whip, Z Spot GoalLine",
-            why="Bunch is CFB27 passing meta",
-        )
-    )
-    steps.append(
-        _step(
-            "EDIT",
-            "O book — Gun Cluster",
-            "Pin changeup: Outside Zone, HB Counter, Z Spot Shake, Mesh Post, Verticals",
-            why="Cluster when Bunch overplayed",
-        )
-    )
-    steps.append(
-        _step(
-            "ADD",
-            "O book — changeups",
-            "Keep available: Pistol U Off Trips (HB Stretch, RPO Alert TE Flat); "
-            "Singleback Deuce Close (Mtn Duo, HB Dive); Gun Empty Quads (Out Double Under)",
-            why="constraint formations",
-        )
-    )
-    steps.append(
-        _step(
-            "EDIT",
-            "O custom adj — Protection / Hot",
-            "Save 'Protection first' and 'Hot ready' as favorite adjs for Mesh Spot / Whip / HB Base",
-            why="pressure answers",
-        )
-    )
-    steps.append(
-        _step(
-            "EDIT",
-            "D book — Nickel Over",
-            "Home rotation: Cover 3 Sky / Cover 4 Quarters / Tampa 2. "
-            "Add Tampa 2 + hard flats lean vs mesh/cross.",
-            why="Nickel Over zones home",
-        )
-    )
-    steps.append(
-        _step(
-            "ADD",
-            "D book — situational packages",
-            "4-3 Even 6-1 (short/GL); Nickel 3-3 Cub + Double Mug (selective HEAT); "
-            "Dime Normal (distance >= 12)",
-            why="situational D",
-        )
-    )
-    steps.append(
-        _step(
-            "EDIT",
-            "D custom adj — Contain",
-            "Patch 1.012 contain custom adj fix — save CONTAIN-SCRAM recipe (contain + spy lean) "
-            "for dual-threat / scramble games",
-            why="patch 1.012",
-        )
-    )
-
-    # Opening menu pins
-    for item in og.get("opening_menu") or []:
-        steps.append(
-            _step(
-                "ADD",
-                f"O favorite — {item['label']}",
-                f"{item['formation']} — {item['play']} | {item.get('adj', 'No adj')}",
-                why="opening menu pin",
-            )
-        )
-
-    return steps
+def _clean_purpose(text: str) -> str:
+    """Strip leftover 'CREATE candidate —' wording from baseline recipe blurbs."""
+    t = (text or "").strip()
+    for prefix in ("CREATE candidate — ", "CREATE candidate - ", "CREATE candidate —", "CREATE — "):
+        if t.startswith(prefix):
+            t = t[len(prefix):].strip()
+    return t
 
 
-def _opponent_overlay_steps(opponent_id: str, opp: dict[str, Any]) -> list[dict[str, str]]:
-    """Opponent-specific CREATE/EDIT/BENCH lean — prepper free reign."""
+def _delta_key(d: dict[str, str]) -> tuple[str, str, str, str]:
+    return (
+        d.get("action", ""),
+        d.get("target", ""),
+        d.get("field", ""),
+        d.get("detail", ""),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Opponent-aware proposed tweaks (diffs only — never recreate)
+# ---------------------------------------------------------------------------
+
+def propose_deltas(
+    opponent_id: str,
+    opp: dict[str, Any] | None = None,
+    *,
+    inventory: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    """Opponent-specific adjustments relative to fully-stocked inventory."""
+    inv = inventory or build_inventory()
+    opp = opp or {}
     oid = (opponent_id or "").lower()
     dvs = opp.get("defense_vs_us") or {}
     arch = (dvs.get("archetype") or "").lower()
     offense = opp.get("offense") or {}
-    steps: list[dict[str, str]] = []
+    deltas: list[dict[str, str]] = []
 
+    bunch_aud = list((inv["offense"].get("Gun Bunch X Nasty") or {}).get("audibles") or [])
+    cluster_aud = list((inv["offense"].get("Gun Cluster") or {}).get("audibles") or [])
+    heat = (inv["macro_recipes"].get("HEAT") or {}).copy()
+
+    # --- Gavin / split-field / Cover 6 users ---
     if oid == "gavin" or ("split_field" in arch) or ("cover_6" in arch and oid != "cpu"):
-        steps.append(
-            _step(
-                "EDIT",
-                "O book lean — run-vs-C6",
-                "Elevate Inside Zone / HB Base / Counter Y on 1st&10 favorites. "
-                "Demote Mesh Post & Deep Flood from early-down favorites vs Cover 6/9.",
-                why="Gavin/split-field — users live in C6/C9; RUN FIRST",
+        # Elevate run audibles on Bunch
+        new_bunch = ["Inside Zone", "HB Base", "Mesh Spot", "Counter Y"]
+        if bunch_aud != new_bunch:
+            deltas.append(
+                _delta(
+                    "EDIT",
+                    "Gun Bunch X Nasty",
+                    f"Audibles → {', '.join(new_bunch)} (run elevated; flood/cross demoted early)",
+                    kind="playbook",
+                    field="audibles",
+                    before=", ".join(bunch_aud) or "(none)",
+                    after=", ".join(new_bunch),
+                    why="Gavin/split-field — RUN FIRST vs C6/C9",
+                )
             )
-        )
-        steps.append(
-            _step(
-                "ADD",
-                "O favorite — vs C6/C9",
-                "Gun Bunch X Nasty — HB Base | No adj  AND  Gun Bunch X Nasty — Inside Zone | No adj",
-                why="run-vs-C6 install lean",
+        # Demote Mesh Post from early Cluster audibles
+        new_cluster = [a for a in cluster_aud if a != "Mesh Post"]
+        if "Outside Zone" not in new_cluster:
+            new_cluster = ["Outside Zone"] + new_cluster
+        if "Z Spot Shake" not in new_cluster:
+            new_cluster.append("Z Spot Shake")
+        # keep unique, max ~4
+        seen: list[str] = []
+        for a in new_cluster:
+            if a not in seen:
+                seen.append(a)
+        new_cluster = seen[:4]
+        if "Mesh Post" in cluster_aud or cluster_aud != new_cluster:
+            deltas.append(
+                _delta(
+                    "EDIT",
+                    "Gun Cluster",
+                    f"Audibles → {', '.join(new_cluster)} (Mesh Post demoted early vs Cover 6)",
+                    kind="playbook",
+                    field="audibles",
+                    before=", ".join(cluster_aud) or "(none)",
+                    after=", ".join(new_cluster),
+                    why="avoid C6 INT film on Mesh Post",
+                )
             )
+        # EDIT HEAT purpose / when for patience
+        new_heat_when = (
+            "Rare vs Gavin — only 3rd-short after clear pressure-worthy tell; "
+            "never sell out early (he PA/scrambles the heat)"
         )
-        steps.append(
-            _step(
-                "ADD",
-                "O favorite — easy vs two-high",
-                "Gun Bunch X Nasty — Mesh Spot | No adj; Gun Cluster — Z Spot Shake | No adj",
-                why="easy completion + Cluster changeup",
+        if heat.get("when_to_arm") != new_heat_when:
+            deltas.append(
+                _delta(
+                    "EDIT",
+                    "HEAT",
+                    "Tighten when-to-arm: selective only, never early-down chase",
+                    kind="macro",
+                    field="when_to_arm",
+                    before=heat.get("when_to_arm", ""),
+                    after=new_heat_when,
+                    why="split-field patience on D",
+                )
             )
-        )
-        steps.append(
-            _step(
-                "BENCH",
-                "O early-down Mesh Post",
-                "Do not pin Mesh Post as opening vs this opponent (INT film into Cover 6)",
-                why="avoid C6 INT",
+        # ADD one new macro recipe (not re-adding the 8)
+        if "CONTAIN-SCRAM" not in inv["macros_active"] and "CONTAIN-SCRAM" not in inv["macros_benched"]:
+            rec = inv["macro_recipes"].get("CONTAIN-SCRAM") or {}
+            deltas.append(
+                _delta(
+                    "ADD",
+                    "CONTAIN-SCRAM",
+                    f"New recipe — PURPOSE={_clean_purpose(rec.get('purpose', 'contain + spy lean'))}. "
+                    f"WHEN={rec.get('when_to_arm', 'vs escape artist')}. "
+                    f"Shell={rec.get('shell_pair', 'Nickel Over')}; User={rec.get('user_job', 'contain')}",
+                    kind="macro",
+                    field="recipe",
+                    after="active custom adj",
+                    why="Gavin escape threat (patch 1.012 contain fix)",
+                )
             )
-        )
-        steps.append(
-            _step(
-                "EDIT",
-                "D macros vs Gavin",
-                "KEEP base zones; VERT only after repeated 4-verts; SCRAM ready; "
-                "RUN-IN only high confidence — he will PA/scramble the sellout",
-                why="split-field patience on D",
-            )
-        )
-        steps.append(
-            _step(
-                "CREATE",
-                "Custom adj CONTAIN-SCRAM",
-                "Bind contain custom adj (patch 1.012 fix) — PURPOSE=stop scramble when coverage carries",
-                why="Gavin escape threat",
-            )
-        )
 
+    # --- Quen / pressure ---
     if oid == "quen" or "pressure" in arch:
-        steps.append(
-            _step(
-                "EDIT",
-                "O book lean — protection macros",
-                "Pin Mesh Spot (Hot ready), Return Whip Trail (Hot ready), HB Base (Protection first) "
-                "as top-3 pressure answers. Elevate PROT cue.",
-                why="Quen/pressure — protection + hot",
+        new_bunch = ["Mesh Spot", "Return Whip Trail", "HB Base", "Inside Zone"]
+        # Return Whip Trail may not be in audibles — that's an EDIT of audible slots
+        if bunch_aud != new_bunch:
+            deltas.append(
+                _delta(
+                    "EDIT",
+                    "Gun Bunch X Nasty",
+                    f"Audibles → {', '.join(new_bunch)} (protection/hot answers elevated)",
+                    kind="playbook",
+                    field="audibles",
+                    before=", ".join(bunch_aud) or "(none)",
+                    after=", ".join(new_bunch),
+                    why="Quen/pressure — Mesh Spot / Whip / HB Base",
+                )
             )
-        )
-        steps.append(
-            _step(
-                "CREATE",
-                "Custom adj PROT",
-                "PURPOSE=protection/hot reminder vs Sam/Will/WS blitz. "
-                "WHEN=any obvious pressure look. Pair with Mesh Spot / Whip / HB Base.",
-                why="protection macro lean",
+        if "PROT" not in inv.get("offensive_macros", []):
+            rec = inv["macro_recipes"].get("PROT") or {}
+            deltas.append(
+                _delta(
+                    "ADD",
+                    "PROT",
+                    f"O-side protection/hot cue — PURPOSE={_clean_purpose(rec.get('purpose', 'protection/hot'))}. "
+                    f"WHEN={rec.get('when_to_arm', 'vs pressure')}. Pair Mesh Spot/Whip/HB Base.",
+                    kind="macro",
+                    field="recipe",
+                    after="offensive macro",
+                    why="protection macro lean",
+                )
             )
+        new_heat_when = (
+            "3rd-short selective Cub/Mug vs Quen — not every snap; "
+            "elevate CROSS/RPO/SCRAM readiness first"
         )
-        steps.append(
-            _step(
-                "ADD",
-                "O favorite — vs pressure",
-                "Gun Bunch X Nasty — Return Whip Trail | Hot ready; "
-                "Gun Bunch X Nasty — Mesh Spot | Hot ready; "
-                "Gun Bunch X Nasty — HB Base | Protection first",
-                why="quen protection install",
+        if heat.get("when_to_arm") != new_heat_when:
+            deltas.append(
+                _delta(
+                    "EDIT",
+                    "HEAT",
+                    "Selective Cub/Mug only; prioritize CROSS/RPO/SCRAM readiness",
+                    kind="macro",
+                    field="when_to_arm",
+                    before=heat.get("when_to_arm", ""),
+                    after=new_heat_when,
+                    why="Cross Wheels + bubbles + scramble",
+                )
             )
-        )
-        steps.append(
-            _step(
-                "EDIT",
-                "D macros vs Quen",
-                "Elevate CROSS / RPO / SCRAM readiness; HEAT selective on 3rd-short (Cub/Mug), not every snap",
-                why="Cross Wheels + bubbles + scramble",
-            )
-        )
-        steps.append(
-            _step(
-                "CREATE",
-                "Custom adj GLASS",
-                "PURPOSE=soft zone glass vs their mesh if they flip to Bunch. WHEN=repeated mesh wins.",
-                why="optional mesh counter",
-            )
-        )
 
+    # --- Tiano / C2-C3 ---
     if oid == "tiano" or "c2_c3" in arch:
-        steps.append(
-            _step(
+        deltas.append(
+            _delta(
                 "EDIT",
-                "O RZ lean",
-                "Pin Mesh Spot / Z Spot Shake / Deuce Duo near scoring — tag whip by leverage, not auto",
-                why="C2-heavy near scoring",
+                "Gun Bunch X Nasty",
+                "RZ audible lean: prefer Mesh Spot / Z Spot GoalLine over auto-whip near scoring",
+                kind="playbook",
+                field="audibles",
+                before=", ".join(bunch_aud) or "(none)",
+                after="Mesh Spot, Inside Zone, Z Spot GoalLine, Deep Flood",
+                why="C2-heavy near scoring — possession > hero",
             )
         )
-        steps.append(
-            _step(
+        deltas.append(
+            _delta(
                 "EDIT",
-                "D GL",
-                "Even 6-1 OK; do NOT sell out run (Z Smash lesson). BUNCH/CROSS situational only",
+                "HEAT",
+                "GL: Even 6-1 OK; do NOT sell out run (Z Smash lesson). BUNCH/CROSS situational only",
+                kind="macro",
+                field="when_to_arm",
+                before=heat.get("when_to_arm", ""),
+                after="Avoid HEAT sellout at GL vs Tiano; situational BUNCH/CROSS only",
                 why="Temple/Tiano GL lesson",
             )
         )
 
+    # --- CPU ---
     if oid == "cpu" or "two_high_money" in arch:
-        steps.append(
-            _step(
-                "EDIT",
-                "O vs CPU money",
-                "Pin Mesh Spot / Drive HB Under / Inside Zone on 3rd-long two-high — no forced Mesh Post/Whip",
-                why="CPU sticks coverage",
+        new_bunch = ["Mesh Spot", "Drive HB Under", "Inside Zone", "Deep Flood"]
+        # Drive HB Under may not be audible — still an EDIT instruction
+        if bunch_aud != new_bunch:
+            deltas.append(
+                _delta(
+                    "EDIT",
+                    "Gun Bunch X Nasty",
+                    f"Audibles → {', '.join(new_bunch)} (no forced Mesh Post/Whip on money)",
+                    kind="playbook",
+                    field="audibles",
+                    before=", ".join(bunch_aud) or "(none)",
+                    after=", ".join(new_bunch),
+                    why="CPU sticks coverage — take free underneath",
+                )
             )
-        )
-        steps.append(
-            _step(
-                "BENCH",
-                "D macros default",
-                "Mostly no macro vs CPU — Quarters/Tampa on money; force underneath",
-                why="CPU patience",
-            )
-        )
 
-    # Thin / generic
-    if not steps:
-        steps.append(
-            _step(
-                "EDIT",
-                "O thin-film lean",
-                "Establish run + Mesh Spot easy + Cluster mix. Two-high → run; pressure → quick; C3 → flood",
-                why="thin film ≈ baseline",
-            )
-        )
-
-    # Film-driven adds from their offense lists
+    # Film-driven macro field tweaks (EDIT only — macros already exist)
     blob = " ".join(
         str(v)
         for k, v in offense.items()
         if isinstance(v, (str, list))
         for v in (v if isinstance(v, list) else [v])
     ).lower()
+
     if "vertical" in blob or "four vert" in blob:
-        steps.append(
-            _step(
-                "ADD",
-                "D macro VERT readiness",
-                "After 2+ live vertical tells — Quarters + VERT | User #3 seam",
+        vert = inv["macro_recipes"].get("VERT") or {}
+        deltas.append(
+            _delta(
+                "EDIT",
+                "VERT",
+                "Arm readiness elevated — after 2+ live vertical tells → Quarters + VERT | User #3 seam",
+                kind="macro",
+                field="when_to_arm",
+                before=vert.get("when_to_arm", ""),
+                after="After 2+ live vertical tells this game — prioritize Quarters + VERT",
                 why="film verticals",
             )
         )
     if "cross" in blob or "wheel" in blob:
-        steps.append(
-            _step(
-                "ADD",
-                "D macro CROSS readiness",
-                "After 2+ live crosser/wheel — Tampa/Quarters + CROSS | User inside cross",
+        cross = inv["macro_recipes"].get("CROSS") or {}
+        deltas.append(
+            _delta(
+                "EDIT",
+                "CROSS",
+                "Arm readiness elevated — after 2+ live crosser/wheel → Tampa/Quarters + CROSS",
+                kind="macro",
+                field="when_to_arm",
+                before=cross.get("when_to_arm", ""),
+                after="After 2+ live Cross Wheels / crosser tells — prioritize CROSS",
                 why="film crossers",
             )
         )
     if "rpo" in blob or "bubble" in blob:
-        steps.append(
-            _step(
-                "ADD",
-                "D macro RPO readiness",
-                "After repeated bubble — C3 Sky + RPO | User flat",
+        rpo = inv["macro_recipes"].get("RPO") or {}
+        deltas.append(
+            _delta(
+                "EDIT",
+                "RPO",
+                "Arm readiness elevated — after repeated bubble → C3 Sky + RPO | User flat",
+                kind="macro",
+                field="when_to_arm",
+                before=rpo.get("when_to_arm", ""),
+                after="After repeated bubble/RPO wins — prioritize RPO",
                 why="film RPO/bubble",
             )
         )
     if "scram" in blob or "escape" in (offense.get("escape") or "").lower():
-        steps.append(
-            _step(
-                "CREATE",
-                "Custom adj CONTAIN-SCRAM",
-                "PURPOSE=contain integrity vs escape artist. Patch 1.012 contain adj fix.",
-                why="escape film",
-            )
+        if not any(d["target"] == "CONTAIN-SCRAM" and d["action"] == "ADD" for d in deltas):
+            if "CONTAIN-SCRAM" not in inv["macros_active"]:
+                rec = inv["macro_recipes"].get("CONTAIN-SCRAM") or {}
+                deltas.append(
+                    _delta(
+                        "ADD",
+                        "CONTAIN-SCRAM",
+                        f"New recipe — PURPOSE={_clean_purpose(rec.get('purpose', 'contain integrity'))}. "
+                        f"Patch 1.012 contain adj fix.",
+                        kind="macro",
+                        field="recipe",
+                        after="active custom adj",
+                        why="escape film",
+                    )
+                )
+
+    # Deduplicate by key while preserving order
+    seen_keys: set[tuple[str, str, str, str]] = set()
+    unique: list[dict[str, str]] = []
+    for d in deltas:
+        k = _delta_key(d)
+        if k not in seen_keys:
+            seen_keys.add(k)
+            unique.append(d)
+    return unique
+
+
+def call_emphasis_tips(opponent_id: str, opp: dict[str, Any] | None = None) -> list[str]:
+    """Short call-emphasis tips — not a recreate list."""
+    opp = opp or {}
+    oid = (opponent_id or "").lower()
+    dvs = opp.get("defense_vs_us") or {}
+    arch = (dvs.get("archetype") or "").lower()
+    tips: list[str] = []
+
+    if oid == "gavin" or "split_field" in arch:
+        tips.extend(
+            [
+                "Early downs: RUN FIRST (IZ / HB Base / Counter) vs C6/C9",
+                "Pass: Mesh Spot easy; Cluster Z Spot Shake when Bunch overplayed",
+                "Avoid Mesh Post spam into Cover 6",
+                "D: base Nickel Over zones; VERT only after repeated 4-verts; SCRAM ready",
+                "Cover 2 Invert early → Mesh Spot / IZ — not Deep Flood",
+            ]
         )
-
-    return steps
-
-
-def _diff_against_saved(
-    current: list[dict[str, str]], saved: list[dict[str, str]]
-) -> list[dict[str, str]]:
-    """Return steps in current that were not in the last saved install (by action+target+detail)."""
-    saved_keys = {
-        (s.get("action", ""), s.get("target", ""), s.get("detail", "")) for s in saved
-    }
-    return [
-        s
-        for s in current
-        if (s.get("action", ""), s.get("target", ""), s.get("detail", "")) not in saved_keys
-    ]
+    elif oid == "quen" or "pressure" in arch:
+        tips.extend(
+            [
+                "Protection + hot: Mesh Spot, Return Whip Trail, HB Base",
+                "Don't hero into Sam/Will/WS blitz",
+                "D: CROSS / RPO / SCRAM elevated; HEAT selective on 3rd-short only",
+            ]
+        )
+    elif oid == "tiano" or "c2_c3" in arch:
+        tips.extend(
+            [
+                "Near scoring: Mesh Spot / Z Spot Shake / Deuce Duo — possession first",
+                "Tag whip by leverage, not auto",
+                "GL D: Even 6-1 OK; do not sell out run",
+            ]
+        )
+    elif oid == "cpu" or "two_high_money" in arch:
+        tips.extend(
+            [
+                "Take free underneath — Mesh Spot / Drive HB Under / Inside Zone",
+                "No forced Mesh Post/Whip into sticks coverage",
+                "D: mostly no macro; Quarters/Tampa on money",
+            ]
+        )
+    else:
+        tips.extend(
+            [
+                "Thin film: establish run + Mesh Spot easy + Cluster mix",
+                "Two-high → run; pressure → quick; C3 → flood once confirmed",
+                "Macros situational — default = none until repeated tendency",
+            ]
+        )
+    return tips
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Applied-diff persistence
 # ---------------------------------------------------------------------------
 
-def build_install_steps(
-    opponent_id: str,
-    opp: dict[str, Any] | None = None,
-    *,
-    db: CoachDB | None = None,
+def filter_new_deltas(
+    proposed: list[dict[str, str]],
+    applied: list[dict[str, str]] | None,
 ) -> list[dict[str, str]]:
-    bl = load_baseline()
-    steps = _baseline_macro_steps(bl)
-    steps.extend(_opponent_overlay_steps(opponent_id, opp or {}))
-    return steps
+    """Return proposed deltas not yet in the last-applied set."""
+    if not applied:
+        return list(proposed)
+    applied_keys = {_delta_key(d) for d in applied}
+    return [d for d in proposed if _delta_key(d) not in applied_keys]
 
 
-def save_install_diff(
+def get_applied_deltas(db: CoachDB | None, opponent_id: str) -> list[dict[str, str]]:
+    if db is None:
+        return []
+    sheet = db.get_install_sheet(opponent_id)
+    if not sheet:
+        return []
+    return list(sheet.get("applied_deltas") or [])
+
+
+def mark_prep_applied(
     db: CoachDB,
     opponent_id: str,
-    steps: list[dict[str, str]],
+    deltas: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    """Persist full sheet + compute/store new diffs vs previous sheet."""
-    prev = db.get_install_sheet(opponent_id)
-    prev_steps = (prev or {}).get("steps") or []
-    new_diffs = _diff_against_saved(steps, prev_steps)
+    """Mark deltas as applied so next prep only shows NEW changes."""
+    sheet = db.get_install_sheet(opponent_id) or {}
+    if deltas is None:
+        deltas = list(sheet.get("proposed_deltas") or sheet.get("steps") or [])
+    sheet["applied_deltas"] = deltas
+    sheet["applied_ts"] = datetime.now(timezone.utc).isoformat()
+    sheet["version"] = load_baseline().get("version", "?")
+    db.save_install_sheet(opponent_id, sheet)
+    return sheet
+
+
+def save_prep_deltas(
+    db: CoachDB,
+    opponent_id: str,
+    proposed: list[dict[str, str]],
+    shown: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Persist proposed + shown deltas; log newly shown rows."""
+    prev = db.get_install_sheet(opponent_id) or {}
+    applied = list(prev.get("applied_deltas") or [])
     payload = {
         "version": load_baseline().get("version", "?"),
         "ts": datetime.now(timezone.utc).isoformat(),
-        "steps": steps,
-        "new_since_last": new_diffs,
+        "proposed_deltas": proposed,
+        "shown_deltas": shown,
+        "applied_deltas": applied,
+        "new_since_last": shown,
+        # keep legacy key for any old readers
+        "steps": proposed,
     }
     db.save_install_sheet(opponent_id, payload)
-    # Also store each new diff row for history
-    for d in new_diffs:
+    for d in shown:
         db.log_install_diff(
             opponent_id=opponent_id,
             action=d["action"],
@@ -425,6 +503,111 @@ def save_install_diff(
     return payload
 
 
+# ---------------------------------------------------------------------------
+# Public build API
+# ---------------------------------------------------------------------------
+
+def build_prep_plan(
+    opponent_id: str,
+    opp: dict[str, Any] | None = None,
+    *,
+    db: CoachDB | None = None,
+    persist: bool = True,
+) -> dict[str, Any]:
+    """Build inventory + proposed deltas + tips; optionally persist."""
+    seed = load_seed()
+    bl = load_baseline()
+    inv = build_inventory(seed, bl)
+    opp = opp or {}
+    proposed = propose_deltas(opponent_id, opp, inventory=inv)
+    applied = get_applied_deltas(db, opponent_id)
+    shown = filter_new_deltas(proposed, applied)
+    tips = call_emphasis_tips(opponent_id, opp)
+    eg = effective_gameplan(opponent_id, db)
+
+    plan = {
+        "opponent_id": opponent_id,
+        "display_name": opp.get("display_name", opponent_id),
+        "team": opp.get("team_now", "?"),
+        "version": bl.get("version", "?"),
+        "game": bl.get("game", "CFB 27"),
+        "patch": bl.get("patch", ""),
+        "overlay_depth": eg.overlay.depth,
+        "inventory": inv,
+        "proposed_deltas": proposed,
+        "shown_deltas": shown,
+        "applied_count": len(applied),
+        "tips": tips,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    if db is not None and persist:
+        save_prep_deltas(db, opponent_id, proposed, shown)
+    return plan
+
+
+def format_delta_text(plan: dict[str, Any]) -> str:
+    """Compact terminal dump of deltas only (for --text)."""
+    shown = plan["shown_deltas"]
+    pb = [d for d in shown if d.get("kind") == "playbook"]
+    mac = [d for d in shown if d.get("kind") == "macro"]
+    lines = [
+        f"# PREP — vs {plan['display_name']} ({plan['team']})  |  {plan['game']} / {plan['version']}",
+        f"Books assumed stocked: {plan['inventory']['offense_book']} / {plan['inventory']['defense_book']}",
+        f"Macros assumed: {', '.join(plan['inventory']['macros_active'])}  |  BENCH {', '.join(plan['inventory']['macros_benched'])}",
+        "",
+    ]
+    if not shown:
+        lines.append("## Playbook adjustments")
+        lines.append("  No playbook changes — run baseline as-is")
+        lines.append("")
+        lines.append("## Macro adjustments")
+        lines.append("  No macro changes — keep current 8 active / 2 benched")
+    else:
+        lines.append("## Playbook adjustments (deltas only)")
+        if not pb:
+            lines.append("  (none)")
+        for d in pb:
+            lines.append(f"  [{d['action']}] {d['target']}" + (f" · {d['field']}" if d.get("field") else ""))
+            lines.append(f"       {d['detail']}")
+            if d.get("before") or d.get("after"):
+                lines.append(f"       {d.get('before', '')}  →  {d.get('after', '')}")
+            if d.get("why"):
+                lines.append(f"       why: {d['why']}")
+        lines.append("")
+        lines.append("## Macro adjustments (deltas only)")
+        if not mac:
+            lines.append("  (none)")
+        for d in mac:
+            lines.append(f"  [{d['action']}] {d['target']}" + (f" · {d['field']}" if d.get("field") else ""))
+            lines.append(f"       {d['detail']}")
+            if d.get("before") or d.get("after"):
+                lines.append(f"       {d.get('before', '')}  →  {d.get('after', '')}")
+            if d.get("why"):
+                lines.append(f"       why: {d['why']}")
+
+    lines.append("")
+    lines.append("## Call emphasis")
+    for t in plan["tips"]:
+        lines.append(f"  - {t}")
+    lines.append("")
+    lines.append("Live caller unchanged. Inventory (formations→plays) is in the browser view.")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Back-compat shims (old CREATE sheet removed from default path)
+# ---------------------------------------------------------------------------
+
+def build_install_steps(
+    opponent_id: str,
+    opp: dict[str, Any] | None = None,
+    *,
+    db: CoachDB | None = None,
+) -> list[dict[str, str]]:
+    """Deprecated name — returns opponent deltas only (no full recreate)."""
+    return propose_deltas(opponent_id, opp)
+
+
 def format_install_sheet(
     opponent_id: str,
     opp: dict[str, Any] | None = None,
@@ -432,54 +615,15 @@ def format_install_sheet(
     db: CoachDB | None = None,
     persist: bool = True,
 ) -> str:
-    """Format INSTALL SHEET section; optionally persist diffs to SQLite."""
-    bl = load_baseline()
-    eg = effective_gameplan(opponent_id, db)
-    steps = build_install_steps(opponent_id, opp, db=db)
+    """Deprecated — text delta sheet (not CREATE-everything)."""
+    plan = build_prep_plan(opponent_id, opp, db=db, persist=persist)
+    return format_delta_text(plan)
 
-    remembered: list[dict[str, str]] = []
-    new_diffs: list[dict[str, str]] = []
-    if db is not None:
-        prev = db.get_install_sheet(opponent_id)
-        if prev:
-            remembered = prev.get("steps") or []
-            new_diffs = _diff_against_saved(steps, remembered)
-        else:
-            new_diffs = list(steps)  # first prep = all new
-        if persist:
-            save_install_diff(db, opponent_id, steps)
-            # re-read new_since from save
-            saved = db.get_install_sheet(opponent_id) or {}
-            new_diffs = saved.get("new_since_last") or new_diffs
 
-    lines = [
-        f"## INSTALL SHEET — Xbox custom books (CFB27 / {bl.get('version', '?')})",
-        "  Prepper: FULL permission to CREATE / ADD / EDIT / BENCH playbooks + macros + custom adjs.",
-        f"  Books: BAMA META O / BAMA META D  |  Patch: {bl.get('patch', 'n/a')}",
-        f"  Opponent: {opponent_id}  |  Overlay depth: {eg.overlay.depth}",
-        "",
-        "  ### Steps (execute on Xbox)",
-    ]
-    for i, s in enumerate(steps, 1):
-        why = f"  [{s['why']}]" if s.get("why") else ""
-        lines.append(f"  {i}. [{s['action']}] {s['target']}")
-        lines.append(f"       {s['detail']}{why}")
-
-    if remembered and new_diffs:
-        lines.append("")
-        lines.append("  ### NEW since last prep (remembered diffs)")
-        for d in new_diffs[:12]:
-            lines.append(f"  - [{d['action']}] {d['target']}: {d['detail'][:100]}")
-    elif remembered and not new_diffs:
-        lines.append("")
-        lines.append("  ### Remembered: install unchanged since last prep (SQLite)")
-    elif db is not None:
-        lines.append("")
-        lines.append("  ### First install for this opponent — full sheet saved to SQLite")
-
-    lines.append("")
-    lines.append(
-        "  Doctrine: names only (no invented button sequences). "
-        "Default macro = none until repeated tendency."
-    )
-    return "\n".join(lines)
+def save_install_diff(
+    db: CoachDB,
+    opponent_id: str,
+    steps: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Deprecated wrapper — persist proposed deltas."""
+    return save_prep_deltas(db, opponent_id, steps, steps)

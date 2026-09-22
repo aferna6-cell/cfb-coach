@@ -16,6 +16,21 @@ def _opp(seed: dict, oid: str) -> dict[str, Any]:
     return opp
 
 
+
+def load_opponent_profile(opponent_id: str, db: CoachDB | None = None) -> dict[str, Any]:
+    """Resolve opponent profile from DB (preferred) or seed."""
+    seed = load_seed()
+    opp = _opp(seed, opponent_id)
+    if db:
+        profile = db.get_opponent(opponent_id)
+        if profile:
+            opp = dict(profile)
+            opp["_id"] = opponent_id
+    return opp
+
+
+
+
 def _bullet(items: list[str] | None, indent: str = "  - ") -> str:
     if not items:
         return f"{indent}(thin film — lean meta priors)"
@@ -263,69 +278,27 @@ def opening_menus(opp: dict[str, Any]) -> str:
 
 
 def build_prep(opponent_id: str, db: CoachDB | None = None) -> str:
-    """Section order: INSTALL SHEET → BASELINE META → OPPONENT OVERLAY →
-    EFFECTIVE MACROS → OPENING MENUS → THREATS (+ mid-game pivot hints).
+    """Compact text prep: deltas only + call emphasis + short threats.
+
+    Default UX is the browser HTML via prep_browser; this remains for --text
+    and any callers that want a terminal dump. Never emits CREATE-everything.
     """
-    from cfb_coach.gameplan import (
-        effective_gameplan,
-        format_baseline_section,
-        format_effective_emphasis,
-        format_effective_macros,
-        format_overlay_section,
-        format_pivot_hints,
-    )
-    from cfb_coach.install_sheet import format_install_sheet
+    from cfb_coach.gameplan import format_pivot_hints
+    from cfb_coach.install_sheet import build_prep_plan, format_delta_text
 
     seed = load_seed()
-    opp = _opp(seed, opponent_id)
-    if db:
-        profile = db.get_opponent(opponent_id)
-        if profile:
-            opp = dict(profile)
-            opp["_id"] = opponent_id
-
-    league = seed["league"]
-    eg = effective_gameplan(opponent_id, db)
-    header = [
-        f"# PREP — vs {opp.get('display_name', opponent_id)} ({opp.get('team_now', '?')})",
-        f"League: {league['name']} | Platform: {league['platform']} | META {eg.version}",
-        f"Timing: O≈{league['timing']['offense_seconds']}s  "
-        f"D≈{league['timing']['defense_seconds']}s  "
-        f"(D call target {league['timing']['defense_call_target_seconds']}s)  pause={league['timing']['pause']}",
-        f"Books: {league['online_baseline']['custom_offense']} / "
-        f"{league['online_baseline']['custom_defense']}",
-        "Architecture: INSTALL → BASELINE META → OPPONENT OVERLAY → EFFECTIVE → OPENING → THREATS",
-        "Prepper: FULL permission to CREATE/EDIT/BENCH Xbox custom O/D books + macros + custom adjs.",
+    opp = load_opponent_profile(opponent_id, db)
+    plan = build_prep_plan(opponent_id, opp, db=db, persist=True)
+    parts = [
+        format_delta_text(plan),
         "",
-    ]
-    sections = [
-        # 1. INSTALL SHEET
-        format_install_sheet(opponent_id, opp, db=db, persist=True),
-        "",
-        # 2. BASELINE META
-        format_baseline_section(eg.baseline),
-        "",
-        # 3. OPPONENT OVERLAY
-        format_overlay_section(eg.overlay),
-        "",
-        # 4. EFFECTIVE MACROS (+ emphasis)
-        format_effective_macros(eg),
-        "",
-        format_effective_emphasis(eg),
-        "",
-        # 5. OPENING MENUS (opponent-tuned) + playbook emphasis
-        playbook_emphasis(opp, seed),
-        "",
-        opening_menus(opp),
-        "",
-        # 6. THREATS
         threat_sheet(opp),
         "",
         defense_vs_us(opp),
         "",
-        macro_plan(opp, seed),
+        playbook_emphasis(opp, seed),
     ]
     pivot = format_pivot_hints(db, opponent_id)
     if pivot:
-        sections.extend(["", pivot])
-    return "\n".join(header + sections)
+        parts.extend(["", pivot])
+    return "\n".join(parts)
