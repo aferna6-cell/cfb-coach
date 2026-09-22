@@ -528,7 +528,9 @@ def learn_from_snaps(
     }
 
 
-def postgame_summary(db: CoachDB, opponent_id: str) -> str:
+def postgame_summary(db: CoachDB, opponent_id: str, dynasty: str | None = None) -> str:
+    from cfb_coach.dynasty import dynasty_config, doctrine_line, normalize_dynasty, DEFAULT_DYNASTY
+    dcfg = dynasty_config(normalize_dynasty(dynasty or DEFAULT_DYNASTY))
     """Run learning on snaps since last postgame; print what changed."""
     meta_key = f"last_postgame_snap_id:{opponent_id}"
     row = db.conn.execute(

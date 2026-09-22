@@ -1,11 +1,11 @@
 {
-  "version": "1.4.1",
+  "version": "1.5.0",
   "game": "CFB 27",
   "platform": "Xbox",
   "active_cap": {
     "user_online_dynasty": 8,
     "scope": "offense + defense Custom Adjustments combined",
-    "note": "Aidan's rule for USER games. EA UI may show 10 \u2014 honor 8 for online dynasty. CPU games may note separately; default still 8.",
+    "note": "Aidan's rule for USER games. EA UI may show 10 — honor 8 for online dynasty. CPU games may note separately; default still 8.",
     "in_game_open": "LB opens active Custom Adjustments macros mid-playcall"
   },
   "xbox_path": [
@@ -13,787 +13,2197 @@
     "Custom Adjustments",
     "Offense or Defense (pick side)",
     "Create New / Edit existing macro",
-    "Set all ticks (copy block checklist) \u2192 Save",
-    "Set Active (max 8 O+D combined for USER online dynasty \u2014 Aidan's rule; EA UI may show 10)",
+    "Set all ticks (copy block checklist) → Save",
+    "Set Active (max 8 O+D combined for USER online dynasty — Aidan's rule; EA UI may show 10)",
     "In-game: LB to open / select among Active macros"
   ],
   "field_legend": {
-    "confirmed": "Seen/used in Aidan's Temple 8D baseline or explicit dynasty notes",
-    "approx": "Reasonable CFB27 Custom Adj tick inferred from purpose \u2014 verify once in lab"
+    "confirmed": "Exact tick from Aidan's Custom Adjustments sheets",
+    "approx": "Legacy approx — should not appear on exact Active-8 sheets"
   },
   "macros": {
     "CROSS": {
       "name": "CROSS",
       "side": "defense",
-      "purpose": "Anti-cross / high-low Cross Wheels \u2014 Tampa/Mable lean with deeper flats",
+      "purpose": "crossers / Cross Wheels / deep crossing routes",
       "when_to_arm": "After 2+ live Cross Wheels / crosser tells in similar D&D",
       "validated_status": "proven",
       "inventory": "active",
-      "source": "Temple 8D baseline",
+      "source": "Aidan exact sheets 2026-09-22",
+      "exact": true,
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create & Share → Custom Adjustments → Defense",
         "Create/Edit macro named CROSS",
         "Apply full_settings ticks (copy block)",
-        "Save \u2192 set Active (counts toward 8 O+D)",
-        "In-game: LB \u2192 select CROSS when armed"
+        "Save → set Active (counts toward 8 O+D)",
+        "In-game: LB → select CROSS when armed"
       ],
       "full_settings": {
-        "base_shell": {
-          "value": "Tampa 2 (Mable/Tampa lean) or Cover 4 Quarters changeup",
-          "status": "confirmed"
+        "General / Coverage Shading": {
+          "value": "Default/unchecked",
+          "status": "confirmed",
+          "section": "General"
         },
-        "formation_hint": {
-          "value": "Nickel Over home",
-          "status": "confirmed"
+        "General / Route Commit": {
+          "value": "Inside",
+          "status": "confirmed",
+          "section": "General"
         },
-        "coverage": {
-          "value": "Tampa 2 primary; Quarters if they clear middle",
-          "status": "confirmed"
+        "General / Show Blitz": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "shades_leverage": {
-          "value": "Shade UNDERNEATH on outside CBs (kill crossers under)",
-          "status": "approx"
+        "General / Guess Play": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "flats_hooks_curls": {
-          "value": "Deeper flats (~15\u201320) + shallow curl defenders (Mable/Tampa anti-cross) [confirmed intent]",
-          "status": "confirmed"
+        "General / Defender Aggression": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "cb_depth": {
-          "value": "CB depth NORMAL\u2192SLIGHTLY OFF (give cushion vs whip/cross)",
-          "status": "approx"
+        "General / Gap Integrity": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "safety_alignment": {
-          "value": "Safety depth NORMAL; width SLIGHTLY PINCHED; midpoint balanced",
-          "status": "approx"
+        "General / Strip Ball": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "contain_qb": {
-          "value": "QB Contain OFF (coverage first \u2014 use SCRAM when escape is the tell)",
-          "status": "approx"
+        "General / Tackling": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "front_pressure": {
-          "value": "Base front; no show-blitz",
-          "status": "confirmed"
+        "General / QB Contain": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "smart_zone_match": {
-          "value": "Smart Zone ON if available; Match check Stress/Box vs crossers (approx)",
-          "status": "approx"
+        "General / Option/RPO keys": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "plaster": {
-          "value": "Plaster OFF unless also escape threat",
-          "status": "approx"
+        "DL/LB": {
+          "value": "Everything Default/unchecked",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "individual_assignments": {
-          "value": "LB/slot carry inside cross; FS help over top on dig/post",
-          "status": "approx"
+        "Secondary / CB Depth": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "user_job": {
-          "value": "User inside cross",
-          "status": "confirmed"
+        "Secondary / CB Width": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "do_not": {
-          "value": "Do not arm on one Cross Wheels tell; do not drop into soft C3 flats",
-          "status": "confirmed"
+        "Secondary / Safety Depth": {
+          "value": "9",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "notes": {
-          "value": "Dynasty: Tampa 2 / Mable-style anti-cross; deeper flats with shallow curl defenders",
-          "status": "confirmed"
+        "Secondary / Safety Width": {
+          "value": "Pinch",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Midpoint": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Zone Drops / Flats": {
+          "value": "25",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Curls": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Hooks": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Strategy / Zone Strategy": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Trigger": {
+          "value": "O.O.P & Time",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Time": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Roll Coverage": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Coverage Checks": {
+          "value": "All Default",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Individuals / SLCB1": {
+          "value": "Curl Flat",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "Individuals / SLCB2": {
+          "value": "Curl Flat",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "UI note": {
+          "value": "UI label Strong = toward pass strength",
+          "status": "confirmed",
+          "section": "Notes"
+        },
+        "Doctrine": {
+          "value": "DO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro",
+          "status": "confirmed",
+          "section": "Notes"
         }
       },
-      "copy_block": "MACRO: CROSS (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: CROSS\n[ ] Base shell: Tampa 2 (Mable/Tampa) \u2014 Nickel Over  [confirmed]\n[ ] Alt shell OK: Cover 4 Quarters if they clear middle\n[ ] Zone drop FLATS: deeper ~15\u201320 (anti-cross)  [confirmed intent]\n[ ] Zone drop CURLS: shallow (curl defenders under cross)  [confirmed intent]\n[ ] CB shade: UNDERNEATH  [approx]\n[ ] CB depth: Normal \u2192 slight OFF  [approx]\n[ ] Safety depth: Normal | Width: slight PINCH | Midpoint: balanced  [approx]\n[ ] QB Contain: OFF\n[ ] Show Pressure / Cub-Mug: OFF\n[ ] Smart Zone: ON if present  [approx]\n[ ] Match checks: Stress or Box vs crossers  [approx]\n[ ] Plaster: OFF\n[ ] Save \u2192 set ACTIVE (counts in 8 O+D)\n[ ] In-game: LB \u2192 CROSS | User JOB = inside cross\n\nDO NOT: arm on one tell; soft C3 flats\nWHEN: after 2+ live Cross Wheels / crosser tells"
+      "copy_block": "MACRO: CROSS (D) — PROVEN · ACTIVE\nPath: Create & Share → Custom Adjustments → Defense\nPurpose: crossers / Cross Wheels / deep crossing routes\nSource: Aidan exact sheets (tick through Xbox Custom Adjustments)\n\n## General\n[ ] Coverage Shading: Default/unchecked\n[ ] Route Commit: Inside\n[ ] Show Blitz: Off\n[ ] Guess Play: Off\n[ ] Defender Aggression: Balanced\n[ ] Gap Integrity: Balanced\n[ ] Strip Ball: Balanced\n[ ] Tackling: Balanced\n[ ] QB Contain: Off\n[ ] Option/RPO keys: Default\n\n## DL/LB\n[ ] Everything Default/unchecked\n\n## Secondary\n[ ] CB Depth: 5\n[ ] CB Width: Default\n[ ] Safety Depth: 9\n[ ] Safety Width: Pinch\n[ ] Safety Midpoint: Default\n\n## Zone Drops\n[ ] Flats: 25\n[ ] Curls: 5\n[ ] Hooks: Default\n\n## Strategy\n[ ] Zone Strategy: Aggressive\n[ ] Plaster: Aggressive\n[ ] Plaster Trigger: O.O.P & Time\n[ ] Plaster Time: Aggressive\n[ ] Roll Coverage: Off\n\n## Coverage Checks\n[ ] All Default\n\n## Individuals\n[ ] SLCB1: Curl Flat\n[ ] SLCB2: Curl Flat\n\nNOTE: UI label Strong = toward pass strength\nDO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro\nWHEN: After 2+ live Cross Wheels / crosser tells in similar D&D\nSave → set ACTIVE only if in Active-8 (counts toward 8 O+D)\nIn-game: LB → CROSS",
+      "exact_sections": {
+        "general": {
+          "Coverage Shading": "Default/unchecked",
+          "Route Commit": "Inside",
+          "Show Blitz": "Off",
+          "Guess Play": "Off",
+          "Defender Aggression": "Balanced",
+          "Gap Integrity": "Balanced",
+          "Strip Ball": "Balanced",
+          "Tackling": "Balanced",
+          "QB Contain": "Off",
+          "Option/RPO keys": "Default"
+        },
+        "dl_lb": "Everything Default/unchecked",
+        "secondary": {
+          "CB Depth": "5",
+          "CB Width": "Default",
+          "Safety Depth": "9",
+          "Safety Width": "Pinch",
+          "Safety Midpoint": "Default"
+        },
+        "zone_drops": {
+          "Flats": "25",
+          "Curls": "5",
+          "Hooks": "Default"
+        },
+        "strategy": {
+          "Zone Strategy": "Aggressive",
+          "Plaster": "Aggressive",
+          "Plaster Trigger": "O.O.P & Time",
+          "Plaster Time": "Aggressive",
+          "Roll Coverage": "Off"
+        },
+        "coverage_checks": "All Default",
+        "individuals": {
+          "SLCB1": "Curl Flat",
+          "SLCB2": "Curl Flat"
+        }
+      }
     },
     "VERT": {
       "name": "VERT",
       "side": "defense",
-      "purpose": "Answer Four Verticals / seam stress",
+      "purpose": "Four Verticals / seams / wheel shots",
       "when_to_arm": "After 2+ live Four Verticals / seam tells in similar D&D",
       "validated_status": "proven",
       "inventory": "active",
-      "source": "Temple 8D baseline",
+      "source": "Aidan exact sheets 2026-09-22",
+      "exact": true,
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create & Share → Custom Adjustments → Defense",
         "Create/Edit VERT",
-        "Apply copy_block ticks \u2192 Save \u2192 Active",
-        "In-game LB \u2192 VERT"
+        "Apply copy_block ticks → Save → Active",
+        "In-game LB → VERT"
       ],
       "full_settings": {
-        "base_shell": {
-          "value": "Cover 4 Quarters",
-          "status": "confirmed"
+        "General / Coverage Shading": {
+          "value": "Overtop",
+          "status": "confirmed",
+          "section": "General"
         },
-        "formation_hint": {
-          "value": "Nickel Over (Dime if true long)",
-          "status": "confirmed"
+        "General / Route Commit": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "coverage": {
-          "value": "Quarters \u2014 each DB 1/4; protect #2/#3 seams",
-          "status": "confirmed"
+        "General / Defender Aggression": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "General"
         },
-        "shades_leverage": {
-          "value": "Shade OVERTOP / outside leverage on seams (approx)",
-          "status": "approx"
+        "General / Gap Integrity": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "flats_hooks_curls": {
-          "value": "Flats ~8\u201312; Curls ~10\u201312 \u2014 do not sit soft under seams",
-          "status": "approx"
+        "General / Strip Ball": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "cb_depth": {
-          "value": "CB depth OFF / cushion",
-          "status": "approx"
+        "General / Tackling": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "safety_alignment": {
-          "value": "Safety depth DEEP; width SPLIT Quarters landmarks; midpoint balanced",
-          "status": "approx"
+        "General / Show Blitz": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "contain_qb": {
-          "value": "QB Contain OFF unless dual-threat film",
-          "status": "approx"
+        "General / Guess Play": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "front_pressure": {
-          "value": "Base; no sellout",
-          "status": "confirmed"
+        "General / QB Contain": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "smart_zone_match": {
-          "value": "Smart Zone ON; Match Solo/Skate on seam threats [approx]",
-          "status": "approx"
+        "DL/LB": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "plaster": {
-          "value": "Plaster OFF",
-          "status": "approx"
+        "Secondary / Alignment": {
+          "value": "Give Cushion",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "individual_assignments": {
-          "value": "SS/#3 seam carry; FS help post",
-          "status": "confirmed"
+        "Secondary / Shell": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "user_job": {
-          "value": "User #3 seam",
-          "status": "confirmed"
+        "Secondary / Matchup": {
+          "value": "By Speed",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "do_not": {
-          "value": "Do not spam VERT early; do not jump Even 6-1 on verts",
-          "status": "confirmed"
+        "Secondary / CB Depth": {
+          "value": "7",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "notes": {
-          "value": "Dynasty: Quarters-based vertical protection; bunch/trips checks",
-          "status": "confirmed"
+        "Secondary / CB Width": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Depth": {
+          "value": "16",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Width": {
+          "value": "Spread",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Midpoint": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Ballhawk": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Zone Drops": {
+          "value": "All Default",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Strategy / Zone Strategy": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Trigger": {
+          "value": "O.O.P & Time",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Time": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Roll Coverage": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Coverage Checks / Quarters Stack": {
+          "value": "Quarters",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Coverage Checks / Quarters Bunch": {
+          "value": "Bingo",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Coverage Checks / Quarters Trips": {
+          "value": "Stress",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Coverage Checks / Quarters 1 Rec": {
+          "value": "Quarters",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Coverage Checks / Quarters 1 Rec Tight": {
+          "value": "Quarters",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Coverage Checks / Other": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Individuals": {
+          "value": "None",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "UI note": {
+          "value": "UI label Strong = toward pass strength",
+          "status": "confirmed",
+          "section": "Notes"
+        },
+        "Doctrine": {
+          "value": "DO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro",
+          "status": "confirmed",
+          "section": "Notes"
         }
       },
-      "copy_block": "MACRO: VERT (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: VERT\n[ ] Base shell: Cover 4 Quarters \u2014 Nickel Over\n[ ] CB shade: OVERTOP / outside on seams [approx]\n[ ] Zone drop FLATS: 8\u201312 [approx]\n[ ] Zone drop CURLS: 10\u201312 [approx]\n[ ] CB depth: OFF / cushion [approx]\n[ ] Safety depth: DEEP | Width: Quarters split | Midpoint: balanced [approx]\n[ ] QB Contain: OFF (default)\n[ ] Show Pressure: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Match: Solo/Skate vs seam [approx]\n[ ] Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 VERT | User JOB = #3 seam\n\nWHEN: after 2+ live Four Verts / seam tells"
+      "copy_block": "MACRO: VERT (D) — PROVEN · ACTIVE\nPath: Create & Share → Custom Adjustments → Defense\nPurpose: Four Verticals / seams / wheel shots\nSource: Aidan exact sheets (tick through Xbox Custom Adjustments)\n\n## General\n[ ] Coverage Shading: Overtop\n[ ] Route Commit: Default\n[ ] Defender Aggression: Conservative\n[ ] Gap Integrity: Balanced\n[ ] Strip Ball: Balanced\n[ ] Tackling: Balanced\n[ ] Show Blitz: Off\n[ ] Guess Play: Off\n[ ] QB Contain: Off\n\n## DL/LB\n[ ] Default\n\n## Secondary\n[ ] Alignment: Give Cushion\n[ ] Shell: Default\n[ ] Matchup: By Speed\n[ ] CB Depth: 7\n[ ] CB Width: Default\n[ ] Safety Depth: 16\n[ ] Safety Width: Spread\n[ ] Safety Midpoint: Default\n[ ] Ballhawk: Conservative\n\n## Zone Drops\n[ ] All Default\n\n## Strategy\n[ ] Zone Strategy: Conservative\n[ ] Plaster: Conservative\n[ ] Plaster Trigger: O.O.P & Time\n[ ] Plaster Time: Conservative\n[ ] Roll Coverage: Off\n\n## Coverage Checks\n[ ] Quarters Stack: Quarters\n[ ] Quarters Bunch: Bingo\n[ ] Quarters Trips: Stress\n[ ] Quarters 1 Rec: Quarters\n[ ] Quarters 1 Rec Tight: Quarters\n[ ] Other: Default\n\n## Individuals\n[ ] None\n\nNOTE: UI label Strong = toward pass strength\nDO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro\nWHEN: After 2+ live Four Verticals / seam tells in similar D&D\nSave → set ACTIVE only if in Active-8 (counts toward 8 O+D)\nIn-game: LB → VERT",
+      "exact_sections": {
+        "general": {
+          "Coverage Shading": "Overtop",
+          "Route Commit": "Default",
+          "Defender Aggression": "Conservative",
+          "Gap Integrity": "Balanced",
+          "Strip Ball": "Balanced",
+          "Tackling": "Balanced",
+          "Show Blitz": "Off",
+          "Guess Play": "Off",
+          "QB Contain": "Off"
+        },
+        "dl_lb": "Default",
+        "secondary": {
+          "Alignment": "Give Cushion",
+          "Shell": "Default",
+          "Matchup": "By Speed",
+          "CB Depth": "7",
+          "CB Width": "Default",
+          "Safety Depth": "16",
+          "Safety Width": "Spread",
+          "Safety Midpoint": "Default",
+          "Ballhawk": "Conservative"
+        },
+        "zone_drops": "All Default",
+        "strategy": {
+          "Zone Strategy": "Conservative",
+          "Plaster": "Conservative",
+          "Plaster Trigger": "O.O.P & Time",
+          "Plaster Time": "Conservative",
+          "Roll Coverage": "Off"
+        },
+        "coverage_checks": {
+          "Quarters Stack": "Quarters",
+          "Quarters Bunch": "Bingo",
+          "Quarters Trips": "Stress",
+          "Quarters 1 Rec": "Quarters",
+          "Quarters 1 Rec Tight": "Quarters",
+          "other": "Default"
+        },
+        "individuals": "None"
+      }
     },
     "BUNCH": {
       "name": "BUNCH",
       "side": "defense",
-      "purpose": "Answer compressed Mesh/Bunch rubs \u2014 mesh checks + hard flats lean",
+      "purpose": "Mesh / rubs / picks / compressed sets",
       "when_to_arm": "After repeated Mesh/Bunch compressed wins",
       "validated_status": "proven",
       "inventory": "active",
-      "source": "Temple 8D baseline",
+      "source": "Aidan exact sheets 2026-09-22",
+      "exact": true,
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create & Share → Custom Adjustments → Defense",
         "Create/Edit BUNCH",
-        "Apply copy_block \u2192 Save \u2192 Active",
-        "In-game LB \u2192 BUNCH"
+        "Apply copy_block → Save → Active",
+        "In-game LB → BUNCH"
       ],
       "full_settings": {
-        "base_shell": {
-          "value": "Tampa 2 / hard flats",
-          "status": "confirmed"
+        "General / Coverage Shading": {
+          "value": "Inside",
+          "status": "confirmed",
+          "section": "General"
         },
-        "formation_hint": {
-          "value": "Nickel Over vs Gun Bunch / Cluster",
-          "status": "confirmed"
+        "General / Route Commit": {
+          "value": "Inside",
+          "status": "confirmed",
+          "section": "General"
         },
-        "coverage": {
-          "value": "Tampa 2 with mesh/rub awareness",
-          "status": "confirmed"
+        "General / Defender Aggression": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "shades_leverage": {
-          "value": "Shade INSIDE on bunch side (jam rubs) [approx]",
-          "status": "approx"
+        "General / Gap Integrity": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "flats_hooks_curls": {
-          "value": "HARD flats ~0\u20135; Curls ~8\u201310 (kill spot sits)",
-          "status": "approx"
+        "General / Strip Ball": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "cb_depth": {
-          "value": "Press/short on bunch wing if UI allows; else NORMAL",
-          "status": "approx"
+        "General / Tackling": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "safety_alignment": {
-          "value": "Safety depth NORMAL; width slight PINCH to bunch",
-          "status": "approx"
+        "General / Show Blitz": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "contain_qb": {
-          "value": "OFF",
-          "status": "approx"
+        "General / Guess Play": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "front_pressure": {
-          "value": "Base",
-          "status": "confirmed"
+        "General / QB Contain": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "smart_zone_match": {
-          "value": "Match checks: Box / Stress vs mesh [confirmed intent, approx UI names]",
-          "status": "approx"
+        "DL/LB": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "plaster": {
-          "value": "OFF",
-          "status": "approx"
+        "Secondary / Alignment": {
+          "value": "Give Cushion",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "individual_assignments": {
-          "value": "Slot/LB wall mesh; FS fill hole",
-          "status": "approx"
+        "Secondary / Matchup": {
+          "value": "By Speed",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "user_job": {
-          "value": "User middle",
-          "status": "confirmed"
+        "Secondary / CB Depth": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "do_not": {
-          "value": "Do not auto-arm from one Mesh Spot; do not sell out to Cub",
-          "status": "confirmed"
+        "Secondary / CB Width": {
+          "value": "Tight",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "notes": {
-          "value": "BUNCH = mesh checks \u2014 Temple keep",
-          "status": "confirmed"
+        "Secondary / Safety Depth": {
+          "value": "9",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Width": {
+          "value": "Pinch",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Midpoint": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Ballhawk": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Zone Drops / Flats": {
+          "value": "10",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Curls": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Hooks": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Strategy / Zone Strategy": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Trigger": {
+          "value": "O.O.P & Time",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Time": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Roll Coverage": {
+          "value": "Pass Strength",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Coverage Checks / Man-Bunch": {
+          "value": "Point Combo",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Coverage Checks / C3 Match-Bunch": {
+          "value": "Zone It",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Coverage Checks / Quarters-Bunch": {
+          "value": "Box",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Coverage Checks / Palms-Bunch": {
+          "value": "Box",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Coverage Checks / Cover 6-Bunch": {
+          "value": "Box",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Individuals": {
+          "value": "None",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "UI note": {
+          "value": "UI label Strong = toward pass strength",
+          "status": "confirmed",
+          "section": "Notes"
+        },
+        "Doctrine": {
+          "value": "DO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro",
+          "status": "confirmed",
+          "section": "Notes"
         }
       },
-      "copy_block": "MACRO: BUNCH (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: BUNCH\n[ ] Base shell: Tampa 2 / hard flats \u2014 Nickel Over\n[ ] CB shade: INSIDE on bunch side [approx]\n[ ] Zone drop FLATS: 0\u20135 HARD [approx]\n[ ] Zone drop CURLS: 8\u201310 [approx]\n[ ] CB depth: Press/short on wing if available else Normal [approx]\n[ ] Safety: Normal depth | slight PINCH to bunch [approx]\n[ ] Match checks: Box / Stress vs mesh [approx UI names]\n[ ] Smart Zone: ON [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 BUNCH | User JOB = middle\n\nWHEN: after repeated Mesh/Bunch compressed wins"
+      "copy_block": "MACRO: BUNCH (D) — PROVEN · ACTIVE\nPath: Create & Share → Custom Adjustments → Defense\nPurpose: Mesh / rubs / picks / compressed sets\nSource: Aidan exact sheets (tick through Xbox Custom Adjustments)\n\n## General\n[ ] Coverage Shading: Inside\n[ ] Route Commit: Inside\n[ ] Defender Aggression: Balanced\n[ ] Gap Integrity: Balanced\n[ ] Strip Ball: Balanced\n[ ] Tackling: Balanced\n[ ] Show Blitz: Off\n[ ] Guess Play: Off\n[ ] QB Contain: Off\n\n## DL/LB\n[ ] Default\n\n## Secondary\n[ ] Alignment: Give Cushion\n[ ] Matchup: By Speed\n[ ] CB Depth: 5\n[ ] CB Width: Tight\n[ ] Safety Depth: 9\n[ ] Safety Width: Pinch\n[ ] Safety Midpoint: Default\n[ ] Ballhawk: Conservative\n\n## Zone Drops\n[ ] Flats: 10\n[ ] Curls: 5\n[ ] Hooks: 5\n\n## Strategy\n[ ] Zone Strategy: Aggressive\n[ ] Plaster: Aggressive\n[ ] Plaster Trigger: O.O.P & Time\n[ ] Plaster Time: Aggressive\n[ ] Roll Coverage: Pass Strength\n\n## Coverage Checks\n[ ] Man-Bunch: Point Combo\n[ ] C3 Match-Bunch: Zone It\n[ ] Quarters-Bunch: Box\n[ ] Palms-Bunch: Box\n[ ] Cover 6-Bunch: Box\n\n## Individuals\n[ ] None\n\nNOTE: UI label Strong = toward pass strength\nDO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro\nWHEN: After repeated Mesh/Bunch compressed wins\nSave → set ACTIVE only if in Active-8 (counts toward 8 O+D)\nIn-game: LB → BUNCH",
+      "exact_sections": {
+        "general": {
+          "Coverage Shading": "Inside",
+          "Route Commit": "Inside",
+          "Defender Aggression": "Balanced",
+          "Gap Integrity": "Balanced",
+          "Strip Ball": "Balanced",
+          "Tackling": "Balanced",
+          "Show Blitz": "Off",
+          "Guess Play": "Off",
+          "QB Contain": "Off"
+        },
+        "dl_lb": "Default",
+        "secondary": {
+          "Alignment": "Give Cushion",
+          "Matchup": "By Speed",
+          "CB Depth": "5",
+          "CB Width": "Tight",
+          "Safety Depth": "9",
+          "Safety Width": "Pinch",
+          "Safety Midpoint": "Default",
+          "Ballhawk": "Conservative"
+        },
+        "zone_drops": {
+          "Flats": "10",
+          "Curls": "5",
+          "Hooks": "5"
+        },
+        "strategy": {
+          "Zone Strategy": "Aggressive",
+          "Plaster": "Aggressive",
+          "Plaster Trigger": "O.O.P & Time",
+          "Plaster Time": "Aggressive",
+          "Roll Coverage": "Pass Strength"
+        },
+        "coverage_checks": {
+          "Man-Bunch": "Point Combo",
+          "C3 Match-Bunch": "Zone It",
+          "Quarters-Bunch": "Box",
+          "Palms-Bunch": "Box",
+          "Cover 6-Bunch": "Box"
+        },
+        "individuals": "None"
+      }
     },
     "RPO": {
       "name": "RPO",
       "side": "defense",
-      "purpose": "Answer bubble / RPO alert \u2014 hard flats",
+      "purpose": "bubble / glance / read-RPO",
       "when_to_arm": "After repeated RPO bubble / alert wins",
       "validated_status": "proven",
       "inventory": "active",
-      "source": "Temple 8D baseline",
+      "source": "Aidan exact sheets 2026-09-22",
+      "exact": true,
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
-        "Create/Edit RPO \u2192 copy_block \u2192 Save \u2192 Active",
-        "In-game LB \u2192 RPO"
+        "Create & Share → Custom Adjustments → Defense",
+        "Create/Edit RPO → copy_block → Save → Active",
+        "In-game LB → RPO"
       ],
       "full_settings": {
-        "base_shell": {
-          "value": "Cover 3 Sky",
-          "status": "confirmed"
+        "General / Coverage Shading": {
+          "value": "Outside",
+          "status": "confirmed",
+          "section": "General"
         },
-        "formation_hint": {
-          "value": "Nickel Over",
-          "status": "confirmed"
+        "General / Route Commit": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "coverage": {
-          "value": "C3 Sky with hard flat to bubble side",
-          "status": "confirmed"
+        "General / Defender Aggression": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "General"
         },
-        "shades_leverage": {
-          "value": "Shade OUTSIDE / flat leverage on overhang [approx]",
-          "status": "approx"
+        "General / Gap Integrity": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "General"
         },
-        "flats_hooks_curls": {
-          "value": "FLATS 0\u20135 HARD; Curls ~10",
-          "status": "approx"
+        "General / Strip Ball": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "cb_depth": {
-          "value": "CB flat player CLOSE to LOS",
-          "status": "approx"
+        "General / Tackling": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "safety_alignment": {
-          "value": "Safety depth NORMAL; width to field/boundary as C3",
-          "status": "approx"
+        "General / QB Contain": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "contain_qb": {
-          "value": "OFF (unless dual-threat)",
-          "status": "approx"
+        "General / Option keys": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "front_pressure": {
-          "value": "Fit run first; no auto Cub",
-          "status": "confirmed"
+        "General / RPO Read Key": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "General"
         },
-        "smart_zone_match": {
-          "value": "Smart Zone ON; prioritize flat/bubble [approx]",
-          "status": "approx"
+        "General / RPO Pass Key": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "General"
         },
-        "plaster": {
-          "value": "OFF",
-          "status": "approx"
+        "DL/LB": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "individual_assignments": {
-          "value": "Overhang / flat defender owns bubble; LB fits mesh of RPO",
-          "status": "confirmed"
+        "Secondary / Alignment": {
+          "value": "Give Cushion",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "user_job": {
-          "value": "User flat/bubble",
-          "status": "confirmed"
+        "Secondary / Matchup": {
+          "value": "By Speed",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "do_not": {
-          "value": "Do not leave flat empty chasing #1 vertical",
-          "status": "confirmed"
+        "Secondary / CB Depth": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "notes": {
-          "value": "RPO = hard flats \u2014 Temple keep",
-          "status": "confirmed"
+        "Secondary / CB Width": {
+          "value": "Wide",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Depth": {
+          "value": "9",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Width": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Midpoint": {
+          "value": "Strong",
+          "status": "confirmed",
+          "section": "Secondary",
+          "note": "UI label Strong = toward pass strength"
+        },
+        "Secondary / Ballhawk": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Zone Drops / Flats": {
+          "value": "0",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Curls": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Hooks": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Strategy / Zone Strategy": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Trigger": {
+          "value": "O.O.P & Time",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Time": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Roll Coverage": {
+          "value": "Pass Strength",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Coverage Checks": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Individuals / SLCB1": {
+          "value": "Hard Flat",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "Individuals / SLCB2": {
+          "value": "Hard Flat",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "UI note": {
+          "value": "UI label Strong = toward pass strength",
+          "status": "confirmed",
+          "section": "Notes"
+        },
+        "Doctrine": {
+          "value": "DO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro",
+          "status": "confirmed",
+          "section": "Notes"
         }
       },
-      "copy_block": "MACRO: RPO (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RPO\n[ ] Base shell: Cover 3 Sky \u2014 Nickel Over\n[ ] Zone drop FLATS: 0\u20135 HARD [approx]\n[ ] Zone drop CURLS: ~10 [approx]\n[ ] CB/overhang: CLOSE to LOS on bubble side [approx]\n[ ] Shade: OUTSIDE / flat leverage [approx]\n[ ] Safety: C3 landmarks [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 RPO | User JOB = flat/bubble\n\nWHEN: after repeated bubble/RPO alert wins"
+      "copy_block": "MACRO: RPO (D) — PROVEN · ACTIVE\nPath: Create & Share → Custom Adjustments → Defense\nPurpose: bubble / glance / read-RPO\nSource: Aidan exact sheets (tick through Xbox Custom Adjustments)\n\n## General\n[ ] Coverage Shading: Outside\n[ ] Route Commit: Default\n[ ] Defender Aggression: Aggressive\n[ ] Gap Integrity: Conservative\n[ ] Strip Ball: Balanced\n[ ] Tackling: Balanced\n[ ] QB Contain: Off\n[ ] Option keys: Default\n[ ] RPO Read Key: Conservative\n[ ] RPO Pass Key: Conservative\n\n## DL/LB\n[ ] Default\n\n## Secondary\n[ ] Alignment: Give Cushion\n[ ] Matchup: By Speed\n[ ] CB Depth: 5\n[ ] CB Width: Wide\n[ ] Safety Depth: 9\n[ ] Safety Width: Default\n[ ] Safety Midpoint: Strong\n    NOTE: UI label Strong = toward pass strength\n[ ] Ballhawk: Aggressive\n\n## Zone Drops\n[ ] Flats: 0\n[ ] Curls: 5\n[ ] Hooks: 5\n\n## Strategy\n[ ] Zone Strategy: Aggressive\n[ ] Plaster: Conservative\n[ ] Plaster Trigger: O.O.P & Time\n[ ] Plaster Time: Default\n[ ] Roll Coverage: Pass Strength\n\n## Coverage Checks\n[ ] Default\n\n## Individuals\n[ ] SLCB1: Hard Flat\n[ ] SLCB2: Hard Flat\n\nNOTE: UI label Strong = toward pass strength\nDO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro\nWHEN: After repeated RPO bubble / alert wins\nSave → set ACTIVE only if in Active-8 (counts toward 8 O+D)\nIn-game: LB → RPO",
+      "exact_sections": {
+        "general": {
+          "Coverage Shading": "Outside",
+          "Route Commit": "Default",
+          "Defender Aggression": "Aggressive",
+          "Gap Integrity": "Conservative",
+          "Strip Ball": "Balanced",
+          "Tackling": "Balanced",
+          "QB Contain": "Off",
+          "Option keys": "Default",
+          "RPO Read Key": "Conservative",
+          "RPO Pass Key": "Conservative"
+        },
+        "dl_lb": "Default",
+        "secondary": {
+          "Alignment": "Give Cushion",
+          "Matchup": "By Speed",
+          "CB Depth": "5",
+          "CB Width": "Wide",
+          "Safety Depth": "9",
+          "Safety Width": "Default",
+          "Safety Midpoint": "Strong (UI; toward Pass Strength)",
+          "Ballhawk": "Aggressive"
+        },
+        "zone_drops": {
+          "Flats": "0",
+          "Curls": "5",
+          "Hooks": "5"
+        },
+        "strategy": {
+          "Zone Strategy": "Aggressive",
+          "Plaster": "Conservative",
+          "Plaster Trigger": "O.O.P & Time",
+          "Plaster Time": "Default",
+          "Roll Coverage": "Pass Strength"
+        },
+        "coverage_checks": "Default",
+        "individuals": {
+          "SLCB1": "Hard Flat",
+          "SLCB2": "Hard Flat"
+        }
+      }
     },
     "SCRAM": {
       "name": "SCRAM",
       "side": "defense",
-      "purpose": "Contain integrity when QB escape beats coverage carry \u2014 contain + plaster",
+      "purpose": "QB scramble / rollout / broken-play extension",
       "when_to_arm": "After repeated QB scramble escapes",
       "validated_status": "proven",
       "inventory": "active",
-      "source": "Temple 8D baseline",
+      "source": "Aidan exact sheets 2026-09-22",
+      "exact": true,
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
-        "Create/Edit SCRAM \u2192 copy_block \u2192 Save \u2192 Active",
-        "In-game LB \u2192 SCRAM"
+        "Create & Share → Custom Adjustments → Defense",
+        "Create/Edit SCRAM → copy_block → Save → Active",
+        "In-game LB → SCRAM"
       ],
       "full_settings": {
-        "base_shell": {
-          "value": "Base Nickel Over zone (C3 or C4) + contain adj",
-          "status": "confirmed"
+        "General / Coverage Shading": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "formation_hint": {
-          "value": "Nickel Over",
-          "status": "confirmed"
+        "General / Route Commit": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "coverage": {
-          "value": "Keep called zone; integrity > chase",
-          "status": "confirmed"
+        "General / Defender Aggression": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "shades_leverage": {
-          "value": "Default shade for called shell",
-          "status": "approx"
+        "General / Gap Integrity": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "General"
         },
-        "flats_hooks_curls": {
-          "value": "Default for shell \u2014 do not soft-sit and abandon edge",
-          "status": "approx"
+        "General / Strip Ball": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "cb_depth": {
-          "value": "Normal for shell",
-          "status": "approx"
+        "General / Tackling": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "safety_alignment": {
-          "value": "Normal; one safety ready to help contain if spy UI absent",
-          "status": "approx"
+        "General / QB Contain": {
+          "value": "Both",
+          "status": "confirmed",
+          "section": "General"
         },
-        "contain_qb": {
-          "value": "QB Contain ON (patch 1.012 contain custom adj fix)",
-          "status": "confirmed"
+        "General / Option/RPO": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "front_pressure": {
-          "value": "DE/edge CONTAIN responsibility; no wide upfield chase",
-          "status": "confirmed"
+        "DL/LB": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "smart_zone_match": {
-          "value": "Smart Zone ON",
-          "status": "approx"
+        "Secondary / Alignment": {
+          "value": "Give Cushion",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "plaster": {
-          "value": "Plaster ON \u2014 stick to receivers if QB holds then runs [confirmed intent]",
-          "status": "confirmed"
+        "Secondary / Matchup": {
+          "value": "By Speed",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "individual_assignments": {
-          "value": "Edge contain; User owns contain lane",
-          "status": "confirmed"
+        "Secondary / CB Depth": {
+          "value": "7",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "user_job": {
-          "value": "User contain",
-          "status": "confirmed"
+        "Secondary / CB Width": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "do_not": {
-          "value": "Do not spin-hero chase (patch 1.012 reduced spin); do not arm from one scramble",
-          "status": "confirmed"
+        "Secondary / Safety Depth": {
+          "value": "12",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "notes": {
-          "value": "SCRAM = contain + plaster \u2014 Temple keep; CONTAIN-SCRAM is stricter CREATE twin",
-          "status": "confirmed"
+        "Secondary / Safety Width": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Midpoint": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Ballhawk": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Zone Drops": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Strategy / Zone Strategy": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Trigger": {
+          "value": "O.O.P & Time",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Time": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Roll Coverage": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Coverage Checks": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Individuals": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "UI note": {
+          "value": "UI label Strong = toward pass strength",
+          "status": "confirmed",
+          "section": "Notes"
+        },
+        "Doctrine": {
+          "value": "DO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro",
+          "status": "confirmed",
+          "section": "Notes"
         }
       },
-      "copy_block": "MACRO: SCRAM (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: SCRAM\n[ ] Base shell: Nickel Over C3 Sky or C4 Quarters (keep coverage)\n[ ] QB Contain: ON  \u2190 confirmed (1.012 contain adj)\n[ ] Plaster: ON  \u2190 confirmed intent\n[ ] Edge/DE: CONTAIN (no wild upfield) [approx tick]\n[ ] Flats/Curls/Shade: match called shell defaults\n[ ] Show Pressure: OFF\n[ ] Smart Zone: ON [approx]\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 SCRAM | User JOB = contain\n\nWHEN: after repeated QB scramble escapes\nNOTE: if still escaping, lab CONTAIN-SCRAM (meta_grounded)"
+      "copy_block": "MACRO: SCRAM (D) — PROVEN · ACTIVE\nPath: Create & Share → Custom Adjustments → Defense\nPurpose: QB scramble / rollout / broken-play extension\nSource: Aidan exact sheets (tick through Xbox Custom Adjustments)\n\n## General\n[ ] Coverage Shading: Default\n[ ] Route Commit: Default\n[ ] Defender Aggression: Balanced\n[ ] Gap Integrity: Conservative\n[ ] Strip Ball: Balanced\n[ ] Tackling: Balanced\n[ ] QB Contain: Both\n[ ] Option/RPO: Default\n\n## DL/LB\n[ ] Default\n\n## Secondary\n[ ] Alignment: Give Cushion\n[ ] Matchup: By Speed\n[ ] CB Depth: 7\n[ ] CB Width: Default\n[ ] Safety Depth: 12\n[ ] Safety Width: Default\n[ ] Safety Midpoint: Default\n[ ] Ballhawk: Conservative\n\n## Zone Drops\n[ ] Default\n\n## Strategy\n[ ] Zone Strategy: Conservative\n[ ] Plaster: Aggressive\n[ ] Plaster Trigger: O.O.P & Time\n[ ] Plaster Time: Aggressive\n[ ] Roll Coverage: Off\n\n## Coverage Checks\n[ ] Default\n\n## Individuals\n[ ] Default\n\nNOTE: UI label Strong = toward pass strength\nDO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro\nWHEN: After repeated QB scramble escapes\nSave → set ACTIVE only if in Active-8 (counts toward 8 O+D)\nIn-game: LB → SCRAM",
+      "exact_sections": {
+        "general": {
+          "Coverage Shading": "Default",
+          "Route Commit": "Default",
+          "Defender Aggression": "Balanced",
+          "Gap Integrity": "Conservative",
+          "Strip Ball": "Balanced",
+          "Tackling": "Balanced",
+          "QB Contain": "Both",
+          "Option/RPO": "Default"
+        },
+        "dl_lb": "Default",
+        "secondary": {
+          "Alignment": "Give Cushion",
+          "Matchup": "By Speed",
+          "CB Depth": "7",
+          "CB Width": "Default",
+          "Safety Depth": "12",
+          "Safety Width": "Default",
+          "Safety Midpoint": "Default",
+          "Ballhawk": "Conservative"
+        },
+        "zone_drops": "Default",
+        "strategy": {
+          "Zone Strategy": "Conservative",
+          "Plaster": "Aggressive",
+          "Plaster Trigger": "O.O.P & Time",
+          "Plaster Time": "Aggressive",
+          "Roll Coverage": "Off"
+        },
+        "coverage_checks": "Default",
+        "individuals": "Default"
+      }
     },
     "RUN-IN": {
       "name": "RUN-IN",
       "side": "defense",
-      "purpose": "Downhill IZ/Duo sellout \u2014 pinch / Even 6-1",
-      "when_to_arm": "After repeated downhill run AND short-yardage \u2014 never one IZ tell",
+      "purpose": "Inside Zone / Duo / Power / Draw",
+      "when_to_arm": "After repeated downhill run AND short-yardage — never one IZ tell",
       "validated_status": "proven",
       "inventory": "active",
-      "source": "Temple 8D baseline",
+      "source": "Aidan exact sheets 2026-09-22",
+      "exact": true,
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
-        "Create/Edit RUN-IN \u2192 copy_block \u2192 Save \u2192 Active",
-        "In-game: call 4-3 Even 6-1 then LB \u2192 RUN-IN"
+        "Create & Share → Custom Adjustments → Defense",
+        "Create/Edit RUN-IN → copy_block → Save → Active",
+        "In-game: call 4-3 Even 6-1 then LB → RUN-IN"
       ],
       "full_settings": {
-        "base_shell": {
-          "value": "Cover 3 Buzz / Quarters from Even front",
-          "status": "confirmed"
+        "General / Show Blitz": {
+          "value": "Linebackers",
+          "status": "confirmed",
+          "section": "General"
         },
-        "formation_hint": {
-          "value": "4-3 Even 6-1",
-          "status": "confirmed"
+        "General / Coverage Shading": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "coverage": {
-          "value": "C3 Buzz primary; C4/Tampa changeup",
-          "status": "confirmed"
+        "General / Route Commit": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "shades_leverage": {
-          "value": "Inside shade / gap integrity [approx]",
-          "status": "approx"
+        "General / Guess Play": {
+          "value": "Run Up Middle",
+          "status": "confirmed",
+          "section": "General"
         },
-        "flats_hooks_curls": {
-          "value": "Default short-yardage \u2014 stop first-level run",
-          "status": "approx"
+        "General / Defender Aggression": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "General"
         },
-        "cb_depth": {
-          "value": "Normal / support run",
-          "status": "approx"
+        "General / Gap Integrity": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "General"
         },
-        "safety_alignment": {
-          "value": "Safety depth closer (run support); width pinched",
-          "status": "approx"
+        "General / Strip Ball": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "contain_qb": {
-          "value": "OFF unless QB keep film",
-          "status": "approx"
+        "General / Tackling": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "front_pressure": {
-          "value": "DL PINCH; Even 6-1 gaps [confirmed]",
-          "status": "confirmed"
+        "General / QB Contain": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "smart_zone_match": {
-          "value": "Smart Zone optional",
-          "status": "approx"
+        "General / Option Read Key": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "General"
         },
-        "plaster": {
-          "value": "OFF",
-          "status": "approx"
+        "General / Option Pitch Key": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "individual_assignments": {
-          "value": "ILB fill A/B; User cutback",
-          "status": "confirmed"
+        "General / RPO": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "user_job": {
-          "value": "User cutback / HB",
-          "status": "confirmed"
+        "DL/LB / DL Technique": {
+          "value": "Pinch",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "do_not": {
-          "value": "NEVER auto on one IZ; GL don't sell out (Temple Z Smash)",
-          "status": "confirmed"
+        "DL/LB / DL Point of Attack": {
+          "value": "Inside",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "notes": {
-          "value": "RUN-IN = pinch / Even 6-1 \u2014 Temple keep",
-          "status": "confirmed"
+        "DL/LB / DL Stunts": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "DL/LB"
+        },
+        "DL/LB / LB Shift": {
+          "value": "Pinch",
+          "status": "confirmed",
+          "section": "DL/LB"
+        },
+        "DL/LB / LB Assignments": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "DL/LB"
+        },
+        "Secondary / Alignment": {
+          "value": "Give Cushion",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Matchup": {
+          "value": "By Speed",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / CB Depth": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / CB Width": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Depth": {
+          "value": "9",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Width": {
+          "value": "Pinch",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Midpoint": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Ballhawk": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Zone Drops": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Strategy / Zone Strategy": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Other": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Coverage Checks": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Individuals": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "UI note": {
+          "value": "UI label Strong = toward pass strength",
+          "status": "confirmed",
+          "section": "Notes"
+        },
+        "Doctrine": {
+          "value": "DO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro",
+          "status": "confirmed",
+          "section": "Notes"
         }
       },
-      "copy_block": "MACRO: RUN-IN (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RUN-IN\n[ ] Pair with package: 4-3 Even 6-1\n[ ] Coverage lean: Cover 3 Buzz (alt C4/Tampa)\n[ ] DL: PINCH [confirmed intent]\n[ ] Front: Even 6-1 gap integrity\n[ ] Safety depth: closer (run support) | Width: pinch [approx]\n[ ] Shade: inside / gap [approx]\n[ ] QB Contain: OFF (default) | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: Even 6-1 call \u2192 LB \u2192 RUN-IN | User JOB = cutback\n\nWHEN: repeated downhill + short \u2014 NEVER one IZ tell\nGL: heavy OK but do NOT sell out run (Z Smash)"
+      "copy_block": "MACRO: RUN-IN (D) — PROVEN · ACTIVE\nPath: Create & Share → Custom Adjustments → Defense\nPurpose: Inside Zone / Duo / Power / Draw\nSource: Aidan exact sheets (tick through Xbox Custom Adjustments)\n\n## General\n[ ] Show Blitz: Linebackers\n[ ] Coverage Shading: Default\n[ ] Route Commit: Default\n[ ] Guess Play: Run Up Middle\n[ ] Defender Aggression: Aggressive\n[ ] Gap Integrity: Aggressive\n[ ] Strip Ball: Balanced\n[ ] Tackling: Balanced\n[ ] QB Contain: Off\n[ ] Option Read Key: Aggressive\n[ ] Option Pitch Key: Balanced\n[ ] RPO: Default\n\n## DL/LB\n[ ] DL Technique: Pinch\n[ ] DL Point of Attack: Inside\n[ ] DL Stunts: Off\n[ ] LB Shift: Pinch\n[ ] LB Assignments: Default\n\n## Secondary\n[ ] Alignment: Give Cushion\n[ ] Matchup: By Speed\n[ ] CB Depth: 5\n[ ] CB Width: Default\n[ ] Safety Depth: 9\n[ ] Safety Width: Pinch\n[ ] Safety Midpoint: Default\n[ ] Ballhawk: Conservative\n\n## Zone Drops\n[ ] Default\n\n## Strategy\n[ ] Zone Strategy: Conservative\n[ ] Plaster: Conservative\n[ ] Other: Default\n\n## Coverage Checks\n[ ] Default\n\n## Individuals\n[ ] Default\n\nNOTE: UI label Strong = toward pass strength\nDO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro\nWHEN: After repeated downhill run AND short-yardage — never one IZ tell\nSave → set ACTIVE only if in Active-8 (counts toward 8 O+D)\nIn-game: LB → RUN-IN",
+      "exact_sections": {
+        "general": {
+          "Show Blitz": "Linebackers",
+          "Coverage Shading": "Default",
+          "Route Commit": "Default",
+          "Guess Play": "Run Up Middle",
+          "Defender Aggression": "Aggressive",
+          "Gap Integrity": "Aggressive",
+          "Strip Ball": "Balanced",
+          "Tackling": "Balanced",
+          "QB Contain": "Off",
+          "Option Read Key": "Aggressive",
+          "Option Pitch Key": "Balanced",
+          "RPO": "Default"
+        },
+        "dl_lb": {
+          "DL Technique": "Pinch",
+          "DL Point of Attack": "Inside",
+          "DL Stunts": "Off",
+          "LB Shift": "Pinch",
+          "LB Assignments": "Default"
+        },
+        "secondary": {
+          "Alignment": "Give Cushion",
+          "Matchup": "By Speed",
+          "CB Depth": "5",
+          "CB Width": "Default",
+          "Safety Depth": "9",
+          "Safety Width": "Pinch",
+          "Safety Midpoint": "Default",
+          "Ballhawk": "Conservative"
+        },
+        "zone_drops": "Default",
+        "strategy": {
+          "Zone Strategy": "Conservative",
+          "Plaster": "Conservative",
+          "rest": "Default"
+        },
+        "coverage_checks": "Default",
+        "individuals": "Default"
+      }
     },
     "RUN-OUT": {
       "name": "RUN-OUT",
       "side": "defense",
-      "purpose": "Perimeter stretch / toss \u2014 edge integrity",
+      "purpose": "Stretch / Toss / Wide Zone / Speed Option",
       "when_to_arm": "After repeated Outside Zone / Stretch / toss",
       "validated_status": "proven",
       "inventory": "active",
-      "source": "Temple 8D baseline",
+      "source": "Aidan exact sheets 2026-09-22",
+      "exact": true,
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
-        "Create/Edit RUN-OUT \u2192 copy_block \u2192 Save \u2192 Active",
-        "In-game LB \u2192 RUN-OUT"
+        "Create & Share → Custom Adjustments → Defense",
+        "Create/Edit RUN-OUT → copy_block → Save → Active",
+        "In-game LB → RUN-OUT"
       ],
       "full_settings": {
-        "base_shell": {
-          "value": "Cover 3 Sky",
-          "status": "confirmed"
+        "General / Show Blitz": {
+          "value": "Linebackers",
+          "status": "confirmed",
+          "section": "General"
         },
-        "formation_hint": {
-          "value": "Nickel Over",
-          "status": "confirmed"
+        "General / Coverage Shading": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "coverage": {
-          "value": "C3 Sky \u2014 force bounce then fold",
-          "status": "confirmed"
+        "General / Route Commit": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "shades_leverage": {
-          "value": "Outside leverage on perimeter [approx]",
-          "status": "approx"
+        "General / Guess Play": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "flats_hooks_curls": {
-          "value": "Flats ready vs toss/bubble combo ~5\u20138",
-          "status": "approx"
+        "General / Defender Aggression": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "General"
         },
-        "cb_depth": {
-          "value": "Support edge \u2014 not deep bail",
-          "status": "approx"
+        "General / Gap Integrity": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "General"
         },
-        "safety_alignment": {
-          "value": "Safety width to stretch side; depth NORMAL",
-          "status": "approx"
+        "General / Strip Ball": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "contain_qb": {
-          "value": "OFF",
-          "status": "approx"
+        "General / Tackling": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "front_pressure": {
-          "value": "DL SPREAD / edge set \u2014 force bounce inside [confirmed intent]",
-          "status": "confirmed"
+        "General / QB Contain": {
+          "value": "Both",
+          "status": "confirmed",
+          "section": "General"
         },
-        "smart_zone_match": {
-          "value": "Smart Zone ON",
-          "status": "approx"
+        "General / Option Read Key": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "General"
         },
-        "plaster": {
-          "value": "OFF",
-          "status": "approx"
+        "General / Option Pitch Key": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "General"
         },
-        "individual_assignments": {
-          "value": "DE/OLB set edge; User edge",
-          "status": "confirmed"
+        "General / RPO": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "user_job": {
-          "value": "User edge",
-          "status": "confirmed"
+        "DL/LB / DL Technique": {
+          "value": "Spread",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "do_not": {
-          "value": "Do not pinch into stretch; do not abandon edge for inside scrap",
-          "status": "confirmed"
+        "DL/LB / DL Point of Attack": {
+          "value": "Outside",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "notes": {
-          "value": "RUN-OUT = edge \u2014 Temple keep",
-          "status": "confirmed"
+        "DL/LB / DL Stunts": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "DL/LB"
+        },
+        "DL/LB / LB Shift": {
+          "value": "Spread",
+          "status": "confirmed",
+          "section": "DL/LB"
+        },
+        "DL/LB / LB Assignments": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "DL/LB"
+        },
+        "Secondary / Alignment": {
+          "value": "Give Cushion",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Matchup": {
+          "value": "By Speed",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / CB Depth": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / CB Width": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Depth": {
+          "value": "9",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Width": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Midpoint": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Ballhawk": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Zone Drops": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Strategy / Zone Strategy": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Roll Coverage": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Coverage Checks": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Individuals": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "UI note": {
+          "value": "UI label Strong = toward pass strength",
+          "status": "confirmed",
+          "section": "Notes"
+        },
+        "Doctrine": {
+          "value": "DO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro",
+          "status": "confirmed",
+          "section": "Notes"
         }
       },
-      "copy_block": "MACRO: RUN-OUT (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: RUN-OUT\n[ ] Base shell: Cover 3 Sky \u2014 Nickel Over\n[ ] DL: SPREAD / edge set (force bounce) [confirmed intent]\n[ ] Shade: outside leverage perimeter [approx]\n[ ] Flats: 5\u20138 (toss/bubble ready) [approx]\n[ ] Safety width: to stretch side [approx]\n[ ] QB Contain: OFF | Show Pressure: OFF | Plaster: OFF\n[ ] Save \u2192 ACTIVE\n[ ] In-game: LB \u2192 RUN-OUT | User JOB = edge\n\nWHEN: after repeated OZ / Stretch / toss"
+      "copy_block": "MACRO: RUN-OUT (D) — PROVEN · ACTIVE\nPath: Create & Share → Custom Adjustments → Defense\nPurpose: Stretch / Toss / Wide Zone / Speed Option\nSource: Aidan exact sheets (tick through Xbox Custom Adjustments)\n\n## General\n[ ] Show Blitz: Linebackers\n[ ] Coverage Shading: Default\n[ ] Route Commit: Default\n[ ] Guess Play: Off\n[ ] Defender Aggression: Aggressive\n[ ] Gap Integrity: Aggressive\n[ ] Strip Ball: Balanced\n[ ] Tackling: Balanced\n[ ] QB Contain: Both\n[ ] Option Read Key: Conservative\n[ ] Option Pitch Key: Aggressive\n[ ] RPO: Default\n\n## DL/LB\n[ ] DL Technique: Spread\n[ ] DL Point of Attack: Outside\n[ ] DL Stunts: Off\n[ ] LB Shift: Spread\n[ ] LB Assignments: Default\n\n## Secondary\n[ ] Alignment: Give Cushion\n[ ] Matchup: By Speed\n[ ] CB Depth: 5\n[ ] CB Width: Default\n[ ] Safety Depth: 9\n[ ] Safety Width: Default\n[ ] Safety Midpoint: Default\n[ ] Ballhawk: Conservative\n\n## Zone Drops\n[ ] Default\n\n## Strategy\n[ ] Zone Strategy: Conservative\n[ ] Plaster: Conservative\n[ ] Roll Coverage: Off\n\n## Coverage Checks\n[ ] Default\n\n## Individuals\n[ ] Default\n\nNOTE: UI label Strong = toward pass strength\nDO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro\nWHEN: After repeated Outside Zone / Stretch / toss\nSave → set ACTIVE only if in Active-8 (counts toward 8 O+D)\nIn-game: LB → RUN-OUT",
+      "exact_sections": {
+        "general": {
+          "Show Blitz": "Linebackers",
+          "Coverage Shading": "Default",
+          "Route Commit": "Default",
+          "Guess Play": "Off",
+          "Defender Aggression": "Aggressive",
+          "Gap Integrity": "Aggressive",
+          "Strip Ball": "Balanced",
+          "Tackling": "Balanced",
+          "QB Contain": "Both",
+          "Option Read Key": "Conservative",
+          "Option Pitch Key": "Aggressive",
+          "RPO": "Default"
+        },
+        "dl_lb": {
+          "DL Technique": "Spread",
+          "DL Point of Attack": "Outside",
+          "DL Stunts": "Off",
+          "LB Shift": "Spread",
+          "LB Assignments": "Default"
+        },
+        "secondary": {
+          "Alignment": "Give Cushion",
+          "Matchup": "By Speed",
+          "CB Depth": "5",
+          "CB Width": "Default",
+          "Safety Depth": "9",
+          "Safety Width": "Default",
+          "Safety Midpoint": "Default",
+          "Ballhawk": "Conservative"
+        },
+        "zone_drops": "Default",
+        "strategy": {
+          "Zone Strategy": "Conservative",
+          "Plaster": "Conservative",
+          "Roll Coverage": "Off"
+        },
+        "coverage_checks": "Default",
+        "individuals": "Default"
+      }
     },
     "HEAT": {
       "name": "HEAT",
       "side": "defense",
-      "purpose": "Selective pressure \u2014 show Cub/Mug",
+      "purpose": "pressure / disguise",
       "when_to_arm": "3rd-short selective vs pressure-worthy archetype or repeated money-down need",
       "validated_status": "proven",
       "inventory": "active",
-      "source": "Temple 8D baseline",
+      "source": "Aidan exact sheets 2026-09-22",
+      "exact": true,
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
-        "Create/Edit HEAT \u2192 copy_block \u2192 Save \u2192 Active",
-        "In-game: call Cub/Mug package then LB \u2192 HEAT"
+        "Create & Share → Custom Adjustments → Defense",
+        "Create/Edit HEAT → copy_block → Save → Active",
+        "In-game: call Cub/Mug package then LB → HEAT"
       ],
       "full_settings": {
-        "base_shell": {
-          "value": "Man/zero or match behind pressure (play-call dependent)",
-          "status": "approx"
+        "General / Show Blitz": {
+          "value": "Both",
+          "status": "confirmed",
+          "section": "General"
         },
-        "formation_hint": {
-          "value": "Nickel 3-3 Cub or Nickel Double Mug",
-          "status": "confirmed"
+        "General / Coverage Shading": {
+          "value": "Underneath",
+          "status": "confirmed",
+          "section": "General"
         },
-        "coverage": {
-          "value": "Behind blitz: Cover 0 / Cover 1 lean \u2014 know hot answers",
-          "status": "approx"
+        "General / Route Commit": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "shades_leverage": {
-          "value": "Press / inside shade on likely hot [approx]",
-          "status": "approx"
+        "General / Guess Play": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "flats_hooks_curls": {
-          "value": "N/A under pure pressure \u2014 match/man",
-          "status": "approx"
+        "General / Defender Aggression": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "General"
         },
-        "cb_depth": {
-          "value": "Press if man",
-          "status": "approx"
+        "General / Gap Integrity": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "safety_alignment": {
-          "value": "Single-high or void for zero \u2014 know the call",
-          "status": "approx"
+        "General / Strip Ball": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "contain_qb": {
-          "value": "Assign contain rusher OR User contain if scramble risk",
-          "status": "approx"
+        "General / Tackling": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "front_pressure": {
-          "value": "SHOW PRESSURE \u2014 Cub / Mug look [confirmed]",
-          "status": "confirmed"
+        "General / QB Contain": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "smart_zone_match": {
-          "value": "Off under pure man-blitz; Match ON if zone-blitz variant",
-          "status": "approx"
+        "General / Option/RPO": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "General"
         },
-        "plaster": {
-          "value": "OFF",
-          "status": "approx"
+        "DL/LB / DL Technique": {
+          "value": "Pinch",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "individual_assignments": {
-          "value": "One User hot / spy job only",
-          "status": "confirmed"
+        "DL/LB / DL Point of Attack": {
+          "value": "Inside",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "user_job": {
-          "value": "User hot",
-          "status": "confirmed"
+        "DL/LB / DL Stunts": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "do_not": {
-          "value": "Not every snap; never early-down chase vs split-field (Gavin)",
-          "status": "confirmed"
+        "DL/LB / LB Shift": {
+          "value": "Pinch",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "notes": {
-          "value": "HEAT = show pressure Cub/Mug \u2014 Temple keep; selective",
-          "status": "confirmed"
+        "DL/LB / LB Assignments": {
+          "value": "Default — do not Blitz All",
+          "status": "confirmed",
+          "section": "DL/LB"
+        },
+        "Secondary / Alignment": {
+          "value": "Give Cushion",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Coverage Shell": {
+          "value": "Cover 0",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Matchup": {
+          "value": "By Speed",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / CB Depth": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / CB Width": {
+          "value": "Tight",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Depth": {
+          "value": "9",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Width": {
+          "value": "Pinch",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Midpoint": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Ballhawk": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Zone Drops / Flats": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Curls": {
+          "value": "10",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Hooks": {
+          "value": "10",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Strategy / Zone Strategy": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Trigger": {
+          "value": "O.O.P & Time",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Time": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Roll Coverage": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Coverage Checks": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Individuals": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "UI note": {
+          "value": "UI label Strong = toward pass strength",
+          "status": "confirmed",
+          "section": "Notes"
+        },
+        "Doctrine": {
+          "value": "DO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro",
+          "status": "confirmed",
+          "section": "Notes"
         }
       },
-      "copy_block": "MACRO: HEAT (D) \u2014 PROVEN Temple 8D\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: HEAT\n[ ] Pair packages: Nickel 3-3 Cub / Nickel Double Mug\n[ ] Show Pressure: ON \u2014 Cub/Mug [confirmed]\n[ ] Coverage behind: Cover 0 / Cover 1 lean (know the play call) [approx]\n[ ] CB: Press if man [approx]\n[ ] Assign contain rusher if scramble risk [approx]\n[ ] Plaster: OFF | Smart Zone: per blitz type\n[ ] Save \u2192 ACTIVE\n[ ] In-game: Cub/Mug call \u2192 LB \u2192 HEAT | User JOB = hot\n\nWHEN: 3rd-short selective ONLY \u2014 not every snap"
+      "copy_block": "MACRO: HEAT (D) — PROVEN · ACTIVE\nPath: Create & Share → Custom Adjustments → Defense\nPurpose: pressure / disguise\nSource: Aidan exact sheets (tick through Xbox Custom Adjustments)\n\n## General\n[ ] Show Blitz: Both\n[ ] Coverage Shading: Underneath\n[ ] Route Commit: Default\n[ ] Guess Play: Off\n[ ] Defender Aggression: Aggressive\n[ ] Gap Integrity: Balanced\n[ ] Strip Ball: Balanced\n[ ] Tackling: Balanced\n[ ] QB Contain: Off\n[ ] Option/RPO: Default\n\n## DL/LB\n[ ] DL Technique: Pinch\n[ ] DL Point of Attack: Inside\n[ ] DL Stunts: Off\n[ ] LB Shift: Pinch\n[ ] LB Assignments: Default — do not Blitz All\n\n## Secondary\n[ ] Alignment: Give Cushion\n[ ] Coverage Shell: Cover 0\n[ ] Matchup: By Speed\n[ ] CB Depth: 5\n[ ] CB Width: Tight\n[ ] Safety Depth: 9\n[ ] Safety Width: Pinch\n[ ] Safety Midpoint: Default\n[ ] Ballhawk: Aggressive\n\n## Zone Drops\n[ ] Flats: 5\n[ ] Curls: 10\n[ ] Hooks: 10\n\n## Strategy\n[ ] Zone Strategy: Aggressive\n[ ] Plaster: Aggressive\n[ ] Plaster Trigger: O.O.P & Time\n[ ] Plaster Time: Aggressive\n[ ] Roll Coverage: Off\n\n## Coverage Checks\n[ ] Default\n\n## Individuals\n[ ] Default\n\nNOTE: UI label Strong = toward pass strength\nDO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro\nWHEN: 3rd-short selective vs pressure-worthy archetype or repeated money-down need\nSave → set ACTIVE only if in Active-8 (counts toward 8 O+D)\nIn-game: LB → HEAT",
+      "exact_sections": {
+        "general": {
+          "Show Blitz": "Both",
+          "Coverage Shading": "Underneath",
+          "Route Commit": "Default",
+          "Guess Play": "Off",
+          "Defender Aggression": "Aggressive",
+          "Gap Integrity": "Balanced",
+          "Strip Ball": "Balanced",
+          "Tackling": "Balanced",
+          "QB Contain": "Off",
+          "Option/RPO": "Default"
+        },
+        "dl_lb": {
+          "DL Technique": "Pinch",
+          "DL Point of Attack": "Inside",
+          "DL Stunts": "Off",
+          "LB Shift": "Pinch",
+          "LB Assignments": "Default — do not Blitz All"
+        },
+        "secondary": {
+          "Alignment": "Give Cushion",
+          "Coverage Shell": "Cover 0",
+          "Matchup": "By Speed",
+          "CB Depth": "5",
+          "CB Width": "Tight",
+          "Safety Depth": "9",
+          "Safety Width": "Pinch",
+          "Safety Midpoint": "Default",
+          "Ballhawk": "Aggressive"
+        },
+        "zone_drops": {
+          "Flats": "5",
+          "Curls": "10",
+          "Hooks": "10"
+        },
+        "strategy": {
+          "Zone Strategy": "Aggressive",
+          "Plaster": "Aggressive",
+          "Plaster Trigger": "O.O.P & Time",
+          "Plaster Time": "Aggressive",
+          "Roll Coverage": "Off"
+        },
+        "coverage_checks": "Default",
+        "individuals": "Default"
+      }
     },
     "FLOOD": {
       "name": "FLOOD",
       "side": "defense",
-      "purpose": "Flood/levels specialty (BENCHED until stable)",
+      "purpose": "Flood / Sail / corner-flat / high-low sideline (SAVED/BENCHED)",
       "when_to_arm": "Reactivate only if opponent makes flood primary AND online stability re-tested",
-      "validated_status": "unvalidated",
+      "validated_status": "proven",
       "inventory": "benched",
-      "source": "Temple bench",
+      "source": "Aidan exact sheets 2026-09-22",
+      "exact": true,
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create & Share → Custom Adjustments → Defense",
         "Keep saved but NOT Active until re-test",
-        "If reactivating: swap out one Active (stay \u22648) then LB in-game"
+        "If reactivating: swap out one Active (stay ≤8) then LB in-game"
       ],
       "full_settings": {
-        "base_shell": {
-          "value": "Cover 3 match variants",
-          "status": "approx"
+        "General / Coverage Shading": {
+          "value": "Outside",
+          "status": "confirmed",
+          "section": "General"
         },
-        "formation_hint": {
-          "value": "Nickel Over",
-          "status": "approx"
+        "General / Route Commit": {
+          "value": "Outside",
+          "status": "confirmed",
+          "section": "General"
         },
-        "coverage": {
-          "value": "C3 match vs flood/levels",
-          "status": "approx"
+        "General / Defender Aggression": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "shades_leverage": {
-          "value": "Outside shade flat/corner [approx]",
-          "status": "approx"
+        "General / Gap Integrity": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "flats_hooks_curls": {
-          "value": "Flats ~5; Curls sit under flood intermediate",
-          "status": "approx"
+        "General / Strip Ball": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "cb_depth": {
-          "value": "Normal",
-          "status": "approx"
+        "General / Tackling": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "safety_alignment": {
-          "value": "C3 landmarks",
-          "status": "approx"
+        "DL/LB": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "contain_qb": {
-          "value": "OFF",
-          "status": "approx"
+        "Secondary / Alignment": {
+          "value": "Give Cushion",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "front_pressure": {
-          "value": "Base",
-          "status": "approx"
+        "Secondary / Matchup": {
+          "value": "By Speed",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "smart_zone_match": {
-          "value": "Match ON",
-          "status": "approx"
+        "Secondary / CB Depth": {
+          "value": "7",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "plaster": {
-          "value": "OFF",
-          "status": "approx"
+        "Secondary / CB Width": {
+          "value": "Wide",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "individual_assignments": {
-          "value": "User flat/corner",
-          "status": "approx"
+        "Secondary / Safety Depth": {
+          "value": "12",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "user_job": {
-          "value": "User flat/corner",
-          "status": "approx"
+        "Secondary / Safety Width": {
+          "value": "Spread",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "do_not": {
-          "value": "Do not Active until online-stable re-test",
-          "status": "confirmed"
+        "Secondary / Safety Midpoint": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "notes": {
-          "value": "BENCHED \u2014 Temple playtest",
-          "status": "confirmed"
+        "Secondary / Ballhawk": {
+          "value": "Conservative",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Zone Drops / Flats": {
+          "value": "25",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Curls": {
+          "value": "10",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Hooks": {
+          "value": "10",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Strategy / Zone Strategy": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Trigger": {
+          "value": "O.O.P & Time",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Time": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Roll Coverage": {
+          "value": "Pass Strength",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Coverage Checks": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Individuals": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "UI note": {
+          "value": "UI label Strong = toward pass strength",
+          "status": "confirmed",
+          "section": "Notes"
+        },
+        "Doctrine": {
+          "value": "DO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro",
+          "status": "confirmed",
+          "section": "Notes"
         }
       },
-      "copy_block": "MACRO: FLOOD (D) \u2014 UNVALIDATED / BENCHED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\nKeep saved, NOT Active until lab re-test.\nIf activate: swap one Active first (\u22648 O+D).\nShell lean: C3 match vs flood | User flat/corner [approx]"
+      "copy_block": "MACRO: FLOOD (D) — PROVEN · BENCHED\nPath: Create & Share → Custom Adjustments → Defense\nPurpose: Flood / Sail / corner-flat / high-low sideline (SAVED/BENCHED)\nSource: Aidan exact sheets (tick through Xbox Custom Adjustments)\n\n## General\n[ ] Coverage Shading: Outside\n[ ] Route Commit: Outside\n[ ] Defender Aggression: Balanced\n[ ] Gap Integrity: Balanced\n[ ] Strip Ball: Balanced\n[ ] Tackling: Balanced\n\n## DL/LB\n[ ] Default\n\n## Secondary\n[ ] Alignment: Give Cushion\n[ ] Matchup: By Speed\n[ ] CB Depth: 7\n[ ] CB Width: Wide\n[ ] Safety Depth: 12\n[ ] Safety Width: Spread\n[ ] Safety Midpoint: Default\n[ ] Ballhawk: Conservative\n\n## Zone Drops\n[ ] Flats: 25\n[ ] Curls: 10\n[ ] Hooks: 10\n\n## Strategy\n[ ] Zone Strategy: Aggressive\n[ ] Plaster: Aggressive\n[ ] Plaster Trigger: O.O.P & Time\n[ ] Plaster Time: Aggressive\n[ ] Roll Coverage: Pass Strength\n\n## Coverage Checks\n[ ] Default\n\n## Individuals\n[ ] Default\n\nNOTE: UI label Strong = toward pass strength\nDO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro\nWHEN: Reactivate only if opponent makes flood primary AND online stability re-tested\nSave → set ACTIVE only if in Active-8 (counts toward 8 O+D)\nIn-game: LB → FLOOD",
+      "exact_sections": {
+        "general": {
+          "Coverage Shading": "Outside",
+          "Route Commit": "Outside",
+          "Defender Aggression": "Balanced",
+          "Gap Integrity": "Balanced",
+          "Strip Ball": "Balanced",
+          "Tackling": "Balanced"
+        },
+        "dl_lb": "Default",
+        "secondary": {
+          "Alignment": "Give Cushion",
+          "Matchup": "By Speed",
+          "CB Depth": "7",
+          "CB Width": "Wide",
+          "Safety Depth": "12",
+          "Safety Width": "Spread",
+          "Safety Midpoint": "Default",
+          "Ballhawk": "Conservative"
+        },
+        "zone_drops": {
+          "Flats": "25",
+          "Curls": "10",
+          "Hooks": "10"
+        },
+        "strategy": {
+          "Zone Strategy": "Aggressive",
+          "Plaster": "Aggressive",
+          "Plaster Trigger": "O.O.P & Time",
+          "Plaster Time": "Aggressive",
+          "Roll Coverage": "Pass Strength"
+        },
+        "coverage_checks": "Default",
+        "individuals": "Default"
+      }
     },
     "SCREEN": {
       "name": "SCREEN",
       "side": "defense",
-      "purpose": "Screen/bubble specialty (BENCHED)",
+      "purpose": "WR/Bubble/HB Slip/Tunnel screens (SAVED/BENCHED)",
       "when_to_arm": "Reactivate only if bubbles dominate after re-test",
-      "validated_status": "unvalidated",
+      "validated_status": "proven",
       "inventory": "benched",
-      "source": "Temple bench",
+      "source": "Aidan exact sheets 2026-09-22",
+      "exact": true,
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create & Share → Custom Adjustments → Defense",
         "Keep NOT Active until re-test"
       ],
       "full_settings": {
-        "base_shell": {
-          "value": "Cover 3 Sky",
-          "status": "approx"
+        "General / Coverage Shading": {
+          "value": "Outside",
+          "status": "confirmed",
+          "section": "General"
         },
-        "formation_hint": {
-          "value": "Nickel Over",
-          "status": "approx"
+        "General / Route Commit": {
+          "value": "Outside",
+          "status": "confirmed",
+          "section": "General"
         },
-        "coverage": {
-          "value": "C3 hard flat to screen side",
-          "status": "approx"
+        "General / Defender Aggression": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "General"
         },
-        "shades_leverage": {
-          "value": "Outside / flat",
-          "status": "approx"
+        "General / Gap Integrity": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "flats_hooks_curls": {
-          "value": "HARD flats 0\u20135",
-          "status": "approx"
+        "General / Strip Ball": {
+          "value": "Balanced",
+          "status": "confirmed",
+          "section": "General"
         },
-        "cb_depth": {
-          "value": "Close",
-          "status": "approx"
+        "General / Tackling": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "General"
         },
-        "safety_alignment": {
-          "value": "C3",
-          "status": "approx"
+        "General / QB Contain": {
+          "value": "Off",
+          "status": "confirmed",
+          "section": "General"
         },
-        "contain_qb": {
-          "value": "OFF",
-          "status": "approx"
+        "DL/LB / DL Technique": {
+          "value": "Spread",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "front_pressure": {
-          "value": "Spy screen / peel rules if UI",
-          "status": "approx"
+        "DL/LB / DL Point of Attack": {
+          "value": "Outside",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "smart_zone_match": {
-          "value": "ON",
-          "status": "approx"
+        "DL/LB / LB Shift": {
+          "value": "Spread",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "plaster": {
-          "value": "OFF",
-          "status": "approx"
+        "DL/LB / LB Assignments": {
+          "value": "Zone All",
+          "status": "confirmed",
+          "section": "DL/LB"
         },
-        "individual_assignments": {
-          "value": "User flat",
-          "status": "approx"
+        "Secondary / Alignment": {
+          "value": "Give Cushion",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "user_job": {
-          "value": "User flat",
-          "status": "approx"
+        "Secondary / Matchup": {
+          "value": "By Speed",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "do_not": {
-          "value": "Not Active until re-test (Temple: SCREEN off)",
-          "status": "confirmed"
+        "Secondary / CB Depth": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Secondary"
         },
-        "notes": {
-          "value": "BENCHED",
-          "status": "confirmed"
+        "Secondary / CB Width": {
+          "value": "Wide",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Depth": {
+          "value": "9",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Width": {
+          "value": "Spread",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Secondary / Safety Midpoint": {
+          "value": "Strong",
+          "status": "confirmed",
+          "section": "Secondary",
+          "note": "UI label Strong = toward pass strength"
+        },
+        "Secondary / Ballhawk": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Secondary"
+        },
+        "Zone Drops / Flats": {
+          "value": "0",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Curls": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Zone Drops / Hooks": {
+          "value": "5",
+          "status": "confirmed",
+          "section": "Zone Drops"
+        },
+        "Strategy / Zone Strategy": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Trigger": {
+          "value": "O.O.P & Time",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Plaster Time": {
+          "value": "Aggressive",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Strategy / Roll Coverage": {
+          "value": "Pass Strength",
+          "status": "confirmed",
+          "section": "Strategy"
+        },
+        "Coverage Checks": {
+          "value": "Default",
+          "status": "confirmed",
+          "section": "Coverage Checks"
+        },
+        "Individuals / SLCB1": {
+          "value": "Hard Flat",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "Individuals / SLCB2": {
+          "value": "Hard Flat",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "Individuals / DT1": {
+          "value": "3 Rec Hook",
+          "status": "confirmed",
+          "section": "Individuals"
+        },
+        "UI note": {
+          "value": "UI label Strong = toward pass strength",
+          "status": "confirmed",
+          "section": "Notes"
+        },
+        "Doctrine": {
+          "value": "DO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro",
+          "status": "confirmed",
+          "section": "Notes"
         }
       },
-      "copy_block": "MACRO: SCREEN (D) \u2014 UNVALIDATED / BENCHED\nKeep NOT Active. Prefer RPO macro for bubble until lab re-test.\nIf activate: swap one Active (\u22648)."
+      "copy_block": "MACRO: SCREEN (D) — PROVEN · BENCHED\nPath: Create & Share → Custom Adjustments → Defense\nPurpose: WR/Bubble/HB Slip/Tunnel screens (SAVED/BENCHED)\nSource: Aidan exact sheets (tick through Xbox Custom Adjustments)\n\n## General\n[ ] Coverage Shading: Outside\n[ ] Route Commit: Outside\n[ ] Defender Aggression: Aggressive\n[ ] Gap Integrity: Balanced\n[ ] Strip Ball: Balanced\n[ ] Tackling: Aggressive\n[ ] QB Contain: Off\n\n## DL/LB\n[ ] DL Technique: Spread\n[ ] DL Point of Attack: Outside\n[ ] LB Shift: Spread\n[ ] LB Assignments: Zone All\n\n## Secondary\n[ ] Alignment: Give Cushion\n[ ] Matchup: By Speed\n[ ] CB Depth: 5\n[ ] CB Width: Wide\n[ ] Safety Depth: 9\n[ ] Safety Width: Spread\n[ ] Safety Midpoint: Strong\n    NOTE: UI label Strong = toward pass strength\n[ ] Ballhawk: Aggressive\n\n## Zone Drops\n[ ] Flats: 0\n[ ] Curls: 5\n[ ] Hooks: 5\n\n## Strategy\n[ ] Zone Strategy: Aggressive\n[ ] Plaster: Aggressive\n[ ] Plaster Trigger: O.O.P & Time\n[ ] Plaster Time: Aggressive\n[ ] Roll Coverage: Pass Strength\n\n## Coverage Checks\n[ ] Default\n\n## Individuals\n[ ] SLCB1: Hard Flat\n[ ] SLCB2: Hard Flat\n[ ] DT1: 3 Rec Hook\n\nNOTE: UI label Strong = toward pass strength\nDO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro\nWHEN: Reactivate only if bubbles dominate after re-test\nSave → set ACTIVE only if in Active-8 (counts toward 8 O+D)\nIn-game: LB → SCREEN",
+      "exact_sections": {
+        "general": {
+          "Coverage Shading": "Outside",
+          "Route Commit": "Outside",
+          "Defender Aggression": "Aggressive",
+          "Gap Integrity": "Balanced",
+          "Strip Ball": "Balanced",
+          "Tackling": "Aggressive",
+          "QB Contain": "Off"
+        },
+        "dl_lb": {
+          "DL Technique": "Spread",
+          "DL Point of Attack": "Outside",
+          "LB Shift": "Spread",
+          "LB Assignments": "Zone All"
+        },
+        "secondary": {
+          "Alignment": "Give Cushion",
+          "Matchup": "By Speed",
+          "CB Depth": "5",
+          "CB Width": "Wide",
+          "Safety Depth": "9",
+          "Safety Width": "Spread",
+          "Safety Midpoint": "Strong (UI; toward Pass Strength)",
+          "Ballhawk": "Aggressive"
+        },
+        "zone_drops": {
+          "Flats": "0",
+          "Curls": "5",
+          "Hooks": "5"
+        },
+        "strategy": {
+          "Zone Strategy": "Aggressive",
+          "Plaster": "Aggressive",
+          "Plaster Trigger": "O.O.P & Time",
+          "Plaster Time": "Aggressive",
+          "Roll Coverage": "Pass Strength"
+        },
+        "coverage_checks": "Default",
+        "individuals": {
+          "SLCB1": "Hard Flat",
+          "SLCB2": "Hard Flat",
+          "DT1": "3 Rec Hook"
+        }
+      }
     },
     "GLASS": {
       "name": "GLASS",
@@ -804,11 +2214,11 @@
       "inventory": "create_candidate",
       "source": "CREATE candidate",
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
+        "Create & Share → Custom Adjustments → Defense",
         "Create GLASS (new)",
-        "Apply copy_block \u2192 Save",
-        "To Active: must SWAP (bench one of 8) \u2014 see prep swap plan",
-        "In-game LB \u2192 GLASS"
+        "Apply copy_block → Save",
+        "To Active: must SWAP (bench one of 8) — see prep swap plan",
+        "In-game LB → GLASS"
       ],
       "full_settings": {
         "base_shell": {
@@ -820,7 +2230,7 @@
           "status": "approx"
         },
         "coverage": {
-          "value": "Tampa glass \u2014 soft under + hard flats",
+          "value": "Tampa glass — soft under + hard flats",
           "status": "approx"
         },
         "shades_leverage": {
@@ -828,7 +2238,7 @@
           "status": "approx"
         },
         "flats_hooks_curls": {
-          "value": "HARD flats 0\u20135; Curls glass ~10\u201312",
+          "value": "HARD flats 0–5; Curls glass ~10–12",
           "status": "approx"
         },
         "cb_depth": {
@@ -868,11 +2278,11 @@
           "status": "confirmed"
         },
         "notes": {
-          "value": "CREATE \u2014 meta_grounded \u2014 OK to bring into game live",
+          "value": "CREATE — meta_grounded — OK to bring into game live",
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: GLASS (D) \u2014 META_GROUNDED (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: GLASS\n[ ] Base: Tampa 2 \u2014 Nickel Over\n[ ] Flats: 0\u20135 HARD | Curls glass ~10\u201312 [approx]\n[ ] Shade: UNDERNEATH [approx]\n[ ] Smart Zone + mesh checks [approx]\n[ ] QB Contain OFF | Show Pressure OFF | Plaster OFF\n[ ] Save \u2014 Active ONLY via swap (\u22648 O+D)\n[ ] User JOB = middle glass\n\nTAG live calls [meta_grounded] until proven"
+      "copy_block": "MACRO: GLASS (D) — META_GROUNDED (CREATE)\nPath: Create & Share → Custom Adjustments → Defense\n\n[ ] Name: GLASS\n[ ] Base: Tampa 2 — Nickel Over\n[ ] Flats: 0–5 HARD | Curls glass ~10–12 [approx]\n[ ] Shade: UNDERNEATH [approx]\n[ ] Smart Zone + mesh checks [approx]\n[ ] QB Contain OFF | Show Pressure OFF | Plaster OFF\n[ ] Save — Active ONLY via swap (≤8 O+D)\n[ ] User JOB = middle glass\n\nTAG live calls [meta_grounded] until proven"
     },
     "CONTAIN-SCRAM": {
       "name": "CONTAIN-SCRAM",
@@ -883,10 +2293,10 @@
       "inventory": "create_candidate",
       "source": "CREATE candidate",
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
-        "Create CONTAIN-SCRAM \u2192 copy_block \u2192 Save",
+        "Create & Share → Custom Adjustments → Defense",
+        "Create CONTAIN-SCRAM → copy_block → Save",
         "Active requires SWAP at 8",
-        "In-game LB \u2192 CONTAIN-SCRAM"
+        "In-game LB → CONTAIN-SCRAM"
       ],
       "full_settings": {
         "base_shell": {
@@ -946,11 +2356,11 @@
           "status": "confirmed"
         },
         "notes": {
-          "value": "CREATE twin of SCRAM \u2014 meta_grounded",
+          "value": "CREATE twin of SCRAM — meta_grounded",
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: CONTAIN-SCRAM (D) \u2014 META_GROUNDED (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Defense\n\n[ ] Name: CONTAIN-SCRAM\n[ ] Base: Nickel Over C3 or C4\n[ ] QB Contain: ON [confirmed 1.012]\n[ ] Plaster: ON [approx]\n[ ] Both edges CONTAIN + spy lean [approx]\n[ ] Show Pressure: OFF\n[ ] Save \u2014 Active via SWAP only if at 8\n[ ] User JOB = contain\n\nPrefer proven SCRAM live until proven in-game"
+      "copy_block": "MACRO: CONTAIN-SCRAM (D) — META_GROUNDED (CREATE)\nPath: Create & Share → Custom Adjustments → Defense\n\n[ ] Name: CONTAIN-SCRAM\n[ ] Base: Nickel Over C3 or C4\n[ ] QB Contain: ON [confirmed 1.012]\n[ ] Plaster: ON [approx]\n[ ] Both edges CONTAIN + spy lean [approx]\n[ ] Show Pressure: OFF\n[ ] Save — Active via SWAP only if at 8\n[ ] User JOB = contain\n\nPrefer proven SCRAM live until proven in-game"
     },
     "SPOT-LOCK": {
       "name": "SPOT-LOCK",
@@ -961,8 +2371,8 @@
       "inventory": "create_candidate",
       "source": "CREATE candidate",
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Defense",
-        "Create SPOT-LOCK \u2192 Save \u2014 swap to Active"
+        "Create & Share → Custom Adjustments → Defense",
+        "Create SPOT-LOCK → Save — swap to Active"
       ],
       "full_settings": {
         "base_shell": {
@@ -982,7 +2392,7 @@
           "status": "approx"
         },
         "flats_hooks_curls": {
-          "value": "HARD flats; Curls sit on spot ~8\u201310",
+          "value": "HARD flats; Curls sit on spot ~8–10",
           "status": "approx"
         },
         "cb_depth": {
@@ -1022,29 +2432,29 @@
           "status": "confirmed"
         },
         "notes": {
-          "value": "CREATE \u2014 meta_grounded",
+          "value": "CREATE — meta_grounded",
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: SPOT-LOCK (D) \u2014 META_GROUNDED (CREATE)\nTampa/hard flats | Curls on spot landmark ~8\u201310 [approx]\nUser JOB = spot | Active only via swap at 8"
+      "copy_block": "MACRO: SPOT-LOCK (D) — META_GROUNDED (CREATE)\nTampa/hard flats | Curls on spot landmark ~8–10 [approx]\nUser JOB = spot | Active only via swap at 8"
     },
     "PROT": {
       "name": "PROT",
       "side": "offense",
       "purpose": "Protection / hot reminder tag vs pressure",
-      "when_to_arm": "vs pressure-heavy archetypes (Quen) \u2014 cue Mesh Spot/Whip/HB Base",
+      "when_to_arm": "vs pressure-heavy archetypes (Quen) — cue Mesh Spot/Whip/HB Base",
       "validated_status": "meta_grounded",
       "inventory": "create_candidate",
       "source": "CREATE candidate (O)",
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Offense",
-        "Create PROT \u2192 copy_block \u2192 Save",
-        "Active counts in 8 O+D \u2014 swap a D macro if already at 8",
-        "In-game LB \u2192 PROT as reminder before snap"
+        "Create & Share → Custom Adjustments → Offense",
+        "Create PROT → copy_block → Save",
+        "Active counts in 8 O+D — swap a D macro if already at 8",
+        "In-game LB → PROT as reminder before snap"
       ],
       "full_settings": {
         "base_shell": {
-          "value": "n/a \u2014 O protection/hot cue",
+          "value": "n/a — O protection/hot cue",
           "status": "confirmed"
         },
         "formation_hint": {
@@ -1084,7 +2494,7 @@
           "status": "confirmed"
         },
         "notes": {
-          "value": "O-side CREATE \u2014 counts toward 8 with D macros",
+          "value": "O-side CREATE — counts toward 8 with D macros",
           "status": "confirmed"
         },
         "protection": {
@@ -1096,7 +2506,7 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: PROT (O) \u2014 META_GROUNDED (CREATE)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: PROT\n[ ] Intent: protection / hot cue (not a coverage)\n[ ] Protection: Max protect / slide to heat [approx UI]\n[ ] Hot answers reminder:\n    - Mesh Spot (primary)\n    - Return Whip Trail (secondary)\n    - HB Base (if pressure sellout)\n[ ] Save \u2014 Active counts in 8 O+D (swap a D if at 8)\n[ ] In-game: LB \u2192 PROT before snap | Hot ready\n\nTAG [meta_grounded] until proven in-game"
+      "copy_block": "MACRO: PROT (O) — META_GROUNDED (CREATE)\nPath: Create & Share → Custom Adjustments → Offense\n\n[ ] Name: PROT\n[ ] Intent: protection / hot cue (not a coverage)\n[ ] Protection: Max protect / slide to heat [approx UI]\n[ ] Hot answers reminder:\n    - Mesh Spot (primary)\n    - Return Whip Trail (secondary)\n    - HB Base (if pressure sellout)\n[ ] Save — Active counts in 8 O+D (swap a D if at 8)\n[ ] In-game: LB → PROT before snap | Hot ready\n\nTAG [meta_grounded] until proven in-game"
     },
     "O-HEAT": {
       "name": "HEAT",
@@ -1107,8 +2517,8 @@
       "inventory": "reference",
       "source": "Dynasty O macro notes (not Temple-active; Temple = 0 O)",
       "xbox_steps": [
-        "Create & Share \u2192 Custom Adjustments \u2192 Offense",
-        "Name on Xbox as HEAT (O book) \u2014 catalog id O-HEAT",
+        "Create & Share → Custom Adjustments → Offense",
+        "Name on Xbox as HEAT (O book) — catalog id O-HEAT",
         "Counts toward 8 if Active"
       ],
       "full_settings": {
@@ -1129,11 +2539,11 @@
           "status": "approx"
         },
         "do_not": {
-          "value": "Temple ran 0 O macros \u2014 lab before Active",
+          "value": "Temple ran 0 O macros — lab before Active",
           "status": "confirmed"
         },
         "notes": {
-          "value": "Notes list HEAT among O macros \u2014 meta_grounded",
+          "value": "Notes list HEAT among O macros — meta_grounded",
           "status": "confirmed"
         },
         "protection": {
@@ -1145,19 +2555,19 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: HEAT (O) \u2014 META_GROUNDED (designed; Temple kept 0 O Active)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: HEAT\n[ ] Protection: Base protection [confirmed notes]\n[ ] WR1: streak\n[ ] WR2: zig\n[ ] WR3: drag\n[ ] TE: chip-and-release\n[ ] HB: block-and-release\n[ ] Save \u2014 Active counts in 8 O+D (swap a D if already 8/8)\n[ ] In-game: LB \u2192 HEAT\nTAG [meta_grounded] until proven in-game",
+      "copy_block": "MACRO: HEAT (O) — META_GROUNDED (designed; Temple kept 0 O Active)\nPath: Create & Share → Custom Adjustments → Offense\n\n[ ] Name on Xbox: HEAT\n[ ] Protection: Base protection [confirmed notes]\n[ ] WR1: streak\n[ ] WR2: zig\n[ ] WR3: drag\n[ ] TE: chip-and-release\n[ ] HB: block-and-release\n[ ] Save — Active counts in 8 O+D (swap a D if already 8/8)\n[ ] In-game: LB → HEAT\nTAG [meta_grounded] until proven in-game",
       "xbox_name": "HEAT"
     },
     "ZERO": {
       "name": "ZERO",
       "side": "offense",
-      "purpose": "vs Cover 0 / all-out \u2014 immediate hot + max protect",
+      "purpose": "vs Cover 0 / all-out — immediate hot + max protect",
       "when_to_arm": "Confirmed Cover 0 / empty blitz",
       "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
-        "Custom Adjustments \u2192 Offense \u2192 Create ZERO"
+        "Custom Adjustments → Offense → Create ZERO"
       ],
       "full_settings": {
         "formation_hint": {
@@ -1189,18 +2599,18 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: ZERO (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: ZERO\n[ ] Protection: Max protect [confirmed]\n[ ] WR1 streak | WR2 zig | WR3 slant [confirmed]\n[ ] Save \u2014 Active \u22648 O+D | In-game LB \u2192 ZERO"
+      "copy_block": "MACRO: ZERO (O) — META_GROUNDED\nPath: Create & Share → Custom Adjustments → Offense\n\n[ ] Name: ZERO\n[ ] Protection: Max protect [confirmed]\n[ ] WR1 streak | WR2 zig | WR3 slant [confirmed]\n[ ] Save — Active ≤8 O+D | In-game LB → ZERO"
     },
     "MAN": {
       "name": "MAN",
       "side": "offense",
-      "purpose": "vs man coverage \u2014 rubs / mesh / stacks",
+      "purpose": "vs man coverage — rubs / mesh / stacks",
       "when_to_arm": "Confirmed man / Cover 1",
       "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
-        "Custom Adjustments \u2192 Offense \u2192 Create MAN"
+        "Custom Adjustments → Offense → Create MAN"
       ],
       "full_settings": {
         "formation_hint": {
@@ -1208,11 +2618,11 @@
           "status": "approx"
         },
         "individual_assignments": {
-          "value": "Mesh Spot, Mesh Traffic, Return Whip Trail \u2014 rub releases",
+          "value": "Mesh Spot, Mesh Traffic, Return Whip Trail — rub releases",
           "status": "approx"
         },
         "user_job": {
-          "value": "Pick rub \u2192 late dig",
+          "value": "Pick rub → late dig",
           "status": "approx"
         },
         "notes": {
@@ -1224,18 +2634,18 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: MAN (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: MAN\n[ ] WR1 deep cross | WR2 zig | WR3 short cross | TE wheel | HB Texas [confirmed]\n[ ] Save \u2014 Active \u22648 O+D | LB \u2192 MAN"
+      "copy_block": "MACRO: MAN (O) — META_GROUNDED\nPath: Create & Share → Custom Adjustments → Offense\n\n[ ] Name: MAN\n[ ] WR1 deep cross | WR2 zig | WR3 short cross | TE wheel | HB Texas [confirmed]\n[ ] Save — Active ≤8 O+D | LB → MAN"
     },
     "C3": {
       "name": "C3",
       "side": "offense",
-      "purpose": "vs Cover 3 \u2014 flood / high-low",
+      "purpose": "vs Cover 3 — flood / high-low",
       "when_to_arm": "Confirmed Cover 3 Sky",
       "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
-        "Custom Adjustments \u2192 Offense \u2192 Create C3"
+        "Custom Adjustments → Offense → Create C3"
       ],
       "full_settings": {
         "formation_hint": {
@@ -1243,15 +2653,15 @@
           "status": "approx"
         },
         "individual_assignments": {
-          "value": "Deep Flood, Mtn Cross Post, Drive HB Under \u2014 high-low",
+          "value": "Deep Flood, Mtn Cross Post, Drive HB Under — high-low",
           "status": "approx"
         },
         "user_job": {
-          "value": "Flat \u2192 intermediate \u2192 corner",
+          "value": "Flat → intermediate → corner",
           "status": "approx"
         },
         "notes": {
-          "value": "meta_grounded \u2014 not vs C6/C9",
+          "value": "meta_grounded — not vs C6/C9",
           "status": "confirmed"
         },
         "route_assignments": {
@@ -1259,18 +2669,18 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: C3 (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: C3\n[ ] WR1 streak | WR2 corner | WR3 flat | TE drag [confirmed]\n[ ] vs spot-drop Cover 3 \u2014 NOT vs C6/C9/Quarters\n[ ] Save \u2014 Active \u22648 | LB \u2192 C3"
+      "copy_block": "MACRO: C3 (O) — META_GROUNDED\nPath: Create & Share → Custom Adjustments → Offense\n\n[ ] Name: C3\n[ ] WR1 streak | WR2 corner | WR3 flat | TE drag [confirmed]\n[ ] vs spot-drop Cover 3 — NOT vs C6/C9/Quarters\n[ ] Save — Active ≤8 | LB → C3"
     },
     "C2": {
       "name": "C2",
       "side": "offense",
-      "purpose": "vs Cover 2 / Invert Hard Flat \u2014 soft underneath",
+      "purpose": "vs Cover 2 / Invert Hard Flat — soft underneath",
       "when_to_arm": "Confirmed C2 / Invert HF",
       "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
-        "Custom Adjustments \u2192 Offense \u2192 Create C2"
+        "Custom Adjustments → Offense → Create C2"
       ],
       "full_settings": {
         "formation_hint": {
@@ -1278,11 +2688,11 @@
           "status": "approx"
         },
         "individual_assignments": {
-          "value": "Mesh Spot, Inside Zone, Z Spot Shake \u2014 avoid blind Whip/Flood",
+          "value": "Mesh Spot, Inside Zone, Z Spot Shake — avoid blind Whip/Flood",
           "status": "confirmed"
         },
         "user_job": {
-          "value": "Spot \u2192 drag",
+          "value": "Spot → drag",
           "status": "approx"
         },
         "do_not": {
@@ -1298,18 +2708,18 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: C2 (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: C2\n[ ] WR1 streak | WR2 corner | WR3 post | TE slot fade | HB flat [confirmed]\n[ ] Soft lean Mesh Spot/IZ live if Invert Hard Flat film \u2014 avoid blind Whip\n[ ] Save \u2014 Active \u22648 | LB \u2192 C2"
+      "copy_block": "MACRO: C2 (O) — META_GROUNDED\nPath: Create & Share → Custom Adjustments → Offense\n\n[ ] Name: C2\n[ ] WR1 streak | WR2 corner | WR3 post | TE slot fade | HB flat [confirmed]\n[ ] Soft lean Mesh Spot/IZ live if Invert Hard Flat film — avoid blind Whip\n[ ] Save — Active ≤8 | LB → C2"
     },
     "MATCH": {
       "name": "MATCH",
       "side": "offense",
-      "purpose": "vs match/Quarters \u2014 run first + easy sit",
+      "purpose": "vs match/Quarters — run first + easy sit",
       "when_to_arm": "Cover 4 / Palms / match looks",
       "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
-        "Custom Adjustments \u2192 Offense \u2192 Create MATCH"
+        "Custom Adjustments → Offense → Create MATCH"
       ],
       "full_settings": {
         "formation_hint": {
@@ -1317,11 +2727,11 @@
           "status": "approx"
         },
         "individual_assignments": {
-          "value": "Inside Zone, HB Base, Mesh Spot \u2014 no seam spam early",
+          "value": "Inside Zone, HB Base, Mesh Spot — no seam spam early",
           "status": "confirmed"
         },
         "user_job": {
-          "value": "Front \u2192 easy",
+          "value": "Front → easy",
           "status": "approx"
         },
         "notes": {
@@ -1333,18 +2743,18 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: MATCH (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: MATCH\n[ ] WR1 post | WR2 deep cross | WR3 drag | TE streak | HB Texas [confirmed]\n[ ] vs Match/Quarters/Palms \u2014 still RUN FIRST early\n[ ] Save \u2014 Active \u22648 | LB \u2192 MATCH"
+      "copy_block": "MACRO: MATCH (O) — META_GROUNDED\nPath: Create & Share → Custom Adjustments → Offense\n\n[ ] Name: MATCH\n[ ] WR1 post | WR2 deep cross | WR3 drag | TE streak | HB Texas [confirmed]\n[ ] vs Match/Quarters/Palms — still RUN FIRST early\n[ ] Save — Active ≤8 | LB → MATCH"
     },
     "SHOT": {
       "name": "SHOT",
       "side": "offense",
-      "purpose": "Scheduled shot / PA \u2014 not every drive",
+      "purpose": "Scheduled shot / PA — not every drive",
       "when_to_arm": "After establishing run + soft coverage tell",
       "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
-        "Custom Adjustments \u2192 Offense \u2192 Create SHOT"
+        "Custom Adjustments → Offense → Create SHOT"
       ],
       "full_settings": {
         "formation_hint": {
@@ -1352,11 +2762,11 @@
           "status": "approx"
         },
         "individual_assignments": {
-          "value": "PA shot / Cross Post \u2014 one scheduled look",
+          "value": "PA shot / Cross Post — one scheduled look",
           "status": "approx"
         },
         "user_job": {
-          "value": "Clear \u2192 shot",
+          "value": "Clear → shot",
           "status": "approx"
         },
         "do_not": {
@@ -1376,7 +2786,7 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: SHOT (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: SHOT\n[ ] WR1 sluggo | WR2 deep cross | WR3 streak [confirmed]\n[ ] TE pass block | HB chip-and-release [confirmed]\n[ ] One scheduled shot after run established \u2014 not every drive\n[ ] Save \u2014 Active \u22648 | LB \u2192 SHOT"
+      "copy_block": "MACRO: SHOT (O) — META_GROUNDED\nPath: Create & Share → Custom Adjustments → Offense\n\n[ ] Name: SHOT\n[ ] WR1 sluggo | WR2 deep cross | WR3 streak [confirmed]\n[ ] TE pass block | HB chip-and-release [confirmed]\n[ ] One scheduled shot after run established — not every drive\n[ ] Save — Active ≤8 | LB → SHOT"
     },
     "O-RUN": {
       "name": "RUN",
@@ -1387,7 +2797,7 @@
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
-        "Custom Adjustments \u2192 Offense \u2192 Create RUN"
+        "Custom Adjustments → Offense → Create RUN"
       ],
       "full_settings": {
         "formation_hint": {
@@ -1399,11 +2809,11 @@
           "status": "confirmed"
         },
         "user_job": {
-          "value": "Front \u2192 cutback",
+          "value": "Front → cutback",
           "status": "approx"
         },
         "notes": {
-          "value": "Catalog id O-RUN; Xbox label RUN \u2014 meta_grounded as Active",
+          "value": "Catalog id O-RUN; Xbox label RUN — meta_grounded as Active",
           "status": "confirmed"
         },
         "blocking": {
@@ -1411,7 +2821,7 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: RUN (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: RUN\n[ ] Base OL technique [confirmed]\n[ ] Highest-OVR double team | Mike ID [confirmed]\n[ ] Aggressive blocking | Conservative ball carrier [confirmed]\n[ ] Purpose: light box / pass-heavy personnel answer\n[ ] Save \u2014 Active \u22648 | LB \u2192 RUN",
+      "copy_block": "MACRO: RUN (O) — META_GROUNDED\nPath: Create & Share → Custom Adjustments → Offense\n\n[ ] Name on Xbox: RUN\n[ ] Base OL technique [confirmed]\n[ ] Highest-OVR double team | Mike ID [confirmed]\n[ ] Aggressive blocking | Conservative ball carrier [confirmed]\n[ ] Purpose: light box / pass-heavy personnel answer\n[ ] Save — Active ≤8 | LB → RUN",
       "xbox_name": "RUN"
     },
     "O-RPO": {
@@ -1423,7 +2833,7 @@
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
-        "Custom Adjustments \u2192 Offense \u2192 Create RPO"
+        "Custom Adjustments → Offense → Create RPO"
       ],
       "full_settings": {
         "formation_hint": {
@@ -1435,11 +2845,11 @@
           "status": "confirmed"
         },
         "user_job": {
-          "value": "Read overhang \u2192 pull or give",
+          "value": "Read overhang → pull or give",
           "status": "approx"
         },
         "notes": {
-          "value": "Distinct from D macro RPO \u2014 meta_grounded",
+          "value": "Distinct from D macro RPO — meta_grounded",
           "status": "confirmed"
         },
         "blocking": {
@@ -1447,19 +2857,19 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: RPO (O) \u2014 META_GROUNDED (distinct from D macro RPO)\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name on Xbox: RPO\n[ ] Preserve stock RPO rules \u2014 do NOT overwrite stock routes [confirmed]\n[ ] Clean Mike ID | Balanced blocking [confirmed]\n[ ] Save \u2014 Active \u22648 | LB \u2192 RPO",
+      "copy_block": "MACRO: RPO (O) — META_GROUNDED (distinct from D macro RPO)\nPath: Create & Share → Custom Adjustments → Offense\n\n[ ] Name on Xbox: RPO\n[ ] Preserve stock RPO rules — do NOT overwrite stock routes [confirmed]\n[ ] Clean Mike ID | Balanced blocking [confirmed]\n[ ] Save — Active ≤8 | LB → RPO",
       "xbox_name": "RPO"
     },
     "RZ": {
       "name": "RZ",
       "side": "offense",
-      "purpose": "Red zone possession \u2014 compressed + run bully",
+      "purpose": "Red zone possession — compressed + run bully",
       "when_to_arm": "Inside 20",
       "validated_status": "meta_grounded",
       "inventory": "reference",
       "source": "Dynasty O macro notes",
       "xbox_steps": [
-        "Custom Adjustments \u2192 Offense \u2192 Create RZ"
+        "Custom Adjustments → Offense → Create RZ"
       ],
       "full_settings": {
         "formation_hint": {
@@ -1487,7 +2897,7 @@
           "status": "confirmed"
         }
       },
-      "copy_block": "MACRO: RZ (O) \u2014 META_GROUNDED\nPath: Create & Share \u2192 Custom Adjustments \u2192 Offense\n\n[ ] Name: RZ\n[ ] WR1 fade | WR2 zig | WR3 slant | TE stick nod | HB flat [confirmed]\n[ ] Red zone possession \u2014 tag live whip by leverage (not auto)\n[ ] Save \u2014 Active \u22648 | LB \u2192 RZ"
+      "copy_block": "MACRO: RZ (O) — META_GROUNDED\nPath: Create & Share → Custom Adjustments → Offense\n\n[ ] Name: RZ\n[ ] WR1 fade | WR2 zig | WR3 slant | TE stick nod | HB flat [confirmed]\n[ ] Red zone possession — tag live whip by leverage (not auto)\n[ ] Save — Active ≤8 | LB → RZ"
     }
   },
   "default_active_user": {
@@ -1502,7 +2912,11 @@
       "HEAT"
     ],
     "offense": [],
-    "note": "Temple 8D baseline \u2014 8 D + 0 O = 8/8 Active. All eight D macros validated."
+    "benched": [
+      "FLOOD",
+      "SCREEN"
+    ],
+    "note": "Aidan exact Active-8 D + 0 O = 8/8. FLOOD/SCREEN proven but benched."
   },
   "swap_priority_hints": {
     "vs_gavin": {
@@ -1510,7 +2924,7 @@
         "HEAT",
         "RUN-IN"
       ],
-      "why": "split-field patience \u2014 rare heat; RUN-IN only high conf"
+      "why": "split-field patience — rare heat; RUN-IN only high conf"
     },
     "vs_quen": {
       "prefer_bench": [
@@ -1524,7 +2938,7 @@
         "HEAT",
         "VERT"
       ],
-      "why": "GL/C2 game \u2014 keep BUNCH/CROSS/RUN-IN"
+      "why": "GL/C2 game — keep BUNCH/CROSS/RUN-IN"
     },
     "default": {
       "prefer_bench": [
@@ -1533,5 +2947,51 @@
       ],
       "why": "HEAT selective; RUN-OUT least universal"
     }
-  }
+  },
+  "exact_source": "Aidan exact sheets 2026-09-22",
+  "ui_note": "UI label Strong = toward pass strength",
+  "doctrine": "DO NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro",
+  "dynasties": {
+    "alabama": {
+      "label": "Alabama",
+      "mode": "serious",
+      "description": "Online Dynasty with users — conservative, proven macros, mix discipline, no experimental macros in active 8 unless postgame promotes them.",
+      "default_active": [
+        "CROSS",
+        "VERT",
+        "BUNCH",
+        "RPO",
+        "SCRAM",
+        "RUN-IN",
+        "RUN-OUT",
+        "HEAT"
+      ],
+      "default_benched": [
+        "FLOOD",
+        "SCREEN"
+      ],
+      "allow_experimental_active": false
+    },
+    "ohio_state": {
+      "label": "Ohio State",
+      "mode": "experimental",
+      "description": "Less serious dynasty — may activate experimental/meta-grounded macros, freer gameplan pivots, lab new settings.",
+      "default_active": [
+        "CROSS",
+        "VERT",
+        "BUNCH",
+        "RPO",
+        "SCRAM",
+        "RUN-IN",
+        "RUN-OUT",
+        "HEAT"
+      ],
+      "default_benched": [
+        "FLOOD",
+        "SCREEN"
+      ],
+      "allow_experimental_active": true
+    }
+  },
+  "changelog_1_5_0": "Replace approx D-macro checklists with Aidan EXACT section sheets; dynasty alabama|ohio_state; badges proven/meta_grounded/failed; doctrine: no auto-macro from one concept appearance."
 }

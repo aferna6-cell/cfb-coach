@@ -17,6 +17,7 @@ from cfb_coach.db import CoachDB
 from cfb_coach.gameplan import effective_gameplan, load_baseline
 from cfb_coach.seed import load_seed
 from cfb_coach.macros import (
+    PROVEN,
     META_GROUNDED,
     USER_ACTIVE_CAP,
     catalog_inventory_cards,
@@ -129,6 +130,7 @@ def propose_deltas(
     opp: dict[str, Any] | None = None,
     *,
     inventory: dict[str, Any] | None = None,
+    dynasty: str | None = None,
 ) -> list[dict[str, str]]:
     """Opponent-specific adjustments relative to fully-stocked inventory."""
     inv = inventory or build_inventory()
@@ -426,6 +428,28 @@ def propose_deltas(
         # Prep must ONLY suggest ≥ meta_grounded (no ungrounded invention)
         if is_prep_eligible(str(d.get("validated_status") or "")):
             enriched.append(d)
+
+    # Alabama (serious): drop ADD of non-proven / experimental macros unless already active.
+    # Ohio State (experimental): keep meta_grounded CREATE candidates in prep deltas.
+    try:
+        from cfb_coach.dynasty import allow_experimental, normalize_dynasty, DEFAULT_DYNASTY
+
+        mode = normalize_dynasty(dynasty or DEFAULT_DYNASTY)
+        if not allow_experimental(mode):
+            filtered: list[dict[str, Any]] = []
+            for d in enriched:
+                if (d.get("action") or "").upper() != "ADD":
+                    filtered.append(d)
+                    continue
+                st = normalize_status(str(d.get("validated_status") or ""))
+                if st == PROVEN:
+                    filtered.append(d)
+                else:
+                    # keep as tip-only? skip from actionable prep deltas
+                    continue
+            enriched = filtered
+    except Exception:
+        pass
     return enriched
 
 
@@ -563,13 +587,29 @@ def build_prep_plan(
     *,
     db: CoachDB | None = None,
     persist: bool = True,
+    dynasty: str | None = None,
 ) -> dict[str, Any]:
     """Build inventory + proposed deltas + tips; optionally persist."""
+    from cfb_coach.dynasty import (
+        DEFAULT_DYNASTY,
+        allow_experimental,
+        doctrine_line,
+        dynasty_config,
+        get_session_dynasty,
+        normalize_dynasty,
+    )
+
     seed = load_seed()
     bl = load_baseline()
     inv = build_inventory(seed, bl)
     opp = opp or {}
-    proposed = propose_deltas(opponent_id, opp, inventory=inv)
+    if dynasty is None and db is not None:
+        dynasty = get_session_dynasty(db)
+    dynasty = normalize_dynasty(dynasty or DEFAULT_DYNASTY)
+    dcfg = dynasty_config(dynasty)
+    proposed = propose_deltas(
+        opponent_id, opp, inventory=inv, dynasty=dynasty
+    )
     applied = get_applied_deltas(db, opponent_id)
     shown = filter_new_deltas(proposed, applied)
     tips = call_emphasis_tips(opponent_id, opp)
@@ -603,6 +643,9 @@ def build_prep_plan(
         "macro_cards": macro_cards,
         "swap_banners": swap_banners,
         "macro_catalog_version": (load_macro_catalog().get("version") or "?"),
+        "dynasty": dynasty,
+        "dynasty_config": dcfg,
+        "doctrine": doctrine_line(),
     }
     if db is not None and persist:
         save_prep_deltas(db, opponent_id, proposed, shown)
@@ -617,6 +660,14 @@ def format_delta_text(plan: dict[str, Any]) -> str:
     budget = plan.get("slot_budget") or count_active(plan.get("inventory") or {})
     lines = [
         f"# PREP — vs {plan['display_name']} ({plan['team']})  |  {plan['game']} / {plan['version']}",
+        f"Dynasty: {plan.get('dynasty', 'alabama')}"
+        + (
+            " [experimental]"
+            if (plan.get("dynasty_config") or {}).get("experimental_badge")
+            else ""
+        ),
+        plan.get("doctrine")
+        or "Doctrine: do NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro.",
         f"Books assumed stocked: {plan['inventory']['offense_book']} / {plan['inventory']['defense_book']}",
         f"Macros assumed: {', '.join(plan['inventory']['macros_active'])}  |  BENCH {', '.join(plan['inventory']['macros_benched'])}",
         f"Active slot budget (USER): {budget.get('meter', '?')}  — hard cap {plan.get('active_cap', USER_ACTIVE_CAP)} O+D (Aidan rule; EA may show 10)",

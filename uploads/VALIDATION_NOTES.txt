@@ -1,0 +1,30 @@
+
+Validated against CFB27DefensiveCoachAdjustmentsNew.pdf (Gaming Tailgate):
+CONFIRMED UI options used in Aidan's sheets:
+- Coverage Shading: Default, Inside, Outside, Underneath, Overtop (community/docs)
+- Route Commit: Default, Inside, Outside
+- Defender Aggression / Gap Integrity / Strip / Tackling: Balanced, Conservative, Aggressive
+- QB Contain: Off, Both (and sided variants in-game)
+- Show Blitz: Off, Linebackers, Both
+- Guess Play: Off, Run Up Middle (and others)
+- CB Depth: Default, Press, 3,5,7,9,12,20
+- CB Width: Default, Tight, Wide
+- Safety Depth: Default, 5,9,12,16,25,32
+- Safety Width: Default, Pinch, Spread, Wide
+- Safety Midpoint: Default, Left, Right, Strong, Weak, Field, Boundary
+  NOTE: Aidan wrote "Pass Strength" for midpoint — map to Strong (Strong = toward pass strength). Roll Coverage separately has Pass Strength.
+- Ballhawk: Aggressive, Conservative
+- Zone Drop Flats/Curls/Hooks: Default, 0,5,10,15,20,25,30
+- Zone Strategy: Default/Balanced, Aggressive, Conservative, Ultra Aggressive, Ultra Conservative
+- Plaster: Conservative, Aggressive, Off
+- Plaster Trigger: O.O.P & Time, O.O.P, Time
+- Plaster Time: Default, Conservative, Aggressive
+- Roll Coverage: Off / Highest OVR / Pass Strength / WR1.. / Field / Boundary
+- Man Bunch: Point Combo, Lock
+- C3 Match Bunch: Zone It, Skate, Skinny, Skinny Meg
+- Quarters Stack/Bunch/Trips/1Rec: Quarters, Box, Bingo, Stress, Zone It, Solo, etc.
+- Cover 6 Bunch: Box, Bingo, Zone It
+- DL Technique Pinch/Spread; POA Inside/Outside; LB Shift Pinch/Spread
+- Individual assignments: Curl Flat, Hard Flat, 3 Rec Hook — standard zone hot routes
+
+CROSS flats 25 + curls 5 aligns with community Mabel/anti-cross guidance (flats ~20-30, curls ~5).

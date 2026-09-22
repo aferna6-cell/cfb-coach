@@ -1,0 +1,518 @@
+{
+  "source": "Aidan exact sheets 2026-09-22",
+  "ui_note": "Safety Midpoint Pass Strength -> Strong",
+  "active_8": [
+    "CROSS",
+    "VERT",
+    "BUNCH",
+    "RPO",
+    "SCRAM",
+    "RUN-IN",
+    "RUN-OUT",
+    "HEAT"
+  ],
+  "benched": [
+    "FLOOD",
+    "SCREEN"
+  ],
+  "macros": {
+    "CROSS": {
+      "side": "defense",
+      "status": "proven",
+      "active": true,
+      "purpose": "crossers / Cross Wheels / deep crossing routes",
+      "general": {
+        "Coverage Shading": "Default/unchecked",
+        "Route Commit": "Inside",
+        "Show Blitz": "Off",
+        "Guess Play": "Off",
+        "Defender Aggression": "Balanced",
+        "Gap Integrity": "Balanced",
+        "Strip Ball": "Balanced",
+        "Tackling": "Balanced",
+        "QB Contain": "Off",
+        "Option/RPO keys": "Default"
+      },
+      "dl_lb": "Everything Default/unchecked",
+      "secondary": {
+        "CB Depth": "5",
+        "CB Width": "Default",
+        "Safety Depth": "9",
+        "Safety Width": "Pinch",
+        "Safety Midpoint": "Default"
+      },
+      "zone_drops": {
+        "Flats": "25",
+        "Curls": "5",
+        "Hooks": "Default"
+      },
+      "strategy": {
+        "Zone Strategy": "Aggressive",
+        "Plaster": "Aggressive",
+        "Plaster Trigger": "O.O.P & Time",
+        "Plaster Time": "Aggressive",
+        "Roll Coverage": "Off"
+      },
+      "coverage_checks": "All Default",
+      "individuals": {
+        "SLCB1": "Curl Flat",
+        "SLCB2": "Curl Flat"
+      }
+    },
+    "VERT": {
+      "side": "defense",
+      "status": "proven",
+      "active": true,
+      "purpose": "Four Verticals / seams / wheel shots",
+      "general": {
+        "Coverage Shading": "Overtop",
+        "Route Commit": "Default",
+        "Defender Aggression": "Conservative",
+        "Gap Integrity": "Balanced",
+        "Strip Ball": "Balanced",
+        "Tackling": "Balanced",
+        "Show Blitz": "Off",
+        "Guess Play": "Off",
+        "QB Contain": "Off"
+      },
+      "dl_lb": "Default",
+      "secondary": {
+        "Alignment": "Give Cushion",
+        "Shell": "Default",
+        "Matchup": "By Speed",
+        "CB Depth": "7",
+        "CB Width": "Default",
+        "Safety Depth": "16",
+        "Safety Width": "Spread",
+        "Safety Midpoint": "Default",
+        "Ballhawk": "Conservative"
+      },
+      "zone_drops": "All Default",
+      "strategy": {
+        "Zone Strategy": "Conservative",
+        "Plaster": "Conservative",
+        "Plaster Trigger": "O.O.P & Time",
+        "Plaster Time": "Conservative",
+        "Roll Coverage": "Off"
+      },
+      "coverage_checks": {
+        "Quarters Stack": "Quarters",
+        "Quarters Bunch": "Bingo",
+        "Quarters Trips": "Stress",
+        "Quarters 1 Rec": "Quarters",
+        "Quarters 1 Rec Tight": "Quarters",
+        "other": "Default"
+      },
+      "individuals": "None"
+    },
+    "BUNCH": {
+      "side": "defense",
+      "status": "proven",
+      "active": true,
+      "purpose": "Mesh / rubs / picks / compressed sets",
+      "general": {
+        "Coverage Shading": "Inside",
+        "Route Commit": "Inside",
+        "Defender Aggression": "Balanced",
+        "Gap Integrity": "Balanced",
+        "Strip Ball": "Balanced",
+        "Tackling": "Balanced",
+        "Show Blitz": "Off",
+        "Guess Play": "Off",
+        "QB Contain": "Off"
+      },
+      "dl_lb": "Default",
+      "secondary": {
+        "Alignment": "Give Cushion",
+        "Matchup": "By Speed",
+        "CB Depth": "5",
+        "CB Width": "Tight",
+        "Safety Depth": "9",
+        "Safety Width": "Pinch",
+        "Safety Midpoint": "Default",
+        "Ballhawk": "Conservative"
+      },
+      "zone_drops": {
+        "Flats": "10",
+        "Curls": "5",
+        "Hooks": "5"
+      },
+      "strategy": {
+        "Zone Strategy": "Aggressive",
+        "Plaster": "Aggressive",
+        "Plaster Trigger": "O.O.P & Time",
+        "Plaster Time": "Aggressive",
+        "Roll Coverage": "Pass Strength"
+      },
+      "coverage_checks": {
+        "Man-Bunch": "Point Combo",
+        "C3 Match-Bunch": "Zone It",
+        "Quarters-Bunch": "Box",
+        "Palms-Bunch": "Box",
+        "Cover 6-Bunch": "Box"
+      },
+      "individuals": "None"
+    },
+    "FLOOD": {
+      "side": "defense",
+      "status": "proven",
+      "active": false,
+      "benched": true,
+      "purpose": "Flood / Sail / corner-flat / high-low sideline (SAVED/BENCHED)",
+      "general": {
+        "Coverage Shading": "Outside",
+        "Route Commit": "Outside",
+        "Defender Aggression": "Balanced",
+        "Gap Integrity": "Balanced",
+        "Strip Ball": "Balanced",
+        "Tackling": "Balanced"
+      },
+      "dl_lb": "Default",
+      "secondary": {
+        "Alignment": "Give Cushion",
+        "Matchup": "By Speed",
+        "CB Depth": "7",
+        "CB Width": "Wide",
+        "Safety Depth": "12",
+        "Safety Width": "Spread",
+        "Safety Midpoint": "Default",
+        "Ballhawk": "Conservative"
+      },
+      "zone_drops": {
+        "Flats": "25",
+        "Curls": "10",
+        "Hooks": "10"
+      },
+      "strategy": {
+        "Zone Strategy": "Aggressive",
+        "Plaster": "Aggressive",
+        "Plaster Trigger": "O.O.P & Time",
+        "Plaster Time": "Aggressive",
+        "Roll Coverage": "Pass Strength"
+      },
+      "coverage_checks": "Default",
+      "individuals": "Default"
+    },
+    "RPO": {
+      "side": "defense",
+      "status": "proven",
+      "active": true,
+      "purpose": "bubble / glance / read-RPO",
+      "general": {
+        "Coverage Shading": "Outside",
+        "Route Commit": "Default",
+        "Defender Aggression": "Aggressive",
+        "Gap Integrity": "Conservative",
+        "Strip Ball": "Balanced",
+        "Tackling": "Balanced",
+        "QB Contain": "Off",
+        "Option keys": "Default",
+        "RPO Read Key": "Conservative",
+        "RPO Pass Key": "Conservative"
+      },
+      "dl_lb": "Default",
+      "secondary": {
+        "Alignment": "Give Cushion",
+        "Matchup": "By Speed",
+        "CB Depth": "5",
+        "CB Width": "Wide",
+        "Safety Depth": "9",
+        "Safety Width": "Default",
+        "Safety Midpoint": "Strong (UI; toward Pass Strength)",
+        "Ballhawk": "Aggressive"
+      },
+      "zone_drops": {
+        "Flats": "0",
+        "Curls": "5",
+        "Hooks": "5"
+      },
+      "strategy": {
+        "Zone Strategy": "Aggressive",
+        "Plaster": "Conservative",
+        "Plaster Trigger": "O.O.P & Time",
+        "Plaster Time": "Default",
+        "Roll Coverage": "Pass Strength"
+      },
+      "individuals": {
+        "SLCB1": "Hard Flat",
+        "SLCB2": "Hard Flat"
+      }
+    },
+    "SCRAM": {
+      "side": "defense",
+      "status": "proven",
+      "active": true,
+      "purpose": "QB scramble / rollout / broken-play extension",
+      "general": {
+        "Coverage Shading": "Default",
+        "Route Commit": "Default",
+        "Defender Aggression": "Balanced",
+        "Gap Integrity": "Conservative",
+        "Strip Ball": "Balanced",
+        "Tackling": "Balanced",
+        "QB Contain": "Both",
+        "Option/RPO": "Default"
+      },
+      "dl_lb": "Default",
+      "secondary": {
+        "Alignment": "Give Cushion",
+        "Matchup": "By Speed",
+        "CB Depth": "7",
+        "CB Width": "Default",
+        "Safety Depth": "12",
+        "Safety Width": "Default",
+        "Safety Midpoint": "Default",
+        "Ballhawk": "Conservative"
+      },
+      "zone_drops": "Default",
+      "strategy": {
+        "Zone Strategy": "Conservative",
+        "Plaster": "Aggressive",
+        "Plaster Trigger": "O.O.P & Time",
+        "Plaster Time": "Aggressive",
+        "Roll Coverage": "Off"
+      },
+      "coverage_checks": "Default",
+      "individuals": "Default"
+    },
+    "RUN-IN": {
+      "side": "defense",
+      "status": "proven",
+      "active": true,
+      "purpose": "Inside Zone / Duo / Power / Draw",
+      "general": {
+        "Show Blitz": "Linebackers",
+        "Coverage Shading": "Default",
+        "Route Commit": "Default",
+        "Guess Play": "Run Up Middle",
+        "Defender Aggression": "Aggressive",
+        "Gap Integrity": "Aggressive",
+        "Strip Ball": "Balanced",
+        "Tackling": "Balanced",
+        "QB Contain": "Off",
+        "Option Read Key": "Aggressive",
+        "Option Pitch Key": "Balanced",
+        "RPO": "Default"
+      },
+      "dl": {
+        "Technique": "Pinch",
+        "Point of Attack": "Inside",
+        "Stunts": "Off"
+      },
+      "lb": {
+        "Shift": "Pinch",
+        "Assignments": "Default"
+      },
+      "secondary": {
+        "Alignment": "Give Cushion",
+        "Matchup": "By Speed",
+        "CB Depth": "5",
+        "CB Width": "Default",
+        "Safety Depth": "9",
+        "Safety Width": "Pinch",
+        "Safety Midpoint": "Default",
+        "Ballhawk": "Conservative"
+      },
+      "zone_drops": "Default",
+      "strategy": {
+        "Zone Strategy": "Conservative",
+        "Plaster": "Conservative",
+        "rest": "Default"
+      },
+      "coverage_checks": "Default",
+      "individuals": "Default"
+    },
+    "RUN-OUT": {
+      "side": "defense",
+      "status": "proven",
+      "active": true,
+      "purpose": "Stretch / Toss / Wide Zone / Speed Option",
+      "general": {
+        "Show Blitz": "Linebackers",
+        "Coverage Shading": "Default",
+        "Route Commit": "Default",
+        "Guess Play": "Off",
+        "Defender Aggression": "Aggressive",
+        "Gap Integrity": "Aggressive",
+        "Strip Ball": "Balanced",
+        "Tackling": "Balanced",
+        "QB Contain": "Both",
+        "Option Read Key": "Conservative",
+        "Option Pitch Key": "Aggressive",
+        "RPO": "Default"
+      },
+      "dl": {
+        "Technique": "Spread",
+        "Point of Attack": "Outside",
+        "Stunts": "Off"
+      },
+      "lb": {
+        "Shift": "Spread",
+        "Assignments": "Default"
+      },
+      "secondary": {
+        "Alignment": "Give Cushion",
+        "Matchup": "By Speed",
+        "CB Depth": "5",
+        "CB Width": "Default",
+        "Safety Depth": "9",
+        "Safety Width": "Default",
+        "Safety Midpoint": "Default",
+        "Ballhawk": "Conservative"
+      },
+      "zone_drops": "Default",
+      "strategy": {
+        "Zone Strategy": "Conservative",
+        "Plaster": "Conservative",
+        "Roll Coverage": "Off"
+      },
+      "coverage_checks": "Default",
+      "individuals": "Default"
+    },
+    "SCREEN": {
+      "side": "defense",
+      "status": "proven",
+      "active": false,
+      "benched": true,
+      "purpose": "WR/Bubble/HB Slip/Tunnel screens (SAVED/BENCHED)",
+      "general": {
+        "Coverage Shading": "Outside",
+        "Route Commit": "Outside",
+        "Defender Aggression": "Aggressive",
+        "Gap Integrity": "Balanced",
+        "Strip Ball": "Balanced",
+        "Tackling": "Aggressive",
+        "QB Contain": "Off"
+      },
+      "dl": {
+        "Technique": "Spread",
+        "Point of Attack": "Outside"
+      },
+      "lb": {
+        "Shift": "Spread",
+        "Assignments": "Zone All"
+      },
+      "secondary": {
+        "Alignment": "Give Cushion",
+        "Matchup": "By Speed",
+        "CB Depth": "5",
+        "CB Width": "Wide",
+        "Safety Depth": "9",
+        "Safety Width": "Spread",
+        "Safety Midpoint": "Strong (UI; toward Pass Strength)",
+        "Ballhawk": "Aggressive"
+      },
+      "zone_drops": {
+        "Flats": "0",
+        "Curls": "5",
+        "Hooks": "5"
+      },
+      "strategy": {
+        "Zone Strategy": "Aggressive",
+        "Plaster": "Aggressive",
+        "Plaster Trigger": "O.O.P & Time",
+        "Plaster Time": "Aggressive",
+        "Roll Coverage": "Pass Strength"
+      },
+      "individuals": {
+        "SLCB1": "Hard Flat",
+        "SLCB2": "Hard Flat",
+        "DT1": "3 Rec Hook"
+      }
+    },
+    "HEAT": {
+      "side": "defense",
+      "status": "proven",
+      "active": true,
+      "purpose": "pressure / disguise",
+      "general": {
+        "Show Blitz": "Both",
+        "Coverage Shading": "Underneath",
+        "Route Commit": "Default",
+        "Guess Play": "Off",
+        "Defender Aggression": "Aggressive",
+        "Gap Integrity": "Balanced",
+        "Strip Ball": "Balanced",
+        "Tackling": "Balanced",
+        "QB Contain": "Off",
+        "Option/RPO": "Default"
+      },
+      "dl": {
+        "Technique": "Pinch",
+        "Point of Attack": "Inside",
+        "Stunts": "Off"
+      },
+      "lb": {
+        "Shift": "Pinch",
+        "Assignments": "Default \u2014 do not Blitz All"
+      },
+      "secondary": {
+        "Alignment": "Give Cushion",
+        "Coverage Shell": "Cover 0",
+        "Matchup": "By Speed",
+        "CB Depth": "5",
+        "CB Width": "Tight",
+        "Safety Depth": "9",
+        "Safety Width": "Pinch",
+        "Safety Midpoint": "Default",
+        "Ballhawk": "Aggressive"
+      },
+      "zone_drops": {
+        "Flats": "5",
+        "Curls": "10",
+        "Hooks": "10"
+      },
+      "strategy": {
+        "Zone Strategy": "Aggressive",
+        "Plaster": "Aggressive",
+        "Plaster Trigger": "O.O.P & Time",
+        "Plaster Time": "Aggressive",
+        "Roll Coverage": "Off"
+      },
+      "coverage_checks": "Default",
+      "individuals": "Default"
+    }
+  },
+  "dynasties": {
+    "alabama": {
+      "label": "Alabama",
+      "mode": "serious",
+      "description": "Online Dynasty with users \u2014 conservative, proven macros, mix discipline, no experimental macros in active 8 unless postgame promotes them.",
+      "default_active": [
+        "CROSS",
+        "VERT",
+        "BUNCH",
+        "RPO",
+        "SCRAM",
+        "RUN-IN",
+        "RUN-OUT",
+        "HEAT"
+      ],
+      "default_benched": [
+        "FLOOD",
+        "SCREEN"
+      ],
+      "allow_experimental_active": false
+    },
+    "ohio_state": {
+      "label": "Ohio State",
+      "mode": "experimental",
+      "description": "Less serious dynasty \u2014 may activate experimental/meta-grounded macros, freer gameplan pivots, lab new settings.",
+      "default_active": [
+        "CROSS",
+        "VERT",
+        "BUNCH",
+        "RPO",
+        "SCRAM",
+        "RUN-IN",
+        "RUN-OUT",
+        "HEAT"
+      ],
+      "default_benched": [
+        "FLOOD",
+        "SCREEN"
+      ],
+      "allow_experimental_active": true
+    }
+  }
+}

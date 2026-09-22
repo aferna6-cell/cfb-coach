@@ -161,7 +161,8 @@ def macro_plan(opp: dict[str, Any], seed: dict) -> str:
     if suggest:
         lines.append("  SUGGEST (optional / not auto-armed):")
         lines.extend(f"    - {s}" for s in suggest)
-    lines.append("  Doctrine: macros situational, not every snap. Default = no macro.")
+    lines.append("  Doctrine: do NOT auto-use macros from one concept appearance — "
+                 "most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro.")
     return "\n".join(lines)
 
 

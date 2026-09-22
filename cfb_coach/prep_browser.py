@@ -70,29 +70,70 @@ def _val_badge(status: str) -> str:
 def _render_settings(settings: dict[str, Any]) -> str:
     if not settings:
         return '<p class="muted">No full_settings on file.</p>'
-    rows: list[str] = []
+
+    # Group by section when exact sheets present
+    sections: dict[str, list[str]] = {}
+    order: list[str] = []
     for key, val in settings.items():
         if isinstance(val, dict):
             value = val.get("value", "")
-            tag = (val.get("status") or "approx").lower()
-            if tag not in ("confirmed", "approx"):
+            tag = (val.get("status") or val.get("tag") or "confirmed").lower()
+            if tag in ("confirmed", "exact", "proven"):
+                tag = "confirmed"
+            elif tag not in ("confirmed", "approx"):
                 tag = "approx"
-            rows.append(
+            section = val.get("section") or (
+                key.split(" / ", 1)[0] if " / " in key else "Settings"
+            )
+            label = key.split(" / ", 1)[1] if " / " in key else key
+            note = val.get("note") or ""
+            note_html = (
+                f"<div class='set-note'>{_esc(note)}</div>" if note else ""
+            )
+            row = (
                 "<div class='set-row'>"
-                f"<span class='set-k'>{_esc(key)}</span>"
+                f"<span class='set-k'>{_esc(label)}</span>"
                 f"<span class='set-v'>{_esc(value)}</span>"
                 f"<span class='set-tag {tag}'>{tag}</span>"
+                f"{note_html}"
                 "</div>"
             )
         else:
-            rows.append(
+            section = "Settings"
+            label = key
+            row = (
                 "<div class='set-row'>"
-                f"<span class='set-k'>{_esc(key)}</span>"
+                f"<span class='set-k'>{_esc(label)}</span>"
                 f"<span class='set-v'>{_esc(val)}</span>"
-                "<span class='set-tag approx'>approx</span>"
+                "<span class='set-tag confirmed'>confirmed</span>"
                 "</div>"
             )
-    return f"<div class='settings'>{''.join(rows)}</div>"
+        if section not in sections:
+            sections[section] = []
+            order.append(section)
+        sections[section].append(row)
+
+    preferred = [
+        "General",
+        "DL/LB",
+        "Secondary",
+        "Zone Drops",
+        "Strategy",
+        "Coverage Checks",
+        "Individuals",
+        "Notes",
+        "Settings",
+    ]
+    ordered = [s for s in preferred if s in sections] + [
+        s for s in order if s not in preferred
+    ]
+    blocks: list[str] = []
+    for sec in ordered:
+        blocks.append(
+            f"<div class='set-section'><h5>{_esc(sec)}</h5>"
+            f"{''.join(sections[sec])}</div>"
+        )
+    return f"<div class='settings'>{''.join(blocks)}</div>"
 
 
 def _render_delta_cards(deltas: list[dict[str, Any]], empty_msg: str) -> str:
@@ -326,6 +367,8 @@ _CSS = """
   }
   .banner.ok { background: rgba(42,107,74,0.25); border-color: var(--ok); color: #9fdfb8; }
   .banner.info { background: rgba(91,159,212,0.12); border-color: var(--accent); color: #b8d4ec; }
+  .banner.dyn.ser { border-color: #3d9a6a; background: rgba(61,154,106,0.12); }
+  .banner.dyn.exp { border-color: #d4a017; background: rgba(212,160,23,0.12); }
   .banner.swap {
     background: rgba(166,124,42,0.18); border-color: var(--warn); color: #f0d9a0;
     font-weight: 500;
@@ -463,6 +506,9 @@ _CSS = """
     font-size: 0.68rem; padding: 1px 6px; border-radius: 4px; align-self: start;
   }
   .set-tag.confirmed { background: rgba(61,154,106,0.25); color: #9fdfb8; }
+  .set-section { margin: 10px 0 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+  .set-section h5 { margin: 0 0 8px; color: var(--accent); font-size: 0.85rem; letter-spacing: 0.04em; text-transform: uppercase; }
+  .set-note { grid-column: 1 / -1; font-size: 0.78rem; color: #f0c674; margin-top: -4px; }
   .set-tag.approx { background: rgba(139,155,180,0.2); color: var(--muted); }
   .copy-wrap { margin-top: 8px; }
   .copy-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -512,6 +558,21 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     )
     tip_lis = "".join(f"<li>{_esc(t)}</li>" for t in tips)
     oid = _esc(plan.get("opponent_id") or "")
+    dcfg = plan.get("dynasty_config") or {}
+    dynasty_id = _esc(plan.get("dynasty") or dcfg.get("id") or "alabama")
+    dynasty_label = _esc(dcfg.get("label") or dynasty_id)
+    dynasty_mode = _esc(dcfg.get("mode") or "")
+    exp = bool(dcfg.get("experimental_badge"))
+    dynasty_banner = (
+        f'<div class="banner dyn {("exp" if exp else "ser")}">'
+        f"<strong>Dynasty:</strong> {dynasty_label} "
+        f"<span class=\"muted\">({dynasty_mode})</span>"
+        + (" <span class=\"vbadge meta-grounded\">experimental</span>" if exp else "")
+        + f"<div class=\"why\">{_esc(dcfg.get('description') or '')}</div>"
+        f"<div class=\"why\">{_esc(plan.get('doctrine') or '')}</div>"
+        "</div>"
+    )
+
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -533,10 +594,12 @@ def render_prep_html(plan: dict[str, Any]) -> str:
         <span>macros {_esc(plan.get("macro_catalog_version", ""))}</span>
         <span>{_esc(ts_label)}</span>
         <span>overlay: {_esc(plan.get("overlay_depth"))}</span>
+        <span>dynasty: {dynasty_id}</span>
       </div>
     </header>
 
     {status}
+    {dynasty_banner}
     {_render_swap_banners(banners)}
 
     <section>
@@ -567,6 +630,8 @@ def render_prep_html(plan: dict[str, Any]) -> str:
       Active Custom Adjustments hard-capped at <b>8 O+D combined</b> for USER dynasty (Aidan rule).
       <b>Workflow:</b> bring a suggested macro into game → if cooked, adjust via postgame → if it holds, mark <b>proven</b>.
       Live caller prefers proven macros; tags meta_grounded / failed / unvalidated when suggesting others.
+      <b>Doctrine:</b> do NOT auto-use macros from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro.
+      UI note: Safety Midpoint <b>Strong</b> = toward pass strength.
       Mark applied with <code>prep --opponent {oid} --mark-applied</code>.
     </footer>
   </div>
@@ -709,10 +774,13 @@ def generate_and_open(
     persist: bool = True,
     open_browser: bool = True,
     mark_applied: bool = False,
+    dynasty: str | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     from cfb_coach.install_sheet import mark_prep_applied
 
-    plan = build_prep_plan(opponent_id, opp, db=db, persist=persist)
+    plan = build_prep_plan(
+        opponent_id, opp, db=db, persist=persist, dynasty=dynasty
+    )
     if mark_applied and db is not None:
         mark_prep_applied(db, opponent_id, plan["proposed_deltas"])
         plan["applied_count"] = len(plan["proposed_deltas"])

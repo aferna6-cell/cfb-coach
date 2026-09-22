@@ -166,6 +166,19 @@ class CoachDB:
         )
         self.conn.commit()
 
+    def get_meta(self, key: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT value FROM meta WHERE key = ?", (key,)
+        ).fetchone()
+        return None if row is None else str(row[0])
+
+    def set_meta(self, key: str, value: str) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+        self.conn.commit()
+
     def list_opponents(self) -> list[sqlite3.Row]:
         return list(
             self.conn.execute(

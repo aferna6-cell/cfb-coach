@@ -53,7 +53,7 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 
 Opponent aliases: ids (`gavin`), display names (`Gavin`), teams (`Auburn`, `Houston`, `SMU`, …).
 
-## Prep = diffs only (v1.4.1)
+## Prep = diffs only (v1.5.0)
 
 Inventory (seed playbooks + 8 active / 2 benched macros) is the **already-stocked** book. Prep never says CREATE BAMA META O/D from scratch or re-ADD all 8 macros.
 
@@ -64,7 +64,27 @@ Inventory (seed playbooks + 8 active / 2 benched macros) is the **already-stocke
 - `--mark-applied` persists applied deltas so the next prep only shows NEW changes
 
 
-## Macros — 8-cap, click-to-copy, validation (v1.4.1)
+
+## Dynasty modes (v1.5.0)
+
+```bash
+prep --opponent gavin --dynasty alabama      # default: serious USER dynasty
+prep --opponent gavin --dynasty ohio_state   # experimental lab dynasty
+```
+
+- **alabama** (serious, default): stick to proven Active-8; experimental/meta-grounded macros stay benched unless postgame promotes; tighter pivots.
+- **ohio_state** (experimental): freer to suggest meta-grounded experimental macros / gameplan tweaks in prep deltas.
+- Dynasty is stored in the session DB for `play` / `postgame`.
+
+## Exact macros (Aidan sheets)
+
+Defense Active-8 copy blocks are Aidan's **exact** Custom Adjustments ticks (General / DL/LB / Secondary / Zone Drops / Strategy / Coverage Checks / Individuals) — not approx checklists.
+- ACTIVE: CROSS VERT BUNCH RPO SCRAM RUN-IN RUN-OUT HEAT
+- BENCHED: FLOOD SCREEN (still `proven`, just not Active)
+- UI note: Safety Midpoint **Strong** = toward pass strength
+- Doctrine: do **not** auto-use a macro from one concept appearance — most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro.
+
+## Macros — 8-cap, click-to-copy, validation (v1.5.0)
 
 - **USER Active hard cap = 8** Custom Adjustments across **Offense + Defense combined** (Aidan rule for online dynasty). EA's UI may advertise 10 — honor **8**.
 - Path: **Create & Share → Custom Adjustments → Offense/Defense** → edit/save → set Active → in-game **LB** to use.
@@ -197,4 +217,4 @@ PYTHONPATH=. python3 -m cfb_coach postgame --opponent gavin
 
 HTML for Gavin must **not** say CREATE whole custom books or ADD all 8 macros from scratch — only opponent-specific edits. Ryan (thin) may show zero or minimal deltas.
 
-v1.4.1 smoke: `prep --opponent cpu --no-open` writes HTML without opening. Gavin HTML has clickable **CROSS** (proven) with full copy block; ADD PROT/CONTAIN-SCRAM (meta_grounded) while 8D Active shows which D macro to bench + Xbox steps. Badges are proven/meta_grounded/failed — no scary needs_lab. No full-book recreate.
+v1.5.0 smoke: `prep --opponent cpu --no-open` writes HTML without opening. Gavin HTML has clickable **CROSS** (proven) with full copy block; ADD PROT/CONTAIN-SCRAM (meta_grounded) while 8D Active shows which D macro to bench + Xbox steps. Badges are proven/meta_grounded/failed — no scary needs_lab. No full-book recreate.

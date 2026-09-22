@@ -10,6 +10,13 @@ from cfb_coach.opponents import format_opponent_list, resolve_opponent
 from cfb_coach.playcaller import make_call
 from cfb_coach.situation import parse_situation
 from cfb_coach.tendency import mild_bump_concept, mild_bump_coverage
+from cfb_coach.dynasty import (
+    DEFAULT_DYNASTY,
+    dynasty_config,
+    doctrine_line,
+    normalize_dynasty,
+    set_session_dynasty,
+)
 
 
 def _db() -> CoachDB:
@@ -40,14 +47,25 @@ def cmd_prep(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
     db = _db()
     try:
+        dynasty = set_session_dynasty(
+            db, getattr(args, "dynasty", None) or DEFAULT_DYNASTY
+        )
+        dcfg = dynasty_config(dynasty)
         opp = load_opponent_profile(oid, db)
         if getattr(args, "text", False):
             from cfb_coach.install_sheet import build_prep_plan
 
-            plan = build_prep_plan(oid, opp, db=db, persist=True)
+            plan = build_prep_plan(
+                oid, opp, db=db, persist=True, dynasty=dynasty
+            )
             if getattr(args, "mark_applied", False):
                 mark_prep_applied(db, oid, plan["proposed_deltas"])
                 print(f"Marked {len(plan['proposed_deltas'])} deltas applied for {oid}.")
+            exp = " [experimental]" if dcfg.get("experimental_badge") else ""
+            print(
+                f"Dynasty mode: {dcfg['label']} ({dcfg['mode']}){exp}"
+            )
+            print(doctrine_line())
             print(format_delta_text(plan))
             return 0
 
@@ -61,6 +79,12 @@ def cmd_prep(args: argparse.Namespace) -> int:
         )
         n = len(plan.get("shown_deltas") or [])
         print(f"Prep vs {plan.get('display_name', oid)} → {path}")
+        exp = " [experimental]" if dcfg.get("experimental_badge") else ""
+        print(
+            f"Dynasty mode: {dcfg['label']} ({dcfg['mode']}){exp} "
+            f"— stored for play/postgame"
+        )
+        print(doctrine_line())
         if getattr(args, "mark_applied", False):
             print(f"Marked proposed deltas applied for {oid}.")
         elif n == 0:
@@ -78,7 +102,13 @@ def cmd_postgame(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
     db = _db()
     try:
-        print(postgame_summary(db, oid))
+        dynasty = set_session_dynasty(
+            db, getattr(args, "dynasty", None) or db.get_meta("dynasty_mode") or DEFAULT_DYNASTY
+        )
+        dcfg = dynasty_config(dynasty)
+        exp = " [experimental]" if dcfg.get("experimental_badge") else ""
+        print(f"Dynasty: {dcfg['label']} ({dcfg['mode']}){exp}")
+        print(postgame_summary(db, oid, dynasty=dynasty))
     finally:
         db.close()
     return 0
@@ -103,7 +133,14 @@ def cmd_call(args: argparse.Namespace) -> int:
 def cmd_play(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
     db = _db()
+    dynasty = set_session_dynasty(
+        db, getattr(args, "dynasty", None) or db.get_meta("dynasty_mode") or DEFAULT_DYNASTY
+    )
+    dcfg = dynasty_config(dynasty)
     print(f"LIVE PLAY — vs {oid}  (db: {db.path})")
+    exp = " [experimental]" if dcfg.get("experimental_badge") else ""
+    print(f"Dynasty: {dcfg['label']} ({dcfg['mode']}){exp}")
+    print(doctrine_line())
     print("Side defaults to offense. Prefix with 'd ' for defense.")
     print("Shorthand: 1&10 | 2&7 | 3&8 d | rz 3&2 | d 1&10")
     print("Doctrine: one tell = log/mild bump; hard-counter only on REPEATED tendency.")
@@ -251,6 +288,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write HTML but do not open a browser",
     )
     p_prep.add_argument(
+        "--dynasty",
+        choices=("alabama", "ohio_state"),
+        default=None,
+        help="Dynasty mode: alabama=serious (default) | ohio_state=experimental. Stored for play/postgame.",
+    )
+    p_prep.add_argument(
         "--mark-applied",
         action="store_true",
         help="Mark current proposed deltas as applied (next prep shows only NEW)",
@@ -264,6 +307,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Non-interactive: one situation string, print one call, exit",
     )
     p_play.add_argument("--why", action="store_true", help="Show rationale")
+    p_play.add_argument(
+        "--dynasty",
+        choices=("alabama", "ohio_state"),
+        default=None,
+        help="Override/store dynasty mode (default: session or alabama)",
+    )
     p_play.set_defaults(func=cmd_play)
 
     p_post = sub.add_parser(
@@ -271,6 +320,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Learn from recent snaps — adjust gameplan/macro weights vs opponent",
     )
     p_post.add_argument("--opponent", "-o", required=True)
+    p_post.add_argument(
+        "--dynasty",
+        choices=("alabama", "ohio_state"),
+        default=None,
+        help="Override/store dynasty mode (default: session or alabama)",
+    )
     p_post.set_defaults(func=cmd_postgame)
 
     p_ops = sub.add_parser("opponents", help="List opponents + aliases")
