@@ -1,4 +1,4 @@
-"""CLI: prep / play / postgame / promote / opponents / call."""
+"""CLI: prep / play / postgame / promote / opponents / call / watch."""
 
 from __future__ import annotations
 
@@ -328,6 +328,13 @@ def cmd_promote(args: argparse.Namespace) -> int:
 
 
 
+def cmd_watch(args: argparse.Namespace) -> int:
+    """Screen co-pilot: DefenseLook → pre-snap tips (demo/hotkeys/image)."""
+    from cfb_coach.watch import run_watch
+
+    return run_watch(args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="cfb_coach",
@@ -431,6 +438,54 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional kind filter with --target",
     )
     p_prom.set_defaults(func=cmd_promote)
+
+    p_watch = sub.add_parser(
+        "watch",
+        aliases=("copilot",),
+        help="Screen co-pilot: pre-snap tips from defense look (demo/hotkeys; capture-card later)",
+    )
+    p_watch.add_argument(
+        "--demo",
+        action="store_true",
+        help="Simulate DefenseLooks and print sample pre-snap tips (no Xbox/capture needed)",
+    )
+    p_watch.add_argument(
+        "--once",
+        action="store_true",
+        help="With --demo/--image: emit one tip block and exit (non-interactive)",
+    )
+    p_watch.add_argument(
+        "--image",
+        metavar="PATH",
+        help="PNG/JPG path: run naive ROI heuristic stub → tips",
+    )
+    p_watch.add_argument(
+        "--overlay",
+        nargs="?",
+        const="auto",
+        default=None,
+        metavar="PATH",
+        help="Write tiny auto-refresh HTML overlay (default ~/.cfb-coach/copilot_overlay.html)",
+    )
+    p_watch.add_argument(
+        "--opponent",
+        "-o",
+        default=None,
+        help="Optional opponent id for light prior lean (does not change prep/play)",
+    )
+    p_watch.add_argument(
+        "--interval",
+        type=float,
+        default=1.5,
+        help="Seconds between --demo looks when non-interactive (default 1.5)",
+    )
+    p_watch.add_argument(
+        "--setup",
+        action="store_true",
+        help="Print capture-card / WSL setup notes and exit",
+    )
+    p_watch.set_defaults(func=cmd_watch)
+
 
     return p
 
