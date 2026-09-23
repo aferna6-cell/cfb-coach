@@ -454,9 +454,9 @@ def make_call(
     active_macros: list[str] | None = None,
     playbook: dict[str, dict[str, list[str]]] | None = None,
 ) -> MaddenCall:
-    """One call. `playbook` = {side: {formation: [plays]}} locked by the latest prep;
-    defaults to the DB's locked books (or the default stock books before any prep).
-    Every returned formation/play pair is a member of that book."""
+    """One call. `playbook` = {side: {formation: [plays]}} locked by prep; defaults to the
+    DB's locked (applied) books. Raises NoActivePlaybook when the needed side has no
+    locked book — never calls freely. Every returned formation/play is in that book."""
     from cfb_coach.madden.playbook import active_books, eligible
 
     seed = seed or load_seed()
@@ -469,7 +469,6 @@ def make_call(
     opp["_id"] = opponent_id
     rng = rng or random.Random()
     active = list(active_macros or bl["macros_baseline"]["keep"])
-    books = playbook or eligible(active_books(db))
 
     if last_coverage and not sit.coverage_hint:
         sit.coverage_hint, sit.coverage_source = last_coverage, "last"
@@ -484,6 +483,11 @@ def make_call(
             sit.side = "offense"
             note = "CPU = offense-only (no D calls) — switched to O | "
 
+    books = playbook or eligible(active_books(db, (sit.side,)))
+    if sit.side not in books:
+        from cfb_coach.madden.playbook import NoActivePlaybook
+
+        raise NoActivePlaybook(f"No {sit.side} playbook given — run `prep --game madden27` first.")
     if sit.side == "defense":
         call = _pick_defense(sit, opp, bl, db, rng, active, books["defense"])
     else:

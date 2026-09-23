@@ -91,12 +91,19 @@ def _render_playbook(plan: dict[str, Any]) -> str:
             for f, plays in (rec.get("formations") or {}).items()
         )
         flag = "--o-book" if side == "offense" else "--d-book"
+        status = (
+            "<div class='banner swap'><strong>PENDING</strong> — build it in-game, then run "
+            f"<code>prep --game madden27 -o {oid} --mark-applied</code>. Live calls keep using the last locked book until then.</div>"
+            if bp.get("status") == "pending"
+            else "<div class='banner ok'><strong>LOCKED</strong> — live calls use only this book.</div>"
+        )
         parts.append(f"""
         <div class="scout-card" style="margin-bottom:12px">
           <h3>{side.title()}: {_esc(rec.get('name'))} {badge}
             <span class="muted">rev {_esc(rec.get('rev'))}</span></h3>
           <div class="why">{_esc(bp.get('reason'))}</div>
           {head}
+          {status}
           <details class="inventory" open>
             <summary>Show full playbook ({len(rec.get('formations') or {})} formations) — live calls are locked to this list</summary>
             <div class="inv-grid">{forms}</div>
@@ -252,6 +259,7 @@ def generate_and_open(
     plan = build_prep_plan(
         opponent_id, db=db, persist=persist, profile=profile,
         offline=offline, refresh_meta=refresh_meta, o_book=o_book, d_book=d_book,
+        apply_books=mark,
     )
     if mark and db is not None:
         mark_applied(db, opponent_id, plan["proposed_deltas"])

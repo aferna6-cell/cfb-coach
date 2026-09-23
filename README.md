@@ -78,7 +78,8 @@ PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent cpu
 PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent cpu
 
 # Franchise user game (shared persona, O + D within the 8-macro cap)
-PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent gavin                 # custom book → build checklist (PENDING)
+PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent gavin --mark-applied  # after building it → LOCKED
 PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent gavin
 
 # After the game
@@ -115,7 +116,8 @@ PYTHONPATH=. python3 -m cfb_coach config --game madden27 --clear-primary        
   - Otherwise pick a stock book that has everything (preferring your primary team's book).
   - Otherwise go custom (core Bucs-formation pack + the persona formation: Pistol Deuce Close vs split-field, Texans Gun Tight vs pressure, Gun Off Trips Close vs C2/C3 mixers).
   - Once custom, it stays custom (no rebuild churn).
-- **Switch any time:** `--o-book stock:"Shotgun Classic"`, `--o-book custom`, `--d-book stock:49ers`. `playbook --game madden27` and the prep page's **Show full playbook** list the whole book. Optional audible-slot tweaks show up as tips, never as install steps.
+- **Locked vs pending:** a stock pick has nothing to build, so it locks for live calls right away. A custom build or a formation diff stays **PENDING** until you build it in-game and run `prep --game madden27 -o <opp> --mark-applied`. Until then, live calls keep using the last locked book. With no locked book at all, `play` / `call` refuse to call and tell you to run prep first.
+- **Switch any time:** `--o-book stock:"Shotgun Classic"`, `--o-book custom`, `--d-book stock:49ers` (or `stock:Titans`, which mirrors the Saleh 49ers book). `playbook --game madden27` and the prep page's **Show full playbook** list the whole book. Optional audible-slot tweaks show up as tips, never as install steps.
 
 **Primary team TBD.** Books come from the verified meta catalog until you set a team. Once the primary team is set, prep prefers that team's stock book when it's in the catalog. Personas and call language don't change. Config lives in `~/.cfb-coach/madden27_config.json`; `CFB_COACH_MADDEN_PRIMARY_TEAM` / `CFB_COACH_MADDEN_LAB_TEAM` override it.
 

@@ -167,41 +167,58 @@ class TestMaddenSituation(unittest.TestCase):
         self.assertTrue(parse_madden_situation("1&10 opp 12").red_zone)
 
 
+def _stock_books() -> dict:
+    from cfb_coach.madden.playbook import make_record
+
+    return {"offense": make_record("offense", "stock", "Buccaneers")["formations"],
+            "defense": make_record("defense", "stock", "49ers")["formations"]}
+
+
 class TestMaddenPlaycaller(_Isolated):
+    def test_refuses_without_locked_playbook(self) -> None:
+        from cfb_coach.madden.playbook import NoActivePlaybook
+
+        db = self.madden_db()
+        try:
+            with self.assertRaises(NoActivePlaybook):
+                make_call(parse_madden_situation("1&10"), "gavin", db, rng=random.Random(1))
+        finally:
+            db.close()
+
     def test_cpu_is_offense_only(self) -> None:
         sit = parse_madden_situation("d 3&8", default_side="defense")
-        call = make_call(sit, "cpu", None, rng=random.Random(1))
+        call = make_call(sit, "cpu", None, rng=random.Random(1), playbook=_stock_books())
         self.assertEqual(call.side, "offense")
         self.assertIn("offense-only", call.rationale)
         self.assertIn(call.formation, mdata.load_seed()["playbooks"]["offense_formations"])
 
     def test_user_defense_uses_madden_packages_and_format(self) -> None:
         sit = parse_madden_situation("d 1&10", default_side="defense")
-        call = make_call(sit, "gavin", None, rng=random.Random(2))
+        call = make_call(sit, "gavin", None, rng=random.Random(2), playbook=_stock_books())
         self.assertEqual(call.side, "defense")
         self.assertIn(call.formation, mdata.load_seed()["playbooks"]["defense_packages"])
         line = call.format().splitlines()[0]
         self.assertRegex(line, r"^.+ — .+ \| .+ \| User .+$")
 
     def test_offense_format_two_reads(self) -> None:
-        call = make_call(parse_madden_situation("1&10"), "gavin", None, rng=random.Random(4))
+        call = make_call(parse_madden_situation("1&10"), "gavin", None, rng=random.Random(4), playbook=_stock_books())
         self.assertIn(" → ", call.format())
         self.assertEqual(call.format().count(" | "), 2)
 
     def test_one_tell_no_macro_repeated_arms(self) -> None:
         db = self.madden_db()
         try:
-            one = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5))
+            one = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
             self.assertIsNone(one.macro)
             self.assertIn("MATCH-4", one.suggest_macro or "")
             for _ in range(2):
                 db.log_snap(opponent_id="gavin", side="defense", situation_raw="d 2&6",
                             our_call="x", formation="Nickel Mug", play="Cover 4 Quarters",
                             result="+20", concept_seen="Four Verticals")
-            rep = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5))
+            rep = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
             self.assertEqual(rep.macro, "MATCH-4")
             self.assertIn("MATCH-4", rep.format())
-            prev = make_call(parse_madden_situation("d 2&6 4 verts"), "gavin", db, rng=random.Random(5))
+            prev = make_call(parse_madden_situation("d 2&6 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
             self.assertIsNone(prev.macro)  # previous-snap tell never arms (CFB parity)
         finally:
             db.close()
@@ -267,6 +284,17 @@ class TestPlaybookOfRecord(_Isolated):
         listed = [i["formation"] for i in off["checklist"]]
         self.assertEqual(listed, list(off["record"]["formations"]))
         self.assertIn("Pistol Deuce Close", listed)
+        self.assertEqual(off["status"], "pending")  # not live until Aidan builds it
+        from cfb_coach.madden.playbook import NoActivePlaybook, active_books
+
+        db = self.madden_db()
+        try:
+            with self.assertRaises(NoActivePlaybook):
+                active_books(db, ("offense",))
+            self.assertEqual(active_books(db, ("defense",))["defense"]["name"], "49ers")  # stock locks now
+        finally:
+            db.close()
+        self._prep("gavin", apply_books=True)  # prep --mark-applied
 
         nxt = self._prep("quen")
         off2 = nxt["playbook"]["offense"]
@@ -278,12 +306,18 @@ class TestPlaybookOfRecord(_Isolated):
         self.assertTrue(all(d["action"] in ("ADD", "REMOVE") for d in book_deltas))
         self.assertIn("Gun Tight", off2["record"]["formations"])  # full list still available
 
-        again = self._prep("quen")
-        self.assertEqual(again["playbook"]["offense"]["change"], "none")
+        self.assertEqual(off2["status"], "pending")
+        again = self._prep("quen")  # not applied yet → same diff shown again
+        self.assertEqual(again["playbook"]["offense"]["change"], "diff")
+        self._prep("quen", apply_books=True)
+        done = self._prep("quen")
+        self.assertEqual(done["playbook"]["offense"]["change"], "none")
 
     def test_switch_custom_to_stock_and_back(self) -> None:
-        self._prep("gavin")
+        self._prep("gavin", apply_books=True)
         stock = self._prep("gavin", o_book="stock:Shotgun Classic")
+        self.assertEqual(stock["playbook"]["offense"]["status"], "applied")  # stock locks immediately
+        self.assertEqual(stock["playbook"]["offense"]["checklist"], [])
         rec = stock["playbook"]["offense"]["record"]
         self.assertEqual((rec["mode"], rec["name"]), ("stock", "Shotgun Classic"))
         self.assertEqual(set(rec["formations"]), {"Gun Doubles Clamp Stack", "Gun 5WR Tight"})
@@ -333,7 +367,11 @@ class TestPlaybookOfRecord(_Isolated):
             self.assertGreater(pivots["offense"], 0)
             self.assertGreater(pivots["defense"], 0)
             # default (no explicit playbook) = the DB-locked book
-            locked = eligible(__import__("cfb_coach.madden.playbook", fromlist=["x"]).active_books(db))
+            from cfb_coach.madden.playbook import active_books, lock_books, plan_books
+
+            lock_books(db, plan_books(db, opp={"archetype": "split_field_zone"}, team=None,
+                                      offense_only=False), applied=True)
+            locked = eligible(active_books(db))
             call = make_call(parse_madden_situation("4&goal"), "gavin", db, rng=random.Random(0))
             self.assertIn(call.play, locked["offense"][call.formation])
         finally:
@@ -378,6 +416,10 @@ class TestPrimaryTeamConfig(_Isolated):
 class TestMaddenCli(_Isolated):
     def test_play_once_cpu_and_user(self) -> None:
         overlay = self.dir / "ov.html"
+        rc, _ = self.run_cli(["play", "--game", "madden27", "-o", "cpu", "--once", "1&10", "--no-overlay"])
+        self.assertEqual(rc, 2)  # no prep yet → refuses to call
+        self.run_cli(["prep", "--game", "madden27", "-o", "cpu", "--offline", "--text"])  # stock → locked
+        self.run_cli(["prep", "--game", "madden27", "-o", "gavin", "--offline", "--text", "--mark-applied"])
         rc, out = self.run_cli(["play", "--game", "madden27", "--opponent", "cpu",
                                 "--once", "1&10 my 35 stick wheel", "--overlay", str(overlay)])
         self.assertEqual(rc, 0)

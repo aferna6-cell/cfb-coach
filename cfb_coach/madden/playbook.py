@@ -6,10 +6,14 @@ Contract (owner review on PR #2):
   - First custom / switch-to-custom → full formation checklist to install.
   - Successive preps on a custom book → only ADD / REMOVE of entire formations.
   - Switch any time (custom ↔ stock, stock → other stock) via --o-book / --d-book.
-  - Live `play` may only call formation+play pairs inside the locked book.
+  - Live `play` may only call formation+play pairs inside the locked (applied) book;
+    with no locked book it refuses to call (run prep first).
+  - Stock picks need no building → locked (applied) at prep. Custom builds/diffs are
+    PENDING until `prep --mark-applied` confirms Aidan installed them.
 
 Persisted in the Madden DB meta key `active_playbook_json`:
-  {side: {mode, name, formations: {formation: [plays]}, core: [...], rev, locked_ts, reason}}
+  {"applied": {side: record}, "pending": {side: record}}
+  record = {side, mode, name, formations: {formation: [plays]}, core, rev, locked_ts, reason}
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ CUSTOM_NAME = {"offense": "PRIMARY META O (custom)", "defense": "PRIMARY META D 
 _BOOK_ALIASES = {
     "bucs": "Buccaneers", "buccaneers": "Buccaneers", "tb": "Buccaneers", "tampa": "Buccaneers",
     "tampa bay": "Buccaneers", "tampa bay buccaneers": "Buccaneers",
+    "titans": "Titans", "tennessee": "Titans", "ten": "Titans", "tennessee titans": "Titans",
     "shotgun": "Shotgun Classic", "shotgun classic": "Shotgun Classic", "classic": "Shotgun Classic",
     "49ers": "49ers", "niners": "49ers", "sf": "49ers", "saleh": "49ers",
     "san francisco 49ers": "49ers",
@@ -144,30 +149,55 @@ def make_record(side: str, mode: str, name: str | None, *, rev: int = 1, reason:
     }
 
 
-def load_books(db: Any) -> dict[str, dict[str, Any]]:
+class NoActivePlaybook(RuntimeError):
+    """Live calls refused: no playbook of record has been locked by prep yet."""
+
+
+def _load_state(db: Any) -> dict[str, dict[str, dict[str, Any]]]:
+    state: dict[str, dict[str, dict[str, Any]]] = {"applied": {}, "pending": {}}
     if db is None:
-        return {}
+        return state
     raw = db.get_meta(META_KEY)
     if not raw:
-        return {}
+        return state
     try:
-        data = json.loads(raw)
+        data = dict(json.loads(raw))
     except ValueError:
-        return {}
-    return {k: v for k, v in dict(data).items() if k in SIDES}
+        return state
+    if "applied" in data or "pending" in data:
+        for k in ("applied", "pending"):
+            state[k] = {s: r for s, r in dict(data.get(k) or {}).items() if s in SIDES}
+    else:  # pre-pending format: {side: record} == applied
+        state["applied"] = {s: r for s, r in data.items() if s in SIDES}
+    return state
 
 
-def save_books(db: Any, books: dict[str, dict[str, Any]]) -> None:
-    db.set_meta(META_KEY, json.dumps(books))
+def _save_state(db: Any, state: dict[str, dict[str, dict[str, Any]]]) -> None:
+    db.set_meta(META_KEY, json.dumps(state))
 
 
-def active_books(db: Any) -> dict[str, dict[str, Any]]:
-    """Locked books, falling back to the default stock books before any prep."""
+def load_books(db: Any) -> dict[str, dict[str, Any]]:
+    """Applied (locked) books — the only ones live calls may use."""
+    return _load_state(db)["applied"]
+
+
+def load_pending(db: Any) -> dict[str, dict[str, Any]]:
+    """Custom builds/diffs proposed by prep but not yet confirmed installed."""
+    return _load_state(db)["pending"]
+
+
+def active_books(db: Any, sides: tuple[str, ...] = SIDES) -> dict[str, dict[str, Any]]:
+    """Locked books for `sides`; raise NoActivePlaybook when any is missing."""
     books = load_books(db)
-    for side in SIDES:
-        if side not in books:
-            books[side] = make_record(side, STOCK, DEFAULT_STOCK[side], rev=0,
-                                      reason="no prep yet — default stock book")
+    missing = [s for s in sides if s not in books]
+    if missing:
+        pending = load_pending(db)
+        hint = (
+            " A custom book is pending — build it, then run `prep --game madden27 -o <opp> --mark-applied`."
+            if any(s in pending for s in missing)
+            else " Run `prep --game madden27 -o <opp>` first."
+        )
+        raise NoActivePlaybook(f"No {' / '.join(missing)} playbook locked yet.{hint}")
     return books
 
 
@@ -288,6 +318,7 @@ def plan_side(
     return {
         "side": side,
         "record": new,
+        "status": "applied" if mode == STOCK or change == "none" else "pending",
         "change": change,
         "deltas": deltas,
         "checklist": checklist,
@@ -310,23 +341,43 @@ def plan_books(
                                 choice=o_book, team=team)}
     if offense_only:
         # CPU = offense-only: defense book untouched (report the locked/default one)
-        rec = current.get("defense") or active_books(None)["defense"]
+        rec = current.get("defense") or make_record("defense", STOCK, DEFAULT_STOCK["defense"], rev=0)
         out["defense"] = {"side": "defense", "record": rec, "change": "none", "deltas": [],
                           "checklist": [], "reason": "CPU = offense-only (defense book unchanged)",
-                          "previous": None}
+                          "previous": None, "untouched": True}
     else:
         out["defense"] = plan_side("defense", current.get("defense"), opp=opp,
                                    choice=d_book, team=team)
     return out
 
 
-def lock_books(db: Any, plans: dict[str, dict[str, Any]]) -> None:
-    books = load_books(db)
+def lock_books(db: Any, plans: dict[str, dict[str, Any]], *, applied: bool = False) -> None:
+    """Persist prep's book decision. Stock (nothing to build) locks now; custom
+    builds/diffs stay pending until `applied=True` (prep --mark-applied)."""
+    state = _load_state(db)
     for side, p in plans.items():
-        if side == "defense" and p["reason"].startswith("CPU"):
+        if p.get("untouched"):
             continue
-        books[side] = p["record"]
-    save_books(db, books)
+        rec = p["record"]
+        if rec["mode"] == STOCK or p["change"] == "none" or applied:
+            state["applied"][side] = rec
+            state["pending"].pop(side, None)
+        else:
+            state["pending"][side] = rec
+        p["status"] = "applied" if state["applied"].get(side) is rec else "pending"
+    _save_state(db, state)
+
+
+def apply_pending(db: Any) -> list[str]:
+    """Promote pending custom books to applied (Aidan built them). Returns sides applied."""
+    state = _load_state(db)
+    done = []
+    for side, rec in list(state["pending"].items()):
+        state["applied"][side] = rec
+        del state["pending"][side]
+        done.append(side)
+    _save_state(db, state)
+    return done
 
 
 # ---------------------------------------------------------------------------
@@ -350,8 +401,11 @@ def format_books(books: dict[str, dict[str, Any]], *, offense_only: bool = False
 __all__ = [
     "CUSTOM",
     "STOCK",
+    "NoActivePlaybook",
     "active_books",
+    "apply_pending",
     "eligible",
+    "load_pending",
     "format_book",
     "format_books",
     "lock_books",

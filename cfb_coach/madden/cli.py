@@ -135,7 +135,7 @@ def cmd_prep(args: argparse.Namespace) -> int:
             plan = build_prep_plan(
                 oid, db=db, persist=True, profile=pid,
                 offline=args.offline, refresh_meta=args.refresh_meta,
-                o_book=args.o_book, d_book=args.d_book,
+                o_book=args.o_book, d_book=args.d_book, apply_books=args.mark_applied,
             )
             if args.mark_applied:
                 mark_applied(db, oid, plan["proposed_deltas"])
@@ -154,7 +154,8 @@ def cmd_prep(args: argparse.Namespace) -> int:
         print(f"Prep (Madden 27 Franchise) vs {plan['display_name']} → {path}")
         for side in ("offense",) if plan["offense_only"] else ("offense", "defense"):
             bp = plan["playbook"][side]
-            print(f"{side.title()} book: {bp['record']['name']} [{bp['record']['mode']}] — {bp['reason']}")
+            state = "LOCKED" if bp.get("status") != "pending" else "PENDING until --mark-applied"
+            print(f"{side.title()} book: {bp['record']['name']} [{bp['record']['mode']}] {state} — {bp['reason']}")
             if bp["checklist"]:
                 print(f"  BUILD CUSTOM {side.upper()} BOOK — {len(bp['checklist'])} formations (see browser / playbook --game madden27)")
         print(_profile_header(pid))
@@ -187,7 +188,13 @@ def cmd_call(args: argparse.Namespace) -> int:
         sit = parse_madden_situation(args.situation, default_side=args.side or "offense")
         if args.side:
             sit.side = args.side
-        call = make_call(sit, oid, db, active_macros=_active_after_prep(db, oid, pid))
+        from cfb_coach.madden.playbook import NoActivePlaybook
+
+        try:
+            call = make_call(sit, oid, db, active_macros=_active_after_prep(db, oid, pid))
+        except NoActivePlaybook as exc:
+            print(str(exc).replace("<opp>", oid), file=sys.stderr)
+            return 2
         print(call.format())
         if args.why:
             print(f"  ({call.rationale})")
@@ -197,18 +204,21 @@ def cmd_call(args: argparse.Namespace) -> int:
 
 
 def cmd_playbook(args: argparse.Namespace) -> int:
-    from cfb_coach.madden.playbook import active_books, format_book, load_books
+    from cfb_coach.madden.playbook import format_book, load_books, load_pending
 
     db = open_db()
     try:
         locked = load_books(db)
-        books = active_books(db)
+        pending = load_pending(db)
         sides = (args.side,) if args.side else ("offense", "defense")
         print("Madden 27 playbook of record (live calls are locked to these formations/plays)")
         for side in sides:
-            if side not in locked:
-                print(f"  ({side}: no prep yet — default stock book)")
-            print(format_book(books[side]))
+            if side in locked:
+                print("LOCKED " + format_book(locked[side]))
+            else:
+                print(f"{side.title()}: no book locked — run `prep --game madden27 -o <opp>` first")
+            if side in pending:
+                print("PENDING (build it, then prep --mark-applied) " + format_book(pending[side]))
     finally:
         db.close()
     return 0
@@ -302,12 +312,21 @@ def cmd_play(args: argparse.Namespace) -> int:
     print(f"LIVE PLAY — Madden 27 Franchise vs {oid}  (db: {db.path})")
     print(_profile_header(pid))
     print(doctrine_line(profile_config(pid)["team"]))
-    from cfb_coach.madden.playbook import active_books
+    from cfb_coach.madden.playbook import NoActivePlaybook, active_books, load_pending
 
-    books = active_books(db)
+    try:
+        books = active_books(db, ("offense",) if cpu else ("offense", "defense"))
+    except NoActivePlaybook as exc:
+        print(str(exc).replace("<opp>", oid), file=sys.stderr)
+        db.close()
+        return 2
     print(f"Locked book: O = {books['offense']['name']} [{books['offense']['mode']}]"
           + ("" if cpu else f" · D = {books['defense']['name']} [{books['defense']['mode']}]")
           + " — calls stay inside it (playbook --game madden27 to list)")
+    for side, rec in load_pending(db).items():
+        if side == "offense" or not cpu:
+            print(f"  note: {side} custom book rev {rec.get('rev')} is PENDING — build it, then "
+                  f"`prep --game madden27 -o {oid} --mark-applied` to switch live calls to it")
     if cpu:
         print("CPU opponent — OFFENSE-ONLY coaching (no defense calls / no D macros).")
         print("Commands: result <text> | why | quit  (side d disabled)")

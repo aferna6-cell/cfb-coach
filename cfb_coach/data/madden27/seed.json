@@ -489,6 +489,18 @@
           "Goal Line Pinch"
         ],
         "source": "Huddle.gg 49ers defense formation list; #1 D in Prodigy / TimeSaver / Operation Sports"
+      },
+      "Titans": {
+        "formations": [
+          "Nickel Over",
+          "Nickel Single Mug",
+          "Nickel Double Mug",
+          "Dime 3-2 Odd",
+          "4-3 Over"
+        ],
+        "team": "Tennessee Titans",
+        "source": "TimeSaver lists '49ers / Titans (Saleh) 4-3' as one #1 D; Operation Sports: the two books are 'pretty much identical' (Saleh)",
+        "note": "Formation list mirrors the 49ers book (not independently verified for Titans) — confirm in-game."
       }
     }
   },

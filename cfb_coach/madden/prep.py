@@ -206,6 +206,7 @@ def build_prep_plan(
     refresh_meta: bool = False,
     o_book: str | None = None,
     d_book: str | None = None,
+    apply_books: bool = False,
 ) -> dict[str, Any]:
     from cfb_coach.madden.playbook import lock_books, plan_books
 
@@ -292,7 +293,7 @@ def build_prep_plan(
         "meta_scout": scout_dict,
     }
     if db is not None and persist:
-        lock_books(db, books)
+        lock_books(db, books, applied=apply_books)
         save_prep(db, opponent_id, proposed, shown)
     return plan
 
@@ -319,6 +320,12 @@ def mark_applied(db: Any, opponent_id: str, deltas: list[dict[str, Any]]) -> Non
     db.save_install_sheet(opponent_id, sheet)
 
 
+def _status_label(bp: dict[str, Any], oid: str) -> str:
+    if bp.get("status") == "pending":
+        return f"PENDING (build it, then prep --game madden27 -o {oid} --mark-applied; live calls use the last locked book)"
+    return "LOCKED for live calls"
+
+
 def format_delta_text(plan: dict[str, Any]) -> str:
     pcfg = plan["profile_config"]
     lines = [
@@ -331,7 +338,8 @@ def format_delta_text(plan: dict[str, Any]) -> str:
     lines.append("## Playbook of record (locked by this prep)")
     for side in ("offense",) if plan["offense_only"] else ("offense", "defense"):
         bp = plan["playbook"][side]
-        lines.append(f"  {side.title()}: {bp['record']['name']} [{bp['record']['mode']}] — {bp['reason']}")
+        lines.append(f"  {side.title()}: {bp['record']['name']} [{bp['record']['mode']}] "
+                     f"{_status_label(bp, plan['opponent_id'])} — {bp['reason']}")
         if bp["checklist"]:
             lines.append(f"  BUILD CUSTOM {side.upper()} BOOK — install exactly these formations:")
             for item in bp["checklist"]:
