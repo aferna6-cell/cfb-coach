@@ -317,6 +317,7 @@ class TestPlaybookOfRecord(_Isolated):
                             formation="x", play="x", result="-2", coverage_seen="Cover 1")
                 db.log_snap(opponent_id="gavin", side="defense", situation_raw="x", our_call="x",
                             formation="x", play="x", result="+20", concept_seen="Four Verticals")
+            pivots = {"offense": 0, "defense": 0}
             for book in books:
                 for oid in ("gavin", "quen", "cpu"):
                     for raw in sits:
@@ -326,6 +327,11 @@ class TestPlaybookOfRecord(_Isolated):
                             side_book = book[call.side]
                             self.assertIn(call.formation, side_book, (raw, oid, call.format()))
                             self.assertIn(call.play, side_book[call.formation], (raw, oid, call.format()))
+                            if "PIVOT" in call.rationale:
+                                pivots[call.side] += 1
+            # gavin's logged fail streaks (3 per side) must drive the pivot path too
+            self.assertGreater(pivots["offense"], 0)
+            self.assertGreater(pivots["defense"], 0)
             # default (no explicit playbook) = the DB-locked book
             locked = eligible(__import__("cfb_coach.madden.playbook", fromlist=["x"]).active_books(db))
             call = make_call(parse_madden_situation("4&goal"), "gavin", db, rng=random.Random(0))
