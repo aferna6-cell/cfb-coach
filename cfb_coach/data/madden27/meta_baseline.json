@@ -1,0 +1,134 @@
+{
+  "version": "madden27-2026-09",
+  "game": "Madden 27",
+  "mode": "Franchise",
+  "patch": "TU 2026-09-16 (1.006) + TU 2026-09-03",
+  "description": "Madden 27 META baseline (Sep 2026) for Franchise user + CPU games. Soft priors from competitive community guides — scheme-first, not a locked team. Opponent persona leans stack on top; live evidence THIS game outranks all of it.",
+  "sources": [
+    "Prodigy / TimeSaver / Civil.GG / Huddle.gg / Madden School launch playbook guides (community, soft)",
+    "EA official Madden 27 tips + title update notes (2026-09-03, 2026-09-16)",
+    "Post-update competitive writeups (run game: Inside Zone + Stretch preferred)"
+  ],
+  "patch_notes": [
+    "2026-09-03 TU: OTs better at picking up contain defenders / wide LBs — contain-edge pressure less free; pre-snap defensive adjustments now carry over in hurry-up.",
+    "2026-09-03 TU: fewer unnecessary WR jump catches; defensive play flip alignment fixed.",
+    "2026-09-16 TU (1.006): passing + coverage tuning; large Franchise overhaul (free agency, contracts, online-league advance fixes)."
+  ],
+  "offense": {
+    "top_books": ["Buccaneers", "Shotgun Classic", "Eagles", "Saints", "Chargers", "Bengals", "Texans", "Dolphins", "Cardinals", "Falcons"],
+    "sleeper_books": ["Pistol (generic) — run book"],
+    "bucs_formations": {
+      "Gun Doubles Clamp Stack": ["Motion Shuffle Vert Smash"],
+      "Gun Trips X Nasty": ["Mtn Stick Wheel", "Switch HB Wheel"],
+      "Gun 5WR Tight": ["Mtn Double Post", "Mtn Fork Salem", "Mtn Post Swirl"],
+      "Pistol Trips RZ": ["HB Zone", "HB Dive"]
+    },
+    "stock_formations": ["Gun Bunch", "Gun Trips TE", "Gun Doubles / Clamp Stack", "Gun Empty", "Gun Tight Offset TE"],
+    "concepts": ["flood / sail", "stick-wheel", "mesh", "Ohio return", "PA flood", "return routes"],
+    "run_preference": "Inside Zone + Stretch post-update"
+  },
+  "defense": {
+    "top_books": ["49ers", "Titans (Saleh 4-3)", "Multiple D", "Texans", "Vikings", "Bengals", "Raiders", "Jaguars (Cover 4 identity)"],
+    "packages": ["Nickel (Mug / Single Mug / Nickel Mug)", "Dime 3-2 Odd", "Dollar"],
+    "coverage_mix": "Cover 4 Quarters / match home; C2/C3 answers; man only when bunch/stack is handled",
+    "pressure": "Schematic mug / stunts / DB Fire 2 — not mindless contain-four (Sep 3 TU: OTs pick up contain better)",
+    "launch_caveat": "Don't hang the whole D on stock 3-4 edge drops if still buggy — prefer Saleh 4-3 / flexible nickel."
+  },
+  "offense_gameplan": {
+    "home_formations": ["Gun Doubles Clamp Stack", "Gun Trips X Nasty"],
+    "situations": {
+      "goal_line": [
+        {"formation": "Pistol Trips RZ", "play": "HB Dive", "tags": ["run"]},
+        {"formation": "Pistol Trips RZ", "play": "HB Zone", "tags": ["run"]},
+        {"formation": "Gun Doubles Clamp Stack", "play": "Mesh", "tags": ["pass", "vs_man"]}
+      ],
+      "red_zone": [
+        {"formation": "Pistol Trips RZ", "play": "HB Zone", "tags": ["run", "vs_two_high"]},
+        {"formation": "Pistol Trips RZ", "play": "PA Flood", "tags": ["pass", "vs_single_high"]},
+        {"formation": "Gun Trips X Nasty", "play": "Mtn Stick Wheel", "tags": ["pass", "vs_man", "vs_pressure"]},
+        {"formation": "Gun Doubles Clamp Stack", "play": "Mesh", "tags": ["pass", "vs_man", "vs_pressure"]}
+      ],
+      "short_yardage": [
+        {"formation": "Pistol Trips RZ", "play": "HB Zone", "tags": ["run"]},
+        {"formation": "Gun Doubles Clamp Stack", "play": "Inside Zone", "tags": ["run", "vs_two_high"]},
+        {"formation": "Gun Trips X Nasty", "play": "Mtn Stick Wheel", "tags": ["pass", "vs_man", "vs_pressure"]},
+        {"formation": "Gun Doubles Clamp Stack", "play": "Mesh", "tags": ["pass", "vs_man", "vs_pressure"]}
+      ],
+      "long_yardage": [
+        {"formation": "Gun 5WR Tight", "play": "Mtn Double Post", "tags": ["pass", "vs_single_high", "vs_cover2"]},
+        {"formation": "Gun 5WR Tight", "play": "Mtn Fork Salem", "tags": ["pass", "vs_single_high"]},
+        {"formation": "Gun 5WR Tight", "play": "Mtn Post Swirl", "tags": ["pass", "vs_man"]},
+        {"formation": "Gun Doubles Clamp Stack", "play": "Mesh", "tags": ["pass", "vs_two_high", "vs_pressure"]},
+        {"formation": "Gun Trips X Nasty", "play": "Ohio Return", "tags": ["pass", "vs_two_high"]}
+      ],
+      "two_minute": [
+        {"formation": "Gun Trips X Nasty", "play": "Flood Sail", "tags": ["pass", "vs_single_high"]},
+        {"formation": "Gun 5WR Tight", "play": "Quick Slants", "tags": ["pass", "vs_pressure"]},
+        {"formation": "Gun Doubles Clamp Stack", "play": "Mesh", "tags": ["pass", "vs_man", "vs_two_high"]}
+      ],
+      "early_down": [
+        {"formation": "Gun Doubles Clamp Stack", "play": "Inside Zone", "tags": ["run", "vs_two_high"]},
+        {"formation": "Gun Doubles Clamp Stack", "play": "HB Stretch", "tags": ["run", "vs_two_high"]},
+        {"formation": "Pistol Trips RZ", "play": "HB Zone", "tags": ["run", "vs_two_high"]},
+        {"formation": "Gun Doubles Clamp Stack", "play": "Motion Shuffle Vert Smash", "tags": ["pass", "vs_man", "vs_single_high"]},
+        {"formation": "Gun Trips X Nasty", "play": "Mtn Stick Wheel", "tags": ["pass", "vs_man", "vs_pressure"]},
+        {"formation": "Gun Trips X Nasty", "play": "Switch HB Wheel", "tags": ["pass", "vs_single_high"]}
+      ]
+    },
+    "coverage_answers": {
+      "single_high": [
+        {"formation": "Gun Trips X Nasty", "play": "Flood Sail"},
+        {"formation": "Pistol Trips RZ", "play": "PA Flood"},
+        {"formation": "Gun Doubles Clamp Stack", "play": "Motion Shuffle Vert Smash"}
+      ],
+      "two_high": [
+        {"formation": "Gun Doubles Clamp Stack", "play": "Inside Zone"},
+        {"formation": "Gun Doubles Clamp Stack", "play": "HB Stretch"},
+        {"formation": "Gun Trips X Nasty", "play": "Ohio Return"}
+      ],
+      "cover2": [
+        {"formation": "Gun 5WR Tight", "play": "Mtn Double Post"},
+        {"formation": "Gun Doubles Clamp Stack", "play": "Inside Zone"}
+      ],
+      "man": [
+        {"formation": "Gun Doubles Clamp Stack", "play": "Mesh"},
+        {"formation": "Gun Trips X Nasty", "play": "Mtn Stick Wheel"},
+        {"formation": "Gun 5WR Tight", "play": "Mtn Post Swirl"}
+      ],
+      "pressure": [
+        {"formation": "Gun Doubles Clamp Stack", "play": "Mesh", "adj": "O-PROT"},
+        {"formation": "Gun 5WR Tight", "play": "Quick Slants", "adj": "Hot ready"},
+        {"formation": "Gun Trips X Nasty", "play": "Mtn Stick Wheel", "adj": "O-PROT"}
+      ]
+    },
+    "pivot_families": {
+      "run": {"formation": "Gun Doubles Clamp Stack", "plays": ["Inside Zone", "HB Stretch"]},
+      "quick": {"formation": "Gun Doubles Clamp Stack", "plays": ["Mesh"]},
+      "stick": {"formation": "Gun Trips X Nasty", "plays": ["Mtn Stick Wheel", "Ohio Return"]}
+    }
+  },
+  "defense_gameplan": {
+    "home_package": "Nickel Mug",
+    "home_rotation": {"Cover 4 Quarters": 0.4, "Cover 3 Match": 0.35, "Cover 2 Sink": 0.25},
+    "situational": {
+      "short_yardage": {"package": "4-3 Over", "calls": ["Cover 3 Sky", "Cover 1 Robber"], "note": "4-3 Over only true short; no auto RUN-FIT on one zone tell"},
+      "goal_line": {"package": "4-3 Over", "calls": ["Cover 1 Robber"], "note": "Heavy front; don't sell out run vs stack/PA"},
+      "long_yardage": {"package": "Dime 3-2 Odd", "calls": ["Cover 4 Quarters", "Cover 3 Match"], "note": "Protect seams; force underneath"},
+      "very_long": {"package": "Dollar", "calls": ["Cover 4 Drop"], "note": "distance >= 12"},
+      "pressure_changeup": {"package": "Nickel Mug", "calls": ["DB Fire 2"], "note": "Schematic mug pressure — 3rd-medium vs pressure-worthy persona only, rare"}
+    }
+  },
+  "macros_baseline": {
+    "keep": ["MATCH-4", "FLAT-CAP", "MESH-RAT", "STACK", "SPY", "RUN-FIT", "O-PROT", "O-MAN"],
+    "bench": ["HEAT", "O-RPO"],
+    "concept_family_macro": {
+      "vert": "MATCH-4",
+      "flood": "FLAT-CAP",
+      "cross": "MESH-RAT",
+      "stack": "STACK",
+      "scram": "SPY",
+      "run": "RUN-FIT"
+    }
+  },
+  "validation": "Community-derived ~Sep 2026. Meta drifts after every title update — soft priors only; in-game evidence outranks."
+}

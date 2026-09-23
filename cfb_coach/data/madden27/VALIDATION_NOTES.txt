@@ -1,0 +1,50 @@
+Madden 27 Franchise track — VALIDATION NOTES (meta label: madden27-2026-09)
+
+HONESTY FIRST
+- Everything Madden-side is COMMUNITY-DERIVED meta, snapshot ~September 2026.
+  Sources: competitive launch guides (Prodigy, TimeSaver, Civil.GG, Huddle.gg,
+  Madden School), EA official tips, and post-title-update writeups. None of it is
+  from Aidan's own Madden film (there is none yet).
+- Meta DRIFTS after every title update. Treat all priors as soft. In-game evidence
+  THIS game outranks the baseline; postgame learning outranks the baseline next game.
+- Title updates seen at snapshot time:
+    * 2026-09-03 TU — OTs better at picking up contain defenders / wide LBs;
+      pre-snap defensive adjustments carry over in hurry-up; fewer WR jump catches.
+    * 2026-09-16 TU (1.006) — passing + coverage tuning; big Franchise overhaul.
+  Re-run `prep --game madden27 --refresh-meta` after any new TU.
+
+WHAT IS CITED vs CONCEPT LABEL
+- Cited by community sources (exact names): Gun Doubles Clamp Stack (Motion Shuffle
+  Vert Smash), Gun Trips X Nasty (Mtn Stick Wheel, Switch HB Wheel), Gun 5WR Tight
+  (Mtn Double Post, Mtn Fork Salem, Mtn Post Swirl), Pistol Trips RZ (HB Zone, HB Dive);
+  Nickel Mug packages, Dime 3-2 Odd, Dollar, Cover 4 Quarters, DB Fire 2.
+- Concept labels (confirm exact play name in your book — may be spelled differently):
+  Mesh, Stick Wheel, Ohio Return, Flood Sail, PA Flood, Stick, Quick Slants, Inside
+  Zone, HB Stretch, Cover 3 Match, Cover 2 Sink, Cover 1 Robber, Cover 2 Man, Cover 4 Drop,
+  4-3 Over. Seed lists `cited` per formation; anything else is a concept label.
+
+SCHEME PACK, NOT A TEAM
+- Default inventory = Bucs-style offense + Saleh/49ers-style (4-3) defense as an
+  UNASSIGNED primary scheme pack. It is NOT Aidan's Franchise team.
+- Primary / lab teams are TBD and configurable:
+    config --game madden27 --primary-team "<NFL team>"
+  Setting a team retargets prep deltas (confirm formations exist in that team's book,
+  or rebuild via custom playbook). Personas and call language do not change.
+
+MACROS
+- Madden macros here are named pre-snap adjustment RECIPES (shading, zone
+  assignments, press/off, DL/LB shifts, protection slides, hot routes).
+- Exact Madden 27 menu names/paths are NOT verified — every setting is tagged
+  `approx`. If Madden 27 has saved coach/custom adjustment slots, save the recipe
+  there; otherwise use the copy block as a pre-snap checklist.
+- No button sequences are invented (Xbox, names only).
+- All 10 catalog macros start `meta_grounded`. Postgame promotes to `proven`
+  (3+ uses, >= 60% success) or demotes to `failed` (3+ uses, <= 30% success).
+- Hard cap 8 O+D Active for USER games (6 D + 2 O). CPU games = offense-only.
+
+SHARED PERSONAS
+- Opponents are the SAME cast as CFB (gavin, quen, tiano, gio, michael, harrison,
+  jaxon, ryan, james, cpu). Madden reuses their persona archetype only — not their
+  CFB playbook/concept lists (never CFB27 meta on the Madden side).
+- Madden film confidence starts one step below the CFB persona confidence
+  (persona carry-over, no Madden film yet).

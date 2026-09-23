@@ -1,0 +1,385 @@
+"""Madden 27 Franchise prep plan — inventory (scheme pack) vs opponent deltas.
+
+Same UX contract as CFB prep: the scheme pack is assumed already stocked
+(custom playbook), so prep shows only ADD / EDIT / BENCH-style deltas that are
+at least meta_grounded, plus the Active-8 loadout (post-swap) and call tips.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+from cfb_coach.install_sheet import filter_new_deltas, get_applied_deltas
+from cfb_coach.madden.data import (
+    META_VERSION,
+    archetype_lean,
+    cited_plays,
+    get_macro,
+    load_macro_catalog,
+    load_meta_baseline,
+    load_seed,
+)
+from cfb_coach.madden.franchise import (
+    LAB,
+    doctrine_line,
+    get_session_profile,
+    normalize_profile,
+    profile_config,
+)
+from cfb_coach.madden.macros import USER_ACTIVE_CAP, loadout_cards, macro_side, swap_plan
+from cfb_coach.opponents import is_cpu_opponent
+
+
+def load_profile(opponent_id: str, db: Any = None) -> dict[str, Any]:
+    opp = dict((load_seed().get("opponents") or {}).get(opponent_id) or {})
+    if db is not None:
+        prof = db.get_opponent(opponent_id)
+        if prof:
+            opp = dict(prof)
+    opp["_id"] = opponent_id
+    return opp
+
+
+def build_inventory(seed: dict[str, Any] | None = None) -> dict[str, Any]:
+    seed = seed or load_seed()
+    pb = seed["playbooks"]
+    base = seed["league"]["online_baseline"]
+    offense = {
+        name: {
+            "role": meta.get("role", ""),
+            "book": meta.get("book", ""),
+            "plays": list(meta.get("core") or []),
+            "audibles": list(meta.get("audibles") or []),
+        }
+        for name, meta in pb["offense_formations"].items()
+    }
+    defense = {
+        name: {"role": meta.get("role", ""), "book": meta.get("book", ""), "calls": list(meta.get("calls") or [])}
+        for name, meta in pb["defense_packages"].items()
+    }
+    return {
+        "offense_book": base["custom_offense"],
+        "defense_book": base["custom_defense"],
+        "offense": offense,
+        "defense": defense,
+        "macros_active": list(base["defensive_macros_active"]),
+        "offensive_macros": list(base["offensive_macros_active"]),
+        "macros_benched": list(base["macros_benched"]),
+    }
+
+
+def _delta(action: str, target: str, detail: str, *, kind: str = "playbook", field: str = "",
+           before: str = "", after: str = "", why: str = "", side: str = "") -> dict[str, Any]:
+    return {
+        "action": action.upper(),
+        "kind": kind,
+        "target": target,
+        "field": field,
+        "before": before,
+        "after": after,
+        "detail": detail,
+        "why": why,
+        "side": side,
+        "validated_status": "meta_grounded",
+    }
+
+
+def propose_deltas(
+    opponent_id: str,
+    opp: dict[str, Any],
+    *,
+    profile: str,
+    team: str | None,
+    inventory: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Persona-archetype deltas only (Madden meta-grounded); thin persona → none."""
+    seed = load_seed()
+    arch = (opp.get("archetype") or "unknown").lower()
+    traits = opp.get("traits") or {}
+    extra = seed.get("delta_formations") or {}
+    cpu = is_cpu_opponent(opponent_id)
+    out: list[dict[str, Any]] = []
+
+    def add_formation(name: str, why: str) -> None:
+        meta = extra[name]
+        out.append(_delta(
+            "ADD", name, f"{meta['book']} formation → plays: {', '.join(meta['core'])}",
+            field="Formation", after=f"{name} ({meta['book']})",
+            why=f"{why} {meta['why']}", side="offense",
+        ))
+
+    if arch == "split_field_zone":
+        aud = inventory["offense"]["Gun Doubles Clamp Stack"]["audibles"]
+        after = [("Stick Wheel" if a == "Motion Shuffle Vert Smash" else a) for a in aud]
+        out.append(_delta(
+            "EDIT", "Gun Doubles Clamp Stack", "Audible slot: swap Vert Smash → Stick Wheel",
+            field="Audibles", before=", ".join(aud), after=", ".join(after),
+            why="Two-high persona: don't force Vert Smash into safeties; stick-wheel underneath.",
+            side="offense",
+        ))
+        add_formation("Gun Tight Offset TE", "Two-high persona → run first (Inside Zone / Stretch).")
+        if traits.get("escape") and not cpu:
+            m = get_macro("SPY") or {}
+            out.append(_delta(
+                "EDIT", "SPY", "Pre-load QB spy plan for this persona's escapes",
+                kind="macro", field="When to arm", before=m.get("when_to_arm", ""),
+                after="After 2+ scrambles this game — 3rd down first",
+                why=f"Persona trait: {traits['escape']}", side="defense",
+            ))
+    elif arch == "pressure_heavy":
+        add_formation("Gun Bunch", "Pressure persona → quick rub/stack answers.")
+        m = get_macro("O-PROT") or {}
+        out.append(_delta(
+            "EDIT", "O-PROT", "Arm protection earlier vs this persona",
+            kind="macro", field="When to arm", before=m.get("when_to_arm", ""),
+            after="From snap 1 on passing downs (pressure persona)",
+            why="Pressure-heavy archetype — O-PROT is the persona answer, not a one-tell chase.",
+            side="offense",
+        ))
+    elif arch == "c2_c3_mixer":
+        add_formation("Gun Empty", "C2/C3 mixer → Double Post vs C2, Mesh vs C3 on 3rd-long.")
+        if not cpu:
+            m = get_macro("STACK") or {}
+            out.append(_delta(
+                "EDIT", "STACK", "Compressed/GL persona — STACK is the likely first macro",
+                kind="macro", field="When to arm", before=m.get("when_to_arm", ""),
+                after="After 2+ stack/bunch wins, incl. RZ/GL",
+                why="c2_c3_mixer persona lives in compressed sets near scoring.",
+                side="defense",
+            ))
+    elif arch == "two_high_money_downs":
+        aud = inventory["offense"]["Gun Trips X Nasty"]["audibles"]
+        after = [("Ohio Return" if a == "Switch HB Wheel" else a) for a in aud]
+        out.append(_delta(
+            "EDIT", "Gun Trips X Nasty", "Audible slot: swap Switch HB Wheel → Ohio Return",
+            field="Audibles", before=", ".join(aud), after=", ".join(after),
+            why="CPU two-high on money downs — take free underneath to the sticks.",
+            side="offense",
+        ))
+
+    # Lab = freer: bring a benched meta_grounded macro in (with swap at cap)
+    if normalize_profile(profile) == LAB:
+        exp = "O-RPO" if cpu else "HEAT"
+        m = get_macro(exp) or {}
+        out.append(_delta(
+            "ADD", exp, f"Lab experiment: {m.get('purpose', '')}",
+            kind="macro", field="Active", after=f"{exp} Active",
+            why="Franchise lab — test benched meta_grounded macro; promotes to primary if it holds.",
+            side=macro_side(exp),
+        ))
+
+    if team:
+        out.append(_delta(
+            "EDIT", inventory["offense_book"], f"Retarget scheme pack to {team}",
+            field="Team book", before="Unassigned scheme pack", after=team,
+            why=(f"Primary team set: keep scheme-pack formations via custom playbook; "
+                 f"check which exist natively in the {team} book before the game."),
+            side="offense",
+        ))
+    return out
+
+
+def resolve_loadout(
+    active: list[str],
+    deltas: list[dict[str, Any]],
+    archetype: str | None,
+    *,
+    offense_only: bool,
+) -> tuple[list[str], list[dict[str, Any]], list[str]]:
+    """Apply macro ADDs (with swap at cap) → (active after, swap plans, replacing lines)."""
+    after = list(active)
+    swaps: list[dict[str, Any]] = []
+    replacing: list[str] = []
+    for d in deltas:
+        if d.get("kind") != "macro" or d.get("action") != "ADD" or d["target"] in after:
+            continue
+        counted = [m for m in after if not offense_only or macro_side(m) == "offense"]
+        if len(counted) >= USER_ACTIVE_CAP:
+            sp = swap_plan(d["target"], after, archetype)
+            d["swap_plan"] = sp
+            swaps.append(sp)
+            after.remove(sp["bench"])
+            replacing.append(f"replacing {sp['bench']} with {d['target']}")
+        after.append(d["target"])
+    return after, swaps, replacing
+
+
+def call_tips(opp: dict[str, Any], *, offense_only: bool, bl: dict[str, Any]) -> list[str]:
+    lean = archetype_lean(opp.get("archetype"))
+    tips: list[str] = []
+    if offense_only:
+        tips.append("CPU game = offense-only coaching (no D calls / no D macros)")
+    tips.append(f"O: {lean.get('offense', '')}")
+    if not offense_only:
+        tips.append(f"D: {lean.get('defense', '')}")
+    tips.append(f"Run game: {bl['offense']['run_preference']}")
+    if not offense_only:
+        tips.append(f"D pressure: {bl['defense']['pressure']}")
+    tips.append("One tell = mild bump; macros only on REPEATED tendency (2+) this game.")
+    return [t for t in tips if t.split(":", 1)[-1].strip()]
+
+
+def _mark_names(inv: dict[str, Any]) -> dict[str, Any]:
+    """Tag non-cited play names as concept labels for the read-only inventory."""
+    cited = cited_plays()
+    out = dict(inv)
+    out["offense"] = {
+        k: {**v, "plays": [p if p in cited else f"{p} (concept label)" for p in v["plays"]]}
+        for k, v in inv["offense"].items()
+    }
+    out["defense"] = {
+        k: {**v, "calls": [c if c in cited else f"{c} (concept label)" for c in v["calls"]]}
+        for k, v in inv["defense"].items()
+    }
+    return out
+
+
+def build_prep_plan(
+    opponent_id: str,
+    opp: dict[str, Any] | None = None,
+    *,
+    db: Any = None,
+    persist: bool = True,
+    profile: str | None = None,
+    offline: bool = False,
+    refresh_meta: bool = False,
+) -> dict[str, Any]:
+    opp = opp or load_profile(opponent_id, db)
+    if profile is None:
+        profile = get_session_profile(db)
+    pcfg = profile_config(profile)
+    bl = load_meta_baseline()
+    inv = build_inventory()
+    offense_only = is_cpu_opponent(opponent_id)
+    arch = (opp.get("archetype") or "unknown").lower()
+
+    proposed = propose_deltas(opponent_id, opp, profile=pcfg["id"], team=pcfg["team"], inventory=inv)
+    applied = get_applied_deltas(db, opponent_id)
+    shown = filter_new_deltas(proposed, applied)
+
+    active = list(pcfg["default_active"] or inv["macros_active"] + inv["offensive_macros"])
+    active_after, swaps, replacing = resolve_loadout(active, shown, arch, offense_only=offense_only)
+    cards, loadout = loadout_cards(active_after, db, offense_only=offense_only)
+    budget = {
+        "meter": loadout["meter"],
+        "total": loadout["total"],
+        "cap": USER_ACTIVE_CAP,
+        "at_cap": loadout["total"] >= USER_ACTIVE_CAP,
+    }
+
+    tips = call_tips(opp, offense_only=offense_only, bl=bl)
+    if not pcfg["team"]:
+        tips.append("Primary team TBD — running the unassigned meta scheme pack "
+                    "(set later: config --game madden27 --primary-team <NFL team>).")
+
+    scout_dict: dict[str, Any]
+    try:
+        from cfb_coach.madden.meta_scout import apply_scout, run_madden_scout
+
+        scout = run_madden_scout(offline=offline, refresh=refresh_meta)
+        s_tips, _ = apply_scout(scout, profile=pcfg["id"], offense_only=offense_only, active=active_after)
+        tips.extend(s_tips)
+        scout_dict = scout.to_dict()
+    except Exception as exc:  # noqa: BLE001 — never break prep
+        scout_dict = {
+            "available": False,
+            "offline": offline,
+            "message": f"Scout unavailable — using cached/baseline {META_VERSION} ({type(exc).__name__})",
+            "baseline_fallback": META_VERSION,
+            "confidence": "low",
+        }
+
+    plan = {
+        "game_id": "madden27",
+        "opponent_id": opponent_id,
+        "display_name": opp.get("display_name", opponent_id),
+        "team": opp.get("nfl_team") or opp.get("team_now") or "persona",
+        "archetype": arch,
+        "persona_confidence": opp.get("persona_confidence"),
+        "film_confidence": opp.get("confidence"),
+        "version": bl["version"],
+        "game": "Madden 27 Franchise",
+        "patch": bl.get("patch", ""),
+        "patch_notes": list(bl.get("patch_notes") or []),
+        "inventory": _mark_names(inv),
+        "proposed_deltas": proposed,
+        "shown_deltas": shown,
+        "applied_count": len(applied),
+        "tips": tips,
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "active_cap": USER_ACTIVE_CAP,
+        "slot_budget": budget,
+        "macro_cards": cards,
+        "loadout": loadout,
+        "active_after": active_after,
+        "replacing_lines": replacing,
+        "swap_banners": swaps,
+        "offense_only": offense_only,
+        "macro_catalog_version": load_macro_catalog().get("version", "?"),
+        "profile": pcfg["id"],
+        "profile_config": pcfg,
+        "primary_team": profile_config("primary")["team"],
+        "doctrine": doctrine_line(pcfg["team"]),
+        "meta_scout": scout_dict,
+    }
+    if db is not None and persist:
+        save_prep(db, opponent_id, proposed, shown)
+    return plan
+
+
+def save_prep(db: Any, opponent_id: str, proposed: list[dict[str, Any]], shown: list[dict[str, Any]]) -> None:
+    prev = db.get_install_sheet(opponent_id) or {}
+    db.save_install_sheet(opponent_id, {
+        "version": META_VERSION,
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "proposed_deltas": proposed,
+        "shown_deltas": shown,
+        "applied_deltas": list(prev.get("applied_deltas") or []),
+    })
+    for d in shown:
+        db.log_install_diff(opponent_id=opponent_id, action=d["action"], target=d["target"],
+                            detail=d["detail"], why=d.get("why", ""))
+
+
+def mark_applied(db: Any, opponent_id: str, deltas: list[dict[str, Any]]) -> None:
+    sheet = db.get_install_sheet(opponent_id) or {}
+    sheet["applied_deltas"] = list(deltas)
+    sheet["applied_ts"] = datetime.now(timezone.utc).isoformat()
+    sheet["version"] = META_VERSION
+    db.save_install_sheet(opponent_id, sheet)
+
+
+def format_delta_text(plan: dict[str, Any]) -> str:
+    pcfg = plan["profile_config"]
+    lines = [
+        f"# PREP — vs {plan['display_name']} (persona: {plan['archetype']})  |  "
+        f"{plan['game']} / {plan['version']}",
+        f"Franchise profile: {pcfg['label']} ({pcfg['mode']}) — team: {pcfg['team_label']}",
+    ]
+    shown = plan["shown_deltas"]
+    if not shown:
+        lines.append("No playbook changes — run scheme pack as-is.")
+    for d in shown:
+        bit = f"  [{d['action']}] {d['target']}"
+        if d.get("field"):
+            bit += f" · {d['field']}"
+        bit += f" [{d.get('validated_status')}] — {d['detail']}"
+        lines.append(bit)
+        if d.get("before") or d.get("after"):
+            lines.append(f"      {d.get('before') or '—'} → {d.get('after') or '—'}")
+        if d.get("why"):
+            lines.append(f"      why: {d['why']}")
+    for r in plan.get("replacing_lines") or []:
+        lines.append(f"  Loadout: {r}")
+    lines.append(f"## Active loadout — {plan['loadout']['meter']}")
+    if plan["offense_only"]:
+        lines.append("  D macros: N/A — offense only (CPU)")
+    for c in plan["macro_cards"]:
+        lines.append(f"  - {c['id']} ({c.get('side')}) [{c.get('validated_status')}] — {c.get('purpose', '')}")
+    lines.append("## Call emphasis")
+    lines.extend(f"  - {t}" for t in plan["tips"])
+    scout = plan.get("meta_scout") or {}
+    if not scout.get("available"):
+        lines.append(f"## Live meta scout\n  {scout.get('message') or 'Scout unavailable'}")
+    return "\n".join(lines)

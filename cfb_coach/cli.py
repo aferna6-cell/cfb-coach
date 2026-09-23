@@ -1,4 +1,8 @@
-"""CLI: prep / play / postgame / promote / opponents / call / watch."""
+"""CLI: prep / play / postgame / promote / opponents / call / config / watch.
+
+`--game cfb27` (default) runs the CFB 27 coach unchanged; `--game madden27`
+dispatches to cfb_coach.madden.cli (Madden 27 Franchise).
+"""
 
 from __future__ import annotations
 
@@ -34,12 +38,44 @@ def _require_opponent(raw: str) -> str:
     return oid
 
 
-def cmd_opponents(_args: argparse.Namespace) -> int:
+def _madden_handler(args: argparse.Namespace, name: str):
+    """Return the Madden 27 handler when --game madden27, else None (CFB path)."""
+    from cfb_coach.games import is_madden
+
+    madden = is_madden(getattr(args, "game", None))
+    if madden and getattr(args, "dynasty", None):
+        raise SystemExit("--dynasty is CFB-only; Madden 27 uses --franchise primary|lab")
+    if not madden and getattr(args, "franchise", None):
+        raise SystemExit("--franchise is Madden-only; add --game madden27")
+    if not madden:
+        return None
+    from cfb_coach.madden import cli as madden_cli
+
+    return getattr(madden_cli, name)
+
+
+def cmd_opponents(args: argparse.Namespace) -> int:
+    handler = _madden_handler(args, "cmd_opponents")
+    if handler:
+        return handler(args)
     print(format_opponent_list())
     return 0
 
 
+def cmd_config(args: argparse.Namespace) -> int:
+    from cfb_coach.games import is_madden
+
+    if not is_madden(args.game):
+        raise SystemExit("config currently applies to --game madden27 (primary/lab Franchise team)")
+    from cfb_coach.madden import cli as madden_cli
+
+    return madden_cli.cmd_config(args)
+
+
 def cmd_prep(args: argparse.Namespace) -> int:
+    handler = _madden_handler(args, "cmd_prep")
+    if handler:
+        return handler(args)
     from cfb_coach.install_sheet import format_delta_text, mark_prep_applied
     from cfb_coach.prep import load_opponent_profile
     from cfb_coach.prep_browser import generate_and_open
@@ -119,6 +155,9 @@ def cmd_prep(args: argparse.Namespace) -> int:
 
 
 def cmd_postgame(args: argparse.Namespace) -> int:
+    handler = _madden_handler(args, "cmd_postgame")
+    if handler:
+        return handler(args)
     from cfb_coach.gameplan import postgame_summary
 
     oid = _require_opponent(args.opponent)
@@ -164,6 +203,9 @@ def cmd_postgame(args: argparse.Namespace) -> int:
 
 
 def cmd_call(args: argparse.Namespace) -> int:
+    handler = _madden_handler(args, "cmd_call")
+    if handler:
+        return handler(args)
     oid = _require_opponent(args.opponent)
     db = _db()
     try:
@@ -180,6 +222,9 @@ def cmd_call(args: argparse.Namespace) -> int:
 
 
 def cmd_play(args: argparse.Namespace) -> int:
+    handler = _madden_handler(args, "cmd_play")
+    if handler:
+        return handler(args)
     oid = _require_opponent(args.opponent)
     db = _db()
     dynasty = set_session_dynasty(
@@ -388,6 +433,9 @@ def cmd_play(args: argparse.Namespace) -> int:
 
 def cmd_promote(args: argparse.Namespace) -> int:
     """List / accept ohio_state → Alabama promotions."""
+    handler = _madden_handler(args, "cmd_promote")
+    if handler:
+        return handler(args)
     from cfb_coach.dynasty import format_promotions, promote
 
     db = _db()
@@ -422,10 +470,28 @@ def cmd_watch(args: argparse.Namespace) -> int:
     return run_watch(args)
 
 
+def _add_game_args(p: argparse.ArgumentParser, *, franchise: bool = True) -> None:
+    from cfb_coach.games import GAME_CHOICES
+
+    p.add_argument(
+        "--game",
+        choices=GAME_CHOICES,
+        default="cfb27",
+        help="cfb27 (default) | madden27 (alias madden) — Madden 27 Franchise typed coach",
+    )
+    if franchise:
+        p.add_argument(
+            "--franchise",
+            choices=("primary", "lab"),
+            default=None,
+            help="Madden only: primary (serious Franchise, team TBD) | lab (experimental; promotes to primary)",
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="cfb_coach",
-        description="Xbox CFB dynasty play-caller (heuristics + seed + log learning)",
+        description="Xbox CFB 27 dynasty + Madden 27 Franchise play-caller (heuristics + seed + log learning)",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -465,6 +531,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Force refetch meta scout (ignore <6h cache)",
     )
+    _add_game_args(p_prep)
     p_prep.set_defaults(func=cmd_prep)
 
     p_play = sub.add_parser(
@@ -495,6 +562,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable HTML overlay (interactive play defaults overlay ON)",
     )
+    _add_game_args(p_play)
     p_play.set_defaults(func=cmd_play)
 
     p_post = sub.add_parser(
@@ -513,9 +581,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Also print concise this-game live tendency summary from play_records",
     )
+    _add_game_args(p_post)
     p_post.set_defaults(func=cmd_postgame)
 
     p_ops = sub.add_parser("opponents", help="List opponents + aliases")
+    _add_game_args(p_ops, franchise=False)
     p_ops.set_defaults(func=cmd_opponents)
 
     p_call = sub.add_parser("call", help="One-shot call (non-interactive)")
@@ -523,6 +593,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_call.add_argument("--situation", "-s", required=True)
     p_call.add_argument("--side", choices=("offense", "defense"), default=None)
     p_call.add_argument("--why", action="store_true")
+    _add_game_args(p_call, franchise=False)
     p_call.set_defaults(func=cmd_call)
 
     p_prom = sub.add_parser(
@@ -544,7 +615,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional kind filter with --target",
     )
+    _add_game_args(p_prom, franchise=False)
     p_prom.set_defaults(func=cmd_promote)
+
+    p_cfg = sub.add_parser(
+        "config",
+        help="Madden 27 Franchise config: primary/lab team (TBD until set)",
+    )
+    _add_game_args(p_cfg, franchise=False)
+    p_cfg.set_defaults(game="madden27")
+    p_cfg.add_argument("--primary-team", default=None, help='Primary Franchise NFL team, e.g. "Buccaneers" or TB')
+    p_cfg.add_argument("--lab-team", default=None, help="Optional lab Franchise team")
+    p_cfg.add_argument("--clear-primary", action="store_true", help="Reset primary team to TBD")
+    p_cfg.add_argument("--clear-lab", action="store_true", help="Reset lab team to TBD")
+    p_cfg.set_defaults(func=cmd_config)
 
     p_watch = sub.add_parser(
         "watch",

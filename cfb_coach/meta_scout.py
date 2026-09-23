@@ -339,8 +339,12 @@ def _looks_meta(text: str) -> bool:
 
 
 def _parse_fetched(
-    sources: list[MetaSource], bodies: dict[str, str]
+    sources: list[MetaSource],
+    bodies: dict[str, str],
+    concept_map: list[tuple[re.Pattern[str], dict[str, Any]]] | None = None,
 ) -> MetaScoutResult:
+    """Parse fetched pages. `concept_map` lets other games (Madden 27) reuse this."""
+    concept_map = _CONCEPT_MAP if concept_map is None else concept_map
     patch_notes: list[dict[str, Any]] = []
     offense: list[str] = []
     defense: list[str] = []
@@ -385,7 +389,7 @@ def _parse_fetched(
                     }
                 )
 
-        for pat, info in _CONCEPT_MAP:
+        for pat, info in concept_map:
             if not pat.search(blob):
                 continue
             tip = info["tip"]

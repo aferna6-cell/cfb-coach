@@ -1,0 +1,469 @@
+{
+  "version": "madden27-1.0.0",
+  "game": "Madden 27",
+  "mode": "Franchise",
+  "platform": "Xbox",
+  "active_cap": {
+    "user_online_dynasty": 8,
+    "scope": "offense + defense macros combined (Aidan rule, user games)",
+    "note": "CPU games = offense-only — O macros only."
+  },
+  "field_legend": {
+    "approx": "Meta-grounded Madden 27 setting — confirm exact menu name in-game (no Madden film yet)",
+    "confirmed": "Confirmed in-game by Aidan (none yet)"
+  },
+  "franchise_profiles": {
+    "primary": {
+      "default_active": [
+        "MATCH-4",
+        "FLAT-CAP",
+        "MESH-RAT",
+        "STACK",
+        "SPY",
+        "RUN-FIT",
+        "O-PROT",
+        "O-MAN"
+      ],
+      "default_benched": [
+        "HEAT",
+        "O-RPO"
+      ],
+      "allow_experimental_active": false
+    },
+    "lab": {
+      "default_active": [
+        "MATCH-4",
+        "FLAT-CAP",
+        "MESH-RAT",
+        "STACK",
+        "SPY",
+        "RUN-FIT",
+        "O-PROT",
+        "O-MAN"
+      ],
+      "default_benched": [
+        "HEAT",
+        "O-RPO"
+      ],
+      "allow_experimental_active": true
+    }
+  },
+  "swap_priority": {
+    "split_field_zone": {
+      "prefer_bench": [
+        "RUN-FIT",
+        "STACK"
+      ],
+      "why": "explosive-shot + scramble persona — keep MATCH-4 / SPY"
+    },
+    "pressure_heavy": {
+      "prefer_bench": [
+        "RUN-FIT",
+        "MATCH-4"
+      ],
+      "why": "crossers/bubbles/scramble — keep MESH-RAT / SPY / O-PROT"
+    },
+    "c2_c3_mixer": {
+      "prefer_bench": [
+        "SPY",
+        "MATCH-4"
+      ],
+      "why": "compressed/GL persona — keep STACK / RUN-FIT"
+    },
+    "default": {
+      "prefer_bench": [
+        "RUN-FIT",
+        "SPY"
+      ],
+      "why": "thin persona — keep coverage answers"
+    }
+  },
+  "doctrine": "Do NOT auto-arm a macro from one concept appearance — most snaps Nickel Mug Cover 4 Quarters / Cover 3 Match / Cover 2 Sink with no macro.",
+  "macros": {
+    "MATCH-4": {
+      "name": "MATCH-4",
+      "side": "defense",
+      "purpose": "Answer verticals / Vert Smash / Double Post seams",
+      "when_to_arm": "After 2+ live vertical / seam / wheel tells in similar D&D this game",
+      "validated_status": "meta_grounded",
+      "inventory": "active",
+      "shell_pair": "Nickel Mug — Cover 4 Quarters",
+      "user_job": "User #3 seam",
+      "concept_family": "vert",
+      "source": "Madden 27 community meta ~2026-09 (soft) — no Madden film yet",
+      "exact": false,
+      "xbox_steps": [
+        "Call the paired shell (see Shell pair) from the Active playbook",
+        "Pre-snap: apply the ticks below from Madden's defensive adjustment menus (names approx — confirm in Madden 27 UI)",
+        "If Madden 27 offers saved coach/custom adjustments: save this recipe as the macro name and set Active (Aidan cap 8 O+D)",
+        "Otherwise treat the copy block as a pre-snap checklist — no button sequences invented"
+      ],
+      "full_settings": {
+        "Coverage / Shading": {
+          "value": "Over the top",
+          "status": "approx",
+          "section": "Coverage"
+        },
+        "Coverage / CB alignment": {
+          "value": "Off / give cushion",
+          "status": "approx",
+          "section": "Coverage"
+        },
+        "Zones / Deep safeties": {
+          "value": "Quarters match on #2 vertical",
+          "status": "approx",
+          "section": "Zones"
+        },
+        "Pass rush / Show blitz": {
+          "value": "Off",
+          "status": "approx",
+          "section": "Pass rush"
+        }
+      },
+      "copy_block": "MATCH-4 (defense) — Answer verticals / Vert Smash / Double Post seams\nShell pair: Nickel Mug — Cover 4 Quarters\nUser: User #3 seam\n[ ] Coverage / Shading: Over the top\n[ ] Coverage / CB alignment: Off / give cushion\n[ ] Zones / Deep safeties: Quarters match on #2 vertical\n[ ] Pass rush / Show blitz: Off\nArm when: After 2+ live vertical / seam / wheel tells in similar D&D this game"
+    },
+    "FLAT-CAP": {
+      "name": "FLAT-CAP",
+      "side": "defense",
+      "purpose": "Answer flood / sail / stick-wheel / PA flood",
+      "when_to_arm": "After 2+ live flood / sail / stick-wheel tells in similar D&D",
+      "validated_status": "meta_grounded",
+      "inventory": "active",
+      "shell_pair": "Nickel Mug — Cover 3 Match",
+      "user_job": "User curl / sail window",
+      "concept_family": "flood",
+      "source": "Madden 27 community meta ~2026-09 (soft) — no Madden film yet",
+      "exact": false,
+      "xbox_steps": [
+        "Call the paired shell (see Shell pair) from the Active playbook",
+        "Pre-snap: apply the ticks below from Madden's defensive adjustment menus (names approx — confirm in Madden 27 UI)",
+        "If Madden 27 offers saved coach/custom adjustments: save this recipe as the macro name and set Active (Aidan cap 8 O+D)",
+        "Otherwise treat the copy block as a pre-snap checklist — no button sequences invented"
+      ],
+      "full_settings": {
+        "Coverage / Shading": {
+          "value": "Outside",
+          "status": "approx",
+          "section": "Coverage"
+        },
+        "Zones / Flat defenders": {
+          "value": "Hard flat",
+          "status": "approx",
+          "section": "Zones"
+        },
+        "Zones / Curl defenders": {
+          "value": "Curl-flat (sink to sail)",
+          "status": "approx",
+          "section": "Zones"
+        },
+        "Pass rush / Contain": {
+          "value": "Off (Sep 3 TU: contain edges get picked up)",
+          "status": "approx",
+          "section": "Pass rush"
+        }
+      },
+      "copy_block": "FLAT-CAP (defense) — Answer flood / sail / stick-wheel / PA flood\nShell pair: Nickel Mug — Cover 3 Match\nUser: User curl / sail window\n[ ] Coverage / Shading: Outside\n[ ] Zones / Flat defenders: Hard flat\n[ ] Zones / Curl defenders: Curl-flat (sink to sail)\n[ ] Pass rush / Contain: Off (Sep 3 TU: contain edges get picked up)\nArm when: After 2+ live flood / sail / stick-wheel tells in similar D&D"
+    },
+    "MESH-RAT": {
+      "name": "MESH-RAT",
+      "side": "defense",
+      "purpose": "Answer mesh / crossers / Ohio return / swirl",
+      "when_to_arm": "After 2+ live mesh / crosser / return-route tells",
+      "validated_status": "meta_grounded",
+      "inventory": "active",
+      "shell_pair": "Nickel Mug — Cover 2 Sink",
+      "user_job": "User rat (inside cross)",
+      "concept_family": "cross",
+      "source": "Madden 27 community meta ~2026-09 (soft) — no Madden film yet",
+      "exact": false,
+      "xbox_steps": [
+        "Call the paired shell (see Shell pair) from the Active playbook",
+        "Pre-snap: apply the ticks below from Madden's defensive adjustment menus (names approx — confirm in Madden 27 UI)",
+        "If Madden 27 offers saved coach/custom adjustments: save this recipe as the macro name and set Active (Aidan cap 8 O+D)",
+        "Otherwise treat the copy block as a pre-snap checklist — no button sequences invented"
+      ],
+      "full_settings": {
+        "Coverage / Shading": {
+          "value": "Underneath",
+          "status": "approx",
+          "section": "Coverage"
+        },
+        "Zones / Hook defenders": {
+          "value": "Hook / rat (hold middle)",
+          "status": "approx",
+          "section": "Zones"
+        },
+        "Coverage / CB alignment": {
+          "value": "Press",
+          "status": "approx",
+          "section": "Coverage"
+        },
+        "LB / LB shift": {
+          "value": "Pinch",
+          "status": "approx",
+          "section": "LB"
+        }
+      },
+      "copy_block": "MESH-RAT (defense) — Answer mesh / crossers / Ohio return / swirl\nShell pair: Nickel Mug — Cover 2 Sink\nUser: User rat (inside cross)\n[ ] Coverage / Shading: Underneath\n[ ] Zones / Hook defenders: Hook / rat (hold middle)\n[ ] Coverage / CB alignment: Press\n[ ] LB / LB shift: Pinch\nArm when: After 2+ live mesh / crosser / return-route tells"
+    },
+    "STACK": {
+      "name": "STACK",
+      "side": "defense",
+      "purpose": "Answer Clamp Stack / bunch releases and motion rubs",
+      "when_to_arm": "After 2+ live stack / bunch / motion-rub wins",
+      "validated_status": "meta_grounded",
+      "inventory": "active",
+      "shell_pair": "Nickel Mug — Cover 3 Match",
+      "user_job": "User flat defender over stack",
+      "concept_family": "stack",
+      "source": "Madden 27 community meta ~2026-09 (soft) — no Madden film yet",
+      "exact": false,
+      "xbox_steps": [
+        "Call the paired shell (see Shell pair) from the Active playbook",
+        "Pre-snap: apply the ticks below from Madden's defensive adjustment menus (names approx — confirm in Madden 27 UI)",
+        "If Madden 27 offers saved coach/custom adjustments: save this recipe as the macro name and set Active (Aidan cap 8 O+D)",
+        "Otherwise treat the copy block as a pre-snap checklist — no button sequences invented"
+      ],
+      "full_settings": {
+        "Coverage / CB alignment": {
+          "value": "Off vs stack (avoid rub picks)",
+          "status": "approx",
+          "section": "Coverage"
+        },
+        "Zones / Flat defender": {
+          "value": "Buzz / flat over stack side",
+          "status": "approx",
+          "section": "Zones"
+        },
+        "Coverage / Shading": {
+          "value": "Inside",
+          "status": "approx",
+          "section": "Coverage"
+        },
+        "Pass rush / Show blitz": {
+          "value": "Off",
+          "status": "approx",
+          "section": "Pass rush"
+        }
+      },
+      "copy_block": "STACK (defense) — Answer Clamp Stack / bunch releases and motion rubs\nShell pair: Nickel Mug — Cover 3 Match\nUser: User flat defender over stack\n[ ] Coverage / CB alignment: Off vs stack (avoid rub picks)\n[ ] Zones / Flat defender: Buzz / flat over stack side\n[ ] Coverage / Shading: Inside\n[ ] Pass rush / Show blitz: Off\nArm when: After 2+ live stack / bunch / motion-rub wins"
+    },
+    "SPY": {
+      "name": "SPY",
+      "side": "defense",
+      "purpose": "Answer QB scramble when coverage carries",
+      "when_to_arm": "After 2+ live scramble escapes this game",
+      "validated_status": "meta_grounded",
+      "inventory": "active",
+      "shell_pair": "Nickel Mug — Cover 4 Quarters (or Cover 2 Man)",
+      "user_job": "User QB spy",
+      "concept_family": "scram",
+      "source": "Madden 27 community meta ~2026-09 (soft) — no Madden film yet",
+      "exact": false,
+      "xbox_steps": [
+        "Call the paired shell (see Shell pair) from the Active playbook",
+        "Pre-snap: apply the ticks below from Madden's defensive adjustment menus (names approx — confirm in Madden 27 UI)",
+        "If Madden 27 offers saved coach/custom adjustments: save this recipe as the macro name and set Active (Aidan cap 8 O+D)",
+        "Otherwise treat the copy block as a pre-snap checklist — no button sequences invented"
+      ],
+      "full_settings": {
+        "Pass rush / Rush lanes": {
+          "value": "Contain both edges (not four-man contain spam)",
+          "status": "approx",
+          "section": "Pass rush"
+        },
+        "LB / Mike": {
+          "value": "QB spy",
+          "status": "approx",
+          "section": "LB"
+        },
+        "Coverage / Shading": {
+          "value": "Default",
+          "status": "approx",
+          "section": "Coverage"
+        }
+      },
+      "copy_block": "SPY (defense) — Answer QB scramble when coverage carries\nShell pair: Nickel Mug — Cover 4 Quarters (or Cover 2 Man)\nUser: User QB spy\n[ ] Pass rush / Rush lanes: Contain both edges (not four-man contain spam)\n[ ] LB / Mike: QB spy\n[ ] Coverage / Shading: Default\nArm when: After 2+ live scramble escapes this game"
+    },
+    "RUN-FIT": {
+      "name": "RUN-FIT",
+      "side": "defense",
+      "purpose": "Answer Inside Zone / Stretch / HB Zone repeats",
+      "when_to_arm": "After 2+ live zone-run tells in similar D&D (short yardage preferred)",
+      "validated_status": "meta_grounded",
+      "inventory": "active",
+      "shell_pair": "4-3 Over — Cover 3 Sky",
+      "user_job": "User HB / cutback",
+      "concept_family": "run",
+      "source": "Madden 27 community meta ~2026-09 (soft) — no Madden film yet",
+      "exact": false,
+      "xbox_steps": [
+        "Call the paired shell (see Shell pair) from the Active playbook",
+        "Pre-snap: apply the ticks below from Madden's defensive adjustment menus (names approx — confirm in Madden 27 UI)",
+        "If Madden 27 offers saved coach/custom adjustments: save this recipe as the macro name and set Active (Aidan cap 8 O+D)",
+        "Otherwise treat the copy block as a pre-snap checklist — no button sequences invented"
+      ],
+      "full_settings": {
+        "DL / Line shift": {
+          "value": "Pinch (vs inside zone) / Spread (vs stretch)",
+          "status": "approx",
+          "section": "DL"
+        },
+        "LB / LB shift": {
+          "value": "Crash / downhill",
+          "status": "approx",
+          "section": "LB"
+        },
+        "Coverage / Safety": {
+          "value": "Sky / down (8 in box)",
+          "status": "approx",
+          "section": "Coverage"
+        }
+      },
+      "copy_block": "RUN-FIT (defense) — Answer Inside Zone / Stretch / HB Zone repeats\nShell pair: 4-3 Over — Cover 3 Sky\nUser: User HB / cutback\n[ ] DL / Line shift: Pinch (vs inside zone) / Spread (vs stretch)\n[ ] LB / LB shift: Crash / downhill\n[ ] Coverage / Safety: Sky / down (8 in box)\nArm when: After 2+ live zone-run tells in similar D&D (short yardage preferred)"
+    },
+    "O-PROT": {
+      "name": "O-PROT",
+      "side": "offense",
+      "purpose": "Protection vs mug / DB Fire / sim pressure",
+      "when_to_arm": "Vs pressure persona or 2+ live pressure looks",
+      "validated_status": "meta_grounded",
+      "inventory": "active",
+      "shell_pair": "Any — Mesh / Quick Slants / Stick Wheel",
+      "user_job": "N/A (offense)",
+      "concept_family": null,
+      "source": "Madden 27 community meta ~2026-09 (soft) — no Madden film yet",
+      "exact": false,
+      "xbox_steps": [
+        "Call the play from the Active offensive playbook",
+        "Pre-snap: apply the ticks below from Madden's offensive adjustment menus (protection / hot routes — names approx)",
+        "If Madden 27 offers saved coach/custom adjustments: save as the macro name and set Active (Aidan cap 8 O+D)",
+        "Otherwise treat the copy block as a pre-snap checklist — no button sequences invented"
+      ],
+      "full_settings": {
+        "Protection / Slide": {
+          "value": "Toward pressure / mug side",
+          "status": "approx",
+          "section": "Protection"
+        },
+        "Protection / HB": {
+          "value": "Block (chip then release)",
+          "status": "approx",
+          "section": "Protection"
+        },
+        "Hot routes / Hot": {
+          "value": "Slant / drag to pressure side",
+          "status": "approx",
+          "section": "Hot routes"
+        }
+      },
+      "copy_block": "O-PROT (offense) — Protection vs mug / DB Fire / sim pressure\nShell pair: Any — Mesh / Quick Slants / Stick Wheel\nUser: N/A (offense)\n[ ] Protection / Slide: Toward pressure / mug side\n[ ] Protection / HB: Block (chip then release)\n[ ] Hot routes / Hot: Slant / drag to pressure side\nArm when: Vs pressure persona or 2+ live pressure looks"
+    },
+    "O-MAN": {
+      "name": "O-MAN",
+      "side": "offense",
+      "purpose": "Man-beater hot routes off stack alignments",
+      "when_to_arm": "After 2+ live man / Cover 1 looks",
+      "validated_status": "meta_grounded",
+      "inventory": "active",
+      "shell_pair": "Gun Doubles Clamp Stack / Gun Trips X Nasty",
+      "user_job": "N/A (offense)",
+      "concept_family": null,
+      "source": "Madden 27 community meta ~2026-09 (soft) — no Madden film yet",
+      "exact": false,
+      "xbox_steps": [
+        "Call the play from the Active offensive playbook",
+        "Pre-snap: apply the ticks below from Madden's offensive adjustment menus (protection / hot routes — names approx)",
+        "If Madden 27 offers saved coach/custom adjustments: save as the macro name and set Active (Aidan cap 8 O+D)",
+        "Otherwise treat the copy block as a pre-snap checklist — no button sequences invented"
+      ],
+      "full_settings": {
+        "Hot routes / Stack WRs": {
+          "value": "Slant / drag (rub)",
+          "status": "approx",
+          "section": "Hot routes"
+        },
+        "Hot routes / HB": {
+          "value": "Wheel or angle",
+          "status": "approx",
+          "section": "Hot routes"
+        },
+        "Motion / Motion": {
+          "value": "Shuffle / jet to create traffic",
+          "status": "approx",
+          "section": "Motion"
+        }
+      },
+      "copy_block": "O-MAN (offense) — Man-beater hot routes off stack alignments\nShell pair: Gun Doubles Clamp Stack / Gun Trips X Nasty\nUser: N/A (offense)\n[ ] Hot routes / Stack WRs: Slant / drag (rub)\n[ ] Hot routes / HB: Wheel or angle\n[ ] Motion / Motion: Shuffle / jet to create traffic\nArm when: After 2+ live man / Cover 1 looks"
+    },
+    "HEAT": {
+      "name": "HEAT",
+      "side": "defense",
+      "purpose": "Schematic mug pressure (DB Fire 2 / sim) — selective",
+      "when_to_arm": "Lab or explicit swap only: 3rd-medium vs pressure-worthy persona",
+      "validated_status": "meta_grounded",
+      "inventory": "benched",
+      "shell_pair": "Nickel Mug — DB Fire 2",
+      "user_job": "User hot",
+      "concept_family": null,
+      "source": "Madden 27 community meta ~2026-09 (soft) — no Madden film yet",
+      "exact": false,
+      "xbox_steps": [
+        "Call the paired shell (see Shell pair) from the Active playbook",
+        "Pre-snap: apply the ticks below from Madden's defensive adjustment menus (names approx — confirm in Madden 27 UI)",
+        "If Madden 27 offers saved coach/custom adjustments: save this recipe as the macro name and set Active (Aidan cap 8 O+D)",
+        "Otherwise treat the copy block as a pre-snap checklist — no button sequences invented"
+      ],
+      "full_settings": {
+        "Pass rush / Show blitz": {
+          "value": "Linebackers (mug)",
+          "status": "approx",
+          "section": "Pass rush"
+        },
+        "Coverage / Shading": {
+          "value": "Underneath",
+          "status": "approx",
+          "section": "Coverage"
+        },
+        "DL / Stunt": {
+          "value": "Schematic stunt (not contain-four)",
+          "status": "approx",
+          "section": "DL"
+        }
+      },
+      "copy_block": "HEAT (defense) — Schematic mug pressure (DB Fire 2 / sim) — selective\nShell pair: Nickel Mug — DB Fire 2\nUser: User hot\n[ ] Pass rush / Show blitz: Linebackers (mug)\n[ ] Coverage / Shading: Underneath\n[ ] DL / Stunt: Schematic stunt (not contain-four)\nArm when: Lab or explicit swap only: 3rd-medium vs pressure-worthy persona"
+    },
+    "O-RPO": {
+      "name": "O-RPO",
+      "side": "offense",
+      "purpose": "RPO/bubble tags off zone runs",
+      "when_to_arm": "Lab or explicit swap only: vs box-crowding RUN-FIT answers",
+      "validated_status": "meta_grounded",
+      "inventory": "benched",
+      "shell_pair": "Gun Doubles Clamp Stack — Inside Zone",
+      "user_job": "N/A (offense)",
+      "concept_family": null,
+      "source": "Madden 27 community meta ~2026-09 (soft) — no Madden film yet",
+      "exact": false,
+      "xbox_steps": [
+        "Call the play from the Active offensive playbook",
+        "Pre-snap: apply the ticks below from Madden's offensive adjustment menus (protection / hot routes — names approx)",
+        "If Madden 27 offers saved coach/custom adjustments: save as the macro name and set Active (Aidan cap 8 O+D)",
+        "Otherwise treat the copy block as a pre-snap checklist — no button sequences invented"
+      ],
+      "full_settings": {
+        "Hot routes / Slot": {
+          "value": "Bubble / smoke",
+          "status": "approx",
+          "section": "Hot routes"
+        },
+        "Read / Give/keep": {
+          "value": "Box count",
+          "status": "approx",
+          "section": "Read"
+        }
+      },
+      "copy_block": "O-RPO (offense) — RPO/bubble tags off zone runs\nShell pair: Gun Doubles Clamp Stack — Inside Zone\nUser: N/A (offense)\n[ ] Hot routes / Slot: Bubble / smoke\n[ ] Read / Give/keep: Box count\nArm when: Lab or explicit swap only: vs box-crowding RUN-FIT answers"
+    }
+  }
+}

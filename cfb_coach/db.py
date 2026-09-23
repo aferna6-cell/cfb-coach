@@ -35,8 +35,10 @@ def default_db_path() -> Path:
 
 
 class CoachDB:
-    def __init__(self, path: Path | None = None) -> None:
+    def __init__(self, path: Path | None = None, *, seed: dict[str, Any] | None = None) -> None:
         self.path = path or default_db_path()
+        # Optional per-game seed (Madden 27); default = CFB seed.json
+        self._seed = seed
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(self.path))
         self.conn.row_factory = sqlite3.Row
@@ -190,7 +192,7 @@ class CoachDB:
         ).fetchone()
         if row:
             return
-        seed = load_seed()
+        seed = self._seed or load_seed()
         for oid, opp in seed["opponents"].items():
             self.conn.execute(
                 """
