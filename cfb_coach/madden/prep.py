@@ -14,7 +14,7 @@ from cfb_coach.install_sheet import filter_new_deltas, get_applied_deltas
 from cfb_coach.madden.data import (
     META_VERSION,
     archetype_lean,
-    cited_plays,
+    verified_names,
     get_macro,
     load_macro_catalog,
     load_meta_baseline,
@@ -111,14 +111,14 @@ def propose_deltas(
 
     if arch == "split_field_zone":
         aud = inventory["offense"]["Gun Doubles Clamp Stack"]["audibles"]
-        after = [("Stick Wheel" if a == "Motion Shuffle Vert Smash" else a) for a in aud]
+        after = [("Same Side Zone" if a == "Mtn Shuffle Verts Smash" else a) for a in aud]
         out.append(_delta(
-            "EDIT", "Gun Doubles Clamp Stack", "Audible slot: swap Vert Smash → Stick Wheel",
+            "EDIT", "Gun Doubles Clamp Stack", "Audible slot: swap Mtn Shuffle Verts Smash → Same Side Zone",
             field="Audibles", before=", ".join(aud), after=", ".join(after),
-            why="Two-high persona: don't force Vert Smash into safeties; stick-wheel underneath.",
+            why="Two-high persona: don't force verts into safeties; zone run on the audible (post Sep 3 TU zone-blocking fix).",
             side="offense",
         ))
-        add_formation("Gun Tight Offset TE", "Two-high persona → run first (Inside Zone / Stretch).")
+        add_formation("Pistol Deuce Close", "Two-high persona → run first.")
         if traits.get("escape") and not cpu:
             m = get_macro("SPY") or {}
             out.append(_delta(
@@ -128,7 +128,7 @@ def propose_deltas(
                 why=f"Persona trait: {traits['escape']}", side="defense",
             ))
     elif arch == "pressure_heavy":
-        add_formation("Gun Bunch", "Pressure persona → quick rub/stack answers.")
+        add_formation("Gun Tight", "Pressure persona → crossers that beat man/match/zone.")
         m = get_macro("O-PROT") or {}
         out.append(_delta(
             "EDIT", "O-PROT", "Arm protection earlier vs this persona",
@@ -138,7 +138,7 @@ def propose_deltas(
             side="offense",
         ))
     elif arch == "c2_c3_mixer":
-        add_formation("Gun Empty", "C2/C3 mixer → Double Post vs C2, Mesh vs C3 on 3rd-long.")
+        add_formation("Gun Off Trips Close", "C2/C3 mixer → option route + wheel on money downs.")
         if not cpu:
             m = get_macro("STACK") or {}
             out.append(_delta(
@@ -150,9 +150,9 @@ def propose_deltas(
             ))
     elif arch == "two_high_money_downs":
         aud = inventory["offense"]["Gun Trips X Nasty"]["audibles"]
-        after = [("Ohio Return" if a == "Switch HB Wheel" else a) for a in aud]
+        after = [("Hi Lo Cross" if a == "Switch HB Wheel" else a) for a in aud]
         out.append(_delta(
-            "EDIT", "Gun Trips X Nasty", "Audible slot: swap Switch HB Wheel → Ohio Return",
+            "EDIT", "Gun Trips X Nasty", "Audible slot: swap Switch HB Wheel → Hi Lo Cross",
             field="Audibles", before=", ".join(aud), after=", ".join(after),
             why="CPU two-high on money downs — take free underneath to the sticks.",
             side="offense",
@@ -221,15 +221,15 @@ def call_tips(opp: dict[str, Any], *, offense_only: bool, bl: dict[str, Any]) ->
 
 
 def _mark_names(inv: dict[str, Any]) -> dict[str, Any]:
-    """Tag non-cited play names as concept labels for the read-only inventory."""
-    cited = cited_plays()
+    """Tag names not found in playbook databases for an in-game confirm."""
+    cited = verified_names()
     out = dict(inv)
     out["offense"] = {
-        k: {**v, "plays": [p if p in cited else f"{p} (concept label)" for p in v["plays"]]}
+        k: {**v, "plays": [p if p in cited else f"{p} (unverified name)" for p in v["plays"]]}
         for k, v in inv["offense"].items()
     }
     out["defense"] = {
-        k: {**v, "calls": [c if c in cited else f"{c} (concept label)" for c in v["calls"]]}
+        k: {**v, "calls": [c if c in cited else f"{c} (unverified name)" for c in v["calls"]]}
         for k, v in inv["defense"].items()
     }
     return out

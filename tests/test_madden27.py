@@ -68,8 +68,12 @@ class TestMaddenSeedAndMeta(unittest.TestCase):
         self.assertEqual(seed["league"]["franchise_profiles"]["lab"]["id"], "franchise_lab")
         forms = seed["playbooks"]["offense_formations"]
         self.assertIn("Gun Doubles Clamp Stack", forms)
-        self.assertIn("Motion Shuffle Vert Smash", forms["Gun Doubles Clamp Stack"]["core"])
-        self.assertIn("Nickel Mug", seed["playbooks"]["defense_packages"])
+        self.assertIn("Mtn Shuffle Verts Smash", forms["Gun Doubles Clamp Stack"]["core"])
+        self.assertIn("Texas Y-Stutter Wheel", forms["Gun Doubles Clamp Stack"]["core"])
+        self.assertIn("Pistol Trips", forms)
+        self.assertNotIn("Pistol Trips RZ", forms)
+        self.assertIn("Nickel Over", seed["playbooks"]["defense_packages"])
+        self.assertNotIn("Nickel Mug", seed["playbooks"]["defense_packages"])
         self.assertIn("NOT Aidan's Franchise team", seed["scheme_pack"]["note"])
 
     def test_meta_label(self) -> None:
@@ -77,9 +81,11 @@ class TestMaddenSeedAndMeta(unittest.TestCase):
         self.assertEqual(bl["version"], "madden27-2026-09")
         self.assertEqual(mdata.META_VERSION, "madden27-2026-09")
         self.assertEqual(GAMES[MADDEN27].meta_version, "madden27-2026-09")
+        self.assertEqual(bl["validated"], "2026-09-23")
         notes = mdata.validation_notes()
         self.assertIn("COMMUNITY-DERIVED", notes)
         self.assertIn("DRIFTS", notes)
+        self.assertIn("CONTESTED", notes)
 
     def test_shared_personas_no_cfb_playbook_leak(self) -> None:
         cfb = load_cfb_seed()["opponents"]
@@ -103,6 +109,35 @@ class TestMaddenSeedAndMeta(unittest.TestCase):
             self.assertTrue(m["copy_block"])
             self.assertTrue(all(v["status"] == "approx" for v in m["full_settings"].values()))
 
+    def test_every_menu_call_is_stocked_and_verified(self) -> None:
+        """Validated meta: playcaller only calls plays that exist in the stocked formation."""
+        seed = mdata.load_seed()
+        bl = mdata.load_meta_baseline()
+        o = seed["playbooks"]["offense_formations"]
+        d = seed["playbooks"]["defense_packages"]
+        og = bl["offense_gameplan"]
+        entries = [e for menu in og["situations"].values() for e in menu]
+        entries += [e for menu in og["coverage_answers"].values() for e in menu]
+        entries += [{"formation": f["formation"], "play": p}
+                    for f in og["pivot_families"].values() for p in f["plays"]]
+        for e in entries:
+            self.assertIn(e["play"], o[e["formation"]]["core"], e)
+            self.assertIn(e["play"], o[e["formation"]]["verified"], e)
+        dg = bl["defense_gameplan"]
+        calls = [(dg["home_package"], c) for c in dg["home_rotation"]]
+        calls += [(v["package"], c) for v in dg["situational"].values() for c in v["calls"]]
+        for pkg, call in calls:
+            self.assertIn(call, d[pkg]["calls"], (pkg, call))
+        for m in mdata.load_macro_catalog()["macros"].values():
+            pkg, _, call = m["shell_pair"].partition(" — ")
+            if pkg in d:
+                self.assertIn(call.split(" / ")[0], d[pkg]["calls"], m["name"])
+
+    def test_custom_adjustments_path_is_ea_documented(self) -> None:
+        cat = mdata.load_macro_catalog()
+        self.assertEqual(cat["xbox_path"][:2], ["Create & Share", "Custom Adjustments"])
+        self.assertIn("10 active", cat["active_cap"]["note"])
+
     def test_game_aliases(self) -> None:
         self.assertEqual(normalize_game("madden"), MADDEN27)
         self.assertEqual(normalize_game(None), "cfb27")
@@ -123,6 +158,8 @@ class TestMaddenSituation(unittest.TestCase):
     def test_cfb_book_names_do_not_leak(self) -> None:
         sit = parse_madden_situation("1&10 mesh spot")
         self.assertEqual(sit.concept_hint, "Mesh")
+        self.assertEqual(parse_madden_situation("2&6 texas y stutter").concept_hint, "Texas Y-Stutter Wheel")
+        self.assertEqual(parse_madden_situation("1&10 showing nickel sim 2").coverage_hint, "pressure")
 
     def test_own_territory_is_not_red_zone(self) -> None:
         self.assertFalse(parse_madden_situation("1&10 my 12").red_zone)

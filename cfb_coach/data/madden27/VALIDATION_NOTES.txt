@@ -1,50 +1,98 @@
 Madden 27 Franchise track — VALIDATION NOTES (meta label: madden27-2026-09)
+Cross-checked 2026-09-23 against launch guides, playbook databases and EA notes.
 
 HONESTY FIRST
 - Everything Madden-side is COMMUNITY-DERIVED meta, snapshot ~September 2026.
-  Sources: competitive launch guides (Prodigy, TimeSaver, Civil.GG, Huddle.gg,
-  Madden School), EA official tips, and post-title-update writeups. None of it is
-  from Aidan's own Madden film (there is none yet).
+  None of it is from Aidan's own Madden film (there is none yet).
 - Meta DRIFTS after every title update. Treat all priors as soft. In-game evidence
-  THIS game outranks the baseline; postgame learning outranks the baseline next game.
-- Title updates seen at snapshot time:
-    * 2026-09-03 TU — OTs better at picking up contain defenders / wide LBs;
-      pre-snap defensive adjustments carry over in hurry-up; fewer WR jump catches.
-    * 2026-09-16 TU (1.006) — passing + coverage tuning; big Franchise overhaul.
-  Re-run `prep --game madden27 --refresh-meta` after any new TU.
+  THIS game outranks the baseline; postgame learning outranks it next game.
+- Re-run `prep --game madden27 --refresh-meta` after any new title update.
 
-WHAT IS CITED vs CONCEPT LABEL
-- Cited by community sources (exact names): Gun Doubles Clamp Stack (Motion Shuffle
-  Vert Smash), Gun Trips X Nasty (Mtn Stick Wheel, Switch HB Wheel), Gun 5WR Tight
-  (Mtn Double Post, Mtn Fork Salem, Mtn Post Swirl), Pistol Trips RZ (HB Zone, HB Dive);
-  Nickel Mug packages, Dime 3-2 Odd, Dollar, Cover 4 Quarters, DB Fire 2.
-- Concept labels (confirm exact play name in your book — may be spelled differently):
-  Mesh, Stick Wheel, Ohio Return, Flood Sail, PA Flood, Stick, Quick Slants, Inside
-  Zone, HB Stretch, Cover 3 Match, Cover 2 Sink, Cover 1 Robber, Cover 2 Man, Cover 4 Drop,
-  4-3 Over. Seed lists `cited` per formation; anything else is a concept label.
+SOURCES CHECKED (2026-09-23)
+- Madden Prodigy playbook rankings (2026-08-11)   maddenprodigy.com/best-madden-27-playbooks/
+- TimeSaver launch meta (2026-08-21, upd 09-11)   timesaver.gg/blog/madden-nfl-27-best-playbooks-offense-defense
+- Civil.GG best offenses + top-10 meta plays       civil.gg/tips/best-offenses-madden-27, /best-plays-madden-27
+- Operation Sports best defenses (2026-08-11)      operationsports.com/best-defensive-playbooks-to-use-in-madden-27/
+- EA gameplay deep dive (Custom Adjustments)       ea.com/.../madden-nfl-27/news/madden-27-gameplay
+- EA title update 2026-09-16; TU 2026-09-03 notes  ea.com/.../madden-nfl-27-title-update-september-16,
+                                                   operationsports.com/madden-nfl-27-update-available-today-patch-notes/
+- Formation play lists: Huddle.gg + madden.tools playbook databases. CAVEAT: these
+  formation pages may list the union of plays across every book that has the
+  formation; a specific book can be missing a play. Confirm in your custom playbook.
+
+VERDICTS ON THE ORIGINAL BRIEF'S PRIORS
+  CONFIRMED
+  - Gun Doubles Clamp Stack = THE meta formation (new in 27; 18+ books incl. Bucs,
+    Cardinals, Shotgun Classic).
+  - Buccaneers book formations: Gun Doubles Clamp Stack, Gun Trips X Nasty,
+    Gun 5WR Tight, Pistol Trips (Huddle.gg Bucs formation list).
+  - Mtn Stick Wheel, Switch HB Wheel (Trips X Nasty); Mtn Double Post, Mtn Fork Salem,
+    Mtn Post Swirl (5WR Tight); HB Dive (Pistol Trips).
+  - D #1 = 49ers / Titans Saleh 4-3 (Prodigy, TimeSaver, Operation Sports); Dime 3-2 Odd.
+    Texans, Multiple D, Vikings, Bengals, Raiders, Jaguars (Cover 4) all cited.
+  - Cover 4 Quarters core (+ Tampa 2: both in 23 of 24 Saleh formations).
+  - Stock 3-4 launch bug: DEs line up at OLB and drop into coverage (TimeSaver).
+  - Run game: zone-blocking targeting improved (Sep 3 TU) → Inside Zone / Stretch;
+    Aggressive blocking coach adjustment now draws holding.
+  - Stunts/sims over contain: Sep 3 TU — OTs pick up contain + wide LBs.
+  CORRECTED
+  - "Motion Shuffle Vert Smash" → real name "Mtn Shuffle Verts Smash".
+  - "Pistol Trips RZ" → no such formation; it is "Pistol Trips" (RZ is usage).
+  - "HB Zone" → "HB Zone WK" in Pistol Trips.
+  - "Nickel Mug" → no such formation. Saleh book: Nickel Over (home per guides),
+    Nickel Single Mug, Nickel Double Mug, Nickel Load Mug, 2-4 Load Dbl Mug.
+  - "DB Fire 2" → not found in any Saleh nickel/mug list. Verified sim pressures:
+    Nickel Sim 2, Field Sim 3 (Double Mug / Over), Dt Mike Loop 3 (Single Mug).
+  - Removed invented concept plays not present in those formations: Ohio Return /
+    Flood Sail (Trips X Nasty), Quick Slants (5WR Tight), Mesh / Stick Wheel /
+    HB Stretch (Clamp Stack), Cover 2 Sink, Cover 4 Drop, "Cover 1 Robber"
+    (real: Cover 1 Robber Press / Cover 1 Hole).
+  ADDED (missing from brief)
+  - Texas Y-Stutter Wheel (Clamp Stack) — Civil.GG #1 play; beats man/zone/blitz.
+  - Mesh Post, Clear Deep (5WR Tight) — Civil.GG #2 / #5.
+  - Return Bench, Same Side Zone, Mtn Shuffle Mesh Rail, Y Ohio Return (Clamp Stack);
+    Hi Lo Cross, Mtn Triple Slants, Mid Zone (Trips X Nasty); Flood, Stick,
+    HB Stretch (Pistol Trips).
+  - Sep 16 TU: longer downfield pass lead; jostle favors WRs vs lower-rated DBs;
+    wrong-way man-press shading penalized (MESH-RAT no longer presses); Half Slide
+    no longer flips to Full Slide (O-PROT uses Half Slide); QB Contain call no longer
+    resets hot routes.
+  CONTESTED
+  - "Buccaneers = #1 offense": only Madden Prodigy (2026-08-11). TimeSaver
+    (updated 09-11) leads with Shotgun Classic; Civil.GG with Texans — Bucs absent
+    from both top 5. Kept Bucs formations because the pack is built around Clamp
+    Stack, which every source rates.
+  UNCONFIRMED
+  - "Dollar" package: cited by TimeSaver / Operation Sports for the Saleh book, but
+    not in Huddle.gg's 49ers formation list. Not used in live calls; very-long
+    downs use Dime 3-2 Odd Cover 4 Quarters instead.
+  - Dime 3-2 Odd play list: not yet in the databases; only Cover 4 Quarters /
+    Tampa 2 (present in 23/24 formations) are called from it.
+  - Delta formations (Pistol Deuce Close HB Dive, Texans Gun Tight Tight Crosses,
+    Gun Off Trips Close Y Option Wheel) are Civil.GG top-10 plays from OTHER books —
+    add via custom playbook.
 
 SCHEME PACK, NOT A TEAM
-- Default inventory = Bucs-style offense + Saleh/49ers-style (4-3) defense as an
+- Default inventory = Bucs-formation offense + Saleh 4-3 defense as an
   UNASSIGNED primary scheme pack. It is NOT Aidan's Franchise team.
 - Primary / lab teams are TBD and configurable:
     config --game madden27 --primary-team "<NFL team>"
-  Setting a team retargets prep deltas (confirm formations exist in that team's book,
-  or rebuild via custom playbook). Personas and call language do not change.
+  Setting a team retargets prep deltas; personas and call language do not change.
 
-MACROS
-- Madden macros here are named pre-snap adjustment RECIPES (shading, zone
-  assignments, press/off, DL/LB shifts, protection slides, hot routes).
-- Exact Madden 27 menu names/paths are NOT verified — every setting is tagged
-  `approx`. If Madden 27 has saved coach/custom adjustment slots, save the recipe
-  there; otherwise use the copy block as a pre-snap checklist.
-- No button sequences are invented (Xbox, names only).
+MACROS = MADDEN 27 CUSTOM ADJUSTMENTS (confirmed)
+- EA: Create & Share → Custom Adjustments; up to 20 per side saved, 10 active per
+  game; in-game LB at the line (also at the top of the play-call menu). Same system
+  as CFB 27 — Aidan's hard cap of 8 O+D still applies (EA allows 10).
+- EA documents the CATEGORIES (fronts, leverage, coverage behavior, protection,
+  pressure looks, route concepts, hot routes, individual assignments) but not the
+  exact option labels. Every option label here is tagged `approx` — match it to the
+  in-game name when building. No button sequences are invented.
 - All 10 catalog macros start `meta_grounded`. Postgame promotes to `proven`
   (3+ uses, >= 60% success) or demotes to `failed` (3+ uses, <= 30% success).
-- Hard cap 8 O+D Active for USER games (6 D + 2 O). CPU games = offense-only.
+- 6 D + 2 O = 8 Active for USER games. CPU games = offense-only.
 
 SHARED PERSONAS
 - Opponents are the SAME cast as CFB (gavin, quen, tiano, gio, michael, harrison,
   jaxon, ryan, james, cpu). Madden reuses their persona archetype only — not their
   CFB playbook/concept lists (never CFB27 meta on the Madden side).
-- Madden film confidence starts one step below the CFB persona confidence
-  (persona carry-over, no Madden film yet).
+- Madden film confidence starts one step below the CFB persona confidence.

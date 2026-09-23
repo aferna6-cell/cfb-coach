@@ -113,11 +113,11 @@ def archetype_lean(archetype: str | None) -> dict[str, str]:
     return dict(leans.get((archetype or "unknown").lower()) or leans.get("unknown") or {})
 
 
-def cited_plays() -> set[str]:
+def verified_names() -> set[str]:
     pb = _load_json("seed.json")["playbooks"]
     out: set[str] = set()
     for meta in (pb.get("offense_formations") or {}).values():
-        out.update(meta.get("cited") or [])
+        out.update(meta.get("verified") or [])
     for meta in (pb.get("defense_packages") or {}).values():
-        out.update(meta.get("cited") or [])
+        out.update(meta.get("verified") or [])
     return out

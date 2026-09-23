@@ -67,7 +67,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
         f"Primary team: <b>{_esc(plan.get('primary_team'))}</b>"
         if plan.get("primary_team")
         else "Primary team: <b>TBD</b> — running the unassigned meta scheme pack "
-        "(Bucs-style O + Saleh 4-3 D). Set later: "
+        "(Bucs-formation O + Saleh 4-3 D). Set later: "
         "<code>config --game madden27 --primary-team &lt;NFL team&gt;</code>"
     )
     franchise_banner = (
@@ -156,7 +156,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
       Madden 27 <b>Franchise</b> (not MUT / MCS). Scheme pack is assumed stocked in a custom playbook —
       only persona-specific deltas above, all at least <b>meta_grounded</b>.
       Meta is community-derived (~Sep 2026) and drifts after title updates; names marked
-      "concept label" and macro settings tagged <b>approx</b> need an in-game confirm.
+      "unverified name" and macro option labels tagged <b>approx</b> need an in-game confirm (cross-checked 2026-09-23).
       Active loadout hard-capped at <b>8 O+D</b> for user games; CPU = offense-only.
       Personas are shared with CFB. Primary team stays TBD until you set it.
       Mark applied with <code>prep --game madden27 --opponent {oid} --mark-applied</code>.

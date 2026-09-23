@@ -192,7 +192,7 @@ def _pick_offense(
         rationale = f"{pivot} — REPEATED answer is the switch | {rationale}"
     elif pivot:
         fams = og["pivot_families"]
-        was_run = play in fams["run"]["plays"] or play in ("HB Zone", "HB Dive")
+        was_run = play in fams["run"]["plays"] or play in ("HB Zone WK", "HB Dive", "HB Stretch", "Mid Zone")
         fam = fams["quick"] if was_run else fams["run"]
         if rng.random() < 0.35:
             fam = fams["stick"]
@@ -214,7 +214,7 @@ def _pick_offense(
 _SOFT_SHELL = {
     "vert": ("Cover 4 Quarters", "one vertical tell — Quarters soft lean"),
     "flood": ("Cover 3 Match", "one flood/sail tell — Match soft lean"),
-    "cross": ("Cover 2 Sink", "one mesh/crosser tell — Sink soft lean"),
+    "cross": ("Tampa 2", "one mesh/crosser tell — Tampa 2 soft lean"),
     "stack": ("Cover 3 Match", "one stack/bunch tell — Match soft lean"),
     "scram": (None, "one scramble tell — contain job"),
     "run": (None, "one zone-run tell — fit from base shell"),
@@ -231,15 +231,15 @@ def _base_defense(sit: Situation, opp: dict[str, Any], bl: dict[str, Any], rng: 
     if sit.short_yardage and sit.down in (3, 4) and (sit.distance or 9) <= 2:
         return st["short_yardage"]["package"], rng.choice(st["short_yardage"]["calls"]), "short yardage — 4-3 Over (no auto RUN-FIT on one tell)"
     if sit.distance and sit.distance >= 12 and sit.down in (2, 3, 4) and rng.random() < 0.35:
-        return st["very_long"]["package"], st["very_long"]["calls"][0], "true long passing down — Dollar Cover 4 Drop"
+        return st["very_long"]["package"], st["very_long"]["calls"][0], "true long passing down — Dime Quarters, protect deep"
     if (sit.long_yardage and sit.down in (3, 4)) or (sit.down == 3 and (sit.distance or 0) >= 8):
         return st["long_yardage"]["package"], rng.choice(st["long_yardage"]["calls"]), "obvious pass D&D — Dime 3-2 Odd"
     if arch == "pressure_heavy" and sit.down == 3 and 3 <= (sit.distance or 0) <= 6 and rng.random() < 0.2:
         pc = st["pressure_changeup"]
-        return pc["package"], pc["calls"][0], "3rd-medium vs pressure persona — schematic mug (rare, not contain-four)"
+        return pc["package"], rng.choice(pc["calls"]), "3rd-medium vs pressure persona — sim/stunt off the mug look (rare, not contain-four)"
     rot = dg["home_rotation"]
     play = rng.choices(list(rot), weights=list(rot.values()), k=1)[0]
-    rationale = "Nickel Mug home (C4 Quarters / C3 Match / C2 Sink)"
+    rationale = "Nickel Over home (C4 Quarters / C3 Match / Tampa 2 — rush four, drop seven)"
     if arch == "split_field_zone" and rng.random() < 0.5:
         play, rationale = "Cover 4 Quarters", "vs explosive-shot persona — Quarters prior"
     return dg["home_package"], play, rationale
@@ -306,11 +306,11 @@ def _pick_defense(
         elif fam_macro:
             if fam_macro in active:
                 cat_pair = {
-                    "MATCH-4": ("Nickel Mug", "Cover 4 Quarters"),
-                    "FLAT-CAP": ("Nickel Mug", "Cover 3 Match"),
-                    "MESH-RAT": ("Nickel Mug", "Cover 2 Sink"),
-                    "STACK": ("Nickel Mug", "Cover 3 Match"),
-                    "SPY": ("Nickel Mug", "Cover 4 Quarters"),
+                    "MATCH-4": ("Nickel Over", "Cover 4 Quarters"),
+                    "FLAT-CAP": ("Nickel Over", "Cover 3 Match"),
+                    "MESH-RAT": ("Nickel Over", "Tampa 2"),
+                    "STACK": ("Nickel Over", "Cover 3 Match"),
+                    "SPY": ("Nickel Over", "Cover 4 Quarters"),
                     "RUN-FIT": ("4-3 Over", "Cover 3 Sky") if sit.short_yardage else (form, play),
                 }
                 form, play = cat_pair.get(fam_macro, (form, play))
@@ -358,8 +358,8 @@ def active_pivot(db: Any, opponent_id: str, side: str) -> str | None:
     tag = "PIVOT:" if hard else "PIVOT (user game):"
     n = 3 if hard else 2
     if side == "offense":
-        return f"{tag} last {n} O snaps failed — switch family (zone run ↔ Mesh ↔ Stick Wheel), no hero shot"
-    return f"{tag} last {n} D snaps failed — reset Nickel Mug base, clear chase macros"
+        return f"{tag} last {n} O snaps failed — switch family (zone run ↔ Mesh Post ↔ Mtn Stick Wheel), no hero shot"
+    return f"{tag} last {n} D snaps failed — reset Nickel Over base, clear chase macros"
 
 
 # ---------------------------------------------------------------------------

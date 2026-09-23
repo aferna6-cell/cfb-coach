@@ -15,27 +15,36 @@ __all__ = ["Situation", "format_heard", "parse_madden_situation", "concept_famil
 
 # Specific before generic
 _CONCEPT_HINTS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"(?:motion\s*)?shuffle\s*vert\s*smash|vert\s*smash", re.I), "Motion Shuffle Vert Smash"),
+    (re.compile(r"texas|y[\s-]*stutter|stutter\s*wheel", re.I), "Texas Y-Stutter Wheel"),
+    (re.compile(r"(?:mtn\s*|motion\s*)?shuffle\s*verts?\s*smash|verts?\s*smash", re.I), "Mtn Shuffle Verts Smash"),
+    (re.compile(r"mesh\s*rail", re.I), "Mtn Shuffle Mesh Rail"),
+    (re.compile(r"mesh\s*post", re.I), "Mesh Post"),
+    (re.compile(r"clear\s*deep", re.I), "Clear Deep"),
+    (re.compile(r"return\s*bench|\bbench\b", re.I), "Return Bench"),
     (re.compile(r"(?:mtn\s*)?stick\s*wheel", re.I), "Stick Wheel"),
     (re.compile(r"(?:switch\s*)?hb\s*wheel", re.I), "Switch HB Wheel"),
+    (re.compile(r"y\s*option(?:\s*wheel)?", re.I), "Y Option Wheel"),
     (re.compile(r"(?:mtn\s*)?double\s*posts?", re.I), "Double Post"),
     (re.compile(r"(?:mtn\s*)?(?:fork\s*)?salem", re.I), "Fork Salem"),
     (re.compile(r"(?:mtn\s*)?(?:post\s*)?swirl", re.I), "Post Swirl"),
-    (re.compile(r"ohio(?:\s*return)?|return\s*routes?", re.I), "Ohio Return"),
-    (re.compile(r"pa\s*flood", re.I), "PA Flood"),
-    (re.compile(r"flood\s*sail|\bsail\b", re.I), "Flood Sail"),
-    (re.compile(r"\bflood\b", re.I), "Flood"),
+    (re.compile(r"hi[\s-]*lo|high[\s-]*low", re.I), "Hi Lo Cross"),
+    (re.compile(r"tight\s*cross(?:es)?", re.I), "Tight Crosses"),
+    (re.compile(r"triple\s*slants?", re.I), "Mtn Triple Slants"),
+    (re.compile(r"ohio(?:\s*return)?|return\s*routes?", re.I), "Y Ohio Return"),
+    (re.compile(r"\bflood\b|\bsail\b", re.I), "Flood"),
     (re.compile(r"\bmesh\b", re.I), "Mesh"),
     (re.compile(r"4\s*verts?|four\s*vert(?:ical)?s?|\bverticals\b|\bverts\b|\bseams?\b", re.I), "Four Verticals"),
     (re.compile(r"\bsmash\b", re.I), "Smash"),
-    (re.compile(r"quick\s*slants?|\bslants?\b", re.I), "Quick Slants"),
-    (re.compile(r"cross(?:ers?|ing)?\b|\bdrags?\b|y\s*cross", re.I), "Crossers"),
+    (re.compile(r"\bslants?\b", re.I), "Slants"),
+    (re.compile(r"cross(?:ers?|ing)?\b|\bdrags?\b", re.I), "Crossers"),
     (re.compile(r"\bstick\b", re.I), "Stick"),
     (re.compile(r"\bwheel\b", re.I), "Wheel"),
     (re.compile(r"clamp|\bstack\b|\bbunch\b", re.I), "Clamp Stack / Bunch"),
     (re.compile(r"\brpo\b|bubble", re.I), "RPO bubble"),
     (re.compile(r"\bscreen\b", re.I), "Screen"),
     (re.compile(r"scram(?:ble)?|qb\s*run|qb\s*draw", re.I), "QB scramble"),
+    (re.compile(r"same\s*side\s*zone", re.I), "Same Side Zone"),
+    (re.compile(r"mid\s*zone", re.I), "Mid Zone"),
     (re.compile(r"hb\s*dive|\bdive\b", re.I), "HB Dive"),
     (re.compile(r"inside\s*zone|hb\s*zone|\biz\b|\bduo\b", re.I), "Inside Zone"),
     (re.compile(r"stretch|outside\s*zone|\boz\b|\btoss\b", re.I), "Stretch"),
@@ -43,12 +52,11 @@ _CONCEPT_HINTS: list[tuple[re.Pattern[str], str]] = [
 
 # Madden coverage names the shared table would mislabel (checked first)
 _COV_HINTS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"c3\s*match|cover\s*3\s*match|\bmatch\b", re.I), "Cover 3 Match"),
-    (re.compile(r"c4\s*drop|cover\s*4\s*drop", re.I), "Cover 4 Drop"),
-    (re.compile(r"c2\s*sink|cover\s*2\s*sink|\bsink\b", re.I), "Cover 2 Sink"),
+    (re.compile(r"buzz\s*match|c3\s*match|cover\s*3\s*match|\bmatch\b", re.I), "Cover 3 Match"),
     (re.compile(r"c2\s*man|cover\s*2\s*man|2\s*man", re.I), "Cover 2 Man"),
-    (re.compile(r"c1\s*robber|cover\s*1\s*robber|robber", re.I), "Cover 1"),
-    (re.compile(r"db\s*fire|\bmug\b|\bsim\b|\bstunt\b", re.I), "pressure"),
+    (re.compile(r"cover\s*1\s*(?:hole|robber)|\bhole\b|robber", re.I), "Cover 1"),
+    (re.compile(r"sim\s*[23]|\bsim\b|\bstunt|\bloop\b|db\s*fire|\bmug\b|\bfire\b", re.I), "pressure"),
+    (re.compile(r"2\s*trap|nickel\s*trap", re.I), "Cover 2"),
 ]
 
 _OWN_YL = re.compile(r"\b(?:my|our|own)\s*(?:yl|yard\s*line)?\s*\d{1,2}\b", re.I)
@@ -60,11 +68,11 @@ def concept_family(concept: str | None) -> str | None:
     c = (concept or "").lower()
     if not c:
         return None
-    if "stick" in c or "flood" in c or "sail" in c or "salem" in c:
+    if any(k in c for k in ("stick", "flood", "sail", "salem", "bench")):
         return "flood"
-    if "vert" in c or "double post" in c or "wheel" in c or "seam" in c:
+    if any(k in c for k in ("vert", "double post", "wheel", "seam", "clear deep")):
         return "vert"
-    if "mesh" in c or "cross" in c or "ohio" in c or "return" in c or "swirl" in c or "slant" in c:
+    if any(k in c for k in ("mesh", "cross", "ohio", "return", "swirl", "slant", "hi lo", "option")):
         return "cross"
     if "clamp" in c or "stack" in c or "bunch" in c:
         return "stack"
@@ -72,7 +80,7 @@ def concept_family(concept: str | None) -> str | None:
         return "scram"
     if "rpo" in c or "bubble" in c:
         return "rpo"
-    if any(k in c for k in ("inside zone", "stretch", "dive", "hb zone")):
+    if any(k in c for k in ("zone", "stretch", "dive")):
         return "run"
     return None
 
