@@ -120,6 +120,13 @@ def cmd_prep(args: argparse.Namespace) -> int:
     from cfb_coach.madden.prep import build_prep_plan, format_delta_text, mark_applied
     from cfb_coach.madden.prep_browser import generate_and_open
 
+    from cfb_coach.madden.playbook import parse_choice
+
+    try:
+        parse_choice("offense", args.o_book)
+        parse_choice("defense", args.d_book)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
     oid = _require_opponent(args.opponent)
     db = open_db()
     try:
@@ -128,6 +135,7 @@ def cmd_prep(args: argparse.Namespace) -> int:
             plan = build_prep_plan(
                 oid, db=db, persist=True, profile=pid,
                 offline=args.offline, refresh_meta=args.refresh_meta,
+                o_book=args.o_book, d_book=args.d_book,
             )
             if args.mark_applied:
                 mark_applied(db, oid, plan["proposed_deltas"])
@@ -140,9 +148,15 @@ def cmd_prep(args: argparse.Namespace) -> int:
             oid, db=db, persist=True, open_browser=not args.no_open,
             mark=args.mark_applied, profile=pid,
             offline=args.offline, refresh_meta=args.refresh_meta,
+            o_book=args.o_book, d_book=args.d_book,
         )
         n = len(plan.get("shown_deltas") or [])
         print(f"Prep (Madden 27 Franchise) vs {plan['display_name']} → {path}")
+        for side in ("offense",) if plan["offense_only"] else ("offense", "defense"):
+            bp = plan["playbook"][side]
+            print(f"{side.title()} book: {bp['record']['name']} [{bp['record']['mode']}] — {bp['reason']}")
+            if bp["checklist"]:
+                print(f"  BUILD CUSTOM {side.upper()} BOOK — {len(bp['checklist'])} formations (see browser / playbook --game madden27)")
         print(_profile_header(pid))
         print(doctrine_line(profile_config(pid)["team"]))
         if plan["offense_only"]:
@@ -177,6 +191,24 @@ def cmd_call(args: argparse.Namespace) -> int:
         print(call.format())
         if args.why:
             print(f"  ({call.rationale})")
+    finally:
+        db.close()
+    return 0
+
+
+def cmd_playbook(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.playbook import active_books, format_book, load_books
+
+    db = open_db()
+    try:
+        locked = load_books(db)
+        books = active_books(db)
+        sides = (args.side,) if args.side else ("offense", "defense")
+        print("Madden 27 playbook of record (live calls are locked to these formations/plays)")
+        for side in sides:
+            if side not in locked:
+                print(f"  ({side}: no prep yet — default stock book)")
+            print(format_book(books[side]))
     finally:
         db.close()
     return 0
@@ -270,6 +302,12 @@ def cmd_play(args: argparse.Namespace) -> int:
     print(f"LIVE PLAY — Madden 27 Franchise vs {oid}  (db: {db.path})")
     print(_profile_header(pid))
     print(doctrine_line(profile_config(pid)["team"]))
+    from cfb_coach.madden.playbook import active_books
+
+    books = active_books(db)
+    print(f"Locked book: O = {books['offense']['name']} [{books['offense']['mode']}]"
+          + ("" if cpu else f" · D = {books['defense']['name']} [{books['defense']['mode']}]")
+          + " — calls stay inside it (playbook --game madden27 to list)")
     if cpu:
         print("CPU opponent — OFFENSE-ONLY coaching (no defense calls / no D macros).")
         print("Commands: result <text> | why | quit  (side d disabled)")

@@ -123,6 +123,20 @@
             "pass",
             "vs_man"
           ]
+        },
+        {
+          "formation": "Pistol Deuce Close",
+          "play": "HB Dive",
+          "tags": [
+            "run"
+          ]
+        },
+        {
+          "formation": "Gun Doubles Clamp Stack",
+          "play": "Inside Zone",
+          "tags": [
+            "run"
+          ]
         }
       ],
       "red_zone": [
@@ -160,6 +174,15 @@
             "vs_pressure",
             "vs_single_high"
           ]
+        },
+        {
+          "formation": "Gun Tight",
+          "play": "Tight Crosses",
+          "tags": [
+            "pass",
+            "vs_man",
+            "vs_pressure"
+          ]
         }
       ],
       "short_yardage": [
@@ -194,6 +217,13 @@
             "pass",
             "vs_man",
             "vs_pressure"
+          ]
+        },
+        {
+          "formation": "Pistol Deuce Close",
+          "play": "HB Dive",
+          "tags": [
+            "run"
           ]
         }
       ],
@@ -250,6 +280,24 @@
             "pass",
             "vs_two_high"
           ]
+        },
+        {
+          "formation": "Gun Tight",
+          "play": "Tight Crosses",
+          "tags": [
+            "pass",
+            "vs_man",
+            "vs_two_high"
+          ]
+        },
+        {
+          "formation": "Gun Off Trips Close",
+          "play": "Y Option Wheel",
+          "tags": [
+            "pass",
+            "vs_man",
+            "vs_single_high"
+          ]
         }
       ],
       "two_minute": [
@@ -281,6 +329,14 @@
         {
           "formation": "Gun Doubles Clamp Stack",
           "play": "Texas Y-Stutter Wheel",
+          "tags": [
+            "pass",
+            "vs_man"
+          ]
+        },
+        {
+          "formation": "Gun Off Trips Close",
+          "play": "Y Option Wheel",
           "tags": [
             "pass",
             "vs_man"
@@ -346,6 +402,23 @@
             "pass",
             "vs_single_high"
           ]
+        },
+        {
+          "formation": "Pistol Deuce Close",
+          "play": "HB Dive",
+          "tags": [
+            "run",
+            "vs_two_high"
+          ]
+        },
+        {
+          "formation": "Gun Tight",
+          "play": "Tight Crosses",
+          "tags": [
+            "pass",
+            "vs_man",
+            "vs_pressure"
+          ]
         }
       ]
     },
@@ -376,6 +449,10 @@
         {
           "formation": "Gun Trips X Nasty",
           "play": "Hi Lo Cross"
+        },
+        {
+          "formation": "Pistol Deuce Close",
+          "play": "HB Dive"
         }
       ],
       "cover2": [
@@ -400,6 +477,10 @@
         {
           "formation": "Gun Trips X Nasty",
           "play": "Mtn Stick Wheel"
+        },
+        {
+          "formation": "Gun Tight",
+          "play": "Tight Crosses"
         }
       ],
       "pressure": [

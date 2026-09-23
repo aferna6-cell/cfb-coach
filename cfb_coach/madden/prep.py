@@ -14,7 +14,6 @@ from cfb_coach.install_sheet import filter_new_deltas, get_applied_deltas
 from cfb_coach.madden.data import (
     META_VERSION,
     archetype_lean,
-    verified_names,
     get_macro,
     load_macro_catalog,
     load_meta_baseline,
@@ -90,45 +89,22 @@ def propose_deltas(
     opp: dict[str, Any],
     *,
     profile: str,
-    team: str | None,
-    inventory: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Persona-archetype deltas only (Madden meta-grounded); thin persona → none."""
-    seed = load_seed()
+    """Macro (Custom Adjustment) deltas only — formations go through the playbook of record."""
     arch = (opp.get("archetype") or "unknown").lower()
     traits = opp.get("traits") or {}
-    extra = seed.get("delta_formations") or {}
     cpu = is_cpu_opponent(opponent_id)
     out: list[dict[str, Any]] = []
 
-    def add_formation(name: str, why: str) -> None:
-        meta = extra[name]
+    if arch == "split_field_zone" and traits.get("escape") and not cpu:
+        m = get_macro("SPY") or {}
         out.append(_delta(
-            "ADD", name, f"{meta['book']} formation → plays: {', '.join(meta['core'])}",
-            field="Formation", after=f"{name} ({meta['book']})",
-            why=f"{why} {meta['why']}", side="offense",
+            "EDIT", "SPY", "Pre-load QB spy plan for this persona's escapes",
+            kind="macro", field="When to arm", before=m.get("when_to_arm", ""),
+            after="After 2+ scrambles this game — 3rd down first",
+            why=f"Persona trait: {traits['escape']}", side="defense",
         ))
-
-    if arch == "split_field_zone":
-        aud = inventory["offense"]["Gun Doubles Clamp Stack"]["audibles"]
-        after = [("Same Side Zone" if a == "Mtn Shuffle Verts Smash" else a) for a in aud]
-        out.append(_delta(
-            "EDIT", "Gun Doubles Clamp Stack", "Audible slot: swap Mtn Shuffle Verts Smash → Same Side Zone",
-            field="Audibles", before=", ".join(aud), after=", ".join(after),
-            why="Two-high persona: don't force verts into safeties; zone run on the audible (post Sep 3 TU zone-blocking fix).",
-            side="offense",
-        ))
-        add_formation("Pistol Deuce Close", "Two-high persona → run first.")
-        if traits.get("escape") and not cpu:
-            m = get_macro("SPY") or {}
-            out.append(_delta(
-                "EDIT", "SPY", "Pre-load QB spy plan for this persona's escapes",
-                kind="macro", field="When to arm", before=m.get("when_to_arm", ""),
-                after="After 2+ scrambles this game — 3rd down first",
-                why=f"Persona trait: {traits['escape']}", side="defense",
-            ))
     elif arch == "pressure_heavy":
-        add_formation("Gun Tight", "Pressure persona → crossers that beat man/match/zone.")
         m = get_macro("O-PROT") or {}
         out.append(_delta(
             "EDIT", "O-PROT", "Arm protection earlier vs this persona",
@@ -137,25 +113,14 @@ def propose_deltas(
             why="Pressure-heavy archetype — O-PROT is the persona answer, not a one-tell chase.",
             side="offense",
         ))
-    elif arch == "c2_c3_mixer":
-        add_formation("Gun Off Trips Close", "C2/C3 mixer → option route + wheel on money downs.")
-        if not cpu:
-            m = get_macro("STACK") or {}
-            out.append(_delta(
-                "EDIT", "STACK", "Compressed/GL persona — STACK is the likely first macro",
-                kind="macro", field="When to arm", before=m.get("when_to_arm", ""),
-                after="After 2+ stack/bunch wins, incl. RZ/GL",
-                why="c2_c3_mixer persona lives in compressed sets near scoring.",
-                side="defense",
-            ))
-    elif arch == "two_high_money_downs":
-        aud = inventory["offense"]["Gun Trips X Nasty"]["audibles"]
-        after = [("Hi Lo Cross" if a == "Switch HB Wheel" else a) for a in aud]
+    elif arch == "c2_c3_mixer" and not cpu:
+        m = get_macro("STACK") or {}
         out.append(_delta(
-            "EDIT", "Gun Trips X Nasty", "Audible slot: swap Switch HB Wheel → Hi Lo Cross",
-            field="Audibles", before=", ".join(aud), after=", ".join(after),
-            why="CPU two-high on money downs — take free underneath to the sticks.",
-            side="offense",
+            "EDIT", "STACK", "Compressed/GL persona — STACK is the likely first macro",
+            kind="macro", field="When to arm", before=m.get("when_to_arm", ""),
+            after="After 2+ stack/bunch wins, incl. RZ/GL",
+            why="c2_c3_mixer persona lives in compressed sets near scoring.",
+            side="defense",
         ))
 
     # Lab = freer: bring a benched meta_grounded macro in (with swap at cap)
@@ -168,16 +133,26 @@ def propose_deltas(
             why="Franchise lab — test benched meta_grounded macro; promotes to primary if it holds.",
             side=macro_side(exp),
         ))
-
-    if team:
-        out.append(_delta(
-            "EDIT", inventory["offense_book"], f"Retarget scheme pack to {team}",
-            field="Team book", before="Unassigned scheme pack", after=team,
-            why=(f"Primary team set: keep scheme-pack formations via custom playbook; "
-                 f"check which exist natively in the {team} book before the game."),
-            side="offense",
-        ))
     return out
+
+
+_AUDIBLE_TIPS = {
+    "split_field_zone": ("Gun Doubles Clamp Stack", "Mtn Shuffle Verts Smash", "Same Side Zone",
+                         "two-high persona — zone run on the audible, don't force verts into safeties"),
+    "two_high_money_downs": ("Gun Trips X Nasty", "Switch HB Wheel", "Hi Lo Cross",
+                             "CPU two-high money downs — take free underneath"),
+}
+
+
+def audible_tips(opp: dict[str, Any], book: dict[str, list[str]]) -> list[str]:
+    """Optional audible-slot tweaks (tips only, never install steps); only for in-book plays."""
+    tip = _AUDIBLE_TIPS.get((opp.get("archetype") or "").lower())
+    if not tip:
+        return []
+    form, old, new, why = tip
+    if form in book and old in book[form] and new in book[form]:
+        return [f"Optional audible: {form} — swap {old} → {new} ({why})"]
+    return []
 
 
 def resolve_loadout(
@@ -220,21 +195,6 @@ def call_tips(opp: dict[str, Any], *, offense_only: bool, bl: dict[str, Any]) ->
     return [t for t in tips if t.split(":", 1)[-1].strip()]
 
 
-def _mark_names(inv: dict[str, Any]) -> dict[str, Any]:
-    """Tag names not found in playbook databases for an in-game confirm."""
-    cited = verified_names()
-    out = dict(inv)
-    out["offense"] = {
-        k: {**v, "plays": [p if p in cited else f"{p} (unverified name)" for p in v["plays"]]}
-        for k, v in inv["offense"].items()
-    }
-    out["defense"] = {
-        k: {**v, "calls": [c if c in cited else f"{c} (unverified name)" for c in v["calls"]]}
-        for k, v in inv["defense"].items()
-    }
-    return out
-
-
 def build_prep_plan(
     opponent_id: str,
     opp: dict[str, Any] | None = None,
@@ -244,7 +204,11 @@ def build_prep_plan(
     profile: str | None = None,
     offline: bool = False,
     refresh_meta: bool = False,
+    o_book: str | None = None,
+    d_book: str | None = None,
 ) -> dict[str, Any]:
+    from cfb_coach.madden.playbook import lock_books, plan_books
+
     opp = opp or load_profile(opponent_id, db)
     if profile is None:
         profile = get_session_profile(db)
@@ -254,9 +218,12 @@ def build_prep_plan(
     offense_only = is_cpu_opponent(opponent_id)
     arch = (opp.get("archetype") or "unknown").lower()
 
-    proposed = propose_deltas(opponent_id, opp, profile=pcfg["id"], team=pcfg["team"], inventory=inv)
+    books = plan_books(db, opp=opp, team=pcfg["team"], offense_only=offense_only,
+                       o_book=o_book, d_book=d_book)
+    book_deltas = [d for side in ("offense", "defense") for d in books[side]["deltas"]]
+    proposed = propose_deltas(opponent_id, opp, profile=pcfg["id"])
     applied = get_applied_deltas(db, opponent_id)
-    shown = filter_new_deltas(proposed, applied)
+    shown = book_deltas + filter_new_deltas(proposed, applied)
 
     active = list(pcfg["default_active"] or inv["macros_active"] + inv["offensive_macros"])
     active_after, swaps, replacing = resolve_loadout(active, shown, arch, offense_only=offense_only)
@@ -269,8 +236,9 @@ def build_prep_plan(
     }
 
     tips = call_tips(opp, offense_only=offense_only, bl=bl)
+    tips.extend(audible_tips(opp, books["offense"]["record"]["formations"]))
     if not pcfg["team"]:
-        tips.append("Primary team TBD — running the unassigned meta scheme pack "
+        tips.append("Primary team TBD — books picked from the verified meta catalog "
                     "(set later: config --game madden27 --primary-team <NFL team>).")
 
     scout_dict: dict[str, Any]
@@ -302,7 +270,7 @@ def build_prep_plan(
         "game": "Madden 27 Franchise",
         "patch": bl.get("patch", ""),
         "patch_notes": list(bl.get("patch_notes") or []),
-        "inventory": _mark_names(inv),
+        "playbook": books,
         "proposed_deltas": proposed,
         "shown_deltas": shown,
         "applied_count": len(applied),
@@ -324,6 +292,7 @@ def build_prep_plan(
         "meta_scout": scout_dict,
     }
     if db is not None and persist:
+        lock_books(db, books)
         save_prep(db, opponent_id, proposed, shown)
     return plan
 
@@ -357,9 +326,19 @@ def format_delta_text(plan: dict[str, Any]) -> str:
         f"{plan['game']} / {plan['version']}",
         f"Franchise profile: {pcfg['label']} ({pcfg['mode']}) — team: {pcfg['team_label']}",
     ]
+    from cfb_coach.madden.playbook import format_book
+
+    lines.append("## Playbook of record (locked by this prep)")
+    for side in ("offense",) if plan["offense_only"] else ("offense", "defense"):
+        bp = plan["playbook"][side]
+        lines.append(f"  {side.title()}: {bp['record']['name']} [{bp['record']['mode']}] — {bp['reason']}")
+        if bp["checklist"]:
+            lines.append(f"  BUILD CUSTOM {side.upper()} BOOK — install exactly these formations:")
+            for item in bp["checklist"]:
+                lines.append(f"    [ ] {item['formation']} ({item['books']}): {', '.join(item['plays'])}")
     shown = plan["shown_deltas"]
     if not shown:
-        lines.append("No playbook changes — run scheme pack as-is.")
+        lines.append("No playbook changes — keep the locked book as-is.")
     for d in shown:
         bit = f"  [{d['action']}] {d['target']}"
         if d.get("field"):
@@ -377,6 +356,9 @@ def format_delta_text(plan: dict[str, Any]) -> str:
         lines.append("  D macros: N/A — offense only (CPU)")
     for c in plan["macro_cards"]:
         lines.append(f"  - {c['id']} ({c.get('side')}) [{c.get('validated_status')}] — {c.get('purpose', '')}")
+    lines.append("## Full playbook (show)")
+    for side in ("offense",) if plan["offense_only"] else ("offense", "defense"):
+        lines.extend("  " + ln for ln in format_book(plan["playbook"][side]["record"]).splitlines())
     lines.append("## Call emphasis")
     lines.extend(f"  - {t}" for t in plan["tips"])
     scout = plan.get("meta_scout") or {}

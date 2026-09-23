@@ -110,9 +110,23 @@ def _weighted_pick(
     return rng.choices(pool, weights=weights, k=1)[0]
 
 
-def _stocked(form: str, play: str, seed: dict[str, Any]) -> bool:
-    meta = (seed["playbooks"]["offense_formations"] or {}).get(form) or {}
-    return play in (meta.get("core") or [])
+def _in_book(e: dict[str, Any], book: dict[str, list[str]]) -> bool:
+    return e.get("formation") in book and e.get("play") in book[e["formation"]]
+
+
+def _book_menu(og: dict[str, Any], key: str, book: dict[str, list[str]]) -> tuple[list[dict[str, Any]], str]:
+    """Situation menu filtered to the locked book; remenu (never soft-warn) when empty."""
+    menu = [e for e in og["situations"][key] if _in_book(e, book)]
+    if menu:
+        return menu, ""
+    menu = [e for e in og["situations"]["early_down"] if _in_book(e, book)]
+    if menu:
+        return menu, f"remenu: no {key.replace('_', ' ')} call in book → early-down menu"
+    menu = [e for m in og["situations"].values() for e in m if _in_book(e, book)]
+    if menu:
+        return menu, "remenu: any in-book menu call"
+    menu = [{"formation": f, "play": p, "tags": []} for f, plays in book.items() for p in plays]
+    return menu, "remenu: raw locked-book plays"
 
 
 # ---------------------------------------------------------------------------
@@ -122,21 +136,23 @@ def _stocked(form: str, play: str, seed: dict[str, Any]) -> bool:
 def _pick_offense(
     sit: Situation,
     opp: dict[str, Any],
-    seed: dict[str, Any],
     bl: dict[str, Any],
     db: Any,
     rng: random.Random,
     active: list[str],
+    book: dict[str, list[str]],
 ) -> MaddenCall:
     og = bl["offense_gameplan"]
     oid = opp["_id"]
     arch = _arch(opp)
     key = situation_key(sit)
-    menu = og["situations"][key]
+    menu, remenu = _book_menu(og, key, book)
     pref = _ARCH_PREF.get(arch)
     entry = _weighted_pick(menu, rng, prefer_tag=pref)
     form, play, adj = entry["formation"], entry["play"], entry.get("adj") or "No adj"
     rationale = f"{key.replace('_', ' ')} menu" + (f" (persona {arch} → {pref})" if pref else "")
+    if remenu:
+        rationale += f" | {remenu}"
     o_macro: str | None = None
     answered_repeat = False
 
@@ -153,8 +169,9 @@ def _pick_offense(
         live = src == "live"
         policy = describe_coverage_policy(cov, live=live, last_snap=src == "last", repeated=repeated)
         cls = coverage_class(cov)
-        if live and repeated and cls in og["coverage_answers"]:
-            ans = rng.choice(og["coverage_answers"][cls])
+        answers = [a for a in og["coverage_answers"].get(cls or "", []) if _in_book(a, book)]
+        if live and repeated and answers:
+            ans = rng.choice(answers)
             form, play = ans["formation"], ans["play"]
             adj = ans.get("adj") or adj
             if cls == "man" and "O-MAN" in active:
@@ -177,7 +194,7 @@ def _pick_offense(
         else:
             rationale = f"{rationale} | {policy}"
 
-    # Anti-repeat: same play 2+ of last 4 → rotate within the situation menu
+    # Anti-repeat: same play 2+ of last 4 → rotate within the in-book menu
     if db is not None:
         from cfb_coach.gameplan import anti_repeat_penalty
 
@@ -193,15 +210,28 @@ def _pick_offense(
     elif pivot:
         fams = og["pivot_families"]
         was_run = play in fams["run"]["plays"] or play in ("HB Zone WK", "HB Dive", "HB Stretch", "Mid Zone")
-        fam = fams["quick"] if was_run else fams["run"]
+        order = ["quick", "stick", "run"] if was_run else ["run", "stick", "quick"]
         if rng.random() < 0.35:
-            fam = fams["stick"]
-        form, play = fam["formation"], rng.choice(fam["plays"])
+            order.insert(0, "stick")
+        options: list[tuple[str, str]] = []
+        for fam_name in order:
+            fam = fams[fam_name]
+            options = [(fam["formation"], p) for p in fam["plays"] if _in_book({"formation": fam["formation"], "play": p}, book)]
+            if options:
+                break
+        if not options:  # family not in book → switch run ↔ pass within the in-book menu
+            want = "pass" if was_run else "run"
+            options = [(e["formation"], e["play"]) for e in menu if want in (e.get("tags") or [])] or [
+                (e["formation"], e["play"]) for e in menu if e["play"] != play
+            ] or [(form, play)]
+        form, play = rng.choice(options)
         adj, o_macro = "No adj", None
         rationale = f"{pivot} → {form}/{play} | {rationale}"
 
-    if not _stocked(form, play, seed):
-        rationale += " | (not in stocked scheme pack — confirm in book)"
+    if not _in_book({"formation": form, "play": play}, book):  # hard guard — never leave the book
+        entry = _weighted_pick(menu, rng)
+        form, play = entry["formation"], entry["play"]
+        rationale += " | remenu: guard pulled call back into locked book"
     if o_macro:
         adj = tag_live(o_macro, db)
     return MaddenCall("offense", form, play, adj, reads_for(play), rationale, macro=o_macro)
@@ -266,6 +296,27 @@ def _family_repeat_count(db: Any, oid: str, family: str | None) -> int:
     return n
 
 
+def _fit_defense(
+    form: str,
+    play: str,
+    book: dict[str, list[str]],
+    bl: dict[str, Any],
+    rng: random.Random,
+) -> tuple[str, str, str]:
+    """Pull a (package, call) back inside the locked defensive book (remenu, never warn)."""
+    if form in book and play in book[form]:
+        return form, play, ""
+    home = bl["defense_gameplan"]["home_package"]
+    holders = [f for f in book if play in book[f]]
+    if holders:
+        f = home if home in holders else holders[0]
+        return f, play, f"remenu: {form} not in book → {f}"
+    pkg = form if form in book else (home if home in book else next(iter(book)))
+    rot = [c for c in bl["defense_gameplan"]["home_rotation"] if c in book[pkg]]
+    call = rng.choice(rot) if rot else book[pkg][0]
+    return pkg, call, f"remenu: {form}/{play} not in book → {pkg}/{call}"
+
+
 def _pick_defense(
     sit: Situation,
     opp: dict[str, Any],
@@ -273,9 +324,13 @@ def _pick_defense(
     db: Any,
     rng: random.Random,
     active: list[str],
+    book: dict[str, list[str]],
 ) -> MaddenCall:
     oid = opp["_id"]
     form, play, rationale = _base_defense(sit, opp, bl, rng)
+    form, play, note = _fit_defense(form, play, book, bl, rng)
+    if note:
+        rationale += f" | {note}"
     macro: str | None = None
     user = user_job_for(play)
     suggest: str | None = None
@@ -334,6 +389,13 @@ def _pick_defense(
         rationale = f"{pivot} → {form}/{play} | {rationale}"
         suggest = suggest or "macros cleared — re-arm only on repeated tendency"
 
+    fitted = _fit_defense(form, play, book, bl, rng)
+    if fitted[:2] != (form, play):
+        form, play = fitted[0], fitted[1]
+        if not macro:
+            user = user_job_for(play)
+        rationale += f" | {fitted[2]}"
+
     macro_out = tag_live(macro, db) if macro else "none"
     if suggest:
         head, _, rest = suggest.partition(" — ")
@@ -390,7 +452,13 @@ def make_call(
     last_coverage: str | None = None,
     last_concept: str | None = None,
     active_macros: list[str] | None = None,
+    playbook: dict[str, dict[str, list[str]]] | None = None,
 ) -> MaddenCall:
+    """One call. `playbook` = {side: {formation: [plays]}} locked by the latest prep;
+    defaults to the DB's locked books (or the default stock books before any prep).
+    Every returned formation/play pair is a member of that book."""
+    from cfb_coach.madden.playbook import active_books, eligible
+
     seed = seed or load_seed()
     bl = baseline or load_meta_baseline()
     opp = dict((seed.get("opponents") or {}).get(opponent_id) or {})
@@ -401,6 +469,7 @@ def make_call(
     opp["_id"] = opponent_id
     rng = rng or random.Random()
     active = list(active_macros or bl["macros_baseline"]["keep"])
+    books = playbook or eligible(active_books(db))
 
     if last_coverage and not sit.coverage_hint:
         sit.coverage_hint, sit.coverage_source = last_coverage, "last"
@@ -416,9 +485,9 @@ def make_call(
             note = "CPU = offense-only (no D calls) — switched to O | "
 
     if sit.side == "defense":
-        call = _pick_defense(sit, opp, bl, db, rng, active)
+        call = _pick_defense(sit, opp, bl, db, rng, active, books["defense"])
     else:
-        call = _pick_offense(sit, opp, seed, bl, db, rng, active)
+        call = _pick_offense(sit, opp, bl, db, rng, active, books["offense"])
     stamp = _sit_stamp(sit)
     call.rationale = note + call.rationale + (f" | {stamp}" if stamp else "")
     return call

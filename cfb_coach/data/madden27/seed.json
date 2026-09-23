@@ -244,19 +244,30 @@
       "role": "run_first_vs_two_high",
       "book": "Cardinals / Pistol",
       "core": [
-        "HB Dive",
-        "Inside Zone"
+        "HB Dive"
       ],
-      "why": "Civil.GG top-10: HB Dive (Pistol Deuce Close) — general-purpose run."
+      "why": "Civil.GG top-10: HB Dive (Pistol Deuce Close) — general-purpose run.",
+      "verified": [
+        "HB Dive"
+      ],
+      "books": [
+        "Cardinals",
+        "Pistol"
+      ]
     },
     "Gun Tight": {
       "role": "changeup_vs_pressure",
       "book": "Texans",
       "core": [
-        "Tight Crosses",
-        "HB Stretch"
+        "Tight Crosses"
       ],
-      "why": "Civil.GG top-10: Tight Crosses (Texans Gun Tight) beats man, match and zone."
+      "why": "Civil.GG top-10: Tight Crosses (Texans Gun Tight) beats man, match and zone.",
+      "verified": [
+        "Tight Crosses"
+      ],
+      "books": [
+        "Texans"
+      ]
     },
     "Gun Off Trips Close": {
       "role": "money_down_changeup",
@@ -264,7 +275,15 @@
       "core": [
         "Y Option Wheel"
       ],
-      "why": "Civil.GG top-10: Y Option Wheel beats man and zone (Chargers concept)."
+      "why": "Civil.GG top-10: Y Option Wheel beats man and zone (Chargers concept).",
+      "verified": [
+        "Y Option Wheel"
+      ],
+      "books": [
+        "Chargers",
+        "Falcons",
+        "Patriots"
+      ]
     }
   },
   "reads": {
@@ -370,5 +389,133 @@
     "Tennessee Titans",
     "Washington Commanders"
   ],
-  "meta_validated": "2026-09-23"
+  "meta_validated": "2026-09-23",
+  "stock_books": {
+    "offense": {
+      "Buccaneers": {
+        "formations": [
+          "Gun Doubles Clamp Stack",
+          "Gun Trips X Nasty",
+          "Gun 5WR Tight",
+          "Pistol Trips"
+        ],
+        "team": "Tampa Bay Buccaneers",
+        "all_formations": [
+          "Singleback Bunch TE",
+          "Singleback Bunch X Nasty",
+          "Singleback Deuce Close",
+          "Singleback Tight Y Off",
+          "Singleback Tight Y Off Flex",
+          "Singleback U Off Trips",
+          "Singleback Wing Close",
+          "Singleback Wing Pair",
+          "I Form Close Flex",
+          "I Form Y Off Close",
+          "Pistol Bunch TE",
+          "Pistol Deuce Close",
+          "Pistol Doubles Y Off Stack",
+          "Pistol Strong Y Off Close",
+          "Pistol Trips",
+          "Gun 5WR Tight",
+          "Gun Bunch Str Nasty",
+          "Gun Bunch TE",
+          "Gun Bunch Y-Flex",
+          "Gun Cluster HB Str",
+          "Gun Deuce Close",
+          "Gun Doubles Clamp Stack",
+          "Gun Empty Base Trio",
+          "Gun Empty Quads",
+          "Gun Normal Y Off Close",
+          "Gun Spread Y-Slot",
+          "Gun Tight Doubles",
+          "Gun Tight Open",
+          "Gun Tight Y Off Wk",
+          "Gun Trio Y-Flex",
+          "Gun Trips",
+          "Gun Trips HB Wk",
+          "Gun Trips TE",
+          "Gun Trips X Nasty",
+          "Gun Y Off Trio Wk",
+          "Gun Y Off Trips",
+          "Goal Line Normal",
+          "Hail Mary"
+        ],
+        "source": "Huddle.gg Buccaneers offense formation list; Madden Prodigy #1 O (2026-08-11)"
+      },
+      "Shotgun Classic": {
+        "formations": [
+          "Gun Doubles Clamp Stack",
+          "Gun 5WR Tight"
+        ],
+        "team": null,
+        "source": "TimeSaver #1 O (upd 2026-09-11); Clamp Stack + 5WR Tight present per Huddle/madden.tools",
+        "note": "Only the formations with verified play lists are callable; everything else in the book is not modeled yet."
+      }
+    },
+    "defense": {
+      "49ers": {
+        "formations": [
+          "Nickel Over",
+          "Nickel Single Mug",
+          "Nickel Double Mug",
+          "Dime 3-2 Odd",
+          "4-3 Over"
+        ],
+        "team": "San Francisco 49ers",
+        "all_formations": [
+          "3-4 Over Solid",
+          "4-3 Even 6-1",
+          "4-3 Over",
+          "4-3 Over Solid",
+          "4-3 Over Walk",
+          "4-3 Over Wide",
+          "4-3 Under",
+          "5-2 Normal",
+          "Nickel 2-4 Load Dbl Mug",
+          "Nickel 3-3 Cub",
+          "Nickel Double Mug",
+          "Nickel Load",
+          "Nickel Load Mug",
+          "Nickel Over",
+          "Nickel Single Mug",
+          "Nickel Wide",
+          "4-2-5 Over Wide",
+          "4-2-5 Under",
+          "Dime 3-2 Odd",
+          "Dime Normal",
+          "Prevent 3 Deep",
+          "Goal Line 5-3",
+          "Goal Line 6-2",
+          "Goal Line Pinch"
+        ],
+        "source": "Huddle.gg 49ers defense formation list; #1 D in Prodigy / TimeSaver / Operation Sports"
+      }
+    }
+  },
+  "custom_core": {
+    "offense": [
+      "Gun Doubles Clamp Stack",
+      "Gun Trips X Nasty",
+      "Gun 5WR Tight",
+      "Pistol Trips"
+    ],
+    "defense": [
+      "Nickel Over",
+      "Nickel Single Mug",
+      "Nickel Double Mug",
+      "Dime 3-2 Odd",
+      "4-3 Over"
+    ]
+  },
+  "persona_custom_formations": {
+    "split_field_zone": [
+      "Pistol Deuce Close"
+    ],
+    "pressure_heavy": [
+      "Gun Tight"
+    ],
+    "c2_c3_mixer": [
+      "Gun Off Trips Close"
+    ]
+  }
 }

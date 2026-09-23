@@ -113,7 +113,9 @@ class TestMaddenSeedAndMeta(unittest.TestCase):
         """Validated meta: playcaller only calls plays that exist in the stocked formation."""
         seed = mdata.load_seed()
         bl = mdata.load_meta_baseline()
-        o = seed["playbooks"]["offense_formations"]
+        from cfb_coach.madden.playbook import formation_catalog
+
+        o = formation_catalog("offense")
         d = seed["playbooks"]["defense_packages"]
         og = bl["offense_gameplan"]
         entries = [e for menu in og["situations"].values() for e in menu]
@@ -121,8 +123,7 @@ class TestMaddenSeedAndMeta(unittest.TestCase):
         entries += [{"formation": f["formation"], "play": p}
                     for f in og["pivot_families"].values() for p in f["plays"]]
         for e in entries:
-            self.assertIn(e["play"], o[e["formation"]]["core"], e)
-            self.assertIn(e["play"], o[e["formation"]]["verified"], e)
+            self.assertIn(e["play"], o[e["formation"]], e)  # catalog = verified plays only
         dg = bl["defense_gameplan"]
         calls = [(dg["home_package"], c) for c in dg["home_rotation"]]
         calls += [(v["package"], c) for v in dg["situational"].values() for c in v["calls"]]
@@ -222,6 +223,9 @@ class TestMaddenPrep(_Isolated):
         self.assertTrue(plan["shown_deltas"])
         self.assertTrue(all(d["validated_status"] == "meta_grounded" for d in plan["shown_deltas"]))
         html = render_prep_html(plan)
+        self.assertIn("Playbook of record", html)
+        self.assertIn("Show full playbook", html)
+        self.assertNotIn("assumed stocked", html)
         self.assertIn("Madden 27 Franchise", html)
         self.assertIn("TBD", html)
         self.assertIn("madden27-2026-09", html)
@@ -236,9 +240,112 @@ class TestMaddenPrep(_Isolated):
         self.assertEqual(len(plan["active_after"]), USER_ACTIVE_CAP)
         self.assertTrue(plan["replacing_lines"])
 
-    def test_thin_persona_no_deltas(self) -> None:
+    def test_thin_persona_picks_stock_book_nothing_to_build(self) -> None:
         plan = build_prep_plan("ryan", offline=True, persist=False)
-        self.assertEqual(plan["shown_deltas"], [])
+        off = plan["playbook"]["offense"]
+        self.assertEqual((off["record"]["mode"], off["record"]["name"]), ("stock", "Buccaneers"))
+        self.assertEqual(off["checklist"], [])
+        self.assertEqual({d["action"] for d in plan["shown_deltas"]}, {"USE STOCK"})
+
+
+class TestPlaybookOfRecord(_Isolated):
+    """Owner contract: stock vs custom every prep; custom = full list then formation ADD/REMOVE only;
+    switch any time; live calls hard-locked to the book."""
+
+    def _prep(self, oid: str, **kw):
+        db = self.madden_db()
+        try:
+            return build_prep_plan(oid, db=db, offline=True, **kw)
+        finally:
+            db.close()
+
+    def test_first_custom_lists_every_formation_then_formation_diffs_only(self) -> None:
+        first = self._prep("gavin")
+        off = first["playbook"]["offense"]
+        self.assertEqual(off["record"]["mode"], "custom")
+        self.assertEqual(off["change"], "first_custom")
+        listed = [i["formation"] for i in off["checklist"]]
+        self.assertEqual(listed, list(off["record"]["formations"]))
+        self.assertIn("Pistol Deuce Close", listed)
+
+        nxt = self._prep("quen")
+        off2 = nxt["playbook"]["offense"]
+        self.assertEqual(off2["change"], "diff")
+        self.assertEqual(off2["checklist"], [])  # no full rebuild
+        acts = {(d["action"], d["target"]) for d in off2["deltas"]}
+        self.assertEqual(acts, {("ADD", "Gun Tight"), ("REMOVE", "Pistol Deuce Close")})
+        book_deltas = [d for d in nxt["shown_deltas"] if d["kind"] == "playbook"]
+        self.assertTrue(all(d["action"] in ("ADD", "REMOVE") for d in book_deltas))
+        self.assertIn("Gun Tight", off2["record"]["formations"])  # full list still available
+
+        again = self._prep("quen")
+        self.assertEqual(again["playbook"]["offense"]["change"], "none")
+
+    def test_switch_custom_to_stock_and_back(self) -> None:
+        self._prep("gavin")
+        stock = self._prep("gavin", o_book="stock:Shotgun Classic")
+        rec = stock["playbook"]["offense"]["record"]
+        self.assertEqual((rec["mode"], rec["name"]), ("stock", "Shotgun Classic"))
+        self.assertEqual(set(rec["formations"]), {"Gun Doubles Clamp Stack", "Gun 5WR Tight"})
+        back = self._prep("ryan", o_book="custom")
+        self.assertEqual(back["playbook"]["offense"]["change"], "switch")
+        self.assertTrue(back["playbook"]["offense"]["checklist"])  # full list on switch-to-custom
+
+    def test_no_audible_edits_as_install_steps(self) -> None:
+        plan = self._prep("gavin")
+        self.assertFalse([d for d in plan["shown_deltas"] if d["field"] == "Audibles"])
+
+    def test_live_calls_hard_locked_to_book(self) -> None:
+        from cfb_coach.madden.playbook import eligible, make_record
+
+        books = [
+            {"offense": make_record("offense", "stock", "Shotgun Classic")["formations"],
+             "defense": {"Nickel Over": ["Cover 4 Quarters", "Tampa 2"]}},
+            {"offense": make_record("offense", "stock", "Buccaneers")["formations"],
+             "defense": make_record("defense", "stock", "49ers")["formations"]},
+            {"offense": make_record("offense", "custom", None,
+                                    formations=["Gun Tight", "Pistol Deuce Close"])["formations"],
+             "defense": {"Dime 3-2 Odd": ["Cover 4 Quarters"]}},
+        ]
+        sits = ["1&10", "2&7", "3&1", "3&12", "4&goal", "1&10 opp 8", "2&5 2min",
+                "2&7 showing cover 1", "2&7 showing cover 3", "2&7 showing blitz", "3&8 showing cover 4",
+                "d 1&10", "d 3&1", "d 3&14", "d 4&goal", "d 2&6 showing 4 verts", "d 2&6 showing mesh"]
+        db = self.madden_db()
+        try:
+            for i in range(3):  # repeated live tells unlock coverage answers + macros
+                db.log_snap(opponent_id="gavin", side="offense", situation_raw="x", our_call="x",
+                            formation="x", play="x", result="-2", coverage_seen="Cover 1")
+                db.log_snap(opponent_id="gavin", side="defense", situation_raw="x", our_call="x",
+                            formation="x", play="x", result="+20", concept_seen="Four Verticals")
+            for book in books:
+                for oid in ("gavin", "quen", "cpu"):
+                    for raw in sits:
+                        for seed in range(4):
+                            sit = parse_madden_situation(raw, default_side="defense" if raw.startswith("d ") else "offense")
+                            call = make_call(sit, oid, db, rng=random.Random(seed), playbook=book)
+                            side_book = book[call.side]
+                            self.assertIn(call.formation, side_book, (raw, oid, call.format()))
+                            self.assertIn(call.play, side_book[call.formation], (raw, oid, call.format()))
+            # default (no explicit playbook) = the DB-locked book
+            locked = eligible(__import__("cfb_coach.madden.playbook", fromlist=["x"]).active_books(db))
+            call = make_call(parse_madden_situation("4&goal"), "gavin", db, rng=random.Random(0))
+            self.assertIn(call.play, locked["offense"][call.formation])
+        finally:
+            db.close()
+
+    def test_playbook_cli_and_flag_guards(self) -> None:
+        self.run_cli(["prep", "--game", "madden27", "-o", "quen", "--offline", "--text"])
+        rc, out = self.run_cli(["playbook"])
+        self.assertEqual(rc, 0)
+        self.assertIn("Gun Tight", out)
+        self.assertIn("[custom]", out)
+        rc, out = self.run_cli(["prep", "--game", "madden27", "-o", "quen", "--offline", "--text",
+                                "--o-book", "stock:bucs"])
+        self.assertIn("Buccaneers [stock]", out)
+        with self.assertRaises(SystemExit):
+            self.run_cli(["prep", "--game", "madden27", "-o", "quen", "--o-book", "stock:chiefs", "--text"])
+        with self.assertRaises(SystemExit):
+            self.run_cli(["prep", "-o", "gavin", "--o-book", "custom", "--offline", "--text"])
 
 
 class TestPrimaryTeamConfig(_Isolated):
@@ -249,7 +356,7 @@ class TestPrimaryTeamConfig(_Isolated):
         self.assertEqual(cfg["primary_team"], "Tampa Bay Buccaneers")
         self.assertEqual(warn, [])
         plan = build_prep_plan("ryan", offline=True, persist=False)
-        self.assertTrue(any("Retarget" in d["detail"] for d in plan["shown_deltas"]))
+        self.assertIn("matches primary team", plan["playbook"]["offense"]["reason"])
         cfg, _ = save_config(clear_primary=True)
         self.assertIsNone(cfg["primary_team"])
 

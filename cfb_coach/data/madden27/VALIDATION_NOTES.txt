@@ -72,12 +72,15 @@ VERDICTS ON THE ORIGINAL BRIEF'S PRIORS
     Gun Off Trips Close Y Option Wheel) are Civil.GG top-10 plays from OTHER books —
     add via custom playbook.
 
-SCHEME PACK, NOT A TEAM
-- Default inventory = Bucs-formation offense + Saleh 4-3 defense as an
-  UNASSIGNED primary scheme pack. It is NOT Aidan's Franchise team.
+PLAYBOOK OF RECORD, NOT A TEAM
+- Each prep locks one book per side: STOCK (Buccaneers / Shotgun Classic on O,
+  49ers Saleh on D — exact in-game names) or CUSTOM (full formation checklist on
+  first build / switch; later preps ADD / REMOVE whole formations only).
+- Stock books list only the formations whose play lists were verified; the rest of
+  the in-game book exists but is not called live until modeled.
 - Primary / lab teams are TBD and configurable:
     config --game madden27 --primary-team "<NFL team>"
-  Setting a team retargets prep deltas; personas and call language do not change.
+  A set team only biases the stock-book pick; personas and call language do not change.
 
 MACROS = MADDEN 27 CUSTOM ADJUSTMENTS (confirmed)
 - EA: Create & Share → Custom Adjustments; up to 20 per side saved, 10 active per

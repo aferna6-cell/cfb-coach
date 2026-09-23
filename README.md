@@ -97,7 +97,9 @@ PYTHONPATH=. python3 -m cfb_coach config --game madden27 --clear-primary        
 | `opponents --game madden27` | Shared personas with archetype + Madden film confidence |
 | `prep --game madden27 -o <id>` | Browser: live Madden meta scout + baseline patch radar + deltas + Active-8 (CPU: offense only) |
 | `prep --game madden27 -o <id> --franchise lab` | Lab profile: freer (e.g. ADD benched HEAT with a swap plan) |
-| `play --game madden27 -o <id>` | Typed live loop + overlay (`~/.cfb-coach/madden27_overlay.html`) |
+| `prep --game madden27 -o <id> --o-book stock:Buccaneers` | Force the offensive book of record (`auto` default \| `custom` \| `stock:<name>`); `--d-book` for defense |
+| `playbook --game madden27` | Print the full playbook of record (every formation + play live calls may use) |
+| `play --game madden27 -o <id>` | Typed live loop + overlay (`~/.cfb-coach/madden27_overlay.html`), hard-locked to the book |
 | `call --game madden27 -o <id> -s "d 3&8" --why` | One-shot call |
 | `postgame --game madden27 -o <id> [--franchise lab]` | Learn from snaps; macro `proven`/`failed`; lab → primary promotions |
 | `promote --game madden27 [--accept-all \| --target X]` | Review/accept lab → primary promotions |
@@ -105,11 +107,21 @@ PYTHONPATH=. python3 -m cfb_coach config --game madden27 --clear-primary        
 
 **Franchise profiles** (`--franchise`, stored per Madden DB like `--dynasty` in CFB): `primary` (serious save; id `franchise_primary`) and `lab` (optional practice save; id `franchise_lab`). Strong lab postgame results record promotions for the primary profile. `--dynasty` stays CFB-only and `--franchise` stays Madden-only; the CLI errors if you mix them.
 
-**Primary team TBD.** The default inventory is an **unassigned meta scheme pack**, not a team. Offense uses Bucs formations: Gun Doubles Clamp Stack (Texas Y-Stutter Wheel, Mtn Shuffle Verts Smash, Return Bench, zone runs), Gun Trips X Nasty (Mtn Stick Wheel), Gun 5WR Tight (Mesh Post, Clear Deep, Mtn Double Post) and Pistol Trips. Defense is the Saleh 4-3 (49ers/Titans): Nickel Over home, Nickel Single / Double Mug disguise, Dime 3-2 Odd and 4-3 Over. Top-10 plays from other books (Pistol Deuce Close HB Dive, Texans Gun Tight Tight Crosses, Gun Off Trips Close Y Option Wheel) come in as prep ADD deltas via custom playbook. Once you set a team, prep adds a retarget delta (check which formations exist in that book, keep the rest via custom playbook). Personas and call language don't change. Config lives in `~/.cfb-coach/madden27_config.json`; `CFB_COACH_MADDEN_PRIMARY_TEAM` / `CFB_COACH_MADDEN_LAB_TEAM` override it.
+**Playbook of record (every prep chooses).** Each prep locks one book per side, and live `play` / `call` may only use formation + play pairs from it. If a situation's menu has nothing in the book, the caller picks from another in-book menu; it never soft-warns.
+- **Stock:** an existing in-game book by exact name. Offense: `Buccaneers` (Gun Doubles Clamp Stack, Gun Trips X Nasty, Gun 5WR Tight, Pistol Trips) or `Shotgun Classic` (Clamp Stack + 5WR Tight). Defense: `49ers` (Saleh 4-3: Nickel Over, Nickel Single / Double Mug, Dime 3-2 Odd, 4-3 Over). Nothing to build.
+- **Custom:** on the first build, or when switching to custom, prep lists **every formation** to install (with its plays and source books). Later preps on the custom book show only **ADD / REMOVE of whole formations**, e.g. `ADD Gun Tight (Texans)` / `REMOVE Pistol Deuce Close` when the opponent changes.
+- **Auto rule:**
+  - Stay on the current book if it covers this opponent.
+  - Otherwise pick a stock book that has everything (preferring your primary team's book).
+  - Otherwise go custom (core Bucs-formation pack + the persona formation: Pistol Deuce Close vs split-field, Texans Gun Tight vs pressure, Gun Off Trips Close vs C2/C3 mixers).
+  - Once custom, it stays custom (no rebuild churn).
+- **Switch any time:** `--o-book stock:"Shotgun Classic"`, `--o-book custom`, `--d-book stock:49ers`. `playbook --game madden27` and the prep page's **Show full playbook** list the whole book. Optional audible-slot tweaks show up as tips, never as install steps.
+
+**Primary team TBD.** Books come from the verified meta catalog until you set a team. Once the primary team is set, prep prefers that team's stock book when it's in the catalog. Personas and call language don't change. Config lives in `~/.cfb-coach/madden27_config.json`; `CFB_COACH_MADDEN_PRIMARY_TEAM` / `CFB_COACH_MADDEN_LAB_TEAM` override it.
 
 **Shared personas.** Same cast as CFB (gavin, quen, tiano, gio, michael, harrison, jaxon, ryan, james, cpu) and the same aliases. Madden reuses only the persona **archetype + traits**, never CFB playbook/concept names. Madden film confidence starts one step below the CFB persona confidence (no Madden film yet).
 
-**Doctrine (same as CFB):** two reads on O, one user job on D; one tell = log + mild bump; macros arm only on a **REPEATED live** tendency (2+ this game), never from a previous-snap tell; PIVOT after 2 fails (user) / 3 fails (hard). **CPU = offense-only.** **User games = O + D** with a hard **8-macro O+D cap** (default Active-8 = MATCH-4, FLAT-CAP, MESH-RAT, STACK, SPY, RUN-FIT + O-PROT, O-MAN; benched HEAT, O-RPO).
+**Doctrine (same as CFB):** calls stay inside the locked playbook; two reads on O, one user job on D; one tell = log + mild bump; macros arm only on a **REPEATED live** tendency (2+ this game), never from a previous-snap tell; PIVOT after 2 fails (user) / 3 fails (hard). **CPU = offense-only.** **User games = O + D** with a hard **8-macro O+D cap** (default Active-8 = MATCH-4, FLAT-CAP, MESH-RAT, STACK, SPY, RUN-FIT + O-PROT, O-MAN; benched HEAT, O-RPO).
 
 ```text
 [O] sit> 1&10 my 35 stick wheel

@@ -47,6 +47,8 @@ def _madden_handler(args: argparse.Namespace, name: str):
         raise SystemExit("--dynasty is CFB-only; Madden 27 uses --franchise primary|lab")
     if not madden and getattr(args, "franchise", None):
         raise SystemExit("--franchise is Madden-only; add --game madden27")
+    if not madden and (getattr(args, "o_book", None) or getattr(args, "d_book", None)):
+        raise SystemExit("--o-book / --d-book are Madden-only; add --game madden27")
     if not madden:
         return None
     from cfb_coach.madden import cli as madden_cli
@@ -60,6 +62,16 @@ def cmd_opponents(args: argparse.Namespace) -> int:
         return handler(args)
     print(format_opponent_list())
     return 0
+
+
+def cmd_playbook(args: argparse.Namespace) -> int:
+    from cfb_coach.games import is_madden
+
+    if not is_madden(args.game):
+        raise SystemExit("playbook currently applies to --game madden27 (playbook of record)")
+    from cfb_coach.madden import cli as madden_cli
+
+    return madden_cli.cmd_playbook(args)
 
 
 def cmd_config(args: argparse.Namespace) -> int:
@@ -532,6 +544,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Force refetch meta scout (ignore <6h cache)",
     )
     _add_game_args(p_prep)
+    p_prep.add_argument(
+        "--o-book",
+        dest="o_book",
+        default=None,
+        metavar="auto|custom|stock:NAME",
+        help="Madden only: offensive playbook of record (default auto; e.g. stock:Buccaneers, stock:'Shotgun Classic', custom)",
+    )
+    p_prep.add_argument(
+        "--d-book",
+        dest="d_book",
+        default=None,
+        metavar="auto|custom|stock:NAME",
+        help="Madden only: defensive playbook of record (default auto → stock:49ers)",
+    )
     p_prep.set_defaults(func=cmd_prep)
 
     p_play = sub.add_parser(
@@ -629,6 +655,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_cfg.add_argument("--clear-primary", action="store_true", help="Reset primary team to TBD")
     p_cfg.add_argument("--clear-lab", action="store_true", help="Reset lab team to TBD")
     p_cfg.set_defaults(func=cmd_config)
+
+    p_book = sub.add_parser(
+        "playbook",
+        help="Madden 27: show the full playbook of record locked by the latest prep",
+    )
+    _add_game_args(p_book, franchise=False)
+    p_book.set_defaults(game="madden27")
+    p_book.add_argument("--side", choices=("offense", "defense"), default=None)
+    p_book.set_defaults(func=cmd_playbook)
 
     p_watch = sub.add_parser(
         "watch",

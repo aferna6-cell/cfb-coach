@@ -159,7 +159,7 @@ def team_for_profile(profile: str | None, cfg: dict[str, Any] | None = None) -> 
 
 
 def team_label(team: str | None) -> str:
-    return team or "TBD (scheme pack)"
+    return team or "TBD"
 
 
 # ---------------------------------------------------------------------------
