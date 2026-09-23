@@ -165,7 +165,7 @@ def cmd_prep(args: argparse.Namespace) -> int:
         if args.mark_applied:
             print(f"Marked proposed deltas applied for {oid}.")
         elif n == 0:
-            print("No playbook changes — run scheme pack as-is (tips in browser).")
+            print("No playbook changes — keep the active book (tips in browser).")
         else:
             print(f"{n} adjustment(s) shown (deltas only).")
         scout = plan.get("meta_scout") or {}

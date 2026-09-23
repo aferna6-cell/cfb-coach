@@ -1,8 +1,11 @@
-"""Madden 27 Franchise prep plan — inventory (scheme pack) vs opponent deltas.
+"""Madden 27 Franchise prep plan — playbook of record + macro deltas.
 
-Same UX contract as CFB prep: the scheme pack is assumed already stocked
-(custom playbook), so prep shows only ADD / EDIT / BENCH-style deltas that are
-at least meta_grounded, plus the Active-8 loadout (post-swap) and call tips.
+Every prep chooses a stock or custom playbook of record per side (see
+`cfb_coach.madden.playbook`). First custom / switch-to-custom emits a full
+formation checklist; successive custom preps show formation ADD/REMOVE only.
+Macro (Custom Adjustments) deltas stay ADD/EDIT/BENCH and meta_grounded;
+audible-slot swaps are tips, never install steps. Active-8 loadout + call tips
+ride along. Live `play` is hard-locked to the applied book.
 """
 
 from __future__ import annotations
