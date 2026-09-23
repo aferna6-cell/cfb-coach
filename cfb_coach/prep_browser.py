@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from cfb_coach.browser_open import is_wsl as _is_wsl, try_cmd as _try_cmd
 from cfb_coach.install_sheet import build_prep_plan
 
 ET = ZoneInfo("America/New_York")
@@ -851,16 +852,6 @@ def write_prep_html(
     return out
 
 
-def _is_wsl() -> bool:
-    if os.environ.get("WSL_DISTRO_NAME"):
-        return True
-    try:
-        ver = Path("/proc/version").read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return False
-    return "microsoft" in ver.lower()
-
-
 def _windows_path(path: Path) -> str | None:
     try:
         r = subprocess.run(
@@ -874,19 +865,6 @@ def _windows_path(path: Path) -> str | None:
     except (FileNotFoundError, OSError):
         pass
     return None
-
-
-def _try_cmd(argv: list[str]) -> bool:
-    try:
-        r = subprocess.run(
-            argv,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        return r.returncode == 0
-    except (FileNotFoundError, OSError):
-        return False
 
 
 def open_prep_html(path: Path, *, open_browser: bool = True) -> Path:

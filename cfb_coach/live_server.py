@@ -10,12 +10,12 @@ import json
 import socket
 import threading
 import traceback
-import webbrowser
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.parse import urlparse
 
+from cfb_coach.browser_open import open_url
 from cfb_coach.outcome import parse_outcome
 from cfb_coach.session import start_session
 
@@ -703,10 +703,7 @@ def run_live_server(
     print(f"HTML live play ON → {url}")
     print("  Submit outcome + next situation in the browser. Ctrl+C to stop the server.")
     if open_browser:
-        try:
-            webbrowser.open(url)
-        except Exception:
-            print(f"  Open manually: {url}")
+        open_url(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
