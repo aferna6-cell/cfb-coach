@@ -301,6 +301,39 @@ def cmd_play(args: argparse.Namespace) -> int:
         db.close()
         return 0
 
+    use_html = not bool(getattr(args, "terminal", False) or getattr(args, "no_html", False))
+    if use_html:
+        from cfb_coach.live_server import LivePlayController, run_live_server
+
+        def _make(sit, **kwargs):
+            return make_call(sit, oid, db, **kwargs)
+
+        def _learn():
+            from cfb_coach.gameplan import postgame_summary
+
+            return postgame_summary(db, oid, dynasty=dynasty)
+
+        ctrl = LivePlayController(
+            db=db,
+            opponent_id=oid,
+            make_call=_make,
+            parse_situation=parse_situation,
+            learn_summary=_learn,
+            brand="CFB Coach",
+            play_cmd="cfb-coach play",
+            dynasty=dynasty,
+            cpu_only=cpu_only,
+        )
+        print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
+        try:
+            return run_live_server(
+                ctrl,
+                port=getattr(args, "html_port", None),
+                open_browser=True,
+            )
+        finally:
+            db.close()
+
     if overlay_path is not None:
         write_overlay_html(
             str(overlay_path),
@@ -562,7 +595,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_play = sub.add_parser(
         "play",
-        help="Interactive typed live call loop + browser overlay (CPU = offense-only)",
+        help="Live play: HTML input window (default) or --terminal sit> loop (CPU = offense-only)",
     )
     p_play.add_argument("--opponent", "-o", required=True)
     p_play.add_argument(
@@ -586,7 +619,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-overlay",
         dest="no_overlay",
         action="store_true",
-        help="Disable HTML overlay (interactive play defaults overlay ON)",
+        help="Disable HTML overlay (terminal mode only; interactive play defaults overlay ON)",
+    )
+    p_play.add_argument(
+        "--terminal",
+        "--no-html",
+        dest="terminal",
+        action="store_true",
+        help="Classic terminal sit> loop instead of the HTML live window (default: HTML ON)",
+    )
+    p_play.add_argument(
+        "--html-port",
+        type=int,
+        default=None,
+        metavar="PORT",
+        help="Localhost port for HTML live play (default 8765 or next free)",
     )
     _add_game_args(p_play)
     p_play.set_defaults(func=cmd_play)
