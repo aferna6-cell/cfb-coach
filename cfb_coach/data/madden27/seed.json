@@ -1,0 +1,533 @@
+{
+  "game": "Madden 27",
+  "mode": "franchise",
+  "meta_version": "madden27-2026-09",
+  "league": {
+    "name": "Madden 27 Franchise",
+    "platform": "Xbox",
+    "franchise_profiles": {
+      "primary": {
+        "id": "franchise_primary",
+        "label": "Franchise primary",
+        "mode": "serious",
+        "team": null,
+        "description": "Aidan's serious Franchise save. Primary team TBD — set later with `config --game madden27 --primary-team <NFL team>`. Until then prep/play run the unassigned meta scheme pack."
+      },
+      "lab": {
+        "id": "franchise_lab",
+        "label": "Franchise lab",
+        "mode": "experimental",
+        "team": null,
+        "description": "Optional practice/lab save (mirrors CFB ohio_state). Freer experiments; strong postgame results promote to the primary profile."
+      }
+    },
+    "online_baseline": {
+      "custom_offense": "PRIMARY META O (scheme pack: Bucs-style)",
+      "custom_defense": "PRIMARY META D (scheme pack: Saleh 4-3 / 49ers-style)",
+      "defensive_macros_active": [
+        "MATCH-4",
+        "FLAT-CAP",
+        "MESH-RAT",
+        "STACK",
+        "SPY",
+        "RUN-FIT"
+      ],
+      "offensive_macros_active": [
+        "O-PROT",
+        "O-MAN"
+      ],
+      "macros_benched": [
+        "HEAT",
+        "O-RPO"
+      ],
+      "active_cap_user": 8,
+      "note": "Scheme-first inventory, not a locked team identity. 6 D + 2 O = 8/8 Active for USER games (Aidan cap). CPU games = offense-only (O macros only)."
+    }
+  },
+  "scheme_pack": {
+    "id": "madden27_meta_pack",
+    "label": "Unassigned primary scheme pack",
+    "offense_source": "Buccaneers formations (Gun Doubles Clamp Stack, Gun Trips X Nasty, Gun 5WR Tight, Pistol Trips) — Bucs ranked #1 by Madden Prodigy (2026-08-11); later rankings lead with Shotgun Classic / Texans, but Clamp Stack is the consensus meta formation either way",
+    "defense_source": "49ers / Titans Saleh 4-3 (consensus #1 D): Nickel Over home, Single/Double Mug disguise, Dime 3-2 Odd on passing downs; zone-match book — rush four, drop seven",
+    "note": "Meta scheme, NOT Aidan's Franchise team. When a primary team is set, prep retargets deltas; personas and call language stay the same."
+  },
+  "doctrine_priors": {
+    "free_reign": true,
+    "offense": "Clamp Stack home (Texas Y-Stutter Wheel / Mtn Shuffle Verts Smash / Return Bench); zone runs (Inside Zone, Same Side Zone, HB Stretch) vs two-high; 5WR Tight Mesh Post / Clear Deep / Mtn concepts on money downs. Avoid Aggressive blocking (Sep 3 TU holding).",
+    "defense_default": "Nickel Over home (Cover 4 Quarters / Cover 3 Match / Tampa 2). Rush four, drop seven — zone-match, not a blitz book. Single Mug disguise; sims/stunts (Nickel Sim 2, Field Sim 3) over contain (Sep 3 TU: OTs pick up contain). One user job. Macros situational.",
+    "prediction_rule": "One tell = log + mild bump. Targeted macro only on REPEATED tendency (2+) this game in similar D&D."
+  },
+  "playbooks": {
+    "offense_formations": {
+      "Gun Doubles Clamp Stack": {
+        "role": "primary",
+        "book": "Buccaneers (also Shotgun Classic, Cardinals, 15+ others)",
+        "core": [
+          "Texas Y-Stutter Wheel",
+          "Mtn Shuffle Verts Smash",
+          "Mtn Shuffle Mesh Rail",
+          "Return Bench",
+          "Y Ohio Return",
+          "Inside Zone",
+          "Same Side Zone"
+        ],
+        "verified": [
+          "Texas Y-Stutter Wheel",
+          "Mtn Shuffle Verts Smash",
+          "Mtn Shuffle Mesh Rail",
+          "Return Bench",
+          "Y Ohio Return",
+          "Inside Zone",
+          "Same Side Zone"
+        ],
+        "audibles": [
+          "Texas Y-Stutter Wheel",
+          "Mtn Shuffle Verts Smash",
+          "Inside Zone",
+          "Return Bench"
+        ]
+      },
+      "Gun Trips X Nasty": {
+        "role": "primary_pass",
+        "book": "Buccaneers",
+        "core": [
+          "Mtn Stick Wheel",
+          "Switch HB Wheel",
+          "Hi Lo Cross",
+          "Mtn Triple Slants",
+          "Inside Zone",
+          "Mid Zone"
+        ],
+        "verified": [
+          "Mtn Stick Wheel",
+          "Switch HB Wheel",
+          "Hi Lo Cross",
+          "Mtn Triple Slants",
+          "Inside Zone",
+          "Mid Zone"
+        ],
+        "audibles": [
+          "Mtn Stick Wheel",
+          "Switch HB Wheel",
+          "Inside Zone"
+        ]
+      },
+      "Gun 5WR Tight": {
+        "role": "money_down",
+        "book": "Buccaneers (also Jaguars, Shotgun Classic)",
+        "core": [
+          "Mesh Post",
+          "Clear Deep",
+          "Mtn Double Post",
+          "Mtn Fork Salem",
+          "Mtn Post Swirl",
+          "Mesh"
+        ],
+        "verified": [
+          "Mesh Post",
+          "Clear Deep",
+          "Mtn Double Post",
+          "Mtn Fork Salem",
+          "Mtn Post Swirl",
+          "Mesh"
+        ],
+        "audibles": [
+          "Mesh Post",
+          "Mtn Double Post",
+          "Clear Deep"
+        ]
+      },
+      "Pistol Trips": {
+        "role": "run_rz",
+        "book": "Buccaneers",
+        "core": [
+          "HB Zone WK",
+          "HB Dive",
+          "HB Stretch",
+          "Stick",
+          "Flood"
+        ],
+        "verified": [
+          "HB Zone WK",
+          "HB Dive",
+          "HB Stretch",
+          "Stick",
+          "Flood"
+        ],
+        "audibles": [
+          "HB Zone WK",
+          "HB Dive",
+          "Flood"
+        ]
+      }
+    },
+    "defense_packages": {
+      "Nickel Over": {
+        "role": "primary_home",
+        "book": "49ers / Titans Saleh 4-3",
+        "calls": [
+          "Cover 4 Quarters",
+          "Cover 3 Match",
+          "Tampa 2",
+          "Cover 2 Man",
+          "Nickel Sim 2"
+        ],
+        "verified": [
+          "Cover 4 Quarters",
+          "Cover 3 Match",
+          "Tampa 2",
+          "Cover 2 Man",
+          "Nickel Sim 2"
+        ]
+      },
+      "Nickel Single Mug": {
+        "role": "disguise",
+        "book": "49ers / Titans Saleh 4-3",
+        "calls": [
+          "Tampa 2",
+          "Cover 4 Quarters",
+          "Cover 3 Match",
+          "Cover 1 Hole",
+          "Dt Mike Loop 3"
+        ],
+        "verified": [
+          "Tampa 2",
+          "Cover 4 Quarters",
+          "Cover 3 Match",
+          "Cover 1 Hole",
+          "Dt Mike Loop 3"
+        ]
+      },
+      "Nickel Double Mug": {
+        "role": "same_look_pressure",
+        "book": "49ers / Titans Saleh 4-3",
+        "calls": [
+          "Cover 3 Match",
+          "Tampa 2",
+          "Nickel Sim 2",
+          "Field Sim 3"
+        ],
+        "verified": [
+          "Cover 3 Match",
+          "Tampa 2",
+          "Nickel Sim 2",
+          "Field Sim 3"
+        ]
+      },
+      "Dime 3-2 Odd": {
+        "role": "passing_downs",
+        "book": "49ers / Titans Saleh 4-3",
+        "calls": [
+          "Cover 4 Quarters",
+          "Tampa 2"
+        ],
+        "verified": []
+      },
+      "4-3 Over": {
+        "role": "base_run_short_yardage",
+        "book": "49ers / Titans Saleh 4-3",
+        "calls": [
+          "Cover 3 Sky",
+          "Cover 1 Hole",
+          "Cover 4 Quarters"
+        ],
+        "verified": [
+          "Cover 3 Sky",
+          "Cover 1 Hole",
+          "Cover 4 Quarters"
+        ]
+      }
+    }
+  },
+  "delta_formations": {
+    "Pistol Deuce Close": {
+      "role": "run_first_vs_two_high",
+      "book": "Cardinals / Pistol",
+      "core": [
+        "HB Dive"
+      ],
+      "why": "Civil.GG top-10: HB Dive (Pistol Deuce Close) — general-purpose run.",
+      "verified": [
+        "HB Dive"
+      ],
+      "books": [
+        "Cardinals",
+        "Pistol"
+      ]
+    },
+    "Gun Tight": {
+      "role": "changeup_vs_pressure",
+      "book": "Texans",
+      "core": [
+        "Tight Crosses"
+      ],
+      "why": "Civil.GG top-10: Tight Crosses (Texans Gun Tight) beats man, match and zone.",
+      "verified": [
+        "Tight Crosses"
+      ],
+      "books": [
+        "Texans"
+      ]
+    },
+    "Gun Off Trips Close": {
+      "role": "money_down_changeup",
+      "book": "Chargers / Falcons / Patriots",
+      "core": [
+        "Y Option Wheel"
+      ],
+      "why": "Civil.GG top-10: Y Option Wheel beats man and zone (Chargers concept).",
+      "verified": [
+        "Y Option Wheel"
+      ],
+      "books": [
+        "Chargers",
+        "Falcons",
+        "Patriots"
+      ]
+    }
+  },
+  "reads": {
+    "Texas Y-Stutter Wheel": "Y Stutter → HB Wheel",
+    "Mtn Shuffle Verts Smash": "Corner → Shuffle HB",
+    "Mtn Shuffle Mesh Rail": "Mesh → Rail",
+    "Return Bench": "Return → Bench",
+    "Y Ohio Return": "Return → Flat",
+    "Mtn Stick Wheel": "Stick → Wheel",
+    "Switch HB Wheel": "Wheel → Flat",
+    "Hi Lo Cross": "Low cross → High cross",
+    "Mtn Triple Slants": "Slant → Hot",
+    "Mesh Post": "Post → Mesh",
+    "Clear Deep": "Deep over → Checkdown",
+    "Mtn Double Post": "Post → Dig",
+    "Mtn Fork Salem": "Salem → Flat",
+    "Mtn Post Swirl": "Swirl → Post",
+    "Mesh": "Mesh → Sit",
+    "Stick": "Stick → Flat",
+    "Flood": "Flat → Corner",
+    "Tight Crosses": "Cross → Cross",
+    "Y Option Wheel": "Y Option → Wheel",
+    "Inside Zone": "Front → Cutback",
+    "Same Side Zone": "Front → Cutback",
+    "Mid Zone": "Front → Bounce",
+    "HB Zone WK": "Front → Cutback",
+    "HB Stretch": "Edge → Cut up",
+    "HB Dive": "Dive → Bounce"
+  },
+  "user_jobs": {
+    "Cover 4 Quarters": "User #3 seam",
+    "Cover 3 Match": "User hook",
+    "Tampa 2": "User deep middle",
+    "Cover 2 Man": "User hook",
+    "Nickel Sim 2": "User hot",
+    "Cover 1 Hole": "User robber",
+    "Dt Mike Loop 3": "User hot",
+    "Field Sim 3": "User hot",
+    "Cover 3 Sky": "User HB"
+  },
+  "archetype_leans": {
+    "split_field_zone": {
+      "offense": "Two-high/split-field user: zone runs first (Inside Zone / Same Side Zone / HB Stretch), Hi Lo Cross + Mesh Post underneath; don't force Mtn Shuffle Verts Smash into safeties.",
+      "defense": "Explosive shot + scramble persona: Cover 4 Quarters home; MATCH-4 after repeated verticals; SPY after repeated scrambles."
+    },
+    "pressure_heavy": {
+      "offense": "Pressure persona: O-PROT ready, man/blitz beaters (Texas Y-Stutter Wheel, Mtn Stick Wheel, Mtn Triple Slants); Gun Tight Tight Crosses changeup.",
+      "defense": "Crossers + bubbles + scramble persona: Cover 3 Match / Tampa 2; MESH-RAT / SPY on repeats."
+    },
+    "c2_c3_mixer": {
+      "offense": "C2/C3 mixer: Mtn Double Post vs C2, Mtn Shuffle Verts Smash / Clear Deep vs C3; possession in RZ.",
+      "defense": "Compressed + GL persona: STACK vs Clamp/bunch repeats; don't sell out run at GL."
+    },
+    "two_high_money_downs": {
+      "offense": "CPU two-high on money downs: take free underneath (Mesh Post, Hi Lo Cross, Stick) and zone runs; no forced shots into sticks coverage.",
+      "defense": "N/A — CPU = offense-only."
+    },
+    "unknown": {
+      "offense": "Thin persona: meta baseline as-is — zone runs, Clamp Stack easy completions.",
+      "defense": "Thin persona: Nickel Over home, no macros until repeated tells this game."
+    }
+  },
+  "call_syntax": {
+    "offense": "Formation — Play | Adj if needed | Read1 → Read2",
+    "defense": "Formation — Play | Macro if needed | User one job",
+    "examples": {
+      "offense": "Gun Doubles Clamp Stack — Texas Y-Stutter Wheel | No adj | Y Stutter → HB Wheel",
+      "defense": "Nickel Over — Cover 4 Quarters | MATCH-4 | User #3 seam"
+    },
+    "controller": "Xbox — formation/play/macro NAMES only. Never invent button sequences."
+  },
+  "nfl_teams": [
+    "Arizona Cardinals",
+    "Atlanta Falcons",
+    "Baltimore Ravens",
+    "Buffalo Bills",
+    "Carolina Panthers",
+    "Chicago Bears",
+    "Cincinnati Bengals",
+    "Cleveland Browns",
+    "Dallas Cowboys",
+    "Denver Broncos",
+    "Detroit Lions",
+    "Green Bay Packers",
+    "Houston Texans",
+    "Indianapolis Colts",
+    "Jacksonville Jaguars",
+    "Kansas City Chiefs",
+    "Las Vegas Raiders",
+    "Los Angeles Chargers",
+    "Los Angeles Rams",
+    "Miami Dolphins",
+    "Minnesota Vikings",
+    "New England Patriots",
+    "New Orleans Saints",
+    "New York Giants",
+    "New York Jets",
+    "Philadelphia Eagles",
+    "Pittsburgh Steelers",
+    "San Francisco 49ers",
+    "Seattle Seahawks",
+    "Tampa Bay Buccaneers",
+    "Tennessee Titans",
+    "Washington Commanders"
+  ],
+  "meta_validated": "2026-09-23",
+  "stock_books": {
+    "offense": {
+      "Buccaneers": {
+        "formations": [
+          "Gun Doubles Clamp Stack",
+          "Gun Trips X Nasty",
+          "Gun 5WR Tight",
+          "Pistol Trips"
+        ],
+        "team": "Tampa Bay Buccaneers",
+        "all_formations": [
+          "Singleback Bunch TE",
+          "Singleback Bunch X Nasty",
+          "Singleback Deuce Close",
+          "Singleback Tight Y Off",
+          "Singleback Tight Y Off Flex",
+          "Singleback U Off Trips",
+          "Singleback Wing Close",
+          "Singleback Wing Pair",
+          "I Form Close Flex",
+          "I Form Y Off Close",
+          "Pistol Bunch TE",
+          "Pistol Deuce Close",
+          "Pistol Doubles Y Off Stack",
+          "Pistol Strong Y Off Close",
+          "Pistol Trips",
+          "Gun 5WR Tight",
+          "Gun Bunch Str Nasty",
+          "Gun Bunch TE",
+          "Gun Bunch Y-Flex",
+          "Gun Cluster HB Str",
+          "Gun Deuce Close",
+          "Gun Doubles Clamp Stack",
+          "Gun Empty Base Trio",
+          "Gun Empty Quads",
+          "Gun Normal Y Off Close",
+          "Gun Spread Y-Slot",
+          "Gun Tight Doubles",
+          "Gun Tight Open",
+          "Gun Tight Y Off Wk",
+          "Gun Trio Y-Flex",
+          "Gun Trips",
+          "Gun Trips HB Wk",
+          "Gun Trips TE",
+          "Gun Trips X Nasty",
+          "Gun Y Off Trio Wk",
+          "Gun Y Off Trips",
+          "Goal Line Normal",
+          "Hail Mary"
+        ],
+        "source": "Huddle.gg Buccaneers offense formation list; Madden Prodigy #1 O (2026-08-11)"
+      },
+      "Shotgun Classic": {
+        "formations": [
+          "Gun Doubles Clamp Stack",
+          "Gun 5WR Tight"
+        ],
+        "team": null,
+        "source": "TimeSaver #1 O (upd 2026-09-11); Clamp Stack + 5WR Tight present per Huddle/madden.tools",
+        "note": "Only the formations with verified play lists are callable; everything else in the book is not modeled yet."
+      }
+    },
+    "defense": {
+      "49ers": {
+        "formations": [
+          "Nickel Over",
+          "Nickel Single Mug",
+          "Nickel Double Mug",
+          "Dime 3-2 Odd",
+          "4-3 Over"
+        ],
+        "team": "San Francisco 49ers",
+        "all_formations": [
+          "3-4 Over Solid",
+          "4-3 Even 6-1",
+          "4-3 Over",
+          "4-3 Over Solid",
+          "4-3 Over Walk",
+          "4-3 Over Wide",
+          "4-3 Under",
+          "5-2 Normal",
+          "Nickel 2-4 Load Dbl Mug",
+          "Nickel 3-3 Cub",
+          "Nickel Double Mug",
+          "Nickel Load",
+          "Nickel Load Mug",
+          "Nickel Over",
+          "Nickel Single Mug",
+          "Nickel Wide",
+          "4-2-5 Over Wide",
+          "4-2-5 Under",
+          "Dime 3-2 Odd",
+          "Dime Normal",
+          "Prevent 3 Deep",
+          "Goal Line 5-3",
+          "Goal Line 6-2",
+          "Goal Line Pinch"
+        ],
+        "source": "Huddle.gg 49ers defense formation list; #1 D in Prodigy / TimeSaver / Operation Sports"
+      },
+      "Titans": {
+        "formations": [
+          "Nickel Over",
+          "Nickel Single Mug",
+          "Nickel Double Mug",
+          "Dime 3-2 Odd",
+          "4-3 Over"
+        ],
+        "team": "Tennessee Titans",
+        "source": "TimeSaver lists '49ers / Titans (Saleh) 4-3' as one #1 D; Operation Sports: the two books are 'pretty much identical' (Saleh)",
+        "note": "Formation list mirrors the 49ers book (not independently verified for Titans) — confirm in-game."
+      }
+    }
+  },
+  "custom_core": {
+    "offense": [
+      "Gun Doubles Clamp Stack",
+      "Gun Trips X Nasty",
+      "Gun 5WR Tight",
+      "Pistol Trips"
+    ],
+    "defense": [
+      "Nickel Over",
+      "Nickel Single Mug",
+      "Nickel Double Mug",
+      "Dime 3-2 Odd",
+      "4-3 Over"
+    ]
+  },
+  "persona_custom_formations": {
+    "split_field_zone": [
+      "Pistol Deuce Close"
+    ],
+    "pressure_heavy": [
+      "Gun Tight"
+    ],
+    "c2_c3_mixer": [
+      "Gun Off Trips Close"
+    ]
+  }
+}

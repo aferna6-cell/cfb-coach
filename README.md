@@ -4,6 +4,8 @@ Xbox **CFB 27** dynasty play-caller for Aidan's Alabama online Dynasty.
 
 Heuristics + packaged `seed.json` + CFB27 META baseline + SQLite log learning. No neural net.
 
+**v1.10.0:** also a typed **Madden 27 Franchise** coach behind `--game madden27` (see [Madden 27 Franchise](#madden-27-franchise---game-madden27)). CFB 27 stays the default. Nothing changes for CFB unless you pass `--game madden27`.
+
 **Prepper + live caller.** Prep opens a **browser** with **playbook/macro diffs only** (never a full recreate install sheet). Live caller stays sharp: two reads on O, one user job on D, anti-repeat, no single-snap whiplash. Mid-game **PIVOT** fires when the last 3 snaps fail on a side.
 
 ## Install / run
@@ -65,6 +67,84 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 | `python3 -m cfb_coach copilot --demo --once` | Alias of `watch` |
 
 Opponent aliases: ids (`gavin`), display names (`Gavin`), teams (`Auburn`, `Houston`, `SMU`, …).
+
+## Madden 27 Franchise (`--game madden27`)
+
+Typed live calls for **Madden 27 Franchise** (not MUT, not MCS tournament tooling), same UX as CFB: prep browser with **deltas only + Active-8**, then typed `play` with `heard:` echo and the HTML overlay. **Sidecar only**: no controller input. Vision/`watch` is **not** used for Madden.
+
+```bash
+# Franchise CPU week (offense-only)
+PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent cpu
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent cpu
+
+# Franchise user game (shared persona, O + D within the 8-macro cap)
+PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent gavin                 # custom book → build checklist (PENDING)
+PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent gavin --mark-applied  # after building it → LOCKED
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent gavin
+
+# After the game
+PYTHONPATH=. python3 -m cfb_coach postgame --game madden27 --opponent gavin
+
+# Primary Franchise team (TBD until you set it)
+PYTHONPATH=. python3 -m cfb_coach config --game madden27                          # show
+PYTHONPATH=. python3 -m cfb_coach config --game madden27 --primary-team Buccaneers  # set (name, nickname or abbr: TB)
+PYTHONPATH=. python3 -m cfb_coach config --game madden27 --clear-primary            # back to TBD
+```
+
+`--game madden` works as an alias. Every CFB prep/play flag carries over (`--text`, `--no-open`, `--offline`, `--refresh-meta`, `--mark-applied`, `--once`, `--why`, `--overlay`, `--no-overlay`).
+
+| Command | Madden 27 purpose |
+|---|---|
+| `opponents --game madden27` | Shared personas with archetype + Madden film confidence |
+| `prep --game madden27 -o <id>` | Browser: live Madden meta scout + baseline patch radar + deltas + Active-8 (CPU: offense only) |
+| `prep --game madden27 -o <id> --franchise lab` | Lab profile: freer (e.g. ADD benched HEAT with a swap plan) |
+| `prep --game madden27 -o <id> --o-book stock:Buccaneers` | Force the offensive book of record (`auto` default \| `custom` \| `stock:<name>`); `--d-book` for defense |
+| `playbook --game madden27` | Print the full playbook of record (every formation + play live calls may use) |
+| `play --game madden27 -o <id>` | Typed live loop + overlay (`~/.cfb-coach/madden27_overlay.html`), hard-locked to the book |
+| `call --game madden27 -o <id> -s "d 3&8" --why` | One-shot call |
+| `postgame --game madden27 -o <id> [--franchise lab]` | Learn from snaps; macro `proven`/`failed`; lab → primary promotions |
+| `promote --game madden27 [--accept-all \| --target X]` | Review/accept lab → primary promotions |
+| `config --game madden27 --primary-team X [--lab-team Y]` | Set/clear Franchise teams (TBD default) |
+
+**Franchise profiles** (`--franchise`, stored per Madden DB like `--dynasty` in CFB): `primary` (serious save; id `franchise_primary`) and `lab` (optional practice save; id `franchise_lab`). Strong lab postgame results record promotions for the primary profile. `--dynasty` stays CFB-only and `--franchise` stays Madden-only; the CLI errors if you mix them.
+
+**Playbook of record (every prep chooses).** Each prep locks one book per side, and live `play` / `call` may only use formation + play pairs from it. If a situation's menu has nothing in the book, the caller picks from another in-book menu; it never soft-warns.
+- **Stock:** an existing in-game book by exact name. Offense: `Buccaneers` (Gun Doubles Clamp Stack, Gun Trips X Nasty, Gun 5WR Tight, Pistol Trips) or `Shotgun Classic` (Clamp Stack + 5WR Tight). Defense: `49ers` (Saleh 4-3: Nickel Over, Nickel Single / Double Mug, Dime 3-2 Odd, 4-3 Over). Nothing to build.
+- **Custom:** on the first build, or when switching to custom, prep lists **every formation** to install (with its plays and source books). Later preps on the custom book show only **ADD / REMOVE of whole formations**, e.g. `ADD Gun Tight (Texans)` / `REMOVE Pistol Deuce Close` when the opponent changes.
+- **Auto rule:**
+  - Stay on the current book if it covers this opponent.
+  - Otherwise pick a stock book that has everything (preferring your primary team's book).
+  - Otherwise go custom (core Bucs-formation pack + the persona formation: Pistol Deuce Close vs split-field, Texans Gun Tight vs pressure, Gun Off Trips Close vs C2/C3 mixers).
+  - Once custom, it stays custom (no rebuild churn).
+- **Locked vs pending:** a stock pick has nothing to build, so it locks for live calls right away. A custom build or a formation diff stays **PENDING** until you build it in-game and run `prep --game madden27 -o <opp> --mark-applied`. Until then, live calls keep using the last locked book. With no locked book at all, `play` / `call` refuse to call and tell you to run prep first.
+- **Switch any time:** `--o-book stock:"Shotgun Classic"`, `--o-book custom`, `--d-book stock:49ers` (or `stock:Titans`, which mirrors the Saleh 49ers book). `playbook --game madden27` and the prep page's **Show full playbook** list the whole book. Optional audible-slot tweaks show up as tips, never as install steps.
+
+**Primary team TBD.** Books come from the verified meta catalog until you set a team. Once the primary team is set, prep prefers that team's stock book when it's in the catalog. Personas and call language don't change. Config lives in `~/.cfb-coach/madden27_config.json`; `CFB_COACH_MADDEN_PRIMARY_TEAM` / `CFB_COACH_MADDEN_LAB_TEAM` override it.
+
+**Shared personas.** Same cast as CFB (gavin, quen, tiano, gio, michael, harrison, jaxon, ryan, james, cpu) and the same aliases. Madden reuses only the persona **archetype + traits**, never CFB playbook/concept names. Madden film confidence starts one step below the CFB persona confidence (no Madden film yet).
+
+**Doctrine (same as CFB):** calls stay inside the locked playbook; two reads on O, one user job on D; one tell = log + mild bump; macros arm only on a **REPEATED live** tendency (2+ this game), never from a previous-snap tell; PIVOT after 2 fails (user) / 3 fails (hard). **CPU = offense-only.** **User games = O + D** with a hard **8-macro O+D cap** (default Active-8 = MATCH-4, FLAT-CAP, MESH-RAT, STACK, SPY, RUN-FIT + O-PROT, O-MAN; benched HEAT, O-RPO).
+
+```text
+[O] sit> 1&10 my 35 stick wheel
+heard: 1&10 yl35 [prev:Stick Wheel]
+Gun Doubles Clamp Stack — Inside Zone | No adj | Front → Cutback
+[O] sit> d 2&6 showing 4 verts
+heard: 2&6 [live:Four Verticals]
+Nickel Over — Cover 4 Quarters | none | User #3 seam
+  SUGGEST macro: MATCH-4 [meta_grounded] — after one more Four Verticals tell
+```
+
+**Meta snapshot `madden27-2026-09`, cross-checked 2026-09-23 (soft priors, will drift).** Checked against Madden Prodigy, TimeSaver, Civil.GG and Operation Sports rankings, the Huddle.gg / madden.tools playbook databases, EA's gameplay deep dive and the 2026-09-03 / 2026-09-16 title-update notes. The live calls use only play names found in those formation lists; anything not found is tagged **"unverified name"** in the prep inventory. What the check changed from the original brief:
+- **Fixed names:** Mtn Shuffle **Verts** Smash; Pistol Trips (no "RZ" formation); HB Zone WK.
+- **Formations:** the Saleh book has no "Nickel Mug", so Nickel Over is home, with Single / Double Mug as disguise.
+- **Pressure:** "DB Fire 2" wasn't found, so the pressure calls are Nickel Sim 2 / Field Sim 3.
+- **Added:** Texas Y-Stutter Wheel and Mesh Post (the #1 and #2 meta plays).
+- **Contested:** "Bucs = #1 offense" is Prodigy's launch pick; later rankings lead with Shotgun Classic / Texans.
+
+Macros are Madden 27 **Custom Adjustments** (EA: Create & Share → Custom Adjustments, 20 saved per side, 10 active, LB in-game). Aidan's cap of 8 applies, same as CFB. EA doesn't publish the exact option labels, so every setting is tagged **approx**, and no button sequences are invented. Everything starts `meta_grounded`; postgame marks a macro `proven` (3+ uses, ≥60% success) or `failed` (≤30%). Full verdict table: `cfb_coach/data/madden27/VALIDATION_NOTES.txt`. Refresh after any title update with `prep --game madden27 --refresh-meta`.
+
+**Files (separate namespace, same data dir):** `madden27.db` (override `CFB_COACH_MADDEN_DB`), `prep_madden27_<opp>.html`, `madden27_overlay.html`, `madden27_meta_cache.json`, `madden27_config.json`. CFB's `coach.db` / `prep_<opp>.html` / `copilot_overlay.html` are never touched by Madden runs.
 
 ## Prep = rich opening plan (v1.6.0)
 
@@ -438,6 +518,10 @@ cfb-coach/
     watch.py            # `watch` / `copilot` live loop
     data/seed.json
     data/meta_baseline.json  # CFB27 META (cfb27-2026-09)
+    games.py            # --game registry (cfb27 default | madden27) + per-game paths
+    madden/             # Madden 27 Franchise: data, situation, playcaller, prep(+browser),
+                        #   meta_scout, franchise (primary/lab + team config), postgame, cli
+    data/madden27/      # seed / meta_baseline (madden27-2026-09) / macro_catalog / VALIDATION_NOTES
 ```
 
 ## Smoke

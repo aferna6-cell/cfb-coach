@@ -178,6 +178,8 @@ def write_overlay_html(
     call_text: str = "",
     short_line: str = "",
     mode: str = "watch",
+    brand: str = "CFB Coach",
+    play_cmd: str = "cfb-coach play",
 ) -> str:
     """Tiny auto-refresh overlay — big PLAY/CALL so Xbox can stay focused.
 
@@ -208,7 +210,7 @@ def write_overlay_html(
     · conf={n.confidence:.2f} · {_esc(n.source)}
   </div>'''
     tips_block = f"<ol>\n    {tip_lis}\n  </ol>" if tip_lis else ""
-    title = "CFB Coach — PLAY" if mode == "play" or look is None else "CFB Coach — CALL"
+    title = f"{brand} — PLAY" if mode == "play" or look is None else f"{brand} — CALL"
     heading = (
         "Live Play (typed)"
         if mode == "play" or look is None
@@ -253,7 +255,7 @@ def write_overlay_html(
   <footer>
     Aidan keeps sticks · glance here for the PLAY call<br/>
     Pin this strip on the other half of the screen. Auto-refresh 1.5s.
-    Typed live = <code>cfb-coach play</code> · vision watch on hold.
+    Typed live = <code>{_esc(play_cmd)}</code> · vision watch on hold.
   </footer>
 </main>
 </body>
