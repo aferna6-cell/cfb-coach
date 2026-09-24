@@ -40,7 +40,7 @@ class CoachDB:
         # Optional per-game seed (Madden 27); default = CFB seed.json
         self._seed = seed
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.path))
+        self.conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._migrate()
         self._seed_if_empty()
@@ -317,14 +317,15 @@ class CoachDB:
         coverage_seen: str | None = None,
         concept_seen: str | None = None,
         notes: str | None = None,
+        session_id: str | None = None,
     ) -> int:
         cur = self.conn.execute(
             """
             INSERT INTO snaps (
                 ts, opponent_id, side, down, distance, yardline, quarter,
                 situation_raw, our_call, formation, play, macro,
-                result, coverage_seen, concept_seen, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                result, coverage_seen, concept_seen, notes, session_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 datetime.now(timezone.utc).isoformat(),
@@ -343,6 +344,7 @@ class CoachDB:
                 coverage_seen,
                 concept_seen,
                 notes,
+                session_id,
             ),
         )
         self.conn.commit()
@@ -584,6 +586,20 @@ class CoachDB:
                 self.conn.commit()
             except sqlite3.Error:
                 pass
+        gs_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(game_sessions)").fetchall()}
+        if gs_cols:
+            if "result_wl" not in gs_cols:
+                try:
+                    self.conn.execute("ALTER TABLE game_sessions ADD COLUMN result_wl TEXT")
+                    self.conn.commit()
+                except sqlite3.Error:
+                    pass
+            if "score" not in gs_cols:
+                try:
+                    self.conn.execute("ALTER TABLE game_sessions ADD COLUMN score TEXT")
+                    self.conn.commit()
+                except sqlite3.Error:
+                    pass
 
     def start_game_session(self, sess: Any) -> str:
         d = sess.to_dict() if hasattr(sess, "to_dict") else dict(sess)
@@ -606,23 +622,52 @@ class CoachDB:
         self.conn.commit()
         return str(d["session_id"])
 
-    def end_game_session(self, session_id: str, *, play_count: int | None = None) -> None:
+    def end_game_session(
+        self,
+        session_id: str,
+        *,
+        play_count: int | None = None,
+        result_wl: str | None = None,
+        score: str | None = None,
+    ) -> None:
+        ended = datetime.now(timezone.utc).isoformat()
+        # Ensure optional columns exist (older DBs)
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(game_sessions)").fetchall()}
+        if "result_wl" not in cols:
+            try:
+                self.conn.execute("ALTER TABLE game_sessions ADD COLUMN result_wl TEXT")
+            except sqlite3.Error:
+                pass
+        if "score" not in cols:
+            try:
+                self.conn.execute("ALTER TABLE game_sessions ADD COLUMN score TEXT")
+            except sqlite3.Error:
+                pass
+        sets = ["ended_ts = ?"]
+        params: list[Any] = [ended]
         if play_count is not None:
-            self.conn.execute(
-                """
-                UPDATE game_sessions SET ended_ts = ?, play_count = ?
-                WHERE session_id = ?
-                """,
-                (datetime.now(timezone.utc).isoformat(), int(play_count), session_id),
-            )
-        else:
-            self.conn.execute(
-                """
-                UPDATE game_sessions SET ended_ts = ? WHERE session_id = ?
-                """,
-                (datetime.now(timezone.utc).isoformat(), session_id),
-            )
+            sets.append("play_count = ?")
+            params.append(int(play_count))
+        if result_wl is not None:
+            sets.append("result_wl = ?")
+            params.append(str(result_wl).lower().strip())
+        if score is not None:
+            sets.append("score = ?")
+            params.append(str(score).strip())
+        params.append(session_id)
+        self.conn.execute(
+            f"UPDATE game_sessions SET {', '.join(sets)} WHERE session_id = ?",
+            params,
+        )
         self.conn.commit()
+
+    def get_session_snaps(self, session_id: str, *, limit: int = 500) -> list[sqlite3.Row]:
+        return list(
+            self.conn.execute(
+                "SELECT * FROM snaps WHERE session_id = ? ORDER BY id ASC LIMIT ?",
+                (session_id, limit),
+            )
+        )
 
     def log_play_record(self, rec: Any) -> int:
         """Persist PlayRecord (dict or dataclass). Idempotent on session+play_id."""

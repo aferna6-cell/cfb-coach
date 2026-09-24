@@ -4,7 +4,7 @@ Xbox **CFB 27** dynasty play-caller for Aidan's Alabama online Dynasty.
 
 Heuristics + packaged `seed.json` + CFB27 META baseline + SQLite log learning. No neural net.
 
-**v1.10.0:** also a typed **Madden 27 Franchise** coach behind `--game madden27` (see [Madden 27 Franchise](#madden-27-franchise---game-madden27)). CFB 27 stays the default. Nothing changes for CFB unless you pass `--game madden27`.
+**v1.11.0:** HTML **live play window** (default) + game-over smarter retrain. **v1.10.0:** typed **Madden 27 Franchise** coach behind `--game madden27` (see [Madden 27 Franchise](#madden-27-franchise---game-madden27)). CFB 27 stays the default. Nothing changes for CFB unless you pass `--game madden27`.
 
 **Prepper + live caller.** Prep opens a **browser** with **playbook/macro diffs only** (never a full recreate install sheet). Live caller stays sharp: two reads on O, one user job on D, anti-repeat, no single-snap whiplash. Mid-game **PIVOT** fires when the last 3 snaps fail on a side.
 
@@ -16,8 +16,8 @@ cd /workspace/cfb-coach
 PYTHONPATH=. python3 -m cfb_coach opponents
 PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin          # opens browser (deltas only)
 PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin --text   # terminal delta dump
-PYTHONPATH=. python3 -m cfb_coach play --opponent gavin          # typed live + overlay browser
-PYTHONPATH=. python3 -m cfb_coach play --opponent gavin --no-overlay
+PYTHONPATH=. python3 -m cfb_coach play --opponent gavin          # HTML live window (default)
+PYTHONPATH=. python3 -m cfb_coach play --opponent gavin --terminal  # classic sit> loop
 ```
 
 Optional editable install:
@@ -40,6 +40,37 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 #   explorer.exe $(wslpath -w ~/.cfb-coach/prep_cpu.html)
 ```
 
+
+## HTML live play + game-over retrain (v1.11)
+
+During the game Aidan should **not** need the terminal. `play` starts a small **stdlib HTTP server** on `127.0.0.1:8765` (or the next free port) and opens a browser page:
+
+1. **Big PLAY** call at the top.
+2. **Last snap outcome** — buttons/fields: gain N / loss N / incomplete / sack / TD / INT / stop / convert (or free text like `+13`).
+3. **Next situation** — down, distance, my/opp yard line, last play or look name (check **live** for pre-snap `showing …`).
+4. **Submit** → logs the previous call’s result into SQLite, returns the next PLAY, appends a row to the on-page **game log**.
+5. **End game** — Win/Loss + score (e.g. `24-17`) → **Game over → retrain**. Closes the session, grades **formation+play vs coverage/look** (success rate + avg yards), bumps/demotes gameplan weights, updates macro proven/failed thresholds, and shows a short summary on the page.
+
+```bash
+# CFB 27 (default)
+PYTHONPATH=. python3 -m cfb_coach play --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach play --opponent cpu
+
+# Madden 27 Franchise
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent cpu
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent gavin
+
+# Optional
+PYTHONPATH=. python3 -m cfb_coach play -o gavin --html-port 8765
+PYTHONPATH=. python3 -m cfb_coach play -o gavin --terminal   # classic sit> (also --no-html)
+
+# Same smarter retrain from CLI after a terminal game
+PYTHONPATH=. python3 -m cfb_coach postgame --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach postgame --game madden27 --opponent gavin
+```
+
+Sidecar only — no controller automation, no vision. Prep browser is unchanged. Terminal/`--once` scripts still work.
+
 ## Commands
 
 | Command | Purpose |
@@ -51,8 +82,8 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 | `python3 -m cfb_coach prep -o <id> --mark-applied` | Mark proposed deltas applied (next prep shows only NEW) |
 | `python3 -m cfb_coach prep -o <id> --offline` | Skip network meta scout (use cache/baseline `cfb27-2026-09`) |
 | `python3 -m cfb_coach prep -o <id> --refresh-meta` | Force refetch meta scout (ignore <6h cache) |
-| `python3 -m cfb_coach play --opponent <id>` | Typed live loop + **browser overlay** (CPU = offense-only) |
-| `python3 -m cfb_coach play --opponent <id> --no-overlay` | Same loop without HTML overlay |
+| `python3 -m cfb_coach play --opponent <id>` | **HTML live window** (localhost) — outcome + next sit, game log, Game over → retrain |
+| `python3 -m cfb_coach play --opponent <id> --terminal` | Classic terminal `sit>` loop (+ optional overlay) |
 | `python3 -m cfb_coach play --opponent <id> --once "2&7 c2 invert"` | One-shot non-interactive call |
 | `python3 -m cfb_coach call -o gavin -s "2&7 cover 2 invert" --why` | Scripted one-shot |
 | `python3 -m cfb_coach postgame --opponent gavin` | Learn from snaps; ohio_state successes → Alabama promotion notes |
@@ -75,12 +106,12 @@ Typed live calls for **Madden 27 Franchise** (not MUT, not MCS tournament toolin
 ```bash
 # Franchise CPU week (offense-only)
 PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent cpu
-PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent cpu
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent cpu   # HTML live window
 
 # Franchise user game (shared persona, O + D within the 8-macro cap)
 PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent gavin                 # custom book → build checklist (PENDING)
 PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent gavin --mark-applied  # after building it → LOCKED
-PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent gavin                 # HTML live + game-over retrain
 
 # After the game
 PYTHONPATH=. python3 -m cfb_coach postgame --game madden27 --opponent gavin
@@ -91,7 +122,7 @@ PYTHONPATH=. python3 -m cfb_coach config --game madden27 --primary-team Buccanee
 PYTHONPATH=. python3 -m cfb_coach config --game madden27 --clear-primary            # back to TBD
 ```
 
-`--game madden` works as an alias. Every CFB prep/play flag carries over (`--text`, `--no-open`, `--offline`, `--refresh-meta`, `--mark-applied`, `--once`, `--why`, `--overlay`, `--no-overlay`).
+`--game madden` works as an alias. Every CFB prep/play flag carries over (`--text`, `--no-open`, `--offline`, `--refresh-meta`, `--mark-applied`, `--once`, `--why`, `--overlay`, `--no-overlay`, `--terminal`, `--html-port`).
 
 | Command | Madden 27 purpose |
 |---|---|
@@ -100,7 +131,7 @@ PYTHONPATH=. python3 -m cfb_coach config --game madden27 --clear-primary        
 | `prep --game madden27 -o <id> --franchise lab` | Lab profile: freer (e.g. ADD benched HEAT with a swap plan) |
 | `prep --game madden27 -o <id> --o-book stock:Buccaneers` | Force the offensive book of record (`auto` default \| `custom` \| `stock:<name>`); `--d-book` for defense |
 | `playbook --game madden27` | Print the full playbook of record (every formation + play live calls may use) |
-| `play --game madden27 -o <id>` | Typed live loop + overlay (`~/.cfb-coach/madden27_overlay.html`), hard-locked to the book |
+| `play --game madden27 -o <id>` | **HTML live window** (default) hard-locked to the book; `--terminal` for sit> + overlay |
 | `call --game madden27 -o <id> -s "d 3&8" --why` | One-shot call |
 | `postgame --game madden27 -o <id> [--franchise lab]` | Learn from snaps; macro `proven`/`failed`; lab → primary promotions |
 | `promote --game madden27 [--accept-all \| --target X]` | Review/accept lab → primary promotions |

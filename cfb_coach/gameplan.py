@@ -377,24 +377,9 @@ _FAIL_WORDS = (
 
 def _result_success(result: str | None, side: str) -> bool | None:
     """True/False/None (unknown). Offense: yards/td good; Defense: stop/sack good."""
-    if not result:
-        return None
-    r = result.lower().strip()
-    # crude: leading +N = offense success; stop/sack = defense success
-    if side == "offense":
-        if r.startswith("+") or "td" in r or "convert" in r or "good" in r:
-            return True
-        if any(w in r for w in ("int", "sack", "loss", "fail", "incomp", "pick", "stuff")):
-            return False
-        if r.startswith("-"):
-            return False
-        return None
-    # defense
-    if any(w in r for w in ("stop", "sack", "stuff", "hold", "punt", "int", "turnover")):
-        return True
-    if r.startswith("+") or "td" in r or "convert" in r:
-        return False
-    return None
+    from cfb_coach.outcome import outcome_success
+
+    return outcome_success(result, side)
 
 
 def _play_emphasis_key(formation: str | None, play: str | None) -> str | None:
@@ -521,10 +506,20 @@ def learn_from_snaps(
                     ck = f"{b}/macro:{m}"
                     changes[ck] = changes.get(ck, 0.0) + delta * scale
 
+    # Smarter retrain: grade formation+play vs coverage/look when known
+    from cfb_coach.retrain import apply_play_vs_look_weights, grade_play_vs_look
+
+    grades = grade_play_vs_look(list(snaps))
+    vs_changes = apply_play_vs_look_weights(db, opponent_id, grades)
+    for k, v in vs_changes.items():
+        changes[k] = changes.get(k, 0.0) + v
+
     return {
         "opponent_id": opponent_id,
         "snaps_considered": len(snaps),
         "changes": {k: round(v, 3) for k, v in sorted(changes.items())},
+        "grades": grades,
+        "vs_look_changes": vs_changes,
     }
 
 
@@ -661,6 +656,13 @@ def postgame_summary(db: CoachDB, opponent_id: str, dynasty: str | None = None) 
         for k, v in changes.items():
             sign = "+" if v >= 0 else ""
             lines.append(f"  {k}: {sign}{v:.3f}")
+    grades = result.get("grades") or []
+    if grades:
+        from cfb_coach.retrain import format_grades_summary
+
+        lines.append("")
+        lines.append("## Play vs coverage/look")
+        lines.extend(format_grades_summary(grades))
     lines.append("")
     lines.append("## Effective macros (after)")
     eg = effective_gameplan(opponent_id, db)

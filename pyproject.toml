@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cfb-coach"
-version = "1.10.0"
+version = "1.11.0"
 description = "Xbox CFB 27 dynasty + Madden 27 Franchise typed play-caller (sidecar only)"
 readme = "README.md"
 requires-python = ">=3.10"
