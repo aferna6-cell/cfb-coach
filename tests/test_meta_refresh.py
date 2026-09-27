@@ -1,4 +1,4 @@
-"""v1.12 meta refresh: live fetch (mocked), same-day TTL, --refresh-meta, fallbacks, diff, alignment."""
+"""Meta refresh: live fetch every prep (mocked), cache only as a loud fallback, diff, alignment."""
 
 from __future__ import annotations
 
@@ -87,24 +87,36 @@ class TestMetaRefresh(_EnvCase):
         self.assertTrue(ms.cache_path().is_file())
         self.assertIn("First meta fetch", r.changes_since_last[0])
 
-    def test_same_day_ttl_reuses_cache_and_refresh_forces(self):
+    def test_every_prep_fetches_live_even_same_day(self):
+        """v1.13: no same-day cache reuse — every prep researches live."""
         calls: list[str] = []
         with mock.patch.object(ms, "_fetch_one", _fake_fetch_factory(calls)):
             ms.run_meta_scout()
             n = len(calls)
             r2 = ms.run_meta_scout()
-            self.assertEqual(len(calls), n)  # cache hit, no network
-            self.assertEqual(r2.mode, "cache")
-            r3 = ms.run_meta_scout(refresh=True)
-            self.assertGreater(len(calls), n)
+            self.assertGreater(len(calls), n)  # fetched again, minutes later
+            self.assertEqual(r2.mode, "live")
+            self.assertEqual(r2.research_status, "live")
+            r3 = ms.run_meta_scout(refresh=True)  # --refresh-meta kept as a no-op alias
             self.assertEqual(r3.mode, "live")
 
-    def test_cache_from_yesterday_is_stale(self):
-        now = datetime.now(timezone.utc)
-        self.assertTrue(ms._cache_fresh({"cached_at": (now - timedelta(minutes=5)).isoformat()}, now=now)
-                        or now.astimezone().hour == 0)
-        self.assertFalse(ms._cache_fresh({"cached_at": (now - timedelta(hours=25)).isoformat()}, now=now))
-        self.assertFalse(ms._cache_fresh({"cached_at": (now - timedelta(hours=7)).isoformat()}, now=now))
+    def test_fallback_reports_age_loudly(self):
+        calls: list[str] = []
+        old = datetime.now(timezone.utc) - timedelta(hours=30)
+        with mock.patch.object(ms, "_fetch_one", _fake_fetch_factory(calls)):
+            ms.run_meta_scout()
+        raw = json.loads(ms.cache_path().read_text(encoding="utf-8"))  # age the cache by 30h
+        raw["cached_at"] = old.isoformat()
+        raw["result"]["fetched_at"] = old.isoformat()
+        ms.cache_path().write_text(json.dumps(raw), encoding="utf-8")
+        with mock.patch.object(ms, "_fetch_one", _fake_fetch_factory(calls, fail=True)):
+            r = ms.run_meta_scout(youtube=False)
+        self.assertEqual(r.mode, "cache")
+        self.assertEqual(r.research_status, "failed")
+        self.assertIsNotNone(r.fallback_age_hours)
+        self.assertGreaterEqual(r.fallback_age_hours, 29)
+        self.assertIn("LIVE RESEARCH FAILED", r.message)
+        self.assertIn("h old", r.message)
 
     def test_changes_since_last(self):
         calls: list[str] = []
@@ -133,7 +145,7 @@ class TestMetaRefresh(_EnvCase):
         with mock.patch.object(ms, "_fetch_one", _fake_fetch_factory(calls, fail=True)):
             r = ms.run_meta_scout(refresh=True)
         self.assertEqual(r.mode, "cache")
-        self.assertIn("Live fetch failed", r.message)
+        self.assertIn("LIVE RESEARCH FAILED", r.message)
 
     def test_network_failure_without_cache_uses_seed(self):
         calls: list[str] = []

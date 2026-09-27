@@ -6,10 +6,19 @@ newer title update discovered on the EA news list), MP1st / UpdateCrazy patch
 notes, MaddenTurf + MaddenProdigy meta guides, r/NCAAFBseries search RSS and
 Google News RSS (which also surfaces YouTube meta videos by title).
 
-Freshness: the cache (~/.cfb-coach/meta_cache.json) is reused only if it was
-fetched TODAY (local date) and < CACHE_TTL_SECONDS old; ``--refresh-meta``
-forces a fetch. Offline / all fetches failed -> last good cache -> seed
-baseline (cfb_coach/data/meta_baseline.json ``meta_research``).
+Freshness (v1.13): EVERY prep does live research — web sources plus YouTube
+(search pages, creator channel RSS, transcripts; see ``yt_research``) run in
+parallel with bounded timeouts. The cache (~/.cfb-coach/meta_cache.json) is
+only a FALLBACK when offline or every source fails, and the prep page says so
+loudly with the cache's age. Order: live -> last good cache -> seed baseline
+(cfb_coach/data/meta_baseline.json ``meta_research``). ``--refresh-meta`` is
+kept as a no-op alias (live is already the default).
+
+Signals: besides keyword concept counts, ``meta_entities`` extracts the exact
+formation / play names of the CFB 27 playbook database from every document
+(pages, feed items, video titles, transcripts) with per-source counts and
+recency weighting. Those named signals drive the autonomous custom playbook
+(``cfb_playbook``) and a small capped live-caller boost (``meta_align``).
 
 Besides tips, the scout extracts structured concept signals (general + red
 zone / goal line) that ``cfb_coach.meta_align`` turns into small, capped priors,
@@ -34,13 +43,15 @@ from pathlib import Path
 from typing import Any
 
 BASELINE_VERSION = "cfb27-2026-09"
-CACHE_TTL_SECONDS = 6 * 3600
+CACHE_TTL_SECONDS = 6 * 3600  # Madden scout still uses this; CFB prep always fetches live now
 PER_URL_TIMEOUT = 4.0
 TOTAL_FETCH_BUDGET = 12.0
+YOUTUBE_BUDGET = 16.0  # runs in parallel with the web fetch; total prep research ~<= 18 s
+LIVE_POLICY = "live research every prep (web + YouTube); cache is only a fallback when offline or every source fails"
 MAX_PARALLEL = 8
 MAX_DISCOVERED = 2  # newer EA title-update pages found on the news list
 USER_AGENT = (
-    "Mozilla/5.0 (compatible; cfb-coach-meta-scout/1.12; "
+    "Mozilla/5.0 (compatible; cfb-coach-meta-scout/1.13; "
     "+https://github.com/aferna6-cell/cfb-coach)"
 )
 MAX_BODY = 600_000
@@ -244,6 +255,12 @@ class MetaScoutResult:
     changes_since_last: list[str] = field(default_factory=list)
     previous_fetched_at: str = ""
     ttl_policy: str = ""
+    # v1.13: named formation/play signals, YouTube research, research health
+    named_signals: dict[str, Any] = field(default_factory=dict)
+    youtube: dict[str, Any] = field(default_factory=dict)
+    research_status: str = ""  # live | partial | failed | offline
+    fallback_age_hours: float | None = None
+    elapsed_s: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -744,11 +761,22 @@ def _fetch_parallel(urls: list[str], budget: float) -> tuple[list[MetaSource], d
     return [sources[u] for u in urls], bodies
 
 
-def _headlines_and_texts(
+_OLD_TITLE_RX = re.compile(
+    r"college\s*football\s*2[3-6]\b|\bcfb\s*-?\s*2[3-6]\b|\bcfb2[3-6]\b|\bncaa\s*1[0-4]\b|\bmadden\b", re.I
+)
+
+
+def _collect_docs(
     sources: list[MetaSource], bodies: dict[str, str], *, now: datetime, max_age_days: int = 45
-) -> tuple[list[dict[str, Any]], list[str]]:
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
+    """(headlines, texts, docs). docs = {label, kind, url, date, text} for named-entity extraction.
+
+    Feed items must be CFB 27 (Google News) and never an older title / Madden
+    (by title), within ``max_age_days``.
+    """
     heads: list[dict[str, Any]] = []
     texts: list[str] = []
+    docs: list[dict[str, Any]] = []
     for src in sources:
         body = bodies.get(src.url) or ""
         if not body:
@@ -763,6 +791,8 @@ def _headlines_and_texts(
                 blob = f"{title}. {it.get('text') or ''}"
                 if not reddit and not _CFB27.search(blob):
                     continue  # Google News: must be about CFB 27
+                if _OLD_TITLE_RX.search(title) and not _CFB27.search(title):
+                    continue  # older title (CFB 25/26) or Madden
                 heads.append(
                     {
                         "title": title[:200],
@@ -772,11 +802,24 @@ def _headlines_and_texts(
                     }
                 )
                 texts.append(blob)
+                docs.append({"label": f"{src.label or src.url}: {title[:120]}", "kind": "rss",
+                             "url": it.get("link") or src.url, "date": dt.date().isoformat() if dt else "", "text": blob})
         elif src.kind != "index":
             full = _strip_html(_SCRIPT_RE.sub(" ", body))
-            texts.append(f"{src.title}. {full[:60000]}")
+            text = f"{src.title}. {full[:60000]}"
+            texts.append(text)
+            dm = re.search(r"(20\d\d-\d\d-\d\d)", src.url + " " + (src.title or ""))
+            docs.append({"label": src.label or src.title or src.url, "kind": src.kind or "page",
+                         "url": src.url, "date": dm.group(1) if dm else "", "text": text})
     heads.sort(key=lambda h: h.get("date") or "", reverse=True)
-    return heads[:30], texts
+    return heads[:30], texts, docs
+
+
+def _headlines_and_texts(
+    sources: list[MetaSource], bodies: dict[str, str], *, now: datetime, max_age_days: int = 45
+) -> tuple[list[dict[str, Any]], list[str]]:
+    heads, texts, _docs = _collect_docs(sources, bodies, now=now, max_age_days=max_age_days)
+    return heads, texts
 
 
 def _diff_results(prev: MetaScoutResult | None, cur: MetaScoutResult) -> list[str]:
@@ -797,6 +840,10 @@ def _diff_results(prev: MetaScoutResult | None, cur: MetaScoutResult) -> list[st
             d = b.get(k, 0) - a.get(k, 0)
             if abs(d) >= 2:
                 out.append(f"{label}signal '{k}' {'up' if d > 0 else 'down'} {a.get(k, 0)} → {b.get(k, 0)}")
+    old_pairs = set((prev.named_signals or {}).get("pairs") or {})
+    for k, rec in list(((cur.named_signals or {}).get("pairs") or {}).items())[:12]:
+        if k not in old_pairs and rec.get("docs", 0) >= 1:
+            out.append(f"Newly mentioned: {k.replace('::', ' — ')} ({rec.get('docs')} source(s))")
     old_ok = {s.get("url") for s in prev.sources if s.get("fetched")}
     new_ok = {s.get("url") for s in cur.sources if s.get("fetched")}
     for u in sorted(new_ok - old_ok):
@@ -841,6 +888,14 @@ def seed_result(*, offline: bool = False, message: str = "") -> MetaScoutResult:
     r.mode = "seed"
     r.concept_signals = gen
     r.rz_signals = rz
+    try:
+        from cfb_coach.meta_entities import aggregate as aggregate_named
+
+        docs = [{"label": f.get("source", ""), "kind": "seed", "url": f.get("url", ""),
+                 "date": str(f.get("published") or "")[:10], "text": f.get("claim", "")} for f in findings]
+        r.named_signals = aggregate_named(docs)
+    except Exception:  # noqa: BLE001
+        r.named_signals = {}
     r.fetched_at = research.get("updated", "")
     r.sources = [
         {"url": f.get("url", ""), "title": f.get("source", ""), "fetched": False, "status": None,
@@ -850,41 +905,97 @@ def seed_result(*, offline: bool = False, message: str = "") -> MetaScoutResult:
     return r
 
 
+_ORIG_FETCH_ONE = _fetch_one
+
+
+def _yt_fetch(url: str, timeout: float) -> tuple[int, str]:
+    """HTTP for YouTube discovery. Uses a browser UA normally; routes through a
+    patched ``_fetch_one`` in tests so nothing touches the network there."""
+    if _fetch_one is _ORIG_FETCH_ONE:
+        from cfb_coach.yt_research import _get
+
+        return _get(url, timeout=timeout)
+    src, body = _fetch_one(url, timeout)
+    return (int(src.status or (200 if src.fetched else 0)), body)
+
+
+def _age_hours(ts: str, now: datetime) -> float | None:
+    dt = _parse_iso(ts or "")
+    if dt is None:
+        return None
+    return round((now - dt.astimezone(timezone.utc)).total_seconds() / 3600.0, 1)
+
+
 def run_meta_scout(
     *,
     offline: bool = False,
-    refresh: bool = False,
+    refresh: bool = True,  # kept for callers/CLI; live research is always the default now
     urls: list[str] | None = None,
     now: datetime | None = None,
+    youtube: bool = True,
+    yt_runner: Any | None = None,
 ) -> MetaScoutResult:
-    """Fetch/parse live sources (or reuse today's cache). Never raises; bounded time.
+    """Live research on every prep (web + YouTube, in parallel). Never raises; bounded time.
 
-    Order: fresh-today cache (unless ``refresh``) -> live fetch -> last good cache
-    -> seed research. ``offline`` skips the network entirely.
+    Order: live fetch -> last good cache (loud, with age) -> seed research.
+    ``offline`` skips the network entirely (cache, else seed).
     """
+    from cfb_coach.meta_entities import aggregate as aggregate_named
+
+    del refresh  # always live
     now = now or datetime.now(timezone.utc)
-    ttl = f"reuse only if fetched today and < {CACHE_TTL_SECONDS // 3600}h old; --refresh-meta forces"
+    t_start = time.monotonic()
+    ttl = LIVE_POLICY
     cached = _load_cache()
     prev = _result_from_cache(cached) if cached else None
 
-    if offline:
-        if prev and (prev.available or prev.concept_signals):
-            prev.offline = True
+    def _fallback(msg_prefix: str, *, offline_flag: bool, attempted: list[dict[str, Any]] | None = None,
+                  yt: dict[str, Any] | None = None) -> MetaScoutResult:
+        if prev and (prev.available or prev.concept_signals or prev.named_signals):
+            age = _age_hours(prev.fetched_at or cached.get("cached_at", ""), now)
+            prev.offline = offline_flag
+            prev.from_cache = True
             prev.mode = "cache"
             prev.ttl_policy = ttl
-            prev.message = f"Offline — using cached meta from {local_ts(prev.fetched_at or cached.get('cached_at', ''))}"
+            prev.research_status = "offline" if offline_flag else "failed"
+            prev.fallback_age_hours = age
+            prev.message = (
+                f"{msg_prefix} — using cached meta from {local_ts(prev.fetched_at or cached.get('cached_at', ''))}"
+                + (f" ({age:.0f}h old)" if age is not None else "")
+            )
+            if attempted:
+                prev.sources = attempted + [dict(s_, label=f"(cached) {s_.get('label') or ''}") for s_ in prev.sources if s_.get("fetched")]
+            if yt is not None:
+                prev.youtube = {**yt, "cached_result": prev.youtube}
+            prev.elapsed_s = round(time.monotonic() - t_start, 2)
             return prev
-        r = seed_result(offline=True, message="Offline — no cache; using seed research " + BASELINE_VERSION)
+        r = seed_result(offline=offline_flag, message=f"{msg_prefix} and no cache — using seed research " + BASELINE_VERSION)
         r.ttl_policy = ttl
+        r.research_status = "offline" if offline_flag else "failed"
+        if attempted:
+            r.sources = attempted + r.sources
+        if yt is not None:
+            r.youtube = yt
+        r.elapsed_s = round(time.monotonic() - t_start, 2)
         return r
 
-    if cached and prev and not refresh and _cache_fresh(cached, now=now):
-        prev.mode = "cache"
-        prev.ttl_policy = ttl
-        prev.message = f"Using today's cached meta (fetched {local_ts(prev.fetched_at)}); --refresh-meta to force"
-        return prev
+    if offline:
+        return _fallback("Offline (--offline)", offline_flag=True)
 
     url_list = list(urls or TRUSTED_URLS)
+    yt_res: dict[str, Any] = {}
+    yt_docs: list[dict[str, Any]] = []
+    outer = ThreadPoolExecutor(max_workers=2)
+    yt_future = None
+    if youtube:
+        if yt_runner is None:
+            from cfb_coach.yt_research import run_youtube_research
+
+            def yt_runner(**kw: Any) -> Any:  # noqa: F811
+                return run_youtube_research(fetch=_yt_fetch, **kw)
+
+        yt_future = outer.submit(yt_runner, now=now, budget_s=YOUTUBE_BUDGET)
+
     t0 = time.monotonic()
     sources, bodies = _fetch_parallel(url_list, TOTAL_FETCH_BUDGET)
     # Phase 2: follow newer EA title updates linked from the news list
@@ -898,34 +1009,60 @@ def run_meta_scout(
                 s_.label = s_.label or "EA title update (discovered)"
             sources += s2
             bodies.update(b2)
+    if yt_future is not None:
+        try:
+            yr = yt_future.result(timeout=max(1.0, YOUTUBE_BUDGET + 2.0 - (time.monotonic() - t_start)))
+            yt_res = yr.to_dict() if hasattr(yr, "to_dict") else dict(yr)
+            yt_docs = list(getattr(yr, "docs", None) or yt_res.get("docs") or [])
+            yt_res["docs"] = [{k: v for k, v in d.items() if k != "text"} | {"chars": len(d.get("text") or "")} for d in yt_docs]
+        except Exception as exc:  # noqa: BLE001
+            yt_res = {"ran": True, "found": 0, "transcripts": 0, "notes": [f"YouTube research failed: {type(exc).__name__}: {exc}"]}
+    outer.shutdown(wait=False, cancel_futures=True)
 
     page_sources = [s_ for s_ in sources if s_.kind not in ("rss", "index")]
     result = _parse_fetched(page_sources, bodies)
     result.sources = [asdict(s_) for s_ in sources]
-    heads, texts = _headlines_and_texts(sources, bodies, now=now)
-    result.headlines = heads
-    result.concept_signals, result.rz_signals = extract_signals(texts)
+    if yt_res:
+        result.sources.append({
+            "url": "https://www.youtube.com/results?search_query=college+football+27+meta", "title": "YouTube",
+            "fetched": bool(yt_res.get("found")), "status": None,
+            "error": "" if yt_res.get("found") else "; ".join(yt_res.get("notes") or [])[:160],
+            "label": (f"YouTube: {yt_res.get('found', 0)} CFB 27 videos, {yt_res.get('transcripts', 0)} transcripts "
+                      f"(search {yt_res.get('search_ok', 0)}/{yt_res.get('search_total', 0)}, channel RSS "
+                      f"{yt_res.get('rss_ok', 0)}/{yt_res.get('rss_total', 0)})"),
+            "kind": "youtube",
+        })
+    heads, texts, docs = _collect_docs(sources, bodies, now=now)
+    for d in yt_docs:
+        if d.get("kind") == "youtube_transcript":
+            heads.append({"title": d.get("title") or d.get("label"), "link": d.get("url"), "date": d.get("date") or "",
+                          "source": f"YouTube transcript · {d.get('channel') or ''}"})
+    heads.sort(key=lambda h: h.get("date") or "", reverse=True)
+    all_docs = docs + yt_docs
+    result.headlines = heads[:30]
+    result.concept_signals, result.rz_signals = extract_signals(texts + [d.get("text") or "" for d in yt_docs])
+    result.named_signals = aggregate_named(all_docs, now=now)
+    result.youtube = yt_res
     n_ok = sum(1 for s_ in sources if s_.fetched)
-    result.available = n_ok > 0 and bool(
+    result.available = (n_ok > 0 or bool(yt_res.get("found"))) and bool(
         result.patch_notes or result.suggestions or result.meta_offense or heads or result.concept_signals
+        or (result.named_signals or {}).get("pairs")
     )
     result.ttl_policy = ttl
     if not result.available:
-        if prev and (prev.available or prev.concept_signals):
-            prev.from_cache = True
-            prev.mode = "cache"
-            prev.ttl_policy = ttl
-            prev.message = f"Live fetch failed — using last good cached meta from {local_ts(prev.fetched_at)}"
-            return prev
-        r = seed_result(message="Live fetch failed and no cache — using seed research " + BASELINE_VERSION)
-        r.ttl_policy = ttl
-        r.sources = result.sources + r.sources
-        return r
+        return _fallback("LIVE RESEARCH FAILED (no source reachable)", offline_flag=False,
+                         attempted=result.sources, yt=yt_res)
 
     result.mode = "live"
+    result.research_status = "live" if n_ok >= max(1, len(sources) // 2) else "partial"
     result.previous_fetched_at = prev.fetched_at if prev else ""
     result.changes_since_last = _diff_results(prev, result)
-    result.message = f"Live meta refreshed ({n_ok}/{len(sources)} sources)"
+    result.elapsed_s = round(time.monotonic() - t_start, 2)
+    result.message = (
+        f"Live research this prep: {n_ok}/{len(sources)} web sources"
+        + (f", YouTube {yt_res.get('found', 0)} videos / {yt_res.get('transcripts', 0)} transcripts" if yt_res else "")
+        + f" in {result.elapsed_s:.1f}s"
+    )
     _save_cache(result)
     return result
 

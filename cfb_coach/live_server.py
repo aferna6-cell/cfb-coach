@@ -75,6 +75,27 @@ class LivePlayController:
     result_wl: str | None = None
     score: str | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
+    # v1.13 (CFB): playbook-of-record hooks — optional so Madden is unaffected
+    book_info: Callable[[], dict[str, Any] | None] | None = None
+    book_apply: Callable[[int | None], dict[str, Any] | None] | None = None
+
+    def book_state(self) -> dict[str, Any] | None:
+        if self.book_info is None:
+            return None
+        try:
+            return self.book_info()
+        except Exception as exc:  # noqa: BLE001 — never break live play
+            return {"error": f"{type(exc).__name__}: {exc}"}
+
+    def apply_book(self, rev: int | None = None) -> dict[str, Any]:
+        if self.book_apply is None:
+            return {"ok": False, "error": "no playbook of record for this game"}
+        with self.lock:
+            rec = self.book_apply(rev)
+        if not rec:
+            return {"ok": False, "error": "no matching pending playbook edits (run prep, or they were already applied)",
+                    "state": self.state()}
+        return {"ok": True, "applied_rev": rec.get("rev"), "state": self.state()}
 
     def start(self) -> None:
         sess = start_session(
@@ -98,6 +119,7 @@ class LivePlayController:
             "score": self.score,
             "retrain_summary": self.retrain_summary,
             "log": [r.to_dict() for r in self.log],
+            "book": self.book_state(),
         }
 
     def _macro_of(self, call: Any) -> str | None:
@@ -442,6 +464,17 @@ def render_live_html(ctrl: LivePlayController) -> str:
     </div>
   </section>
 
+  <section id="book-panel" hidden>
+    <h2>Playbook of record</h2>
+    <div id="book-status"></div>
+    <div class="row" id="book-apply-row" hidden>
+      <button type="button" class="primary" id="btn-book-apply">I applied these edits in CFB 27</button>
+    </div>
+    <pre id="book-edits" style="white-space:pre-wrap;font-size:.78rem;color:var(--muted)" hidden></pre>
+    <details><summary style="font-size:.8rem;color:var(--muted)">Callable plays (live calls never leave this list)</summary>
+      <div id="book-plays" style="font-size:.8rem;color:var(--muted)"></div></details>
+  </section>
+
   <section>
     <h2>Game log</h2>
     <div id="log"><div class="muted">No snaps yet.</div></div>
@@ -497,6 +530,7 @@ function renderState(st) {{
       $("summary").textContent = st.retrain_summary;
     }}
   }}
+  renderBook(st.book);
   if (st.cpu_only) {{
     $("side").style.display = "none";
     $("side-label").style.display = "none";
@@ -504,6 +538,24 @@ function renderState(st) {{
     $("side").style.display = "";
     $("side-label").style.display = "";
   }}
+}}
+
+function renderBook(b) {{
+  if (!b) {{ $("book-panel").hidden = true; return; }}
+  $("book-panel").hidden = false;
+  if (b.error) {{ $("book-status").textContent = "Playbook unavailable: " + b.error; return; }}
+  let msg = "";
+  if (!b.callable_rev) msg = "No custom playbook yet — run prep.";
+  else if (!b.confirmed) msg = "Book rev " + b.callable_rev + " is UNCONFIRMED (first build): build it in CFB 27, then confirm below.";
+  else msg = "Locked to your applied book rev " + b.callable_rev + ".";
+  if (b.pending_rev && b.confirmed) msg += " " + b.pending_edits + " pending edit(s) (rev " + b.pending_rev + ") are NOT callable until you confirm.";
+  $("book-status").textContent = msg;
+  $("book-apply-row").hidden = !b.pending_rev;
+  $("btn-book-apply").dataset.rev = b.pending_rev || "";
+  $("book-edits").hidden = !b.pending_text;
+  $("book-edits").textContent = b.pending_text || "";
+  $("book-plays").innerHTML = Object.entries(b.formations || {{}}).map(([f, ps]) =>
+    "<div><b>" + f + "</b>: " + ps.join(", ") + "</div>").join("");
 }}
 
 async function api(path, body) {{
@@ -585,6 +637,16 @@ $("btn-end").addEventListener("click", async () => {{
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
 
+$("btn-book-apply").addEventListener("click", async () => {{
+  setErr("");
+  if (!confirm("Confirm you made every edit in the CFB 27 custom playbook editor?")) return;
+  try {{
+    const rev = parseInt($("btn-book-apply").dataset.rev || "0", 10) || null;
+    const data = await api("/api/book_apply", {{ rev: rev }});
+    renderState(data.state);
+  }} catch (e) {{ setErr(String(e.message || e)); }}
+}});
+
 fetch("/api/state").then(r => r.json()).then(st => renderState(st)).catch(() => {{}});
 </script>
 </body>
@@ -656,6 +718,11 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             side=body.get("side"),
                         ),
                     )
+                    return
+                if path == "/api/book_apply":
+                    rev = body.get("rev")
+                    res = ctrl.apply_book(int(rev) if rev else None)
+                    self._json(200 if res.get("ok") else 409, res)
                     return
                 if path == "/api/end_game":
                     self._json(

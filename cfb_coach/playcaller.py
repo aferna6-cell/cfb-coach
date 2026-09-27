@@ -482,6 +482,67 @@ def _validate_play(form: str, play: str, pb: dict) -> tuple[str, str]:
     return form, core[0]
 
 
+def _load_book(db: CoachDB | None) -> dict[str, Any] | None:
+    """v1.13: the CFB custom playbook of record live calls are locked to (None = legacy)."""
+    if db is None:
+        return None
+    try:
+        from cfb_coach.cfb_playbook import callable_book
+
+        book = callable_book(db)
+    except Exception:  # noqa: BLE001 — never break play calling
+        return None
+    if not book or not book.get("formations"):
+        return None
+    return book
+
+
+def _book_menu(
+    sit: Situation, menu: list[tuple[str, str]], book: dict[str, Any]
+) -> tuple[list[tuple[str, str]], bool]:
+    """Situational menu restricted to the book; zone menus use every zone-fit book play."""
+    from cfb_coach.cfb_catalog import canonical_pair, zone_fit
+
+    pairs = [(f, p) for f, ps in book["formations"].items() for p in ps]
+    in_book = set(pairs)
+    zone = _situation_zone(sit)
+    zone_menu = set(menu) == set(zone_candidates(zone))
+    out: list[tuple[str, str]] = []
+    for f, p in menu:
+        cf, cp, _ = canonical_pair(f, p)
+        if (cf, cp) in in_book and (cf, cp) not in out:
+            out.append((cf, cp))
+    if zone_menu or len(out) < 3:
+        for fp in pairs:
+            if fp not in out and zone_fit(fp[1], zone):
+                out.append(fp)
+    if not out:
+        out = list(pairs)
+    return out, zone_menu
+
+
+def _demote_rows(rows: list[dict[str, Any]], book: dict[str, Any]) -> list[dict[str, Any]]:
+    """Demoted / on-notice book plays stay callable as changeups at reduced odds."""
+    from cfb_coach.cfb_catalog import pair_key
+
+    flags = book.get("flags") or {}
+    if not rows:
+        return rows
+    for r in rows:
+        fl = (flags.get(pair_key(r["formation"], r["play"])) or {}).get("flag")
+        if fl in ("demoted", "on_notice"):
+            r["p"] *= BOOK_DEMOTE_FACTOR
+            r["book_flag"] = fl
+    z = sum(r["p"] for r in rows) or 1.0
+    for r in rows:
+        r["p"] /= z
+    rows.sort(key=lambda r: -r["p"])
+    return rows
+
+
+BOOK_DEMOTE_FACTOR = 0.35
+
+
 def _pick_offense(
     sit: Situation,
     opp: dict[str, Any],
@@ -489,24 +550,41 @@ def _pick_offense(
     db: CoachDB | None,
     rng: random.Random,
 ) -> Call:
+    call = _pick_offense_inner(sit, opp, seed, db, rng)
+    return call
+
+
+def _pick_offense_inner(
+    sit: Situation,
+    opp: dict[str, Any],
+    seed: dict,
+    db: CoachDB | None,
+    rng: random.Random,
+) -> Call:
     pb = seed["playbooks"]["offense_formations"]
+    book = _load_book(db)
     menu, adj, rationale = _base_offense_menu(sit, opp, rng)
-    menu = [_validate_play(f, p, pb) for f, p in menu]
+    if book:
+        menu, _ = _book_menu(sit, menu, book)
+    else:
+        menu = [_validate_play(f, p, pb) for f, p in menu]
     ranker = _Ranker(db, _opp_id(opp))
     rows = ranker.rank(sit, menu)
+    if book:
+        rows = _demote_rows(rows, book)
     pick = _sample(rows, rng)
     form, play = pick["formation"], pick["play"]
     rationale = f"{rationale} | {_rank_note(sit, pick, rows)}"
     form, play, adj, rationale, _ = _soft_coverage_lean(
         form, play, adj, rationale, sit, opp, db, rng
     )
-    # Rare empty changeup — still situational, not coverage-chase
-    if sit.down == 3 and sit.long_yardage and rng.random() < 0.12:
-        form, play = "Gun Empty Quads", rng.choice(
-            ["Out Double Under", "Curl Pivot Dig", "QB Draw"]
-        )
+    # Rare empty changeup — still situational, not coverage-chase (only if Empty is in the book)
+    if sit.down == 3 and sit.long_yardage and rng.random() < 0.12 and (not book or "Gun Empty Quads" in book["formations"]):
+        opts = (book["formations"]["Gun Empty Quads"] if book else ["Out Double Under", "Curl Pivot Dig", "QB Draw"])
+        form, play = "Gun Empty Quads", rng.choice(opts)
         rationale = "Empty changeup / QB stress | " + rationale
-    form, play = _validate_play(form, play, pb)
+    if not book:
+        form, play = _validate_play(form, play, pb)
 
     def _best_alt(exclude_family: str | None = None) -> tuple[str, str] | None:
         from cfb_coach.learning import play_family
@@ -516,7 +594,10 @@ def _pick_offense(
             extra = [fp for fp in zone_candidates("open") if fp not in [(r["formation"], r["play"]) for r in rows]]
             if extra:
                 pool = ranker.rank(sit, [(r["formation"], r["play"]) for r in rows] + extra)
-        for r in sorted(pool, key=lambda r: -r["total"]):
+        if book:
+            bset = {(f, p) for f, ps in book["formations"].items() for p in ps}
+            pool = [r for r in pool if (r["formation"], r["play"]) in bset]
+        for r in sorted(pool, key=lambda r: -r["total"] - (0.0 if not r.get("book_flag") else -0.25)):
             if (r["formation"], r["play"]) == (form, play):
                 continue
             if exclude_family and play_family(r["formation"], r["play"]) == exclude_family:
@@ -532,7 +613,7 @@ def _pick_offense(
             pen = anti_repeat_penalty(db, _opp_id(opp), form, play, side="offense")
             if pen >= 1.0:
                 alt = _best_alt() or ("Gun Cluster", rng.choice(["Z Spot Shake", "Outside Zone", "Mesh Post"]))
-                alt_form, alt_play = _validate_play(alt[0], alt[1], pb)
+                alt_form, alt_play = alt if book else _validate_play(alt[0], alt[1], pb)
                 rationale = (
                     f"anti-repeat pivot → {alt_form}/{alt_play} "
                     f"(pen={pen:.1f}) | {rationale}"
@@ -552,14 +633,41 @@ def _pick_offense(
                 alt = _best_alt(exclude_family=play_family(form, play)) or (
                     "Gun Bunch X Nasty", rng.choice(["Inside Zone", "HB Base", "Mesh Spot"])
                 )
-                alt_form, alt_play = _validate_play(alt[0], alt[1], pb)
+                alt_form, alt_play = alt if book else _validate_play(alt[0], alt[1], pb)
                 form, play = alt_form, alt_play
                 adj = "No adj"
                 rationale = f"{tip.message} → {form}/{play} | {rationale}"
         except Exception:
             pass
 
+    if book:
+        form, play, rationale = _lock_to_book(form, play, rationale, rows, book)
     return Call("offense", form, play, adj, _reads_for(play), rationale)
+
+
+def _lock_to_book(
+    form: str, play: str, rationale: str, rows: list[dict[str, Any]], book: dict[str, Any]
+) -> tuple[str, str, str]:
+    """Final guard: never emit a play that isn't in the playbook of record."""
+    from cfb_coach.cfb_catalog import canonical_pair
+
+    forms = book["formations"]
+    cf, cp, _ = canonical_pair(form, play)
+    tag = f"book rev {book.get('rev')}" + ("" if book.get("confirmed") else " (UNCONFIRMED: build it, then `book apply`)")
+    if book.get("confirmed") and book.get("pending_edits"):
+        tag += f"; {book['pending_edits']} pending edit(s) not callable until applied"
+    if cp in (forms.get(cf) or []):
+        return cf, cp, f"{rationale} | {tag}"
+    # same play name in another book formation (e.g. coverage lean named Inside Zone)
+    for f, ps in forms.items():
+        if cp in ps:
+            return f, cp, f"{rationale} | {tag}; {form}/{play} not in book -> {f}/{cp}"
+    bset = {(f, p) for f, ps in forms.items() for p in ps}
+    for r in rows:
+        if (r["formation"], r["play"]) in bset:
+            return r["formation"], r["play"], f"{rationale} | {tag}; {form}/{play} not in book -> best in-book"
+    f0 = next(iter(forms))
+    return f0, forms[f0][0], f"{rationale} | {tag}; fallback to book"
 
 
 # --- Defense helpers ---------------------------------------------------------

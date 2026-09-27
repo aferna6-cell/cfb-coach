@@ -630,7 +630,8 @@ def _render_meta_freshness(scout: dict[str, Any]) -> str:
         return ""
     if not mode:  # older / Madden scout results
         mode = "cache" if scout.get("from_cache") else ("live" if scout.get("available") else "seed")
-    label = {"live": "LIVE — fetched this prep", "cache": "cached today", "seed": "seed research (offline / no cache)"}.get(
+    cache_label = "CACHED FALLBACK (live research did not run)" if scout.get("research_status") else "cached today"
+    label = {"live": "LIVE — fetched this prep", "cache": cache_label, "seed": "seed research (offline / no cache)"}.get(
         mode, mode or "?"
     )
     rows = []
@@ -828,6 +829,8 @@ def _render_meta_scout(scout: dict[str, Any] | None) -> str:
 
 
 def render_prep_html(plan: dict[str, Any]) -> str:
+    from cfb_coach.prep_book_html import BOOK_CSS, render_book, render_research
+
     shown = plan.get("shown_deltas") or []
     pb = [d for d in shown if d.get("kind") == "playbook"]
     mac = [d for d in shown if d.get("kind") == "macro"]
@@ -878,7 +881,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Prep — {_esc(plan.get("display_name"))} · CFB27</title>
-<style>{_CSS}</style>
+<style>{_CSS}{BOOK_CSS}</style>
 </head>
 <body>
   <div class="wrap">
@@ -898,6 +901,8 @@ def render_prep_html(plan: dict[str, Any]) -> str:
 
     {status}
     {dynasty_banner}
+    {render_book(plan.get("cfb_book"))}
+    {render_research(plan.get("meta_scout") or {})}
     {_render_meta_scout(plan.get("meta_scout") or {})}
     {_render_zone_plan(plan.get("zone_alignment"))}
     {_render_swap_banners(banners)}
@@ -1078,5 +1083,11 @@ def generate_and_open(
         plan["shown_deltas"] = []
         plan["swap_banners"] = []
     path = write_prep_html(opponent_id, plan)
+    try:  # plain-text twin next to the HTML (handy on a phone / for diffing preps)
+        from cfb_coach.install_sheet import format_delta_text
+
+        path.with_suffix(".txt").write_text(format_delta_text(plan), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
     open_prep_html(path, open_browser=open_browser)
     return path, plan

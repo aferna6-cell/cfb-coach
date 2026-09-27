@@ -29,6 +29,8 @@ from cfb_coach.zones import GOAL_LINE, OPEN, RED_ZONE, ZONE_LABELS
 PRIOR_CAP = 0.4  # |total meta prior| per play/zone
 LIVE_PER_SOURCE = 0.03  # live boost per source mentioning a concept
 LIVE_CAP = 0.12  # max live boost per play/zone
+NAMED_PER_PAIR = 0.08  # v1.13: max boost from a play being named in current sources
+LAB_PRIOR = 0.10  # v1.13: seed prior for lab candidates in their zones
 CONFLICT_PRIOR_MIN = 0.1  # meta "likes" a play in a zone
 CONFLICT_LEARNED_MAX = -0.2  # ... but his zone learned score is this bad
 CONFLICT_MIN_SNAPS = 3
@@ -83,7 +85,40 @@ class MetaPriors:
             mp.live_fetched_at = sd.get("fetched_at") or ""
             if mp.live_mode in ("live", "cache"):
                 mp.live = live_boosts(sd.get("concept_signals") or {}, sd.get("rz_signals") or {})
+                mp.add_named_boosts(sd.get("named_signals") or {})
+        mp.add_lab_priors()
         return mp
+
+    def add_named_boosts(self, named: dict[str, Any]) -> None:
+        """v1.13: formations/plays NAMED in this prep's sources (web + YouTube
+        transcripts) get a small zone-fit live boost, capped with the rest at LIVE_CAP."""
+        try:
+            from cfb_coach.cfb_catalog import zone_fit
+        except Exception:  # noqa: BLE001
+            return
+        for key, v in (named.get("pairs") or {}).items():
+            if "::" not in key:
+                continue
+            f, p = key.split("::", 1)
+            b = min(LIVE_CAP, NAMED_PER_PAIR * math.tanh(float(v.get("score", 0.0)) / 1.5))
+            if b <= 0.0:
+                continue
+            d = self.live.setdefault((f, p), {OPEN: 0.0, RED_ZONE: 0.0, GOAL_LINE: 0.0})
+            for z in (OPEN, RED_ZONE, GOAL_LINE):
+                if zone_fit(p, z):
+                    d[z] = round(min(LIVE_CAP, d.get(z, 0.0) + b), 3)
+
+    def add_lab_priors(self) -> None:
+        """Lab candidates get a small seed prior in their zones so, once they are in
+        the (Ohio State) custom book, the caller actually tries them."""
+        zmap = {"gl": GOAL_LINE, "rz": RED_ZONE, "open": OPEN}
+        for lc in self.lab_candidates:
+            key = (lc.get("formation", ""), lc.get("play", ""))
+            if not key[0] or key in self.seed:
+                continue
+            zones = {zmap.get(z, z): LAB_PRIOR for z in (lc.get("zones") or [])}
+            self.seed[key] = {"formation": key[0], "play": key[1], "zones": zones, "refs": list(lc.get("refs") or []),
+                              "why": f"lab candidate: {lc.get('note', '')}", "lab": True}
 
     @classmethod
     def load_cached(cls) -> "MetaPriors":

@@ -752,9 +752,49 @@ def build_prep_plan(
         )
     except Exception as exc:  # noqa: BLE001 — never break prep
         plan["zone_alignment"] = {"error": f"{type(exc).__name__}: {exc}"}
+    # v1.13: autonomous custom playbook of record (per dynasty), decided from the
+    # live meta research + his own results; emits an edit list only when it changes.
+    if db is not None:
+        try:
+            from cfb_coach.cfb_playbook import plan_book
+
+            plan["cfb_book"] = plan_book(db, dynasty, scout_dict or None, persist=persist)
+        except Exception as exc:  # noqa: BLE001 — never break prep
+            plan["cfb_book"] = {"error": f"{type(exc).__name__}: {exc}"}
     if db is not None and persist:
         save_prep_deltas(db, opponent_id, proposed, shown)
     return plan
+
+
+def format_book_section_text(book: dict[str, Any] | None) -> list[str]:
+    """Terminal version of the custom playbook panel."""
+    book = book or {}
+    if not book:
+        return []
+    if book.get("error"):
+        return [f"## Custom playbook unavailable ({book['error']})"]
+    lines = [f"## Custom playbook of record — {book.get('name')} ({book.get('dynasty')})"]
+    cur = book.get("current") or {}
+    pend = book.get("pending") or {}
+    if book.get("seeded_now"):
+        lines.append(f"  Seeded rev {cur.get('rev')}: {book.get('seed_summary')}")
+    if pend:
+        lines.append(
+            f"  STATUS: {len(book.get('edits') or [])} PENDING EDIT(S) (rev {pend.get('rev')}). Live calls use "
+            + (f"rev {cur.get('rev')} until you run `book apply`." if cur else "the pending book (unconfirmed) until you run `book apply`.")
+        )
+        lines.append("  EDIT LIST (CFB 27 > Create & Share > Custom Playbooks):")
+        lines += ["    " + ln for ln in (book.get("edit_text") or "").splitlines()]
+    else:
+        lines.append(f"  STATUS: no changes this prep — rev {cur.get('rev')} stands (no churn).")
+    lines.append("  RESULTING BOOK:")
+    lines += ["    " + ln for ln in (book.get("book_text") or "").splitlines()]
+    if book.get("active8"):
+        lines.append("  ACTIVE 8 (quick set from the book): " + "; ".join(k.replace("::", " — ") for k in book["active8"]))
+    flagged = [(k, f) for k, f in (book.get("flags") or {}).items() if f.get("flag") in ("demoted", "on_notice", "fading")]
+    for k, f in flagged:
+        lines.append(f"  [{f['flag']}] {k.replace('::', ' — ')}: {f['why']}")
+    return lines
 
 
 def format_zone_alignment_text(za: dict[str, Any] | None) -> list[str]:
@@ -881,6 +921,10 @@ def format_delta_text(plan: dict[str, Any]) -> str:
             lines.append("")
     except Exception:
         pass
+    bk_lines = format_book_section_text(plan.get("cfb_book"))
+    if bk_lines:
+        lines.extend(bk_lines)
+        lines.append("")
     za_lines = format_zone_alignment_text(plan.get("zone_alignment"))
     if za_lines:
         lines.extend(za_lines)

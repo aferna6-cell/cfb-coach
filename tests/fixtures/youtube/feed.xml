@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <title>Feed Creator</title>
+ <entry><yt:videoId>BBBBBBBBBB1</yt:videoId><yt:channelId>UCfeed</yt:channelId><title>CFB 27 Goal Line Meta: 3 Unstoppable Plays &amp; Tips</title>
+  <author><name>Feed Creator</name></author><published>2026-09-20T15:00:00+00:00</published>
+  <media:group><media:description>College Football 27 red zone guide</media:description></media:group></entry>
+ <entry><yt:videoId>BBBBBBBBBB2</yt:videoId><title>College Football 25 Throwback Stream</title>
+  <author><name>Feed Creator</name></author><published>2024-08-01T15:00:00+00:00</published></entry>
+</feed>
