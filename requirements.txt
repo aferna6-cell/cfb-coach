@@ -1,1 +1,6 @@
-# No third-party deps — stdlib only (sqlite3, argparse, json, pathlib).
+# Core: no third-party deps — stdlib only (sqlite3, argparse, json, pathlib, urllib).
+#
+# Optional (v1.13 YouTube transcripts; prep works without them and says so on the page):
+#   youtube-transcript-api>=1.0   # second transcript tier
+#   yt-dlp                        # third tier: auto-captions (also needs the yt-dlp executable on PATH)
+# Install with:  pip install -r requirements-optional.txt

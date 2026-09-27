@@ -4,7 +4,7 @@ Xbox **CFB 27** dynasty play-caller for Aidan's Alabama online Dynasty.
 
 Heuristics + packaged `seed.json` + CFB27 META baseline + SQLite log learning. No neural net.
 
-**v1.10.0:** also a typed **Madden 27 Franchise** coach behind `--game madden27` (see [Madden 27 Franchise](#madden-27-franchise---game-madden27)). CFB 27 stays the default. Nothing changes for CFB unless you pass `--game madden27`.
+**v1.13.0:** the coach now **manages your CFB 27 custom playbook** each prep (per dynasty, versioned, click-to-copy edit list, live calls locked to the book) and **researches the current meta live on every prep**, including **YouTube transcripts** (see [Autonomous custom playbook](#autonomous-custom-playbook--live-research-every-prep-v113)). **v1.12.0:** smarter retrain v2 (field zones, leverage, turnover weighting, caps, W/L) now drives live calls, plus prep that refreshes the current CFB 27 meta each run (see [Smarter retrain v2](#smarter-retrain-v2--current-meta-prep-v112)). **v1.11.0:** HTML **live play window** (default) + game-over smarter retrain. **v1.10.0:** typed **Madden 27 Franchise** coach behind `--game madden27` (see [Madden 27 Franchise](#madden-27-franchise---game-madden27)). CFB 27 stays the default. Nothing changes for CFB unless you pass `--game madden27`.
 
 **Prepper + live caller.** Prep opens a **browser** with **playbook/macro diffs only** (never a full recreate install sheet). Live caller stays sharp: two reads on O, one user job on D, anti-repeat, no single-snap whiplash. Mid-game **PIVOT** fires when the last 3 snaps fail on a side.
 
@@ -16,8 +16,8 @@ cd /workspace/cfb-coach
 PYTHONPATH=. python3 -m cfb_coach opponents
 PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin          # opens browser (deltas only)
 PYTHONPATH=. python3 -m cfb_coach prep --opponent gavin --text   # terminal delta dump
-PYTHONPATH=. python3 -m cfb_coach play --opponent gavin          # typed live + overlay browser
-PYTHONPATH=. python3 -m cfb_coach play --opponent gavin --no-overlay
+PYTHONPATH=. python3 -m cfb_coach play --opponent gavin          # HTML live window (default)
+PYTHONPATH=. python3 -m cfb_coach play --opponent gavin --terminal  # classic sit> loop
 ```
 
 Optional editable install:
@@ -40,6 +40,153 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 #   explorer.exe $(wslpath -w ~/.cfb-coach/prep_cpu.html)
 ```
 
+
+## HTML live play + game-over retrain (v1.11)
+
+During the game Aidan should **not** need the terminal. `play` starts a small **stdlib HTTP server** on `127.0.0.1:8765` (or the next free port) and opens a browser page:
+
+1. **Big PLAY** call at the top.
+2. **Last snap outcome** — buttons/fields: gain N / loss N / incomplete / sack / TD / INT / fumble lost / stop / convert (or free text like `+13`).
+3. **Next situation** — down, distance, my/opp yard line, last play or look name (check **live** for pre-snap `showing …`).
+4. **Submit** → logs the previous call’s result into SQLite, returns the next PLAY, appends a row to the on-page **game log**.
+5. **End game** — Win/Loss + score (e.g. `24-17`) → **Game over → retrain**. Closes the session, grades **formation+play vs coverage/look** (success rate + avg yards), bumps/demotes gameplan weights, updates macro proven/failed thresholds, and shows a short summary on the page.
+
+```bash
+# CFB 27 (default)
+PYTHONPATH=. python3 -m cfb_coach play --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach play --opponent cpu
+
+# Madden 27 Franchise
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent cpu
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent gavin
+
+# Optional
+PYTHONPATH=. python3 -m cfb_coach play -o gavin --html-port 8765
+PYTHONPATH=. python3 -m cfb_coach play -o gavin --terminal   # classic sit> (also --no-html)
+
+# Same smarter retrain from CLI after a terminal game
+PYTHONPATH=. python3 -m cfb_coach postgame --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach postgame --game madden27 --opponent gavin
+```
+
+Sidecar only — no controller automation, no vision. Prep browser is unchanged. Terminal/`--once` scripts still work.
+
+## Autonomous custom playbook + live research every prep (v1.13)
+
+**Custom playbook of record** (`cfb_coach/cfb_playbook.py`, one per dynasty: `ohio_state` = lab, `alabama` = serious):
+
+- **Seed:** the first prep builds rev 1 from every formation/play you've actually logged in that dynasty
+  (names canonicalised against `data/cfb27_formations.json`, 22 CFB 27 formations scraped from CFB.FAN).
+  Those plays are already in your in-game book, so rev 1 is marked applied. A dynasty with no snaps
+  (Alabama today) gets a *pending starter book*: your Ohio State plays that aren't failing, never the lab's failures.
+- **Every prep the coach decides the book on its own** — heavily meta-weighted, but your results count:
+  - keep a play that is working for you (n ≥ 6, grade ≥ +0.10) even if the meta is cold;
+  - a meta play that keeps failing for you is **demoted** (kept as a changeup, dropped from the Active 8, reason shown);
+  - a play is **cut** only when no current source specifically backs it AND it's failing for you on 2 preps
+    with new snaps in between (or overwhelmingly: n ≥ 10, grade ≤ -0.45);
+  - **adds** come from the cited seed research, the Ohio State lab candidates (Post Wheel Shallow, Y Flat GoalLine,
+    Z Mesh GoalLine) and formations/plays **named** in this prep's sources (web + YouTube transcripts); bar 0.25 (OSU) /
+    0.35 (Alabama), ≤ 4 / 2 adds per prep, a new formation needs ≥ 2 qualifying plays, a full formation only swaps
+    with a 0.25 margin, and a play already proposed stays with a lower bar (hysteresis);
+  - meta-added plays that stay untested and lose support for 2 preps drop out.
+- **Only real changes produce a diff.** Identical proposals keep the same pending revision (no churn).
+- **Limits:** CFB 25/26 community-documented limits (no CFB 27 source says they changed): ≤ 500 plays, ≤ 56 formation
+  sets, ≤ 50 plays shown per set, 4 audibles per formation, formations from any stock book, no reordering.
+  The coach stays far below: ≤ 8 formations, ≤ 12 plays each, ≤ 64 total. Sources are on the prep page.
+- **Active 8:** the in-game quick set (your max-8 rule) is chosen from the book (2 goal-line answers first, no demoted plays).
+  The CFB Custom Adjustment macro cap of 8 is unchanged.
+
+**Pending edits UX** — the live caller never recommends a play that isn't in your *applied* book:
+
+1. `prep` shows a **Custom playbook** panel at the top: status banner, a click-to-copy **EDIT LIST**
+   (`+ ADD` / `- REMOVE` per formation, one-line reason with meta source and/or your stats), the full resulting book,
+   audibles, Active 8, flags, revision history and limits.
+2. Make the edits in CFB 27 › Create & Share › Custom Playbooks.
+3. Confirm with **any** of: `book apply` (CLI), `prep --mark-applied`, the **"I applied these edits in CFB 27"**
+   button in the live window, or typing `book apply` at the terminal `sit>` prompt.
+   Until then new plays aren't callable; each call's rationale says `book rev N; K pending edit(s) not callable until applied`.
+   A first build (no applied book yet) is callable but marked `UNCONFIRMED`.
+
+```bash
+PYTHONPATH=. python3 -m cfb_coach book show --dynasty ohio_state      # applied + pending book, edit list
+PYTHONPATH=. python3 -m cfb_coach book diff --dynasty ohio_state      # just the pending edit list
+PYTHONPATH=. python3 -m cfb_coach book apply --dynasty ohio_state     # "I made the edits" (optional --rev N guard)
+PYTHONPATH=. python3 -m cfb_coach book history --dynasty ohio_state   # every revision, timestamps, reasons
+PYTHONPATH=. python3 -m cfb_coach book rollback --dynasty ohio_state --to 1   # restore rev 1 as a new revision (3-prep cooldown)
+```
+
+**Live research on every prep** (`meta_scout.py`, `meta_entities.py`, `yt_research.py`):
+
+- No same-day cache reuse any more: every `prep` fetches the web sources **and** YouTube in parallel
+  (bounded timeouts, ~7-10 s here). The cache is only a fallback when sources fail or with `--offline`, and the
+  page then shows a red **LIVE META RESEARCH DID NOT RUN** banner with the age of the data used.
+  `--refresh-meta` is kept as a no-op alias.
+- Older-title (CFB 25/26, Madden) items are filtered by title/date.
+- **Named signals:** each document is scanned for CFB 27 formation names and formation-attributed plays (spoken
+  aliases like "goalline", "mtn", "halfback"), recency-weighted (half-life 21 days) with per-source counts and dates.
+  They feed the playbook decisions and a small capped live boost in the caller.
+- **YouTube without an API key:** search-results pages (`ytInitialData`) + channel RSS feeds for known CFB 27 creators,
+  filtered to CFB 27 titles published in the last ~75 days. Transcripts: stdlib innertube → optional
+  `youtube-transcript-api` → optional `yt-dlp` auto-captions, cached per video id in `~/.cfb-coach/yt_transcripts/`.
+  YouTube often blocks cloud/datacenter IPs; a home connection usually works. Everything degrades gracefully and the
+  page shows how many videos/transcripts were used.
+
+## Smarter retrain v2 + current-meta prep (v1.12)
+
+**Why:** after 5 Ohio State games vs the CPU (3 W, 2 L) the old retrain had snowballed
+(`run_first` 11.7, `cluster_changeup` 8.75), ignored W/L, treated an INT like an
+incompletion, and the live caller never read the learned weights at all.
+
+**What retrain does now** (`cfb_coach/learning.py`, all constants in one block):
+
+- **Field zones** (`cfb_coach/zones.py`): open field / red zone (inside the opponent's 20) /
+  goal line (inside the 5, or goal-to-go inside the 10). `yardline` is 0-100 toward the
+  opponent's goal (`opp 14` = 86). Own-territory snaps are never red zone.
+- Zone stores (family, per-play, play-vs-coverage) sit next to the general store. A red-zone snap
+  counts 1.0 in rz, 0.25 in gl and only 0.5 in general; a goal-line snap counts 1.0 in gl, 0.6 in rz
+  and 0.35 in general. So a play that fails at the 5 drops in rz/gl without being hurt much in open field.
+- **Leverage:** 3rd down 2x, 4th down 3x, goal-to-go at least 2x (cap 3x). Success is situational
+  (40% of the distance on 1st, 60% on 2nd, 100% on 3rd/4th).
+- **Outcomes:** success +1, explosive +1.5, TD +2, near-miss -0.4, fail -1, **sack -1.75,
+  turnover (INT / fumble lost) -3.5**; a drive-ending red-zone failure is another x1.5.
+- **Caps / diminishing returns:** `weight = cap * tanh(0.7 * sum(w*score) / (sum(w) + 5))`,
+  where the caps are family ±4, play ±2.5, vs-coverage ±1.5 and anti-repeat ±1.5. Nothing snowballs,
+  and the ordering is kept.
+- **W/L at game over:** after a loss, the play that ended each stalled drive gets -0.75 (x1.5 in the
+  red zone). After a win, each play of a TD drive gets +0.25. Both are scaled by margin
+  (1 + 0.5·min(margin,14)/14). **Score assumption:** the score is typed winner-first (a `14-7` loss
+  means you scored 7), so our points = max in a win and min in a loss. Either order works.
+- **Rebuild, not bump:** every retrain recomputes all weights from every logged snap + game result, so
+  it is idempotent. The first `prep` or `play` after upgrading rebuilds once (meta key
+  `learn_rules_version`), writes a timestamped backup `coach.db.bak-YYYYmmdd-HHMMSS` first, and
+  prints a one-line notice. Snaps and game history are never deleted.
+- **Live caller uses it:** each call is ranked by the learned zone weights (blended with general),
+  plus a meta prior that fades as your own sample grows, then sampled (softmax T=0.25 with 10% spread
+  so the menu keeps getting tested). The rationale shows `learned gl: HB Dive +0.25 (n=2, meta +0.20) p=44%`.
+  Anti-repeat and 3-fail PIVOT pick the best-ranked alternative.
+- **Postgame** ('Game over → retrain' and `postgame`) plainly lists red-zone trips and TDs, the drives that
+  died inside the 20, turnovers and sacks, the W/L adjustment, and the top risers and fallers.
+
+```bash
+PYTHONPATH=. python3 -m cfb_coach rebuild            # explicit rebuild (backs up the DB first)
+PYTHONPATH=. python3 -m cfb_coach rebuild --no-backup --top 25
+```
+
+**Prep aligns to the current meta** (`cfb_coach/meta_scout.py` + `cfb_coach/meta_align.py`):
+
+- Each prep fetches live, free sources in parallel (stdlib `urllib`, no keys, ~2-5 s): EA title
+  updates (plus any newer update linked from the EA news list), MP1st / UpdateCrazy patch notes,
+  MaddenTurf and MaddenProdigy guides, r/NCAAFBseries search RSS, and Google News RSS (which also
+  surfaces YouTube meta videos by title).
+- (v1.13: every prep now fetches live; `~/.cfb-coach/meta_cache.json` is only the fallback.)
+- Concept signals (general + red-zone context) become small capped priors (≤0.12 live, ≤0.4 total) on
+  top of the cited seed priors in `data/meta_baseline.json` → `meta_research`, which only covers plays
+  in Gun Bunch X Nasty / Gun Cluster / Singleback Deuce Close.
+- The prep page shows when the meta was fetched, which sources were used, what changed since the last
+  cache, recent headlines, a **Zone plan** (red zone / goal line / open with the live caller's call
+  shares), **conflicts** where the meta likes a play that keeps failing for you, Ohio State lab
+  candidates (verified in the OSU book, untested by you), and the retrain constants.
+
 ## Commands
 
 | Command | Purpose |
@@ -48,11 +195,12 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 | `python3 -m cfb_coach prep --opponent <id>` | Open browser: **Live meta scout** + deltas only + call tips + Active loadout |
 | `python3 -m cfb_coach prep -o <id> --text` | Compact terminal delta dump (no browser) |
 | `python3 -m cfb_coach prep -o <id> --no-open` | Write HTML without opening browser |
-| `python3 -m cfb_coach prep -o <id> --mark-applied` | Mark proposed deltas applied (next prep shows only NEW) |
-| `python3 -m cfb_coach prep -o <id> --offline` | Skip network meta scout (use cache/baseline `cfb27-2026-09`) |
-| `python3 -m cfb_coach prep -o <id> --refresh-meta` | Force refetch meta scout (ignore <6h cache) |
-| `python3 -m cfb_coach play --opponent <id>` | Typed live loop + **browser overlay** (CPU = offense-only) |
-| `python3 -m cfb_coach play --opponent <id> --no-overlay` | Same loop without HTML overlay |
+| `python3 -m cfb_coach prep -o <id> --mark-applied` | Mark proposed deltas applied + confirm pending custom-playbook edits |
+| `python3 -m cfb_coach prep -o <id> --offline` | Skip the live meta fetch (last cache, else seed research) |
+| `python3 -m cfb_coach book show\|diff\|apply\|history\|rollback --to N [--dynasty D]` | CFB 27 custom playbook of record (managed by prep) |
+| `python3 -m cfb_coach rebuild` | Recompute all learned weights from every snap + W/L under the current rules (backs up the DB) |
+| `python3 -m cfb_coach play --opponent <id>` | **HTML live window** (localhost) — outcome + next sit, game log, Game over → retrain |
+| `python3 -m cfb_coach play --opponent <id> --terminal` | Classic terminal `sit>` loop (+ optional overlay) |
 | `python3 -m cfb_coach play --opponent <id> --once "2&7 c2 invert"` | One-shot non-interactive call |
 | `python3 -m cfb_coach call -o gavin -s "2&7 cover 2 invert" --why` | Scripted one-shot |
 | `python3 -m cfb_coach postgame --opponent gavin` | Learn from snaps; ohio_state successes → Alabama promotion notes |
@@ -75,12 +223,12 @@ Typed live calls for **Madden 27 Franchise** (not MUT, not MCS tournament toolin
 ```bash
 # Franchise CPU week (offense-only)
 PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent cpu
-PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent cpu
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent cpu   # HTML live window
 
 # Franchise user game (shared persona, O + D within the 8-macro cap)
 PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent gavin                 # custom book → build checklist (PENDING)
 PYTHONPATH=. python3 -m cfb_coach prep --game madden27 --opponent gavin --mark-applied  # after building it → LOCKED
-PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent gavin
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 --opponent gavin                 # HTML live + game-over retrain
 
 # After the game
 PYTHONPATH=. python3 -m cfb_coach postgame --game madden27 --opponent gavin
@@ -91,7 +239,7 @@ PYTHONPATH=. python3 -m cfb_coach config --game madden27 --primary-team Buccanee
 PYTHONPATH=. python3 -m cfb_coach config --game madden27 --clear-primary            # back to TBD
 ```
 
-`--game madden` works as an alias. Every CFB prep/play flag carries over (`--text`, `--no-open`, `--offline`, `--refresh-meta`, `--mark-applied`, `--once`, `--why`, `--overlay`, `--no-overlay`).
+`--game madden` works as an alias. Every CFB prep/play flag carries over (`--text`, `--no-open`, `--offline`, `--refresh-meta`, `--mark-applied`, `--once`, `--why`, `--overlay`, `--no-overlay`, `--terminal`, `--html-port`).
 
 | Command | Madden 27 purpose |
 |---|---|
@@ -100,7 +248,7 @@ PYTHONPATH=. python3 -m cfb_coach config --game madden27 --clear-primary        
 | `prep --game madden27 -o <id> --franchise lab` | Lab profile: freer (e.g. ADD benched HEAT with a swap plan) |
 | `prep --game madden27 -o <id> --o-book stock:Buccaneers` | Force the offensive book of record (`auto` default \| `custom` \| `stock:<name>`); `--d-book` for defense |
 | `playbook --game madden27` | Print the full playbook of record (every formation + play live calls may use) |
-| `play --game madden27 -o <id>` | Typed live loop + overlay (`~/.cfb-coach/madden27_overlay.html`), hard-locked to the book |
+| `play --game madden27 -o <id>` | **HTML live window** (default) hard-locked to the book; `--terminal` for sit> + overlay |
 | `call --game madden27 -o <id> -s "d 3&8" --why` | One-shot call |
 | `postgame --game madden27 -o <id> [--franchise lab]` | Learn from snaps; macro `proven`/`failed`; lab → primary promotions |
 | `promote --game madden27 [--accept-all \| --target X]` | Review/accept lab → primary promotions |

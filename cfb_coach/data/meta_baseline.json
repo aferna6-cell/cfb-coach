@@ -769,9 +769,400 @@
     "Patch 1.012 (Sep 22 2026): improved run-action blocking; reduced QB spin effectiveness; contain custom adj fix — lean run-action more; scram less spin-hero; CONTAIN-SCRAM installs cleaner.",
     "Constraint theory: run ↔ easy pass ↔ Cluster changeup. Do not spam one family. Anti-repeat + PIVOT on 3-fail streaks.",
     "Soft competitive meta only — Xbox formation/play/macro NAMES. No invented PlayStation or Xbox button sequences.",
-    "Every game starts from this baseline. Opponent overlays + install diffs adjust as snaps accumulate; thin film stays near baseline."
+    "Every game starts from this baseline. Opponent overlays + install diffs adjust as snaps accumulate; thin film stays near baseline.",
+    "Research pass 2026-09-27 (see meta_research): run-first CFB 27 meta; Deuce Close for RZ runs; CPU goal-line wall -> quick TE flat / spot / single-back dive; man coverage tuned down 2026-09-03; 1.012 run-action blocking buff."
   ],
   "notes": [
     "v1.5.0: Aidan EXACT macro sheets (section copy blocks); --dynasty alabama|ohio_state; doctrine no auto-macro from one concept appearance; badges proven/meta_grounded/failed; WSL explorer.exe wslpath open kept."
-  ]
+  ],
+  "research_updated": "2026-09-27",
+  "meta_research": {
+    "updated": "2026-09-27",
+    "method": "Manual web research pass (search + page fetch) on 2026-09-27, scoped to offense vs CPU out of Aidan's formations: Gun Bunch X Nasty, Gun Cluster, Singleback Deuce Close. Community posts are anecdotes (low-medium confidence); patch notes are official.",
+    "findings": [
+      {
+        "id": "bunch_meta",
+        "claim": "Bunch is the CFB 27 passing meta; Ohio State's Gun Bunch X Nasty + Gun Cluster is called the best two-formation attack (Cluster = counterpunch). Ohio State is the consensus #1 offensive book.",
+        "source": "MaddenTurf - The Best Playbooks for College Football 27",
+        "url": "https://maddenturf.com/cfb-27-best-playbooks/",
+        "published": "2026-07-21 (updated)",
+        "accessed": "2026-09-27",
+        "confidence": "medium"
+      },
+      {
+        "id": "run_first_meta",
+        "claim": "Passing was toned down in CFB 27; the creator's caveat is that the meta is run-first.",
+        "source": "MaddenTurf - The Best Playbooks for College Football 27",
+        "url": "https://maddenturf.com/cfb-27-best-playbooks/",
+        "published": "2026-07-21 (updated)",
+        "accessed": "2026-09-27",
+        "confidence": "medium"
+      },
+      {
+        "id": "deuce_rz",
+        "claim": "The Washington State Bunch X Nasty scheme does its red-zone work out of Singleback Deuce Close.",
+        "source": "MaddenTurf - The Best Playbooks for College Football 27",
+        "url": "https://maddenturf.com/cfb-27-best-playbooks/",
+        "published": "2026-07-21 (updated)",
+        "accessed": "2026-09-27",
+        "confidence": "medium"
+      },
+      {
+        "id": "rz_compressed",
+        "claim": "Red zone: use compressed formations, don't force hero ball. If LBs clog the middle, hit flats / quick outs; if the defense overplays quick passes, run inside zone / QB draw; vs press man near the goal line use bunch, whip, drags, quick outs.",
+        "source": "MaddenProdigy - College Football 27 Offense Guide",
+        "url": "https://www.maddenprodigy.com/college-football-27-offense-guide/",
+        "published": "undated live page",
+        "accessed": "2026-09-27",
+        "confidence": "medium"
+      },
+      {
+        "id": "patch_0903_man",
+        "claim": "Title Update Sep 3 2026 toned down overly effective man coverage (pass lead, route running and press-release fixes; cloud flats no longer over-jump). Man beaters (mesh/whip/drags) regain value.",
+        "source": "EA SPORTS - College Football 27 Title Update September 3rd, 2026",
+        "url": "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/title-update-september-3rd-2026",
+        "published": "2026-09-03",
+        "accessed": "2026-09-27",
+        "confidence": "high"
+      },
+      {
+        "id": "patch_1012",
+        "claim": "Update 1.012: improved run-action blocking; contain custom-adjustment fix; QB spin less effective behind the line; WR catch tuning on hurried/off-target throws.",
+        "source": "MP1st + UpdateCrazy - CFB 27 Update 1.012 patch notes",
+        "url": "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes",
+        "alt_url": "https://updatecrazy.com/ea-college-football-27-cfb-27-update-1-012-patch-notes/",
+        "published": "2026-09-22",
+        "accessed": "2026-09-27",
+        "confidence": "high"
+      },
+      {
+        "id": "cpu_gl_wall",
+        "claim": "Community consensus: the CPU goal-line defense (inside the 5) is a wall; HB runs from heavy/goal-line sets get blown up; the CPU often brings all-out pressure, so quick throws (TE flat, slants, stick, quick out) and single-back dives are the reported answers.",
+        "source": "r/NCAAFBseries threads 'What is your go-to play inside the 5?' and 'Is there a force field at the goal line?'",
+        "url": "https://www.reddit.com/r/NCAAFBseries/comments/1w3dqc6/what_is_your_goto_plays_inside_the_5_yard_line/",
+        "alt_url": "https://www.reddit.com/r/NCAAFBseries/comments/1w8h7a6/is_there_a_force_field_at_the_goal_line/",
+        "published": "2026-08-31 / 2026-09-06",
+        "accessed": "2026-09-27",
+        "confidence": "low-medium (anecdotal)"
+      },
+      {
+        "id": "bunch_rz_te",
+        "claim": "Red-zone TE answers reported out of Gun Bunch X Nasty: Post Wheel Shallow ('inside the 5 the TE is open'), Z Spot GoalLine, and mesh from bunch (TE sits in the gap).",
+        "source": "r/NCAAFBseries thread 'Red zone pass plays for TE'",
+        "url": "https://www.reddit.com/r/NCAAFBseries/comments/1w42ktk/red_zone_pass_plays_for_te/",
+        "published": "2026-09-01",
+        "accessed": "2026-09-27",
+        "confidence": "low (anecdotal)"
+      },
+      {
+        "id": "formation_inventory",
+        "claim": "Verified CFB 27 Ohio State play lists for Gun Bunch X Nasty, Gun Cluster and Singleback Deuce Close (used to keep priors inside your formations). Plain 'Mesh Spot' and Deuce 'HB Dive' are not in the stock OSU lists (they appear in other books), so Aidan's book is probably custom.",
+        "source": "CFB.FAN playbook database (Ohio State offense)",
+        "url": "https://cfb.fan/27/playbooks/ohio-state-off/",
+        "published": "live database",
+        "accessed": "2026-09-27",
+        "confidence": "high"
+      }
+    ],
+    "priors": [
+      {
+        "formation": "Singleback Deuce Close",
+        "play": "Mtn Duo",
+        "zones": {
+          "gl": 0.3,
+          "rz": 0.2,
+          "open": 0.05
+        },
+        "refs": [
+          "deuce_rz",
+          "run_first_meta",
+          "patch_1012"
+        ],
+        "why": "Deuce Close is where the meta does its red-zone work; run-action blocking improved"
+      },
+      {
+        "formation": "Singleback Deuce Close",
+        "play": "HB Dive",
+        "zones": {
+          "gl": 0.25,
+          "rz": 0.1
+        },
+        "refs": [
+          "cpu_gl_wall",
+          "deuce_rz"
+        ],
+        "why": "Single-back dive is a reported goal-line answer vs CPU"
+      },
+      {
+        "formation": "Singleback Deuce Close",
+        "play": "Inside Zone Split",
+        "zones": {
+          "gl": 0.1,
+          "rz": 0.15,
+          "open": 0.05
+        },
+        "refs": [
+          "deuce_rz",
+          "patch_1012"
+        ],
+        "why": "Deuce Close run game; split-zone action"
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "Inside Zone",
+        "zones": {
+          "open": 0.15,
+          "rz": 0.2,
+          "gl": 0.1
+        },
+        "refs": [
+          "run_first_meta",
+          "rz_compressed",
+          "patch_1012"
+        ],
+        "why": "Run-first meta; inside zone when the red-zone D overplays quick passes"
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "HB Base",
+        "zones": {
+          "open": 0.1,
+          "rz": 0.05
+        },
+        "refs": [
+          "run_first_meta"
+        ],
+        "why": "Run-first meta base run"
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "Counter Y",
+        "zones": {
+          "open": 0.05,
+          "rz": 0.05
+        },
+        "refs": [
+          "run_first_meta",
+          "patch_1012"
+        ],
+        "why": "Constraint run off IZ"
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "Mesh Spot",
+        "zones": {
+          "open": 0.15,
+          "rz": 0.15,
+          "gl": 0.05
+        },
+        "coverage": {
+          "Cover 1": 0.15,
+          "Cover 0": 0.15,
+          "pressure": 0.1
+        },
+        "refs": [
+          "bunch_meta",
+          "patch_0903_man",
+          "bunch_rz_te"
+        ],
+        "why": "Mesh from bunch vs man near the goal line; man coverage tuned down"
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "RZ PA X Whip",
+        "zones": {
+          "rz": 0.15,
+          "gl": 0.1
+        },
+        "coverage": {
+          "Cover 1": 0.15,
+          "Cover 0": 0.1
+        },
+        "refs": [
+          "rz_compressed",
+          "patch_0903_man",
+          "patch_1012"
+        ],
+        "why": "Whip vs press man near the goal line; run-action blocking improved"
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "Z Spot GoalLine",
+        "zones": {
+          "rz": 0.15,
+          "gl": 0.2
+        },
+        "refs": [
+          "rz_compressed",
+          "bunch_rz_te",
+          "cpu_gl_wall"
+        ],
+        "why": "TE flat / spot when LBs sit inside; quick throw vs CPU goal-line pressure"
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "Mtn RPO Zone Alert",
+        "zones": {
+          "open": 0.05,
+          "rz": 0.05
+        },
+        "refs": [
+          "rz_compressed"
+        ],
+        "why": "Quick-read RPO"
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "Drive HB Under",
+        "zones": {
+          "open": 0.05
+        },
+        "refs": [
+          "bunch_meta"
+        ],
+        "why": "Drive concept vs zone"
+      },
+      {
+        "formation": "Gun Cluster",
+        "play": "Z Spot Shake",
+        "zones": {
+          "open": 0.05,
+          "rz": 0.1
+        },
+        "refs": [
+          "bunch_meta",
+          "rz_compressed"
+        ],
+        "why": "Cluster counterpunch, compressed spot"
+      },
+      {
+        "formation": "Gun Cluster",
+        "play": "Mesh Post",
+        "zones": {
+          "open": 0.05
+        },
+        "refs": [
+          "bunch_meta"
+        ],
+        "why": "Cluster mesh changeup"
+      },
+      {
+        "formation": "Gun Cluster",
+        "play": "Outside Zone",
+        "zones": {
+          "open": 0.05
+        },
+        "refs": [
+          "run_first_meta"
+        ],
+        "why": "Cluster run changeup"
+      },
+      {
+        "formation": "Gun Cluster",
+        "play": "Verticals",
+        "zones": {
+          "rz": -0.15,
+          "gl": -0.25
+        },
+        "refs": [
+          "rz_compressed"
+        ],
+        "why": "Hero ball in a shrunken field"
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "Deep Flood",
+        "zones": {
+          "rz": -0.1,
+          "gl": -0.25
+        },
+        "refs": [
+          "rz_compressed"
+        ],
+        "why": "Deep concept with no depth to work"
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "Mtn Cross Post",
+        "zones": {
+          "gl": -0.15
+        },
+        "refs": [
+          "rz_compressed"
+        ],
+        "why": "Long-developing route inside the 5"
+      }
+    ],
+    "lab_candidates": [
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "Post Wheel Shallow",
+        "zones": [
+          "gl",
+          "rz"
+        ],
+        "verified_in": "cfb.fan Ohio State Gun Bunch X Nasty list (2026-09-27)",
+        "refs": [
+          "bunch_rz_te"
+        ],
+        "note": "Community report (2026-09-01): TE open inside the 5. Not in your logged plays yet; Ohio State lab only."
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "Y Flat GoalLine",
+        "zones": [
+          "gl"
+        ],
+        "verified_in": "cfb.fan Ohio State Gun Bunch X Nasty list (2026-09-27)",
+        "refs": [
+          "cpu_gl_wall",
+          "rz_compressed"
+        ],
+        "note": "Quick TE flat vs CPU goal-line pressure (community reports TE flats work inside the 10). Ohio State lab only."
+      },
+      {
+        "formation": "Gun Bunch X Nasty",
+        "play": "Z Mesh GoalLine",
+        "zones": [
+          "gl"
+        ],
+        "verified_in": "cfb.fan Ohio State Gun Bunch X Nasty list (2026-09-27)",
+        "refs": [
+          "rz_compressed",
+          "patch_0903_man"
+        ],
+        "note": "Mesh traffic vs press man at the goal line. Ohio State lab only."
+      }
+    ],
+    "excluded": [
+      {
+        "source": "Reddit goal-line threads from Mar 2026 and Jul 2025",
+        "reason": "CFB 26 era, not CFB 27"
+      },
+      {
+        "source": "Madden School Singleback Deuce Close article",
+        "reason": "2017 Madden content, not CFB 27"
+      },
+      {
+        "source": "'Y Flat Quick' / 'Quick Z Spot' tips from Gun Bunch Str(ong) Nasty (Cal book)",
+        "reason": "Different formation from Aidan's Gun Bunch X Nasty; used only as supporting color, not as priors"
+      },
+      {
+        "source": "mmoexp / u4gm / zekond (cfb27.com) guides",
+        "reason": "Coin-seller or aggregator blogs with unverifiable authorship"
+      },
+      {
+        "source": "cfblabs.gg meta tiers",
+        "reason": "Paywalled; could not verify"
+      },
+      {
+        "source": "YouTube meta roundups",
+        "reason": "Not fetchable without an API key; only headlines surfaced via Google News RSS"
+      },
+      {
+        "source": "Statesman Journal goal-line study",
+        "reason": "Real college football, not the video game"
+      }
+    ]
+  }
 }

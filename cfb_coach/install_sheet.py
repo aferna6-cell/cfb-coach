@@ -743,9 +743,86 @@ def build_prep_plan(
         "doctrine": doctrine_line(),
         "meta_scout": scout_dict,
     }
+    # v1.12: learned zone plan (open / red zone / goal line) aligned to the meta
+    try:
+        from cfb_coach.meta_align import build_prep_alignment
+
+        plan["zone_alignment"] = build_prep_alignment(
+            db, opponent_id, scout_dict or None, dynasty=dynasty
+        )
+    except Exception as exc:  # noqa: BLE001 — never break prep
+        plan["zone_alignment"] = {"error": f"{type(exc).__name__}: {exc}"}
+    # v1.13: autonomous custom playbook of record (per dynasty), decided from the
+    # live meta research + his own results; emits an edit list only when it changes.
+    if db is not None:
+        try:
+            from cfb_coach.cfb_playbook import plan_book
+
+            plan["cfb_book"] = plan_book(db, dynasty, scout_dict or None, persist=persist)
+        except Exception as exc:  # noqa: BLE001 — never break prep
+            plan["cfb_book"] = {"error": f"{type(exc).__name__}: {exc}"}
     if db is not None and persist:
         save_prep_deltas(db, opponent_id, proposed, shown)
     return plan
+
+
+def format_book_section_text(book: dict[str, Any] | None) -> list[str]:
+    """Terminal version of the custom playbook panel."""
+    book = book or {}
+    if not book:
+        return []
+    if book.get("error"):
+        return [f"## Custom playbook unavailable ({book['error']})"]
+    lines = [f"## Custom playbook of record — {book.get('name')} ({book.get('dynasty')})"]
+    cur = book.get("current") or {}
+    pend = book.get("pending") or {}
+    if book.get("seeded_now"):
+        lines.append(f"  Seeded rev {cur.get('rev')}: {book.get('seed_summary')}")
+    if pend:
+        lines.append(
+            f"  STATUS: {len(book.get('edits') or [])} PENDING EDIT(S) (rev {pend.get('rev')}). Live calls use "
+            + (f"rev {cur.get('rev')} until you run `book apply`." if cur else "the pending book (unconfirmed) until you run `book apply`.")
+        )
+        lines.append("  EDIT LIST (CFB 27 > Create & Share > Custom Playbooks):")
+        lines += ["    " + ln for ln in (book.get("edit_text") or "").splitlines()]
+    else:
+        lines.append(f"  STATUS: no changes this prep — rev {cur.get('rev')} stands (no churn).")
+    lines.append("  RESULTING BOOK:")
+    lines += ["    " + ln for ln in (book.get("book_text") or "").splitlines()]
+    if book.get("active8"):
+        lines.append("  ACTIVE 8 (quick set from the book): " + "; ".join(k.replace("::", " — ") for k in book["active8"]))
+    flagged = [(k, f) for k, f in (book.get("flags") or {}).items() if f.get("flag") in ("demoted", "on_notice", "fading")]
+    for k, f in flagged:
+        lines.append(f"  [{f['flag']}] {k.replace('::', ' — ')}: {f['why']}")
+    return lines
+
+
+def format_zone_alignment_text(za: dict[str, Any] | None) -> list[str]:
+    """Terminal version of the learned-zone + meta alignment panels."""
+    za = za or {}
+    if not za or za.get("error"):
+        return [f"## Zone plan unavailable ({za.get('error', 'no data')})"] if za else []
+    labels = {"open": "Open field", "rz": "Red zone (inside the 20)", "gl": "Goal line / goal-to-go"}
+    lines = ["## Zone plan (your learned results + current meta)"]
+    for zone in ("rz", "gl", "open"):
+        rows = (za.get("zone_plan") or {}).get(zone) or []
+        lines.append(f"  {labels[zone]}:")
+        for r in rows:
+            lines.append(
+                f"    {r['p']:.0%}  {r['formation']} — {r['play']}  (yours {r['learned']:+.2f}, n={r['n_zone']}; meta {r['meta']:+.2f})"
+            )
+    if za.get("conflicts"):
+        lines.append("## Meta vs your data — conflicts")
+        lines += [f"  ! {c['message']}" for c in za["conflicts"]]
+    if za.get("support"):
+        lines += [f"  + {c['message']}" for c in za["support"][:4]]
+    if za.get("lab_candidates"):
+        lines.append("## Ohio State lab candidates (verified in the OSU book, untested by you)")
+        lines += [f"  ? {c['formation']} — {c['play']}: {c.get('note', '')}" for c in za["lab_candidates"]]
+    li = za.get("learning") or {}
+    if li:
+        lines.append(f"Retrain rules {li.get('rules_version')} (DB rebuilt {li.get('rebuilt_at') or 'n/a'})")
+    return lines
 
 
 def format_delta_text(plan: dict[str, Any]) -> str:
@@ -844,11 +921,19 @@ def format_delta_text(plan: dict[str, Any]) -> str:
             lines.append("")
     except Exception:
         pass
+    bk_lines = format_book_section_text(plan.get("cfb_book"))
+    if bk_lines:
+        lines.extend(bk_lines)
+        lines.append("")
+    za_lines = format_zone_alignment_text(plan.get("zone_alignment"))
+    if za_lines:
+        lines.extend(za_lines)
+        lines.append("")
     lines.append("## Call emphasis")
     for t in plan["tips"]:
         lines.append(f"  - {t}")
     lines.append("")
-    lines.append("Live caller unchanged. Inventory (formations→plays) is in the browser view.")
+    lines.append("Live caller ranks each call with these zone weights + meta priors. Inventory (formations→plays) is in the browser view.")
     return "\n".join(lines)
 
 

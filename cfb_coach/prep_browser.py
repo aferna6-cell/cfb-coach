@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from cfb_coach.browser_open import is_wsl as _is_wsl, try_cmd as _try_cmd
 from cfb_coach.install_sheet import build_prep_plan
 
 ET = ZoneInfo("America/New_York")
@@ -600,8 +601,147 @@ _CSS = """
   .scout-affect { grid-column: 1 / -1; }
   footer { margin-top: 24px; color: var(--muted); font-size: 0.8rem; text-align: center; }
   code { background: rgba(0,0,0,0.35); padding: 1px 5px; border-radius: 4px; }
+  table.srcs { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  table.srcs td { padding: 3px 6px; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: top; }
+  table.srcs a { color: var(--accent); }
+  li.conflict { margin-bottom: 6px; }
 """
 
+
+
+def _fmt_local_ts(ts: str) -> str:
+    from datetime import datetime
+
+    if not ts:
+        return "?"
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            return ts
+        return dt.astimezone().strftime("%Y-%m-%d %H:%M %Z")
+    except ValueError:
+        return ts
+
+
+def _render_meta_freshness(scout: dict[str, Any]) -> str:
+    """v1.12: when the meta was fetched, from where, and what changed."""
+    mode = scout.get("mode") or ""
+    if not mode and not scout.get("sources"):
+        return ""
+    if not mode:  # older / Madden scout results
+        mode = "cache" if scout.get("from_cache") else ("live" if scout.get("available") else "seed")
+    cache_label = "CACHED FALLBACK (live research did not run)" if scout.get("research_status") else "cached today"
+    label = {"live": "LIVE — fetched this prep", "cache": cache_label, "seed": "seed research (offline / no cache)"}.get(
+        mode, mode or "?"
+    )
+    rows = []
+    for s in scout.get("sources") or []:
+        ok = s.get("fetched")
+        state = "ok" if ok else ("seed" if s.get("kind") == "seed" else (s.get("error") or "failed"))
+        url = s.get("url") or ""
+        name = s.get("label") or s.get("title") or url
+        rows.append(
+            f'<tr><td>{"✅" if ok else ("📚" if s.get("kind") == "seed" else "⚠️")}</td>'
+            f'<td><a href="{_esc(url)}" target="_blank" rel="noopener">{_esc(name)}</a></td>'
+            f"<td class='muted'>{_esc(s.get('kind') or '')}</td><td class='muted'>{_esc(state)}</td></tr>"
+        )
+    changes = "".join(f"<li>{_esc(c)}</li>" for c in (scout.get("changes_since_last") or [])[:10])
+    heads = "".join(
+        f'<li><span class="muted">{_esc(h.get("date") or "")}</span> '
+        f'<a href="{_esc(h.get("link") or "")}" target="_blank" rel="noopener">{_esc(h.get("title") or "")}</a> '
+        f'<span class="muted">· {_esc(h.get("source") or "")}</span></li>'
+        for h in (scout.get("headlines") or [])[:8]
+    )
+    sig = scout.get("rz_signals") or {}
+    sig_txt = ", ".join(f"{k} ×{v}" for k, v in sorted(sig.items(), key=lambda kv: -kv[1])[:8])
+    prev = scout.get("previous_fetched_at") or ""
+    return f"""
+    <section id="meta-freshness">
+      <h2>Current meta — freshness &amp; sources</h2>
+      <div class="scout-grid">
+        <div class="scout-card">
+          <h3>Fetched</h3>
+          <div><b>{_esc(label)}</b> · {_esc(_fmt_local_ts(scout.get("fetched_at") or ""))}</div>
+          <div class="muted">previous cache: {_esc(_fmt_local_ts(prev) if prev else "none")}</div>
+          <div class="muted">{_esc(scout.get("ttl_policy") or "")}</div>
+          <div class="muted">{_esc(scout.get("message") or "")}</div>
+          <div class="muted">red-zone signals: {_esc(sig_txt or "none")}</div>
+        </div>
+        <div class="scout-card">
+          <h3>What changed since the last cache</h3>
+          <ul>{changes or "<li class='muted'>(no comparison available)</li>"}</ul>
+        </div>
+        <div class="scout-card scout-affect">
+          <h3>Sources used</h3>
+          <table class="srcs">{"".join(rows) or "<tr><td class='muted'>none</td></tr>"}</table>
+          <h3 style="margin-top:10px">Recent headlines</h3>
+          <ul>{heads or "<li class='muted'>(none this pass)</li>"}</ul>
+        </div>
+      </div>
+    </section>
+    """
+
+
+def _render_zone_plan(za: dict[str, Any] | None) -> str:
+    """v1.12: RZ / GL / open plan from learned zone weights + meta priors, and conflicts."""
+    za = za or {}
+    if not za:
+        return ""
+    if za.get("error"):
+        return f"<section><h2>Zone plan</h2><div class='empty'>Unavailable: {_esc(za['error'])}</div></section>"
+    labels = {"rz": "Red zone (inside the 20)", "gl": "Goal line / goal-to-go", "open": "Open field"}
+    cards = []
+    for zone in ("rz", "gl", "open"):
+        rows = (za.get("zone_plan") or {}).get(zone) or []
+        trs = "".join(
+            f"<tr><td><b>{r['p']:.0%}</b></td><td>{_esc(r['formation'])} — <b>{_esc(r['play'])}</b></td>"
+            f"<td class='muted'>yours {r['learned']:+.2f} (n={r['n_zone']})</td>"
+            f"<td class='muted'>meta {r['meta']:+.2f}</td></tr>"
+            for r in rows
+        )
+        cards.append(f"<div class='scout-card'><h3>{_esc(labels[zone])}</h3><table class='srcs'>{trs}</table></div>")
+    conf = "".join(
+        f"<li class='conflict'>⚠️ {_esc(c['message'])}"
+        + (f"<br/><span class='muted'>meta sources: {_esc('; '.join(c.get('sources') or []))}</span>" if c.get("sources") else "")
+        + "</li>"
+        for c in za.get("conflicts") or []
+    )
+    sup = "".join(f"<li>✅ {_esc(c['message'])}</li>" for c in (za.get("support") or [])[:5])
+    labs = "".join(
+        f"<li>🧪 <b>{_esc(c['formation'])} — {_esc(c['play'])}</b> ({_esc('/'.join(c.get('zones') or []))}): "
+        f"{_esc(c.get('note') or '')} <span class='muted'>[{_esc(c.get('verified_in') or '')}]</span></li>"
+        for c in za.get("lab_candidates") or []
+    )
+    leaders = za.get("leaders") or {}
+    lead_bits = []
+    for z, lab in (("general", "General"), ("rz", "Red zone"), ("gl", "Goal line")):
+        lb = leaders.get(z) or {}
+        best = ", ".join(f"{_esc(n)} {v:+.2f}" for n, v, _ in (lb.get("best") or [])[:3]) or "—"
+        worst = ", ".join(f"{_esc(n)} {v:+.2f}" for n, v, _ in (lb.get("worst") or [])[:3]) or "—"
+        lead_bits.append(f"<li><b>{lab}</b> — best: {best}<br/><span class='muted'>worst: {worst}</span></li>")
+    li = za.get("learning") or {}
+    consts = "".join(f"<tr><td>{_esc(k)}</td><td class='muted'>{_esc(v)}</td></tr>" for k, v in za.get("constants") or [])
+    return f"""
+    <section id="zone-plan">
+      <h2>Zone plan — your results + current meta</h2>
+      <div class="muted" style="margin-bottom:8px">Shares = how often the live caller will suggest each call in that zone
+        (learned zone weights blended with general, plus a meta prior that fades as your own sample grows).
+        Retrain rules {_esc(li.get("rules_version") or "?")} · DB rebuilt {_esc(li.get("rebuilt_at") or "n/a")}.</div>
+      <div class="scout-grid">{"".join(cards)}</div>
+      <div class="scout-grid" style="margin-top:10px">
+        <div class="scout-card scout-affect">
+          <h3>Meta vs your data — conflicts</h3>
+          <ul>{conf or "<li class='muted'>No conflicts: the meta and your results agree (or your sample is too small).</li>"}{sup}</ul>
+        </div>
+        {"<div class='scout-card scout-affect'><h3>Ohio State lab candidates (in the OSU book, untested by you)</h3><ul>" + labs + "</ul></div>" if labs else ""}
+        <div class="scout-card scout-affect">
+          <h3>Learned leaders</h3>
+          <ul>{"".join(lead_bits)}</ul>
+          <details><summary class="muted">Retrain constants</summary><table class="srcs">{consts}</table></details>
+        </div>
+      </div>
+    </section>
+    """
 
 
 def _render_meta_scout(scout: dict[str, Any] | None) -> str:
@@ -615,7 +755,7 @@ def _render_meta_scout(scout: dict[str, Any] | None) -> str:
         or scout.get("meta_defense")
     ):
         fallback = scout.get("baseline_fallback") or "cfb27-2026-09"
-        return f"""
+        return _render_meta_freshness(scout) + f"""
     <section>
       <h2>Live meta scout</h2>
       <div class="empty">Scout unavailable — using cached/baseline {_esc(fallback)}
@@ -660,7 +800,8 @@ def _render_meta_scout(scout: dict[str, Any] | None) -> str:
         )
         if len(src_bits) >= 6:
             break
-    return f"""
+    fresh_html = _render_meta_freshness(scout)
+    return fresh_html + f"""
     <section>
       <h2>Live meta scout
         <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">
@@ -688,6 +829,8 @@ def _render_meta_scout(scout: dict[str, Any] | None) -> str:
 
 
 def render_prep_html(plan: dict[str, Any]) -> str:
+    from cfb_coach.prep_book_html import BOOK_CSS, render_book, render_research
+
     shown = plan.get("shown_deltas") or []
     pb = [d for d in shown if d.get("kind") == "playbook"]
     mac = [d for d in shown if d.get("kind") == "macro"]
@@ -738,7 +881,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Prep — {_esc(plan.get("display_name"))} · CFB27</title>
-<style>{_CSS}</style>
+<style>{_CSS}{BOOK_CSS}</style>
 </head>
 <body>
   <div class="wrap">
@@ -758,7 +901,10 @@ def render_prep_html(plan: dict[str, Any]) -> str:
 
     {status}
     {dynasty_banner}
+    {render_book(plan.get("cfb_book"))}
+    {render_research(plan.get("meta_scout") or {})}
     {_render_meta_scout(plan.get("meta_scout") or {})}
+    {_render_zone_plan(plan.get("zone_alignment"))}
     {_render_swap_banners(banners)}
 
     <section>
@@ -851,16 +997,6 @@ def write_prep_html(
     return out
 
 
-def _is_wsl() -> bool:
-    if os.environ.get("WSL_DISTRO_NAME"):
-        return True
-    try:
-        ver = Path("/proc/version").read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return False
-    return "microsoft" in ver.lower()
-
-
 def _windows_path(path: Path) -> str | None:
     try:
         r = subprocess.run(
@@ -874,19 +1010,6 @@ def _windows_path(path: Path) -> str | None:
     except (FileNotFoundError, OSError):
         pass
     return None
-
-
-def _try_cmd(argv: list[str]) -> bool:
-    try:
-        r = subprocess.run(
-            argv,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        return r.returncode == 0
-    except (FileNotFoundError, OSError):
-        return False
 
 
 def open_prep_html(path: Path, *, open_browser: bool = True) -> Path:
@@ -960,5 +1083,11 @@ def generate_and_open(
         plan["shown_deltas"] = []
         plan["swap_banners"] = []
     path = write_prep_html(opponent_id, plan)
+    try:  # plain-text twin next to the HTML (handy on a phone / for diffing preps)
+        from cfb_coach.install_sheet import format_delta_text
+
+        path.with_suffix(".txt").write_text(format_delta_text(plan), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
     open_prep_html(path, open_browser=open_browser)
     return path, plan

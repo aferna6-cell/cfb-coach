@@ -349,6 +349,39 @@ def cmd_play(args: argparse.Namespace) -> int:
         db.close()
         return 0
 
+    use_html = not bool(getattr(args, "terminal", False) or getattr(args, "no_html", False))
+    if use_html:
+        from cfb_coach.live_server import LivePlayController, run_live_server
+
+        def _make(sit, **kwargs):
+            return make_call(sit, oid, db, active_macros=active, **kwargs)
+
+        def _learn():
+            from cfb_coach.madden.postgame import summary
+
+            return summary(db, oid, profile=pid)
+
+        ctrl = LivePlayController(
+            db=db,
+            opponent_id=oid,
+            make_call=_make,
+            parse_situation=parse_madden_situation,
+            learn_summary=_learn,
+            brand="Madden 27 Franchise",
+            play_cmd="cfb-coach play --game madden27",
+            dynasty=pid,
+            cpu_only=cpu,
+        )
+        print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
+        try:
+            return run_live_server(
+                ctrl,
+                port=getattr(args, "html_port", None),
+                open_browser=True,
+            )
+        finally:
+            db.close()
+
     if overlay is not None:
         from cfb_coach.prep_browser import open_prep_html
 

@@ -27,6 +27,26 @@ def _db() -> CoachDB:
     return CoachDB(resolve_db_path_from_env())
 
 
+def _local_ts(ts: str) -> str:
+    from cfb_coach.meta_scout import local_ts
+
+    return local_ts(ts)
+
+
+def _ensure_rules(db: CoachDB) -> None:
+    """One-time rebuild of learned weights when the retrain rules version changed.
+
+    Writes a timestamped backup of the DB first and prints a one-line notice.
+    Never blocks prep/play: failures are reported and ignored.
+    """
+    try:
+        from cfb_coach.learning import ensure_rules_current
+
+        ensure_rules_current(db)
+    except Exception as exc:  # noqa: BLE001
+        print(f"(retrain rules rebuild skipped: {exc})", file=sys.stderr)
+
+
 def _require_opponent(raw: str) -> str:
     oid = resolve_opponent(raw)
     if not oid:
@@ -74,6 +94,85 @@ def cmd_playbook(args: argparse.Namespace) -> int:
     return madden_cli.cmd_playbook(args)
 
 
+def _book_live_info(db, dynasty):
+    from cfb_coach.cfb_playbook import live_book_info
+
+    return live_book_info(db, dynasty)
+
+
+def _book_live_apply(db, dynasty, rev):
+    from cfb_coach.cfb_playbook import apply_pending
+
+    return apply_pending(db, dynasty, rev)
+
+
+def _book_status_line(db, dynasty) -> str:
+    try:
+        from cfb_coach.cfb_playbook import live_status_line
+
+        return live_status_line(db, dynasty)
+    except Exception as exc:  # noqa: BLE001
+        return f"Playbook: unavailable ({type(exc).__name__})"
+
+
+def cmd_book(args: argparse.Namespace) -> int:
+    """CFB 27 custom playbook of record: show | apply | history | rollback | diff."""
+    from cfb_coach import cfb_playbook as cp
+    from cfb_coach.dynasty import normalize_dynasty
+
+    db = _db()
+    try:
+        dyn = normalize_dynasty(args.dynasty or db.get_meta("dynasty_mode") or DEFAULT_DYNASTY)
+        action = args.action
+        if action == "apply":
+            pend = cp.pending_rev(db, dyn)
+            if not pend:
+                print(f"No pending playbook edits for {dyn} — nothing to apply.")
+                return 0
+            if args.rev is not None and int(args.rev) != int(pend["rev"]):
+                print(f"Pending revision is rev {pend['rev']}, not rev {args.rev} (a newer prep replaced it). "
+                      f"Re-check the prep page, then run: book apply --dynasty {dyn} --rev {pend['rev']}")
+                return 1
+            rec = cp.apply_pending(db, dyn)
+            print(f"Applied rev {rec['rev']} for {dyn}: {len(rec['edits'])} edit(s). Live calls now use this book.")
+            print(cp.format_book_text(rec["book"].get("formations") or {}, audibles=rec["book"].get("audibles"),
+                                      name=rec["book"].get("name", ""), rev=rec["rev"]))
+            return 0
+        if action == "history":
+            print(cp.format_history(db, dyn))
+            return 0
+        if action == "rollback":
+            if args.to is None:
+                raise SystemExit("book rollback needs --to REV (see `book history`)")
+            rec = cp.rollback(db, dyn, int(args.to))
+            print(f"Rolled back {dyn} to rev {args.to} as new rev {rec['rev']} (current). Undo these in-game:")
+            print(cp.format_edit_list(rec["edits"]) or "  (no in-game changes)")
+            return 0
+        cur = cp.current_rev(db, dyn)
+        pend = cp.pending_rev(db, dyn)
+        if action == "diff":
+            if not pend:
+                print(f"No pending edits for {dyn}.")
+                return 0
+            print(f"Pending rev {pend['rev']} ({pend['created_ts'][:16]} UTC) — {pend.get('summary') or ''}")
+            print(cp.format_edit_list(pend["edits"], first_build=cur is None, book_name=pend["book"].get("name", "")))
+            return 0
+        if not cur and not pend:
+            print(f"No custom playbook yet for {dyn} — run prep first.")
+            return 0
+        for label, rec in (("APPLIED (live calls use this)", cur), ("PENDING (make these edits, then `book apply`)", pend)):
+            if not rec:
+                continue
+            print(f"== {label}: rev {rec['rev']} ==")
+            print(cp.format_book_text(rec["book"].get("formations") or {}, audibles=rec["book"].get("audibles"),
+                                      name=rec["book"].get("name", ""), rev=rec["rev"]))
+            if rec is pend:
+                print(cp.format_edit_list(pend["edits"], first_build=cur is None, book_name=pend["book"].get("name", "")))
+        return 0
+    finally:
+        db.close()
+
+
 def cmd_config(args: argparse.Namespace) -> int:
     from cfb_coach.games import is_madden
 
@@ -95,11 +194,19 @@ def cmd_prep(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
     db = _db()
     try:
+        _ensure_rules(db)
         dynasty = set_session_dynasty(
             db, getattr(args, "dynasty", None) or DEFAULT_DYNASTY
         )
         dcfg = dynasty_config(dynasty)
         opp = load_opponent_profile(oid, db)
+        if getattr(args, "mark_applied", False):
+            # "I made the edits the last prep showed": confirm the pending custom book first
+            from cfb_coach.cfb_playbook import apply_pending
+
+            rec = apply_pending(db, dynasty)
+            if rec:
+                print(f"Custom playbook rev {rec['rev']} marked applied for {dynasty} ({len(rec['edits'])} edit(s)).")
         if getattr(args, "text", False):
             from cfb_coach.install_sheet import build_prep_plan
 
@@ -149,18 +256,35 @@ def cmd_prep(args: argparse.Namespace) -> int:
         else:
             print(f"{n} adjustment(s) shown (deltas only).")
         scout = plan.get("meta_scout") or {}
-        if scout.get("available"):
-            tag = "cached" if scout.get("from_cache") else "live"
-            print(
-                f"Meta scout ({tag}, conf={scout.get('confidence', '?')}): "
-                f"{len(scout.get('patch_notes') or [])} patch note(s), "
-                f"{len(scout.get('suggestions') or [])} book suggestion(s)."
-            )
-        else:
-            print(
-                scout.get("message")
-                or "Scout unavailable — using cached/baseline cfb27-2026-09"
-            )
+        n_ok = sum(1 for s_ in (scout.get("sources") or []) if s_.get("fetched"))
+        n_src = len(scout.get("sources") or [])
+        print(
+            f"Meta: {scout.get('mode') or '?'} (fetched {_local_ts(scout.get('fetched_at') or '')}; "
+            f"{n_ok}/{n_src} sources ok; {len(scout.get('changes_since_last') or [])} change note(s)) — "
+            f"{scout.get('message') or ''}"
+        )
+        za = plan.get("zone_alignment") or {}
+        if za.get("conflicts"):
+            print(f"Meta vs your data: {len(za['conflicts'])} conflict(s) flagged on the prep page.")
+        bk = plan.get("cfb_book") or {}
+        if bk.get("error"):
+            print(f"Custom playbook: unavailable ({bk['error']})")
+        elif bk:
+            if bk.get("seeded_now"):
+                print(f"Custom playbook: {bk.get('seed_summary')}.")
+            if bk.get("pending"):
+                print(f"Custom playbook: {len(bk.get('edits') or [])} edit(s) pending (rev {bk['pending'].get('rev')}) — "
+                      f"see the EDIT LIST on the prep page, make them in CFB 27, then: "
+                      f"PYTHONPATH=. python3 -m cfb_coach book apply --dynasty {dynasty}")
+            else:
+                print(f"Custom playbook: no changes — rev {(bk.get('current') or {}).get('rev')} stands.")
+        yt = scout.get("youtube") or {}
+        if yt:
+            print(f"YouTube: {yt.get('found', 0)} CFB 27 videos, {yt.get('transcripts', 0)} transcript(s) used"
+                  + (f", {len(yt.get('blocked') or [])} blocked" if yt.get("blocked") else ""))
+        if scout.get("mode") != "live":
+            print(f"!! LIVE RESEARCH DID NOT RUN — {scout.get('message') or ''}")
+        print(f"Text summary → {path.with_suffix('.txt')}")
     finally:
         db.close()
     return 0
@@ -239,6 +363,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         return handler(args)
     oid = _require_opponent(args.opponent)
     db = _db()
+    _ensure_rules(db)
     dynasty = set_session_dynasty(
         db, getattr(args, "dynasty", None) or db.get_meta("dynasty_mode") or DEFAULT_DYNASTY
     )
@@ -255,11 +380,11 @@ def cmd_play(args: argparse.Namespace) -> int:
     if cpu_only:
         print("CPU opponent — OFFENSE-ONLY coaching (no defense calls / no D macros).")
         print("Shorthand: 1&10 | 2&7 | 3&8 | rz 3&2 | my 35 | opp 40")
-        print("Commands: result <text> | why | quit  (side d disabled)")
+        print("Commands: result <text> | why | book | book apply | quit  (side d disabled)")
     else:
         print("Side defaults to offense. Prefix with 'd ' for defense.")
         print("Shorthand: 1&10 | 2&7 | 3&8 d | rz 3&2 | d 1&10 | my 35 | opp 40")
-        print("Commands: side o|d | result <text> | why | quit")
+        print("Commands: side o|d | result <text> | why | book | book apply | quit")
     print("Doctrine: one tell = log/mild bump; hard-counter only on REPEATED tendency.")
     print("  Aidan UX: type D&D (+ yl) + previous play/coverage name — no need to say 'last'.")
     print("  Examples: '1&10 my 35 mesh spot' | '2&7 deep flood' | '1&10 cover 2'")
@@ -301,6 +426,42 @@ def cmd_play(args: argparse.Namespace) -> int:
         db.close()
         return 0
 
+    use_html = not bool(getattr(args, "terminal", False) or getattr(args, "no_html", False))
+    if use_html:
+        from cfb_coach.live_server import LivePlayController, run_live_server
+
+        def _make(sit, **kwargs):
+            return make_call(sit, oid, db, **kwargs)
+
+        def _learn():
+            from cfb_coach.gameplan import postgame_summary
+
+            return postgame_summary(db, oid, dynasty=dynasty)
+
+        ctrl = LivePlayController(
+            db=db,
+            opponent_id=oid,
+            make_call=_make,
+            parse_situation=parse_situation,
+            learn_summary=_learn,
+            brand="CFB Coach",
+            play_cmd="cfb-coach play",
+            dynasty=dynasty,
+            cpu_only=cpu_only,
+            book_info=lambda: _book_live_info(db, dynasty),
+            book_apply=lambda rev: _book_live_apply(db, dynasty, rev),
+        )
+        print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
+        print(_book_status_line(db, dynasty))
+        try:
+            return run_live_server(
+                ctrl,
+                port=getattr(args, "html_port", None),
+                open_browser=True,
+            )
+        finally:
+            db.close()
+
     if overlay_path is not None:
         write_overlay_html(
             str(overlay_path),
@@ -314,6 +475,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         print(f"Overlay ON → {overlay_path}  (auto-opens browser; --no-overlay to disable)")
     else:
         print("Overlay OFF (--no-overlay)")
+    print(_book_status_line(db, dynasty))
     print("-" * 60)
 
     default_side = "offense"
@@ -358,6 +520,14 @@ def cmd_play(args: argparse.Namespace) -> int:
                 else:
                     default_side = "defense"
                     print("  side → defense")
+                continue
+            if low in ("book", "book show"):
+                print("  " + _book_status_line(db, dynasty))
+                continue
+            if low == "book apply":
+                rec = _book_live_apply(db, dynasty, None)
+                print(f"  Applied playbook rev {rec['rev']} — new plays are callable now." if rec
+                      else "  No pending playbook edits.")
                 continue
             if low == "why" and last_call:
                 print(f"  ({last_call.rationale})")
@@ -438,6 +608,57 @@ def cmd_play(args: argparse.Namespace) -> int:
                 last_coverage = sit.coverage_hint
             if sit.concept_hint and sit.side == "defense":
                 last_concept = sit.concept_hint
+    finally:
+        db.close()
+    return 0
+
+
+def cmd_rebuild(args: argparse.Namespace) -> int:
+    """Recompute ALL learned weights from every logged snap + game result (v2 rules)."""
+    from cfb_coach.games import is_madden
+
+    if is_madden(getattr(args, "game", None)):
+        raise SystemExit("rebuild applies to CFB 27 (--game cfb27); Madden 27 keeps its own learning")
+    from cfb_coach.learning import (
+        RULES_VERSION,
+        LearnedWeights,
+        backup_db_file,
+        rebuild_all,
+        weight_diff,
+        zone_leaderboard,
+    )
+    from cfb_coach.learning import _fmt_key  # noqa: PLC2701
+
+    db = _db()
+    try:
+        oid = _require_opponent(args.opponent) if getattr(args, "opponent", None) else "cpu"
+        n_snaps = int(db.conn.execute("SELECT COUNT(*) FROM snaps").fetchone()[0])
+        bpath = None
+        if not getattr(args, "no_backup", False) and n_snaps:
+            bpath = backup_db_file(db)
+            if bpath:
+                db.set_meta("learn_rules_backup_path", str(bpath))
+        res = rebuild_all(db)
+        n_games = len([r for r in res["results"].values() if r.get("result_wl")])
+        print(
+            f"Rebuilt learned weights under rules {RULES_VERSION} from {n_snaps} snaps / {n_games} game results"
+            + (f" (backup: {bpath})" if bpath else " (no backup)")
+        )
+        print("Snaps and game history untouched.")
+        diff = weight_diff(res["before"], res["after"], opponent_id=oid)
+        top = int(getattr(args, "top", 15) or 15)
+        print(f"\n## Biggest changes vs {oid} (before → after)")
+        for k, b, a, _d in diff[:top]:
+            print(f"  {_fmt_key(k)}: {b:+.2f} → {a:+.2f}")
+        lw = LearnedWeights.load(db, oid)
+        for zone, label in (("general", "general"), ("rz", "red zone"), ("gl", "goal line / goal-to-go")):
+            lb = zone_leaderboard(lw, zone, top=5)
+            print(f"\n## {label}: best")
+            for name, v, n in lb["best"]:
+                print(f"  {v:+.2f}  {name}  (n={n})")
+            print(f"## {label}: worst")
+            for name, v, n in lb["worst"]:
+                print(f"  {v:+.2f}  {name}  (n={n})")
     finally:
         db.close()
     return 0
@@ -531,17 +752,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_prep.add_argument(
         "--mark-applied",
         action="store_true",
-        help="Mark current proposed deltas as applied (next prep shows only NEW)",
+        help="Mark current proposed deltas as applied AND confirm pending custom-playbook edits (same as `book apply`)",
     )
     p_prep.add_argument(
         "--offline",
         action="store_true",
-        help="Skip live meta scout network fetch (use cache/baseline cfb27-2026-09)",
+        help="Skip the live meta fetch (use last cache, else the seed research in meta_baseline.json)",
     )
     p_prep.add_argument(
         "--refresh-meta",
         action="store_true",
-        help="Force refetch meta scout (ignore <6h cache)",
+        help="(Kept for compatibility) every prep now researches live; the cache is only a fallback when sources fail",
     )
     _add_game_args(p_prep)
     p_prep.add_argument(
@@ -562,7 +783,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_play = sub.add_parser(
         "play",
-        help="Interactive typed live call loop + browser overlay (CPU = offense-only)",
+        help="Live play: HTML input window (default) or --terminal sit> loop (CPU = offense-only)",
     )
     p_play.add_argument("--opponent", "-o", required=True)
     p_play.add_argument(
@@ -586,7 +807,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-overlay",
         dest="no_overlay",
         action="store_true",
-        help="Disable HTML overlay (interactive play defaults overlay ON)",
+        help="Disable HTML overlay (terminal mode only; interactive play defaults overlay ON)",
+    )
+    p_play.add_argument(
+        "--terminal",
+        "--no-html",
+        dest="terminal",
+        action="store_true",
+        help="Classic terminal sit> loop instead of the HTML live window (default: HTML ON)",
+    )
+    p_play.add_argument(
+        "--html-port",
+        type=int,
+        default=None,
+        metavar="PORT",
+        help="Localhost port for HTML live play (default 8765 or next free)",
     )
     _add_game_args(p_play)
     p_play.set_defaults(func=cmd_play)
@@ -609,6 +844,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_game_args(p_post)
     p_post.set_defaults(func=cmd_postgame)
+
+    p_reb = sub.add_parser(
+        "rebuild",
+        help="Recompute ALL learned weights from every logged snap + W/L under the current retrain rules (backs up the DB first)",
+    )
+    p_reb.add_argument("--opponent", "-o", default=None, help="Which opponent's changes to print (default cpu)")
+    p_reb.add_argument("--no-backup", action="store_true", help="Skip the timestamped DB backup")
+    p_reb.add_argument("--top", type=int, default=15, help="How many before/after changes to print")
+    p_reb.add_argument("--game", default="cfb27", help=argparse.SUPPRESS)
+    p_reb.set_defaults(func=cmd_rebuild)
 
     p_ops = sub.add_parser("opponents", help="List opponents + aliases")
     _add_game_args(p_ops, franchise=False)
@@ -664,6 +909,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_book.set_defaults(game="madden27")
     p_book.add_argument("--side", choices=("offense", "defense"), default=None)
     p_book.set_defaults(func=cmd_playbook)
+
+    p_cbook = sub.add_parser(
+        "book",
+        help="CFB 27 custom playbook of record (managed each prep): show | apply | history | rollback --to N | diff",
+    )
+    p_cbook.add_argument("action", nargs="?", default="show", choices=("show", "apply", "history", "rollback", "diff"))
+    p_cbook.add_argument("--dynasty", choices=("alabama", "ohio_state"), default=None,
+                         help="Which dynasty's book (default: last prep/play dynasty)")
+    p_cbook.add_argument("--rev", type=int, default=None, help="apply: only if this is still the pending revision")
+    p_cbook.add_argument("--to", type=int, default=None, help="rollback: revision to restore")
+    p_cbook.set_defaults(func=cmd_book)
 
     p_watch = sub.add_parser(
         "watch",

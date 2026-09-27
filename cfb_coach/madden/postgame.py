@@ -58,7 +58,19 @@ def learn(db: Any, opponent_id: str) -> dict[str, Any]:
                 status_changes.append(f"{m} → {new} ({sum(rec)}/{len(rec)} success)")
     if snaps:
         db.set_meta(f"{LEARN_KEY}:{opponent_id}", str(max(int(s["id"]) for s in snaps)))
-    return {"snaps": len(snaps), "plays": plays, "macros": macros, "status_changes": status_changes}
+
+    from cfb_coach.retrain import apply_play_vs_look_weights, grade_play_vs_look
+
+    grades = grade_play_vs_look(list(snaps))
+    vs_changes = apply_play_vs_look_weights(db, opponent_id, grades)
+    return {
+        "snaps": len(snaps),
+        "plays": plays,
+        "macros": macros,
+        "status_changes": status_changes,
+        "grades": grades,
+        "vs_look_changes": vs_changes,
+    }
 
 
 def summary(db: Any, opponent_id: str, profile: str | None = None) -> str:
@@ -81,6 +93,12 @@ def summary(db: Any, opponent_id: str, profile: str | None = None) -> str:
         lines.append("## Macros used")
         for m, res in out["macros"].items():
             lines.append(f"  {m} [{macro_status(m, db)}]: {sum(res)}/{len(res)} success")
+    grades = out.get("grades") or []
+    if grades:
+        from cfb_coach.retrain import format_grades_summary
+
+        lines.append("## Play vs coverage/look")
+        lines.extend(format_grades_summary(grades))
     for ch in out["status_changes"]:
         lines.append(f"  STATUS: {ch}")
 

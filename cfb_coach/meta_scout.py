@@ -1,11 +1,30 @@
-"""Live meta scout — fetch recent CFB 27 patch notes + online competitive meta.
+"""Live meta scout — fetch the CURRENT CFB 27 meta on every prep (when online).
 
-On prep (unless --offline): hit a small set of trusted URLs via urllib, parse
-titles/snippets, cache under ~/.cfb-coach/meta_cache.json (6h TTL), and map
-hits onto Aidan's book language as soft Meta-grounded suggestions.
+On prep (unless --offline) the scout fetches real, free, no-key sources in
+parallel with urllib (standard library only): EA title-update pages (plus any
+newer title update discovered on the EA news list), MP1st / UpdateCrazy patch
+notes, MaddenTurf + MaddenProdigy meta guides, r/NCAAFBseries search RSS and
+Google News RSS (which also surfaces YouTube meta videos by title).
 
-Never hangs the prep path: hard per-URL timeouts + total fetch budget ~15s.
-Failures degrade gracefully to cached / baseline cfb27-2026-09.
+Freshness (v1.13): EVERY prep does live research — web sources plus YouTube
+(search pages, creator channel RSS, transcripts; see ``yt_research``) run in
+parallel with bounded timeouts. The cache (~/.cfb-coach/meta_cache.json) is
+only a FALLBACK when offline or every source fails, and the prep page says so
+loudly with the cache's age. Order: live -> last good cache -> seed baseline
+(cfb_coach/data/meta_baseline.json ``meta_research``). ``--refresh-meta`` is
+kept as a no-op alias (live is already the default).
+
+Signals: besides keyword concept counts, ``meta_entities`` extracts the exact
+formation / play names of the CFB 27 playbook database from every document
+(pages, feed items, video titles, transcripts) with per-source counts and
+recency weighting. Those named signals drive the autonomous custom playbook
+(``cfb_playbook``) and a small capped live-caller boost (``meta_align``).
+
+Besides tips, the scout extracts structured concept signals (general + red
+zone / goal line) that ``cfb_coach.meta_align`` turns into small, capped priors,
+and a ``changes_since_last`` diff vs the previous cache.
+
+Never hangs the prep path: per-URL timeout + total fetch budget.
 """
 
 from __future__ import annotations
@@ -15,6 +34,7 @@ import json
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, wait
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
@@ -23,31 +43,45 @@ from pathlib import Path
 from typing import Any
 
 BASELINE_VERSION = "cfb27-2026-09"
-CACHE_TTL_SECONDS = 6 * 3600
-PER_URL_TIMEOUT = 2.5
+CACHE_TTL_SECONDS = 6 * 3600  # Madden scout still uses this; CFB prep always fetches live now
+PER_URL_TIMEOUT = 4.0
 TOTAL_FETCH_BUDGET = 12.0
+YOUTUBE_BUDGET = 16.0  # runs in parallel with the web fetch; total prep research ~<= 18 s
+LIVE_POLICY = "live research every prep (web + YouTube); cache is only a fallback when offline or every source fails"
+MAX_PARALLEL = 8
+MAX_DISCOVERED = 2  # newer EA title-update pages found on the news list
 USER_AGENT = (
-    "Mozilla/5.0 (compatible; cfb-coach-meta-scout/1.6; "
+    "Mozilla/5.0 (compatible; cfb-coach-meta-scout/1.13; "
     "+https://github.com/aferna6-cell/cfb-coach)"
 )
-MAX_BODY = 180_000
+MAX_BODY = 600_000
 
-# Trusted concrete URLs (skip failures gracefully). Prefer known pages over search.
-TRUSTED_URLS: list[str] = [
-    # EA official news / title updates
-    "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/title-update-september-3rd-2026",
-    "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/cfb-27-title-update-august-6-2026",
-    "https://www.ea.com/games/ea-sports-college-football/college-football-27/news",
-    "https://www.ea.com/games/ea-sports-college-football",
-    # Patch aggregators
-    "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes",
-    "https://mp1st.com/",
-    "https://updatecrazy.com/ea-college-football-27-cfb-27-update-1-012-patch-notes/",
-    # Competitive / tips style (if 200)
-    "https://civil.gg/",
-    "https://www.maddenturf.com/",
-    "https://www.gamespot.com/games/ea-sports-college-football-25/",
+_GN = "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q="
+_RD = "https://www.reddit.com/r/NCAAFBseries/search.rss?sort=new&restrict_sr=1&t=month&q="
+EA_NEWS_URL = "https://www.ea.com/games/ea-sports-college-football/college-football-27/news"
+
+# Real, free sources (no API keys). kind: patch | guide | rss | index
+SOURCES: list[dict[str, str]] = [
+    {"id": "ea_news", "kind": "index", "label": "EA SPORTS CFB 27 news (title updates)", "url": EA_NEWS_URL},
+    {"id": "ea_tu_0903", "kind": "patch", "label": "EA Title Update Sep 3 2026",
+     "url": EA_NEWS_URL + "/title-update-september-3rd-2026"},
+    {"id": "mp1st_1012", "kind": "patch", "label": "MP1st CFB 27 Update 1.012",
+     "url": "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes"},
+    {"id": "updatecrazy_1012", "kind": "patch", "label": "UpdateCrazy CFB 27 1.012 notes",
+     "url": "https://updatecrazy.com/ea-college-football-27-cfb-27-update-1-012-patch-notes/"},
+    {"id": "maddenturf_books", "kind": "guide", "label": "MaddenTurf best CFB 27 playbooks",
+     "url": "https://maddenturf.com/cfb-27-best-playbooks/"},
+    {"id": "maddenprodigy_offense", "kind": "guide", "label": "MaddenProdigy CFB 27 offense guide",
+     "url": "https://www.maddenprodigy.com/college-football-27-offense-guide/"},
+    {"id": "reddit_meta", "kind": "rss", "label": "r/NCAAFBseries: meta / playbook (past month)",
+     "url": _RD + "meta+OR+playbook+OR+%22best+plays%22"},
+    {"id": "reddit_rz", "kind": "rss", "label": "r/NCAAFBseries: red zone / goal line (past month)",
+     "url": _RD + "%22red+zone%22+OR+%22goal+line%22+OR+%22inside+the+5%22"},
+    {"id": "gnews_meta", "kind": "rss", "label": "Google News: CFB 27 meta / playbooks / patches (30d, incl. YouTube)",
+     "url": _GN + "%22College+Football+27%22+(meta+OR+playbook+OR+%22red+zone%22+OR+%22goal+line%22+OR+%22title+update%22)+when:30d"},
 ]
+TRUSTED_URLS: list[str] = [s["url"] for s in SOURCES]
+_SOURCE_BY_URL = {s["url"]: s for s in SOURCES}
 
 # Concept → Aidan book language soft mapping
 _CONCEPT_MAP: list[tuple[re.Pattern[str], dict[str, Any]]] = [
@@ -194,6 +228,8 @@ class MetaSource:
     fetched: bool = False
     status: int | None = None
     error: str = ""
+    label: str = ""
+    kind: str = ""
 
 
 @dataclass
@@ -211,6 +247,20 @@ class MetaScoutResult:
     fetched_at: str = ""
     message: str = ""
     affect_this_prep: list[str] = field(default_factory=list)
+    # v1.12: structured signals + freshness
+    mode: str = ""  # live | cache | seed
+    concept_signals: dict[str, int] = field(default_factory=dict)
+    rz_signals: dict[str, int] = field(default_factory=dict)
+    headlines: list[dict[str, Any]] = field(default_factory=list)
+    changes_since_last: list[str] = field(default_factory=list)
+    previous_fetched_at: str = ""
+    ttl_policy: str = ""
+    # v1.13: named formation/play signals, YouTube research, research health
+    named_signals: dict[str, Any] = field(default_factory=dict)
+    youtube: dict[str, Any] = field(default_factory=dict)
+    research_status: str = ""  # live | partial | failed | offline
+    fallback_age_hours: float | None = None
+    elapsed_s: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -240,12 +290,13 @@ def _strip_html(chunk: str) -> str:
 
 
 def _fetch_one(url: str, timeout: float) -> tuple[MetaSource, str]:
-    src = MetaSource(url=url)
+    info = _SOURCE_BY_URL.get(url) or {}
+    src = MetaSource(url=url, label=info.get("label", ""), kind=info.get("kind", ""))
     req = urllib.request.Request(
         url,
         headers={
             "User-Agent": USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/rss+xml,application/atom+xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.8",
         },
         method="GET",
@@ -278,12 +329,32 @@ def _fetch_one(url: str, timeout: float) -> tuple[MetaSource, str]:
         return src, ""
 
 
+_SCRIPT_RE = re.compile(r"<(script|style|noscript|svg)\b[^>]*>.*?</\1\s*>", re.I | re.S)
+_META_TAG_RE = re.compile(r"<meta\b[^>]{0,2000}>", re.I)
+_ATTR_RE = re.compile(r'([a-zA-Z:-]+)\s*=\s*["\']([^"\']*)["\']')
+_SNIPPET_CACHE: dict[tuple[int, int, int], list[str]] = {}
+
+
+def _meta_description(body: str) -> str:
+    for m in _META_TAG_RE.finditer(body):
+        attrs = {k.lower(): v for k, v in _ATTR_RE.findall(m.group(0))}
+        if (attrs.get("name") or attrs.get("property") or "").lower() in ("description", "og:description"):
+            return _strip_html(attrs.get("content", ""))
+    return ""
+
+
 def _extract_snippets(body: str, limit: int = 24) -> list[str]:
+    key = (hash(body), len(body), limit)
+    hash_key = key
+    if key in _SNIPPET_CACHE:
+        return list(_SNIPPET_CACHE[key])
+    if len(_SNIPPET_CACHE) > 64:
+        _SNIPPET_CACHE.clear()
+    desc = _meta_description(body)
+    body = _SCRIPT_RE.sub(" ", body)
     bits: list[str] = []
-    for rx in (_META_DESC_RE, _META_DESC_RE2):
-        m = rx.search(body)
-        if m:
-            bits.append(_strip_html(m.group(1)))
+    if desc:
+        bits.append(desc)
     for m in _H_RE.finditer(body):
         bits.append(_strip_html(m.group(1)))
     for m in _LI_RE.finditer(body):
@@ -314,6 +385,7 @@ def _extract_snippets(body: str, limit: int = 24) -> list[str]:
         out.append(b)
         if len(out) >= limit:
             break
+    _SNIPPET_CACHE[(hash_key[0], hash_key[1], limit)] = list(out)
     return out
 
 
@@ -509,20 +581,276 @@ def _result_from_cache(cached: dict[str, Any]) -> MetaScoutResult | None:
     return r
 
 
-def _cache_fresh(cached: dict[str, Any]) -> bool:
-    ts = cached.get("cached_at") or ""
+def _parse_iso(ts: str) -> datetime | None:
     try:
         if ts.endswith("Z"):
             ts = ts[:-1] + "+00:00"
         dt = datetime.fromisoformat(ts)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        age = (
-            datetime.now(timezone.utc) - dt.astimezone(timezone.utc)
-        ).total_seconds()
-        return age < CACHE_TTL_SECONDS
-    except Exception:  # noqa: BLE001
+        return dt
+    except (TypeError, ValueError):
+        return None
+
+
+def local_ts(ts: str) -> str:
+    """ISO timestamp -> local wall clock ("2026-09-27 13:21 EDT") for messages."""
+    dt = _parse_iso(ts or "")
+    if dt is None:
+        return ts or "?"
+    return dt.astimezone().strftime("%Y-%m-%d %H:%M %Z")
+
+
+def _cache_fresh(cached: dict[str, Any], *, now: datetime | None = None) -> bool:
+    """Fresh = fetched TODAY (local calendar date) AND younger than the TTL."""
+    dt = _parse_iso(cached.get("cached_at") or "")
+    if dt is None:
         return False
+    now = now or datetime.now(timezone.utc)
+    age = (now - dt.astimezone(timezone.utc)).total_seconds()
+    same_day = dt.astimezone().date() == now.astimezone().date()
+    return 0 <= age < CACHE_TTL_SECONDS and same_day
+
+
+# ---------------------------------------------------------------------------
+# Structured signals (feed cfb_coach.meta_align priors)
+# ---------------------------------------------------------------------------
+
+SIGNAL_PATTERNS: dict[str, re.Pattern[str]] = {
+    "bunch": re.compile(r"\bbunch\b", re.I),
+    "cluster": re.compile(r"\bcluster\b", re.I),
+    "deuce": re.compile(r"deuce\s*close|singleback\s*deuce", re.I),
+    "run_first": re.compile(r"run[-\s]first|run[-\s]heavy|running\s+game|run[-\s]action|run\s+blocking", re.I),
+    "inside_zone": re.compile(r"\b(?i:inside\s+zone|split\s+zone)\b|\bIZ\b"),
+    "duo_power": re.compile(r"\bduo\b|\bpower\s+run|\bcounter\b", re.I),
+    "dive": re.compile(r"\b(?:hb|single\s*back|singleback)\s+dive\b|\bdive\b", re.I),
+    "mesh": re.compile(r"\bmesh\b|\bdrags?\b|\bshallow\b", re.I),
+    "whip": re.compile(r"\bwhip\b", re.I),
+    "spot_flat": re.compile(r"\bspot\b|\bflats?\b|quick\s+outs?|\bstick\b|\bslants?\b", re.I),
+    "rpo": re.compile(r"\brpos?\b", re.I),
+    "play_action": re.compile(r"(?i:play[-\s]action)|\bPA\b"),
+    "verticals": re.compile(r"\bverticals\b|four\s+verts|4\s+verts|\bhero\s+ball\b", re.I),
+    "man_coverage": re.compile(r"\bman\s+coverage\b|\bpress\s+man\b|\bman\s+press\b", re.I),
+    "cpu_gl_wall": re.compile(r"force\s+field|goal[-\s]?line\s+(?:wall|stand)|stuffed\s+at\s+the\s+1", re.I),
+}
+_RZ_CONTEXT = re.compile(r"red[-\s]?zone|goal[-\s]?line|inside\s+the\s+(?:5|five|10|ten|20)|goal\s+to\s+go|short\s+yardage", re.I)
+RZ_WINDOW_BEFORE = 120
+RZ_WINDOW_AFTER = 450
+_CFB27 = re.compile(r"college\s+football\s+27|\bcfb\s*27\b|\bcfb27\b|ncaa\s*27", re.I)
+
+
+def extract_signals(texts: list[str]) -> tuple[dict[str, int], dict[str, int]]:
+    """Per-text (≈ per source/post) concept hits; rz = concept in a red-zone sentence.
+
+    Counting documents rather than raw mentions keeps one long page from
+    dominating the signal.
+    """
+    gen: dict[str, int] = {}
+    rz: dict[str, int] = {}
+    for text in texts:
+        if not text:
+            continue
+        hit_g: set[str] = set()
+        hit_rz: set[str] = set()
+        for name, rx in SIGNAL_PATTERNS.items():
+            if rx.search(text):
+                hit_g.add(name)
+        for m in _RZ_CONTEXT.finditer(text):
+            # window: a little before the mention, a paragraph after it
+            window = text[max(0, m.start() - RZ_WINDOW_BEFORE): m.end() + RZ_WINDOW_AFTER]
+            for name, rx in SIGNAL_PATTERNS.items():
+                if rx.search(window):
+                    hit_rz.add(name)
+        for n in hit_g:
+            gen[n] = gen.get(n, 0) + 1
+        for n in hit_rz:
+            rz[n] = rz.get(n, 0) + 1
+    return dict(sorted(gen.items())), dict(sorted(rz.items()))
+
+
+def parse_feed(body: str) -> list[dict[str, str]]:
+    """RSS 2.0 or Atom -> [{title, link, date, text}] (stdlib xml, regex fallback)."""
+    import xml.etree.ElementTree as ET
+
+    items: list[dict[str, str]] = []
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        root = None
+    if root is not None:
+        atom = "{http://www.w3.org/2005/Atom}"
+        for it in root.iter("item"):
+            items.append(
+                {
+                    "title": _strip_html(it.findtext("title") or ""),
+                    "link": (it.findtext("link") or "").strip(),
+                    "date": (it.findtext("pubDate") or "").strip(),
+                    "text": _strip_html(it.findtext("description") or ""),
+                }
+            )
+        for e in root.iter(atom + "entry"):
+            link_el = e.find(atom + "link")
+            items.append(
+                {
+                    "title": _strip_html(e.findtext(atom + "title") or ""),
+                    "link": (link_el.get("href") if link_el is not None else "") or "",
+                    "date": (e.findtext(atom + "updated") or "").strip(),
+                    "text": _strip_html(e.findtext(atom + "content") or "")[:1500],
+                }
+            )
+        return items
+    for m in re.finditer(r"<item>(.*?)</item>", body, re.S | re.I):
+        chunk = m.group(1)
+        t = re.search(r"<title>(.*?)</title>", chunk, re.S)
+        items.append({"title": _strip_html(t.group(1) if t else ""), "link": "", "date": "", "text": ""})
+    return items
+
+
+def _item_date(raw: str) -> datetime | None:
+    from email.utils import parsedate_to_datetime
+
+    if not raw:
+        return None
+    dt = _parse_iso(raw)
+    if dt:
+        return dt
+    try:
+        dt = parsedate_to_datetime(raw)
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def _discover_title_updates(body: str, known: set[str]) -> list[str]:
+    """Newer EA title-update pages linked from the EA news list (page order = newest first)."""
+    out: list[str] = []
+    for m in re.finditer(r'href="(/games/ea-sports-college-football/college-football-27/news/[a-z0-9-]*(?:title-update|patch)[a-z0-9-]*)"', body):
+        url = "https://www.ea.com" + m.group(1)
+        if url not in known and url not in out:
+            out.append(url)
+        if len(out) >= MAX_DISCOVERED:
+            break
+    return out
+
+
+def _fetch_parallel(urls: list[str], budget: float) -> tuple[list[MetaSource], dict[str, str]]:
+    sources: dict[str, MetaSource] = {}
+    bodies: dict[str, str] = {}
+    if not urls:
+        return [], {}
+    t0 = time.monotonic()
+    pool = ThreadPoolExecutor(max_workers=min(MAX_PARALLEL, len(urls)))
+    futs = {pool.submit(_fetch_one, u, PER_URL_TIMEOUT): u for u in urls}
+    done, not_done = wait(futs, timeout=max(0.5, budget))
+    for f in done:
+        u = futs[f]
+        try:
+            src, body = f.result()
+        except Exception as e:  # noqa: BLE001
+            src, body = MetaSource(url=u, error=f"{type(e).__name__}: {e}"), ""
+        sources[u] = src
+        if body:
+            bodies[u] = body
+    for f in not_done:
+        u = futs[f]
+        info = _SOURCE_BY_URL.get(u) or {}
+        sources[u] = MetaSource(url=u, error=f"skipped: fetch budget {budget:.0f}s exhausted",
+                                label=info.get("label", ""), kind=info.get("kind", ""))
+    pool.shutdown(wait=False, cancel_futures=True)
+    _ = time.monotonic() - t0
+    return [sources[u] for u in urls], bodies
+
+
+_OLD_TITLE_RX = re.compile(
+    r"college\s*football\s*2[3-6]\b|\bcfb\s*-?\s*2[3-6]\b|\bcfb2[3-6]\b|\bncaa\s*1[0-4]\b|\bmadden\b", re.I
+)
+
+
+def _collect_docs(
+    sources: list[MetaSource], bodies: dict[str, str], *, now: datetime, max_age_days: int = 45
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
+    """(headlines, texts, docs). docs = {label, kind, url, date, text} for named-entity extraction.
+
+    Feed items must be CFB 27 (Google News) and never an older title / Madden
+    (by title), within ``max_age_days``.
+    """
+    heads: list[dict[str, Any]] = []
+    texts: list[str] = []
+    docs: list[dict[str, Any]] = []
+    for src in sources:
+        body = bodies.get(src.url) or ""
+        if not body:
+            continue
+        if src.kind == "rss" or body.lstrip().startswith("<?xml") or "<rss" in body[:500]:
+            reddit = "reddit.com" in src.url
+            for it in parse_feed(body):
+                title = it.get("title") or ""
+                dt = _item_date(it.get("date") or "")
+                if dt and (now - dt.astimezone(timezone.utc)).days > max_age_days:
+                    continue
+                blob = f"{title}. {it.get('text') or ''}"
+                if not reddit and not _CFB27.search(blob):
+                    continue  # Google News: must be about CFB 27
+                if _OLD_TITLE_RX.search(title) and not _CFB27.search(title):
+                    continue  # older title (CFB 25/26) or Madden
+                heads.append(
+                    {
+                        "title": title[:200],
+                        "link": it.get("link") or "",
+                        "date": dt.date().isoformat() if dt else "",
+                        "source": src.label or src.url,
+                    }
+                )
+                texts.append(blob)
+                docs.append({"label": f"{src.label or src.url}: {title[:120]}", "kind": "rss",
+                             "url": it.get("link") or src.url, "date": dt.date().isoformat() if dt else "", "text": blob})
+        elif src.kind != "index":
+            full = _strip_html(_SCRIPT_RE.sub(" ", body))
+            text = f"{src.title}. {full[:60000]}"
+            texts.append(text)
+            dm = re.search(r"(20\d\d-\d\d-\d\d)", src.url + " " + (src.title or ""))
+            docs.append({"label": src.label or src.title or src.url, "kind": src.kind or "page",
+                         "url": src.url, "date": dm.group(1) if dm else "", "text": text})
+    heads.sort(key=lambda h: h.get("date") or "", reverse=True)
+    return heads[:30], texts, docs
+
+
+def _headlines_and_texts(
+    sources: list[MetaSource], bodies: dict[str, str], *, now: datetime, max_age_days: int = 45
+) -> tuple[list[dict[str, Any]], list[str]]:
+    heads, texts, _docs = _collect_docs(sources, bodies, now=now, max_age_days=max_age_days)
+    return heads, texts
+
+
+def _diff_results(prev: MetaScoutResult | None, cur: MetaScoutResult) -> list[str]:
+    if prev is None:
+        return ["First meta fetch — no previous cache to compare."]
+    out: list[str] = []
+    old_v = {p.get("version") for p in prev.patch_notes}
+    for p in cur.patch_notes:
+        v = p.get("version")
+        if v and v != "unknown" and v not in old_v:
+            out.append(f"New patch notes: {v} — {p.get('title') or ''}".strip())
+    old_titles = {h.get("title") for h in prev.headlines}
+    new_heads = [h for h in cur.headlines if h.get("title") not in old_titles]
+    for h in new_heads[:6]:
+        out.append(f"New: {h.get('title')} ({h.get('source')}, {h.get('date') or 'undated'})")
+    for label, a, b in (("", prev.concept_signals, cur.concept_signals), ("red-zone ", prev.rz_signals, cur.rz_signals)):
+        for k in sorted(set(a) | set(b)):
+            d = b.get(k, 0) - a.get(k, 0)
+            if abs(d) >= 2:
+                out.append(f"{label}signal '{k}' {'up' if d > 0 else 'down'} {a.get(k, 0)} → {b.get(k, 0)}")
+    old_pairs = set((prev.named_signals or {}).get("pairs") or {})
+    for k, rec in list(((cur.named_signals or {}).get("pairs") or {}).items())[:12]:
+        if k not in old_pairs and rec.get("docs", 0) >= 1:
+            out.append(f"Newly mentioned: {k.replace('::', ' — ')} ({rec.get('docs')} source(s))")
+    old_ok = {s.get("url") for s in prev.sources if s.get("fetched")}
+    new_ok = {s.get("url") for s in cur.sources if s.get("fetched")}
+    for u in sorted(new_ok - old_ok):
+        out.append(f"Source now reachable: {u}")
+    for u in sorted(old_ok - new_ok):
+        out.append(f"Source unreachable this time: {u}")
+    return out[:14] or ["No material change since the last fetch."]
 
 
 def unavailable_result(
@@ -541,81 +869,200 @@ def unavailable_result(
         baseline_fallback=BASELINE_VERSION,
         fetched_at=_now_iso(),
         message=msg,
+        mode="seed",
     )
+
+
+def seed_result(*, offline: bool = False, message: str = "") -> MetaScoutResult:
+    """Fallback built from the seed baseline's cited ``meta_research`` section."""
+    try:
+        from cfb_coach.gameplan import load_baseline
+
+        research = load_baseline().get("meta_research") or {}
+    except Exception:  # noqa: BLE001
+        research = {}
+    findings = research.get("findings") or []
+    texts = [f.get("claim", "") for f in findings]
+    gen, rz = extract_signals(texts)
+    r = unavailable_result(offline=offline, message=message)
+    r.mode = "seed"
+    r.concept_signals = gen
+    r.rz_signals = rz
+    try:
+        from cfb_coach.meta_entities import aggregate as aggregate_named
+
+        docs = [{"label": f.get("source", ""), "kind": "seed", "url": f.get("url", ""),
+                 "date": str(f.get("published") or "")[:10], "text": f.get("claim", "")} for f in findings]
+        r.named_signals = aggregate_named(docs)
+    except Exception:  # noqa: BLE001
+        r.named_signals = {}
+    r.fetched_at = research.get("updated", "")
+    r.sources = [
+        {"url": f.get("url", ""), "title": f.get("source", ""), "fetched": False, "status": None,
+         "error": "", "label": f"seed research ({f.get('published', '')})", "kind": "seed"}
+        for f in findings
+    ]
+    return r
+
+
+_ORIG_FETCH_ONE = _fetch_one
+
+
+def _yt_fetch(url: str, timeout: float) -> tuple[int, str]:
+    """HTTP for YouTube discovery. Uses a browser UA normally; routes through a
+    patched ``_fetch_one`` in tests so nothing touches the network there."""
+    if _fetch_one is _ORIG_FETCH_ONE:
+        from cfb_coach.yt_research import _get
+
+        return _get(url, timeout=timeout)
+    src, body = _fetch_one(url, timeout)
+    return (int(src.status or (200 if src.fetched else 0)), body)
+
+
+def _age_hours(ts: str, now: datetime) -> float | None:
+    dt = _parse_iso(ts or "")
+    if dt is None:
+        return None
+    return round((now - dt.astimezone(timezone.utc)).total_seconds() / 3600.0, 1)
 
 
 def run_meta_scout(
     *,
     offline: bool = False,
-    refresh: bool = False,
+    refresh: bool = True,  # kept for callers/CLI; live research is always the default now
     urls: list[str] | None = None,
+    now: datetime | None = None,
+    youtube: bool = True,
+    yt_runner: Any | None = None,
 ) -> MetaScoutResult:
-    """Fetch/parse trusted URLs (or reuse cache). Never raises; never blocks >~15s."""
-    if offline:
-        cached = _load_cache()
-        if cached:
-            r = _result_from_cache(cached)
-            if r:
-                r.offline = True
-                r.message = (
-                    "Scout unavailable — using cached/baseline cfb27-2026-09"
-                    if not r.available
-                    else "Offline — using cached scout (<6h or last good)"
-                )
-                return r
-        return unavailable_result(offline=True)
+    """Live research on every prep (web + YouTube, in parallel). Never raises; bounded time.
 
+    Order: live fetch -> last good cache (loud, with age) -> seed research.
+    ``offline`` skips the network entirely (cache, else seed).
+    """
+    from cfb_coach.meta_entities import aggregate as aggregate_named
+
+    del refresh  # always live
+    now = now or datetime.now(timezone.utc)
+    t_start = time.monotonic()
+    ttl = LIVE_POLICY
     cached = _load_cache()
-    if cached and not refresh and _cache_fresh(cached):
-        r = _result_from_cache(cached)
-        if r:
-            r.message = r.message or "Using cached scout (<6h)"
-            return r
+    prev = _result_from_cache(cached) if cached else None
+
+    def _fallback(msg_prefix: str, *, offline_flag: bool, attempted: list[dict[str, Any]] | None = None,
+                  yt: dict[str, Any] | None = None) -> MetaScoutResult:
+        if prev and (prev.available or prev.concept_signals or prev.named_signals):
+            age = _age_hours(prev.fetched_at or cached.get("cached_at", ""), now)
+            prev.offline = offline_flag
+            prev.from_cache = True
+            prev.mode = "cache"
+            prev.ttl_policy = ttl
+            prev.research_status = "offline" if offline_flag else "failed"
+            prev.fallback_age_hours = age
+            prev.message = (
+                f"{msg_prefix} — using cached meta from {local_ts(prev.fetched_at or cached.get('cached_at', ''))}"
+                + (f" ({age:.0f}h old)" if age is not None else "")
+            )
+            if attempted:
+                prev.sources = attempted + [dict(s_, label=f"(cached) {s_.get('label') or ''}") for s_ in prev.sources if s_.get("fetched")]
+            if yt is not None:
+                prev.youtube = {**yt, "cached_result": prev.youtube}
+            prev.elapsed_s = round(time.monotonic() - t_start, 2)
+            return prev
+        r = seed_result(offline=offline_flag, message=f"{msg_prefix} and no cache — using seed research " + BASELINE_VERSION)
+        r.ttl_policy = ttl
+        r.research_status = "offline" if offline_flag else "failed"
+        if attempted:
+            r.sources = attempted + r.sources
+        if yt is not None:
+            r.youtube = yt
+        r.elapsed_s = round(time.monotonic() - t_start, 2)
+        return r
+
+    if offline:
+        return _fallback("Offline (--offline)", offline_flag=True)
 
     url_list = list(urls or TRUSTED_URLS)
-    # Cap live fetches so prep never hangs >~12s (prefer concrete patch pages first)
-    if urls is None:
-        url_list = url_list[:6]
-    sources: list[MetaSource] = []
-    bodies: dict[str, str] = {}
+    yt_res: dict[str, Any] = {}
+    yt_docs: list[dict[str, Any]] = []
+    outer = ThreadPoolExecutor(max_workers=2)
+    yt_future = None
+    if youtube:
+        if yt_runner is None:
+            from cfb_coach.yt_research import run_youtube_research
+
+            def yt_runner(**kw: Any) -> Any:  # noqa: F811
+                return run_youtube_research(fetch=_yt_fetch, **kw)
+
+        yt_future = outer.submit(yt_runner, now=now, budget_s=YOUTUBE_BUDGET)
+
     t0 = time.monotonic()
-    for url in url_list:
-        elapsed = time.monotonic() - t0
-        remaining = TOTAL_FETCH_BUDGET - elapsed
-        if remaining <= 0.4:
-            sources.append(
-                MetaSource(
-                    url=url, error="skipped: total fetch budget exhausted"
-                )
-            )
-            continue
-        timeout = min(PER_URL_TIMEOUT, max(0.8, remaining))
-        src, body = _fetch_one(url, timeout)
-        sources.append(src)
-        if body:
-            bodies[url] = body
+    sources, bodies = _fetch_parallel(url_list, TOTAL_FETCH_BUDGET)
+    # Phase 2: follow newer EA title updates linked from the news list
+    if urls is None and EA_NEWS_URL in bodies:
+        extra = _discover_title_updates(bodies[EA_NEWS_URL], set(url_list))
+        left = TOTAL_FETCH_BUDGET - (time.monotonic() - t0)
+        if extra and left > 1.0:
+            s2, b2 = _fetch_parallel(extra, left)
+            for s_ in s2:
+                s_.kind = s_.kind or "patch"
+                s_.label = s_.label or "EA title update (discovered)"
+            sources += s2
+            bodies.update(b2)
+    if yt_future is not None:
+        try:
+            yr = yt_future.result(timeout=max(1.0, YOUTUBE_BUDGET + 2.0 - (time.monotonic() - t_start)))
+            yt_res = yr.to_dict() if hasattr(yr, "to_dict") else dict(yr)
+            yt_docs = list(getattr(yr, "docs", None) or yt_res.get("docs") or [])
+            yt_res["docs"] = [{k: v for k, v in d.items() if k != "text"} | {"chars": len(d.get("text") or "")} for d in yt_docs]
+        except Exception as exc:  # noqa: BLE001
+            yt_res = {"ran": True, "found": 0, "transcripts": 0, "notes": [f"YouTube research failed: {type(exc).__name__}: {exc}"]}
+    outer.shutdown(wait=False, cancel_futures=True)
 
-    result = _parse_fetched(sources, bodies)
+    page_sources = [s_ for s_ in sources if s_.kind not in ("rss", "index")]
+    result = _parse_fetched(page_sources, bodies)
+    result.sources = [asdict(s_) for s_ in sources]
+    if yt_res:
+        result.sources.append({
+            "url": "https://www.youtube.com/results?search_query=college+football+27+meta", "title": "YouTube",
+            "fetched": bool(yt_res.get("found")), "status": None,
+            "error": "" if yt_res.get("found") else "; ".join(yt_res.get("notes") or [])[:160],
+            "label": (f"YouTube: {yt_res.get('found', 0)} CFB 27 videos, {yt_res.get('transcripts', 0)} transcripts "
+                      f"(search {yt_res.get('search_ok', 0)}/{yt_res.get('search_total', 0)}, channel RSS "
+                      f"{yt_res.get('rss_ok', 0)}/{yt_res.get('rss_total', 0)})"),
+            "kind": "youtube",
+        })
+    heads, texts, docs = _collect_docs(sources, bodies, now=now)
+    for d in yt_docs:
+        if d.get("kind") == "youtube_transcript":
+            heads.append({"title": d.get("title") or d.get("label"), "link": d.get("url"), "date": d.get("date") or "",
+                          "source": f"YouTube transcript · {d.get('channel') or ''}"})
+    heads.sort(key=lambda h: h.get("date") or "", reverse=True)
+    all_docs = docs + yt_docs
+    result.headlines = heads[:30]
+    result.concept_signals, result.rz_signals = extract_signals(texts + [d.get("text") or "" for d in yt_docs])
+    result.named_signals = aggregate_named(all_docs, now=now)
+    result.youtube = yt_res
+    n_ok = sum(1 for s_ in sources if s_.fetched)
+    result.available = (n_ok > 0 or bool(yt_res.get("found"))) and bool(
+        result.patch_notes or result.suggestions or result.meta_offense or heads or result.concept_signals
+        or (result.named_signals or {}).get("pairs")
+    )
+    result.ttl_policy = ttl
     if not result.available:
-        if cached:
-            stale = _result_from_cache(cached)
-            if stale and (
-                stale.patch_notes
-                or stale.meta_offense
-                or stale.meta_defense
-                or stale.suggestions
-            ):
-                stale.message = (
-                    "Scout unavailable — using cached/baseline cfb27-2026-09"
-                )
-                stale.from_cache = True
-                return stale
-        result.message = "Scout unavailable — using cached/baseline cfb27-2026-09"
-        result.baseline_fallback = BASELINE_VERSION
-        _save_cache(result)
-        return result
+        return _fallback("LIVE RESEARCH FAILED (no source reachable)", offline_flag=False,
+                         attempted=result.sources, yt=yt_res)
 
-    result.message = "Live scout OK"
+    result.mode = "live"
+    result.research_status = "live" if n_ok >= max(1, len(sources) // 2) else "partial"
+    result.previous_fetched_at = prev.fetched_at if prev else ""
+    result.changes_since_last = _diff_results(prev, result)
+    result.elapsed_s = round(time.monotonic() - t_start, 2)
+    result.message = (
+        f"Live research this prep: {n_ok}/{len(sources)} web sources"
+        + (f", YouTube {yt_res.get('found', 0)} videos / {yt_res.get('transcripts', 0)} transcripts" if yt_res else "")
+        + f" in {result.elapsed_s:.1f}s"
+    )
     _save_cache(result)
     return result
 
@@ -809,6 +1256,17 @@ def apply_scout_bias(
 def format_scout_text(result: MetaScoutResult) -> str:
     """Compact terminal dump of scout section."""
     lines = ["## Live meta scout"]
+    lines.append(
+        f"  mode={result.mode or '?'} fetched={result.fetched_at or '?'}"
+        + (f" (previous {result.previous_fetched_at})" if result.previous_fetched_at else "")
+        + (f" — {result.message}" if result.message else "")
+    )
+    if result.changes_since_last:
+        lines.append("  Changed since last cache:")
+        lines += [f"    - {c}" for c in result.changes_since_last[:8]]
+    if result.headlines:
+        lines.append("  Recent headlines:")
+        lines += [f"    - {h.get('date') or ''} {h.get('title')} [{h.get('source')}]" for h in result.headlines[:6]]
     if not result.available and not (
         result.patch_notes or result.meta_offense or result.meta_defense
     ):
