@@ -761,40 +761,100 @@ def build_prep_plan(
             plan["cfb_book"] = plan_book(db, dynasty, scout_dict or None, persist=persist)
         except Exception as exc:  # noqa: BLE001 — never break prep
             plan["cfb_book"] = {"error": f"{type(exc).__name__}: {exc}"}
+    # v1.14: CPU games are offense-only; when the loadout carries no offensive macros,
+    # the coach picks up to 8 offense custom adjustments that fit the custom book + research.
+    if offense_only and not plan["macro_cards"]:
+        try:
+            from cfb_coach.macros import offense_book_loadout
+
+            tp = (plan.get("cfb_book") or {}).get("target_plays") or {}
+            if tp:
+                sd = scout_dict or {}
+                live_ok = (sd.get("mode") or "") in ("live", "cache")
+                cards, lo = offense_book_loadout(tp, concept_signals=sd.get("concept_signals") if live_ok else None,
+                                                 rz_signals=sd.get("rz_signals") if live_ok else None)
+                plan["macro_cards"], plan["loadout"] = cards, lo
+                plan["slot_budget"] = dict(plan["slot_budget"], meter=lo["meter"], total=lo["total"],
+                                           offense_count=lo["total"], defense_count=0, at_cap=lo["total"] >= USER_ACTIVE_CAP)
+        except Exception:  # noqa: BLE001 — never break prep
+            pass
     if db is not None and persist:
         save_prep_deltas(db, opponent_id, proposed, shown)
     return plan
 
 
 def format_book_section_text(book: dict[str, Any] | None) -> list[str]:
-    """Terminal version of the custom playbook panel."""
+    """Terminal version of the custom playbook panel (details)."""
     book = book or {}
     if not book:
         return []
     if book.get("error"):
         return [f"## Custom playbook unavailable ({book['error']})"]
-    lines = [f"## Custom playbook of record — {book.get('name')} ({book.get('dynasty')})"]
+    lines = [f"## Custom playbook of record — {book.get('name')} ({book.get('dynasty')}) — formation level"]
     cur = book.get("current") or {}
     pend = book.get("pending") or {}
     if book.get("seeded_now"):
         lines.append(f"  Seeded rev {cur.get('rev')}: {book.get('seed_summary')}")
     if pend:
         lines.append(
-            f"  STATUS: {len(book.get('edits') or [])} PENDING EDIT(S) (rev {pend.get('rev')}). Live calls use "
+            f"  STATUS: {len(book.get('edits') or [])} PENDING FORMATION CHANGE(S) (rev {pend.get('rev')}). Live calls use "
             + (f"rev {cur.get('rev')} until you run `book apply`." if cur else "the pending book (unconfirmed) until you run `book apply`.")
         )
         lines.append("  EDIT LIST (CFB 27 > Create & Share > Custom Playbooks):")
         lines += ["    " + ln for ln in (book.get("edit_text") or "").splitlines()]
     else:
         lines.append(f"  STATUS: no changes this prep — rev {cur.get('rev')} stands (no churn).")
+    lines.append("  FORMATIONS (why):")
+    for r in book.get("formation_table") or []:
+        lines.append(f"    [{r['flag'] or '-'}] {r['formation']} ({r.get('source_book') or 'any'}, {r['n_plays']} plays) "
+                     f"meta {r['meta']:+.2f}; {r['stats']} — {(r.get('why') or '')[:160]}")
     lines.append("  RESULTING BOOK:")
     lines += ["    " + ln for ln in (book.get("book_text") or "").splitlines()]
-    if book.get("active8"):
-        lines.append("  ACTIVE 8 (quick set from the book): " + "; ".join(k.replace("::", " — ") for k in book["active8"]))
     flagged = [(k, f) for k, f in (book.get("flags") or {}).items() if f.get("flag") in ("demoted", "on_notice", "fading")]
     for k, f in flagged:
         lines.append(f"  [{f['flag']}] {k.replace('::', ' — ')}: {f['why']}")
     return lines
+
+
+def format_prep_minimal_text(plan: dict[str, Any]) -> str:
+    """v1.14 terminal/phone twin of the minimal prep page: formations, audibles, macros."""
+    from cfb_coach.prep_book_html import research_failed, research_status_line
+
+    scout = plan.get("meta_scout") or {}
+    book = plan.get("cfb_book") or {}
+    lines = [f"# PREP — vs {plan.get('display_name')} | {plan.get('game', 'CFB 27')} | dynasty {plan.get('dynasty')}"]
+    if research_failed(scout):
+        lines.append(f"!! LIVE META RESEARCH DID NOT RUN THIS PREP — {scout.get('message') or ''}")
+    lines.append(research_status_line(scout))
+    lines.append("")
+    if book.get("error"):
+        lines.append(f"## Formations: unavailable ({book['error']})")
+    elif book:
+        lines.append(f"## Formations — {book.get('name')}")
+        label = {"new": "NEW    ", "applied": "in book", "remove": "REMOVE ", "changed": "RE-ADD "}
+        for r in book.get("formation_list") or []:
+            lines.append(f"  [{label.get(r['status'], r['status'])}] {r['formation']}  ({r.get('source_book') or 'any'} playbook, {r['n_plays']} plays)")
+            if r.get("note"):
+                lines.append(f"            {r['note']}")
+        if book.get("pending") and book.get("apply_cmd"):
+            lines.append(f"  After making the changes in CFB 27: {book['apply_cmd']}")
+        lines.append("")
+        lines.append("## Audibles (4 per formation)")
+        for f, ps in (book.get("audibles") or {}).items():
+            lines.append(f"  {f}: " + " | ".join(ps))
+        lines.append("")
+    lo = plan.get("loadout") or {}
+    lines.append(f"## Macros — {lo.get('meter') or (plan.get('slot_budget') or {}).get('meter') or ''}")
+    for c in plan.get("macro_cards") or []:
+        lines.append(f"  {c.get('name')} ({c.get('side')})" + (f" — {c['why']}" if c.get("why") else ""))
+        for ln in (c.get("copy_block") or "").splitlines():
+            lines.append(f"      {ln}")
+    if not plan.get("macro_cards"):
+        lines.append("  (none)")
+    if plan.get("details_path"):
+        lines.append("")
+        lines.append(f"Details: {plan['details_path']}")
+    return "\n".join(lines)
 
 
 def format_zone_alignment_text(za: dict[str, Any] | None) -> list[str]:

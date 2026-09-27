@@ -525,3 +525,99 @@ def catalog_inventory_cards(
             }
         )
     return cards
+
+
+# ---------------------------------------------------------------------------
+# v1.14: CPU (offense-only) loadout chosen from the custom playbook + research
+# ---------------------------------------------------------------------------
+
+OFFENSE_MACRO_PRIORITY = ["RZ", "O-RUN", "MATCH", "C2", "MAN", "O-RPO", "ZERO", "PROT", "O-HEAT", "C3", "SHOT"]
+# research concept -> offense macros it supports
+OFFENSE_MACRO_CONCEPTS = {
+    "run_first": ["O-RUN", "MATCH"],
+    "inside_zone": ["O-RUN", "MATCH"],
+    "duo_power": ["O-RUN", "RZ"],
+    "mesh": ["MAN", "C2"],
+    "whip": ["MAN"],
+    "spot_flat": ["C2", "RZ"],
+    "rpo": ["O-RPO"],
+    "cpu_gl_wall": ["RZ", "ZERO", "PROT"],
+    "dive": ["RZ"],
+}
+
+
+def _macro_plays(meta: dict[str, Any]) -> list[str]:
+    import re
+
+    raw = str(((meta.get("full_settings") or {}).get("individual_assignments") or {}).get("value") or "")
+    raw = raw.split("—")[0]
+    try:
+        from cfb_coach.cfb_catalog import formations_with_play
+    except Exception:  # noqa: BLE001
+        formations_with_play = None  # type: ignore[assignment]
+    out = [p.strip() for p in re.split(r"[,/;]", raw) if p.strip()]
+    return [p for p in out if p[:1].isupper() and (formations_with_play is None or formations_with_play(p))]
+
+
+def offense_book_loadout(
+    book_plays: dict[str, list[str]] | None,
+    *,
+    concept_signals: dict[str, int] | None = None,
+    rz_signals: dict[str, int] | None = None,
+    cap: int = USER_ACTIVE_CAP,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Up to ``cap`` offensive custom-adjustment macros for a CPU (offense-only) game.
+
+    Ranked by a fixed doctrine priority, the share of each macro's plays that are in
+    the custom playbook, and this prep's research concept signals. Returns cards in
+    the same shape as :func:`active_loadout_cards`."""
+    import re
+
+    def nk(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    in_book = {nk(p) for ps in (book_plays or {}).values() for p in ps}
+    sig: dict[str, float] = {}
+    for c, n in (concept_signals or {}).items():
+        sig[c] = sig.get(c, 0.0) + float(n or 0)
+    for c, n in (rz_signals or {}).items():
+        sig[c] = sig.get(c, 0.0) + float(n or 0)
+    scored = []
+    for i, mid in enumerate(OFFENSE_MACRO_PRIORITY):
+        meta = get_macro(mid) or {}
+        if not meta or (meta.get("side") or "") != "offense":
+            continue
+        plays = _macro_plays(meta)
+        hits = [p for p in plays if nk(p) in in_book]
+        share = len(hits) / len(plays) if plays else 0.0
+        research = sum(min(3.0, v) / 3.0 for c, v in sig.items() if mid in OFFENSE_MACRO_CONCEPTS.get(c, []))
+        score = (1.0 - 0.05 * i) + 0.3 * share + 0.1 * min(2.0, research)
+        why = []
+        if plays:
+            why.append(f"{len(hits)}/{len(plays)} of its plays in your book")
+        if research:
+            why.append("backed by this prep's research")
+        scored.append((round(score, 3), i, mid, meta, "; ".join(why), hits))
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    cards = []
+    for score, _i, mid, meta, why, hits in scored[:cap]:
+        cards.append({
+            "id": mid,
+            "name": meta.get("name") or mid,
+            "side": "offense",
+            "purpose": meta.get("purpose") or "",
+            "when_to_arm": meta.get("when_to_arm") or "",
+            "validated_status": normalize_status(meta.get("validated_status") or PROVEN),
+            "slot": "active",
+            "copy_block": meta.get("copy_block") or "",
+            "full_settings": meta.get("full_settings") or {},
+            "xbox_steps": meta.get("xbox_steps") or list(XBOX_PATH),
+            "why": why,
+            "book_plays": hits,
+            "score": score,
+        })
+    names = [c["id"] for c in cards]
+    loadout = {"defense": [], "offense": names, "replacing": [], "offense_only": True,
+               "note": "N/A — offense only", "total": len(names), "cap": USER_ACTIVE_CAP,
+               "meter": f"Active {len(names)}/{USER_ACTIVE_CAP} (O-only)", "source": "custom playbook + research"}
+    return cards, loadout

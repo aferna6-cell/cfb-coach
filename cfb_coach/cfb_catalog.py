@@ -77,6 +77,37 @@ def canonical_pair(formation: str, play: str) -> tuple[str, str, bool]:
     return formation, play, False
 
 
+def formation_books(formation: str) -> list[str]:
+    """Stock playbooks whose per-book list for ``formation`` we have (what the editor can import from)."""
+    return sorted((formation_info(formation).get("by_book") or {}).keys())
+
+
+def book_plays(formation: str, book: str | None) -> list[str]:
+    """Exact plays you get when adding ``formation`` from stock ``book`` in the custom playbook editor.
+
+    Falls back to the formation union when the per-book list is unknown."""
+    info = formation_info(formation)
+    bb = info.get("by_book") or {}
+    if book:
+        for name, rec in bb.items():
+            if norm(name) == norm(book):
+                return list(rec.get("plays") or [])
+    return list(info.get("plays") or [])
+
+
+def book_source(formation: str, book: str | None) -> str:
+    info = formation_info(formation)
+    for name, rec in (info.get("by_book") or {}).items():
+        if book and norm(name) == norm(book):
+            return str(rec.get("source") or "")
+    return str(info.get("source") or "")
+
+
+def logged_additions(formation: str) -> dict[str, str]:
+    """Plays Aidan has logged in ``formation`` that no stock list carries under that name."""
+    return dict(formation_info(formation).get("logged_additions") or {})
+
+
 def formations_with_play(play: str) -> list[str]:
     k = norm(play)
     return [f for f, idx in _play_index().items() if k in idx]
@@ -107,7 +138,11 @@ __all__ = [
     "canonical_formation",
     "canonical_pair",
     "canonical_play",
+    "book_plays",
+    "book_source",
+    "formation_books",
     "formation_info",
+    "logged_additions",
     "formations",
     "formations_with_play",
     "is_run",

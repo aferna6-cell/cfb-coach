@@ -47,6 +47,8 @@ def _cite_html(cites: list[dict[str, Any]]) -> str:
 
 
 def render_book(book: dict[str, Any] | None) -> str:
+    """DETAILS page: the formation-level custom playbook with every reason, flag,
+    per-formation / per-play evidence, history, limits and decision constants."""
     book = book or {}
     if not book:
         return ""
@@ -59,95 +61,230 @@ def render_book(book: dict[str, Any] | None) -> str:
     apply_cmd = f"{CMD} book apply --dynasty {dyn}" + (f" --rev {pend.get('rev')}" if pend else "")
     if pend:
         if cur:
-            status = (f'<div class="banner pend"><b>{len(edits)} pending edit(s) — rev {pend.get("rev")}.</b> '
-                      f'Live calls stay locked to your applied book (rev {cur.get("rev")}) until you make these edits in-game and confirm '
-                      f'(<code>book apply</code>, or the "I applied these edits" button in the live window). New plays are not callable before that.</div>')
+            status = (f'<div class="banner pend"><b>{len(edits)} pending formation change(s) — rev {pend.get("rev")}.</b> '
+                      f'Live calls stay locked to your applied book (rev {cur.get("rev")}) until you make these changes in-game and confirm '
+                      f'(<code>book apply</code>, or the button in the live window).</div>')
         else:
-            status = (f'<div class="banner pend"><b>First build — {len(edits)} edit(s).</b> Build this custom book in CFB 27, then confirm with '
-                      f'<code>book apply</code>. Until then the live caller uses this book but marks every call UNCONFIRMED.</div>')
+            status = (f'<div class="banner pend"><b>First build — {len(edits)} formation(s).</b> Build this custom book in CFB 27, then confirm with '
+                      f'<code>book apply</code>. Until then the live caller uses it but marks every call UNCONFIRMED.</div>')
     else:
-        status = (f'<div class="banner ok">No playbook changes this prep — rev {_esc(cur.get("rev"))} stands. '
-                  f'(Hysteresis: a play needs a meaningful signal before it is swapped.)</div>')
+        status = (f'<div class="banner ok">No playbook changes this prep — rev {_esc(cur.get("rev"))} stands '
+                  f'(hysteresis: a formation needs a meaningful signal before it is swapped).</div>')
     seeded = (f"<div class='muted'>Seeded rev {_esc(cur.get('rev'))} this prep: {_esc(book.get('seed_summary'))}.</div>"
               if book.get("seeded_now") else "")
     edit_rows = "".join(
-        f"<tr><td class='{'edit-add' if e['op'].startswith('add') else 'edit-rm'}'>{_esc(e['op'].replace('_', ' '))}</td>"
-        f"<td>{_esc(e['formation'])}{(' — <b>' + _esc(e['play']) + '</b>') if e.get('play') else ''}</td>"
+        f"<tr><td class='{'edit-add' if e['op'] != 'remove_formation' else 'edit-rm'}'>{_esc(e['op'].replace('_', ' '))}</td>"
+        f"<td><b>{_esc(e['formation'])}</b> <span class='muted'>({_esc(e.get('source_book') or 'any book')}, {len(e.get('plays') or [])} plays)</span></td>"
         f"<td class='muted'>{_esc(e.get('reason') or '')}{('<br/>' + _cite_html(e.get('cites') or [])) if e.get('cites') else ''}</td></tr>"
         for e in edits
     )
     edits_html = ""
     if edits:
         edits_html = (
-            "<h3>EDIT LIST — apply in CFB 27 › Create &amp; Share › Custom Playbooks</h3>"
+            "<h3>Formation edits — CFB 27 › Create &amp; Share › Custom Playbooks</h3>"
             + _copy("book-edits", book.get("edit_text") or "", "Copy edit list")
-            + f"<details><summary class='muted'>Reasons + citations per edit</summary><table class='book'>{edit_rows}</table></details>"
+            + f"<table class='book'>{edit_rows}</table>"
             + "<h3 style='margin-top:10px'>After you make the edits</h3>"
             + _copy("book-apply-cmd", apply_cmd, "Copy apply command")
         )
+    frows = "".join(
+        f"<tr><td><b>{_esc(r['formation'])}</b><br/><span class='muted'>{_esc(r.get('source_book') or 'any')} · {_esc(r['n_plays'])} plays</span></td>"
+        f"<td><span class='flag {_esc(r['flag'])}'>{_esc(r['flag'] or '-')}</span></td>"
+        f"<td class='muted'>meta {r['meta']:+.2f}<br/>(specific {r['specific']:+.2f})</td><td class='muted'>{_esc(r['stats'])}</td>"
+        f"<td class='muted'>{_esc((r.get('why') or '')[:220])}"
+        + ("<br/>" + _esc(' · '.join(r.get('reasons') or [])[:260]) if r.get('reasons') else "")
+        + (('<br/>' + _cite_html(r.get('cites') or [])) if r.get('cites') else '') + "</td></tr>"
+        for r in book.get("formation_table") or []
+    )
     rows = "".join(
-        f"<tr><td>{_esc(r['formation'])} — <b>{_esc(r['play'])}</b></td>"
+        f"<tr><td>{_esc(r['formation'])} — <b>{_esc(r['play'])}</b>{' <span class=flag>audible</span>' if r.get('audible') else ''}</td>"
         f"<td><span class='flag {_esc(r['flag'])}'>{_esc(r['flag'] or '-')}</span></td>"
         f"<td class='muted'>meta {r['meta']:+.2f}</td><td class='muted'>{_esc(r['stats'])}</td>"
         f"<td class='muted'>{_esc((r.get('why') or '')[:180])}{('<br/>' + _cite_html(r.get('cites') or [])) if r.get('cites') else ''}</td></tr>"
         for r in book.get("meta_table") or []
     )
-    active = "".join(f"<li>{_esc(k.replace('::', ' — '))}</li>" for k in book.get("active8") or [])
-    auds = "".join(f"<li><b>{_esc(f)}</b>: {_esc(', '.join(ps))}</li>" for f, ps in (book.get("audibles") or {}).items())
+    fmeta_rows = "".join(
+        f"<tr><td>{_esc(f)}</td><td class='muted'>{m.get('meta', 0):+.2f}</td><td class='muted'>{_esc(m.get('book') or '')}</td>"
+        f"<td class='muted'>{_esc('; '.join(m.get('reasons') or [])[:200])}</td></tr>"
+        for f, m in (book.get("formation_meta") or {}).items()
+    )
     hist = "".join(
         f"<tr><td>rev {_esc(h['rev'])}</td><td><span class='flag'>{_esc(h['status'])}</span></td><td class='muted'>{_esc(h['kind'])}</td>"
         f"<td class='muted'>{_esc((h.get('created_ts') or '')[:16].replace('T', ' '))} UTC"
         + (f" · applied {_esc((h.get('applied_ts') or '')[:16].replace('T', ' '))}" if h.get("applied_ts") else "")
-        + f"</td><td class='muted'>{_esc(h.get('n_plays'))} plays — {_esc(h.get('summary') or '')}</td></tr>"
+        + f"</td><td class='muted'>{_esc(h.get('n_formations'))} formations / {_esc(h.get('n_plays'))} plays — {_esc(h.get('summary') or '')}</td></tr>"
         for h in book.get("history") or []
     )
     lim = book.get("limits") or {}
     pr = book.get("practical") or {}
     lsrc = "".join(
-        f"<li>{_esc(s['claim'])} — <a href='{_esc(s['url'])}' target='_blank' rel='noopener'>{_esc(s['source'])}</a> "
-        f"<span class='muted'>({_esc(s['date'])}, {_esc(s['title_era'])})</span></li>"
+        f"<li>{_esc(s['claim'])} — " + (f"<a href='{_esc(s['url'])}' target='_blank' rel='noopener'>{_esc(s['source'])}</a> " if s.get('url') else _esc(s['source']) + " ")
+        + f"<span class='muted'>({_esc(s['date'])}, {_esc(s['title_era'])})</span></li>"
         for s in book.get("limit_sources") or []
     )
     consts = "".join(f"<tr><td>{_esc(k)}</td><td class='muted'>{_esc(v)}</td></tr>" for k, v in book.get("constants") or [])
     cands = "".join(
-        f"<li>{c['score']:+.2f} {_esc(c['formation'])} — {_esc(c['play'])} <span class='muted'>{_esc(c['why'][:140])}</span></li>"
+        f"<li>{c['score']:+.2f} {_esc(c['formation'])} <span class='muted'>(from {_esc(c.get('book') or 'any')}) {_esc(c['why'][:160])}</span></li>"
         for c in book.get("candidates") or []
     )
+    n_forms = len(book.get("target_plays") or {})
+    n_plays = sum(len(v) for v in (book.get("target_plays") or {}).values())
     return f"""
     <section id="cfb-book">
-      <h2>Custom playbook — {_esc(book.get('name'))} <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">(managed by the coach · {_esc(dyn)})</span></h2>
+      <h2>Custom playbook — {_esc(book.get('name'))} <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">(formation-level · managed by the coach · {_esc(dyn)})</span></h2>
       {status}
       {seeded}
       {edits_html}
-      <div class="book-grid" style="margin-top:10px">
-        <div class="scout-card">
-          <h3>Full resulting book ({sum(len(v) for v in (book.get('target') or {}).values())} plays, {len(book.get('target') or {})} formations)</h3>
-          {_copy("book-full", book.get("book_text") or "", "Copy full book")}
-        </div>
-        <div class="scout-card">
-          <h3>Active 8 (in-game quick set, from the book)</h3>
-          <ol>{active or "<li class='muted'>none</li>"}</ol>
-          <h3 style="margin-top:10px">Audibles (4 per formation)</h3>
-          <ul>{auds}</ul>
-        </div>
+      <div class="scout-card scout-affect" style="margin-top:10px">
+        <h3>Formations — why each is in (or out of) the book</h3>
+        <table class="book">{frows}</table>
+      </div>
+      <div class="scout-card" style="margin-top:10px">
+        <h3>Full resulting book ({n_forms} formations, {n_plays} callable plays)</h3>
+        {_copy("book-full", book.get("book_text") or "", "Copy full book")}
       </div>
       <div class="scout-card scout-affect" style="margin-top:10px">
-        <h3>Every play in the book — why it's there</h3>
+        <h3>Every callable play — flags + evidence (failing plays are called less, never removed)</h3>
         <table class="book">{rows}</table>
       </div>
-      <details style="margin-top:10px"><summary class="muted">Revision history (rollback: <code>{CMD} book rollback --dynasty {_esc(dyn)} --to N</code>)</summary>
+      <details style="margin-top:10px"><summary class="muted">Formation meta ranking this prep (top 12)</summary><table class="book">{fmeta_rows}</table></details>
+      <details><summary class="muted">Revision history (rollback: <code>{CMD} book rollback --dynasty {_esc(dyn)} --to N</code>)</summary>
         <table class="book">{hist or "<tr><td class='muted'>none</td></tr>"}</table></details>
-      <details><summary class="muted">Top add candidates this prep</summary><ul>{cands or "<li class='muted'>none cleared the bar</li>"}</ul></details>
+      <details><summary class="muted">Add candidates this prep</summary><ul>{cands or "<li class='muted'>none cleared the bar</li>"}</ul></details>
       <details><summary class="muted">Custom playbook limits (CFB 27) + decision rules</summary>
         <div class="muted">Game limits: ≤{_esc(lim.get('max_plays'))} plays, ≤{_esc(lim.get('max_formation_sets'))} formation sets,
           ≤{_esc(lim.get('max_plays_per_set'))} plays per set, {_esc(lim.get('audibles_per_formation'))} audibles per formation; formations from any book; no reordering.
-          Coach's self-imposed size: ≤{_esc(pr.get('max_formations'))} formations, ≤{_esc(pr.get('max_plays_per_formation'))} plays each, ≤{_esc(pr.get('max_total_plays'))} total.</div>
+          Coach's self-imposed size: ≤{_esc(pr.get('max_formations'))} formations.</div>
         <div class="muted">{_esc(book.get('limit_assumption'))}</div>
         <ul>{lsrc}</ul>
         <table class="srcs">{consts}</table>
       </details>
     </section>
     """
+
+
+# ---------------------------------------------------------------------------
+# v1.14 minimal prep page pieces
+# ---------------------------------------------------------------------------
+
+def _local_hm(ts: str) -> str:
+    from datetime import datetime
+
+    try:
+        dt = datetime.fromisoformat((ts or "").replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            return ts
+        from zoneinfo import ZoneInfo
+
+        return dt.astimezone(ZoneInfo("America/New_York")).strftime("%-I:%M %p ET")
+    except (ValueError, ImportError):
+        return ts or "?"
+
+
+def research_failed(scout: dict[str, Any] | None) -> bool:
+    scout = scout or {}
+    if not scout:
+        return False
+    return (scout.get("mode") or "") in ("cache", "seed") or (scout.get("research_status") or "") in ("failed", "offline")
+
+
+def research_status_line(scout: dict[str, Any] | None) -> str:
+    """One line: 'Meta researched 2:31 PM ET · 11 sources · 2 YouTube transcripts'."""
+    scout = scout or {}
+    if not scout:
+        return "Meta research: not run"
+    n_ok = sum(1 for s in (scout.get("sources") or []) if s.get("fetched"))
+    yt = (scout.get("youtube") or {}).get("transcripts", 0)
+    when = _local_hm(scout.get("fetched_at") or "")
+    if research_failed(scout):
+        age = scout.get("fallback_age_hours")
+        age_txt = f", cache {age:.0f}h old" if isinstance(age, (int, float)) else ""
+        return f"Meta research FAILED this prep — using {'cached' if scout.get('mode') == 'cache' else 'seed'} research{age_txt}"
+    partial = " (partial)" if scout.get("research_status") == "partial" else ""
+    return f"Meta researched {when}{partial} · {n_ok} sources · {yt} YouTube transcript{'s' if yt != 1 else ''}"
+
+
+def research_fail_banner(scout: dict[str, Any] | None) -> str:
+    scout = scout or {}
+    if not research_failed(scout):
+        return ""
+    age = scout.get("fallback_age_hours")
+    age_txt = f"{age:.0f} hours old" if isinstance(age, (int, float)) else "age unknown"
+    what = f"cached research ({age_txt})" if scout.get("mode") == "cache" else "the built-in seed research"
+    return (f'<div class="banner fail">⚠️ LIVE META RESEARCH DID NOT RUN THIS PREP ({_esc(scout.get("research_status") or scout.get("mode"))}). '
+            f'Using {what} — the formations below are based on older information. {_esc(scout.get("message") or "")}</div>')
+
+
+_STATUS_LABEL = {"new": "NEW", "applied": "in book", "remove": "REMOVE", "changed": "RE-ADD"}
+
+
+def render_formations_min(book: dict[str, Any] | None) -> str:
+    """Formations to have in the custom playbook (+ the single apply command if pending)."""
+    book = book or {}
+    if not book:
+        return ""
+    if book.get("error"):
+        return f"<section id='formations'><h2>Formations</h2><div class='empty'>Unavailable: {_esc(book['error'])}</div></section>"
+    items = []
+    for r in book.get("formation_list") or []:
+        st = r.get("status") or "applied"
+        note = f"<div class='fnote'>{_esc(r['note'])}</div>" if r.get("note") else ""
+        items.append(
+            f"<li class='frow {st}'><span class='fbadge {st}'>{_esc(_STATUS_LABEL.get(st, st))}</span>"
+            f"<span class='fname'>{_esc(r['formation'])}</span>"
+            f"<span class='fsrc'>{_esc(r.get('source_book') or 'any')} playbook · {_esc(r['n_plays'])} plays</span>{note}</li>"
+        )
+    pending = bool(book.get("pending")) and bool(book.get("apply_cmd"))
+    apply_html = ""
+    if pending:
+        apply_html = ("<div class='apply'><div class='muted'>After you add/remove the marked formations in CFB 27 "
+                      "(Create &amp; Share › Custom Playbooks), confirm:</div>" + _copy("book-apply-cmd", book["apply_cmd"], "Copy apply command") + "</div>")
+    return f"""
+    <section id="formations">
+      <h2>Formations — {_esc(book.get('name'))}</h2>
+      <ul class="flist">{"".join(items)}</ul>
+      {apply_html}
+    </section>
+    """
+
+
+def render_audibles_min(book: dict[str, Any] | None) -> str:
+    book = book or {}
+    auds = book.get("audibles") or {}
+    if not auds:
+        return ""
+    rows = "".join(
+        f"<div class='aud'><div class='aform'>{_esc(f)}</div><ol>{''.join(f'<li>{_esc(p)}</li>' for p in ps)}</ol></div>"
+        for f, ps in auds.items()
+    )
+    return f"""
+    <section id="audibles">
+      <h2>Audibles (4 per formation)</h2>
+      <div class="auds">{rows}</div>
+    </section>
+    """
+
+
+MIN_CSS = """
+  .rline { color: var(--muted); font-size: 0.85rem; margin: 6px 0 14px; }
+  ul.flist { list-style: none; padding: 0; margin: 0; }
+  .frow { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+  .fbadge { display: inline-block; min-width: 64px; text-align: center; font-size: 0.7rem; font-weight: 700; padding: 2px 6px;
+            border-radius: 4px; margin-right: 10px; background: rgba(139,155,180,0.2); color: var(--muted); }
+  .fbadge.new { background: rgba(94,166,255,0.3); color: #cfe3ff; }
+  .fbadge.remove { background: rgba(224,85,85,0.3); color: #ffc4c4; }
+  .fbadge.changed { background: rgba(240,198,116,0.3); color: #f6dca8; }
+  .frow.remove .fname { text-decoration: line-through; opacity: 0.8; }
+  .fname { font-weight: 700; font-size: 1.02rem; }
+  .fsrc { color: var(--muted); font-size: 0.8rem; margin-left: 10px; }
+  .fnote { color: var(--muted); font-size: 0.8rem; margin: 3px 0 0 78px; }
+  .apply { margin-top: 12px; }
+  .auds { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+  .aud { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 8px 12px; }
+  .aform { font-weight: 700; margin-bottom: 4px; }
+  .aud ol { margin: 0; padding-left: 20px; }
+  .mwhy { color: var(--muted); font-size: 0.78rem; margin-left: 8px; }
+"""
 
 
 def render_research(scout: dict[str, Any] | None) -> str:

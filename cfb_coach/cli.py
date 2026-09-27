@@ -166,6 +166,8 @@ def cmd_book(args: argparse.Namespace) -> int:
             print(f"== {label}: rev {rec['rev']} ==")
             print(cp.format_book_text(rec["book"].get("formations") or {}, audibles=rec["book"].get("audibles"),
                                       name=rec["book"].get("name", ""), rev=rec["rev"]))
+            for f, fl in (rec["book"].get("formation_flags") or {}).items():
+                print(f"  [{fl.get('flag')}] {f}: {fl.get('why', '')[:160]}")
             if rec is pend:
                 print(cp.format_edit_list(pend["edits"], first_build=cur is None, book_name=pend["book"].get("name", "")))
         return 0
@@ -226,8 +228,13 @@ def cmd_prep(args: argparse.Namespace) -> int:
             print(
                 f"Dynasty mode: {dcfg['label']} ({dcfg['mode']}){exp}"
             )
-            print(doctrine_line())
-            print(format_delta_text(plan))
+            if getattr(args, "details", False):
+                print(doctrine_line())
+                print(format_delta_text(plan))
+            else:
+                from cfb_coach.install_sheet import format_prep_minimal_text
+
+                print(format_prep_minimal_text(plan))
             return 0
 
         path, plan = generate_and_open(
@@ -243,6 +250,15 @@ def cmd_prep(args: argparse.Namespace) -> int:
         )
         n = len(plan.get("shown_deltas") or [])
         print(f"Prep vs {plan.get('display_name', oid)} → {path}")
+        details = plan.get("details_path") or ""
+        if details:
+            print(f"Details (reasons, research, sources, history) → {details}")
+            if getattr(args, "details", False) and not getattr(args, "no_open", False):
+                from pathlib import Path as _P
+
+                from cfb_coach.prep_browser import open_prep_html
+
+                open_prep_html(_P(details), open_browser=True)
         exp = " [experimental]" if dcfg.get("experimental_badge") else ""
         print(
             f"Dynasty mode: {dcfg['label']} ({dcfg['mode']}){exp} "
@@ -272,10 +288,12 @@ def cmd_prep(args: argparse.Namespace) -> int:
         elif bk:
             if bk.get("seeded_now"):
                 print(f"Custom playbook: {bk.get('seed_summary')}.")
+            forms = ", ".join(f"{r['formation']}" + ("" if r["status"] == "applied" else f" [{r['status'].upper()}]")
+                              for r in bk.get("formation_list") or [])
+            print(f"Formations: {forms}")
             if bk.get("pending"):
-                print(f"Custom playbook: {len(bk.get('edits') or [])} edit(s) pending (rev {bk['pending'].get('rev')}) — "
-                      f"see the EDIT LIST on the prep page, make them in CFB 27, then: "
-                      f"PYTHONPATH=. python3 -m cfb_coach book apply --dynasty {dynasty}")
+                print(f"Custom playbook: {len(bk.get('edits') or [])} formation change(s) pending (rev {bk['pending'].get('rev')}) — "
+                      f"make them in CFB 27, then: PYTHONPATH=. python3 -m cfb_coach book apply --dynasty {dynasty}")
             else:
                 print(f"Custom playbook: no changes — rev {(bk.get('current') or {}).get('rev')} stands.")
         yt = scout.get("youtube") or {}
@@ -742,6 +760,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-open",
         action="store_true",
         help="Write HTML but do not open a browser",
+    )
+    p_prep.add_argument(
+        "--details",
+        action="store_true",
+        help="CFB: also open the details page (book reasons/flags/history, research, sources, zone plan, constants); "
+             "with --text print the full details dump instead of the minimal view",
     )
     p_prep.add_argument(
         "--dynasty",

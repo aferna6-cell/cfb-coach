@@ -293,6 +293,7 @@ def _render_macro_accordion(
                 <span class="mside">{_esc(side)}</span>
                 <span class="mslot">{_esc(slot)}</span>
                 {_val_badge(str(status))}
+                {('<span class="mwhy">' + _esc(c.get("why")) + '</span>') if c.get("why") else ""}
               </summary>
               <div class="macro-body">
                 <p class="purpose">{_esc(purpose)}</p>
@@ -828,8 +829,11 @@ def _render_meta_scout(scout: dict[str, Any] | None) -> str:
     """
 
 
-def render_prep_html(plan: dict[str, Any]) -> str:
-    from cfb_coach.prep_book_html import BOOK_CSS, render_book, render_research
+def render_prep_details_html(plan: dict[str, Any]) -> str:
+    """v1.14 DETAILS page (written next to the prep page, not auto-opened): everything
+    the coach computed this prep — book reasons/flags/history/limits, research,
+    sources, zone plan, conflicts, headlines, constants, per-play table."""
+    from cfb_coach.prep_book_html import BOOK_CSS, MIN_CSS, render_book, render_research
 
     shown = plan.get("shown_deltas") or []
     pb = [d for d in shown if d.get("kind") == "playbook"]
@@ -880,13 +884,13 @@ def render_prep_html(plan: dict[str, Any]) -> str:
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Prep — {_esc(plan.get("display_name"))} · CFB27</title>
-<style>{_CSS}{BOOK_CSS}</style>
+<title>Prep details — {_esc(plan.get("display_name"))} · CFB27</title>
+<style>{_CSS}{BOOK_CSS}{MIN_CSS}</style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <h1>vs {_esc(plan.get("display_name"))}
+      <h1>Prep details — vs {_esc(plan.get("display_name"))}
         <span style="color:var(--muted);font-weight:500">({_esc(plan.get("team"))})</span>
       </h1>
       <div class="meta">
@@ -946,41 +950,121 @@ def render_prep_html(plan: dict[str, Any]) -> str:
       Mark applied with <code>prep --opponent {oid} --mark-applied</code>.
     </footer>
   </div>
-  <script>
-    document.querySelectorAll(".copy-btn").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
+{_COPY_JS}
+</body>
+</html>
+"""
+
+
+_COPY_JS = """  <script>
+    document.querySelectorAll(".copy-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
         var id = btn.getAttribute("data-target");
         var el = document.getElementById(id);
         if (!el) return;
         var text = el.innerText || el.textContent || "";
-        function done() {{
+        function done() {
           var prev = btn.textContent;
           btn.textContent = "Copied";
           btn.classList.add("copied");
-          setTimeout(function() {{
+          setTimeout(function() {
             btn.textContent = prev;
             btn.classList.remove("copied");
-          }}, 1400);
-        }}
-        if (navigator.clipboard && navigator.clipboard.writeText) {{
-          navigator.clipboard.writeText(text).then(done).catch(function() {{
+          }, 1400);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function() {
             var r = document.createRange(); r.selectNodeContents(el);
             var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
-            try {{ document.execCommand("copy"); }} catch (e) {{}}
+            try { document.execCommand("copy"); } catch (e) {}
             s.removeAllRanges(); done();
-          }});
-        }} else {{
+          });
+        } else {
           var r = document.createRange(); r.selectNodeContents(el);
           var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
-          try {{ document.execCommand("copy"); }} catch (e) {{}}
+          try { document.execCommand("copy"); } catch (e) {}
           s.removeAllRanges(); done();
-        }}
-      }});
-    }});
+        }
+      });
+    });
   </script>
+"""
+
+
+def render_prep_html(plan: dict[str, Any]) -> str:
+    """v1.14 prep page — ONLY what Aidan needs at the console: the formations to have in
+    the custom playbook (new / in book / remove + the one apply command), the audibles,
+    and the macros with exact settings. Everything else lives in the details page."""
+    from cfb_coach.prep_book_html import (
+        BOOK_CSS,
+        MIN_CSS,
+        render_audibles_min,
+        render_formations_min,
+        research_fail_banner,
+        research_status_line,
+    )
+
+    try:
+        ts_raw = plan.get("ts") or ""
+        if ts_raw.endswith("Z"):
+            ts_raw = ts_raw[:-1] + "+00:00"
+        ts_label = datetime.fromisoformat(ts_raw).astimezone(ET).strftime("%a %b %d · %-I:%M %p ET")
+    except Exception:
+        ts_label = plan.get("ts", "")
+    scout = plan.get("meta_scout") or {}
+    dcfg = plan.get("dynasty_config") or {}
+    book = plan.get("cfb_book") or {}
+    cards = plan.get("macro_cards") or []
+    offense_only = bool(plan.get("offense_only"))
+    details = plan.get("details_path") or ""
+    macros = _render_macro_accordion(
+        cards,
+        plan.get("slot_budget") or {},
+        offense_only=offense_only,
+        replacing_lines=list(plan.get("replacing_lines") or []),
+        loadout=plan.get("loadout") or {},
+    )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Prep — {_esc(plan.get("display_name"))} · CFB27</title>
+<style>{_CSS}{BOOK_CSS}{MIN_CSS}</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>vs {_esc(plan.get("display_name"))}
+        <span style="color:var(--muted);font-weight:500">({_esc(dcfg.get("label") or plan.get("dynasty") or "")})</span>
+      </h1>
+      <div class="meta"><span>{_esc(plan.get("game", "CFB 27"))}</span><span>{_esc(ts_label)}</span></div>
+    </header>
+    {research_fail_banner(scout)}
+    <div class="rline">{_esc(research_status_line(scout))}</div>
+    {render_formations_min(book)}
+    {render_audibles_min(book)}
+    <section id="macros">
+      <h2>{"Macros — offense custom adjustments (CPU game)" if offense_only else "Macros — Active loadout (≤8)"}</h2>
+      {macros}
+    </section>
+    <footer class="muted">Details (reasons, research, sources, history): {_esc(details or "prep --details")}</footer>
+  </div>
+{_COPY_JS}
 </body>
 </html>
 """
+
+
+def prep_details_path(opponent_id: str) -> Path:
+    return default_prep_dir() / f"prep_details_{opponent_id}.html"
+
+
+def write_prep_details_html(opponent_id: str, plan: dict[str, Any], *, path: Path | None = None) -> Path:
+    out = path or prep_details_path(opponent_id)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render_prep_details_html(plan), encoding="utf-8")
+    return out
 
 
 def write_prep_html(
@@ -993,7 +1077,13 @@ def write_prep_html(
         plan = build_prep_plan(opponent_id, persist=False)
     out = path or prep_html_path(opponent_id)
     out.parent.mkdir(parents=True, exist_ok=True)
+    details = out.with_name(f"prep_details_{opponent_id}.html")
+    plan.setdefault("details_path", str(details))
     out.write_text(render_prep_html(plan), encoding="utf-8")
+    try:  # details page next to it — written every prep, never auto-opened
+        write_prep_details_html(opponent_id, plan, path=details)
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 
@@ -1083,10 +1173,11 @@ def generate_and_open(
         plan["shown_deltas"] = []
         plan["swap_banners"] = []
     path = write_prep_html(opponent_id, plan)
-    try:  # plain-text twin next to the HTML (handy on a phone / for diffing preps)
-        from cfb_coach.install_sheet import format_delta_text
+    try:  # plain-text twins next to the HTML (handy on a phone / for diffing preps)
+        from cfb_coach.install_sheet import format_delta_text, format_prep_minimal_text
 
-        path.with_suffix(".txt").write_text(format_delta_text(plan), encoding="utf-8")
+        path.with_suffix(".txt").write_text(format_prep_minimal_text(plan), encoding="utf-8")
+        Path(plan["details_path"]).with_suffix(".txt").write_text(format_delta_text(plan), encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
     open_prep_html(path, open_browser=open_browser)

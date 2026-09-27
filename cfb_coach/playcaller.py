@@ -334,7 +334,8 @@ class _Ranker:
         except Exception:  # noqa: BLE001
             self.priors = None
 
-    def rank(self, sit: Situation, menu: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    def rank(self, sit: Situation, menu: list[tuple[str, str]],
+             bonus: dict[tuple[str, str], float] | None = None) -> list[dict[str, Any]]:
         from cfb_coach.learning import REC_EXPLORE, REC_TEMPERATURE
         from cfb_coach.meta_align import combined_score, softmax_probs
 
@@ -347,7 +348,12 @@ class _Ranker:
             if (form, play) in seen:
                 continue
             seen.add((form, play))
-            rows.append(combined_score(self.lw, self.priors, zone, form, play, coverage=cov, coverage_source=src))
+            row = combined_score(self.lw, self.priors, zone, form, play, coverage=cov, coverage_source=src)
+            b = float((bonus or {}).get((form, play), 0.0))
+            if b:
+                row["sit"] = round(b, 3)
+                row["total"] = round(row["total"] + b, 3)
+            rows.append(row)
         probs = softmax_probs([r["total"] for r in rows], REC_TEMPERATURE)
         u = 1.0 / max(1, len(rows))
         for r, p in zip(rows, probs):
@@ -499,26 +505,52 @@ def _load_book(db: CoachDB | None) -> dict[str, Any] | None:
 
 def _book_menu(
     sit: Situation, menu: list[tuple[str, str]], book: dict[str, Any]
-) -> tuple[list[tuple[str, str]], bool]:
-    """Situational menu restricted to the book; zone menus use every zone-fit book play."""
-    from cfb_coach.cfb_catalog import canonical_pair, zone_fit
+) -> tuple[list[tuple[str, str]], dict[tuple[str, str], float]]:
+    """v1.14: rank over EVERY zone-fit play in the applied formations.
+
+    The situational menu no longer restricts the pool; it becomes a bonus (plus
+    down-and-distance bonuses) added to the learned + meta score before sampling,
+    so plays in newly added formations compete on their meta prior."""
+    from cfb_coach.cfb_catalog import canonical_pair, is_run, zone_fit
 
     pairs = [(f, p) for f, ps in book["formations"].items() for p in ps]
-    in_book = set(pairs)
     zone = _situation_zone(sit)
-    zone_menu = set(menu) == set(zone_candidates(zone))
-    out: list[tuple[str, str]] = []
+    pool = [fp for fp in pairs if zone_fit(fp[1], zone)] or list(pairs)
+    short = bool(sit.short_yardage or (sit.down in (3, 4) and (sit.distance or 10) <= 2))
+    if zone == "open" and not short:
+        # GL/short-yardage bully runs stay out of normal open-field downs
+        pool = [fp for fp in pool if not _SHORT_ONLY.search(fp[1])] or pool
+    in_menu = set()
     for f, p in menu:
         cf, cp, _ = canonical_pair(f, p)
-        if (cf, cp) in in_book and (cf, cp) not in out:
-            out.append((cf, cp))
-    if zone_menu or len(out) < 3:
-        for fp in pairs:
-            if fp not in out and zone_fit(fp[1], zone):
-                out.append(fp)
-    if not out:
-        out = list(pairs)
-    return out, zone_menu
+        in_menu.add((cf, cp))
+    bonus: dict[tuple[str, str], float] = {}
+    for f, p in pool:
+        b = BOOK_MENU_BONUS if (f, p) in in_menu else 0.0
+        run = is_run(p)
+        deep = _is_deep(p)
+        dist = sit.distance or 10
+        if sit.short_yardage or (sit.down in (3, 4) and dist <= 2):
+            b += SIT_BONUS if run else 0.0
+            b -= 0.10 if deep else 0.0
+        elif sit.down in (3, 4) and dist >= 7:
+            b += SIT_BONUS if not run else -0.20
+        if getattr(sit, "two_minute", False):
+            b += 0.08 if not run else -0.05
+        if b:
+            bonus[(f, p)] = round(b, 3)
+    return pool, bonus
+
+
+_SHORT_ONLY = __import__("re").compile(r"\bdive\b|sneak|qb blast|goal\s*line|goalline", __import__("re").I)
+BOOK_MENU_BONUS = 0.12  # play is in the situational menu for this down/distance/zone
+SIT_BONUS = 0.12  # short yardage -> runs; 3rd/4th & long -> passes
+
+
+def _is_deep(play: str) -> bool:
+    import re
+
+    return bool(re.search(r"vert|flood|dagger|shot|deep|post wheel|corner post|double post|dbl post|seam|go\b", play or "", re.I))
 
 
 def _demote_rows(rows: list[dict[str, Any]], book: dict[str, Any]) -> list[dict[str, Any]]:
@@ -564,12 +596,13 @@ def _pick_offense_inner(
     pb = seed["playbooks"]["offense_formations"]
     book = _load_book(db)
     menu, adj, rationale = _base_offense_menu(sit, opp, rng)
+    bonus = None
     if book:
-        menu, _ = _book_menu(sit, menu, book)
+        menu, bonus = _book_menu(sit, menu, book)
     else:
         menu = [_validate_play(f, p, pb) for f, p in menu]
     ranker = _Ranker(db, _opp_id(opp))
-    rows = ranker.rank(sit, menu)
+    rows = ranker.rank(sit, menu, bonus=bonus)
     if book:
         rows = _demote_rows(rows, book)
     pick = _sample(rows, rng)
@@ -592,7 +625,7 @@ def _pick_offense_inner(
         pool = rows
         if _situation_zone(sit) == "open":
             extra = [fp for fp in zone_candidates("open") if fp not in [(r["formation"], r["play"]) for r in rows]]
-            if extra:
+            if extra and not book:
                 pool = ranker.rank(sit, [(r["formation"], r["play"]) for r in rows] + extra)
         if book:
             bset = {(f, p) for f, ps in book["formations"].items() for p in ps}
