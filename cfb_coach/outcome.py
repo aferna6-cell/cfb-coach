@@ -14,7 +14,7 @@ from typing import Any
 @dataclass(frozen=True)
 class ParsedOutcome:
     raw: str
-    kind: str  # gain|loss|incomplete|sack|td|int|stop|convert|unknown
+    kind: str  # gain|loss|incomplete|sack|td|int|fumble|stop|convert|unknown
     yards: int | None = None
     success: bool | None = None  # offense-centric; use success_for(side)
     label: str = ""
@@ -31,13 +31,19 @@ class ParsedOutcome:
         """Canonical result string for snaps.result / display."""
         if self.kind == "gain" and self.yards is not None:
             return f"+{self.yards}"
+        if self.label == "fumble (kept)":
+            return "fumble recovered by offense"
         if self.kind == "loss" and self.yards is not None:
             return f"-{abs(self.yards)}"
         if self.kind == "td":
             return "td" if self.yards is None else f"td +{self.yards}"
-        if self.kind in ("incomplete", "sack", "int", "stop", "convert"):
+        if self.kind in ("incomplete", "sack", "int", "fumble", "stop", "convert"):
             return self.kind
         return (self.raw or "").strip() or "unknown"
+
+    @property
+    def is_turnover(self) -> bool:
+        return self.kind in TURNOVER_KINDS
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -49,8 +55,10 @@ class ParsedOutcome:
         }
 
 
+TURNOVER_KINDS = frozenset({"int", "fumble"})
+
 _GAIN_RE = re.compile(
-    r"^(?:gain|gained|pick\s*up|pickup)\s*[:+]?\s*(-?\d+)\b", re.I
+    r"^(?:gain|gained|pick\s*up|pickup)\s*(?:of\s*)?[:+]?\s*(-?\d+)\b", re.I
 )
 _LOSS_RE = re.compile(r"^(?:loss|lost|lose)\s*[:+]?\s*(-?\d+)\b", re.I)
 _PLUS_RE = re.compile(r"^\+(\d+)\b")
@@ -58,6 +66,11 @@ _MINUS_RE = re.compile(r"^-(\d+)\b")
 _TD_RE = re.compile(r"\b(td|touchdown|score)\b", re.I)
 _INT_RE = re.compile(r"\b(int|intercept(?:ion|ed)?|pick(?:ed)?)\b", re.I)
 _SACK_RE = re.compile(r"\b(sack(?:ed)?)\b", re.I)
+_FUMBLE_RE = re.compile(r"\b(fumble[ds]?|fumbled|strip(?:ped)?)\b", re.I)
+# "fumble recovered by us/offense" = no turnover (treat as a stop-short loss)
+_FUMBLE_KEPT_RE = re.compile(
+    r"recover(?:ed|s)?\s+by\s+(?:us|me|our|offense|the\s+offense|own|qb|rb|hb)\b", re.I
+)
 _INC_RE = re.compile(r"\b(inc|incomp(?:lete)?|incomplete)\b", re.I)
 _STOP_RE = re.compile(r"\b(stop|stuff(?:ed)?|hold|punt)\b", re.I)
 _CONVERT_RE = re.compile(r"\b(convert(?:ed)?|1st|first\s*down|good)\b", re.I)
@@ -94,6 +107,13 @@ def parse_outcome(text: str | None) -> ParsedOutcome:
 
     if _INT_RE.search(low):
         return ParsedOutcome(raw=raw, kind="int", yards=0, success=False, label="INT")
+
+    if _FUMBLE_RE.search(low):
+        if _FUMBLE_KEPT_RE.search(low):
+            return ParsedOutcome(
+                raw=raw, kind="loss", yards=0, success=False, label="fumble (kept)"
+            )
+        return ParsedOutcome(raw=raw, kind="fumble", yards=0, success=False, label="FUMBLE")
 
     if _SACK_RE.search(low):
         y = None
@@ -169,4 +189,4 @@ def _legacy_success(result: str | None, side: str) -> bool | None:
     return None
 
 
-__all__ = ["ParsedOutcome", "outcome_success", "parse_outcome"]
+__all__ = ["TURNOVER_KINDS", "ParsedOutcome", "outcome_success", "parse_outcome"]

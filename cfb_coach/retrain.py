@@ -135,22 +135,24 @@ def retrain_from_snaps(
     *,
     also_learn: bool = True,
 ) -> dict[str, Any]:
-    """Grade this batch, bump vs-look weights, optionally run base learn_from_snaps.
+    """Grade this batch and (v1.12) rebuild all weights under the learning rules.
 
-    Returns a dict suitable for HTML / CLI summary.
+    The rebuild (``cfb_coach.learning.rebuild_all``) recomputes general + zone
+    play-vs-coverage weights from every logged snap, so this batch counts with
+    leverage / turnover / W-L rules and caps. Returns a dict for HTML / CLI.
     """
     grades = grade_play_vs_look(snaps)
-    vs_changes = apply_play_vs_look_weights(db, opponent_id, grades)
+    vs_changes: dict[str, float] = {}
     base: dict[str, Any] = {}
     if also_learn:
         from cfb_coach.gameplan import learn_from_snaps
 
         ids = [int(_snap_get(s, "id") or 0) for s in snaps]
         since = (min(ids) - 1) if ids else None
-        # Restrict learn_from_snaps by using since_id just below this batch
         base = learn_from_snaps(db, opponent_id, since_id=since, also_global=True)
-        # Filter "snaps_considered" narrative to this batch size when possible
         base["snaps_considered"] = len(snaps)
+        vs_changes = dict(base.get("vs_look_changes") or {})
+        base.pop("rebuild", None)
     return {
         "opponent_id": opponent_id,
         "snaps": len(snaps),

@@ -134,6 +134,10 @@ def effective_gameplan(
     d_emph = dict(bl["defense_gameplan"].get("emphasis_keys") or {})
     for key, delta in ov.gameplan.items():
         side, _, name = key.partition(":")
+        if "::" in name:
+            # v1.12 structured keys (play::, vs_look::, zone::) feed the live
+            # ranker / prep zone plan, not the family emphasis table
+            continue
         if side == "offense" and name in o_emph:
             o_emph[name] = max(0.05, o_emph[name] + delta)
         elif side == "offense":
@@ -426,6 +430,16 @@ def _def_emphasis_key(formation: str | None, play: str | None) -> str | None:
     return "nickel_over_home"
 
 
+def _macro_snapshot(db: CoachDB) -> dict[tuple[str, str], float]:
+    try:
+        return {
+            (r[0], r[1]): float(r[2])
+            for r in db.conn.execute("SELECT opponent_id, macro, weight FROM macro_weights").fetchall()
+        }
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def learn_from_snaps(
     db: CoachDB,
     opponent_id: str,
@@ -435,91 +449,44 @@ def learn_from_snaps(
     bump: float = 0.15,
     fail_bump: float = 0.10,
 ) -> dict[str, Any]:
+    """Retrain (v1.12): rebuild ALL weights from every logged snap + game result.
+
+    The old incremental bumps (``bump`` / ``fail_bump``) grew without bound; the
+    v2 rules in ``cfb_coach.learning`` are situation-aware, leverage-weighted,
+    capped and W/L-aware, and are recomputed from scratch each time (idempotent).
+    ``since_id`` only scopes the grades / ``snaps_considered`` narrative.
+    Returns a changelog of deltas (``<bucket>/<side>:<key>`` and ``<bucket>/macro:<M>``).
     """
-    Adjust gameplan_weights / macro_weights from recent snaps.
-    Never removes free-reign ability — only reweights mix.
-    Returns a changelog of deltas applied.
-    """
-    snaps = db.get_recent_snaps(opponent_id, since_id=since_id, limit=200)
+    from cfb_coach.learning import rebuild_all
+    from cfb_coach.retrain import grade_play_vs_look
+
+    _ = (also_global, bump, fail_bump)  # kept for API compatibility
+    snaps = db.get_recent_snaps(opponent_id, since_id=since_id, limit=400)
+    m_before = _macro_snapshot(db)
+    res = rebuild_all(db)
+    m_after = _macro_snapshot(db)
+    buckets = {opponent_id, GLOBAL_BUCKET}
     changes: dict[str, float] = {}
-    buckets = [opponent_id]
-    if also_global:
-        buckets.append(GLOBAL_BUCKET)
-    if opponent_id != CPU_BUCKET:
-        # human games also lightly feed global only (already listed)
-        pass
-    else:
-        if CPU_BUCKET not in buckets:
-            buckets.append(CPU_BUCKET)
-
-    # Anti-repeat: count play frequency in this batch
-    play_counts: dict[str, int] = {}
-    for s in snaps:
-        key = f"{s['formation'] or ''}::{s['play'] or ''}"
-        play_counts[key] = play_counts.get(key, 0) + 1
-
-    for s in snaps:
-        side = s["side"]
-        success = _result_success(s["result"], side)
-        if success is None:
+    for k in set(res["before"]) | set(res["after"]):
+        if k[0] not in buckets:
             continue
-        delta = bump if success else -fail_bump
-
-        if side == "offense":
-            ek = _play_emphasis_key(s["formation"], s["play"])
-            if ek:
-                for b in buckets:
-                    scale = 1.0 if b == opponent_id else 0.35
-                    db.bump_gameplan_weight(b, "offense", ek, delta * scale)
-                    ck = f"{b}/offense:{ek}"
-                    changes[ck] = changes.get(ck, 0.0) + delta * scale
-            # Penalize over-repeat even on success (mix discipline)
-            pk = f"{s['formation'] or ''}::{s['play'] or ''}"
-            if play_counts.get(pk, 0) >= 3 and s["play"]:
-                for b in buckets:
-                    scale = 1.0 if b == opponent_id else 0.35
-                    db.bump_gameplan_weight(
-                        b, "offense", "anti_repeat_penalty", -0.05 * scale
-                    )
-                    # nudge changeup up
-                    db.bump_gameplan_weight(
-                        b, "offense", "cluster_changeup", 0.05 * scale
-                    )
-                    changes[f"{b}/offense:cluster_changeup"] = (
-                        changes.get(f"{b}/offense:cluster_changeup", 0.0)
-                        + 0.05 * scale
-                    )
-        else:
-            ek = _def_emphasis_key(s["formation"], s["play"])
-            if ek:
-                for b in buckets:
-                    scale = 1.0 if b == opponent_id else 0.35
-                    db.bump_gameplan_weight(b, "defense", ek, delta * scale)
-                    ck = f"{b}/defense:{ek}"
-                    changes[ck] = changes.get(ck, 0.0) + delta * scale
-            macro = s["macro"]
-            if macro and macro.lower() not in ("none", "", "null"):
-                m = macro.upper()
-                for b in buckets:
-                    scale = 1.0 if b == opponent_id else 0.35
-                    db.bump_macro_weight(b, m, delta * scale)
-                    ck = f"{b}/macro:{m}"
-                    changes[ck] = changes.get(ck, 0.0) + delta * scale
-
-    # Smarter retrain: grade formation+play vs coverage/look when known
-    from cfb_coach.retrain import apply_play_vs_look_weights, grade_play_vs_look
-
-    grades = grade_play_vs_look(list(snaps))
-    vs_changes = apply_play_vs_look_weights(db, opponent_id, grades)
-    for k, v in vs_changes.items():
-        changes[k] = changes.get(k, 0.0) + v
-
+        d = res["after"].get(k, 0.0) - res["before"].get(k, 0.0)
+        if abs(d) >= 0.001:
+            changes[f"{k[0]}/{k[1]}:{k[2]}"] = d
+    for k in set(m_before) | set(m_after):
+        if k[0] not in buckets:
+            continue
+        d = m_after.get(k, 0.0) - m_before.get(k, 0.0)
+        if abs(d) >= 0.001:
+            changes[f"{k[0]}/macro:{k[1]}"] = d
+    vs_changes = {k: v for k, v in changes.items() if ":vs_look::" in k}
     return {
         "opponent_id": opponent_id,
         "snaps_considered": len(snaps),
         "changes": {k: round(v, 3) for k, v in sorted(changes.items())},
-        "grades": grades,
-        "vs_look_changes": vs_changes,
+        "grades": grade_play_vs_look(list(snaps)),
+        "vs_look_changes": {k: round(v, 3) for k, v in vs_changes.items()},
+        "rebuild": res,
     }
 
 
@@ -602,9 +569,12 @@ def evaluate_ohio_state_promotions(
 
 
 def postgame_summary(db: CoachDB, opponent_id: str, dynasty: str | None = None) -> str:
-    """Run learning on snaps since last postgame; print what changed.
+    """Game over -> retrain (v1.12 rules) and explain it in plain language.
 
-    When dynasty is ohio_state and results are strong, record Alabama promotion notes.
+    Rebuilds every weight from all logged snaps + W/L (``cfb_coach.learning``),
+    then reports THIS game's red-zone / goal-line findings, turnovers, the W/L
+    adjustment and the top risers / fallers. ohio_state lab successes still
+    produce Alabama promotion notes.
     """
     from cfb_coach.dynasty import (
         DEFAULT_DYNASTY,
@@ -615,6 +585,7 @@ def postgame_summary(db: CoachDB, opponent_id: str, dynasty: str | None = None) 
         normalize_dynasty,
         record_promotions,
     )
+    from cfb_coach.learning import RULES_VERSION, format_postgame_v2
 
     dcfg = dynasty_config(normalize_dynasty(dynasty or DEFAULT_DYNASTY))
     meta_key = f"last_postgame_snap_id:{opponent_id}"
@@ -626,6 +597,19 @@ def postgame_summary(db: CoachDB, opponent_id: str, dynasty: str | None = None) 
     before = get_opponent_overlay(db, opponent_id)
     result = learn_from_snaps(db, opponent_id, since_id=since_id)
     after = get_opponent_overlay(db, opponent_id)
+
+    # Which game is this? latest session with new snaps for this opponent
+    session_id = None
+    try:
+        q = "SELECT session_id FROM snaps WHERE opponent_id = ? AND session_id IS NOT NULL"
+        params: tuple = (opponent_id,)
+        if since_id is not None:
+            q += " AND id > ?"
+            params = (opponent_id, since_id)
+        r = db.conn.execute(q + " ORDER BY id DESC LIMIT 1", params).fetchone()
+        session_id = r[0] if r else None
+    except Exception:  # noqa: BLE001
+        session_id = None
 
     # Advance cursor to latest snap for this opponent
     latest = db.conn.execute(
@@ -639,29 +623,26 @@ def postgame_summary(db: CoachDB, opponent_id: str, dynasty: str | None = None) 
         )
         db.conn.commit()
 
+    n_all = db.count_snaps(opponent_id)
     lines = [
         f"# POSTGAME — vs {opponent_id}",
-        f"Snaps considered: {result['snaps_considered']}",
+        f"New snaps learned: {result['snaps_considered']} (all {n_all} logged snaps re-scored under rules {RULES_VERSION})",
         f"Overlay depth: {before.depth} → {after.depth}",
         "",
-        "## Weight changes",
     ]
     changes = result["changes"]
-    if not changes:
+    if not result["snaps_considered"] and not changes:
         lines.append(
             "  (no scored results to learn from — log snaps with "
             "result +N / stop / td / etc.)"
         )
-    else:
-        for k, v in changes.items():
-            sign = "+" if v >= 0 else ""
-            lines.append(f"  {k}: {sign}{v:.3f}")
+    lines.extend(format_postgame_v2(db, opponent_id, result["rebuild"], session_id=session_id))
     grades = result.get("grades") or []
     if grades:
         from cfb_coach.retrain import format_grades_summary
 
         lines.append("")
-        lines.append("## Play vs coverage/look")
+        lines.append("## Play vs coverage/look (this game)")
         lines.extend(format_grades_summary(grades))
     lines.append("")
     lines.append("## Effective macros (after)")
@@ -676,10 +657,25 @@ def postgame_summary(db: CoachDB, opponent_id: str, dynasty: str | None = None) 
     lines.append(f"Dynasty: {dcfg.get('label')} ({dcfg.get('mode')})")
     lines.append(doctrine_line())
 
-    # ohio_state lab → Alabama promotion notes when results are strong
-    if dcfg.get("id") == OHIO_STATE and changes:
+    # ohio_state lab → Alabama promotion notes (family / macro level only)
+    # Only keys that ROSE this game AND are net-positive after the rebuild
+    after_w = (result.get("rebuild") or {}).get("after") or {}
+
+    def _after_positive(k: str) -> bool:
+        if "/macro:" in k:
+            return True
+        bucket, _, rest = k.partition("/")
+        side, _, key = rest.partition(":")
+        return after_w.get((bucket, side, key), 0.0) > 0
+
+    promo_changes = {
+        k: float(v)
+        for k, v in changes.items()
+        if "::" not in k.split(":", 1)[-1] and _after_positive(k)
+    }
+    if dcfg.get("id") == OHIO_STATE and promo_changes:
         promos = evaluate_ohio_state_promotions(
-            {k: float(v) for k, v in changes.items()},
+            promo_changes,
             opponent_id=opponent_id,
         )
         if promos:
@@ -699,7 +695,6 @@ def postgame_summary(db: CoachDB, opponent_id: str, dynasty: str | None = None) 
                 "(threshold not met)."
             )
     elif dcfg.get("id") != OHIO_STATE:
-        # Surface any pending Alabama promotions for awareness
         pending_txt = format_promotions(db=db)
         if "No Alabama promotions" not in pending_txt:
             lines.append("")

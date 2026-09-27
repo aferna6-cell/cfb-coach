@@ -4,7 +4,7 @@ Xbox **CFB 27** dynasty play-caller for Aidan's Alabama online Dynasty.
 
 Heuristics + packaged `seed.json` + CFB27 META baseline + SQLite log learning. No neural net.
 
-**v1.11.0:** HTML **live play window** (default) + game-over smarter retrain. **v1.10.0:** typed **Madden 27 Franchise** coach behind `--game madden27` (see [Madden 27 Franchise](#madden-27-franchise---game-madden27)). CFB 27 stays the default. Nothing changes for CFB unless you pass `--game madden27`.
+**v1.12.0:** smarter retrain v2 (field zones, leverage, turnover weighting, caps, W/L) now drives live calls, plus prep that refreshes the current CFB 27 meta each run (see [Smarter retrain v2](#smarter-retrain-v2--current-meta-prep-v112)). **v1.11.0:** HTML **live play window** (default) + game-over smarter retrain. **v1.10.0:** typed **Madden 27 Franchise** coach behind `--game madden27` (see [Madden 27 Franchise](#madden-27-franchise---game-madden27)). CFB 27 stays the default. Nothing changes for CFB unless you pass `--game madden27`.
 
 **Prepper + live caller.** Prep opens a **browser** with **playbook/macro diffs only** (never a full recreate install sheet). Live caller stays sharp: two reads on O, one user job on D, anti-repeat, no single-snap whiplash. Mid-game **PIVOT** fires when the last 3 snaps fail on a side.
 
@@ -46,7 +46,7 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --no-open
 During the game Aidan should **not** need the terminal. `play` starts a small **stdlib HTTP server** on `127.0.0.1:8765` (or the next free port) and opens a browser page:
 
 1. **Big PLAY** call at the top.
-2. **Last snap outcome** — buttons/fields: gain N / loss N / incomplete / sack / TD / INT / stop / convert (or free text like `+13`).
+2. **Last snap outcome** — buttons/fields: gain N / loss N / incomplete / sack / TD / INT / fumble lost / stop / convert (or free text like `+13`).
 3. **Next situation** — down, distance, my/opp yard line, last play or look name (check **live** for pre-snap `showing …`).
 4. **Submit** → logs the previous call’s result into SQLite, returns the next PLAY, appends a row to the on-page **game log**.
 5. **End game** — Win/Loss + score (e.g. `24-17`) → **Game over → retrain**. Closes the session, grades **formation+play vs coverage/look** (success rate + avg yards), bumps/demotes gameplan weights, updates macro proven/failed thresholds, and shows a short summary on the page.
@@ -71,6 +71,63 @@ PYTHONPATH=. python3 -m cfb_coach postgame --game madden27 --opponent gavin
 
 Sidecar only — no controller automation, no vision. Prep browser is unchanged. Terminal/`--once` scripts still work.
 
+## Smarter retrain v2 + current-meta prep (v1.12)
+
+**Why:** after 5 Ohio State games vs the CPU (3 W, 2 L) the old retrain had snowballed
+(`run_first` 11.7, `cluster_changeup` 8.75), ignored W/L, treated an INT like an
+incompletion, and the live caller never read the learned weights at all.
+
+**What retrain does now** (`cfb_coach/learning.py`, all constants in one block):
+
+- **Field zones** (`cfb_coach/zones.py`): open field / red zone (inside the opponent's 20) /
+  goal line (inside the 5, or goal-to-go inside the 10). `yardline` is 0-100 toward the
+  opponent's goal (`opp 14` = 86). Own-territory snaps are never red zone.
+- Zone stores (family, per-play, play-vs-coverage) sit next to the general store. A red-zone snap
+  counts 1.0 in rz, 0.25 in gl and only 0.5 in general; a goal-line snap counts 1.0 in gl, 0.6 in rz
+  and 0.35 in general. So a play that fails at the 5 drops in rz/gl without being hurt much in open field.
+- **Leverage:** 3rd down 2x, 4th down 3x, goal-to-go at least 2x (cap 3x). Success is situational
+  (40% of the distance on 1st, 60% on 2nd, 100% on 3rd/4th).
+- **Outcomes:** success +1, explosive +1.5, TD +2, near-miss -0.4, fail -1, **sack -1.75,
+  turnover (INT / fumble lost) -3.5**; a drive-ending red-zone failure is another x1.5.
+- **Caps / diminishing returns:** `weight = cap * tanh(0.7 * sum(w*score) / (sum(w) + 5))`,
+  where the caps are family ±4, play ±2.5, vs-coverage ±1.5 and anti-repeat ±1.5. Nothing snowballs,
+  and the ordering is kept.
+- **W/L at game over:** after a loss, the play that ended each stalled drive gets -0.75 (x1.5 in the
+  red zone). After a win, each play of a TD drive gets +0.25. Both are scaled by margin
+  (1 + 0.5·min(margin,14)/14). **Score assumption:** the score is typed winner-first (a `14-7` loss
+  means you scored 7), so our points = max in a win and min in a loss. Either order works.
+- **Rebuild, not bump:** every retrain recomputes all weights from every logged snap + game result, so
+  it is idempotent. The first `prep` or `play` after upgrading rebuilds once (meta key
+  `learn_rules_version`), writes a timestamped backup `coach.db.bak-YYYYmmdd-HHMMSS` first, and
+  prints a one-line notice. Snaps and game history are never deleted.
+- **Live caller uses it:** each call is ranked by the learned zone weights (blended with general),
+  plus a meta prior that fades as your own sample grows, then sampled (softmax T=0.25 with 10% spread
+  so the menu keeps getting tested). The rationale shows `learned gl: HB Dive +0.25 (n=2, meta +0.20) p=44%`.
+  Anti-repeat and 3-fail PIVOT pick the best-ranked alternative.
+- **Postgame** ('Game over → retrain' and `postgame`) plainly lists red-zone trips and TDs, the drives that
+  died inside the 20, turnovers and sacks, the W/L adjustment, and the top risers and fallers.
+
+```bash
+PYTHONPATH=. python3 -m cfb_coach rebuild            # explicit rebuild (backs up the DB first)
+PYTHONPATH=. python3 -m cfb_coach rebuild --no-backup --top 25
+```
+
+**Prep aligns to the current meta** (`cfb_coach/meta_scout.py` + `cfb_coach/meta_align.py`):
+
+- Each prep fetches live, free sources in parallel (stdlib `urllib`, no keys, ~2-5 s): EA title
+  updates (plus any newer update linked from the EA news list), MP1st / UpdateCrazy patch notes,
+  MaddenTurf and MaddenProdigy guides, r/NCAAFBseries search RSS, and Google News RSS (which also
+  surfaces YouTube meta videos by title).
+- The cache (`~/.cfb-coach/meta_cache.json`) is reused only if it was fetched **today** and <6 h ago.
+  `--refresh-meta` forces a fetch. Offline or failed: last good cache, else the seed research.
+- Concept signals (general + red-zone context) become small capped priors (≤0.12 live, ≤0.4 total) on
+  top of the cited seed priors in `data/meta_baseline.json` → `meta_research`, which only covers plays
+  in Gun Bunch X Nasty / Gun Cluster / Singleback Deuce Close.
+- The prep page shows when the meta was fetched, which sources were used, what changed since the last
+  cache, recent headlines, a **Zone plan** (red zone / goal line / open with the live caller's call
+  shares), **conflicts** where the meta likes a play that keeps failing for you, Ohio State lab
+  candidates (verified in the OSU book, untested by you), and the retrain constants.
+
 ## Commands
 
 | Command | Purpose |
@@ -80,8 +137,9 @@ Sidecar only — no controller automation, no vision. Prep browser is unchanged.
 | `python3 -m cfb_coach prep -o <id> --text` | Compact terminal delta dump (no browser) |
 | `python3 -m cfb_coach prep -o <id> --no-open` | Write HTML without opening browser |
 | `python3 -m cfb_coach prep -o <id> --mark-applied` | Mark proposed deltas applied (next prep shows only NEW) |
-| `python3 -m cfb_coach prep -o <id> --offline` | Skip network meta scout (use cache/baseline `cfb27-2026-09`) |
-| `python3 -m cfb_coach prep -o <id> --refresh-meta` | Force refetch meta scout (ignore <6h cache) |
+| `python3 -m cfb_coach prep -o <id> --offline` | Skip the live meta fetch (last cache, else seed research) |
+| `python3 -m cfb_coach prep -o <id> --refresh-meta` | Force a live meta refetch (default: refetch unless fetched today and <6h old) |
+| `python3 -m cfb_coach rebuild` | Recompute all learned weights from every snap + W/L under the current rules (backs up the DB) |
 | `python3 -m cfb_coach play --opponent <id>` | **HTML live window** (localhost) — outcome + next sit, game log, Game over → retrain |
 | `python3 -m cfb_coach play --opponent <id> --terminal` | Classic terminal `sit>` loop (+ optional overlay) |
 | `python3 -m cfb_coach play --opponent <id> --once "2&7 c2 invert"` | One-shot non-interactive call |

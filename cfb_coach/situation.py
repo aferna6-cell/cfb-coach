@@ -191,47 +191,53 @@ def parse_situation(raw: str, default_side: str = "offense") -> Situation:
         dist_raw = m.group(2).lower()
         if dist_raw in ("g", "goal", "inches", "inch"):
             sit.distance = 1
-            sit.goal_line = True
             sit.short_yardage = True
+            if dist_raw in ("g", "goal"):
+                sit.goal_line = True
         else:
             sit.distance = int(dist_raw)
 
-    # Prefer explicit own/opp phrases over bare yl/on
+    # Prefer explicit own/opp phrases over bare yl/on.
+    # Convention: yardline = yards from OUR goal (0-100): my 21 -> 21, opp 14 -> 86.
     yl_own = _YL_OWN_RE.search(text)
     yl_opp = _YL_OPP_RE.search(text)
     yl_ball = _YL_BALL_ON_RE.search(text)
     yl = _YL_RE.search(text)
     if yl_own:
         sit.yardline = int(yl_own.group(1))
-        if sit.yardline <= 20:
-            sit.red_zone = True
-        if sit.yardline <= 5:
-            sit.goal_line = True
     elif yl_opp:
         opp_yl = int(yl_opp.group(1))
         sit.yardline = max(1, min(99, 100 - opp_yl))  # yards from our goal
-        if opp_yl <= 20:
-            sit.red_zone = True
-        if opp_yl <= 5:
-            sit.goal_line = True
     elif yl_ball:
         sit.yardline = int(yl_ball.group(1))
-        if sit.yardline <= 20:
-            sit.red_zone = True
-        if sit.yardline <= 5:
-            sit.goal_line = True
     elif yl:
         sit.yardline = int(yl.group(1))
-        if sit.yardline <= 20:
-            sit.red_zone = True
-        if sit.yardline <= 5:
-            sit.goal_line = True
 
-    if _RZ_RE.search(text):
-        sit.red_zone = True
-    if _GL_RE.search(text):
-        sit.goal_line = True
-        sit.red_zone = True
+    goal_typed = bool(m and m.group(2).lower() in ("g", "goal"))
+    if goal_typed and sit.yardline is not None:
+        # "1&goal opp 6" -> distance is the yards to the goal line
+        sit.distance = max(1, 100 - sit.yardline)
+
+    explicit_rz = bool(_RZ_RE.search(text))
+    explicit_gl = bool(_GL_RE.search(text))
+    if sit.yardline is not None:
+        # Field zone comes from the yardline, so own-territory snaps (my 1-20)
+        # are backed up, NOT red zone / goal line (v1.12 fix).
+        from cfb_coach.zones import GOAL_LINE, OPEN, RED_ZONE, field_zone
+
+        zone = field_zone(sit.yardline, sit.distance)
+        sit.goal_line = zone == GOAL_LINE
+        sit.red_zone = zone in (RED_ZONE, GOAL_LINE)
+        if zone == OPEN and (explicit_rz or explicit_gl) and sit.yardline >= 50:
+            # Typed rz/gl in opponent territory with an odd yardline: trust the words
+            sit.red_zone = True
+            sit.goal_line = explicit_gl
+    else:
+        if explicit_rz:
+            sit.red_zone = True
+        if explicit_gl:
+            sit.goal_line = True
+            sit.red_zone = True
     if _2MIN_RE.search(text):
         sit.two_minute = True
 

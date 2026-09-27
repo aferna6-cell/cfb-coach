@@ -743,9 +743,46 @@ def build_prep_plan(
         "doctrine": doctrine_line(),
         "meta_scout": scout_dict,
     }
+    # v1.12: learned zone plan (open / red zone / goal line) aligned to the meta
+    try:
+        from cfb_coach.meta_align import build_prep_alignment
+
+        plan["zone_alignment"] = build_prep_alignment(
+            db, opponent_id, scout_dict or None, dynasty=dynasty
+        )
+    except Exception as exc:  # noqa: BLE001 — never break prep
+        plan["zone_alignment"] = {"error": f"{type(exc).__name__}: {exc}"}
     if db is not None and persist:
         save_prep_deltas(db, opponent_id, proposed, shown)
     return plan
+
+
+def format_zone_alignment_text(za: dict[str, Any] | None) -> list[str]:
+    """Terminal version of the learned-zone + meta alignment panels."""
+    za = za or {}
+    if not za or za.get("error"):
+        return [f"## Zone plan unavailable ({za.get('error', 'no data')})"] if za else []
+    labels = {"open": "Open field", "rz": "Red zone (inside the 20)", "gl": "Goal line / goal-to-go"}
+    lines = ["## Zone plan (your learned results + current meta)"]
+    for zone in ("rz", "gl", "open"):
+        rows = (za.get("zone_plan") or {}).get(zone) or []
+        lines.append(f"  {labels[zone]}:")
+        for r in rows:
+            lines.append(
+                f"    {r['p']:.0%}  {r['formation']} — {r['play']}  (yours {r['learned']:+.2f}, n={r['n_zone']}; meta {r['meta']:+.2f})"
+            )
+    if za.get("conflicts"):
+        lines.append("## Meta vs your data — conflicts")
+        lines += [f"  ! {c['message']}" for c in za["conflicts"]]
+    if za.get("support"):
+        lines += [f"  + {c['message']}" for c in za["support"][:4]]
+    if za.get("lab_candidates"):
+        lines.append("## Ohio State lab candidates (verified in the OSU book, untested by you)")
+        lines += [f"  ? {c['formation']} — {c['play']}: {c.get('note', '')}" for c in za["lab_candidates"]]
+    li = za.get("learning") or {}
+    if li:
+        lines.append(f"Retrain rules {li.get('rules_version')} (DB rebuilt {li.get('rebuilt_at') or 'n/a'})")
+    return lines
 
 
 def format_delta_text(plan: dict[str, Any]) -> str:
@@ -844,11 +881,15 @@ def format_delta_text(plan: dict[str, Any]) -> str:
             lines.append("")
     except Exception:
         pass
+    za_lines = format_zone_alignment_text(plan.get("zone_alignment"))
+    if za_lines:
+        lines.extend(za_lines)
+        lines.append("")
     lines.append("## Call emphasis")
     for t in plan["tips"]:
         lines.append(f"  - {t}")
     lines.append("")
-    lines.append("Live caller unchanged. Inventory (formations→plays) is in the browser view.")
+    lines.append("Live caller ranks each call with these zone weights + meta priors. Inventory (formations→plays) is in the browser view.")
     return "\n".join(lines)
 
 

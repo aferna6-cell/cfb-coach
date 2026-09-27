@@ -403,6 +403,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
       <button type="button" class="outcome" data-out="sack">sack</button>
       <button type="button" class="outcome" data-out="td">TD</button>
       <button type="button" class="outcome" data-out="int">INT</button>
+      <button type="button" class="outcome" data-out="fumble lost">fumble lost</button>
       <button type="button" class="outcome" data-out="stop">stop</button>
       <button type="button" class="outcome" data-out="convert">convert</button>
     </div>

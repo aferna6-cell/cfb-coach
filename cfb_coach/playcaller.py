@@ -218,6 +218,174 @@ def _base_offense(
     return pistol, rng.choice(["HB Stretch", "RPO Alert TE Flat", "Inside Zone Split"]), adj, "Pistol run/RPO changeup"
 
 
+# --- v1.12: learned + meta ranking ------------------------------------------
+
+_BUNCH, _CLUSTER = "Gun Bunch X Nasty", "Gun Cluster"
+_DEUCE, _PISTOL = "Singleback Deuce Close", "Pistol U Off Trips"
+
+# Candidate menus per field zone (all in Aidan's seed book core)
+ZONE_CANDIDATES: dict[str, list[tuple[str, str]]] = {
+    "gl": [
+        (_DEUCE, "Mtn Duo"), (_DEUCE, "HB Dive"), (_DEUCE, "Inside Zone Split"), (_DEUCE, "Motion Power"),
+        (_DEUCE, "PA RZ Crossers"), (_BUNCH, "Inside Zone"), (_BUNCH, "Z Spot GoalLine"),
+        (_BUNCH, "Mesh Spot"), (_BUNCH, "RZ PA X Whip"), (_CLUSTER, "Z Spot Shake"),
+    ],
+    "rz": [
+        (_BUNCH, "RZ PA X Whip"), (_BUNCH, "Z Spot GoalLine"), (_BUNCH, "Inside Zone"), (_BUNCH, "Mesh Spot"),
+        (_BUNCH, "HB Base"), (_BUNCH, "Counter Y"), (_DEUCE, "Mtn Duo"), (_DEUCE, "Inside Zone Split"),
+        (_DEUCE, "HB Dive"), (_DEUCE, "PA RZ Crossers"), (_CLUSTER, "Z Spot Shake"), (_CLUSTER, "Mesh Post"),
+    ],
+    "open": [
+        (_BUNCH, "Inside Zone"), (_BUNCH, "HB Base"), (_BUNCH, "Mesh Spot"), (_BUNCH, "Counter Y"),
+        (_BUNCH, "Drive HB Under"), (_BUNCH, "Mtn RPO Zone Alert"), (_CLUSTER, "Z Spot Shake"),
+        (_CLUSTER, "Outside Zone"), (_CLUSTER, "Mesh Post"), (_DEUCE, "Inside Zone Split"),
+    ],
+}
+
+
+def zone_candidates(zone: str) -> list[tuple[str, str]]:
+    return list(ZONE_CANDIDATES.get(zone) or ZONE_CANDIDATES["open"])
+
+
+def _situation_zone(sit: Situation) -> str:
+    from cfb_coach.zones import zone_of_situation
+
+    try:
+        return zone_of_situation(sit)
+    except Exception:  # noqa: BLE001
+        return "open"
+
+
+def _base_offense_menu(
+    sit: Situation, opp: dict[str, Any], rng: random.Random
+) -> tuple[list[tuple[str, str]], str, str]:
+    """Situational MENU (formation, play) + adj + rationale. Ranking picks from it."""
+    bunch, cluster, deuce, pistol = _BUNCH, _CLUSTER, _DEUCE, _PISTOL
+    oid = _opp_id(opp)
+    arch = _arch(opp)
+    adj = "No adj"
+
+    def m(form: str, plays: list[str]) -> list[tuple[str, str]]:
+        return [(form, p) for p in plays]
+
+    zone = _situation_zone(sit)
+    if zone == "gl" or sit.goal_line:
+        return zone_candidates("gl"), adj, "GL — goal-to-go menu (learned + meta ranked)"
+    if zone == "rz" or sit.red_zone:
+        if sit.short_yardage:
+            return zone_candidates("rz"), adj, "RZ short — possession menu (learned + meta ranked)"
+        return zone_candidates("rz"), adj, "RZ — possession + compressed (learned + meta ranked)"
+
+    if sit.short_yardage:
+        if oid == "quen":
+            return m(bunch, ["HB Base", "Mesh Spot", "Return Whip Trail"]), "Protection first", "3rd/short vs pressure arch — run/hot"
+        return m(bunch, ["HB Base", "Inside Zone", "Mesh Spot"]) + [(deuce, "Mtn Duo")], adj, "3rd/short — run or quick man-beater"
+
+    if sit.long_yardage and sit.down in (3, 4):
+        if "two_high" in arch or "split_field" in arch or oid in ("gavin", "cpu"):
+            return (
+                m(bunch, ["Mesh Spot", "Drive HB Under"]) + m(cluster, ["HB Mid Draw", "Spacing"]),
+                adj,
+                "3rd-long two-high arch — underneath to sticks (no force)",
+            )
+        return m(cluster, ["Mesh Post", "Z Spot", "Verticals"]), adj, "3rd-long — sticks answer"
+
+    if sit.two_minute:
+        return m(bunch, ["Mesh Spot", "Deep Flood"]) + [(pistol, "Quick Slants")], adj, "2-min — ball security + clock"
+
+    if oid == "gavin" or "split_field" in arch or "two_high" in arch:
+        return (
+            m(bunch, ["Inside Zone", "HB Base", "Counter Y", "Mesh Spot", "Mtn RPO Zone Alert"]),
+            adj,
+            "base vs two-high/split-field arch — run / easy (not last-coverage chase)",
+        )
+    if oid == "quen" or "pressure" in arch:
+        return (
+            m(bunch, ["Mesh Spot", "HB Base", "Inside Zone", "Return Whip Trail"]),
+            "Protection first" if rng.random() < 0.4 else adj,
+            "base vs pressure arch — protection + easy answers",
+        )
+    if oid == "cpu":
+        return zone_candidates("open"), adj, "base vs CPU — run / free underneath / Cluster changeup (learned + meta ranked)"
+
+    roll = rng.random()
+    if roll < 0.45:
+        return m(bunch, ["Inside Zone", "HB Base", "Mesh Spot"]), adj, "early down — establish run / easy completion"
+    if roll < 0.7:
+        return m(bunch, ["Deep Flood", "Mesh Traffic", "Mtn Cross Post"]), adj, "early pass mix"
+    if roll < 0.85:
+        return m(cluster, ["Outside Zone", "Z Spot Shake", "Mesh Post"]), adj, "Cluster counterpunch"
+    return m(pistol, ["HB Stretch", "RPO Alert TE Flat", "Inside Zone Split"]), adj, "Pistol run/RPO changeup"
+
+
+class _Ranker:
+    """Scores menu items with learned zone weights + decayed meta prior."""
+
+    def __init__(self, db: CoachDB | None, opponent_id: str) -> None:
+        from cfb_coach.learning import LearnedWeights
+        from cfb_coach.meta_align import MetaPriors
+
+        try:
+            self.lw = LearnedWeights.load(db, opponent_id) if db is not None else LearnedWeights.empty()
+        except Exception:  # noqa: BLE001
+            self.lw = LearnedWeights.empty()
+        try:
+            self.priors = MetaPriors.load_cached()
+        except Exception:  # noqa: BLE001
+            self.priors = None
+
+    def rank(self, sit: Situation, menu: list[tuple[str, str]]) -> list[dict[str, Any]]:
+        from cfb_coach.learning import REC_EXPLORE, REC_TEMPERATURE
+        from cfb_coach.meta_align import combined_score, softmax_probs
+
+        zone = _situation_zone(sit)
+        cov = sit.coverage_hint
+        src = getattr(sit, "coverage_source", "none") or "none"
+        seen: set[tuple[str, str]] = set()
+        rows = []
+        for form, play in menu:
+            if (form, play) in seen:
+                continue
+            seen.add((form, play))
+            rows.append(combined_score(self.lw, self.priors, zone, form, play, coverage=cov, coverage_source=src))
+        probs = softmax_probs([r["total"] for r in rows], REC_TEMPERATURE)
+        u = 1.0 / max(1, len(rows))
+        for r, p in zip(rows, probs):
+            r["p"] = (1 - REC_EXPLORE) * p + REC_EXPLORE * u
+        rows.sort(key=lambda r: -r["p"])
+        return rows
+
+
+def _sample(rows: list[dict[str, Any]], rng: random.Random) -> dict[str, Any]:
+    x = rng.random()
+    acc = 0.0
+    for r in rows:
+        acc += r["p"]
+        if x <= acc:
+            return r
+    return rows[-1]
+
+
+def rank_offense_candidates(
+    sit: Situation, db: CoachDB | None, opponent_id: str, *, menu: list[tuple[str, str]] | None = None
+) -> list[dict[str, Any]]:
+    """Public: ranked menu for a situation (used by prep + reports + tests)."""
+    if menu is None:
+        opp = {"_id": opponent_id}
+        menu, _, _ = _base_offense_menu(sit, opp, random.Random(0))
+    return _Ranker(db, opponent_id).rank(sit, menu)
+
+
+def _rank_note(sit: Situation, pick: dict[str, Any], rows: list[dict[str, Any]]) -> str:
+    zone = _situation_zone(sit)
+    alts = ", ".join([f"{r['play']} {r['p']:.0%}" for r in rows if r is not pick][:3])
+    meta = f", meta {pick['meta']:+.2f}" if abs(pick.get("meta", 0.0)) >= 0.005 else ""
+    return (
+        f"learned {zone}: {pick['play']} {pick['learned']:+.2f} (n={pick['n_zone']}{meta}) "
+        f"p={pick['p']:.0%}" + (f"; alts {alts}" if alts else "")
+    )
+
+
 def _soft_coverage_lean(
     form: str,
     play: str,
@@ -322,7 +490,13 @@ def _pick_offense(
     rng: random.Random,
 ) -> Call:
     pb = seed["playbooks"]["offense_formations"]
-    form, play, adj, rationale = _base_offense(sit, opp, rng)
+    menu, adj, rationale = _base_offense_menu(sit, opp, rng)
+    menu = [_validate_play(f, p, pb) for f, p in menu]
+    ranker = _Ranker(db, _opp_id(opp))
+    rows = ranker.rank(sit, menu)
+    pick = _sample(rows, rng)
+    form, play = pick["formation"], pick["play"]
+    rationale = f"{rationale} | {_rank_note(sit, pick, rows)}"
     form, play, adj, rationale, _ = _soft_coverage_lean(
         form, play, adj, rationale, sit, opp, db, rng
     )
@@ -334,17 +508,31 @@ def _pick_offense(
         rationale = "Empty changeup / QB stress | " + rationale
     form, play = _validate_play(form, play, pb)
 
-    # Anti-repeat: if same play flooded recent snaps, rotate to constraint changeup
+    def _best_alt(exclude_family: str | None = None) -> tuple[str, str] | None:
+        from cfb_coach.learning import play_family
+
+        pool = rows
+        if _situation_zone(sit) == "open":
+            extra = [fp for fp in zone_candidates("open") if fp not in [(r["formation"], r["play"]) for r in rows]]
+            if extra:
+                pool = ranker.rank(sit, [(r["formation"], r["play"]) for r in rows] + extra)
+        for r in sorted(pool, key=lambda r: -r["total"]):
+            if (r["formation"], r["play"]) == (form, play):
+                continue
+            if exclude_family and play_family(r["formation"], r["play"]) == exclude_family:
+                continue
+            return r["formation"], r["play"]
+        return None
+
+    # Anti-repeat: if same play flooded recent snaps, rotate to the best-ranked alternative
     if db is not None:
         try:
             from cfb_coach.gameplan import anti_repeat_penalty
 
             pen = anti_repeat_penalty(db, _opp_id(opp), form, play, side="offense")
             if pen >= 1.0:
-                alt_form, alt_play = "Gun Cluster", rng.choice(
-                    ["Z Spot Shake", "Outside Zone", "Mesh Post"]
-                )
-                alt_form, alt_play = _validate_play(alt_form, alt_play, pb)
+                alt = _best_alt() or ("Gun Cluster", rng.choice(["Z Spot Shake", "Outside Zone", "Mesh Post"]))
+                alt_form, alt_play = _validate_play(alt[0], alt[1], pb)
                 rationale = (
                     f"anti-repeat pivot → {alt_form}/{alt_play} "
                     f"(pen={pen:.1f}) | {rationale}"
@@ -353,22 +541,18 @@ def _pick_offense(
         except Exception:
             pass
 
-    # Mid-game PIVOT: last 3 O snaps failed → force constraint family switch
+    # Mid-game PIVOT: last 3 O snaps failed → switch family to the best-ranked alternative
     if db is not None:
         try:
             from cfb_coach.gameplan import active_pivot
+            from cfb_coach.learning import play_family
 
             tip = active_pivot(db, _opp_id(opp), "offense")
             if tip:
-                alt_form, alt_play = "Gun Cluster", rng.choice(
-                    ["Z Spot Shake", "Outside Zone", "Mesh Spot"]
+                alt = _best_alt(exclude_family=play_family(form, play)) or (
+                    "Gun Bunch X Nasty", rng.choice(["Inside Zone", "HB Base", "Mesh Spot"])
                 )
-                # Prefer easy Mesh Spot from Bunch if Cluster just failed too
-                if "Cluster" in (form or "") or rng.random() < 0.45:
-                    alt_form, alt_play = "Gun Bunch X Nasty", rng.choice(
-                        ["Inside Zone", "HB Base", "Mesh Spot"]
-                    )
-                alt_form, alt_play = _validate_play(alt_form, alt_play, pb)
+                alt_form, alt_play = _validate_play(alt[0], alt[1], pb)
                 form, play = alt_form, alt_play
                 adj = "No adj"
                 rationale = f"{tip.message} → {form}/{play} | {rationale}"

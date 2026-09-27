@@ -27,6 +27,26 @@ def _db() -> CoachDB:
     return CoachDB(resolve_db_path_from_env())
 
 
+def _local_ts(ts: str) -> str:
+    from cfb_coach.meta_scout import local_ts
+
+    return local_ts(ts)
+
+
+def _ensure_rules(db: CoachDB) -> None:
+    """One-time rebuild of learned weights when the retrain rules version changed.
+
+    Writes a timestamped backup of the DB first and prints a one-line notice.
+    Never blocks prep/play: failures are reported and ignored.
+    """
+    try:
+        from cfb_coach.learning import ensure_rules_current
+
+        ensure_rules_current(db)
+    except Exception as exc:  # noqa: BLE001
+        print(f"(retrain rules rebuild skipped: {exc})", file=sys.stderr)
+
+
 def _require_opponent(raw: str) -> str:
     oid = resolve_opponent(raw)
     if not oid:
@@ -95,6 +115,7 @@ def cmd_prep(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
     db = _db()
     try:
+        _ensure_rules(db)
         dynasty = set_session_dynasty(
             db, getattr(args, "dynasty", None) or DEFAULT_DYNASTY
         )
@@ -149,18 +170,16 @@ def cmd_prep(args: argparse.Namespace) -> int:
         else:
             print(f"{n} adjustment(s) shown (deltas only).")
         scout = plan.get("meta_scout") or {}
-        if scout.get("available"):
-            tag = "cached" if scout.get("from_cache") else "live"
-            print(
-                f"Meta scout ({tag}, conf={scout.get('confidence', '?')}): "
-                f"{len(scout.get('patch_notes') or [])} patch note(s), "
-                f"{len(scout.get('suggestions') or [])} book suggestion(s)."
-            )
-        else:
-            print(
-                scout.get("message")
-                or "Scout unavailable — using cached/baseline cfb27-2026-09"
-            )
+        n_ok = sum(1 for s_ in (scout.get("sources") or []) if s_.get("fetched"))
+        n_src = len(scout.get("sources") or [])
+        print(
+            f"Meta: {scout.get('mode') or '?'} (fetched {_local_ts(scout.get('fetched_at') or '')}; "
+            f"{n_ok}/{n_src} sources ok; {len(scout.get('changes_since_last') or [])} change note(s)) — "
+            f"{scout.get('message') or ''}"
+        )
+        za = plan.get("zone_alignment") or {}
+        if za.get("conflicts"):
+            print(f"Meta vs your data: {len(za['conflicts'])} conflict(s) flagged on the prep page.")
     finally:
         db.close()
     return 0
@@ -239,6 +258,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         return handler(args)
     oid = _require_opponent(args.opponent)
     db = _db()
+    _ensure_rules(db)
     dynasty = set_session_dynasty(
         db, getattr(args, "dynasty", None) or db.get_meta("dynasty_mode") or DEFAULT_DYNASTY
     )
@@ -476,6 +496,57 @@ def cmd_play(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_rebuild(args: argparse.Namespace) -> int:
+    """Recompute ALL learned weights from every logged snap + game result (v2 rules)."""
+    from cfb_coach.games import is_madden
+
+    if is_madden(getattr(args, "game", None)):
+        raise SystemExit("rebuild applies to CFB 27 (--game cfb27); Madden 27 keeps its own learning")
+    from cfb_coach.learning import (
+        RULES_VERSION,
+        LearnedWeights,
+        backup_db_file,
+        rebuild_all,
+        weight_diff,
+        zone_leaderboard,
+    )
+    from cfb_coach.learning import _fmt_key  # noqa: PLC2701
+
+    db = _db()
+    try:
+        oid = _require_opponent(args.opponent) if getattr(args, "opponent", None) else "cpu"
+        n_snaps = int(db.conn.execute("SELECT COUNT(*) FROM snaps").fetchone()[0])
+        bpath = None
+        if not getattr(args, "no_backup", False) and n_snaps:
+            bpath = backup_db_file(db)
+            if bpath:
+                db.set_meta("learn_rules_backup_path", str(bpath))
+        res = rebuild_all(db)
+        n_games = len([r for r in res["results"].values() if r.get("result_wl")])
+        print(
+            f"Rebuilt learned weights under rules {RULES_VERSION} from {n_snaps} snaps / {n_games} game results"
+            + (f" (backup: {bpath})" if bpath else " (no backup)")
+        )
+        print("Snaps and game history untouched.")
+        diff = weight_diff(res["before"], res["after"], opponent_id=oid)
+        top = int(getattr(args, "top", 15) or 15)
+        print(f"\n## Biggest changes vs {oid} (before → after)")
+        for k, b, a, _d in diff[:top]:
+            print(f"  {_fmt_key(k)}: {b:+.2f} → {a:+.2f}")
+        lw = LearnedWeights.load(db, oid)
+        for zone, label in (("general", "general"), ("rz", "red zone"), ("gl", "goal line / goal-to-go")):
+            lb = zone_leaderboard(lw, zone, top=5)
+            print(f"\n## {label}: best")
+            for name, v, n in lb["best"]:
+                print(f"  {v:+.2f}  {name}  (n={n})")
+            print(f"## {label}: worst")
+            for name, v, n in lb["worst"]:
+                print(f"  {v:+.2f}  {name}  (n={n})")
+    finally:
+        db.close()
+    return 0
+
+
 def cmd_promote(args: argparse.Namespace) -> int:
     """List / accept ohio_state → Alabama promotions."""
     handler = _madden_handler(args, "cmd_promote")
@@ -569,12 +640,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_prep.add_argument(
         "--offline",
         action="store_true",
-        help="Skip live meta scout network fetch (use cache/baseline cfb27-2026-09)",
+        help="Skip the live meta fetch (use last cache, else the seed research in meta_baseline.json)",
     )
     p_prep.add_argument(
         "--refresh-meta",
         action="store_true",
-        help="Force refetch meta scout (ignore <6h cache)",
+        help="Force a live meta refetch now (default: refetch unless already fetched today and <6h old)",
     )
     _add_game_args(p_prep)
     p_prep.add_argument(
@@ -656,6 +727,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_game_args(p_post)
     p_post.set_defaults(func=cmd_postgame)
+
+    p_reb = sub.add_parser(
+        "rebuild",
+        help="Recompute ALL learned weights from every logged snap + W/L under the current retrain rules (backs up the DB first)",
+    )
+    p_reb.add_argument("--opponent", "-o", default=None, help="Which opponent's changes to print (default cpu)")
+    p_reb.add_argument("--no-backup", action="store_true", help="Skip the timestamped DB backup")
+    p_reb.add_argument("--top", type=int, default=15, help="How many before/after changes to print")
+    p_reb.add_argument("--game", default="cfb27", help=argparse.SUPPRESS)
+    p_reb.set_defaults(func=cmd_rebuild)
 
     p_ops = sub.add_parser("opponents", help="List opponents + aliases")
     _add_game_args(p_ops, franchise=False)
