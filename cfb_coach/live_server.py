@@ -60,6 +60,8 @@ class LivePlayController:
     brand: str = "CFB Coach"
     play_cmd: str = "cfb-coach play"
     dynasty: str = "alabama"
+    dynasty_label: str = ""  # e.g. "Ohio State (experimental)"
+    dynasty_source: str = ""  # where the dynasty came from (--dynasty / latest prep / default)
     cpu_only: bool = False
     default_side: str = "offense"
     session_id: str = ""
@@ -95,7 +97,7 @@ class LivePlayController:
         if not rec:
             return {"ok": False, "error": "no matching pending playbook edits (run prep, or they were already applied)",
                     "state": self.state()}
-        return {"ok": True, "applied_rev": rec.get("rev"), "state": self.state()}
+        return {"ok": True, "applied_rev": rec.get("rev"), "dynasty": self.dynasty, "state": self.state()}
 
     def start(self) -> None:
         sess = start_session(
@@ -109,6 +111,9 @@ class LivePlayController:
             "brand": self.brand,
             "play_cmd": self.play_cmd,
             "session_id": self.session_id,
+            "dynasty": self.dynasty,
+            "dynasty_label": self.dynasty_label or self.dynasty,
+            "dynasty_source": self.dynasty_source,
             "call_text": self.call_text,
             "heard": self.heard,
             "cpu_only": self.cpu_only,
@@ -120,6 +125,27 @@ class LivePlayController:
             "retrain_summary": self.retrain_summary,
             "log": [r.to_dict() for r in self.log],
             "book": self.book_state(),
+            "macro": self.macro_state(),
+        }
+
+    def macro_state(self) -> dict[str, Any] | None:
+        """v1.15: the Active-8 offense macro suggested with the pending call (or None)."""
+        call = self.last_call
+        if (call is None or self.ended or not getattr(call, "macro", None) or getattr(call, "side", "") != "offense"
+                or getattr(call, "macro_info", None) is None):  # CFB offense custom adjustments only
+            return None
+        mi = dict(getattr(call, "macro_info", None) or {})
+        head = call.headline() if hasattr(call, "headline") else f"PLAY: {call.play} ({call.formation}) + MACRO: {call.macro}"
+        return {
+            "id": call.macro,
+            "name": mi.get("name") or call.macro,
+            "headline": head,
+            "key": mi.get("key") or "",
+            "why": mi.get("why") or "",
+            "fire_when": mi.get("fire_when") or "",
+            "settings": [{"section": r.get("section"),
+                          "setting": "" if r.get("setting") == r.get("section") else r.get("setting"),
+                          "value": r.get("value")} for r in mi.get("settings") or []],
         }
 
     def _macro_of(self, call: Any) -> str | None:
@@ -403,15 +429,27 @@ def render_live_html(ctrl: LivePlayController) -> str:
     font-size: .8rem; color: var(--fg); background:#0d1117; border-radius: 6px;
     padding: .65rem; border: 1px solid var(--border); max-height: 320px; overflow-y: auto; }}
   .err {{ color: var(--danger); font-size: .85rem; min-height: 1.1rem; }}
+  .dyn {{ font-size: .85rem; color: var(--fg); margin: 0 0 .3rem; }}
+  .dyn b {{ color: var(--accent); }}
+  .dyn .src {{ color: var(--muted); font-size: .75rem; }}
+  #macro-box {{ border: 2px solid #d29922; background: #2a1f0a; border-radius: 8px; padding: .6rem .8rem; margin: -.35rem 0 .8rem; }}
+  #macro-box .mh {{ font-size: clamp(1.05rem, 2.4vw, 1.5rem); font-weight: 800; color: #f2cc60; }}
+  #macro-box .mk {{ font-family: ui-monospace, Consolas, monospace; font-size: .95rem; color: var(--fg); margin-top: .3rem; }}
+  #macro-box .mw {{ font-size: .8rem; color: var(--muted); margin-top: .25rem; }}
+  #macro-box table {{ font-size: .82rem; border-collapse: collapse; margin-top: .35rem; }}
+  #macro-box td {{ padding: .12rem .6rem .12rem 0; color: var(--fg); }}
+  #macro-box td.s {{ color: var(--muted); }}
   footer {{ margin-top: 1rem; font-size: .72rem; color: var(--muted); line-height: 1.4; }}
 </style>
 </head>
 <body>
 <main>
   <h1>Live Play <span class="badge" id="badge">{brand}</span> · keep sticks · type less</h1>
+  <div class="dyn" id="dyn">{_dyn_line(ctrl)}</div>
   <div class="heard" id="heard">vs {_esc(ctrl.opponent_id)}</div>
   <div class="call-label">PLAY</div>
-  <div class="call" id="call">waiting for first situation…</div>
+  <div class="call" id="call">{_esc(_call_main(ctrl))}</div>
+  {_macro_box_html(ctrl.macro_state())}
   <div class="err" id="err"></div>
 
   <section id="snap-panel">
@@ -508,7 +546,10 @@ function setErr(msg) {{ $("err").textContent = msg || ""; }}
 
 function renderState(st) {{
   if (!st) return;
-  $("call").textContent = st.call_text || "";
+  let callTxt = st.call_text || "";
+  if (st.macro) callTxt = callTxt.split("\\n").filter(l => !l.trim().startsWith("MACRO:")).join("\\n");  // shown in #macro-box
+  $("call").textContent = callTxt;
+  renderMacro(st.macro);
   $("heard").textContent = st.heard || ("vs " + (st.opponent_id || ""));
   const log = $("log");
   if (!st.log || !st.log.length) {{
@@ -531,6 +572,7 @@ function renderState(st) {{
     }}
   }}
   renderBook(st.book);
+  renderDyn(st);
   if (st.cpu_only) {{
     $("side").style.display = "none";
     $("side-label").style.display = "none";
@@ -540,14 +582,36 @@ function renderState(st) {{
   }}
 }}
 
+function renderMacro(m) {{
+  const box = $("macro-box");
+  if (!m) {{ box.hidden = true; return; }}
+  box.hidden = false;
+  $("macro-head").textContent = m.headline || ("+ MACRO: " + m.name);
+  $("macro-key").textContent = "LB → " + m.name + "  |  " + (m.key || "");
+  $("macro-why").textContent = m.why || "";
+  $("macro-rows").innerHTML = (m.settings || []).map(r =>
+    "<tr><td class='s'>" + esc(r.section) + "</td><td class='s'>" + esc(r.setting) + "</td><td>" + esc(r.value) + "</td></tr>").join("")
+    + (m.settings ? "<tr><td class='s'></td><td class='s'>Everything else</td><td>Default</td></tr>" : "");
+}}
+
+function esc(s) {{ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }}
+
+function renderDyn(st) {{
+  if (!st.book) {{ $("dyn").innerHTML = ""; return; }}
+  const b = st.book;
+  let bk = b.name ? (b.name + (b.callable_rev ? " rev " + b.callable_rev + (b.confirmed ? " (applied)" : " (unconfirmed)") : "")) : "no custom book yet";
+  $("dyn").innerHTML = "Dynasty: <b>" + esc(st.dynasty_label || st.dynasty || "?") + "</b> · Book: <b>" + esc(bk) + "</b>"
+    + (st.dynasty_source ? " <span class='src'>(" + esc(st.dynasty_source) + ")</span>" : "");
+}}
+
 function renderBook(b) {{
   if (!b) {{ $("book-panel").hidden = true; return; }}
   $("book-panel").hidden = false;
   if (b.error) {{ $("book-status").textContent = "Playbook unavailable: " + b.error; return; }}
   let msg = "";
   if (!b.callable_rev) msg = "No custom playbook yet — run prep.";
-  else if (!b.confirmed) msg = "Book rev " + b.callable_rev + " is UNCONFIRMED (first build): build it in CFB 27, then confirm below.";
-  else msg = "Locked to your applied book rev " + b.callable_rev + ".";
+  else if (!b.confirmed) msg = (b.name || "Book") + " rev " + b.callable_rev + " (" + (b.dynasty || "") + ") is UNCONFIRMED (first build): build it in CFB 27, then confirm below.";
+  else msg = "Locked to your applied " + (b.name || "book") + " rev " + b.callable_rev + " (" + (b.dynasty || "") + ").";
   if (b.pending_rev && b.confirmed) msg += " " + b.pending_edits + " pending edit(s) (rev " + b.pending_rev + ") are NOT callable until you confirm.";
   $("book-status").textContent = msg;
   $("book-apply-row").hidden = !b.pending_rev;
@@ -652,6 +716,43 @@ fetch("/api/state").then(r => r.json()).then(st => renderState(st)).catch(() => 
 </body>
 </html>
 """
+
+
+def _dyn_line(ctrl: LivePlayController) -> str:
+    """Top-of-window line: which dynasty and custom book this live session plays."""
+    if ctrl.book_info is None:  # Madden / no playbook of record: nothing to show
+        return ""
+    b = ctrl.book_state() or {}
+    if b.get("name"):
+        bk = f"{b['name']}" + (f" rev {b['callable_rev']} ({'applied' if b.get('confirmed') else 'unconfirmed'})" if b.get("callable_rev") else "")
+    else:
+        bk = "no custom book yet"
+    src = f" <span class='src'>({_esc(ctrl.dynasty_source)})</span>" if ctrl.dynasty_source else ""
+    return f"Dynasty: <b>{_esc(ctrl.dynasty_label or ctrl.dynasty)}</b> · Book: <b>{_esc(bk)}</b>{src}"
+
+
+def _call_main(ctrl: LivePlayController) -> str:
+    """Big call text; the MACRO line moves into the #macro-box banner when present."""
+    txt = ctrl.call_text or ""
+    if ctrl.macro_state():
+        txt = "\n".join(ln for ln in txt.split("\n") if not ln.strip().startswith("MACRO:"))
+    return txt
+
+
+def _macro_box_html(m: dict[str, Any] | None) -> str:
+    """Prominent PLAY + MACRO banner with the macro's key settings (expandable rows)."""
+    m = m or {}
+    rows = "".join(
+        f"<tr><td class='s'>{_esc(r.get('section'))}</td><td class='s'>{_esc(r.get('setting'))}</td><td>{_esc(r.get('value'))}</td></tr>"
+        for r in m.get("settings") or []
+    ) + ("<tr><td class='s'></td><td class='s'>Everything else</td><td>Default</td></tr>" if m.get("settings") else "")
+    return f"""<div id="macro-box"{"" if m else " hidden"}>
+    <div class="mh" id="macro-head">{_esc(m.get("headline") or "")}</div>
+    <div class="mk" id="macro-key">{("LB → " + _esc(m.get("name")) + "  |  " + _esc(m.get("key"))) if m else ""}</div>
+    <div class="mw" id="macro-why">{_esc(m.get("why") or "")}</div>
+    <details id="macro-details"><summary class="mw">Macro settings (Aidan's exact settings; everything else Default)</summary>
+      <table id="macro-rows">{rows}</table></details>
+  </div>"""
 
 
 def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:

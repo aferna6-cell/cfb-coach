@@ -31,6 +31,8 @@ LIVE_PER_SOURCE = 0.03  # live boost per source mentioning a concept
 LIVE_CAP = 0.12  # max live boost per play/zone
 NAMED_PER_PAIR = 0.08  # v1.13: max boost from a play being named in current sources
 LAB_PRIOR = 0.10  # v1.13: seed prior for lab candidates in their zones
+FORMATION_PRIOR_SHARE = 0.5  # v1.14: plays with no play-level prior inherit this share of their formation's meta
+FORMATION_PRIOR_CAP = 0.10  # ... capped (so a new formation's untested plays actually get called)
 CONFLICT_PRIOR_MIN = 0.1  # meta "likes" a play in a zone
 CONFLICT_LEARNED_MAX = -0.2  # ... but his zone learned score is this bad
 CONFLICT_MIN_SNAPS = 3
@@ -70,6 +72,8 @@ class MetaPriors:
     live_fetched_at: str = ""
     findings: dict[str, dict[str, Any]] = field(default_factory=dict)
     lab_candidates: list[dict[str, Any]] = field(default_factory=list)
+    formation: dict[str, float] = field(default_factory=dict)
+    formation_why: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def build(cls, scout: Any | None = None, research: dict[str, Any] | None = None) -> "MetaPriors":
@@ -79,6 +83,9 @@ class MetaPriors:
         mp.lab_candidates = list(research.get("lab_candidates") or [])
         for p in research.get("priors") or []:
             mp.seed[(p["formation"], p["play"])] = p
+        for fp in research.get("formation_priors") or []:
+            mp.formation[fp["formation"]] = float(fp.get("score", 0.0))
+            mp.formation_why[fp["formation"]] = f"formation prior: {fp.get('why', '')}"
         if scout is not None:
             sd = scout if isinstance(scout, dict) else scout.to_dict()
             mp.live_mode = sd.get("mode") or ("live" if sd.get("available") else "none")
@@ -86,6 +93,7 @@ class MetaPriors:
             if mp.live_mode in ("live", "cache"):
                 mp.live = live_boosts(sd.get("concept_signals") or {}, sd.get("rz_signals") or {})
                 mp.add_named_boosts(sd.get("named_signals") or {})
+                mp.add_named_formations(sd.get("named_signals") or {})
         mp.add_lab_priors()
         return mp
 
@@ -107,6 +115,28 @@ class MetaPriors:
             for z in (OPEN, RED_ZONE, GOAL_LINE):
                 if zone_fit(p, z):
                     d[z] = round(min(LIVE_CAP, d.get(z, 0.0) + b), 3)
+
+    def add_named_formations(self, named: dict[str, Any]) -> None:
+        """v1.14: formations named in this prep's sources (web + YouTube transcripts)
+        raise that formation's meta (feeds the formation-prior fallback)."""
+        for f, v in (named.get("formations") or {}).items():
+            b = 0.20 * math.tanh(float(v.get("score", 0.0)) / 2.0)
+            if b > 0:
+                self.formation[f] = round(self.formation.get(f, 0.0) + b, 3)
+                self.formation_why[f] = (self.formation_why.get(f, "") + f"; named in {v.get('docs', 0)} current source(s)").lstrip("; ")
+
+    def formation_fallback(self, zone: str, formation: str, play: str) -> float:
+        fm = self.formation.get(formation, 0.0)
+        if fm <= 0:
+            return 0.0
+        try:
+            from cfb_coach.cfb_catalog import zone_fit
+
+            if not zone_fit(play, zone):
+                return 0.0
+        except Exception:  # noqa: BLE001
+            pass
+        return round(min(FORMATION_PRIOR_CAP, FORMATION_PRIOR_SHARE * fm), 3)
 
     def add_lab_priors(self) -> None:
         """Lab candidates get a small seed prior in their zones so, once they are in
@@ -151,8 +181,13 @@ class MetaPriors:
                     s += float(v) * 0.5
                     break
         lv = float((self.live.get(key) or {}).get(zone, 0.0))
+        why = seed.get("why", "")
+        if not seed and not lv:
+            # no play-level evidence: inherit a capped share of the formation's meta
+            s = self.formation_fallback(zone, formation, play)
+            why = self.formation_why.get(formation, "") if s else ""
         total = max(-PRIOR_CAP, min(PRIOR_CAP, s + lv))
-        return {"seed": round(s, 3), "live": round(lv, 3), "prior": round(total, 3), "refs": list(seed.get("refs") or []), "why": seed.get("why", "")}
+        return {"seed": round(s, 3), "live": round(lv, 3), "prior": round(total, 3), "refs": list(seed.get("refs") or []), "why": why}
 
     def cite(self, refs: list[str]) -> list[str]:
         out = []

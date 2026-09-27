@@ -1,7 +1,30 @@
 {
  "game": "CFB 27",
- "source": "CFB.FAN playbook database (formation pages = union of plays across all CFB 27 playbooks)",
+ "source": "CFB.FAN playbook database: formation pages (union of plays across all CFB 27 playbooks) and per-book formation pages (by_book = the exact plays you get when you add that formation from that stock book in the custom playbook editor). logged_additions = plays Aidan has logged that no stock list carries under that name (his logs are ground truth).",
  "accessed": "2026-09-27",
+ "citations": [
+  {
+   "what": "formation play lists (union + per stock book)",
+   "source": "CFB.FAN CFB 27 playbook database",
+   "url": "https://cfb.fan/27/playbooks/",
+   "note": "e.g. https://cfb.fan/27/playbooks/ohio-state-off/gun-bunch-x-nasty/"
+  },
+  {
+   "what": "which books/formations the meta uses (Ohio State Bunch X Nasty + Cluster; Washington State Bunch X Nasty, Pistol Trips / Pistol U Off Trips run game, Singleback Deuce Close red zone; West Virginia Gun Power I Tight run book)",
+   "source": "MaddenTurf - The Best Playbooks for College Football 27 (updated 2026-07-21)",
+   "url": "https://maddenturf.com/cfb-27-best-playbooks/"
+  },
+  {
+   "what": "CFB 27 custom playbooks: formations from any stock book, 4 audibles per formation",
+   "source": "ClutchPoints - How to Create Custom Playbooks in College Football 27",
+   "url": "https://clutchpoints.com/gaming/how-to-create-custom-playbooks-in-college-football-27"
+  },
+  {
+   "what": "adding a formation in the CFB 27 editor brings every play in it (so the book unit is the formation)",
+   "source": "Aidan (in-game observation, 2026-09-27)",
+   "url": ""
+  }
+ ],
  "formations": {
   "Goal Line Normal": {
    "slug": "goal-line-normal",
@@ -178,7 +201,94 @@
     "Wisconsin",
     "Wyoming"
    ],
-   "source": "https://cfb.fan/playbooks/formations/goal-line-normal/"
+   "source": "https://cfb.fan/playbooks/formations/goal-line-normal/",
+   "by_book": {
+    "Alabama": {
+     "plays": [
+      "FB Dive Weak",
+      "HB Counter WK",
+      "HB Dive",
+      "HB Split 0",
+      "HB Sting",
+      "PA Power O",
+      "PA Spot",
+      "PA Sprint HB Flat",
+      "PA Waggle",
+      "Power O",
+      "QB Sneak",
+      "Strong Toss"
+     ],
+     "source": "https://cfb.fan/27/playbooks/alabama-off/goal-line-normal/"
+    },
+    "Cal": {
+     "plays": [
+      "FB Dive Weak",
+      "HB Counter WK",
+      "HB Dive",
+      "HB Split 0",
+      "HB Sting",
+      "PA Power O",
+      "PA Spot",
+      "PA Sprint HB Flat",
+      "PA Waggle",
+      "Power O",
+      "QB Sneak",
+      "Strong Toss"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/goal-line-normal/"
+    },
+    "Ohio State": {
+     "plays": [
+      "FB Dive Weak",
+      "HB Counter WK",
+      "HB Dive",
+      "HB Split 0",
+      "HB Sting",
+      "PA Power O",
+      "PA Spot",
+      "PA Sprint HB Flat",
+      "PA Waggle",
+      "Power O",
+      "QB Sneak",
+      "Strong Toss"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/goal-line-normal/"
+    },
+    "Washington State": {
+     "plays": [
+      "FB Dive Weak",
+      "HB Counter WK",
+      "HB Dive",
+      "HB Split 0",
+      "HB Sting",
+      "PA Power O",
+      "PA Spot",
+      "PA Sprint HB Flat",
+      "PA Waggle",
+      "Power O",
+      "QB Sneak",
+      "Strong Toss"
+     ],
+     "source": "https://cfb.fan/27/playbooks/washington-state-off/goal-line-normal/"
+    },
+    "West Virginia": {
+     "plays": [
+      "FB Dive Weak",
+      "HB Counter WK",
+      "HB Dive",
+      "HB Split 0",
+      "HB Sting",
+      "PA Power O",
+      "PA Spot",
+      "PA Sprint HB Flat",
+      "PA Waggle",
+      "Power O",
+      "QB Sneak",
+      "Strong Toss"
+     ],
+     "source": "https://cfb.fan/27/playbooks/west-virginia-off/goal-line-normal/"
+    }
+   }
   },
   "Gun 5WR Tight": {
    "slug": "gun-5wr-tight",
@@ -199,7 +309,26 @@
    "books": [
     "Cal"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-5wr-tight/"
+   "source": "https://cfb.fan/playbooks/formations/gun-5wr-tight/",
+   "by_book": {
+    "Cal": {
+     "plays": [
+      "Clear Deep",
+      "Cluster Bunch",
+      "Mesh",
+      "Mesh Post",
+      "Mills Double Out",
+      "QB Draw",
+      "Salem Smash Under",
+      "Slot Dig Wide Corner",
+      "Smash Dagger",
+      "Spacing",
+      "Z Spot",
+      "Z Spot Shake"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/gun-5wr-tight/"
+    }
+   }
   },
   "Gun Bunch Open": {
    "slug": "gun-bunch-open",
@@ -217,7 +346,23 @@
    "books": [
     "Ohio State"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-bunch-open/"
+   "source": "https://cfb.fan/playbooks/formations/gun-bunch-open/",
+   "by_book": {
+    "Ohio State": {
+     "plays": [
+      "Flood",
+      "HB Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Levels",
+      "PA Slots Over",
+      "Read Option",
+      "Spacing",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/gun-bunch-open/"
+    }
+   }
   },
   "Gun Bunch Spread": {
    "slug": "gun-bunch-spread",
@@ -264,7 +409,121 @@
     "Louisiana",
     "Ohio State"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-bunch-spread/"
+   "source": "https://cfb.fan/playbooks/formations/gun-bunch-spread/",
+   "by_book": {
+    "Bowling Green": {
+     "plays": [
+      "Cross Screen",
+      "Curl Flat",
+      "Inside Zone",
+      "Levels Dig",
+      "Outside Zone",
+      "PA Post",
+      "Seam Divide",
+      "Slot Hook",
+      "Spacing",
+      "Verticals",
+      "Y Trail",
+      "Z Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/bowling-green-off/gun-bunch-spread/"
+    },
+    "Eastern Michigan": {
+     "plays": [
+      "Clearout Fl In",
+      "Cross Screen",
+      "Curl Flat",
+      "Dig Return",
+      "Flanker Drive",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mtn Curl Flat Corner",
+      "Mtn Slot Hitch",
+      "Mtn Slot Out",
+      "Mtn Slot Under",
+      "Mtn Snag Under",
+      "Mtn Y-Shake",
+      "Outside Zone",
+      "PA Post",
+      "Post Spacing",
+      "Speed Dig",
+      "Y Trail"
+     ],
+     "source": "https://cfb.fan/27/playbooks/eastern-michigan-off/gun-bunch-spread/"
+    },
+    "Iowa State": {
+     "plays": [
+      "Branch Return",
+      "Cheat Flood",
+      "Cheat HB Slip Screen",
+      "Cheat Slot Cross",
+      "Clearout Fl In",
+      "Corner Divide",
+      "Curl Flat",
+      "Dig Return",
+      "Drive Y Corner",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Jet Pull Shallow",
+      "Mtn Slot Hitch",
+      "Mtn Slot Under",
+      "Mtn Snag Under",
+      "Outside Zone",
+      "PA Post",
+      "Spacing",
+      "Speed Dig",
+      "Speed Dig Out",
+      "Z Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/iowa-state-off/gun-bunch-spread/"
+    },
+    "Louisiana": {
+     "plays": [
+      "Corner Divide",
+      "Dagger X-Go",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Levels Dig",
+      "Mtn Curl Flat Corner",
+      "Mtn Slot Hitch",
+      "Mtn Slot Out",
+      "Mtn Slot Under",
+      "Mtn Snag Under",
+      "Mtn Y-Shake",
+      "Outside Zone",
+      "PA Post",
+      "Post Spacing",
+      "Seam Divide",
+      "Slant Spacing Dig",
+      "Spacing",
+      "Verticals"
+     ],
+     "source": "https://cfb.fan/27/playbooks/louisiana-off/gun-bunch-spread/"
+    },
+    "Ohio State": {
+     "plays": [
+      "Branch Return",
+      "Cheat Flood",
+      "Cheat HB Slip Screen",
+      "Cheat Slot Cross",
+      "Corner Divide",
+      "Curl Flat",
+      "Drive Y Corner",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Jet Pull Shallow",
+      "Mtn Slot Hitch",
+      "Mtn Slot Under",
+      "Mtn Snag Under",
+      "Outside Zone",
+      "PA Post",
+      "Spacing",
+      "Speed Dig",
+      "Z Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/gun-bunch-spread/"
+    }
+   }
   },
   "Gun Bunch Str Nasty": {
    "slug": "gun-bunch-str-nasty",
@@ -337,7 +596,302 @@
     "Vanderbilt",
     "Wyoming"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-bunch-str-nasty/"
+   "source": "https://cfb.fan/playbooks/formations/gun-bunch-str-nasty/",
+   "by_book": {
+    "Arizona State": {
+     "plays": [
+      "Crack Toss",
+      "Dagger",
+      "Flanker Drive",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mesh Flat Spot",
+      "Mtn HB Swing",
+      "Mtn Mesh Spot",
+      "Mtn Spacing",
+      "PA Bunch Shot",
+      "RPO Read Bubble",
+      "Y Trail"
+     ],
+     "source": "https://cfb.fan/27/playbooks/arizona-state-off/gun-bunch-str-nasty/"
+    },
+    "Cal": {
+     "plays": [
+      "Crack Toss",
+      "Dagger",
+      "Flanker Drive",
+      "Inside Zone",
+      "Mesh Flat Spot",
+      "Mtn Double Pass",
+      "Mtn HB Angle",
+      "Mtn HB Seam",
+      "Mtn HB Slip Screen",
+      "Mtn Mesh Trail",
+      "Mtn Smash Angle",
+      "PA Bunch Shot",
+      "RPO Read Bubble",
+      "RPO Zone Peek",
+      "Y Flat Quick",
+      "Y Trail",
+      "Z Mesh Quick",
+      "Z Spot Quick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/gun-bunch-str-nasty/"
+    },
+    "Florida International": {
+     "plays": [
+      "Around Fake Counter",
+      "Counter Y",
+      "Crack Toss",
+      "Dagger",
+      "Flanker Drive",
+      "Inside Zone",
+      "Mesh Flat Spot",
+      "Mtn China Wheel",
+      "Mtn Curls",
+      "Mtn HB Slip Screen",
+      "Mtn Mesh Trail",
+      "Mtn Smash Angle",
+      "Mtn Spacing Z Flat",
+      "Mtn Toss",
+      "Mtn Trail Fork",
+      "Mtn Trail HB Wheel",
+      "PA Bunch Shot",
+      "RPO Read Bubble",
+      "RPO Zone Peek",
+      "Y Trail",
+      "Z Mesh Quick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/florida-international-off/gun-bunch-str-nasty/"
+    },
+    "Kansas State": {
+     "plays": [
+      "Around Fake Counter",
+      "Cheat Inside Zone",
+      "Counter Y",
+      "Crack Toss",
+      "Dagger",
+      "Flanker Drive",
+      "Inside Zone",
+      "Mesh Flat Spot",
+      "Mtn Double Pass",
+      "Mtn HB Angle",
+      "Mtn HB Seam",
+      "PA Bunch Shot",
+      "PA Cheat Double Post",
+      "PA Cheat Verticals Y Slide",
+      "RPO Read Bubble",
+      "RPO Zone Peek",
+      "RPO Zone Read Bubble",
+      "Z Mesh Quick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/kansas-state-off/gun-bunch-str-nasty/"
+    },
+    "North Carolina": {
+     "plays": [
+      "Bunch Smash",
+      "Counter Y",
+      "Crack Toss",
+      "Dagger",
+      "Flanker Drive",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mesh Flat Spot",
+      "Mtn Bench DBL Post",
+      "Mtn Razorbacks Shallow Cross",
+      "Mtn Spot X Replace",
+      "PA Bunch Shot",
+      "RPO Read Bubble",
+      "Y Flat Quick",
+      "Y Trail"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-carolina-off/gun-bunch-str-nasty/"
+    },
+    "North Dakota State": {
+     "plays": [
+      "Crack Toss",
+      "Dagger",
+      "Flanker Drive",
+      "Inside Zone",
+      "Mesh Flat Spot",
+      "Mtn HB Slip Screen",
+      "Mtn Mesh Trail",
+      "Mtn Smash Angle",
+      "PA Bunch Shot",
+      "RPO Read Bubble",
+      "RPO Zone Peek",
+      "Shift HB Off Tackle",
+      "Shift HB Trail",
+      "Shift Mesh Flat Spot",
+      "Shift PA Over DBL Post",
+      "Shift Pin Pull Toss",
+      "Shift RPO Alert Bubble",
+      "Y Trail"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-dakota-state-off/gun-bunch-str-nasty/"
+    },
+    "North Texas": {
+     "plays": [
+      "45 Quick Base",
+      "Bunch Smash",
+      "Counter Y",
+      "Dagger",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mesh Flat Spot",
+      "Mtn Double Pass",
+      "Mtn HB Angle",
+      "Mtn HB Seam",
+      "Mtn HB Slip Screen",
+      "Mtn Mesh Trail",
+      "Mtn Smash Angle",
+      "PA Bunch Shot",
+      "PA Corner",
+      "Pin Pull Toss",
+      "RPO Read Bubble",
+      "Y Trail"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-texas-off/gun-bunch-str-nasty/"
+    },
+    "Syracuse": {
+     "plays": [
+      "45 Quick Base",
+      "Around Fake Counter",
+      "Bunch Smash",
+      "Counter Y",
+      "Dagger",
+      "Flanker Drive",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mtn Curls",
+      "Mtn HB Slip Screen",
+      "Mtn Mesh Trail",
+      "PA Bunch Shot",
+      "PA Corner",
+      "PA Corner Slot Swirl",
+      "Pin Pull Toss",
+      "RPO Read Bubble",
+      "RPO Zone Peek",
+      "Z Mesh Quick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/syracuse-off/gun-bunch-str-nasty/"
+    },
+    "Tennessee": {
+     "plays": [
+      "45 Quick Base",
+      "Around Fake Counter",
+      "Bunch Smash",
+      "Cheat Inside Zone",
+      "Counter Y",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mesh Flat Spot",
+      "PA Bunch Shot",
+      "PA Cheat Double Post",
+      "PA Cheat Verticals Y Slide",
+      "PA Corner Slot Swirl",
+      "PA Cross Switch",
+      "PA Double Post",
+      "PA Switch Cross",
+      "RPO Read Bubble",
+      "RPO Zone Peek",
+      "Y Flat Quick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/tennessee-off/gun-bunch-str-nasty/"
+    },
+    "Texas A&M": {
+     "plays": [
+      "Around Fake Counter",
+      "Cheat Inside Zone",
+      "Counter Y",
+      "Crack Toss",
+      "Dagger",
+      "Flanker Drive",
+      "Inside Zone",
+      "Mesh Flat Spot",
+      "Mtn Double Pass",
+      "Mtn HB Angle",
+      "Mtn HB Seam",
+      "PA Bunch Shot",
+      "PA Cheat Double Post",
+      "PA Cheat Verticals Y Slide",
+      "RPO Read Bubble",
+      "RPO Zone Peek",
+      "RPO Zone Read Bubble",
+      "Z Mesh Quick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/texas-am-off/gun-bunch-str-nasty/"
+    },
+    "UConn": {
+     "plays": [
+      "45 Quick Base",
+      "Around Fake Counter",
+      "Bunch Smash",
+      "Counter Y",
+      "Dagger",
+      "Flanker Drive",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mtn Curls",
+      "Mtn HB Slip Screen",
+      "Mtn Mesh Trail",
+      "PA Bunch Shot",
+      "PA Corner",
+      "PA Corner Slot Swirl",
+      "Pin Pull Toss",
+      "RPO Read Bubble",
+      "RPO Zone Peek",
+      "Z Mesh Quick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/uconn-off/gun-bunch-str-nasty/"
+    },
+    "Vanderbilt": {
+     "plays": [
+      "Around Fake Counter",
+      "Counter Y",
+      "Flanker Drive",
+      "Inside Zone",
+      "Mtn Curls",
+      "Mtn HB Slip Screen",
+      "Mtn Mesh Trail",
+      "PA Bunch Shot",
+      "PA Corner Slot Swirl",
+      "Pin Pull Toss",
+      "RPO Read Bubble",
+      "Shift HB Off Tackle",
+      "Shift HB Trail",
+      "Shift Mesh Flat Spot",
+      "Shift PA Over DBL Post",
+      "Shift Pin Pull Toss",
+      "Shift RPO Alert Bubble",
+      "Z Mesh Quick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/vanderbilt-off/gun-bunch-str-nasty/"
+    },
+    "Wyoming": {
+     "plays": [
+      "45 Quick Base",
+      "Cheat Inside Zone",
+      "Flanker Drive",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Cheat Double Post",
+      "PA Cheat Verticals Y Slide",
+      "PA Corner",
+      "PA Cross",
+      "PA Double Post",
+      "PA Switch Cross",
+      "Pin Pull Toss",
+      "RPO Zone Read Bubble",
+      "Shift PA Over DBL Post",
+      "Shift Pin Pull Toss",
+      "Shift RPO Alert Bubble",
+      "Y Flat Quick",
+      "Z Spot Quick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/wyoming-off/gun-bunch-str-nasty/"
+    }
+   }
   },
   "Gun Bunch TE": {
    "slug": "gun-bunch-te",
@@ -407,7 +961,213 @@
     "UAB",
     "UCLA"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-bunch-te/"
+   "source": "https://cfb.fan/playbooks/formations/gun-bunch-te/",
+   "by_book": {
+    "Boston College": {
+     "plays": [
+      "Boomerang HB Off Tackle",
+      "Boomerang Mesh Traffic",
+      "Boomerang PA Y Wheel",
+      "Bunch Levels",
+      "Crosser Poco",
+      "HB Counter Lead",
+      "HB Draw",
+      "HB Off Tackle",
+      "HB Slip Screen",
+      "Inside Cross",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Mesh",
+      "Mesh Dig",
+      "Mtn Fork Y-Corner",
+      "Mtn H Out",
+      "Mtn Slot Flood",
+      "Mtn Snag Under",
+      "Mtn TE Hitch HB Seam",
+      "Mtn TE Hitch N Go",
+      "PA Slide",
+      "PA Verticals",
+      "QB Wrap",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Same Side Zone",
+      "Slot Option",
+      "Whips",
+      "X Spot",
+      "Z Out"
+     ],
+     "source": "https://cfb.fan/27/playbooks/boston-college-off/gun-bunch-te/"
+    },
+    "Bowling Green": {
+     "plays": [
+      "Curl Flat Corner",
+      "HB Draw",
+      "HB Off Tackle",
+      "HB Slip Screen",
+      "Inside Cross",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Mesh Dig",
+      "QB Wrap",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Spacing",
+      "Stick",
+      "TE Corner",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/bowling-green-off/gun-bunch-te/"
+    },
+    "Cal": {
+     "plays": [
+      "Cheat H Out",
+      "Cheat TE Hitch HB Seam",
+      "Cheat TE Hitch N Go",
+      "Deep Smash",
+      "HB Off Tackle",
+      "HB Slip Screen",
+      "Inside Cross",
+      "Inside Zone",
+      "Mesh",
+      "Mtn Divide",
+      "Mtn Slot Flood",
+      "Mtn Snag Under",
+      "PA Boot Over",
+      "Read Option",
+      "Whips"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/gun-bunch-te/"
+    },
+    "Florida": {
+     "plays": [
+      "Deep Smash",
+      "Escort HB Split Zone",
+      "Escort PA Slide",
+      "Escort Power Read Toss",
+      "Inside Cross",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Mesh",
+      "Mtn HB Swing",
+      "Mtn Inside Zone",
+      "Mtn Jailbreak Screen",
+      "Mtn PA Cross Switch",
+      "Mtn Read Option",
+      "Mtn Spacing",
+      "PA Slide",
+      "RPO Alert Bubble",
+      "Spacing",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/florida-off/gun-bunch-te/"
+    },
+    "Georgia Tech": {
+     "plays": [
+      "Deep Smash",
+      "Escort HB Split Zone",
+      "Escort PA Slide",
+      "Escort Power Read Toss",
+      "Inside Cross",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Mesh",
+      "Mtn HB Swing",
+      "Mtn Jailbreak Screen",
+      "Mtn Spacing",
+      "PA Slide",
+      "RPO Alert Bubble",
+      "Spacing",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/georgia-tech-off/gun-bunch-te/"
+    },
+    "Houston": {
+     "plays": [
+      "Curl Flat Corner",
+      "HB Off Tackle",
+      "HB Slip Screen",
+      "Inside Switch",
+      "Inside Zone",
+      "Mesh",
+      "Mesh Dig",
+      "Mtn HB Stretch",
+      "Mtn Inside Zone",
+      "Mtn PA Cross Switch",
+      "PA Verticals",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Spacing",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/houston-off/gun-bunch-te/"
+    },
+    "Tulane": {
+     "plays": [
+      "HB Draw",
+      "HB Off Tackle",
+      "HB Slip Screen",
+      "Inside Switch",
+      "Inside Zone",
+      "Mesh",
+      "Mesh Dig",
+      "Mtn H Out",
+      "Mtn HB Stretch",
+      "Mtn Inside Zone",
+      "Mtn PA Cross Switch",
+      "Mtn TE Hitch HB Seam",
+      "Mtn TE Hitch N Go",
+      "PA Verticals",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Spacing",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/tulane-off/gun-bunch-te/"
+    },
+    "UAB": {
+     "plays": [
+      "Curl Flat Corner",
+      "HB Draw",
+      "HB Off Tackle",
+      "HB Slip Screen",
+      "Inside Cross",
+      "Inside Switch",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Mesh Dig",
+      "QB Wrap",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Slot Option",
+      "Spacing",
+      "Stick",
+      "TE Corner",
+      "X Spot",
+      "Z Out"
+     ],
+     "source": "https://cfb.fan/27/playbooks/uab-off/gun-bunch-te/"
+    },
+    "UCLA": {
+     "plays": [
+      "Boomerang HB Off Tackle",
+      "Boomerang Mesh Traffic",
+      "Boomerang PA Y Wheel",
+      "Bunch Levels",
+      "Inside Zone",
+      "Mtn Divide",
+      "Mtn Fork Y-Corner",
+      "Mtn HB Slip Screen",
+      "Mtn Mesh",
+      "Mtn Slot Flood",
+      "Mtn Snag Under",
+      "PA Boot Over",
+      "PA Slide",
+      "QB Wrap",
+      "Read Option"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ucla-off/gun-bunch-te/"
+    }
+   }
   },
   "Gun Bunch X Nasty": {
    "slug": "gun-bunch-x-nasty",
@@ -500,7 +1260,303 @@
     "UCLA",
     "Washington State"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-bunch-x-nasty/"
+   "source": "https://cfb.fan/playbooks/formations/gun-bunch-x-nasty/",
+   "by_book": {
+    "Arkansas": {
+     "plays": [
+      "Counter Y",
+      "Deep Flood",
+      "Drive HB Under",
+      "Drive Y Corner",
+      "HB Base",
+      "Inside Zone",
+      "Mesh TE Flat",
+      "Mtn Dagger",
+      "Mtn Drive",
+      "Mtn Mesh Cross",
+      "Return Mesh Spot",
+      "Return Spot",
+      "Return Whip Trail",
+      "RZ PA X Whip",
+      "Whip Double Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/arkansas-off/gun-bunch-x-nasty/"
+    },
+    "Boise State": {
+     "plays": [
+      "Choice Shallow Dig",
+      "Clear Mills Y Drag",
+      "Clear Out Cross",
+      "Clear X Dig",
+      "Counter Y",
+      "DBL Post HB Corner",
+      "Divide X Whip In",
+      "Divide X-Drag",
+      "Double Outs",
+      "Flanker Drive",
+      "HB Base",
+      "Inside Zone",
+      "Mesh HB Sneak Dig",
+      "Mesh Traffic",
+      "Mtn Clear HB Seam",
+      "Mtn Corner Under",
+      "Mtn Y Corner Under",
+      "Post Wheel Shallow",
+      "RPO Zone Alert",
+      "Stick Spacing Switch",
+      "Z Spot GoalLine"
+     ],
+     "source": "https://cfb.fan/27/playbooks/boise-state-off/gun-bunch-x-nasty/"
+    },
+    "Iowa State": {
+     "plays": [
+      "Corner Out Dig",
+      "Counter Y",
+      "Drive Y Corner",
+      "HB Base",
+      "Inside Zone",
+      "Mesh HB Sneak",
+      "Mesh Spot",
+      "Mtn Clear HB Seam",
+      "Mtn Corner Under",
+      "Mtn Cross Post",
+      "Mtn HB Choice",
+      "Mtn Outside Zone",
+      "Mtn Return Mesh Flat",
+      "Mtn Return Spot X-Post",
+      "Mtn Return Trail Corner",
+      "Mtn RPO Zone Alert",
+      "Mtn Spot HB Under",
+      "Mtn Y Corner Under",
+      "Smash Return",
+      "Spacing Switch",
+      "Y Flat GoalLine",
+      "Y Option Pivot",
+      "Z Mesh GoalLine",
+      "Z Spot GoalLine"
+     ],
+     "source": "https://cfb.fan/27/playbooks/iowa-state-off/gun-bunch-x-nasty/"
+    },
+    "Michigan State": {
+     "plays": [
+      "HB Base",
+      "Inside Zone",
+      "Mesh Spot",
+      "Mesh Traffic X Under",
+      "Mtn Dagger",
+      "Mtn Drive",
+      "Mtn Mesh Cross",
+      "QB Sweep",
+      "Return Mesh Spot",
+      "Return Spot",
+      "Return Whip Trail",
+      "RPO Zone Alert Flat",
+      "X Cross",
+      "Y Corner Pivot",
+      "Z Spot GoalLine"
+     ],
+     "source": "https://cfb.fan/27/playbooks/michigan-state-off/gun-bunch-x-nasty/"
+    },
+    "Missouri": {
+     "plays": [
+      "Counter Y",
+      "Deep Flood",
+      "Drive HB Under",
+      "HB Base",
+      "Inside Zone",
+      "Mesh Corner",
+      "Mesh Spot",
+      "Mesh TE Flat",
+      "Mesh Traffic",
+      "QB Sweep",
+      "Return Mesh Spot",
+      "Return Spot",
+      "Return Whip Trail",
+      "RZ PA X Whip",
+      "Slot Middle",
+      "Speed Dig",
+      "Whip Double Spot",
+      "Z Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/missouri-off/gun-bunch-x-nasty/"
+    },
+    "North Dakota State": {
+     "plays": [
+      "Counter Y",
+      "Deep Flood",
+      "Drive HB Under",
+      "HB Base",
+      "Inside Zone",
+      "Mesh Corner",
+      "Mesh Spot",
+      "Mesh TE Flat",
+      "Mesh Traffic",
+      "QB Sweep",
+      "Return Mesh Spot",
+      "Return Spot",
+      "Return Whip Trail",
+      "RZ PA X Whip",
+      "Whip Double Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-dakota-state-off/gun-bunch-x-nasty/"
+    },
+    "Ohio State": {
+     "plays": [
+      "Counter Y",
+      "Deep Flood",
+      "Drive HB Under",
+      "HB Base",
+      "Inside Zone",
+      "Mesh Corner",
+      "Mesh Traffic",
+      "Mtn Cross Post",
+      "Mtn RPO Zone Alert",
+      "Mtn Y Corner Under",
+      "Post Wheel Shallow",
+      "Return Mesh Spot",
+      "Return Spot",
+      "Return Whip Trail",
+      "RZ PA X Whip",
+      "Whip Double Spot",
+      "X Cross",
+      "Y Corner Pivot",
+      "Y Flat GoalLine",
+      "Z Mesh GoalLine",
+      "Z Spot GoalLine"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/gun-bunch-x-nasty/"
+    },
+    "Oregon State": {
+     "plays": [
+      "Counter Y",
+      "Deep Flood",
+      "Drive HB Under",
+      "HB Base",
+      "Inside Zone",
+      "Mesh Corner",
+      "Mesh Spot",
+      "Mesh Traffic",
+      "Mtn China Cross",
+      "Mtn Cross Post",
+      "Mtn Flood H-Sneak",
+      "Mtn HB Choice",
+      "Mtn HB Shovel",
+      "Mtn Mesh HB Sneak",
+      "Mtn Outside Zone",
+      "Mtn RPO Zone Alert",
+      "Mtn Slot Middle",
+      "Mtn Smash Sluggo",
+      "Mtn Speed Dig Under",
+      "Mtn Spot HB Under",
+      "QB Sweep",
+      "Return Mesh Spot",
+      "Return Spot",
+      "Return Whip Trail",
+      "RZ PA X Whip",
+      "Whip Double Spot",
+      "Z Spot GoalLine"
+     ],
+     "source": "https://cfb.fan/27/playbooks/oregon-state-off/gun-bunch-x-nasty/"
+    },
+    "Tennessee": {
+     "plays": [
+      "HB Base",
+      "Inside Zone",
+      "Mesh Traffic",
+      "Mesh Traffic X Under",
+      "QB Sweep",
+      "RPO Zone Alert Flat",
+      "RZ PA Over DBL Post",
+      "RZ PA X Whip",
+      "Z Spot GoalLine"
+     ],
+     "source": "https://cfb.fan/27/playbooks/tennessee-off/gun-bunch-x-nasty/"
+    },
+    "Toledo": {
+     "plays": [
+      "Bounce Mesh Drive",
+      "Bounce PA Double Post",
+      "Bounce Zone WK",
+      "Clear X Dig",
+      "Counter Y",
+      "DBL Post HB Corner",
+      "Divide X-Drag",
+      "Flanker Drive",
+      "HB Base",
+      "Inside Zone",
+      "Mesh Corner",
+      "Mesh HB Sneak Dig",
+      "Return Mesh Spot",
+      "Return Whip Switch",
+      "Return Whip Trail Corner",
+      "RPO Alert Slant",
+      "RPO Zone Alert",
+      "RZ PA Over DBL Post",
+      "RZ PA X Whip",
+      "Smash Return",
+      "Z Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/toledo-off/gun-bunch-x-nasty/"
+    },
+    "UCLA": {
+     "plays": [
+      "Corner Out Dig",
+      "Counter Y",
+      "Drive Y Corner",
+      "HB Base",
+      "Inside Zone",
+      "Mesh HB Sneak",
+      "Mesh Spot",
+      "Mtn Clear HB Seam",
+      "Mtn Corner Under",
+      "Mtn Cross Post",
+      "Mtn HB Choice",
+      "Mtn Outside Zone",
+      "Mtn Return Mesh Flat",
+      "Mtn Return Spot X-Post",
+      "Mtn Return Trail Corner",
+      "Mtn RPO Zone Alert",
+      "Mtn Spot HB Under",
+      "Mtn Y Corner Under",
+      "Smash Return",
+      "Spacing Switch",
+      "Y Flat GoalLine",
+      "Y Option Pivot",
+      "Z Mesh GoalLine",
+      "Z Spot GoalLine"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ucla-off/gun-bunch-x-nasty/"
+    },
+    "Washington State": {
+     "plays": [
+      "Choice Shallow Dig",
+      "Clear Mills Y Drag",
+      "Clear X Dig",
+      "Counter Y",
+      "DBL Post HB Corner",
+      "Deep Flood",
+      "Dig Return",
+      "Divide X Whip In",
+      "Divide X-Drag",
+      "Double Outs",
+      "HB Base",
+      "Inside Zone",
+      "Mesh HB Sneak Dig",
+      "Mesh Spot",
+      "Mesh Traffic",
+      "Mtn Clear HB Seam",
+      "Mtn Corner Under",
+      "Mtn Y Corner Under",
+      "RPO Zone Alert",
+      "Stick Spacing Switch",
+      "Z Spot GoalLine"
+     ],
+     "source": "https://cfb.fan/27/playbooks/washington-state-off/gun-bunch-x-nasty/"
+    }
+   },
+   "logged_additions": {
+    "Mesh Spot": "Logged by Aidan (30 snaps, Ohio State dynasty). Not in the stock Ohio State list (which has 'Return Mesh Spot'); 'Mesh Spot' is in the Washington State / other Bunch X Nasty lists."
+   }
   },
   "Gun Cluster": {
    "slug": "gun-cluster",
@@ -526,7 +1582,60 @@
     "Notre Dame",
     "Ohio State"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-cluster/"
+   "source": "https://cfb.fan/playbooks/formations/gun-cluster/",
+   "by_book": {
+    "Coastal Carolina": {
+     "plays": [
+      "518 Hook",
+      "Cluster Bunch",
+      "HB Counter",
+      "HB Slip Screen",
+      "Mesh",
+      "Mesh Post",
+      "Outside Zone",
+      "PA Read",
+      "Spacing",
+      "Verticals",
+      "Z Spot",
+      "Z Spot Shake"
+     ],
+     "source": "https://cfb.fan/27/playbooks/coastal-carolina-off/gun-cluster/"
+    },
+    "Notre Dame": {
+     "plays": [
+      "Cluster Bunch",
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "HB Slip Screen",
+      "Irish Mesh Whip",
+      "Mesh",
+      "Mesh Post",
+      "PA Read",
+      "Spacing",
+      "Verticals",
+      "Z Spot",
+      "Z Spot Shake"
+     ],
+     "source": "https://cfb.fan/27/playbooks/notre-dame-off/gun-cluster/"
+    },
+    "Ohio State": {
+     "plays": [
+      "Cluster Bunch",
+      "HB Counter",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "Mesh",
+      "Mesh Post",
+      "Outside Zone",
+      "PA Read",
+      "Spacing",
+      "Verticals",
+      "Z Spot",
+      "Z Spot Shake"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/gun-cluster/"
+    }
+   }
   },
   "Gun Deuce Close": {
    "slug": "gun-deuce-close",
@@ -634,7 +1743,529 @@
     "Washington State",
     "Western Michigan"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-deuce-close/"
+   "source": "https://cfb.fan/playbooks/formations/gun-deuce-close/",
+   "by_book": {
+    "Arizona State": {
+     "plays": [
+      "Bench Dig Curl",
+      "Bench X Dig",
+      "DIY Zone Reverse",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Outside Zone",
+      "PA Deep Over",
+      "PA Slide",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/arizona-state-off/gun-deuce-close/"
+    },
+    "Boise State": {
+     "plays": [
+      "Bench Dig Curl",
+      "Bench X Dig",
+      "Broncos Z Post",
+      "Chip Poco X Dig",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Mtn Inside Zone Split",
+      "Mtn PA Deep Over",
+      "Mtn RPO Alert Split",
+      "PA Post Cross",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/boise-state-off/gun-deuce-close/"
+    },
+    "Buffalo": {
+     "plays": [
+      "Bench Dig Curl",
+      "Bench X Dig",
+      "Chip Poco X Dig",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Out N Ups",
+      "PA Post Cross",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/buffalo-off/gun-deuce-close/"
+    },
+    "Cal": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Bench Dig Curl",
+      "Corner Gos Flat",
+      "Inside Zone",
+      "Mesh Spot",
+      "Mtn PA Slide",
+      "Mtn Stick",
+      "Mtn WR Corner",
+      "Mtn Y Option",
+      "Mtn Zone Split",
+      "PA Deep Curls",
+      "PA Post Cross",
+      "RPO Alert Omaha",
+      "RPO Read Mtn Stick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/gun-deuce-close/"
+    },
+    "Florida International": {
+     "plays": [
+      "HB Swing",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "PA Deep Out",
+      "PA Slide",
+      "PA Y Leak",
+      "Return PA Slide",
+      "Return RPO Read Flat Wheel",
+      "Return RZ Trail",
+      "RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/florida-international-off/gun-deuce-close/"
+    },
+    "Georgia": {
+     "plays": [
+      "Bench Dig Curl",
+      "Bench Swap",
+      "HB Swing",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Double Wheel",
+      "Mesh Spot",
+      "Out N Ups",
+      "PA Deep Over",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "RPO Read Y Jab Flat",
+      "Spacing Switch",
+      "X Shallow Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/georgia-off/gun-deuce-close/"
+    },
+    "Georgia State": {
+     "plays": [
+      "0 1 Trap",
+      "Bench Dig Curl",
+      "Bench X Dig",
+      "Counter Y",
+      "G Lz Post",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Mtn PA Slide",
+      "Mtn Stick",
+      "Mtn Zone Split",
+      "Out N Ups",
+      "PA Over Whip Out",
+      "PA Y Leak",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "Spacing Switch",
+      "Stick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/georgia-state-off/gun-deuce-close/"
+    },
+    "Indiana": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Bench X Dig",
+      "Chip Dig 7 Stop",
+      "Chip Poco X Dig",
+      "Counter Y",
+      "Inside Zone",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Out N Ups",
+      "Outside Zone",
+      "PA Deep Out",
+      "PA Deep Over",
+      "PA Post Cross",
+      "PA Slide",
+      "Post Wheel",
+      "RPO Read Cntr",
+      "RPO Read Flat Wheel"
+     ],
+     "source": "https://cfb.fan/27/playbooks/indiana-off/gun-deuce-close/"
+    },
+    "Kentucky": {
+     "plays": [
+      "Bench Dig Curl",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Out N Ups",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "Shift Counter Y",
+      "Shift Outside Zone",
+      "Shift PA Counter Scissors",
+      "Shift PA Post Cross",
+      "Shift RPO Alert Counter",
+      "Shift RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/kentucky-off/gun-deuce-close/"
+    },
+    "Liberty": {
+     "plays": [
+      "Lead Read Option",
+      "Mesh Spot",
+      "Outside Zone",
+      "PA Deep Over",
+      "PA Post Cross",
+      "PA Slide",
+      "Post Wheel",
+      "RPO Read Cntr",
+      "RPO Read Flat Wheel"
+     ],
+     "source": "https://cfb.fan/27/playbooks/liberty-off/gun-deuce-close/"
+    },
+    "Louisiana": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Bench X Dig",
+      "Chip Dig 7 Stop",
+      "Chip Poco X Dig",
+      "Counter Y",
+      "Inside Zone",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Out N Ups",
+      "Outside Zone",
+      "PA Deep Out",
+      "PA Deep Over",
+      "PA Post Cross",
+      "PA Slide",
+      "Post Wheel",
+      "RPO Read Cntr",
+      "RPO Read Flat Wheel"
+     ],
+     "source": "https://cfb.fan/27/playbooks/louisiana-off/gun-deuce-close/"
+    },
+    "Missouri": {
+     "plays": [
+      "Bench Swap",
+      "Both Stick",
+      "Counter Y",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Mtn Bench Return",
+      "Mtn Curls Corner Strike",
+      "Mtn Inside Zone Split",
+      "Mtn PA Deep Over",
+      "Mtn PA Slide",
+      "Mtn TE Mid Screen",
+      "Outside Zone",
+      "PA Deep Cross",
+      "PA Deep Curls",
+      "PA Over Whip Out",
+      "PA Y Leak",
+      "RPO Alert Omaha"
+     ],
+     "source": "https://cfb.fan/27/playbooks/missouri-off/gun-deuce-close/"
+    },
+    "North Dakota State": {
+     "plays": [
+      "Both Stick",
+      "Counter Y",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Mtn Inside Zone Split",
+      "Mtn PA Deep Over",
+      "Mtn PA Slide",
+      "PA Deep Cross",
+      "PA Over Whip Out",
+      "PA Y Leak",
+      "RPO Alert Omaha"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-dakota-state-off/gun-deuce-close/"
+    },
+    "North Texas": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Bench Dig Curl",
+      "Corner Gos Flat",
+      "Inside Zone",
+      "Mesh Spot",
+      "Mtn PA Slide",
+      "Mtn Return HB Toss",
+      "Mtn Return Trail",
+      "Mtn Return Y-Shake",
+      "Mtn RPO Read Stick",
+      "Mtn Stick",
+      "Mtn WR Corner",
+      "Mtn Y Option",
+      "Mtn Zone Split",
+      "PA Deep Curls",
+      "PA Post Cross",
+      "RPO Alert Omaha"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-texas-off/gun-deuce-close/"
+    },
+    "Oregon": {
+     "plays": [
+      "Bench Dig Curl",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Out N Ups",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "Shift Counter Y",
+      "Shift Outside Zone",
+      "Shift PA Counter Scissors",
+      "Shift PA Post Cross",
+      "Shift RPO Alert Counter",
+      "Shift RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/oregon-off/gun-deuce-close/"
+    },
+    "Penn State": {
+     "plays": [
+      "Bench Dig Curl",
+      "Bench Swap",
+      "Bench X Dig",
+      "Chip Poco X Dig",
+      "Counter Y",
+      "HB Orbit Mesh Spot",
+      "HB Orbit Spacing",
+      "HB Orbit TE Mid Screen",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Out N Ups",
+      "PA Deep Out",
+      "Post Wheel",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "Shift Counter Y",
+      "Shift Outside Zone",
+      "Shift PA Counter Scissors",
+      "Shift PA Post Cross",
+      "Shift RPO Alert Counter",
+      "Shift RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/penn-state-off/gun-deuce-close/"
+    },
+    "South Alabama": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Bench X Dig",
+      "Chip Dig 7 Stop",
+      "Chip Poco X Dig",
+      "Counter Y",
+      "Inside Zone",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Mtn Jaguars Split Zone",
+      "Mtn PA Deep Over",
+      "Mtn RPO Alert Split",
+      "Out N Ups",
+      "Outside Zone",
+      "PA Deep Out",
+      "PA Deep Over",
+      "PA Post Cross",
+      "PA Slide",
+      "Post Wheel",
+      "RPO Read Cntr",
+      "RPO Read Flat Wheel"
+     ],
+     "source": "https://cfb.fan/27/playbooks/south-alabama-off/gun-deuce-close/"
+    },
+    "Southern Miss": {
+     "plays": [
+      "Bench Dig Curl",
+      "Bench X Dig",
+      "DIY Zone Reverse",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Outside Zone",
+      "PA Deep Over",
+      "PA Slide",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/southern-miss-off/gun-deuce-close/"
+    },
+    "Stanford": {
+     "plays": [
+      "Counter Y",
+      "HB Swing",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Outside Zone",
+      "PA Deep Over",
+      "PA Slide",
+      "RPO Alert Omaha",
+      "RPO Read Flat Wheel",
+      "X Replace"
+     ],
+     "source": "https://cfb.fan/27/playbooks/stanford-off/gun-deuce-close/"
+    },
+    "Syracuse": {
+     "plays": [
+      "Bench Dig Curl",
+      "Bench X Dig",
+      "Chip Poco X Dig",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Out N Ups",
+      "PA Post Cross",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/syracuse-off/gun-deuce-close/"
+    },
+    "Texas": {
+     "plays": [
+      "Bench Swap",
+      "Both Stick",
+      "Counter Y",
+      "Inside Zone Split",
+      "Mesh Spot",
+      "Outside Zone",
+      "PA Deep Cross",
+      "PA Deep Curls",
+      "PA Deep Out",
+      "PA Longhorns Over",
+      "PA Slide",
+      "PA Y Leak",
+      "Post Wheel",
+      "RPO Alert Omaha",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "RPO Read Y Jab Flat",
+      "RPO Split Peek Stick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/texas-off/gun-deuce-close/"
+    },
+    "UConn": {
+     "plays": [
+      "Bench Dig Curl",
+      "Bench X Dig",
+      "Chip Poco X Dig",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Out N Ups",
+      "PA Post Cross",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/uconn-off/gun-deuce-close/"
+    },
+    "Virginia": {
+     "plays": [
+      "Counter Y",
+      "HB Swing",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Outside Zone",
+      "PA Deep Over",
+      "PA Slide",
+      "RPO Alert Omaha",
+      "RPO Read Flat Wheel",
+      "X Replace"
+     ],
+     "source": "https://cfb.fan/27/playbooks/virginia-off/gun-deuce-close/"
+    },
+    "Virginia Tech": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Chip Dig 7 Stop",
+      "Exit Dagger",
+      "Exit Drive",
+      "Exit X Over",
+      "HB Orbit Mesh Spot",
+      "HB Orbit Spacing",
+      "HB Orbit TE Mid Screen",
+      "HB Swing",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Outside Zone",
+      "PA Deep Out",
+      "PA Deep Over",
+      "PA Slide",
+      "PA Y Leak",
+      "Post Wheel",
+      "RPO Read Flat Wheel"
+     ],
+     "source": "https://cfb.fan/27/playbooks/virginia-tech-off/gun-deuce-close/"
+    },
+    "Washington State": {
+     "plays": [
+      "Bench Dig Curl",
+      "Bench X Dig",
+      "Gl Z Post",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "Mtn Inside Zone Split",
+      "Mtn PA Deep Over",
+      "Mtn RPO Alert Split",
+      "RPO Peek Stick",
+      "RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/washington-state-off/gun-deuce-close/"
+    },
+    "Western Michigan": {
+     "plays": [
+      "HB Swing",
+      "Inside Zone Split",
+      "Lead Read Option",
+      "Mesh Spot",
+      "PA Slide",
+      "PA Y Leak",
+      "Post Wheel",
+      "Return PA Slide",
+      "Return RPO Read Flat Wheel",
+      "Return RZ Trail",
+      "RPO Read Flat Wheel",
+      "Spacing Switch"
+     ],
+     "source": "https://cfb.fan/27/playbooks/western-michigan-off/gun-deuce-close/"
+    }
+   }
   },
   "Gun Doubles Y Off Nasty": {
    "slug": "gun-doubles-y-off-nasty",
@@ -663,7 +2294,49 @@
     "Iowa State",
     "Ohio State"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-doubles-y-off-nasty/"
+   "source": "https://cfb.fan/playbooks/formations/gun-doubles-y-off-nasty/",
+   "by_book": {
+    "Iowa State": {
+     "plays": [
+      "Cross Y Trail",
+      "DBL Cross H-Choice",
+      "Fake Jet HB Seam",
+      "Fork H Traffic",
+      "Inside Zone",
+      "Jet Pass FK Zone",
+      "Mtn HB Cross Screen",
+      "Mtn Slot Fades",
+      "Mtn Smash",
+      "Outside Zone",
+      "PA Y Cross",
+      "RPO Zone Read Bubble",
+      "Tackle Trap",
+      "X Dagger",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/iowa-state-off/gun-doubles-y-off-nasty/"
+    },
+    "Ohio State": {
+     "plays": [
+      "Counter Y",
+      "Cross Y Trail",
+      "Double Post",
+      "Fork H Traffic",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mtn HB Cross Screen",
+      "Mtn Slot Fades",
+      "Mtn Smash",
+      "Outside Zone",
+      "PA Y Cross",
+      "RPO Zone Read Bubble",
+      "Snag HB Wheel",
+      "Tackle Trap",
+      "X Dagger"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/gun-doubles-y-off-nasty/"
+    }
+   }
   },
   "Gun Empty Base Trio": {
    "slug": "gun-empty-base-trio",
@@ -729,7 +2402,486 @@
     "Washington State",
     "Wisconsin"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-empty-base-trio/"
+   "source": "https://cfb.fan/playbooks/formations/gun-empty-base-trio/",
+   "by_book": {
+    "Alabama": {
+     "plays": [
+      "All Curl",
+      "Bubble Screen",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Hoss Juke",
+      "QB Draw",
+      "Shift Bubble Screen",
+      "Shift Bubble Spot Dig",
+      "Shift Bubble Z Spot",
+      "Shift Double In",
+      "Shift RZ Z Under",
+      "Shift Shock Slot Option",
+      "Shock Slot Option",
+      "Slot Fade Cross",
+      "Slot Shake",
+      "Verticals H Option"
+     ],
+     "source": "https://cfb.fan/27/playbooks/alabama-off/gun-empty-base-trio/"
+    },
+    "Arizona": {
+     "plays": [
+      "All Curl",
+      "All Hitch",
+      "Bubble Screen",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Drag Slot Fade",
+      "Hitches Slot In",
+      "Hoss Juke",
+      "QB Draw",
+      "Shock Levels",
+      "Shock Salem",
+      "Shock Slot Option",
+      "Slants",
+      "Slot Fade Cross",
+      "Slot Flat Screen",
+      "Stick Nod"
+     ],
+     "source": "https://cfb.fan/27/playbooks/arizona-off/gun-empty-base-trio/"
+    },
+    "Baylor": {
+     "plays": [
+      "All Hitch",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Drag Slot Fade",
+      "Hitches Slot In",
+      "Hoss Juke",
+      "QB Draw",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Slot Fade Cross",
+      "Slot Flat Screen",
+      "Stick Nod"
+     ],
+     "source": "https://cfb.fan/27/playbooks/baylor-off/gun-empty-base-trio/"
+    },
+    "Boise State": {
+     "plays": [
+      "All Curl",
+      "All Hitch",
+      "Bubble Screen",
+      "Bubble Z Spot",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Hitches Slot In",
+      "Hoss Juke",
+      "QB Draw",
+      "QB Trap",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Stick Nod",
+      "X Mid Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/boise-state-off/gun-empty-base-trio/"
+    },
+    "Cal": {
+     "plays": [
+      "All Hitch",
+      "Curl Combo",
+      "Double In",
+      "Double Slant Stick",
+      "Hoss Juke",
+      "QB Draw",
+      "Shock Slot Option",
+      "Slant Flat",
+      "Stick Nod"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/gun-empty-base-trio/"
+    },
+    "Charlotte": {
+     "plays": [
+      "All Curl",
+      "All Hitch",
+      "Bubble Screen",
+      "Bubble Spot Dig",
+      "Bubble Z Spot",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Drag Slot Fade",
+      "Hoss Juke",
+      "QB Draw",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Slot Fade Cross",
+      "Stick Nod",
+      "Verticals H Option"
+     ],
+     "source": "https://cfb.fan/27/playbooks/charlotte-off/gun-empty-base-trio/"
+    },
+    "Coastal Carolina": {
+     "plays": [
+      "All Curl",
+      "All Hitch",
+      "Bubble Screen",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Hitches Slot In",
+      "Hoss Juke",
+      "QB Draw",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Slot Fade Cross",
+      "Slot Shake",
+      "Stick Nod",
+      "Verticals H Option",
+      "X Mid Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/coastal-carolina-off/gun-empty-base-trio/"
+    },
+    "Fresno State": {
+     "plays": [
+      "Bubble Screen",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Drag Slot Fade",
+      "Hitches Slot In",
+      "Hoss Juke",
+      "QB Draw",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Slot Fade Cross",
+      "Stick Nod",
+      "Verticals H Option"
+     ],
+     "source": "https://cfb.fan/27/playbooks/fresno-state-off/gun-empty-base-trio/"
+    },
+    "James Madison": {
+     "plays": [
+      "All Hitch",
+      "Bubble Screen",
+      "Bubble Spot Dig",
+      "Bubble Z Spot",
+      "Curl Combo",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Drag Slot Fade",
+      "Hoss Juke",
+      "Jailbreak Screen",
+      "QB Draw",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Stick Nod",
+      "Verticals H Option",
+      "Wheel Cross",
+      "X Mid Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/james-madison-off/gun-empty-base-trio/"
+    },
+    "Kentucky": {
+     "plays": [
+      "All Curl",
+      "All Hitch",
+      "Bubble Screen",
+      "Curl Combo",
+      "Double In",
+      "Double Slant Stick",
+      "Hoss Juke",
+      "Jailbreak Screen",
+      "QB Draw",
+      "QB Trap",
+      "Seam Slot Option",
+      "Shift Bubble Screen",
+      "Shift Bubble Spot Dig",
+      "Shift Bubble Z Spot",
+      "Shock Slot Option",
+      "Slant Flat",
+      "Slot Fade Cross",
+      "Slot Shake",
+      "Stick Nod",
+      "Verticals H Option",
+      "X Mid Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/kentucky-off/gun-empty-base-trio/"
+    },
+    "Michigan State": {
+     "plays": [
+      "All Curl",
+      "Bubble Screen",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Hoss Juke",
+      "QB Draw",
+      "Shift Bubble Screen",
+      "Shift Bubble Spot Dig",
+      "Shift Bubble Z Spot",
+      "Shift Double In",
+      "Shift RZ Z Under",
+      "Shift Shock Slot Option",
+      "Shock Slot Option",
+      "Slot Fade Cross",
+      "Slot Shake",
+      "Verticals H Option"
+     ],
+     "source": "https://cfb.fan/27/playbooks/michigan-state-off/gun-empty-base-trio/"
+    },
+    "Ohio": {
+     "plays": [
+      "All Hitch",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Hoss Juke",
+      "QB Draw",
+      "Shock Slot Option",
+      "Slants",
+      "Stick Nod",
+      "Verticals H Option",
+      "X Mid Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-off/gun-empty-base-trio/"
+    },
+    "Ohio State": {
+     "plays": [
+      "All Hitch",
+      "Curl Combo",
+      "Double In",
+      "Double Slant Stick",
+      "Hoss Juke",
+      "QB Draw",
+      "Shock Slot Option",
+      "Slant Flat",
+      "Stick Nod"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/gun-empty-base-trio/"
+    },
+    "Oregon": {
+     "plays": [
+      "All Curl",
+      "All Hitch",
+      "Bubble Screen",
+      "Curl Combo",
+      "Deep Attack",
+      "Double In",
+      "Double Slant Stick",
+      "Hoss Juke",
+      "Jailbreak Screen",
+      "QB Draw",
+      "QB Trap",
+      "Seam Slot Option",
+      "Shift Double In",
+      "Shift RZ Z Under",
+      "Shift Shock Slot Option",
+      "Shock Salem",
+      "Shock Slot Option",
+      "Slant Flat",
+      "Stick Nod",
+      "Verticals H Option",
+      "X Mid Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/oregon-off/gun-empty-base-trio/"
+    },
+    "Oregon State": {
+     "plays": [
+      "All Curl",
+      "Bubble Screen",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Hoss Juke",
+      "QB Draw",
+      "Shift Bubble Screen",
+      "Shift Bubble Spot Dig",
+      "Shift Bubble Z Spot",
+      "Shift Double In",
+      "Shift RZ Z Under",
+      "Shift Shock Slot Option",
+      "Shock Slot Option",
+      "Slot Fade Cross",
+      "Slot Shake",
+      "Verticals H Option"
+     ],
+     "source": "https://cfb.fan/27/playbooks/oregon-state-off/gun-empty-base-trio/"
+    },
+    "Pistol": {
+     "plays": [
+      "Bubble Screen",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Drag Slot Fade",
+      "Hitches Slot In",
+      "Hoss Juke",
+      "QB Draw",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Slot Fade Cross",
+      "Stick Nod",
+      "Verticals H Option"
+     ],
+     "source": "https://cfb.fan/27/playbooks/pistol-off/gun-empty-base-trio/"
+    },
+    "Sacramento State": {
+     "plays": [
+      "All Hitch",
+      "Bubble Screen",
+      "Bubble Spot Dig",
+      "Bubble Z Spot",
+      "Curl Combo",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Drag Slot Fade",
+      "Hoss Juke",
+      "Jailbreak Screen",
+      "QB Draw",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Stick Nod",
+      "Verticals H Option",
+      "Wheel Cross",
+      "X Mid Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/sacramento-state-off/gun-empty-base-trio/"
+    },
+    "Spread": {
+     "plays": [
+      "Bubble Screen",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Drag Slot Fade",
+      "Hitches Slot In",
+      "Hoss Juke",
+      "QB Draw",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Slot Fade Cross",
+      "Stick Nod",
+      "Verticals H Option"
+     ],
+     "source": "https://cfb.fan/27/playbooks/spread-off/gun-empty-base-trio/"
+    },
+    "Texas State": {
+     "plays": [
+      "All Hitch",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Drag Slot Fade",
+      "Hitches Slot In",
+      "Hoss Juke",
+      "QB Draw",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Slot Fade Cross",
+      "Slot Flat Screen",
+      "Stick Nod"
+     ],
+     "source": "https://cfb.fan/27/playbooks/texas-state-off/gun-empty-base-trio/"
+    },
+    "Texas Tech": {
+     "plays": [
+      "All Curl",
+      "Bubble Screen",
+      "Bubble Spot Dig",
+      "Bubble Z Spot",
+      "Curl Combo",
+      "Deep Attack",
+      "Double Slant Stick",
+      "Drag Slot Fade",
+      "Drive Switch Seams",
+      "Hitches Slot In",
+      "Jailbreak Screen",
+      "QB Draw",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Slot Fade Cross",
+      "Slot Flat Screen",
+      "Stick Nod",
+      "Verticals H Option",
+      "Wheel Cross",
+      "X Mid Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/texas-tech-off/gun-empty-base-trio/"
+    },
+    "Washington State": {
+     "plays": [
+      "All Curl",
+      "All Hitch",
+      "Bubble Screen",
+      "Bubble Z Spot",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Hitches Slot In",
+      "Hoss Juke",
+      "QB Draw",
+      "QB Trap",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Stick Nod",
+      "X Mid Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/washington-state-off/gun-empty-base-trio/"
+    },
+    "Wisconsin": {
+     "plays": [
+      "All Curl",
+      "All Hitch",
+      "Bubble Screen",
+      "Curl Combo",
+      "Deep Attack",
+      "Divide Double In",
+      "Double Slant Stick",
+      "Hitches Slot In",
+      "Hoss Juke",
+      "QB Draw",
+      "Shift Bubble Screen",
+      "Shift Bubble Spot Dig",
+      "Shift Bubble Z Spot",
+      "Shock Levels",
+      "Shock Slot Option",
+      "Slants",
+      "Slot Fade Cross",
+      "Slot Shake",
+      "Stick Nod",
+      "Verticals H Option",
+      "X Mid Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/wisconsin-off/gun-empty-base-trio/"
+    }
+   }
   },
   "Gun Power I Tight": {
    "slug": "gun-power-i-tight",
@@ -752,7 +2904,43 @@
     "Power Spread",
     "West Virginia"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-power-i-tight/"
+   "source": "https://cfb.fan/playbooks/formations/gun-power-i-tight/",
+   "by_book": {
+    "Power Spread": {
+     "plays": [
+      "Duo",
+      "FK Toss Trail",
+      "HB Dive",
+      "HB Toss",
+      "Lead Zone WK",
+      "Load Option",
+      "PA Duo Flood",
+      "Power",
+      "QB Blast",
+      "QB Duo",
+      "QB Power",
+      "QB Sweep"
+     ],
+     "source": "https://cfb.fan/27/playbooks/power-spread-off/gun-power-i-tight/"
+    },
+    "West Virginia": {
+     "plays": [
+      "Duo",
+      "FK Toss Trail",
+      "HB Dive",
+      "HB Toss",
+      "Lead Zone WK",
+      "Load Option",
+      "PA Duo Flood",
+      "Power",
+      "QB Blast",
+      "QB Power",
+      "QB Sweep",
+      "QB Zone"
+     ],
+     "source": "https://cfb.fan/27/playbooks/west-virginia-off/gun-power-i-tight/"
+    }
+   }
   },
   "Gun Tight Doubles": {
    "slug": "gun-tight-doubles",
@@ -799,7 +2987,115 @@
     "Ohio State",
     "Spread"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-tight-doubles/"
+   "source": "https://cfb.fan/playbooks/formations/gun-tight-doubles/",
+   "by_book": {
+    "Cal": {
+     "plays": [
+      "Cross Wheels",
+      "Curl",
+      "DBL Stick",
+      "Flood",
+      "HB Draw",
+      "HB Quick Base",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mesh Spot",
+      "Mtn Bunch Option",
+      "Mtn Cross HB Sneak",
+      "Mtn FK Cross",
+      "PA Deep Curls",
+      "PA WR Cross",
+      "Z Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/gun-tight-doubles/"
+    },
+    "Fresno State": {
+     "plays": [
+      "Cross HB Angle",
+      "Cross HB Sneak",
+      "Cross Wheels",
+      "Curl",
+      "DBL Stick",
+      "Flood Curl",
+      "Flood Slot Return",
+      "HB Draw",
+      "HB Quick Base",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mesh Deep Over",
+      "Mesh HB Angle",
+      "Mesh Spot",
+      "Middle Hi Low",
+      "Mtn Bunch Option",
+      "Mtn Cross HB Sneak",
+      "Mtn FK Cross",
+      "Out Smash",
+      "PA Deep Curls",
+      "Shot Fade Cross",
+      "Slot Return HB Wheel",
+      "Smash Y Go",
+      "Z Spot Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/fresno-state-off/gun-tight-doubles/"
+    },
+    "Go Go": {
+     "plays": [
+      "21G Under",
+      "Bench",
+      "HB Angle",
+      "HB Draw",
+      "HB Quick Base",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Out Smash",
+      "PA Deep Curls",
+      "PA WR Cross",
+      "Z Spot",
+      "Z Spot Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/go-go-off/gun-tight-doubles/"
+    },
+    "Ohio State": {
+     "plays": [
+      "Bench",
+      "Cross Wheels",
+      "DBL Stick",
+      "Flood Drive",
+      "HB Draw",
+      "HB Quick Base",
+      "HB Slip Screen",
+      "Mtn Bunch Option",
+      "Mtn Cross HB Sneak",
+      "Mtn FK Cross",
+      "PA Deep Curls",
+      "PA WR Cross",
+      "Shot Fade Cross",
+      "Tight Curl",
+      "Z Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/gun-tight-doubles/"
+    },
+    "Spread": {
+     "plays": [
+      "21G Under",
+      "Bench",
+      "Cross Wheels",
+      "HB Angle",
+      "HB Draw",
+      "HB Quick Base",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mesh Spot",
+      "PA Deep Curls",
+      "PA WR Cross",
+      "Slant Under",
+      "Tight Flood",
+      "Z Spot",
+      "Z Spot Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/spread-off/gun-tight-doubles/"
+    }
+   }
   },
   "Gun Tight Y Off": {
    "slug": "gun-tight-y-off",
@@ -865,7 +3161,363 @@
     "UAB",
     "Washington"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-tight-y-off/"
+   "source": "https://cfb.fan/playbooks/formations/gun-tight-y-off/",
+   "by_book": {
+    "Akron": {
+     "plays": [
+      "0 1 Trap",
+      "Deep Crossers",
+      "Fake Jet HB Seam",
+      "Flood Drive",
+      "HB Scissors",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Jet Touch Pass",
+      "Mesh Spot",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Alert Out",
+      "RPO Peek Slant Bubble",
+      "Stick",
+      "TE Corner",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/akron-off/gun-tight-y-off/"
+    },
+    "Arizona": {
+     "plays": [
+      "0 1 Trap",
+      "Choice Pivot Return",
+      "Flood Drive",
+      "HB Scissors",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Jet Pass FK Zone",
+      "Jet Touch Pass",
+      "Mesh Spot",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Alert Bubble",
+      "RPO Peek Slant Bubble",
+      "Stick",
+      "TE Corner",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/arizona-off/gun-tight-y-off/"
+    },
+    "Boston College": {
+     "plays": [
+      "Flood Drive",
+      "HB Scissors",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mesh Slot Corner",
+      "Mesh Spot",
+      "Mesh Whips",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Alert Out",
+      "RPO Peek Slant",
+      "RPO Peek Slant Bubble",
+      "Stick",
+      "Switch WR Drag",
+      "TE Corner",
+      "Wheel Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/boston-college-off/gun-tight-y-off/"
+    },
+    "Florida International": {
+     "plays": [
+      "0 1 Trap",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Jet Pass FK Zone",
+      "Jet Touch Pass",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Alert Bubble",
+      "RPO Peek Slant Bubble",
+      "Switch WR Drag",
+      "TE Corner",
+      "Wheel Spot",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/florida-international-off/gun-tight-y-off/"
+    },
+    "Mississippi State": {
+     "plays": [
+      "0 1 Trap",
+      "Duo",
+      "Fake Jet HB Seam",
+      "Flood Drive",
+      "HB Scissors",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Iso Y Insert",
+      "Jet PA Flood",
+      "Jet Pass FK Zone",
+      "Jet Split Zone",
+      "Jet Touch Pass",
+      "Mesh Spot",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Peek Slant",
+      "RPO Peek Slant Bubble",
+      "Stick",
+      "Switch WR Drag",
+      "TE Corner",
+      "Wheel Spot",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/mississippi-state-off/gun-tight-y-off/"
+    },
+    "North Dakota State": {
+     "plays": [
+      "0 1 Trap",
+      "Choice Pivot Return",
+      "Flood Drive",
+      "HB Scissors",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mesh Spot",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Alert Bubble",
+      "RPO Peek Slant Bubble",
+      "Shift Flood Drive",
+      "Shift HB Slip Screen",
+      "Shift Mesh Spot",
+      "Stick",
+      "TE Corner"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-dakota-state-off/gun-tight-y-off/"
+    },
+    "North Texas": {
+     "plays": [
+      "Cheat Outside Zone",
+      "Cheat Slash Wheel Cross",
+      "Cheat Spot Y Quick",
+      "Choice Pivot Return",
+      "Flood Drive",
+      "HB Scissors",
+      "Inside Zone",
+      "Mesh Spot",
+      "Mtn Mesh Spot",
+      "Mtn Slot Choice",
+      "Mtn Y-Corner",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "RPO Alert Out",
+      "RPO Peek Slant Bubble"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-texas-off/gun-tight-y-off/"
+    },
+    "Northern Illinois": {
+     "plays": [
+      "0 1 Trap",
+      "Choice Pivot Return",
+      "Flood Drive",
+      "HB Scissors",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Jet Pass FK Zone",
+      "Jet Touch Pass",
+      "Mesh Spot",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Alert Out",
+      "RPO Peek Slant Bubble",
+      "Stick",
+      "Wheel Spot",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/northern-illinois-off/gun-tight-y-off/"
+    },
+    "Ohio State": {
+     "plays": [
+      "Cheat Outside Zone",
+      "Cheat Slash Wheel Cross",
+      "Cheat Spot Y Quick",
+      "Flood Drive",
+      "HB Scissors",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mesh Spot",
+      "Mtn Mesh Spot",
+      "Mtn Slot Choice",
+      "Mtn Y-Corner",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Peek Slant Bubble",
+      "Switch WR Drag",
+      "TE Corner"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/gun-tight-y-off/"
+    },
+    "Pittsburgh": {
+     "plays": [
+      "0 1 Trap",
+      "Choice Pivot Return",
+      "Flood Drive",
+      "HB Scissors",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Jet Pass FK Zone",
+      "Jet Touch Pass",
+      "Mesh Spot",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Alert Bubble",
+      "RPO Peek Slant Bubble",
+      "Stick",
+      "TE Corner",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/pittsburgh-off/gun-tight-y-off/"
+    },
+    "Texas State": {
+     "plays": [
+      "Flood Drive",
+      "HB Scissors",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Jet Pass FK Zone",
+      "Jet Touch Pass",
+      "Mesh Spot",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Alert Bubble",
+      "RPO Peek Slant Bubble",
+      "Stick",
+      "Switch WR Drag",
+      "TE Corner",
+      "Wheel Spot",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/texas-state-off/gun-tight-y-off/"
+    },
+    "Texas Tech": {
+     "plays": [
+      "Fake Jet HB Seam",
+      "Flood Drive",
+      "HB Scissors",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Iso Y Insert",
+      "Jet HB Trap",
+      "Jet PA Flood",
+      "Jet Pass FK Zone",
+      "Jet Touch Pass",
+      "Mesh Slot Corner",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "RPO Alert Bubble",
+      "RPO Peek Slant Bubble",
+      "Stick",
+      "Switch WR Drag",
+      "TE Corner",
+      "Wheel Spot",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/texas-tech-off/gun-tight-y-off/"
+    },
+    "Tulsa": {
+     "plays": [
+      "0 1 Trap",
+      "Fake Jet HB Seam",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Jet HB Trap",
+      "Jet PA Flood",
+      "Jet Split Zone",
+      "Jet Touch Pass",
+      "Mtn PA Spinner",
+      "Mtn Spinner HB Inside",
+      "Mtn WR Outside Zone",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Alert Bubble",
+      "RPO Peek Slant Bubble",
+      "Switch WR Drag",
+      "TE Corner",
+      "Wheel Spot",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/tulsa-off/gun-tight-y-off/"
+    },
+    "UAB": {
+     "plays": [
+      "0 1 Trap",
+      "Fake Jet HB Seam",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Jet HB Trap",
+      "Jet PA Flood",
+      "Jet Split Zone",
+      "Jet Touch Pass",
+      "Mtn PA Spinner",
+      "Mtn Spinner HB Inside",
+      "Mtn WR Outside Zone",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Alert Bubble",
+      "RPO Peek Slant Bubble",
+      "Switch WR Drag",
+      "TE Corner",
+      "Wheel Spot",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/uab-off/gun-tight-y-off/"
+    },
+    "Washington": {
+     "plays": [
+      "Flood Drive",
+      "HB Scissors",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Jet Pass FK Zone",
+      "Jet Touch Pass",
+      "Mesh Spot",
+      "PA Go Slot Cross",
+      "PA Jailbreak Screen",
+      "PA Slot Cross",
+      "Read Option",
+      "RPO Peek Slant",
+      "RPO Peek Slant Bubble",
+      "Stick",
+      "Switch WR Drag",
+      "TE Corner",
+      "Wheel Spot",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/washington-off/gun-tight-y-off/"
+    }
+   }
   },
   "Gun Trips TE Flex": {
    "slug": "gun-trips-te-flex",
@@ -902,7 +3554,89 @@
     "Ohio State",
     "UCLA"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-trips-te-flex/"
+   "source": "https://cfb.fan/playbooks/formations/gun-trips-te-flex/",
+   "by_book": {
+    "Georgia State": {
+     "plays": [
+      "China Post Rail",
+      "Dagger",
+      "HB Angle",
+      "HB Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Levels Sail",
+      "Outside Zone",
+      "Over Pivot",
+      "PA Fork",
+      "PA Shot Crossers",
+      "Read Option",
+      "RPO Zone Alert Omaha",
+      "Verticals",
+      "Y Out N Up"
+     ],
+     "source": "https://cfb.fan/27/playbooks/georgia-state-off/gun-trips-te-flex/"
+    },
+    "Indiana": {
+     "plays": [
+      "China Post Rail",
+      "Dagger",
+      "HB Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Levels Sail",
+      "Outside Zone",
+      "Over Pivot",
+      "PA Fork",
+      "PA Shot Crossers",
+      "Read Option",
+      "RPO Zone Alert Omaha",
+      "Stick",
+      "Verticals",
+      "Y Corner Stop"
+     ],
+     "source": "https://cfb.fan/27/playbooks/indiana-off/gun-trips-te-flex/"
+    },
+    "Ohio State": {
+     "plays": [
+      "Dagger",
+      "Double In Sail",
+      "HB Angle",
+      "HB Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Levels Sail",
+      "Mtn Fork H Choice",
+      "Mtn Hitch N Go",
+      "Mtn Y Post",
+      "PA Crossers",
+      "RPO Zone Alert Omaha",
+      "Scat",
+      "Stick",
+      "Verticals"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/gun-trips-te-flex/"
+    },
+    "UCLA": {
+     "plays": [
+      "Dagger",
+      "Inside Zone",
+      "Levels Sail",
+      "Outside Zone",
+      "Over Pivot",
+      "PA Crossers",
+      "PA Fork",
+      "Post Rail",
+      "Read Option",
+      "RPO Zone Alert Omaha",
+      "Scat",
+      "Stick",
+      "TE In",
+      "Verticals",
+      "Y Corner Stop"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ucla-off/gun-trips-te-flex/"
+    }
+   }
   },
   "Gun Trips TE": {
    "slug": "gun-trips-te",
@@ -1025,7 +3759,654 @@
     "Washington",
     "Wyoming"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-trips-te/"
+   "source": "https://cfb.fan/playbooks/formations/gun-trips-te/",
+   "by_book": {
+    "Akron": {
+     "plays": [
+      "45 Quick Base",
+      "China Slot Corner",
+      "Counter Bash",
+      "Deep In",
+      "Drive Post",
+      "Flood",
+      "HB Angle",
+      "HB Counter",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mtn PA Slide",
+      "Mtn PA Y Corner",
+      "Mtn RPO Read Flat",
+      "PA Boot Shot",
+      "PA Counter Go",
+      "Read Option",
+      "RPO Alert Bubble",
+      "RPO Alert Counter Flat",
+      "RPO Read Y Flat",
+      "Shallow X Dig",
+      "Slot Quick Flat",
+      "Speed Option",
+      "TE Screen",
+      "WR Short Post"
+     ],
+     "source": "https://cfb.fan/27/playbooks/akron-off/gun-trips-te/"
+    },
+    "Alabama": {
+     "plays": [
+      "45 Quick Base",
+      "All Curl",
+      "Drive Post",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Orbit Cross Screen",
+      "Orbit PA HB Wheel",
+      "Orbit RPO Alert Screen",
+      "PA Slot Corner",
+      "QB Strong Power",
+      "QB Zone",
+      "Read Option Bubble",
+      "Reload PA Unders",
+      "Reload RPO Zone Alert Bubble",
+      "Reload Shock HB Choice",
+      "RPO Alert Bubble",
+      "RPO Read Y Flat",
+      "Shift PA Boot",
+      "Shift Read Option",
+      "Shift RPO Alert Y Flat",
+      "TE Swirl",
+      "Verticals",
+      "Verts Y Delay",
+      "Z Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/alabama-off/gun-trips-te/"
+    },
+    "Arizona": {
+     "plays": [
+      "45 Quick Base",
+      "All Curl",
+      "Deep In",
+      "Drive Post",
+      "Flood",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Shot Wheel",
+      "Read Option",
+      "RPO Alert Bubble",
+      "RPO Alert Counter Flat",
+      "Slants",
+      "Speed Option",
+      "TE Middle Screen",
+      "WR Screen",
+      "WR Short Post",
+      "Y Post"
+     ],
+     "source": "https://cfb.fan/27/playbooks/arizona-off/gun-trips-te/"
+    },
+    "Bowling Green": {
+     "plays": [
+      "45 Quick Base",
+      "All Curl",
+      "Curl Flat",
+      "HB Counter",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Shot Wheel",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Shuffle Slot DBL Posts",
+      "Shuffle Stick",
+      "Shuffle TE Screen",
+      "Slot Quick Flat",
+      "Speed Option",
+      "TE Corner",
+      "WR Screen",
+      "WR Short Post",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/bowling-green-off/gun-trips-te/"
+    },
+    "BYU": {
+     "plays": [
+      "45 Quick Base",
+      "All Curl",
+      "Drive Post",
+      "Flood",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Shot Wheel",
+      "QB G Down",
+      "Read Option",
+      "Slot Out N Up",
+      "Slot Quick Flat",
+      "Speed Option",
+      "Switch Y In",
+      "TE Corner",
+      "TE Screen",
+      "WR Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/byu-off/gun-trips-te/"
+    },
+    "Cal": {
+     "plays": [
+      "China Y Post",
+      "Curl Flat",
+      "Deep In",
+      "Drive Post",
+      "HB Counter",
+      "HB Slip Screen",
+      "Inside Cross",
+      "Inside Zone",
+      "Mtn Bench",
+      "Mtn Return Levels",
+      "Mtn Z Spot",
+      "Orbit Cross Screen",
+      "Orbit PA HB Wheel",
+      "Orbit RPO Alert Screen",
+      "PA Boot Shot",
+      "PA Counter Go",
+      "QB Strong Power",
+      "QB Zone",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Shallow X Dig",
+      "Shuffle Mtn FK Screen Wheel",
+      "Shuffle Mtn HB Swing",
+      "Shuffle Mtn Levels",
+      "Slot Quick Flat",
+      "Verticals",
+      "WR Short Post"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/gun-trips-te/"
+    },
+    "Central Michigan": {
+     "plays": [
+      "45 Quick Base",
+      "Deep In",
+      "Drive Post",
+      "Flood",
+      "HB Angle",
+      "HB Counter",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mtn PA Slide",
+      "Mtn PA Y Corner",
+      "Mtn RPO Read Flat",
+      "PA Boot Shot",
+      "PA Counter Go",
+      "Read Option",
+      "RPO Alert Bubble",
+      "RPO Read Y Flat",
+      "Shallow X Dig",
+      "Slot Quick Flat",
+      "Speed Option",
+      "TE Screen",
+      "WR Short Post"
+     ],
+     "source": "https://cfb.fan/27/playbooks/central-michigan-off/gun-trips-te/"
+    },
+    "Colorado State": {
+     "plays": [
+      "All Curl",
+      "Double Under",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mtn PA Slide",
+      "Mtn PA Y Corner",
+      "Mtn RPO Read Flat",
+      "PA Shot Wheel",
+      "QB Strong Power",
+      "Read Option",
+      "Speed Option",
+      "TE Screen",
+      "Verticals",
+      "X Spot",
+      "Y Shallow Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/colorado-state-off/gun-trips-te/"
+    },
+    "Florida International": {
+     "plays": [
+      "Curl Flat",
+      "Double In Sail",
+      "Drive Post",
+      "HB Counter",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Counter Go",
+      "PA Shot Post",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Slot Quick Flat",
+      "Speed Option",
+      "TE Middle Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/florida-international-off/gun-trips-te/"
+    },
+    "Houston": {
+     "plays": [
+      "45 Quick Base",
+      "All Curl",
+      "China Y Post",
+      "Comeback Y Angle Post",
+      "Curl Flat",
+      "Flood Y-Delay",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Shot Wheel",
+      "QB G Down",
+      "QB Strong Power",
+      "RPO Alert Bubble",
+      "RPO Zone Alert Slot Screen",
+      "Speed Option",
+      "TE Screen",
+      "Verticals",
+      "X Spot",
+      "Y Shallow Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/houston-off/gun-trips-te/"
+    },
+    "Michigan State": {
+     "plays": [
+      "45 Quick Base",
+      "All Curl",
+      "Drive Post",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Orbit PA HB Wheel",
+      "Orbit RPO Alert Screen",
+      "Orbit TE Middle Screen",
+      "PA Slot Corner",
+      "QB Strong Power",
+      "QB Zone",
+      "Read Option Bubble",
+      "Reload PA Unders",
+      "Reload RPO Zone Alert Bubble",
+      "Reload Shock HB Choice",
+      "RPO Alert Bubble",
+      "RPO Read Y Flat",
+      "Shift PA Boot",
+      "Shift Read Option",
+      "Shift RPO Alert Y Flat",
+      "TE Swirl",
+      "Verticals",
+      "Verts Y Delay",
+      "Z Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/michigan-state-off/gun-trips-te/"
+    },
+    "Multiple": {
+     "plays": [
+      "Curl Flat",
+      "Deep In",
+      "HB Angle",
+      "HB Counter",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "Inside Cross",
+      "Inside Zone",
+      "PA Counter Go",
+      "PA Shot Wheel",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Shallow X Dig",
+      "Slot Quick Flat",
+      "Speed Option",
+      "TE Screen",
+      "Verticals",
+      "WR Short Post"
+     ],
+     "source": "https://cfb.fan/27/playbooks/multiple-off/gun-trips-te/"
+    },
+    "North Dakota State": {
+     "plays": [
+      "45 Quick Base",
+      "All Curl",
+      "China Y Post",
+      "Comeback Y Angle Post",
+      "Curl Flat",
+      "Deep In",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Shot Wheel",
+      "QB G Down",
+      "QB Strong Power",
+      "RPO Alert Bubble",
+      "RPO Zone Alert Slot Screen",
+      "Shift Bash Option",
+      "Shift PA Boot",
+      "Shift Read Option",
+      "Speed Option",
+      "TE Screen",
+      "Verticals",
+      "X Spot",
+      "Y Shallow Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-dakota-state-off/gun-trips-te/"
+    },
+    "Ohio State": {
+     "plays": [
+      "Deep In",
+      "Drive Post",
+      "HB Angle",
+      "HB Counter",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mtn FK Screen Wheel",
+      "Mtn HB Swing",
+      "Mtn Levels Y-Corner",
+      "PA Boot Shot",
+      "RPO Alert Bubble",
+      "Shallow X Dig",
+      "Texas",
+      "Verticals",
+      "WR Short Post"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/gun-trips-te/"
+    },
+    "Oklahoma": {
+     "plays": [
+      "HB Angle",
+      "HB Counter",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Counter Go",
+      "PA Shot Wheel",
+      "Read Option",
+      "Slot Quick Flat",
+      "Speed Option",
+      "TE Corner",
+      "TE Screen",
+      "WR Screen",
+      "WR Short Post",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/oklahoma-off/gun-trips-te/"
+    },
+    "Oregon State": {
+     "plays": [
+      "45 Quick Base",
+      "All Curl",
+      "Drive Post",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Orbit Cross Screen",
+      "Orbit RPO Alert Screen",
+      "Orbit TE Middle Screen",
+      "PA Slot Corner",
+      "QB Strong Power",
+      "QB Zone",
+      "Read Option Bubble",
+      "Reload PA Unders",
+      "Reload RPO Zone Alert Bubble",
+      "Reload Shock HB Choice",
+      "RPO Alert Bubble",
+      "RPO Read Y Flat",
+      "Shift PA Boot",
+      "Shift Read Option",
+      "Shift RPO Alert Y Flat",
+      "TE Swirl",
+      "Verticals",
+      "Verts Y Delay",
+      "Z Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/oregon-state-off/gun-trips-te/"
+    },
+    "Sam Houston State": {
+     "plays": [
+      "China Y Post",
+      "Curl Flat",
+      "Double In Sail",
+      "Drive Post",
+      "HB Counter",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Counter Go",
+      "PA Shot Post",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Slot Quick Flat",
+      "TE Corner",
+      "TE Middle Screen",
+      "TE Screen",
+      "TE Swirl",
+      "WR Screen",
+      "WR Short Post"
+     ],
+     "source": "https://cfb.fan/27/playbooks/sam-houston-state-off/gun-trips-te/"
+    },
+    "San Diego State": {
+     "plays": [
+      "Deep In",
+      "Double In Sail",
+      "Drive Post",
+      "Flood",
+      "HB Angle",
+      "HB Counter",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mtn PA Slide",
+      "Mtn PA Y Corner",
+      "Mtn RPO Read Flat",
+      "PA Counter Go",
+      "PA Shot Wheel",
+      "Quick Slant",
+      "RPO Alert Bubble",
+      "Slot Quick Flat",
+      "Slot Swing",
+      "TE Screen",
+      "Vin",
+      "WR Short Post"
+     ],
+     "source": "https://cfb.fan/27/playbooks/san-diego-state-off/gun-trips-te/"
+    },
+    "SMU": {
+     "plays": [
+      "45 Quick Base",
+      "All Curl",
+      "China Slot Corner",
+      "Double Under",
+      "Drive Post",
+      "HB Angle",
+      "HB Counter",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "PA Shot Wheel",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Speed Option",
+      "TE Corner",
+      "TE Middle Screen",
+      "WR Screen",
+      "WR Short Post",
+      "Y Shallow Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/smu-off/gun-trips-te/"
+    },
+    "TCU": {
+     "plays": [
+      "All Curl",
+      "Double Under",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mtn PA Slide",
+      "Mtn PA Y Corner",
+      "Mtn RPO Read Flat",
+      "PA Shot Wheel",
+      "QB Strong Power",
+      "Read Option",
+      "Speed Option",
+      "TE Screen",
+      "Verticals",
+      "X Spot",
+      "Y Shallow Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/tcu-off/gun-trips-te/"
+    },
+    "Texas": {
+     "plays": [
+      "Curl Flat",
+      "Deep In",
+      "HB Counter",
+      "HB Slip Screen",
+      "Inside Cross",
+      "Inside Zone",
+      "PA Counter Go",
+      "PA Shot Wheel",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Shallow X Dig",
+      "Shuffle DBL Posts",
+      "Shuffle Mtn FK Screen Wheel",
+      "Shuffle Mtn HB Swing",
+      "Shuffle Mtn Levels",
+      "Shuffle Stick",
+      "Shuffle TE Screen",
+      "Slot Quick Flat",
+      "TE Screen",
+      "Verticals",
+      "WR Short Post"
+     ],
+     "source": "https://cfb.fan/27/playbooks/texas-off/gun-trips-te/"
+    },
+    "UAB": {
+     "plays": [
+      "Curl Flat",
+      "Double In Sail",
+      "Drive Post",
+      "HB Counter",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Counter Go",
+      "PA Shot Post",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Slot Quick Flat",
+      "Speed Option",
+      "TE Middle Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/uab-off/gun-trips-te/"
+    },
+    "UL Monroe": {
+     "plays": [
+      "45 Quick Base",
+      "All Curl",
+      "China Go Y-Post",
+      "Comeback Y Angle Post",
+      "Curl Flat",
+      "Curls X Go",
+      "Dagger Texas",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "Mtn Bench",
+      "Mtn Return Levels",
+      "Mtn Z Spot",
+      "Orbit Cross Screen",
+      "Orbit PA HB Wheel",
+      "Orbit RPO Alert Screen",
+      "PA Boot Shot",
+      "RPO Alert Bubble",
+      "Slot Out N Up",
+      "Slot Quick Flat",
+      "TE Screen",
+      "Verticals HB Angle",
+      "WR Screen",
+      "Y Shallow Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ul-monroe-off/gun-trips-te/"
+    },
+    "UNLV": {
+     "plays": [
+      "Deep In",
+      "Drive Post",
+      "HB Angle",
+      "HB Counter",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Boot Shot",
+      "PA Counter Go",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Shallow X Dig",
+      "Slot Quick Flat",
+      "TE Middle Screen",
+      "WR Short Post"
+     ],
+     "source": "https://cfb.fan/27/playbooks/unlv-off/gun-trips-te/"
+    },
+    "Wake Forest": {
+     "plays": [
+      "HB Angle",
+      "HB Counter",
+      "HB Mid Draw",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Counter Go",
+      "PA Shot Wheel",
+      "Read Option",
+      "Slot Quick Flat",
+      "Speed Option",
+      "TE Corner",
+      "TE Screen",
+      "WR Screen",
+      "WR Short Post",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/wake-forest-off/gun-trips-te/"
+    },
+    "Washington": {
+     "plays": [
+      "45 Quick Base",
+      "China Go Y-Post",
+      "Double In Sail",
+      "Flood",
+      "HB Slip Screen",
+      "Inside Zone",
+      "PA Shot Wheel",
+      "RPO Alert Bubble",
+      "RPO Read Y Flat",
+      "Slot Swing",
+      "Speed Option",
+      "TE Middle Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/washington-off/gun-trips-te/"
+    },
+    "Wyoming": {
+     "plays": [
+      "45 Quick Base",
+      "Comeback Y Angle Post",
+      "Counter Bash",
+      "Dagger Texas",
+      "Flood Y Swirl",
+      "HB Slip Screen",
+      "Inside Cross",
+      "Inside Zone",
+      "PA Slot Corner",
+      "QB Strong Power",
+      "QB Zone",
+      "Read Option Bubble",
+      "RPO Alert Bubble",
+      "RPO Read Y Flat",
+      "Salem Y-Wheel",
+      "Shift PA Boot",
+      "Shift Read Option",
+      "Shift RPO Alert Y Flat",
+      "TE Corner",
+      "TE Middle Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/wyoming-off/gun-trips-te/"
+    }
+   }
   },
   "Gun Trips X Nasty": {
    "slug": "gun-trips-x-nasty",
@@ -1068,7 +4449,243 @@
     "Sam Houston State",
     "UL Monroe"
    ],
-   "source": "https://cfb.fan/playbooks/formations/gun-trips-x-nasty/"
+   "source": "https://cfb.fan/playbooks/formations/gun-trips-x-nasty/",
+   "by_book": {
+    "Akron": {
+     "plays": [
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "Hi Lo Cross",
+      "Hi Lo Dig",
+      "Inside Zone",
+      "PA X Cross Shot",
+      "Quick Fork Zig",
+      "Quick Short Post",
+      "Quick Unders",
+      "Slot Fade H Wheel",
+      "Verticals X Shallow",
+      "WR Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/akron-off/gun-trips-x-nasty/"
+    },
+    "Cal": {
+     "plays": [
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "Hi Lo Cross",
+      "Hi Lo Dig",
+      "Inside Zone",
+      "Mtn Drag Sluggo",
+      "Mtn HB Swing",
+      "Mtn Slot Fades",
+      "Mtn Spot Y Corner",
+      "Mtn Stick Wheel",
+      "Mtn Triple Slants",
+      "PA X Cross Shot",
+      "Quick Fork Zig",
+      "Quick Short Post",
+      "Quick Unders",
+      "Slot Fade H Wheel",
+      "Verticals X Shallow",
+      "WR Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/gun-trips-x-nasty/"
+    },
+    "Charlotte": {
+     "plays": [
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "Hi Lo Cross",
+      "Hi Lo Dig",
+      "Inside Zone",
+      "Mtn HB Swing",
+      "Mtn Spot Y Corner",
+      "Mtn Stick Wheel",
+      "PA X Cross Shot",
+      "Quick Fork Zig",
+      "Quick Short Post",
+      "Quick Unders",
+      "Slot Fade H Wheel",
+      "Verticals X Shallow",
+      "WR Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/charlotte-off/gun-trips-x-nasty/"
+    },
+    "Coastal Carolina": {
+     "plays": [
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "Hi Lo Cross",
+      "Hi Lo Dig",
+      "Inside Zone",
+      "PA X Cross Shot",
+      "Quick Fork Zig",
+      "Quick Short Post",
+      "Quick Unders",
+      "Slot Fade H Wheel",
+      "Verticals X Shallow",
+      "WR Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/coastal-carolina-off/gun-trips-x-nasty/"
+    },
+    "Colorado": {
+     "plays": [
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "Hi Lo Cross",
+      "Hi Lo Dig",
+      "Inside Zone",
+      "Mtn HB Swing",
+      "Mtn Spot Y Corner",
+      "Mtn Stick Wheel",
+      "PA X Cross Shot",
+      "Slot Fade H Wheel",
+      "Verticals X Shallow",
+      "WR Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/colorado-off/gun-trips-x-nasty/"
+    },
+    "Florida Atlantic": {
+     "plays": [
+      "HB Slip Screen",
+      "Hi Lo Cross",
+      "Hi Lo Dig",
+      "Inside Zone",
+      "Mid Zone",
+      "Mtn Drag Sluggo",
+      "Mtn HB Swing",
+      "Mtn Slot Stick Nod",
+      "Mtn Spot Y Corner",
+      "Mtn Stick Wheel",
+      "Mtn Triple Slants",
+      "PA X Cross Shot",
+      "Snag Slot Digs",
+      "Switch HB Wheel",
+      "Verticals X Shallow"
+     ],
+     "source": "https://cfb.fan/27/playbooks/florida-atlantic-off/gun-trips-x-nasty/"
+    },
+    "Go Go": {
+     "plays": [
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "Hi Lo Cross",
+      "Hi Lo Dig",
+      "Inside Zone",
+      "Mtn HB Swing",
+      "Mtn Spot Y Corner",
+      "Mtn Stick Wheel",
+      "PA X Cross Shot",
+      "Quick Fork Zig",
+      "Quick Short Post",
+      "Quick Unders",
+      "Slot Fade H Wheel",
+      "Verticals X Shallow",
+      "WR Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/go-go-off/gun-trips-x-nasty/"
+    },
+    "Hawaii": {
+     "plays": [
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "Hi Lo Cross",
+      "Hi Lo Dig",
+      "Inside Zone",
+      "PA X Cross Shot",
+      "Quick Fork Zig",
+      "Quick Short Post",
+      "Quick Unders",
+      "Slot Fade H Wheel",
+      "Verticals X Shallow",
+      "WR Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/hawaii-off/gun-trips-x-nasty/"
+    },
+    "Ohio State": {
+     "plays": [
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "Hi Lo Cross",
+      "Hi Lo Dig",
+      "Inside Zone",
+      "Mtn HB Swing",
+      "Mtn Slot Fades",
+      "Mtn Slot Stick Nod",
+      "Mtn Spot Y Corner",
+      "Mtn Stick Wheel",
+      "Mtn Triple Slants",
+      "PA X Cross Shot",
+      "Quick Fork Zig",
+      "Quick Short Post",
+      "Quick Unders",
+      "Slot Fade H Wheel",
+      "Verticals X Shallow",
+      "WR Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/gun-trips-x-nasty/"
+    },
+    "Pittsburgh": {
+     "plays": [
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "Hi Lo Cross",
+      "Inside Zone",
+      "Mtn Drag Sluggo",
+      "Mtn Slot Fades",
+      "Mtn Triple Slants",
+      "PA X Cross Shot",
+      "Quick Fork Zig",
+      "Quick Short Post",
+      "Quick Unders",
+      "Slot Fade H Wheel",
+      "Snag Slot Digs",
+      "Verticals X Shallow",
+      "WR Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/pittsburgh-off/gun-trips-x-nasty/"
+    },
+    "Sam Houston State": {
+     "plays": [
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "Hi Lo Cross",
+      "Hi Lo Dig",
+      "Inside Zone",
+      "Mtn HB Swing",
+      "Mtn Spot Y Corner",
+      "Mtn Stick Wheel",
+      "PA X Cross Shot",
+      "Quick Fork Zig",
+      "Quick Short Post",
+      "Quick Unders",
+      "Slot Fade H Wheel",
+      "Verticals X Shallow",
+      "WR Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/sam-houston-state-off/gun-trips-x-nasty/"
+    },
+    "UL Monroe": {
+     "plays": [
+      "HB Mid Draw",
+      "HB Off Tackle",
+      "HB Slip Screen",
+      "Hi Lo Cross",
+      "Hi Lo Dig",
+      "Inside Zone",
+      "Mid Zone",
+      "PA X Cross Shot",
+      "Quick Fork Zig",
+      "Quick Short Post",
+      "Slot Fade H Wheel",
+      "Snag Slot Digs",
+      "Switch HB Wheel",
+      "Verticals X Shallow",
+      "WR Smash"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ul-monroe-off/gun-trips-x-nasty/"
+    }
+   }
   },
   "Pistol Bunch X Nasty": {
    "slug": "pistol-bunch-x-nasty",
@@ -1086,7 +4703,31 @@
     "Virginia",
     "Washington State"
    ],
-   "source": "https://cfb.fan/playbooks/formations/pistol-bunch-x-nasty/"
+   "source": "https://cfb.fan/playbooks/formations/pistol-bunch-x-nasty/",
+   "by_book": {
+    "Virginia": {
+     "plays": [
+      "Corner Out Dig",
+      "HB Zone",
+      "Read Option WK",
+      "Slant Spacing",
+      "Smash Return",
+      "Verticals"
+     ],
+     "source": "https://cfb.fan/27/playbooks/virginia-off/pistol-bunch-x-nasty/"
+    },
+    "Washington State": {
+     "plays": [
+      "Corner Out Dig",
+      "HB Counter",
+      "HB Zone",
+      "HB Zone WK",
+      "Slant Spacing",
+      "Smash Return"
+     ],
+     "source": "https://cfb.fan/27/playbooks/washington-state-off/pistol-bunch-x-nasty/"
+    }
+   }
   },
   "Pistol Trips": {
    "slug": "pistol-trips",
@@ -1144,7 +4785,785 @@
     "TCU",
     "Washington State"
    ],
-   "source": "https://cfb.fan/playbooks/formations/pistol-trips/"
+   "source": "https://cfb.fan/playbooks/formations/pistol-trips/",
+   "by_book": {
+    "Bowling Green": {
+     "plays": [
+      "Bubble Screen",
+      "FK Bubble Screen",
+      "HB Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "PA Boot Lt",
+      "PA Comeback",
+      "PA Dagger",
+      "PA Deep In",
+      "PA X Dagger",
+      "Pin Pull Sweep",
+      "Read Option",
+      "RPO Alert Bubble",
+      "RPO Read Bubble",
+      "Slants",
+      "Verticals",
+      "WR Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/bowling-green-off/pistol-trips/"
+    },
+    "Coastal Carolina": {
+     "plays": [
+      "Bubble Screen",
+      "Deep Curls",
+      "FK Bubble Screen",
+      "FK WR Screen",
+      "Gt Counter",
+      "HB Counter",
+      "HB Dive",
+      "HB Power G",
+      "HB Slam",
+      "HB Stretch",
+      "HB Zone WK",
+      "Lead Option",
+      "PA Boot",
+      "PA Boot Lt",
+      "PA Ctr Waggle",
+      "PA X Dagger",
+      "RPO Alert Bubble",
+      "RPO Read Bubble",
+      "RPO Read Y Flat",
+      "Slants",
+      "Smash",
+      "Stick",
+      "Strong Power",
+      "TE In",
+      "Verticals",
+      "WR Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/coastal-carolina-off/pistol-trips/"
+    },
+    "Colorado State": {
+     "plays": [
+      "HB Counter",
+      "HB Slam",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Cross",
+      "Lead Option",
+      "PA Boot Lt",
+      "PA Comeback",
+      "PA Ctr Waggle",
+      "PA Dagger",
+      "PA Deep In",
+      "PA X Dagger",
+      "Pin Pull Sweep",
+      "Read Option",
+      "RPO Read Bubble",
+      "RPO Read Y Flat",
+      "Slants",
+      "Smash",
+      "Verticals",
+      "WR Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/colorado-state-off/pistol-trips/"
+    },
+    "Florida Atlantic": {
+     "plays": [
+      "Deep Curls",
+      "FK WR Screen",
+      "HB Counter",
+      "HB Dive",
+      "HB Draw",
+      "HB Slam",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Cross",
+      "Lead Option",
+      "PA Boot",
+      "PA Boot Lt",
+      "PA Ctr Waggle",
+      "PA X Dagger",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Slants",
+      "Smash",
+      "Stick",
+      "Strong Power",
+      "TE In",
+      "Verticals",
+      "WR Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/florida-atlantic-off/pistol-trips/"
+    },
+    "Houston": {
+     "plays": [
+      "Bubble Screen",
+      "Curl Flat",
+      "Deep Curls",
+      "FK Bubble Screen",
+      "FK WR Screen",
+      "Gt Counter",
+      "HB Counter",
+      "HB Dive",
+      "HB Slam",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Cross",
+      "Lead Option",
+      "PA Boot",
+      "PA Boot Lt",
+      "PA X Dagger",
+      "RPO Alert Bubble",
+      "Stick",
+      "Strong Power",
+      "Verticals",
+      "WR Screen"
+     ],
+     "source": "https://cfb.fan/27/playbooks/houston-off/pistol-trips/"
+    },
+    "Multiple": {
+     "plays": [
+      "Flood",
+      "HB Dive",
+      "HB Draw",
+      "HB Slip Screen",
+      "HB Stretch",
+      "Inside Cross",
+      "Inside Smash",
+      "Lead Option",
+      "PA Boot Lt",
+      "PA Dagger",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Slants",
+      "Smash",
+      "Stick",
+      "Verticals",
+      "WR Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/multiple-off/pistol-trips/"
+    },
+    "North Carolina": {
+     "plays": [
+      "FK WR Screen",
+      "HB Dive",
+      "HB Draw",
+      "HB Power G",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Smash",
+      "PA Boot",
+      "PA Boot Lt",
+      "PA X Dagger",
+      "Pin Pull Sweep",
+      "Read Option",
+      "Slants",
+      "Stick",
+      "Strong Power",
+      "Verticals",
+      "WR Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-carolina-off/pistol-trips/"
+    },
+    "Pistol": {
+     "plays": [
+      "HB Dive",
+      "HB Stretch",
+      "Inside Smash",
+      "PA Boot Lt",
+      "PA HB Flat",
+      "Read Option",
+      "RPO Alert Bubble",
+      "Slants",
+      "Verticals"
+     ],
+     "source": "https://cfb.fan/27/playbooks/pistol-off/pistol-trips/"
+    },
+    "TCU": {
+     "plays": [
+      "Curl Flat",
+      "Deep Curls",
+      "Flood Switch",
+      "Gt Counter",
+      "HB Counter",
+      "HB Power G",
+      "HB Slam",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Cross",
+      "Lead Option",
+      "PA Boot Lt",
+      "PA Ctr Waggle",
+      "PA Dagger",
+      "PA X Dagger",
+      "RPO Read Y Flat",
+      "Slants",
+      "Smash",
+      "Verticals",
+      "WR Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/tcu-off/pistol-trips/"
+    },
+    "Washington State": {
+     "plays": [
+      "FK WR Screen",
+      "HB Counter",
+      "HB Dive",
+      "HB Slam",
+      "HB Stretch",
+      "HB Zone WK",
+      "PA Boot",
+      "PA Boot Lt",
+      "PA Ctr Waggle",
+      "PA X Dagger",
+      "RPO Alert Bubble",
+      "Slants",
+      "Smash",
+      "Stick",
+      "Strong Power",
+      "Verticals",
+      "WR Screen",
+      "X Spot"
+     ],
+     "source": "https://cfb.fan/27/playbooks/washington-state-off/pistol-trips/"
+    }
+   }
+  },
+  "Pistol U Off Trips": {
+   "slug": "pistol-u-off-trips",
+   "plays": [
+    "DBL Post",
+    "HB Counter",
+    "HB Dive",
+    "HB Slam",
+    "HB Slip Screen",
+    "HB Split Dive",
+    "HB Stretch",
+    "HB Zone WK",
+    "Inside Zone Split",
+    "Jet Lead Read Option",
+    "Jet PA Boot",
+    "Jet Touch Pass",
+    "Lead Read Option",
+    "Mtn Lead Read Option",
+    "Mtn Over PA DBL Cross",
+    "Mtn Over Split Zone",
+    "Mtn Over Triple Option",
+    "Mtn PA Boot Lt",
+    "Mtn Touch Pass",
+    "Orbit HB Split Zone",
+    "Orbit PA Cross",
+    "Orbit Triple Option",
+    "PA Boot",
+    "PA Boot Over",
+    "PA Corner Dig",
+    "PA Fl Clown",
+    "PA Hens Wheel Shot",
+    "PA Slot Out",
+    "PA Wheel Shot",
+    "PA Y Corner",
+    "Quick Slants",
+    "Read Option",
+    "RPO Alert Flat",
+    "RPO Alert TE Flat",
+    "Shock",
+    "Stick",
+    "Strong Power",
+    "TE Cross"
+   ],
+   "books": [
+    "Arkansas State",
+    "Cincinnati",
+    "Coastal Carolina",
+    "Colorado State",
+    "Delaware",
+    "Georgia Tech",
+    "Houston",
+    "James Madison",
+    "Kansas State",
+    "Kent State",
+    "Louisiana",
+    "Louisiana Tech",
+    "Miami (OH)",
+    "North Carolina",
+    "Notre Dame",
+    "Ole Miss",
+    "Pistol",
+    "Power Spread",
+    "TCU",
+    "UTSA",
+    "Vanderbilt",
+    "Washington State"
+   ],
+   "source": "https://cfb.fan/playbooks/formations/pistol-u-off-trips/",
+   "by_book": {
+    "Arkansas State": {
+     "plays": [
+      "DBL Post",
+      "HB Dive",
+      "HB Slam",
+      "HB Split Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Jet Lead Read Option",
+      "Jet PA Boot",
+      "Jet Touch Pass",
+      "Lead Read Option",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Fl Clown",
+      "PA Slot Out",
+      "PA Y Corner",
+      "Read Option",
+      "Shock",
+      "Stick",
+      "Strong Power",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/arkansas-state-off/pistol-u-off-trips/"
+    },
+    "Cincinnati": {
+     "plays": [
+      "DBL Post",
+      "HB Counter",
+      "HB Dive",
+      "HB Slam",
+      "HB Stretch",
+      "Inside Zone Split",
+      "Orbit HB Split Zone",
+      "Orbit PA Cross",
+      "Orbit Triple Option",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Corner Dig",
+      "PA Fl Clown",
+      "PA Slot Out",
+      "Read Option",
+      "Shock",
+      "Stick",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cincinnati-off/pistol-u-off-trips/"
+    },
+    "Coastal Carolina": {
+     "plays": [
+      "DBL Post",
+      "HB Counter",
+      "HB Slam",
+      "HB Split Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Jet Lead Read Option",
+      "Jet PA Boot",
+      "Jet Touch Pass",
+      "Lead Read Option",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Slot Out",
+      "PA Wheel Shot",
+      "PA Y Corner",
+      "Read Option",
+      "RPO Alert Flat",
+      "Shock",
+      "Strong Power",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/coastal-carolina-off/pistol-u-off-trips/"
+    },
+    "Colorado State": {
+     "plays": [
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Corner Dig",
+      "PA Wheel Shot",
+      "Read Option",
+      "RPO Alert TE Flat",
+      "Shock",
+      "Strong Power",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/colorado-state-off/pistol-u-off-trips/"
+    },
+    "Delaware": {
+     "plays": [
+      "DBL Post",
+      "HB Dive",
+      "HB Slam",
+      "HB Slip Screen",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Corner Dig",
+      "PA Hens Wheel Shot",
+      "PA Slot Out",
+      "Quick Slants",
+      "Read Option",
+      "RPO Alert TE Flat",
+      "Shock",
+      "Stick",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/delaware-off/pistol-u-off-trips/"
+    },
+    "Georgia Tech": {
+     "plays": [
+      "DBL Post",
+      "HB Counter",
+      "HB Dive",
+      "HB Slam",
+      "HB Stretch",
+      "Mtn Lead Read Option",
+      "Mtn Over PA DBL Cross",
+      "Mtn Over Split Zone",
+      "Mtn Over Triple Option",
+      "Mtn PA Boot Lt",
+      "Mtn Touch Pass",
+      "PA Boot Over",
+      "PA Fl Clown",
+      "PA Slot Out",
+      "Read Option",
+      "RPO Alert Flat",
+      "Shock",
+      "Strong Power"
+     ],
+     "source": "https://cfb.fan/27/playbooks/georgia-tech-off/pistol-u-off-trips/"
+    },
+    "Houston": {
+     "plays": [
+      "DBL Post",
+      "HB Counter",
+      "HB Slip Screen",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Fl Clown",
+      "Quick Slants",
+      "RPO Alert Flat",
+      "Shock",
+      "Stick",
+      "Strong Power",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/houston-off/pistol-u-off-trips/"
+    },
+    "James Madison": {
+     "plays": [
+      "DBL Post",
+      "HB Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Jet Lead Read Option",
+      "Jet PA Boot",
+      "Jet Touch Pass",
+      "Lead Read Option",
+      "PA Boot Over",
+      "PA Corner Dig",
+      "PA Slot Out",
+      "PA Y Corner",
+      "Read Option",
+      "RPO Alert Flat",
+      "Shock",
+      "Stick",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/james-madison-off/pistol-u-off-trips/"
+    },
+    "Kansas State": {
+     "plays": [
+      "DBL Post",
+      "HB Counter",
+      "HB Dive",
+      "HB Slam",
+      "HB Slip Screen",
+      "HB Stretch",
+      "HB Zone WK",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Corner Dig",
+      "PA Fl Clown",
+      "PA Slot Out",
+      "Quick Slants",
+      "Read Option",
+      "RPO Alert Flat",
+      "Shock",
+      "Stick",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/kansas-state-off/pistol-u-off-trips/"
+    },
+    "Kent State": {
+     "plays": [
+      "DBL Post",
+      "HB Counter",
+      "HB Dive",
+      "HB Slam",
+      "HB Slip Screen",
+      "HB Split Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Corner Dig",
+      "PA Fl Clown",
+      "PA Slot Out",
+      "PA Wheel Shot",
+      "PA Y Corner",
+      "Quick Slants",
+      "RPO Alert TE Flat",
+      "Shock",
+      "Strong Power",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/kent-state-off/pistol-u-off-trips/"
+    },
+    "Louisiana": {
+     "plays": [
+      "DBL Post",
+      "HB Dive",
+      "HB Slam",
+      "HB Slip Screen",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Corner Dig",
+      "PA Fl Clown",
+      "PA Slot Out",
+      "Quick Slants",
+      "Read Option",
+      "RPO Alert TE Flat",
+      "Shock",
+      "Stick",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/louisiana-off/pistol-u-off-trips/"
+    },
+    "Louisiana Tech": {
+     "plays": [
+      "HB Counter",
+      "HB Dive",
+      "HB Slam",
+      "HB Slip Screen",
+      "HB Stretch",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Fl Clown",
+      "PA Slot Out",
+      "Read Option",
+      "Stick",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/louisiana-tech-off/pistol-u-off-trips/"
+    },
+    "Miami (OH)": {
+     "plays": [
+      "DBL Post",
+      "HB Counter",
+      "HB Dive",
+      "HB Slip Screen",
+      "HB Stretch",
+      "Inside Zone Split",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Fl Clown",
+      "PA Slot Out",
+      "Quick Slants",
+      "Read Option",
+      "RPO Alert Flat",
+      "Strong Power",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/miami-oh-off/pistol-u-off-trips/"
+    },
+    "North Carolina": {
+     "plays": [
+      "DBL Post",
+      "HB Dive",
+      "HB Slam",
+      "HB Slip Screen",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "PA Boot Over",
+      "PA Corner Dig",
+      "PA Fl Clown",
+      "PA Slot Out",
+      "Quick Slants",
+      "Read Option",
+      "RPO Alert TE Flat",
+      "Shock",
+      "Stick",
+      "Strong Power",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-carolina-off/pistol-u-off-trips/"
+    },
+    "Notre Dame": {
+     "plays": [
+      "HB Stretch",
+      "Inside Zone Split",
+      "PA Boot",
+      "PA Corner Dig",
+      "PA Wheel Shot",
+      "Read Option",
+      "RPO Alert TE Flat",
+      "Shock",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/notre-dame-off/pistol-u-off-trips/"
+    },
+    "Ole Miss": {
+     "plays": [
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Corner Dig",
+      "PA Wheel Shot",
+      "RPO Alert TE Flat",
+      "Shock"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ole-miss-off/pistol-u-off-trips/"
+    },
+    "Pistol": {
+     "plays": [
+      "DBL Post",
+      "HB Counter",
+      "HB Dive",
+      "HB Slam",
+      "HB Slip Screen",
+      "HB Stretch",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Fl Clown",
+      "PA Slot Out",
+      "Quick Slants",
+      "Read Option",
+      "Stick",
+      "Strong Power",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/pistol-off/pistol-u-off-trips/"
+    },
+    "Power Spread": {
+     "plays": [
+      "DBL Post",
+      "HB Slam",
+      "HB Split Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Jet Lead Read Option",
+      "Jet PA Boot",
+      "Jet Touch Pass",
+      "Lead Read Option",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Slot Out",
+      "PA Y Corner",
+      "Read Option",
+      "Shock",
+      "Strong Power",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/power-spread-off/pistol-u-off-trips/"
+    },
+    "TCU": {
+     "plays": [
+      "DBL Post",
+      "HB Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Jet Lead Read Option",
+      "Jet PA Boot",
+      "Jet Touch Pass",
+      "Lead Read Option",
+      "PA Boot Over",
+      "PA Corner Dig",
+      "PA Slot Out",
+      "PA Y Corner",
+      "Read Option",
+      "RPO Alert Flat",
+      "Shock",
+      "Stick",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/tcu-off/pistol-u-off-trips/"
+    },
+    "UTSA": {
+     "plays": [
+      "DBL Post",
+      "HB Stretch",
+      "Inside Zone Split",
+      "PA Corner Dig",
+      "Quick Slants",
+      "Read Option",
+      "RPO Alert TE Flat",
+      "Shock",
+      "Stick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/utsa-off/pistol-u-off-trips/"
+    },
+    "Vanderbilt": {
+     "plays": [
+      "HB Dive",
+      "HB Slam",
+      "HB Split Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Jet Lead Read Option",
+      "Jet PA Boot",
+      "Jet Touch Pass",
+      "Lead Read Option",
+      "PA Boot",
+      "PA Fl Clown",
+      "PA Y Corner",
+      "Read Option",
+      "Shock",
+      "Stick",
+      "Strong Power",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/vanderbilt-off/pistol-u-off-trips/"
+    },
+    "Washington State": {
+     "plays": [
+      "DBL Post",
+      "HB Slam",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "PA Boot",
+      "PA Boot Over",
+      "PA Corner Dig",
+      "Quick Slants",
+      "RPO Alert TE Flat",
+      "Shock",
+      "TE Cross"
+     ],
+     "source": "https://cfb.fan/27/playbooks/washington-state-off/pistol-u-off-trips/"
+    }
+   }
   },
   "Singleback Bunch TE": {
    "slug": "singleback-bunch-te",
@@ -1193,7 +5612,202 @@
     "UMass",
     "USF"
    ],
-   "source": "https://cfb.fan/playbooks/formations/singleback-bunch-te/"
+   "source": "https://cfb.fan/playbooks/formations/singleback-bunch-te/",
+   "by_book": {
+    "Alabama": {
+     "plays": [
+      "HB Misdirection Lead",
+      "HB Pump Draw",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Jet Sweep",
+      "Mtn HB Zone WK",
+      "Mtn Inside Zone",
+      "Mtn PA Boot Over",
+      "Mtn PA Boot Screen",
+      "Mtn PA Deep Over",
+      "Mtn PA Switch Replace",
+      "PA Boot Slide",
+      "PA Jet Deep Out",
+      "PA Jet Sweep",
+      "Shift Duo",
+      "Shift HB Sweep",
+      "Shift PA Duo Crossers",
+      "Switch Snag",
+      "Verticals",
+      "WR Power Fake Jet",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/alabama-off/singleback-bunch-te/"
+    },
+    "Cal": {
+     "plays": [
+      "Cross Drag",
+      "HB Pump Draw",
+      "Inside Zone",
+      "Jet Sweep",
+      "Mtn DBL Swing",
+      "Mtn FK Swing",
+      "Mtn HB Screen",
+      "PA Draw Shot",
+      "PA Jet Sweep",
+      "Spacing",
+      "Stretch Alert Bubble",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/singleback-bunch-te/"
+    },
+    "Georgia Southern": {
+     "plays": [
+      "Inside Zone",
+      "Inside Zone Split",
+      "PA Boot Slide",
+      "Spacing",
+      "Stick",
+      "Verticals"
+     ],
+     "source": "https://cfb.fan/27/playbooks/georgia-southern-off/singleback-bunch-te/"
+    },
+    "Jacksonville State": {
+     "plays": [
+      "Inside Zone",
+      "Inside Zone Split",
+      "PA Boot Slide",
+      "Spacing",
+      "Stick",
+      "Verticals"
+     ],
+     "source": "https://cfb.fan/27/playbooks/jacksonville-state-off/singleback-bunch-te/"
+    },
+    "Maryland": {
+     "plays": [
+      "Inside Zone",
+      "Inside Zone Split",
+      "PA Boot Slide",
+      "Spacing",
+      "Stick",
+      "Verticals"
+     ],
+     "source": "https://cfb.fan/27/playbooks/maryland-off/singleback-bunch-te/"
+    },
+    "Michigan State": {
+     "plays": [
+      "HB Misdirection Lead",
+      "HB Pump Draw",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Jet Sweep",
+      "Mtn HB Zone WK",
+      "Mtn Inside Zone",
+      "Mtn PA Boot Over",
+      "Mtn PA Boot Screen",
+      "Mtn PA Deep Over",
+      "Mtn PA Switch Replace",
+      "PA Boot Slide",
+      "PA Jet Deep Out",
+      "PA Jet Sweep",
+      "Shift Duo",
+      "Shift HB Sweep",
+      "Shift PA Duo Crossers",
+      "Switch Snag",
+      "Verticals",
+      "WR Power Fake Jet",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/michigan-state-off/singleback-bunch-te/"
+    },
+    "Northwestern": {
+     "plays": [
+      "Cross Drag",
+      "HB Misdirection Lead",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Jet Sweep",
+      "PA Boot Slide",
+      "PA Jet Sweep",
+      "Spacing",
+      "Stick",
+      "Stretch Alert Bubble",
+      "Verticals",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/northwestern-off/singleback-bunch-te/"
+    },
+    "Ohio State": {
+     "plays": [
+      "Cross Drag",
+      "HB Misdirection Lead",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Jet Sweep",
+      "PA Boot Slide",
+      "PA Jet Sweep",
+      "Spacing",
+      "Stick",
+      "Stretch Alert Bubble",
+      "Verticals",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/singleback-bunch-te/"
+    },
+    "Oregon State": {
+     "plays": [
+      "HB Misdirection Lead",
+      "HB Pump Draw",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Jet Sweep",
+      "Mtn HB Zone WK",
+      "Mtn Inside Zone",
+      "Mtn PA Boot Over",
+      "Mtn PA Boot Screen",
+      "Mtn PA Deep Over",
+      "Mtn PA Switch Replace",
+      "PA Boot Slide",
+      "PA Jet Deep Out",
+      "PA Jet Sweep",
+      "Shift Duo",
+      "Shift HB Sweep",
+      "Shift PA Duo Crossers",
+      "Switch Snag",
+      "Verticals",
+      "WR Power Fake Jet",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/oregon-state-off/singleback-bunch-te/"
+    },
+    "UMass": {
+     "plays": [
+      "Cross Drag",
+      "HB Pump Draw",
+      "Inside Zone",
+      "PA Draw Shot",
+      "PA Jet Sweep",
+      "Power Alert Bubble",
+      "Stick",
+      "WR Power Fake Jet",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/umass-off/singleback-bunch-te/"
+    },
+    "USF": {
+     "plays": [
+      "Cross Drag",
+      "HB Misdirection Lead",
+      "Inside Zone",
+      "Inside Zone Split",
+      "Jet Sweep",
+      "PA Boot Slide",
+      "PA Jet Sweep",
+      "Spacing",
+      "Stick",
+      "Stretch Alert Bubble",
+      "Verticals",
+      "Zone Fake Jet"
+     ],
+     "source": "https://cfb.fan/27/playbooks/usf-off/singleback-bunch-te/"
+    }
+   }
   },
   "Singleback Bunch X Nasty": {
    "slug": "singleback-bunch-x-nasty",
@@ -1252,7 +5866,268 @@
     "Wake Forest",
     "Washington"
    ],
-   "source": "https://cfb.fan/playbooks/formations/singleback-bunch-x-nasty/"
+   "source": "https://cfb.fan/playbooks/formations/singleback-bunch-x-nasty/",
+   "by_book": {
+    "Alabama": {
+     "plays": [
+      "Cheat Counter Y",
+      "Cheat HB Slash",
+      "Cheat HB Zone WK",
+      "Crack Toss",
+      "End Around Power",
+      "HB Dive",
+      "HB Power O",
+      "Inside Zone Split",
+      "Jet Sweep WK",
+      "Mtn HB Dive",
+      "Mtn PA Deep X Over",
+      "Mtn X Whip",
+      "PA Boot",
+      "PA Boot Cheat Slide Levels",
+      "PA Cheat Deep Corner",
+      "PA Cross",
+      "PA Deep Cross Go",
+      "PA Jet Sweep",
+      "PA WR Cheat Screen",
+      "Pitch WR Reverse",
+      "Spacing",
+      "Verticals",
+      "Wide Zone WK",
+      "Zone Fake Jet WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/alabama-off/singleback-bunch-x-nasty/"
+    },
+    "Cal": {
+     "plays": [
+      "Counter Y",
+      "Crack Toss",
+      "HB Dive",
+      "HB Slam",
+      "Inside Zone Split",
+      "Mtn HB Dive",
+      "Mtn PA Deep X Over",
+      "Mtn X Whip",
+      "PA Boot",
+      "PA Boot Slide",
+      "PA Counter",
+      "PA Cross",
+      "PA Drag Wheel",
+      "Spacing",
+      "Verticals"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/singleback-bunch-x-nasty/"
+    },
+    "Iowa": {
+     "plays": [
+      "Cheat Counter Y",
+      "Cheat HB Slash",
+      "Cheat HB Zone WK",
+      "Counter Y",
+      "Crack Toss",
+      "HB Dive",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Jet Sweep WK",
+      "PA Boot",
+      "PA Boot Cheat Slide Levels",
+      "PA Boot X Corner",
+      "PA Cheat Deep Corner",
+      "PA Cross",
+      "PA Jet Sweep",
+      "PA Post Curl Shot",
+      "PA WR Cheat Screen",
+      "Pitch WR Reverse",
+      "Spacing",
+      "Wide Zone WK",
+      "Zone Fake Jet WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/iowa-off/singleback-bunch-x-nasty/"
+    },
+    "Iowa State": {
+     "plays": [
+      "Counter Y",
+      "Jet Sweep WK",
+      "Mtn HB Dive",
+      "Mtn PA Deep X Over",
+      "Mtn X Whip",
+      "PA Counter HB Leak",
+      "PA Drag Wheel",
+      "PA Jet Sweep",
+      "PA X Out Cross",
+      "Spacing",
+      "Wide Zone WK",
+      "Zone Fake Jet WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/iowa-state-off/singleback-bunch-x-nasty/"
+    },
+    "Louisville": {
+     "plays": [
+      "Counter Y",
+      "Crack Toss",
+      "HB Dive",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Jet Sweep WK",
+      "PA Cross",
+      "PA Deep Out",
+      "PA Jet Sweep",
+      "Pitch WR Reverse",
+      "Spacing",
+      "Zone Fake Jet WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/louisville-off/singleback-bunch-x-nasty/"
+    },
+    "Michigan State": {
+     "plays": [
+      "Cheat Counter Y",
+      "Cheat HB Slash",
+      "Cheat HB Zone WK",
+      "Crack Toss",
+      "End Around Power",
+      "HB Dive",
+      "HB Power O",
+      "Inside Zone Split",
+      "Jet Sweep WK",
+      "Mtn HB Dive",
+      "Mtn PA Deep X Over",
+      "Mtn X Whip",
+      "PA Boot",
+      "PA Boot Cheat Slide Levels",
+      "PA Cheat Deep Corner",
+      "PA Cross",
+      "PA Deep Cross Go",
+      "PA Jet Sweep",
+      "PA WR Cheat Screen",
+      "Pitch WR Reverse",
+      "Spacing",
+      "Verticals",
+      "Wide Zone WK",
+      "Zone Fake Jet WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/michigan-state-off/singleback-bunch-x-nasty/"
+    },
+    "Minnesota": {
+     "plays": [
+      "Cheat HB Slash",
+      "Cheat HB Zone WK",
+      "Counter Y",
+      "Crack Toss",
+      "End Around Power",
+      "HB Dive",
+      "HB Power O",
+      "HB Slam",
+      "HB Slash",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "PA Boot",
+      "PA Boot Corner Post",
+      "PA Boot Slide",
+      "PA Cheat Deep Corner",
+      "PA Counter HB Leak",
+      "PA Cross",
+      "PA Deep Cross Go",
+      "PA Deep Out",
+      "PA Post Curl Shot",
+      "Pitch WR Reverse",
+      "Spacing",
+      "Verticals",
+      "Wide Zone WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/minnesota-off/singleback-bunch-x-nasty/"
+    },
+    "North Dakota State": {
+     "plays": [
+      "Counter Y",
+      "Crack Toss",
+      "End Around Power",
+      "HB Dive",
+      "HB Power O",
+      "Jet Sweep WK",
+      "PA Boot",
+      "PA Cross",
+      "PA Jet Sweep",
+      "PA Post Curl Shot",
+      "Pitch WR Reverse",
+      "Spacing",
+      "Verticals",
+      "Wide Zone WK",
+      "Zone Fake Jet WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-dakota-state-off/singleback-bunch-x-nasty/"
+    },
+    "Oregon State": {
+     "plays": [
+      "Cheat Counter Y",
+      "Cheat HB Slash",
+      "Cheat HB Zone WK",
+      "Crack Toss",
+      "End Around Power",
+      "Flat Y Leak",
+      "Flat Y Seam",
+      "Flat Y Showel",
+      "HB Dive",
+      "HB Power O",
+      "Inside Zone Split",
+      "Jet Sweep WK",
+      "Mtn HB Dive",
+      "Mtn PA Deep X Over",
+      "Mtn X Whip",
+      "PA Boot",
+      "PA Boot Cheat Slide Levels",
+      "PA Cheat Deep Corner",
+      "PA Cross",
+      "PA Deep Cross Go",
+      "PA Jet Sweep",
+      "PA WR Cheat Screen",
+      "Pitch WR Reverse",
+      "Spacing",
+      "Verticals",
+      "Wide Zone WK",
+      "Zone Fake Jet WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/oregon-state-off/singleback-bunch-x-nasty/"
+    },
+    "Wake Forest": {
+     "plays": [
+      "Cheat Counter Y",
+      "Cheat HB Slash",
+      "Crack Toss",
+      "End Around Power",
+      "HB Dive",
+      "HB Power O",
+      "Inside Zone Split",
+      "PA Boot",
+      "PA Boot Cheat Slide Levels",
+      "PA Cross",
+      "PA Deep Cross Go",
+      "Pitch WR Reverse",
+      "Spacing",
+      "Verticals",
+      "Wide Zone WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/wake-forest-off/singleback-bunch-x-nasty/"
+    },
+    "Washington": {
+     "plays": [
+      "Counter Y",
+      "Crack Toss",
+      "End Around Power",
+      "HB Dive",
+      "HB Power O",
+      "Jet Sweep WK",
+      "PA Boot",
+      "PA Cross",
+      "PA Jet Sweep",
+      "PA Post Curl Shot",
+      "Pitch WR Reverse",
+      "Spacing",
+      "Verticals",
+      "Wide Zone WK",
+      "Zone Fake Jet WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/washington-off/singleback-bunch-x-nasty/"
+    }
+   }
   },
   "Singleback Deuce Close": {
    "slug": "singleback-deuce-close",
@@ -1320,7 +6195,338 @@
     "Utah State",
     "Washington State"
    ],
-   "source": "https://cfb.fan/playbooks/formations/singleback-deuce-close/"
+   "source": "https://cfb.fan/playbooks/formations/singleback-deuce-close/",
+   "by_book": {
+    "Arizona": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Corner Stops",
+      "Counter Y",
+      "DIY Reverse WR",
+      "DIY Stretch Reverse",
+      "Flood Trail",
+      "HB Dive",
+      "HB Stretch",
+      "HB Wham",
+      "Inside Zone Split",
+      "PA Boot Corner Post",
+      "PA Deep Cross",
+      "PA Stretch Shot",
+      "QB Sweep"
+     ],
+     "source": "https://cfb.fan/27/playbooks/arizona-off/singleback-deuce-close/"
+    },
+    "Boise State": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Corner Stops",
+      "Counter Y",
+      "DIY Stretch Reverse",
+      "Flood Trail",
+      "HB Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Motion Power",
+      "Mtn PA Boot Screen",
+      "PA Boot Scissors",
+      "PA Deep Cross",
+      "PA Stretch Shot",
+      "PA Z Cross",
+      "Spacing Switch",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/boise-state-off/singleback-deuce-close/"
+    },
+    "Cal": {
+     "plays": [
+      "Bench",
+      "Corner Stops",
+      "Flood",
+      "HB Dive",
+      "HB Stretch",
+      "HB Wham",
+      "HB Zone WK",
+      "Jet Sweep",
+      "PA Boot Slide",
+      "PA Deep Read",
+      "PA Jet Sweep",
+      "PA Slide Y Screen",
+      "PA Sprint HB Flat",
+      "PA X Post Cross",
+      "Spacing Switch",
+      "Stick",
+      "Zone Fake Jet",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/cal-off/singleback-deuce-close/"
+    },
+    "Georgia": {
+     "plays": [
+      "Bench",
+      "Corner Stops",
+      "Counter Y",
+      "HB Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Motion Power",
+      "Motion Zone Split",
+      "Mtn PA Boot Screen",
+      "PA Boot Corner Post",
+      "PA Boot Slide",
+      "PA Deep Read",
+      "PA Slide Y Screen",
+      "PA X Deep Out",
+      "Spacing Switch",
+      "Stick",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/georgia-off/singleback-deuce-close/"
+    },
+    "Georgia Tech": {
+     "plays": [
+      "HB Dive",
+      "HB Zone WK",
+      "PA Boot Slide",
+      "PA Sprint HB Flat",
+      "Spacing Switch",
+      "Stick"
+     ],
+     "source": "https://cfb.fan/27/playbooks/georgia-tech-off/singleback-deuce-close/"
+    },
+    "Iowa": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Corner Stops",
+      "Counter Y",
+      "Flood Trail",
+      "HB Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Jet Sweep",
+      "Motion Power",
+      "Motion Zone Split",
+      "Motion Zone Toss",
+      "Mtn Duo",
+      "Mtn PA Boot Screen",
+      "PA Boot Slide",
+      "PA Jet Sweep",
+      "PA Mtn Spider Y Leak",
+      "PA RZ Crossers",
+      "PA Stretch Shot",
+      "PA Z Cross",
+      "Spacing Switch",
+      "Zone Fake Jet",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/iowa-off/singleback-deuce-close/"
+    },
+    "Iowa State": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Counter Y",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Mtn Duo",
+      "Mtn Zone Split",
+      "PA Boot Slide",
+      "PA Drag Wheel",
+      "PA Misdirection",
+      "PA Mtn Spider Y Leak",
+      "PA X Post Cross",
+      "Spacing Switch",
+      "Stick",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/iowa-state-off/singleback-deuce-close/"
+    },
+    "Kent State": {
+     "plays": [
+      "Bench",
+      "Corner Stops",
+      "Counter Y",
+      "HB Stretch",
+      "HB Zone WK",
+      "PA Boot Slide",
+      "PA Stretch Shot",
+      "PA Z Cross",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/kent-state-off/singleback-deuce-close/"
+    },
+    "Multiple": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Corner Stops",
+      "Counter Y",
+      "HB Stretch",
+      "HB Zone WK",
+      "PA Boot Slide",
+      "PA Deep Read",
+      "PA Misdirection",
+      "PA X Post Cross",
+      "Spacing Switch",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/multiple-off/singleback-deuce-close/"
+    },
+    "North Dakota State": {
+     "plays": [
+      "Bench",
+      "Corner Stops",
+      "Counter Y",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Motion Power",
+      "Motion Zone Split",
+      "Mtn PA Boot Screen",
+      "PA Boot Corner Post",
+      "PA Boot Slide",
+      "PA Slide Y Screen",
+      "PA X Deep Out",
+      "Shift PA Boot Screen",
+      "Shift PA Boot Slide",
+      "Shift Wide Zone WK",
+      "Stick",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/north-dakota-state-off/singleback-deuce-close/"
+    },
+    "Ohio State": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Flood Trail",
+      "HB Stretch",
+      "Inside Zone Split",
+      "Motion Power",
+      "Motion Zone Split",
+      "Motion Zone Toss",
+      "Mtn Duo",
+      "Mtn PA Boot Screen",
+      "PA Boot Corner Post",
+      "PA Boot Scissors",
+      "PA Boot Slide",
+      "PA Drag Wheel",
+      "PA Slide Y Screen",
+      "PA Stretch Shot",
+      "Spacing Switch",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/ohio-state-off/singleback-deuce-close/"
+    },
+    "Pro Style": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Corner Stops",
+      "Counter Y",
+      "Flood Trail",
+      "HB Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Motion Power",
+      "Mtn Duo",
+      "PA Boot Slide",
+      "PA Mtn Spider Y Leak",
+      "PA RZ Crossers",
+      "PA Stretch Shot",
+      "PA Z Cross",
+      "Spacing Switch",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/pro-style-off/singleback-deuce-close/"
+    },
+    "Syracuse": {
+     "plays": [
+      "Bench",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "PA Boot Corner Post",
+      "PA Boot Slide",
+      "PA Deep Read",
+      "PA Drag Wheel",
+      "PA Slide Y Screen",
+      "PA Stretch Shot",
+      "Spacing Switch",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/syracuse-off/singleback-deuce-close/"
+    },
+    "UConn": {
+     "plays": [
+      "Bench",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "PA Boot Corner Post",
+      "PA Boot Slide",
+      "PA Deep Read",
+      "PA Drag Wheel",
+      "PA Slide Y Screen",
+      "PA Stretch Shot",
+      "Spacing Switch",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/uconn-off/singleback-deuce-close/"
+    },
+    "Utah State": {
+     "plays": [
+      "0 1 Trap",
+      "Bench",
+      "Corner Stops",
+      "Counter Y",
+      "DIY Stretch Reverse",
+      "Flood Trail",
+      "HB Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Motion Power",
+      "Mtn PA Boot Screen",
+      "PA Boot Scissors",
+      "PA Deep Cross",
+      "PA Stretch Shot",
+      "PA Z Cross",
+      "Spacing Switch",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/utah-state-off/singleback-deuce-close/"
+    },
+    "Washington State": {
+     "plays": [
+      "Bench",
+      "Corner Stops",
+      "Counter Y",
+      "Flood Trail",
+      "HB Dive",
+      "HB Stretch",
+      "HB Zone WK",
+      "Inside Zone Split",
+      "Motion Power",
+      "Mtn PA Boot Screen",
+      "PA Boot Scissors",
+      "PA Deep Cross",
+      "PA Z Cross",
+      "Spacing Switch",
+      "Zone Split WK"
+     ],
+     "source": "https://cfb.fan/27/playbooks/washington-state-off/singleback-deuce-close/"
+    }
+   },
+   "logged_additions": {
+    "HB Dive": "Logged by Aidan (3 snaps, Ohio State dynasty). Not in the stock Ohio State list; present in other books' Singleback Deuce Close lists."
+   }
   }
  }
 }

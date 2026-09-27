@@ -200,7 +200,7 @@ class TestPrepPageRenders(_EnvCase):
         from cfb_coach import learning as L
         from cfb_coach.db import CoachDB
         from cfb_coach.install_sheet import build_prep_plan
-        from cfb_coach.prep_browser import render_prep_html
+        from cfb_coach.prep_browser import render_prep_details_html, render_prep_html
 
         db = CoachDB(Path(os.environ["CFB_COACH_DB"]))
         try:
@@ -212,15 +212,21 @@ class TestPrepPageRenders(_EnvCase):
             calls: list[str] = []
             with mock.patch.object(ms, "_fetch_one", _fake_fetch_factory(calls)):
                 plan = build_prep_plan("cpu", {}, db=db, persist=False, dynasty="ohio_state", refresh_meta=True)
-            html = render_prep_html(plan)
+            html = render_prep_details_html(plan)
+            main_html = render_prep_html(plan)
         finally:
             db.close()
+        # v1.14: all of this lives on the details page ...
         self.assertIn("Current meta — freshness", html)
         self.assertIn("LIVE — fetched this prep", html)
         self.assertIn("MaddenTurf", html)
         self.assertIn("Zone plan", html)
         self.assertIn("keeps failing for you", html)
         self.assertIn("Ohio State lab candidates", html)
+        # ... and none of it on the minimal prep page
+        for gone in ("Current meta — freshness", "Zone plan", "keeps failing for you", "Ohio State lab candidates", "MaddenTurf"):
+            self.assertNotIn(gone, main_html)
+        self.assertIn("Meta researched", main_html)
         za = plan["zone_alignment"]
         self.assertLessEqual(len(plan["inventory"].get("macros_active") or []), 8)
         self.assertTrue(za["zone_plan"]["gl"])

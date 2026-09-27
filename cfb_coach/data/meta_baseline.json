@@ -862,6 +862,24 @@
         "published": "live database",
         "accessed": "2026-09-27",
         "confidence": "high"
+      },
+      {
+        "id": "wsu_pistol_run",
+        "claim": "Washington State's Gun Bunch X Nasty scheme gets its run game by shifting into Pistol Trips and Pistol U Off Trips; its red-zone work comes out of Singleback Deuce Close.",
+        "source": "MaddenTurf - The Best Playbooks for College Football 27",
+        "url": "https://maddenturf.com/cfb-27-best-playbooks/",
+        "published": "2026-07-21 (updated)",
+        "accessed": "2026-09-27",
+        "confidence": "medium"
+      },
+      {
+        "id": "wvu_power_i_run",
+        "claim": "West Virginia is called the best run playbook in CFB 27, built on Gun Power I Tight (QB run game: QB Power / QB Zone / Load Option, Duo, Power).",
+        "source": "MaddenTurf - The Best Playbooks for College Football 27",
+        "url": "https://maddenturf.com/cfb-27-best-playbooks/",
+        "published": "2026-07-21 (updated)",
+        "accessed": "2026-09-27",
+        "confidence": "medium"
       }
     ],
     "priors": [
@@ -1162,6 +1180,83 @@
       {
         "source": "Statesman Journal goal-line study",
         "reason": "Real college football, not the video game"
+      }
+    ],
+    "formation_priors": [
+      {
+        "formation": "Gun Bunch X Nasty",
+        "score": 0.35,
+        "books": [
+          "Ohio State",
+          "Washington State"
+        ],
+        "refs": [
+          "bunch_meta",
+          "deuce_rz",
+          "formation_inventory"
+        ],
+        "why": "the CFB 27 base formation (Ohio State / Washington State Bunch scheme)"
+      },
+      {
+        "formation": "Gun Cluster",
+        "score": 0.25,
+        "books": [
+          "Ohio State"
+        ],
+        "refs": [
+          "bunch_meta"
+        ],
+        "why": "Ohio State's counterpunch paired with Bunch X Nasty"
+      },
+      {
+        "formation": "Singleback Deuce Close",
+        "score": 0.25,
+        "books": [
+          "Washington State",
+          "Ohio State"
+        ],
+        "refs": [
+          "deuce_rz",
+          "rz_compressed",
+          "cpu_gl_wall"
+        ],
+        "why": "red-zone / goal-line set of the Bunch scheme (compressed, TE + dive)"
+      },
+      {
+        "formation": "Pistol Trips",
+        "score": 0.22,
+        "books": [
+          "Washington State"
+        ],
+        "refs": [
+          "wsu_pistol_run",
+          "run_first_meta"
+        ],
+        "why": "Washington State's run-game shift from the Bunch scheme (run-first meta)"
+      },
+      {
+        "formation": "Pistol U Off Trips",
+        "score": 0.18,
+        "books": [
+          "Washington State"
+        ],
+        "refs": [
+          "wsu_pistol_run",
+          "run_first_meta"
+        ],
+        "why": "second Washington State Pistol run-game set"
+      },
+      {
+        "formation": "Gun Power I Tight",
+        "score": 0.2,
+        "books": [
+          "West Virginia"
+        ],
+        "refs": [
+          "wvu_power_i_run",
+          "run_first_meta"
+        ],
+        "why": "West Virginia's run formation, called the best run playbook (QB run game)"
       }
     ]
   }

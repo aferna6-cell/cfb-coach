@@ -221,8 +221,13 @@ def _render_macro_accordion(
     offense_only: bool = False,
     replacing_lines: list[str] | None = None,
     loadout: dict[str, Any] | None = None,
+    details: bool = False,
 ) -> str:
-    """Render ONLY active loadout cards (≤8). Never benched (FLOOD/SCREEN) catalog."""
+    """Render ONLY active loadout cards (≤8). Never benched (FLOOD/SCREEN) catalog.
+
+    v1.15: offense cards carrying ``ingame`` expand to the exact CFB 27 Custom
+    Adjustment rows (in-game order), the book plays they pair with, and when to fire.
+    ``details=True`` (details page) adds research notes + citations."""
     # Safety: drop any non-active / benched cards if a caller passed full catalog
     cards = [c for c in cards if (c.get("slot") or "active") == "active"]
     # Never show FLOOD/SCREEN in main prep view
@@ -285,6 +290,9 @@ def _render_macro_accordion(
         step_lis = "".join(f"<li>{_esc(s)}</li>" for s in steps)
         cid = "copy-" + "".join(ch if ch.isalnum() else "-" for ch in mid)
         open_attr = " open" if mid.upper() == "CROSS" else ""
+        if c.get("ingame"):
+            items.append(_render_ingame_card(c, cid, details=details))
+            continue
         items.append(
             f"""
             <details class="macro-card slot-{_esc(slot)}"{open_attr}>
@@ -293,6 +301,7 @@ def _render_macro_accordion(
                 <span class="mside">{_esc(side)}</span>
                 <span class="mslot">{_esc(slot)}</span>
                 {_val_badge(str(status))}
+                {('<span class="mwhy">' + _esc(c.get("why")) + '</span>') if c.get("why") else ""}
               </summary>
               <div class="macro-body">
                 <p class="purpose">{_esc(purpose)}</p>
@@ -325,6 +334,75 @@ def _render_macro_accordion(
       {"".join(items)}
     </div>
     """
+
+
+def _render_ingame_card(c: dict[str, Any], cid: str, *, details: bool = False) -> str:
+    """One offense macro row: collapsed summary; expands to Aidan's exact settings (verbatim
+    from his notes), the book plays it pairs with, and when to fire it."""
+    det = c.get("ingame") or {}
+    mid = str(c.get("id") or "")
+    name = det.get("xbox_name") or c.get("name") or mid
+    ncol = 3 if details else 2
+    rows_html: list[str] = []
+    cur = None
+    for r in det.get("settings") or []:
+        single = r["setting"] == r["section"]
+        if not single and r["section"] != cur:
+            cur = r["section"]
+            rows_html.append(f"<tr class='ca-sec'><td colspan='{ncol}'>{_esc(cur)}</td></tr>")
+        if single:
+            cur = None
+        note = f"<td class='muted'>{_esc(r.get('research') or '')}</td>" if details else ""
+        rows_html.append(f"<tr class='ca-row'><td class='ca-k'>{_esc(r['setting'])}</td>"
+                         f"<td class='ca-v'>{_esc(r['value'])}</td>{note}</tr>")
+    if not det.get("settings"):
+        rows_html.append(f"<tr class='ca-row'><td colspan='{ncol}' class='muted'>No exact settings from Aidan on file for this macro.</td></tr>")
+    rows_html.append(f"<tr class='ca-row dflt'><td class='ca-k'>Everything else</td><td class='ca-v'>Default</td>{'<td></td>' if details else ''}</tr>")
+    pairs = det.get("pairs_with") or []
+    pairs_html = "".join(f"<span class='pchip'>{_esc(p)}</span>" for p in pairs) or "<span class='muted'>none of its plays are in your book</span>"
+    src_html = ""
+    if details:
+        srcs = "".join(
+            f"<li><b>{_esc(s.get('id'))}</b>: {_esc(s.get('title'))}"
+            + (f" — <a href='{_esc(s.get('url'))}'>{_esc(s.get('url'))}</a>" if s.get("url") else "")
+            + f"<div class='muted'>{_esc(s.get('supports'))}</div></li>"
+            for s in det.get("sources") or []
+        )
+        gaps = "".join(f"<li>{_esc(g)}</li>" for g in det.get("gaps") or [])
+        src_html = (
+            f"<div class='ca-assume'>Settings: {_esc(det.get('settings_source') or '')}, shown exactly as written. "
+            f"Research notes (right column) are for reference only — nothing was remapped. "
+            f"Hot-route menu reference: {_esc(det.get('hot_route_menu_source') or '')}. {_esc(det.get('limits') or '')}</div>"
+            + (f"<h4>Not exact in his notes (not shown as settings)</h4><ul class='ca-src'>{gaps}</ul>" if gaps else "")
+            + f"<h4>Research sources</h4><ul class='ca-src'>{srcs}</ul>"
+        )
+    status = c.get("validated_status") or "unvalidated"
+    return f"""
+            <details class="macro-card slot-active" data-macro="{_esc(mid)}">
+              <summary>
+                <span class="mname">{_esc(name)}</span>
+                <span class="mside">{_esc(c.get("side") or "offense")}</span>
+                {_val_badge(str(status)) if details else ""}
+                <span class="mkey">{_esc(det.get("key") or "")}</span>
+              </summary>
+              <div class="macro-body">
+                <p class="purpose">{_esc(c.get("purpose") or "")}</p>
+                <div class="mfire"><b>Fire it when:</b> {_esc(det.get("fire_when") or "")}</div>
+                <div class="mpairs"><b>Pairs with (your book):</b> {pairs_html}</div>
+                <h4>Settings — {_esc(" › ".join(det.get("editor_path") or []))}</h4>
+                <table class="ca-set">{"".join(rows_html)}</table>
+                <div class="muted ca-ingame">{_esc(det.get("in_game") or "")}</div>
+                {src_html}
+                <div class="copy-wrap">
+                  <div class="copy-head">
+                    <h4>Copy block (tick-by-tick checklist)</h4>
+                    <button type="button" class="copy-btn" data-target="{cid}">Copy</button>
+                  </div>
+                  <pre id="{cid}" class="copy-block">{_esc(c.get("copy_block") or "")}</pre>
+                </div>
+              </div>
+            </details>
+            """
 
 
 def _render_inventory(inv: dict[str, Any]) -> str:
@@ -549,6 +627,23 @@ _CSS = """
     background: rgba(0,0,0,0.3); color: var(--muted);
   }
   .macro-body { padding: 0 14px 14px; border-top: 1px solid var(--border); }
+  .mkey { color: var(--muted); font-size: 0.78rem; margin-left: 10px; font-weight: 400; }
+  .mfire, .mpairs { margin: 8px 0; font-size: 0.9rem; }
+  .mfire b, .mpairs b { color: var(--accent); }
+  .pchip { display: inline-block; margin: 2px 6px 2px 0; padding: 2px 8px; border-radius: 999px;
+    background: rgba(91,159,212,0.14); border: 1px solid var(--border); font-size: 0.8rem; }
+  table.ca-set { width: 100%; border-collapse: collapse; font-size: 0.86rem; margin-top: 4px; }
+  table.ca-set td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top; }
+  tr.ca-sec td { color: var(--accent); font-weight: 700; padding-top: 10px; font-size: 0.8rem;
+    letter-spacing: 0.04em; text-transform: uppercase; }
+  td.ca-k { width: 34%; color: var(--muted); }
+  td.ca-v { font-weight: 600; }
+  tr.ca-row.dflt td.ca-v { color: var(--muted); font-weight: 400; }
+  .ca-secnote { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); font-size: 0.76rem; margin-top: 2px; }
+  .ca-ingame { margin-top: 6px; }
+  .ca-assume { margin-top: 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--warn);
+    background: rgba(166,124,42,0.12); font-size: 0.84rem; }
+  ul.ca-src { font-size: 0.8rem; padding-left: 1.1rem; }
   .macro-body h4 { margin: 14px 0 6px; font-size: 0.88rem; color: var(--accent); }
   .purpose { margin: 10px 0 4px; }
   .when { font-size: 0.88rem; color: var(--muted); }
@@ -828,8 +923,11 @@ def _render_meta_scout(scout: dict[str, Any] | None) -> str:
     """
 
 
-def render_prep_html(plan: dict[str, Any]) -> str:
-    from cfb_coach.prep_book_html import BOOK_CSS, render_book, render_research
+def render_prep_details_html(plan: dict[str, Any]) -> str:
+    """v1.14 DETAILS page (written next to the prep page, not auto-opened): everything
+    the coach computed this prep — book reasons/flags/history/limits, research,
+    sources, zone plan, conflicts, headlines, constants, per-play table."""
+    from cfb_coach.prep_book_html import BOOK_CSS, MIN_CSS, render_book, render_research
 
     shown = plan.get("shown_deltas") or []
     pb = [d for d in shown if d.get("kind") == "playbook"]
@@ -880,13 +978,13 @@ def render_prep_html(plan: dict[str, Any]) -> str:
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Prep — {_esc(plan.get("display_name"))} · CFB27</title>
-<style>{_CSS}{BOOK_CSS}</style>
+<title>Prep details — {_esc(plan.get("display_name"))} · CFB27</title>
+<style>{_CSS}{BOOK_CSS}{MIN_CSS}</style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <h1>vs {_esc(plan.get("display_name"))}
+      <h1>Prep details — vs {_esc(plan.get("display_name"))}
         <span style="color:var(--muted);font-weight:500">({_esc(plan.get("team"))})</span>
       </h1>
       <div class="meta">
@@ -925,6 +1023,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
           offense_only=bool(plan.get("offense_only")),
           replacing_lines=list(plan.get("replacing_lines") or []),
           loadout=plan.get("loadout") or dict(),
+          details=True,
       )}
     </section>
 
@@ -946,41 +1045,121 @@ def render_prep_html(plan: dict[str, Any]) -> str:
       Mark applied with <code>prep --opponent {oid} --mark-applied</code>.
     </footer>
   </div>
-  <script>
-    document.querySelectorAll(".copy-btn").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
+{_COPY_JS}
+</body>
+</html>
+"""
+
+
+_COPY_JS = """  <script>
+    document.querySelectorAll(".copy-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
         var id = btn.getAttribute("data-target");
         var el = document.getElementById(id);
         if (!el) return;
         var text = el.innerText || el.textContent || "";
-        function done() {{
+        function done() {
           var prev = btn.textContent;
           btn.textContent = "Copied";
           btn.classList.add("copied");
-          setTimeout(function() {{
+          setTimeout(function() {
             btn.textContent = prev;
             btn.classList.remove("copied");
-          }}, 1400);
-        }}
-        if (navigator.clipboard && navigator.clipboard.writeText) {{
-          navigator.clipboard.writeText(text).then(done).catch(function() {{
+          }, 1400);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(function() {
             var r = document.createRange(); r.selectNodeContents(el);
             var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
-            try {{ document.execCommand("copy"); }} catch (e) {{}}
+            try { document.execCommand("copy"); } catch (e) {}
             s.removeAllRanges(); done();
-          }});
-        }} else {{
+          });
+        } else {
           var r = document.createRange(); r.selectNodeContents(el);
           var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
-          try {{ document.execCommand("copy"); }} catch (e) {{}}
+          try { document.execCommand("copy"); } catch (e) {}
           s.removeAllRanges(); done();
-        }}
-      }});
-    }});
+        }
+      });
+    });
   </script>
+"""
+
+
+def render_prep_html(plan: dict[str, Any]) -> str:
+    """v1.14 prep page — ONLY what Aidan needs at the console: the formations to have in
+    the custom playbook (new / in book / remove + the one apply command), the audibles,
+    and the macros with exact settings. Everything else lives in the details page."""
+    from cfb_coach.prep_book_html import (
+        BOOK_CSS,
+        MIN_CSS,
+        render_audibles_min,
+        render_formations_min,
+        research_fail_banner,
+        research_status_line,
+    )
+
+    try:
+        ts_raw = plan.get("ts") or ""
+        if ts_raw.endswith("Z"):
+            ts_raw = ts_raw[:-1] + "+00:00"
+        ts_label = datetime.fromisoformat(ts_raw).astimezone(ET).strftime("%a %b %d · %-I:%M %p ET")
+    except Exception:
+        ts_label = plan.get("ts", "")
+    scout = plan.get("meta_scout") or {}
+    dcfg = plan.get("dynasty_config") or {}
+    book = plan.get("cfb_book") or {}
+    cards = plan.get("macro_cards") or []
+    offense_only = bool(plan.get("offense_only"))
+    details = plan.get("details_path") or ""
+    macros = _render_macro_accordion(
+        cards,
+        plan.get("slot_budget") or {},
+        offense_only=offense_only,
+        replacing_lines=list(plan.get("replacing_lines") or []),
+        loadout=plan.get("loadout") or {},
+    )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Prep — {_esc(plan.get("display_name"))} · CFB27</title>
+<style>{_CSS}{BOOK_CSS}{MIN_CSS}</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>vs {_esc(plan.get("display_name"))}
+        <span style="color:var(--muted);font-weight:500">({_esc(dcfg.get("label") or plan.get("dynasty") or "")})</span>
+      </h1>
+      <div class="meta"><span>{_esc(plan.get("game", "CFB 27"))}</span><span>{_esc(ts_label)}</span></div>
+    </header>
+    {research_fail_banner(scout)}
+    <div class="rline">{_esc(research_status_line(scout))}</div>
+    {render_formations_min(book)}
+    {render_audibles_min(book)}
+    <section id="macros">
+      <h2>{"Macros — offense custom adjustments (CPU game)" if offense_only else "Macros — Active loadout (≤8)"}</h2>
+      {macros}
+    </section>
+    <footer class="muted">Details (reasons, research, sources, history): {_esc(details or "prep --details")}</footer>
+  </div>
+{_COPY_JS}
 </body>
 </html>
 """
+
+
+def prep_details_path(opponent_id: str) -> Path:
+    return default_prep_dir() / f"prep_details_{opponent_id}.html"
+
+
+def write_prep_details_html(opponent_id: str, plan: dict[str, Any], *, path: Path | None = None) -> Path:
+    out = path or prep_details_path(opponent_id)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render_prep_details_html(plan), encoding="utf-8")
+    return out
 
 
 def write_prep_html(
@@ -993,7 +1172,13 @@ def write_prep_html(
         plan = build_prep_plan(opponent_id, persist=False)
     out = path or prep_html_path(opponent_id)
     out.parent.mkdir(parents=True, exist_ok=True)
+    details = out.with_name(f"prep_details_{opponent_id}.html")
+    plan.setdefault("details_path", str(details))
     out.write_text(render_prep_html(plan), encoding="utf-8")
+    try:  # details page next to it — written every prep, never auto-opened
+        write_prep_details_html(opponent_id, plan, path=details)
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 
@@ -1083,10 +1268,11 @@ def generate_and_open(
         plan["shown_deltas"] = []
         plan["swap_banners"] = []
     path = write_prep_html(opponent_id, plan)
-    try:  # plain-text twin next to the HTML (handy on a phone / for diffing preps)
-        from cfb_coach.install_sheet import format_delta_text
+    try:  # plain-text twins next to the HTML (handy on a phone / for diffing preps)
+        from cfb_coach.install_sheet import format_delta_text, format_prep_minimal_text
 
-        path.with_suffix(".txt").write_text(format_delta_text(plan), encoding="utf-8")
+        path.with_suffix(".txt").write_text(format_prep_minimal_text(plan), encoding="utf-8")
+        Path(plan["details_path"]).with_suffix(".txt").write_text(format_delta_text(plan), encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
     open_prep_html(path, open_browser=open_browser)

@@ -35,6 +35,25 @@ class Call:
     read_or_user: str  # offense reads / defense user job
     rationale: str = ""
     suggest_macro: str | None = None  # optional SUGGEST for new macros
+    # v1.15 (offense): Active-8 custom adjustment to fire with this play (catalog id)
+    macro: str | None = None
+    macro_info: dict[str, Any] | None = None
+
+    def macro_line(self) -> str:
+        """'MACRO: MAN — LB → MAN | WR1 Deep Over · … (why)' or ''."""
+        mi = self.macro_info or {}
+        if self.side != "offense" or not self.macro:
+            return ""
+        name = mi.get("name") or self.macro
+        return (f"MACRO: {name} — LB → {name} | {mi.get('key') or ''}"
+                + (f"  · why: {mi['why']}" if mi.get("why") else ""))
+
+    def headline(self) -> str:
+        """'PLAY: Mesh Spot (Gun Bunch X Nasty) + MACRO: MAN'."""
+        head = f"PLAY: {self.play} ({self.formation})"
+        if self.side == "offense" and self.macro:
+            head += f" + MACRO: {(self.macro_info or {}).get('name') or self.macro}"
+        return head
 
     def format(self) -> str:
         from cfb_coach.format_call import format_defense, format_offense
@@ -60,6 +79,8 @@ class Call:
                 head = tagged
             sug = head + ((" — " + parts[1]) if len(parts) > 1 else "")
             line += f"\n  SUGGEST macro: {sug}"
+        if self.macro_line():
+            line += f"\n  {self.macro_line()}"
         return line
 
 
@@ -334,7 +355,8 @@ class _Ranker:
         except Exception:  # noqa: BLE001
             self.priors = None
 
-    def rank(self, sit: Situation, menu: list[tuple[str, str]]) -> list[dict[str, Any]]:
+    def rank(self, sit: Situation, menu: list[tuple[str, str]],
+             bonus: dict[tuple[str, str], float] | None = None) -> list[dict[str, Any]]:
         from cfb_coach.learning import REC_EXPLORE, REC_TEMPERATURE
         from cfb_coach.meta_align import combined_score, softmax_probs
 
@@ -347,7 +369,12 @@ class _Ranker:
             if (form, play) in seen:
                 continue
             seen.add((form, play))
-            rows.append(combined_score(self.lw, self.priors, zone, form, play, coverage=cov, coverage_source=src))
+            row = combined_score(self.lw, self.priors, zone, form, play, coverage=cov, coverage_source=src)
+            b = float((bonus or {}).get((form, play), 0.0))
+            if b:
+                row["sit"] = round(b, 3)
+                row["total"] = round(row["total"] + b, 3)
+            rows.append(row)
         probs = softmax_probs([r["total"] for r in rows], REC_TEMPERATURE)
         u = 1.0 / max(1, len(rows))
         for r, p in zip(rows, probs):
@@ -482,14 +509,14 @@ def _validate_play(form: str, play: str, pb: dict) -> tuple[str, str]:
     return form, core[0]
 
 
-def _load_book(db: CoachDB | None) -> dict[str, Any] | None:
+def _load_book(db: CoachDB | None, dynasty: str | None = None) -> dict[str, Any] | None:
     """v1.13: the CFB custom playbook of record live calls are locked to (None = legacy)."""
     if db is None:
         return None
     try:
         from cfb_coach.cfb_playbook import callable_book
 
-        book = callable_book(db)
+        book = callable_book(db, dynasty)
     except Exception:  # noqa: BLE001 — never break play calling
         return None
     if not book or not book.get("formations"):
@@ -499,26 +526,52 @@ def _load_book(db: CoachDB | None) -> dict[str, Any] | None:
 
 def _book_menu(
     sit: Situation, menu: list[tuple[str, str]], book: dict[str, Any]
-) -> tuple[list[tuple[str, str]], bool]:
-    """Situational menu restricted to the book; zone menus use every zone-fit book play."""
-    from cfb_coach.cfb_catalog import canonical_pair, zone_fit
+) -> tuple[list[tuple[str, str]], dict[tuple[str, str], float]]:
+    """v1.14: rank over EVERY zone-fit play in the applied formations.
+
+    The situational menu no longer restricts the pool; it becomes a bonus (plus
+    down-and-distance bonuses) added to the learned + meta score before sampling,
+    so plays in newly added formations compete on their meta prior."""
+    from cfb_coach.cfb_catalog import canonical_pair, is_run, zone_fit
 
     pairs = [(f, p) for f, ps in book["formations"].items() for p in ps]
-    in_book = set(pairs)
     zone = _situation_zone(sit)
-    zone_menu = set(menu) == set(zone_candidates(zone))
-    out: list[tuple[str, str]] = []
+    pool = [fp for fp in pairs if zone_fit(fp[1], zone)] or list(pairs)
+    short = bool(sit.short_yardage or (sit.down in (3, 4) and (sit.distance or 10) <= 2))
+    if zone == "open" and not short:
+        # GL/short-yardage bully runs stay out of normal open-field downs
+        pool = [fp for fp in pool if not _SHORT_ONLY.search(fp[1])] or pool
+    in_menu = set()
     for f, p in menu:
         cf, cp, _ = canonical_pair(f, p)
-        if (cf, cp) in in_book and (cf, cp) not in out:
-            out.append((cf, cp))
-    if zone_menu or len(out) < 3:
-        for fp in pairs:
-            if fp not in out and zone_fit(fp[1], zone):
-                out.append(fp)
-    if not out:
-        out = list(pairs)
-    return out, zone_menu
+        in_menu.add((cf, cp))
+    bonus: dict[tuple[str, str], float] = {}
+    for f, p in pool:
+        b = BOOK_MENU_BONUS if (f, p) in in_menu else 0.0
+        run = is_run(p)
+        deep = _is_deep(p)
+        dist = sit.distance or 10
+        if sit.short_yardage or (sit.down in (3, 4) and dist <= 2):
+            b += SIT_BONUS if run else 0.0
+            b -= 0.10 if deep else 0.0
+        elif sit.down in (3, 4) and dist >= 7:
+            b += SIT_BONUS if not run else -0.20
+        if getattr(sit, "two_minute", False):
+            b += 0.08 if not run else -0.05
+        if b:
+            bonus[(f, p)] = round(b, 3)
+    return pool, bonus
+
+
+_SHORT_ONLY = __import__("re").compile(r"\bdive\b|sneak|qb blast|goal\s*line|goalline", __import__("re").I)
+BOOK_MENU_BONUS = 0.12  # play is in the situational menu for this down/distance/zone
+SIT_BONUS = 0.12  # short yardage -> runs; 3rd/4th & long -> passes
+
+
+def _is_deep(play: str) -> bool:
+    import re
+
+    return bool(re.search(r"vert|flood|dagger|shot|deep|post wheel|corner post|double post|dbl post|seam|go\b", play or "", re.I))
 
 
 def _demote_rows(rows: list[dict[str, Any]], book: dict[str, Any]) -> list[dict[str, Any]]:
@@ -549,8 +602,9 @@ def _pick_offense(
     seed: dict,
     db: CoachDB | None,
     rng: random.Random,
+    dynasty: str | None = None,
 ) -> Call:
-    call = _pick_offense_inner(sit, opp, seed, db, rng)
+    call = _pick_offense_inner(sit, opp, seed, db, rng, dynasty=dynasty)
     return call
 
 
@@ -560,16 +614,18 @@ def _pick_offense_inner(
     seed: dict,
     db: CoachDB | None,
     rng: random.Random,
+    dynasty: str | None = None,
 ) -> Call:
     pb = seed["playbooks"]["offense_formations"]
-    book = _load_book(db)
+    book = _load_book(db, dynasty)
     menu, adj, rationale = _base_offense_menu(sit, opp, rng)
+    bonus = None
     if book:
-        menu, _ = _book_menu(sit, menu, book)
+        menu, bonus = _book_menu(sit, menu, book)
     else:
         menu = [_validate_play(f, p, pb) for f, p in menu]
     ranker = _Ranker(db, _opp_id(opp))
-    rows = ranker.rank(sit, menu)
+    rows = ranker.rank(sit, menu, bonus=bonus)
     if book:
         rows = _demote_rows(rows, book)
     pick = _sample(rows, rng)
@@ -592,7 +648,7 @@ def _pick_offense_inner(
         pool = rows
         if _situation_zone(sit) == "open":
             extra = [fp for fp in zone_candidates("open") if fp not in [(r["formation"], r["play"]) for r in rows]]
-            if extra:
+            if extra and not book:
                 pool = ranker.rank(sit, [(r["formation"], r["play"]) for r in rows] + extra)
         if book:
             bset = {(f, p) for f, ps in book["formations"].items() for p in ps}
@@ -642,7 +698,39 @@ def _pick_offense_inner(
 
     if book:
         form, play, rationale = _lock_to_book(form, play, rationale, rows, book)
-    return Call("offense", form, play, adj, _reads_for(play), rationale)
+    call = Call("offense", form, play, adj, _reads_for(play), rationale)
+    _attach_offense_macro(call, sit, opp, db, dynasty=(book or {}).get("dynasty") or dynasty)
+    return call
+
+
+def _attach_offense_macro(
+    call: Call, sit: Situation, opp: dict[str, Any], db: CoachDB | None, *, dynasty: str | None = None
+) -> None:
+    """v1.15: when an Active-8 offense custom adjustment fits this snap (zone, the live or
+    repeated coverage look, and the chosen play), put it on the call. Never breaks calling."""
+    try:
+        from cfb_coach.macros import active_offense_macros, suggest_offense_macro
+
+        oid = _opp_id(opp)
+        active = active_offense_macros(db, oid, dynasty)
+        if not active:
+            return
+        cov = sit.coverage_hint
+        src = getattr(sit, "coverage_source", "none") or "none"
+        repeated = bool(cov) and src != "live" and is_repeated_coverage(db, oid, cov, sit, threshold=2)
+        weights: dict[str, float] = {}
+        if db is not None:
+            for r in db.get_macro_weights(oid):
+                weights[str(r["macro"])] = float(r["weight"] or 0.0)
+        sug = suggest_offense_macro(
+            zone=_situation_zone(sit), play=call.play, formation=call.formation, coverage=cov,
+            coverage_source=src, active=active, down=sit.down, repeated=repeated, weights=weights,
+        )
+        if sug:
+            call.macro, call.macro_info = sug["id"], sug
+            call.rationale = f"{call.rationale} | macro {sug['name']}: {sug['why']}"
+    except Exception:  # noqa: BLE001
+        return
 
 
 def _lock_to_book(
@@ -984,6 +1072,7 @@ def make_call(
     last_concept: str | None = None,
     live_engine: Any | None = None,
     live_tendencies: list | None = None,
+    dynasty: str | None = None,
 ) -> Call:
     """
     Build one call. Optional last_coverage / last_concept are PREVIOUS-snap
@@ -1066,17 +1155,17 @@ def make_call(
         # CPU games = offense-only coaching — never emit D calls / D macros
         if sit.side == "defense":
             sit.side = "offense"
-            call = _pick_offense(sit, opp, seed, db, rng)
+            call = _pick_offense(sit, opp, seed, db, rng, dynasty=dynasty)
             call.rationale = (
                 "CPU = offense-only (no D calls) — switched to O | "
                 + (call.rationale or "")
             )
             return _with_live(call)
-        return _with_live(_pick_offense(sit, opp, seed, db, rng))
+        return _with_live(_pick_offense(sit, opp, seed, db, rng, dynasty=dynasty))
 
     if sit.side == "defense":
         return _with_live(_pick_defense(sit, opp, seed, db, rng))
-    return _with_live(_pick_offense(sit, opp, seed, db, rng))
+    return _with_live(_pick_offense(sit, opp, seed, db, rng, dynasty=dynasty))
 
 
 def one_shot(

@@ -4,7 +4,7 @@ Xbox **CFB 27** dynasty play-caller for Aidan's Alabama online Dynasty.
 
 Heuristics + packaged `seed.json` + CFB27 META baseline + SQLite log learning. No neural net.
 
-**v1.13.0:** the coach now **manages your CFB 27 custom playbook** each prep (per dynasty, versioned, click-to-copy edit list, live calls locked to the book) and **researches the current meta live on every prep**, including **YouTube transcripts** (see [Autonomous custom playbook](#autonomous-custom-playbook--live-research-every-prep-v113)). **v1.12.0:** smarter retrain v2 (field zones, leverage, turnover weighting, caps, W/L) now drives live calls, plus prep that refreshes the current CFB 27 meta each run (see [Smarter retrain v2](#smarter-retrain-v2--current-meta-prep-v112)). **v1.11.0:** HTML **live play window** (default) + game-over smarter retrain. **v1.10.0:** typed **Madden 27 Franchise** coach behind `--game madden27` (see [Madden 27 Franchise](#madden-27-franchise---game-madden27)). CFB 27 stays the default. Nothing changes for CFB unless you pass `--game madden27`.
+**v1.15.1:** `play` follows the latest prep's dynasty, so the live book always matches the prep page, and macro settings are shown **exactly as Aidan wrote them** (everything else Default). **v1.15.0:** every macro row on the prep page **expands to its offense Custom Adjustment settings** (the book plays it pairs with, when to fire it), and the **live call now names the macro** when one fits the snap (`PLAY: Mesh Spot (Gun Bunch X Nasty) + MACRO: MAN`), from your Active 8 only (see [Macro drill-down + macro in the live call](#macro-drill-down--macro-in-the-live-call-v115)). **v1.14.0:** the custom playbook is now **formation-level** (adding a formation in CFB 27 brings every play in it), the **prep page shows only formations, audibles and macros** (everything else moved to a details page), and live calls rank over **every play in your applied formations** using the fresh research (see [Formation-level playbook](#formation-level-playbook--minimal-prep-page-v114)). **v1.13.0:** the coach now **manages your CFB 27 custom playbook** each prep (per dynasty, versioned, click-to-copy edit list, live calls locked to the book) and **researches the current meta live on every prep**, including **YouTube transcripts** (see [Autonomous custom playbook](#autonomous-custom-playbook--live-research-every-prep-v113)). **v1.12.0:** smarter retrain v2 (field zones, leverage, turnover weighting, caps, W/L) now drives live calls, plus prep that refreshes the current CFB 27 meta each run (see [Smarter retrain v2](#smarter-retrain-v2--current-meta-prep-v112)). **v1.11.0:** HTML **live play window** (default) + game-over smarter retrain. **v1.10.0:** typed **Madden 27 Franchise** coach behind `--game madden27` (see [Madden 27 Franchise](#madden-27-franchise---game-madden27)). CFB 27 stays the default. Nothing changes for CFB unless you pass `--game madden27`.
 
 **Prepper + live caller.** Prep opens a **browser** with **playbook/macro diffs only** (never a full recreate install sheet). Live caller stays sharp: two reads on O, one user job on D, anti-repeat, no single-snap whiplash. Mid-game **PIVOT** fires when the last 3 snaps fail on a side.
 
@@ -71,7 +71,108 @@ PYTHONPATH=. python3 -m cfb_coach postgame --game madden27 --opponent gavin
 
 Sidecar only — no controller automation, no vision. Prep browser is unchanged. Terminal/`--once` scripts still work.
 
+
+## Macro drill-down + macro in the live call (v1.15)
+
+**Prep page.** Each macro row (collapsed by default) expands on click to:
+- **Fire it when**: the situation / coverage trigger.
+- **Pairs with (your book)**: the plays in your custom playbook it is built for, with formation.
+- **Settings**: Aidan's own settings for that macro, **exactly as he wrote them** in his macro notes
+  (`cfb_coach/data/macro_catalog.json`, confirmed entries; e.g. MAN = `WR1 deep cross · WR2 zig · WR3 short cross ·
+  TE wheel · HB Texas`), then one line `Everything else: Default`. Nothing is remapped to other menu names and no rows
+  are invented. A Copy button gives the tick-by-tick checklist.
+Research (what the CFB 26 hot-route menu lists for each slot, sources) appears only as notes on the details page
+(`prep --details`). Data: `cfb_coach/data/cfb27_offense_macros.json` (rebuild with `scripts/build_cfb27_offense_macros.py`).
+
+**Live call.** When the chosen play plus the pre-snap look calls for one of your **Active 8** offense macros, the live
+window shows `PLAY: <play> (<formation>) + MACRO: <name>` with the key settings (the full rows expand right there),
+and `--terminal` prints a `MACRO:` line. Rules:
+- Coverage macros need a **live** look (`showing cover 1`), or a look repeated in this situation. A last-snap coverage alone never fires one.
+- MAN vs Cover 1/man, C2 vs Cover 2/Invert/Tampa 2, C3 vs Cover 3, MATCH vs Quarters/Palms/Cover 6/9, and ZERO vs Cover 0 (or pressure when no HEAT/PROT is active) all fire on paired passes. RUN fires on inside runs vs two-high, RPO on RPOs vs a soft box, and RZ on paired passes inside the 20 / goal-to-go.
+- Never whip/flood into Cover 2 Invert. Never a route macro on a run.
+- No look in the open field means no macro.
+
+The Active 8 comes from the last prep (stored per opponent and dynasty). The macro is stored in the snap's `macro` column. Retrain
+scores it with the same capped macro weights as defense macros. A macro whose learned weight drops to −0.15 or lower
+for that opponent stops being suggested.
+
+**One dynasty end to end (v1.15.1).** `play` uses the dynasty from the **latest prep for that opponent**
+(`--dynasty` overrides; the configured default is used only when there's no prep yet). The header, and the top line of
+the live window, show `Dynasty: … · Book: <name> rev N (applied)` and where that dynasty came from. So the live
+book (name, rev, formations, source books, play counts), the Active 8 and the `book apply` button always match the prep
+page. Before this, a prep for another opponent (or a prep without `--dynasty`) could switch the global dynasty and the
+live window would show a different school's book.
+
+## Formation-level playbook + minimal prep page (v1.14)
+
+**The book unit is the formation.** In CFB 27's custom playbook editor, adding a formation brings every play in it
+from the stock book you take it from. So the book of record is a list of formations with their source stock book, and
+the callable play set is every play in those formations: the source book's list from CFB.FAN plus any play you've
+logged in that formation (your logs are ground truth). The catalog `data/cfb27_formations.json` has, per formation, the
+union of plays, a `by_book` play list for every stock book that carries it (with the cfb.fan URL), `logged_additions`
+(e.g. **Mesh Spot** in Gun Bunch X Nasty and **HB Dive** in Singleback Deuce Close aren't in the stock Ohio State lists,
+but you've logged them) and top-level citations. Rebuild it with `scripts/build_cfb27_catalog.py`.
+
+- **Seed:** rev 1 = the formations you've logged in that dynasty, taken from your team's stock book when it carries
+  them (Ohio State: Gun Bunch X Nasty 21 + Mesh Spot, Gun Cluster 12, Singleback Deuce Close 18 + HB Dive). Alabama with
+  no snaps gets a pending starter book built from your Ohio State formations. Lab failures are left out unless the meta backs them.
+- **Every prep the coach decides which formations belong**, on its own. There are no per-play add/remove edits.
+  - The formation meta combines the seed formation prior (`meta_research.formation_priors`: MaddenTurf on Ohio
+    State/Washington State Bunch X Nasty + Cluster, Washington State's Pistol Trips / Pistol U Off Trips run game, Deuce
+    Close red zone, and West Virginia's Gun Power I Tight), mentions of that formation in this prep's sources (web +
+    YouTube transcripts), its plays' specific meta, and a lab bonus.
+  - Your results are aggregated per formation (all its plays) and per play.
+  - **Keep** a working formation (n ≥ 10, grade ≥ +0.05). **Demote** a meta-backed formation that is failing for you.
+    **Cut** one only when the meta doesn't back it AND it has failed on 2 preps with new snaps in between (or at once
+    when n ≥ 20 and the grade is ≤ -0.40).
+  - **Add** at most 1 formation per prep: bar 0.25 for OSU / 0.35 for Alabama. A pending formation stays at 0.08 below
+    the bar. The book holds ≤ 8 formations, and when it's full a new one has to beat the weakest by 0.25.
+  - A meta-added formation that stays untested and loses its meta support for 2 preps drops out. A rollback puts that
+    formation on a 3-prep cooldown.
+  - The source book is chosen by the share of your logged plays it carries, play meta, the books the research names,
+    and your team's book. Once chosen, it is kept.
+- Failing plays inside a kept formation are **demoted** for the live caller (called less, never "removed").
+- **Audibles:** 4 per formation from the callable plays. They rank by value + research hints, with a run/pass mix and no demoted plays.
+- **Migration:** v1.13 per-play revisions in `cfb_playbook_revs` are rewritten in place on first use. Each keeps
+  `legacy_formations` / `legacy_edits`. A v1 pending that only changed plays is marked discarded ("superseded"), and
+  the state is reset. This is idempotent.
+
+**Prep page = formations, audibles, macros.** `prep` opens a clean page with:
+1. a one-line research status (`Meta researched 2:59 PM ET · 11 sources · 4 YouTube transcripts`), plus a red banner
+   only when live research failed;
+2. **Formations**: each formation is marked `in book` / `NEW` / `REMOVE`, with its source book and play count and at
+   most one short line when it changed. When changes are pending, a single copyable `book apply` command appears;
+3. **Audibles**: the 4 actual plays for each formation;
+4. **Macros**: the Active loadout with exact settings and click-to-copy blocks. For CPU games (offense-only) with no
+   offensive macros in the loadout, the coach picks up to 8 offense custom adjustments that fit the book and this
+   prep's research.
+
+Everything else is still computed every prep and stored, but lives in `prep_details_<opp>.html` (written next to the
+page, **not** auto-opened) and in the CLI: formation reasons/flags, per-play table, edit reasons + citations, history,
+limits, research/YouTube/named mentions, sources, zone plan, conflicts, headlines, and the learning constants.
+
+```bash
+PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --dynasty ohio_state            # minimal page
+PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --dynasty ohio_state --details  # also open the details page
+PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --dynasty ohio_state --text     # minimal view in the terminal
+PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --dynasty ohio_state --text --details   # full dump
+PYTHONPATH=. python3 -m cfb_coach book show|diff|history --dynasty ohio_state
+```
+
+**Play uses the research.** The live HTML window and typed play mode rank over **every zone-fit play in the applied
+formations**, not just a situational menu:
+- The situational menu becomes a bonus (+0.12). Short yardage adds +0.12 to runs, 3rd/4th & long adds +0.12 to passes,
+  and two-minute adds +0.08 to passes. Goal-line-only plays and dives stay out of normal open-field downs.
+- The score is your learned zone weights plus the meta prior from the latest prep's cache: seed priors, lab-candidate
+  priors, formations/plays named in web + YouTube transcripts, and concept signals.
+- A play with no play-level prior inherits `min(0.10, 0.5 × formation meta)` in the zones where it fits. This fades as
+  your own sample grows, so a newly added formation's untested plays actually get called.
+- Rationale stays short. The lock-to-applied-book guard is unchanged.
+
 ## Autonomous custom playbook + live research every prep (v1.13)
+
+> v1.14 replaced the per-play book below with the formation-level book above. The pending/apply/rollback flow and live
+> research are unchanged.
 
 **Custom playbook of record** (`cfb_coach/cfb_playbook.py`, one per dynasty: `ohio_state` = lab, `alabama` = serious):
 
