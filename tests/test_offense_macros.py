@@ -1,5 +1,5 @@
-"""v1.15: offense custom-adjustment drill-down on the prep page (exact CFB 27 rows,
-book pairs, fire trigger, assumptions only on the details page) and the live caller's
+"""v1.15: offense custom-adjustment drill-down on the prep page (Aidan's settings verbatim,
+book pairs, fire trigger, research notes only on the details page) and the live caller's
 macro suggestion (Active 8 only, only when it adds value, rendered in the live window
 and terminal, stored with the snap, capped macro learning)."""
 
@@ -18,46 +18,71 @@ from cfb_coach.situation import parse_situation
 from tests.test_cfb_playbook import BUNCH, CLUSTER, _DBCase
 
 ACTIVE8 = ["RZ", "O-RUN", "MATCH", "C2", "MAN", "O-RPO", "C3", "ZERO"]
-SEC_ORDER = ["General", "Pass Protection", "Run Blocking", "Hot Routes"]
 
 
 def sug(play, cov=None, src="live", zone="open", active=ACTIVE8, **kw):
     return mc.suggest_offense_macro(zone=zone, play=play, coverage=cov, coverage_source=src, active=active, **kw)
 
 
-class TestSettingsData(_DBCase):
-    def test_every_offense_macro_has_complete_ordered_real_settings(self):
-        data = mc.load_offense_settings()
-        menu = data["hot_route_menu"]
-        align = {"WR1": "outside", "WR2": "slot", "WR3": "slot", "TE": "te", "HB": "rb"}
-        all_rows = [(s["name"], r) for s in data["sections"] for r in s["rows"]]
-        self.assertEqual([s["name"] for s in data["sections"]], SEC_ORDER)
-        src_ids = {s["id"] for s in data["sources"]}
-        self.assertTrue(all(s["url"].startswith("https://") for s in data["sources"] if s["id"] != "aidan_notes"))
-        for mid in ACTIVE8 + ["PROT", "O-HEAT", "SHOT"]:
-            rows = data["macros"][mid]["settings"]
-            self.assertEqual([(r["section"], r["setting"]) for r in rows], all_rows, mid)  # complete, in-game order
-            self.assertTrue(data["macros"][mid]["fire_when"] and data["macros"][mid]["pairs_with"], mid)
-            for r in rows:
-                self.assertIn(r["status"], ("confirmed", "assumed", "default"), (mid, r))
-                self.assertTrue(set(r["cite"]) <= src_ids, (mid, r))
-                if r["section"] == "Hot Routes" and not r["value"].startswith("Default"):
-                    name, btn = re.match(r"(.+?) \((.+)\)$", r["value"]).groups()
-                    self.assertEqual(menu[align[r["setting"]]].get(name), btn, (mid, r))  # real menu entry + button
-                if r["status"] == "assumed":
-                    self.assertTrue(r["note"], (mid, r))  # every assumption says why
+def _catalog_routes(mid: str) -> list[tuple[str, str]]:
+    """His route_assignments string, split exactly as he wrote it."""
+    import json
+    from pathlib import Path
 
-    def test_detail_pairs_with_book_plays_and_copy_block_matches(self):
+    cat = json.loads((Path(mc.__file__).parent / "data" / "macro_catalog.json").read_text())
+    val = cat["macros"][mid]["full_settings"]["route_assignments"]
+    assert val["status"] == "confirmed"
+    return [tuple(p.strip().split(" ", 1)) for p in val["value"].split(";")]
+
+
+class TestSettingsData(_DBCase):
+    def test_settings_are_aidans_verbatim_no_invented_rows(self):
+        allowed = {"Route assignments", "Protection", "Blocking"}
+        for mid in ACTIVE8 + ["O-HEAT", "SHOT"]:
+            rows = mc.aidan_offense_settings(mid)
+            self.assertTrue(rows, mid)
+            self.assertTrue({r["section"] for r in rows} <= allowed, mid)
+            fs = mc.get_macro(mid)["full_settings"]
+            for r in rows:  # every value appears verbatim in one of his confirmed fields
+                self.assertEqual(fs[r["field"]]["status"], "confirmed")
+                self.assertIn(r["value"], fs[r["field"]]["value"], (mid, r))
+        self.assertEqual(mc.aidan_offense_settings("ZERO")[-1], {"section": "Protection", "setting": "Protection",
+                                                                  "value": "Max protect", "field": "protection"})
+        self.assertEqual(mc.macro_key_settings("O-RUN"),
+                         "Blocking: Base OL technique; highest-OVR double team; Mike ID; aggressive blocking; conservative ball carrier")
+        self.assertEqual(mc.aidan_settings_gaps("PROT"), ["protection: Max protect / slide to pressure side [approx UI]"])
+        self.assertEqual([m for m in ACTIVE8 if not mc.aidan_offense_settings(m)], [])  # no Active-8 gaps
+
+    def test_man_c2_match_render_his_routes_verbatim_everywhere(self):
+        from cfb_coach.prep_browser import _render_macro_accordion
+
+        book = {BUNCH: ["Mesh Spot", "Inside Zone", "Return Whip Trail"], CLUSTER: ["Z Spot Shake"]}
+        for mid in ("MAN", "C2", "MATCH"):
+            want = _catalog_routes(mid)
+            rows = [(r["setting"], r["value"]) for r in mc.aidan_offense_settings(mid)]
+            self.assertEqual(rows, want, mid)
+            d = mc.offense_macro_detail(mid, book)
+            cb = mc.offense_copy_block(d)
+            for slot, route in want:
+                self.assertIn(f"  [ ] {slot}: {route}\n", cb)
+            self.assertIn("[ ] Everything else: Default", cb)
+            self.assertEqual(d["key"], " · ".join(f"{a} {b}" for a, b in want))
+            card = mc.attach_offense_detail({"id": mid, "name": mid, "side": "offense", "slot": "active"}, book)
+            html = _render_macro_accordion([card], {}, offense_only=True)
+            for slot, route in want:
+                self.assertIn(f"<td class='ca-k'>{slot}</td><td class='ca-v'>{route}</td>", html)
+            s = sug({"MAN": "Mesh Spot", "C2": "Mesh Spot", "MATCH": "Mesh Spot"}[mid],
+                    {"MAN": "Cover 1", "C2": "Cover 2", "MATCH": "Cover 4 Quarters"}[mid])
+            self.assertEqual(s["id"], mid)
+            self.assertEqual([(r["setting"], r["value"]) for r in s["settings"]], want)
+        self.assertEqual(_catalog_routes("MAN"), [("WR1", "deep cross"), ("WR2", "zig"), ("WR3", "short cross"), ("TE", "wheel"), ("HB", "Texas")])
+        self.assertEqual(_catalog_routes("C2"), [("WR1", "streak"), ("WR2", "corner"), ("WR3", "post"), ("TE", "slot fade"), ("HB", "flat")])
+
+    def test_pairs_with_book_plays(self):
         book = {BUNCH: ["Mesh Spot", "Inside Zone", "Return Whip Trail"], CLUSTER: ["Z Spot Shake"]}
         d = mc.offense_macro_detail("MAN", book)
         self.assertEqual(d["pairs_with"][:2], [f"Mesh Spot ({BUNCH})", f"Return Whip Trail ({BUNCH})"])
         self.assertNotIn("Inside Zone", " ".join(d["pairs_with"]))  # a run never pairs with a route macro
-        cb = mc.offense_copy_block(d)
-        for r in d["settings"]:
-            self.assertIn(f"{r['setting']}: {r['value']}", cb)
-        self.assertEqual(d["key"], "WR1 Deep Over · WR2 Zig · WR3 Short Cross · TE Wheel · HB Texas")
-        self.assertEqual(mc.macro_key_settings("O-RUN"),
-                         "Ball Carrier Conservative · Blocking Aggressive · OL Base · Double Team Highest OVR · Mike ID On")
 
 
 class TestPrepDrillDown(_DBCase):
@@ -79,14 +104,16 @@ class TestPrepDrillDown(_DBCase):
         self.assertEqual(macros.count('<details class="macro-card'), n)
         self.assertNotIn('data-macro="MAN" open', macros)
         self.assertEqual(len(re.findall(r'<details class="macro-card[^>]*\bopen\b', macros)), 0)  # collapsed by default
-        for want in ("In-game settings — Create &amp; Share › Custom Adjustments › Offense", "Fire it when:",
-                     "Pairs with (your book):", "Deep Over (D-pad Up)", "Zig (D-pad Right)", 'class="copy-btn"'):
+        for want in ("Settings — Create &amp; Share › Custom Adjustments › Offense", "Fire it when:",
+                     "Pairs with (your book):", "<td class='ca-k'>WR1</td><td class='ca-v'>deep cross</td>",
+                     "<td class='ca-k'>Everything else</td><td class='ca-v'>Default</td>", 'class="copy-btn"'):
             self.assertIn(want, macros, want)
-        self.assertNotIn("assumed", macros.lower())  # assumption marks live on the details page only
+        for bad in ("assumed", "hot-route menu", "D-pad", "Deep Over"):  # no remaps / research on the main page
+            self.assertNotIn(bad.lower(), macros.lower(), bad)
         det = render_prep_details_html(plan)
-        self.assertIn("set-tag approx'>assumed", det)
+        self.assertIn("nothing was remapped", det)
+        self.assertIn("not in the CFB 26 outside hot-route menu", det)  # research note only, value unchanged
         self.assertIn("collegefootball.gg/all-of-the-new-hot-routes-in-cfb-26", det)
-        self.assertIn("the outside menu has no", det)  # why WR1 'Deep Cross' became Deep Over
 
     def test_prep_stores_active_offense_macros_for_live(self):
         plan = self._plan()
@@ -137,7 +164,7 @@ class TestLiveSuggestion(_DBCase):
         _attach_offense_macro(call, parse_situation("3&6 my 40 showing cover 1"), {"_id": "cpu"}, self.db)
         self.assertEqual(call.macro, "MAN")
         self.assertEqual(call.headline(), f"PLAY: Mesh Spot ({BUNCH}) + MACRO: MAN")
-        self.assertIn("MACRO: MAN — LB → MAN | WR1 Deep Over · WR2 Zig", call.format())
+        self.assertIn("MACRO: MAN — LB → MAN | WR1 deep cross · WR2 zig · WR3 short cross · TE wheel · HB Texas", call.format())
         c2 = Call("offense", BUNCH, "Mesh Spot", "No adj", "Spot → Drag", "base")
         _attach_offense_macro(c2, parse_situation("3&6 my 40 showing cover 2"), {"_id": "cpu"}, self.db)
         self.assertIsNone(c2.macro)  # C2 not in this Active list
@@ -182,11 +209,11 @@ class TestLiveWindowAndSnap(_FakeCtrlMixin, _DBCase):
         res = ctrl.call_only("3&6 my 40 showing cover 1")
         st = res["state"]["macro"]
         self.assertEqual(st["headline"], f"PLAY: Mesh Spot ({BUNCH}) + MACRO: MAN")
-        self.assertIn("WR2 Zig", st["key"])
+        self.assertEqual(st["key"], "WR1 deep cross · WR2 zig · WR3 short cross · TE wheel · HB Texas")
         html = render_live_html(ctrl)
         self.assertIn(f"PLAY: Mesh Spot ({BUNCH}) + MACRO: MAN", html)
         self.assertIn('<div id="macro-box">', html)
-        self.assertIn("Zig (D-pad Right)", html)  # expandable settings right there
+        self.assertIn("<td class='s'>WR2</td><td>zig</td>", html)  # his exact settings, expandable right there
         self.assertIn("renderMacro(st.macro)", html)
 
     def test_no_macro_box_when_no_macro(self):
@@ -228,7 +255,7 @@ class TestTerminal(_DBCase):
                 contextlib.redirect_stdout(buf):
             self.assertEqual(cli.main(["play", "-o", "cpu", "--terminal", "--no-overlay"]), 0)
         out = buf.getvalue()
-        self.assertIn("MACRO: MAN — LB → MAN | WR1 Deep Over · WR2 Zig · WR3 Short Cross · TE Wheel · HB Texas", out)
+        self.assertIn("MACRO: MAN — LB → MAN | WR1 deep cross · WR2 zig · WR3 short cross · TE wheel · HB Texas", out)
         self.db.conn.commit()
         from cfb_coach.db import CoachDB
 

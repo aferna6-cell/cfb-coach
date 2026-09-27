@@ -227,7 +227,7 @@ def _render_macro_accordion(
 
     v1.15: offense cards carrying ``ingame`` expand to the exact CFB 27 Custom
     Adjustment rows (in-game order), the book plays they pair with, and when to fire.
-    ``details=True`` (details page) adds the confirmed/assumed marks + citations."""
+    ``details=True`` (details page) adds research notes + citations."""
     # Safety: drop any non-active / benched cards if a caller passed full catalog
     cards = [c for c in cards if (c.get("slot") or "active") == "active"]
     # Never show FLOOD/SCREEN in main prep view
@@ -337,33 +337,27 @@ def _render_macro_accordion(
 
 
 def _render_ingame_card(c: dict[str, Any], cid: str, *, details: bool = False) -> str:
-    """One offense macro row: collapsed summary; expands to the exact in-game settings."""
+    """One offense macro row: collapsed summary; expands to Aidan's exact settings (verbatim
+    from his notes), the book plays it pairs with, and when to fire it."""
     det = c.get("ingame") or {}
     mid = str(c.get("id") or "")
     name = det.get("xbox_name") or c.get("name") or mid
+    ncol = 3 if details else 2
     rows_html: list[str] = []
     cur = None
-    notes_by_sec = {s.get("name"): s for s in det.get("sections") or []}
     for r in det.get("settings") or []:
-        if r["section"] != cur:
+        single = r["setting"] == r["section"]
+        if not single and r["section"] != cur:
             cur = r["section"]
-            sec = notes_by_sec.get(cur) or {}
-            label = cur + (" <span class='muted'>(per depth-chart slot)</span>" if cur == "Hot Routes" else "")
-            extra = ""
-            if details and sec.get("note"):
-                extra = f"<div class='ca-secnote'>row labels: {_esc(sec.get('wording'))} — {_esc(sec['note'])}</div>"
-            rows_html.append(f"<tr class='ca-sec'><td colspan='{4 if details else 2}'>{label}{extra}</td></tr>")
-        dflt = r.get("status") == "default" or str(r.get("value", "")).startswith("Default")
-        tag = note = ""
-        if details:
-            st = r.get("status") or "default"
-            tag = f"<td><span class='set-tag {'approx' if st == 'assumed' else 'confirmed'}'>{_esc(st)}</span></td>"
-            cites = ", ".join(r.get("cite") or [])
-            note = f"<td class='muted'>{_esc(r.get('note') or '')}{(' [' + _esc(cites) + ']') if cites else ''}</td>"
-        rows_html.append(
-            f"<tr class='ca-row{' dflt' if dflt else ''}'><td class='ca-k'>{_esc(r['setting'])}</td>"
-            f"<td class='ca-v'>{_esc(r['value'])}</td>{tag}{note}</tr>"
-        )
+            rows_html.append(f"<tr class='ca-sec'><td colspan='{ncol}'>{_esc(cur)}</td></tr>")
+        if single:
+            cur = None
+        note = f"<td class='muted'>{_esc(r.get('research') or '')}</td>" if details else ""
+        rows_html.append(f"<tr class='ca-row'><td class='ca-k'>{_esc(r['setting'])}</td>"
+                         f"<td class='ca-v'>{_esc(r['value'])}</td>{note}</tr>")
+    if not det.get("settings"):
+        rows_html.append(f"<tr class='ca-row'><td colspan='{ncol}' class='muted'>No exact settings from Aidan on file for this macro.</td></tr>")
+    rows_html.append(f"<tr class='ca-row dflt'><td class='ca-k'>Everything else</td><td class='ca-v'>Default</td>{'<td></td>' if details else ''}</tr>")
     pairs = det.get("pairs_with") or []
     pairs_html = "".join(f"<span class='pchip'>{_esc(p)}</span>" for p in pairs) or "<span class='muted'>none of its plays are in your book</span>"
     src_html = ""
@@ -374,9 +368,14 @@ def _render_ingame_card(c: dict[str, Any], cid: str, *, details: bool = False) -
             + f"<div class='muted'>{_esc(s.get('supports'))}</div></li>"
             for s in det.get("sources") or []
         )
-        n_ass = len(det.get("assumed") or [])
-        src_html = (f"<div class='ca-assume'>{n_ass} value(s) assumed on this macro (marked above); "
-                    f"{_esc(det.get('limits') or '')}</div><h4>Sources</h4><ul class='ca-src'>{srcs}</ul>")
+        gaps = "".join(f"<li>{_esc(g)}</li>" for g in det.get("gaps") or [])
+        src_html = (
+            f"<div class='ca-assume'>Settings: {_esc(det.get('settings_source') or '')}, shown exactly as written. "
+            f"Research notes (right column) are for reference only — nothing was remapped. "
+            f"Hot-route menu reference: {_esc(det.get('hot_route_menu_source') or '')}. {_esc(det.get('limits') or '')}</div>"
+            + (f"<h4>Not exact in his notes (not shown as settings)</h4><ul class='ca-src'>{gaps}</ul>" if gaps else "")
+            + f"<h4>Research sources</h4><ul class='ca-src'>{srcs}</ul>"
+        )
     status = c.get("validated_status") or "unvalidated"
     return f"""
             <details class="macro-card slot-active" data-macro="{_esc(mid)}">
@@ -390,7 +389,7 @@ def _render_ingame_card(c: dict[str, Any], cid: str, *, details: bool = False) -
                 <p class="purpose">{_esc(c.get("purpose") or "")}</p>
                 <div class="mfire"><b>Fire it when:</b> {_esc(det.get("fire_when") or "")}</div>
                 <div class="mpairs"><b>Pairs with (your book):</b> {pairs_html}</div>
-                <h4>In-game settings — {_esc(" › ".join(det.get("editor_path") or []))}</h4>
+                <h4>Settings — {_esc(" › ".join(det.get("editor_path") or []))}</h4>
                 <table class="ca-set">{"".join(rows_html)}</table>
                 <div class="muted ca-ingame">{_esc(det.get("in_game") or "")}</div>
                 {src_html}

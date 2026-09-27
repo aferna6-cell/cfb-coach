@@ -633,7 +633,7 @@ _OSET_CACHE: dict[str, Any] | None = None
 
 def load_offense_settings() -> dict[str, Any]:
     """``data/cfb27_offense_macros.json``: ordered in-game rows per offense macro,
-    their status (confirmed / assumed / default), citations and live fire rules."""
+    citations, the CFB 26 hot-route menu (research notes only) and live fire rules."""
     global _OSET_CACHE
     if _OSET_CACHE is None:
         import json
@@ -646,25 +646,67 @@ def load_offense_settings() -> dict[str, Any]:
     return _OSET_CACHE
 
 
-def _short_value(v: str) -> str:
-    import re
+# Fields of an offense macro's full_settings that are Aidan's in-game settings (his wording)
+AIDAN_SETTING_FIELDS = (("route_assignments", "Route assignments"), ("protection", "Protection"), ("blocking", "Blocking"))
+_SLOT_RE = __import__("re").compile(r"^(WR\d|TE\d?|HB|RB|FB|SLOT\d?)\s+(.+)$", __import__("re").I)
 
-    v = re.sub(r"\s*\((?:LS|RS|D-pad|LB|LT|RT|RB)[^)]*\)", "", str(v or ""))
-    return v.split(" — ")[0].strip()
+
+def aidan_offense_settings(mid: str) -> list[dict[str, Any]]:
+    """Aidan's own settings for an offense macro, verbatim from macro_catalog.json
+    (``full_settings`` fields marked confirmed — the same source of truth as his defensive
+    sheets). Route assignments split per slot ("WR1 deep cross" → WR1 / deep cross); protection
+    and blocking stay one row each, exactly as written. Nothing else is invented: every setting
+    he didn't give is left at the in-game default."""
+    fs = (get_macro(mid) or {}).get("full_settings") or {}
+    rows: list[dict[str, Any]] = []
+    for key, label in AIDAN_SETTING_FIELDS:
+        ent = fs.get(key)
+        if not isinstance(ent, dict) or (ent.get("status") or "").lower() != "confirmed":
+            continue
+        val = str(ent.get("value") or "").strip()
+        if not val:
+            continue
+        if key == "route_assignments":
+            parts = [p.strip() for p in val.split(";") if p.strip()]
+            slots = [_SLOT_RE.match(p) for p in parts]
+            if parts and all(slots):
+                rows += [{"section": label, "setting": m.group(1), "value": m.group(2), "field": key} for m in slots]
+                continue
+        rows.append({"section": label, "setting": label, "value": val, "field": key})
+    return rows
+
+
+def aidan_settings_gaps(mid: str) -> list[str]:
+    """Setting fields present only as approximations (not Aidan-confirmed) for this macro."""
+    fs = (get_macro(mid) or {}).get("full_settings") or {}
+    return [f"{k}: {fs[k].get('value')}" for k, _l in AIDAN_SETTING_FIELDS
+            if isinstance(fs.get(k), dict) and (fs[k].get("status") or "").lower() != "confirmed"]
 
 
 def macro_key_settings(mid: str) -> str:
-    """One-line summary of the non-default rows (what the live window shows)."""
-    m = (load_offense_settings().get("macros") or {}).get(mid) or {}
-    bits = []
-    for r in m.get("settings") or []:
-        if r.get("status") == "default" or str(r.get("value", "")).startswith("Default"):
-            continue
-        label = {"ID the Mike": "Mike ID", "OL Technique": "OL", "Chip Block — TE": "TE chip", "Chip Block — HB": "HB chip"}.get(r["setting"], r["setting"])
-        bits.append(f"{label} {_short_value(r['value'])}")
-    if not bits and m.get("settings"):
-        bits.append("stock routes; blocking cleanup only")
-    return " · ".join(bits)
+    """One-line summary of his settings (what the live window / terminal show)."""
+    rows = aidan_offense_settings(mid)
+    slot_bits = {f"{r['setting']} {r['value']}".lower() for r in rows if r["setting"] != r["section"]}
+    out = []
+    for r in rows:
+        if r["setting"] != r["section"]:
+            out.append(f"{r['setting']} {r['value']}")
+        elif not all(p.strip().lower() in slot_bits for p in r["value"].split(";")):  # skip exact repeats
+            out.append(f"{r['section']}: {r['value']}")
+    return " · ".join(out)
+
+
+def _research_note(row: dict[str, Any]) -> str:
+    """Details-page-only note: what the CFB 26 hot-route menu lists for that slot (no remap)."""
+    data = load_offense_settings()
+    align = (data.get("slot_alignment_assumed") or {}).get(str(row.get("setting") or "").upper())
+    if row.get("field") != "route_assignments" or not align:
+        return ""
+    menu = (data.get("hot_route_menu") or {}).get(align) or {}
+    hit = {k.lower(): (k, b) for k, b in menu.items()}.get(str(row.get("value") or "").lower())
+    if hit:
+        return f"CFB 26 {align} hot-route menu: {hit[0]} = {hit[1]}"
+    return f"not in the CFB 26 {align} hot-route menu (menu may differ by alignment / in CFB 27) — set as Aidan wrote it"
 
 
 def _book_pairs(mid: str, book_plays: dict[str, list[str]] | None, *, cap: int = 6) -> list[str]:
@@ -699,43 +741,51 @@ def _book_pairs(mid: str, book_plays: dict[str, list[str]] | None, *, cap: int =
 
 
 def offense_macro_detail(mid: str, book_plays: dict[str, list[str]] | None = None) -> dict[str, Any] | None:
-    """Everything the prep drill-down shows for one offense macro, or None if not an
-    offense macro with in-game settings on file."""
+    """Everything the prep drill-down shows for one offense macro, or None if it isn't an
+    offense macro. Settings are Aidan's, verbatim; research notes are details-page only."""
     data = load_offense_settings()
-    m = (data.get("macros") or {}).get(mid)
-    if not m:
-        return None
-    rows = list(m.get("settings") or [])
-    cited = {c for r in rows for c in (r.get("cite") or [])}
-    for s in data.get("sections") or []:
-        cited.update(s.get("cite") or [])
     meta = get_macro(mid) or {}
+    if (meta.get("side") or "") != "offense":
+        return None
+    m = (data.get("macros") or {}).get(mid) or {}
+    rows = aidan_offense_settings(mid)
+    for r in rows:
+        r["research"] = _research_note(r)
     return {
         "id": mid,
         "xbox_name": meta.get("xbox_name") or meta.get("name") or mid,
         "editor_path": list(data.get("editor_path") or []),
         "in_game": data.get("in_game") or "",
-        "sections": list(data.get("sections") or []),
         "settings": rows,
-        "fire_when": m.get("fire_when") or "",
+        "has_settings": bool(rows),
+        "gaps": aidan_settings_gaps(mid),
+        "settings_source": "Aidan's offense macro notes (macro_catalog.json, confirmed)",
+        "fire_when": m.get("fire_when") or meta.get("when_to_arm") or "",
         "pairs_with": _book_pairs(mid, book_plays),
         "key": macro_key_settings(mid),
-        "assumed": [r for r in rows if r.get("status") == "assumed"],
-        "sources": [s for s in data.get("sources") or [] if s.get("id") in cited],
+        "sources": list(data.get("sources") or []),
+        "hot_route_menu_source": data.get("hot_route_menu_source") or "",
         "limits": data.get("limits") or "",
     }
 
 
 def offense_copy_block(detail: dict[str, Any]) -> str:
-    """Tick-by-tick checklist in the in-game order (every row, defaults included)."""
+    """Tick-by-tick checklist: only Aidan's settings, then everything else at Default."""
     name = detail.get("xbox_name") or detail.get("id")
     lines = [f"MACRO: {name} (offense)", "Path: " + " > ".join(detail.get("editor_path") or []), f"[ ] Name: {name}"]
     cur = None
     for r in detail.get("settings") or []:
+        if r["setting"] == r["section"]:
+            lines.append(f"[ ] {r['section']}: {r['value']}")
+            cur = None
+            continue
         if r["section"] != cur:
             cur = r["section"]
-            lines.append(cur + (" (per depth-chart slot)" if cur == "Hot Routes" else ""))
+            lines.append(cur)
         lines.append(f"  [ ] {r['setting']}: {r['value']}")
+    if not detail.get("settings"):
+        lines.append("[ ] (no exact settings from Aidan on file for this macro)")
+    lines.append("[ ] Everything else: Default")
     lines.append("[ ] Save -> set Active (Aidan cap 8)")
     lines.append(f"In game: LB -> {name}")
     if detail.get("fire_when"):
@@ -862,26 +912,27 @@ def suggest_offense_macro(
             "name": meta.get("xbox_name") or meta.get("name") or mid,
             "why": f"{trig} on {play} ({(meta.get('purpose') or m.get('fire_when', '').split('.')[0]).replace(' — ', ': ')})",
             "key": macro_key_settings(mid),
-            "settings": [r for r in m.get("settings") or [] if r.get("status") != "default"
-                         and not str(r.get("value", "")).startswith("Default")] or list(m.get("settings") or []),
+            "settings": aidan_offense_settings(mid),
             "fire_when": m.get("fire_when") or "",
             "learned_weight": w,
         }
     return None
 
 
-def active_offense_macros(db: Any, opponent_id: str) -> list[str]:
-    """The current offense Active 8 for live calls: what the last prep showed (stored
-    in meta), else the CPU loadout from the playbook of record, else the dynasty's
-    offensive Active list. Never anything outside that list."""
+def active_offense_macros(db: Any, opponent_id: str, dynasty: str | None = None) -> list[str]:
+    """The current offense Active 8 for live calls: what the last prep for this opponent
+    showed (stored in meta, only if it was the same dynasty being played), else the CPU
+    loadout from that dynasty's playbook of record, else the offensive Active list.
+    Never anything outside that list."""
     import json
 
     if db is None:
         return []
     try:
         raw = db.get_meta(f"active_macros_o:{opponent_id}")
-        if raw:
-            ids = [_offense_id(str(x)) for x in (json.loads(raw).get("offense") or [])]
+        rec = json.loads(raw) if raw else None
+        if rec and (not dynasty or not rec.get("dynasty") or rec.get("dynasty") == dynasty):
+            ids = [_offense_id(str(x)) for x in (rec.get("offense") or [])]
             return [i for i in ids if i][:USER_ACTIVE_CAP]
     except Exception:  # noqa: BLE001
         pass
@@ -891,7 +942,7 @@ def active_offense_macros(db: Any, opponent_id: str) -> list[str]:
         if is_cpu_opponent(opponent_id):
             from cfb_coach.cfb_playbook import callable_book
 
-            book = callable_book(db) or {}
+            book = callable_book(db, dynasty) or {}
             if book.get("formations"):
                 _cards, lo = offense_book_loadout(book["formations"])
                 return list(lo.get("offense") or [])[:USER_ACTIVE_CAP]
@@ -914,11 +965,11 @@ def _offense_id(x: str) -> str | None:
     return None
 
 
-def store_active_offense_macros(db: Any, opponent_id: str, ids: list[str]) -> None:
+def store_active_offense_macros(db: Any, opponent_id: str, ids: list[str], dynasty: str | None = None) -> None:
     import json
     from datetime import datetime, timezone
 
     if db is None:
         return
     db.set_meta(f"active_macros_o:{opponent_id}", json.dumps(
-        {"offense": list(ids)[:USER_ACTIVE_CAP], "ts": datetime.now(timezone.utc).isoformat()}))
+        {"offense": list(ids)[:USER_ACTIVE_CAP], "dynasty": dynasty, "ts": datetime.now(timezone.utc).isoformat()}))

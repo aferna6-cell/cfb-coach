@@ -4,7 +4,7 @@ Xbox **CFB 27** dynasty play-caller for Aidan's Alabama online Dynasty.
 
 Heuristics + packaged `seed.json` + CFB27 META baseline + SQLite log learning. No neural net.
 
-**v1.15.0:** every macro row on the prep page **expands to its exact CFB 27 offense Custom Adjustment settings** (in-game order, hot-route buttons, the book plays it pairs with, when to fire it), and the **live call now names the macro** when one fits the snap (`PLAY: Mesh Spot (Gun Bunch X Nasty) + MACRO: MAN`), from your Active 8 only (see [Macro drill-down + macro in the live call](#macro-drill-down--macro-in-the-live-call-v115)). **v1.14.0:** the custom playbook is now **formation-level** (adding a formation in CFB 27 brings every play in it), the **prep page shows only formations, audibles and macros** (everything else moved to a details page), and live calls rank over **every play in your applied formations** using the fresh research (see [Formation-level playbook](#formation-level-playbook--minimal-prep-page-v114)). **v1.13.0:** the coach now **manages your CFB 27 custom playbook** each prep (per dynasty, versioned, click-to-copy edit list, live calls locked to the book) and **researches the current meta live on every prep**, including **YouTube transcripts** (see [Autonomous custom playbook](#autonomous-custom-playbook--live-research-every-prep-v113)). **v1.12.0:** smarter retrain v2 (field zones, leverage, turnover weighting, caps, W/L) now drives live calls, plus prep that refreshes the current CFB 27 meta each run (see [Smarter retrain v2](#smarter-retrain-v2--current-meta-prep-v112)). **v1.11.0:** HTML **live play window** (default) + game-over smarter retrain. **v1.10.0:** typed **Madden 27 Franchise** coach behind `--game madden27` (see [Madden 27 Franchise](#madden-27-franchise---game-madden27)). CFB 27 stays the default. Nothing changes for CFB unless you pass `--game madden27`.
+**v1.15.1:** `play` follows the latest prep's dynasty, so the live book always matches the prep page, and macro settings are shown **exactly as Aidan wrote them** (everything else Default). **v1.15.0:** every macro row on the prep page **expands to its offense Custom Adjustment settings** (the book plays it pairs with, when to fire it), and the **live call now names the macro** when one fits the snap (`PLAY: Mesh Spot (Gun Bunch X Nasty) + MACRO: MAN`), from your Active 8 only (see [Macro drill-down + macro in the live call](#macro-drill-down--macro-in-the-live-call-v115)). **v1.14.0:** the custom playbook is now **formation-level** (adding a formation in CFB 27 brings every play in it), the **prep page shows only formations, audibles and macros** (everything else moved to a details page), and live calls rank over **every play in your applied formations** using the fresh research (see [Formation-level playbook](#formation-level-playbook--minimal-prep-page-v114)). **v1.13.0:** the coach now **manages your CFB 27 custom playbook** each prep (per dynasty, versioned, click-to-copy edit list, live calls locked to the book) and **researches the current meta live on every prep**, including **YouTube transcripts** (see [Autonomous custom playbook](#autonomous-custom-playbook--live-research-every-prep-v113)). **v1.12.0:** smarter retrain v2 (field zones, leverage, turnover weighting, caps, W/L) now drives live calls, plus prep that refreshes the current CFB 27 meta each run (see [Smarter retrain v2](#smarter-retrain-v2--current-meta-prep-v112)). **v1.11.0:** HTML **live play window** (default) + game-over smarter retrain. **v1.10.0:** typed **Madden 27 Franchise** coach behind `--game madden27` (see [Madden 27 Franchise](#madden-27-franchise---game-madden27)). CFB 27 stays the default. Nothing changes for CFB unless you pass `--game madden27`.
 
 **Prepper + live caller.** Prep opens a **browser** with **playbook/macro diffs only** (never a full recreate install sheet). Live caller stays sharp: two reads on O, one user job on D, anti-repeat, no single-snap whiplash. Mid-game **PIVOT** fires when the last 3 snaps fail on a side.
 
@@ -77,12 +77,12 @@ Sidecar only — no controller automation, no vision. Prep browser is unchanged.
 **Prep page.** Each macro row (collapsed by default) expands on click to:
 - **Fire it when**: the situation / coverage trigger.
 - **Pairs with (your book)**: the plays in your custom playbook it is built for, with formation.
-- **In-game settings**: every row of *Create & Share › Custom Adjustments › Offense › Create Adjustment* in order
-  (General → Pass Protection → Run Blocking → Hot Routes per depth-chart slot), with the hot-route button
-  (e.g. `WR2: Zig (D-pad Right)`), and a Copy button for the tick-by-tick checklist.
-Values Aidan wrote down are *confirmed*; anything inferred is *assumed* with the reason. Those marks and the sources
-appear only on the details page (`prep --details`). Data + citations: `cfb_coach/data/cfb27_offense_macros.json`
-(rebuild with `scripts/build_cfb27_offense_macros.py`).
+- **Settings**: Aidan's own settings for that macro, **exactly as he wrote them** in his macro notes
+  (`cfb_coach/data/macro_catalog.json`, confirmed entries; e.g. MAN = `WR1 deep cross · WR2 zig · WR3 short cross ·
+  TE wheel · HB Texas`), then one line `Everything else: Default`. Nothing is remapped to other menu names and no rows
+  are invented. A Copy button gives the tick-by-tick checklist.
+Research (what the CFB 26 hot-route menu lists for each slot, sources) appears only as notes on the details page
+(`prep --details`). Data: `cfb_coach/data/cfb27_offense_macros.json` (rebuild with `scripts/build_cfb27_offense_macros.py`).
 
 **Live call.** When the chosen play plus the pre-snap look calls for one of your **Active 8** offense macros, the live
 window shows `PLAY: <play> (<formation>) + MACRO: <name>` with the key settings (the full rows expand right there),
@@ -92,9 +92,16 @@ and `--terminal` prints a `MACRO:` line. Rules:
 - Never whip/flood into Cover 2 Invert. Never a route macro on a run.
 - No look in the open field means no macro.
 
-The Active 8 comes from the last prep (stored per opponent). The macro is stored in the snap's `macro` column. Retrain
+The Active 8 comes from the last prep (stored per opponent and dynasty). The macro is stored in the snap's `macro` column. Retrain
 scores it with the same capped macro weights as defense macros. A macro whose learned weight drops to −0.15 or lower
 for that opponent stops being suggested.
+
+**One dynasty end to end (v1.15.1).** `play` uses the dynasty from the **latest prep for that opponent**
+(`--dynasty` overrides; the configured default is used only when there's no prep yet). The header, and the top line of
+the live window, show `Dynasty: … · Book: <name> rev N (applied)` and where that dynasty came from. So the live
+book (name, rev, formations, source books, play counts), the Active 8 and the `book apply` button always match the prep
+page. Before this, a prep for another opponent (or a prep without `--dynasty`) could switch the global dynasty and the
+live window would show a different school's book.
 
 ## Formation-level playbook + minimal prep page (v1.14)
 

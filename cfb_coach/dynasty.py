@@ -209,3 +209,65 @@ def doctrine_line() -> str:
         "Per-user long-term learning is light carry-forward only. Ohio State/CPU = volume lab. "
         "Most snaps Cover 3 Sky / Quarters / Tampa 2 with no macro."
     )
+
+
+# ---------------------------------------------------------------------------
+# v1.15.1: one dynasty per opponent game — prep, play, live window, book apply,
+# macro suggestion and retrain all resolve it the same way.
+# ---------------------------------------------------------------------------
+
+PREP_DYNASTY_KEY = "prep_dynasty:{opp}"
+
+
+def record_prep_dynasty(db: Any, opponent_id: str, dynasty: str, *, book: str = "", rev: Any = None) -> None:
+    """Remember which dynasty (and custom book) the latest prep for ``opponent_id`` used."""
+    from datetime import datetime, timezone
+
+    if db is None or not opponent_id:
+        return
+    db.set_meta(PREP_DYNASTY_KEY.format(opp=opponent_id), json.dumps({
+        "dynasty": normalize_dynasty(dynasty), "book": book, "rev": rev,
+        "ts": datetime.now(timezone.utc).isoformat()}))
+
+
+def last_prep_dynasty(db: Any, opponent_id: str) -> dict[str, Any] | None:
+    if db is None or not opponent_id:
+        return None
+    try:
+        raw = db.get_meta(PREP_DYNASTY_KEY.format(opp=opponent_id))
+        rec = json.loads(raw) if raw else None
+        if rec and rec.get("dynasty"):
+            rec["dynasty"] = normalize_dynasty(rec["dynasty"])
+            return rec
+    except Exception:  # noqa: BLE001
+        return None
+    return None
+
+
+def resolve_dynasty(db: Any, opponent_id: str | None, explicit: str | None = None) -> tuple[str, str]:
+    """(dynasty, where it came from). Order: explicit --dynasty → the latest prep for this
+    opponent → the configured default (``dynasty_mode`` meta, else Alabama)."""
+    if explicit:
+        return normalize_dynasty(explicit), "--dynasty"
+    rec = last_prep_dynasty(db, opponent_id or "")
+    if rec:
+        when = ""
+        try:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+
+            when = datetime.fromisoformat(rec["ts"]).astimezone(ZoneInfo("America/New_York")).strftime(" %a %b %d %-I:%M %p ET")
+        except Exception:  # noqa: BLE001
+            pass
+        return rec["dynasty"], f"latest prep vs {opponent_id}{when}"
+    conf = None
+    try:
+        conf = db.get_meta(META_KEY) if db is not None else None
+    except Exception:  # noqa: BLE001
+        conf = None
+    if conf:
+        try:
+            return normalize_dynasty(conf), "configured default (no prep for this opponent yet)"
+        except ValueError:
+            pass
+    return DEFAULT_DYNASTY, "built-in default (no prep, nothing configured)"

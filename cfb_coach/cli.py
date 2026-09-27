@@ -197,10 +197,13 @@ def cmd_prep(args: argparse.Namespace) -> int:
     db = _db()
     try:
         _ensure_rules(db)
-        dynasty = set_session_dynasty(
-            db, getattr(args, "dynasty", None) or DEFAULT_DYNASTY
-        )
+        from cfb_coach.dynasty import resolve_dynasty
+
+        # explicit --dynasty → the latest prep for this opponent → configured default
+        dyn_resolved, dyn_src = resolve_dynasty(db, oid, getattr(args, "dynasty", None))
+        dynasty = set_session_dynasty(db, dyn_resolved)
         dcfg = dynasty_config(dynasty)
+        print(f"Prep dynasty: {dcfg['label']} ({dynasty}) — {dyn_src}")
         opp = load_opponent_profile(oid, db)
         if getattr(args, "mark_applied", False):
             # "I made the edits the last prep showed": confirm the pending custom book first
@@ -317,9 +320,9 @@ def cmd_postgame(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
     db = _db()
     try:
-        dynasty = set_session_dynasty(
-            db, getattr(args, "dynasty", None) or db.get_meta("dynasty_mode") or DEFAULT_DYNASTY
-        )
+        from cfb_coach.dynasty import resolve_dynasty
+
+        dynasty = set_session_dynasty(db, resolve_dynasty(db, oid, getattr(args, "dynasty", None))[0])
         dcfg = dynasty_config(dynasty)
         exp = " [experimental]" if dcfg.get("experimental_badge") else ""
         print(f"Dynasty: {dcfg['label']} ({dcfg['mode']}){exp}")
@@ -366,7 +369,9 @@ def cmd_call(args: argparse.Namespace) -> int:
         sit = parse_situation(args.situation, default_side=args.side or "offense")
         if args.side:
             sit.side = args.side
-        call = make_call(sit, oid, db)
+        from cfb_coach.dynasty import resolve_dynasty
+
+        call = make_call(sit, oid, db, dynasty=resolve_dynasty(db, oid, getattr(args, "dynasty", None))[0])
         print(call.format())
         if args.why:
             print(f"  ({call.rationale})")
@@ -382,9 +387,13 @@ def cmd_play(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
     db = _db()
     _ensure_rules(db)
-    dynasty = set_session_dynasty(
-        db, getattr(args, "dynasty", None) or db.get_meta("dynasty_mode") or DEFAULT_DYNASTY
-    )
+    from cfb_coach.dynasty import resolve_dynasty
+
+    # v1.15.1: play the dynasty the latest prep for this opponent used (explicit --dynasty
+    # overrides; configured default only when there is no prep). Everything below — book,
+    # Active 8 macros, live window, book apply button, retrain — uses this one value.
+    dyn_resolved, dyn_src = resolve_dynasty(db, oid, getattr(args, "dynasty", None))
+    dynasty = set_session_dynasty(db, dyn_resolved)
     dcfg = dynasty_config(dynasty)
     from cfb_coach.opponents import is_cpu_opponent
     from cfb_coach.copilot import default_overlay_path, write_overlay_html
@@ -393,7 +402,8 @@ def cmd_play(args: argparse.Namespace) -> int:
     cpu_only = is_cpu_opponent(oid)
     print(f"LIVE PLAY — vs {oid}  (db: {db.path})")
     exp = " [experimental]" if dcfg.get("experimental_badge") else ""
-    print(f"Dynasty: {dcfg['label']} ({dcfg['mode']}){exp}")
+    print(f"Dynasty: {dcfg['label']} ({dcfg['mode']}){exp} — {dyn_src}")
+    print(_book_status_line(db, dynasty))
     print(doctrine_line())
     if cpu_only:
         print("CPU opponent — OFFENSE-ONLY coaching (no defense calls / no D macros).")
@@ -426,7 +436,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         sit = parse_situation(args.once, default_side=default_side)
         heard = format_heard(sit)
         print(heard)
-        call = make_call(sit, oid, db)
+        call = make_call(sit, oid, db, dynasty=dynasty)
         formatted = call.format()
         print(formatted)
         if args.why:
@@ -449,7 +459,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         from cfb_coach.live_server import LivePlayController, run_live_server
 
         def _make(sit, **kwargs):
-            return make_call(sit, oid, db, **kwargs)
+            return make_call(sit, oid, db, dynasty=dynasty, **kwargs)
 
         def _learn():
             from cfb_coach.gameplan import postgame_summary
@@ -465,12 +475,13 @@ def cmd_play(args: argparse.Namespace) -> int:
             brand="CFB Coach",
             play_cmd="cfb-coach play",
             dynasty=dynasty,
+            dynasty_label=f"{dcfg['label']} ({dcfg['mode']})",
+            dynasty_source=dyn_src,
             cpu_only=cpu_only,
             book_info=lambda: _book_live_info(db, dynasty),
             book_apply=lambda rev: _book_live_apply(db, dynasty, rev),
         )
         print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
-        print(_book_status_line(db, dynasty))
         try:
             return run_live_server(
                 ctrl,
@@ -493,7 +504,6 @@ def cmd_play(args: argparse.Namespace) -> int:
         print(f"Overlay ON → {overlay_path}  (auto-opens browser; --no-overlay to disable)")
     else:
         print("Overlay OFF (--no-overlay)")
-    print(_book_status_line(db, dynasty))
     print("-" * 60)
 
     default_side = "offense"
@@ -615,6 +625,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                 sit,
                 oid,
                 db,
+                dynasty=dynasty,
                 last_coverage=last_coverage if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )

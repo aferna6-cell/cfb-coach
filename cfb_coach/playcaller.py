@@ -509,14 +509,14 @@ def _validate_play(form: str, play: str, pb: dict) -> tuple[str, str]:
     return form, core[0]
 
 
-def _load_book(db: CoachDB | None) -> dict[str, Any] | None:
+def _load_book(db: CoachDB | None, dynasty: str | None = None) -> dict[str, Any] | None:
     """v1.13: the CFB custom playbook of record live calls are locked to (None = legacy)."""
     if db is None:
         return None
     try:
         from cfb_coach.cfb_playbook import callable_book
 
-        book = callable_book(db)
+        book = callable_book(db, dynasty)
     except Exception:  # noqa: BLE001 — never break play calling
         return None
     if not book or not book.get("formations"):
@@ -602,8 +602,9 @@ def _pick_offense(
     seed: dict,
     db: CoachDB | None,
     rng: random.Random,
+    dynasty: str | None = None,
 ) -> Call:
-    call = _pick_offense_inner(sit, opp, seed, db, rng)
+    call = _pick_offense_inner(sit, opp, seed, db, rng, dynasty=dynasty)
     return call
 
 
@@ -613,9 +614,10 @@ def _pick_offense_inner(
     seed: dict,
     db: CoachDB | None,
     rng: random.Random,
+    dynasty: str | None = None,
 ) -> Call:
     pb = seed["playbooks"]["offense_formations"]
-    book = _load_book(db)
+    book = _load_book(db, dynasty)
     menu, adj, rationale = _base_offense_menu(sit, opp, rng)
     bonus = None
     if book:
@@ -697,18 +699,20 @@ def _pick_offense_inner(
     if book:
         form, play, rationale = _lock_to_book(form, play, rationale, rows, book)
     call = Call("offense", form, play, adj, _reads_for(play), rationale)
-    _attach_offense_macro(call, sit, opp, db)
+    _attach_offense_macro(call, sit, opp, db, dynasty=(book or {}).get("dynasty") or dynasty)
     return call
 
 
-def _attach_offense_macro(call: Call, sit: Situation, opp: dict[str, Any], db: CoachDB | None) -> None:
+def _attach_offense_macro(
+    call: Call, sit: Situation, opp: dict[str, Any], db: CoachDB | None, *, dynasty: str | None = None
+) -> None:
     """v1.15: when an Active-8 offense custom adjustment fits this snap (zone, the live or
     repeated coverage look, and the chosen play), put it on the call. Never breaks calling."""
     try:
         from cfb_coach.macros import active_offense_macros, suggest_offense_macro
 
         oid = _opp_id(opp)
-        active = active_offense_macros(db, oid)
+        active = active_offense_macros(db, oid, dynasty)
         if not active:
             return
         cov = sit.coverage_hint
@@ -1068,6 +1072,7 @@ def make_call(
     last_concept: str | None = None,
     live_engine: Any | None = None,
     live_tendencies: list | None = None,
+    dynasty: str | None = None,
 ) -> Call:
     """
     Build one call. Optional last_coverage / last_concept are PREVIOUS-snap
@@ -1150,17 +1155,17 @@ def make_call(
         # CPU games = offense-only coaching — never emit D calls / D macros
         if sit.side == "defense":
             sit.side = "offense"
-            call = _pick_offense(sit, opp, seed, db, rng)
+            call = _pick_offense(sit, opp, seed, db, rng, dynasty=dynasty)
             call.rationale = (
                 "CPU = offense-only (no D calls) — switched to O | "
                 + (call.rationale or "")
             )
             return _with_live(call)
-        return _with_live(_pick_offense(sit, opp, seed, db, rng))
+        return _with_live(_pick_offense(sit, opp, seed, db, rng, dynasty=dynasty))
 
     if sit.side == "defense":
         return _with_live(_pick_defense(sit, opp, seed, db, rng))
-    return _with_live(_pick_offense(sit, opp, seed, db, rng))
+    return _with_live(_pick_offense(sit, opp, seed, db, rng, dynasty=dynasty))
 
 
 def one_shot(

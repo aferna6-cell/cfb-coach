@@ -442,7 +442,7 @@ def callable_book(db: Any, dynasty: str | None = None) -> dict[str, Any] | None:
     if not rec:
         return None
     bk = rec["book"]
-    return {"dynasty": dyn, "rev": rec["rev"], "formations": form_plays(bk.get("formations")),
+    return {"dynasty": dyn, "name": bk.get("name") or "", "rev": rec["rev"], "formations": form_plays(bk.get("formations")),
             "sources": form_sources(bk.get("formations")), "confirmed": bool(cur),
             "pending_rev": pend["rev"] if pend else None, "pending_edits": len(pend["edits"]) if pend else 0,
             "flags": bk.get("flags") or {}, "formation_flags": bk.get("formation_flags") or {},
@@ -451,12 +451,17 @@ def callable_book(db: Any, dynasty: str | None = None) -> dict[str, Any] | None:
 
 def live_book_info(db: Any, dynasty: str | None = None) -> dict[str, Any]:
     """Compact status for the live window / terminal play mode."""
+    from cfb_coach.dynasty import DEFAULT_DYNASTY, normalize_dynasty
+
     b = callable_book(db, dynasty)
     if not b:
-        return {"callable_rev": None, "confirmed": False, "pending_rev": None, "pending_edits": 0, "formations": {}}
+        dyn = normalize_dynasty(dynasty or (db.get_meta("dynasty_mode") if db is not None else None) or DEFAULT_DYNASTY)
+        return {"dynasty": dyn, "name": "", "callable_rev": None, "confirmed": False, "pending_rev": None,
+                "pending_edits": 0, "formations": {}}
     pend = pending_rev(db, b["dynasty"])
     return {
         "dynasty": b["dynasty"],
+        "name": b.get("name") or "",
         "callable_rev": b["rev"],
         "confirmed": b["confirmed"],
         "pending_rev": b.get("pending_rev"),
@@ -471,9 +476,10 @@ def live_book_info(db: Any, dynasty: str | None = None) -> dict[str, Any]:
 def live_status_line(db: Any, dynasty: str | None = None) -> str:
     i = live_book_info(db, dynasty)
     if not i.get("callable_rev"):
-        return "Playbook: no custom book yet (run prep) — calls use the default menus."
+        return f"Playbook ({i.get('dynasty')}): no custom book yet (run prep) — calls use the default menus."
     n = sum(len(v) for v in i["formations"].values())
-    line = f"Playbook: locked to rev {i['callable_rev']} ({len(i['formations'])} formations, {n} plays)"
+    line = (f"Playbook ({i['dynasty']}): {i.get('name') or 'custom book'} — locked to rev {i['callable_rev']} "
+            f"({len(i['formations'])} formations, {n} plays: {', '.join(i['formations'])})")
     if not i["confirmed"]:
         line += " — UNCONFIRMED first build: build it in CFB 27, then type `book apply`"
     elif i.get("pending_rev"):

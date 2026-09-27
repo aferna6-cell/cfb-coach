@@ -785,9 +785,19 @@ def build_prep_plan(
         tp = (plan.get("cfb_book") or {}).get("target_plays") or None
         plan["macro_cards"] = [c if c.get("ingame") else attach_offense_detail(c, tp) for c in plan["macro_cards"]]
         if db is not None and persist:  # the live caller only suggests macros from this Active list
-            store_active_offense_macros(db, opponent_id, [c["id"] for c in plan["macro_cards"] if (c.get("side") or "") == "offense"])
+            store_active_offense_macros(db, opponent_id, [c["id"] for c in plan["macro_cards"] if (c.get("side") or "") == "offense"],
+                                        dynasty=dynasty)
     except Exception:  # noqa: BLE001 — never break prep
         pass
+    if db is not None and persist:  # `play` with no --dynasty plays the dynasty this prep used
+        try:
+            from cfb_coach.dynasty import record_prep_dynasty
+
+            bk = plan.get("cfb_book") or {}
+            rec = bk.get("pending") or bk.get("current") or {}
+            record_prep_dynasty(db, opponent_id, dynasty, book=str(bk.get("name") or ""), rev=rec.get("rev"))
+        except Exception:  # noqa: BLE001 — never break prep
+            pass
     if db is not None and persist:
         save_prep_deltas(db, opponent_id, proposed, shown)
     return plan

@@ -526,7 +526,7 @@ class TestPrepPage(_DBCase):
         self.assertIn("## Audibles", txt)
         self.assertIn("## Macros — Active", txt)
         self.assertIn("MACRO: RZ (offense)", txt)
-        self.assertIn("WR1: Fade (LS Up)", txt)
+        self.assertIn("  [ ] WR1: fade", txt)  # Aidan's RZ route, verbatim
         self.assertNotIn("RESULTING BOOK", txt)
         full = format_delta_text(plan)
         self.assertIn("RESULTING BOOK", full)
