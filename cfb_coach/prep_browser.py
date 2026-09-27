@@ -221,8 +221,13 @@ def _render_macro_accordion(
     offense_only: bool = False,
     replacing_lines: list[str] | None = None,
     loadout: dict[str, Any] | None = None,
+    details: bool = False,
 ) -> str:
-    """Render ONLY active loadout cards (≤8). Never benched (FLOOD/SCREEN) catalog."""
+    """Render ONLY active loadout cards (≤8). Never benched (FLOOD/SCREEN) catalog.
+
+    v1.15: offense cards carrying ``ingame`` expand to the exact CFB 27 Custom
+    Adjustment rows (in-game order), the book plays they pair with, and when to fire.
+    ``details=True`` (details page) adds the confirmed/assumed marks + citations."""
     # Safety: drop any non-active / benched cards if a caller passed full catalog
     cards = [c for c in cards if (c.get("slot") or "active") == "active"]
     # Never show FLOOD/SCREEN in main prep view
@@ -285,6 +290,9 @@ def _render_macro_accordion(
         step_lis = "".join(f"<li>{_esc(s)}</li>" for s in steps)
         cid = "copy-" + "".join(ch if ch.isalnum() else "-" for ch in mid)
         open_attr = " open" if mid.upper() == "CROSS" else ""
+        if c.get("ingame"):
+            items.append(_render_ingame_card(c, cid, details=details))
+            continue
         items.append(
             f"""
             <details class="macro-card slot-{_esc(slot)}"{open_attr}>
@@ -326,6 +334,76 @@ def _render_macro_accordion(
       {"".join(items)}
     </div>
     """
+
+
+def _render_ingame_card(c: dict[str, Any], cid: str, *, details: bool = False) -> str:
+    """One offense macro row: collapsed summary; expands to the exact in-game settings."""
+    det = c.get("ingame") or {}
+    mid = str(c.get("id") or "")
+    name = det.get("xbox_name") or c.get("name") or mid
+    rows_html: list[str] = []
+    cur = None
+    notes_by_sec = {s.get("name"): s for s in det.get("sections") or []}
+    for r in det.get("settings") or []:
+        if r["section"] != cur:
+            cur = r["section"]
+            sec = notes_by_sec.get(cur) or {}
+            label = cur + (" <span class='muted'>(per depth-chart slot)</span>" if cur == "Hot Routes" else "")
+            extra = ""
+            if details and sec.get("note"):
+                extra = f"<div class='ca-secnote'>row labels: {_esc(sec.get('wording'))} — {_esc(sec['note'])}</div>"
+            rows_html.append(f"<tr class='ca-sec'><td colspan='{4 if details else 2}'>{label}{extra}</td></tr>")
+        dflt = r.get("status") == "default" or str(r.get("value", "")).startswith("Default")
+        tag = note = ""
+        if details:
+            st = r.get("status") or "default"
+            tag = f"<td><span class='set-tag {'approx' if st == 'assumed' else 'confirmed'}'>{_esc(st)}</span></td>"
+            cites = ", ".join(r.get("cite") or [])
+            note = f"<td class='muted'>{_esc(r.get('note') or '')}{(' [' + _esc(cites) + ']') if cites else ''}</td>"
+        rows_html.append(
+            f"<tr class='ca-row{' dflt' if dflt else ''}'><td class='ca-k'>{_esc(r['setting'])}</td>"
+            f"<td class='ca-v'>{_esc(r['value'])}</td>{tag}{note}</tr>"
+        )
+    pairs = det.get("pairs_with") or []
+    pairs_html = "".join(f"<span class='pchip'>{_esc(p)}</span>" for p in pairs) or "<span class='muted'>none of its plays are in your book</span>"
+    src_html = ""
+    if details:
+        srcs = "".join(
+            f"<li><b>{_esc(s.get('id'))}</b>: {_esc(s.get('title'))}"
+            + (f" — <a href='{_esc(s.get('url'))}'>{_esc(s.get('url'))}</a>" if s.get("url") else "")
+            + f"<div class='muted'>{_esc(s.get('supports'))}</div></li>"
+            for s in det.get("sources") or []
+        )
+        n_ass = len(det.get("assumed") or [])
+        src_html = (f"<div class='ca-assume'>{n_ass} value(s) assumed on this macro (marked above); "
+                    f"{_esc(det.get('limits') or '')}</div><h4>Sources</h4><ul class='ca-src'>{srcs}</ul>")
+    status = c.get("validated_status") or "unvalidated"
+    return f"""
+            <details class="macro-card slot-active" data-macro="{_esc(mid)}">
+              <summary>
+                <span class="mname">{_esc(name)}</span>
+                <span class="mside">{_esc(c.get("side") or "offense")}</span>
+                {_val_badge(str(status)) if details else ""}
+                <span class="mkey">{_esc(det.get("key") or "")}</span>
+              </summary>
+              <div class="macro-body">
+                <p class="purpose">{_esc(c.get("purpose") or "")}</p>
+                <div class="mfire"><b>Fire it when:</b> {_esc(det.get("fire_when") or "")}</div>
+                <div class="mpairs"><b>Pairs with (your book):</b> {pairs_html}</div>
+                <h4>In-game settings — {_esc(" › ".join(det.get("editor_path") or []))}</h4>
+                <table class="ca-set">{"".join(rows_html)}</table>
+                <div class="muted ca-ingame">{_esc(det.get("in_game") or "")}</div>
+                {src_html}
+                <div class="copy-wrap">
+                  <div class="copy-head">
+                    <h4>Copy block (tick-by-tick checklist)</h4>
+                    <button type="button" class="copy-btn" data-target="{cid}">Copy</button>
+                  </div>
+                  <pre id="{cid}" class="copy-block">{_esc(c.get("copy_block") or "")}</pre>
+                </div>
+              </div>
+            </details>
+            """
 
 
 def _render_inventory(inv: dict[str, Any]) -> str:
@@ -550,6 +628,23 @@ _CSS = """
     background: rgba(0,0,0,0.3); color: var(--muted);
   }
   .macro-body { padding: 0 14px 14px; border-top: 1px solid var(--border); }
+  .mkey { color: var(--muted); font-size: 0.78rem; margin-left: 10px; font-weight: 400; }
+  .mfire, .mpairs { margin: 8px 0; font-size: 0.9rem; }
+  .mfire b, .mpairs b { color: var(--accent); }
+  .pchip { display: inline-block; margin: 2px 6px 2px 0; padding: 2px 8px; border-radius: 999px;
+    background: rgba(91,159,212,0.14); border: 1px solid var(--border); font-size: 0.8rem; }
+  table.ca-set { width: 100%; border-collapse: collapse; font-size: 0.86rem; margin-top: 4px; }
+  table.ca-set td { padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,0.05); vertical-align: top; }
+  tr.ca-sec td { color: var(--accent); font-weight: 700; padding-top: 10px; font-size: 0.8rem;
+    letter-spacing: 0.04em; text-transform: uppercase; }
+  td.ca-k { width: 34%; color: var(--muted); }
+  td.ca-v { font-weight: 600; }
+  tr.ca-row.dflt td.ca-v { color: var(--muted); font-weight: 400; }
+  .ca-secnote { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); font-size: 0.76rem; margin-top: 2px; }
+  .ca-ingame { margin-top: 6px; }
+  .ca-assume { margin-top: 10px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--warn);
+    background: rgba(166,124,42,0.12); font-size: 0.84rem; }
+  ul.ca-src { font-size: 0.8rem; padding-left: 1.1rem; }
   .macro-body h4 { margin: 14px 0 6px; font-size: 0.88rem; color: var(--accent); }
   .purpose { margin: 10px 0 4px; }
   .when { font-size: 0.88rem; color: var(--muted); }
@@ -929,6 +1024,7 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
           offense_only=bool(plan.get("offense_only")),
           replacing_lines=list(plan.get("replacing_lines") or []),
           loadout=plan.get("loadout") or dict(),
+          details=True,
       )}
     </section>
 

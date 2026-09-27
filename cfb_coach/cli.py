@@ -567,7 +567,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                     our_call=last_call.format().split("\n")[0],
                     formation=last_call.formation,
                     play=last_call.play,
-                    macro=last_call.adj_or_macro if last_call.side == "defense" else None,
+                    macro=last_call.adj_or_macro if last_call.side == "defense" else getattr(last_call, "macro", None),
                     down=last_sit.down,
                     distance=last_sit.distance,
                     yardline=last_sit.yardline,

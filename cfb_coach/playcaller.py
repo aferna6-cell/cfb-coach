@@ -35,6 +35,25 @@ class Call:
     read_or_user: str  # offense reads / defense user job
     rationale: str = ""
     suggest_macro: str | None = None  # optional SUGGEST for new macros
+    # v1.15 (offense): Active-8 custom adjustment to fire with this play (catalog id)
+    macro: str | None = None
+    macro_info: dict[str, Any] | None = None
+
+    def macro_line(self) -> str:
+        """'MACRO: MAN — LB → MAN | WR1 Deep Over · … (why)' or ''."""
+        mi = self.macro_info or {}
+        if self.side != "offense" or not self.macro:
+            return ""
+        name = mi.get("name") or self.macro
+        return (f"MACRO: {name} — LB → {name} | {mi.get('key') or ''}"
+                + (f"  · why: {mi['why']}" if mi.get("why") else ""))
+
+    def headline(self) -> str:
+        """'PLAY: Mesh Spot (Gun Bunch X Nasty) + MACRO: MAN'."""
+        head = f"PLAY: {self.play} ({self.formation})"
+        if self.side == "offense" and self.macro:
+            head += f" + MACRO: {(self.macro_info or {}).get('name') or self.macro}"
+        return head
 
     def format(self) -> str:
         from cfb_coach.format_call import format_defense, format_offense
@@ -60,6 +79,8 @@ class Call:
                 head = tagged
             sug = head + ((" — " + parts[1]) if len(parts) > 1 else "")
             line += f"\n  SUGGEST macro: {sug}"
+        if self.macro_line():
+            line += f"\n  {self.macro_line()}"
         return line
 
 
@@ -675,7 +696,37 @@ def _pick_offense_inner(
 
     if book:
         form, play, rationale = _lock_to_book(form, play, rationale, rows, book)
-    return Call("offense", form, play, adj, _reads_for(play), rationale)
+    call = Call("offense", form, play, adj, _reads_for(play), rationale)
+    _attach_offense_macro(call, sit, opp, db)
+    return call
+
+
+def _attach_offense_macro(call: Call, sit: Situation, opp: dict[str, Any], db: CoachDB | None) -> None:
+    """v1.15: when an Active-8 offense custom adjustment fits this snap (zone, the live or
+    repeated coverage look, and the chosen play), put it on the call. Never breaks calling."""
+    try:
+        from cfb_coach.macros import active_offense_macros, suggest_offense_macro
+
+        oid = _opp_id(opp)
+        active = active_offense_macros(db, oid)
+        if not active:
+            return
+        cov = sit.coverage_hint
+        src = getattr(sit, "coverage_source", "none") or "none"
+        repeated = bool(cov) and src != "live" and is_repeated_coverage(db, oid, cov, sit, threshold=2)
+        weights: dict[str, float] = {}
+        if db is not None:
+            for r in db.get_macro_weights(oid):
+                weights[str(r["macro"])] = float(r["weight"] or 0.0)
+        sug = suggest_offense_macro(
+            zone=_situation_zone(sit), play=call.play, formation=call.formation, coverage=cov,
+            coverage_source=src, active=active, down=sit.down, repeated=repeated, weights=weights,
+        )
+        if sug:
+            call.macro, call.macro_info = sug["id"], sug
+            call.rationale = f"{call.rationale} | macro {sug['name']}: {sug['why']}"
+    except Exception:  # noqa: BLE001
+        return
 
 
 def _lock_to_book(

@@ -778,6 +778,16 @@ def build_prep_plan(
                                            offense_count=lo["total"], defense_count=0, at_cap=lo["total"] >= USER_ACTIVE_CAP)
         except Exception:  # noqa: BLE001 — never break prep
             pass
+    # v1.15: offense macro drill-down (exact in-game settings + book pairs + fire trigger)
+    try:
+        from cfb_coach.macros import attach_offense_detail, store_active_offense_macros
+
+        tp = (plan.get("cfb_book") or {}).get("target_plays") or None
+        plan["macro_cards"] = [c if c.get("ingame") else attach_offense_detail(c, tp) for c in plan["macro_cards"]]
+        if db is not None and persist:  # the live caller only suggests macros from this Active list
+            store_active_offense_macros(db, opponent_id, [c["id"] for c in plan["macro_cards"] if (c.get("side") or "") == "offense"])
+    except Exception:  # noqa: BLE001 — never break prep
+        pass
     if db is not None and persist:
         save_prep_deltas(db, opponent_id, proposed, shown)
     return plan

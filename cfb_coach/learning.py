@@ -667,7 +667,9 @@ def compute_all(conn: sqlite3.Connection) -> dict[str, Any]:
     def _macro_weights(es: list[SnapEval], scale: float) -> dict[str, float]:
         acc: dict[str, _Acc] = defaultdict(_Acc)
         for e in es:
-            if e.side != "defense":
+            # D snaps: the armed macro. O snaps (v1.15): the Active-8 custom adjustment the
+            # live caller suggested with the play — same capped squash as every macro weight.
+            if e.side not in ("defense", "offense"):
                 continue
             m = (macro_rows.get(e.snap_id) or "").split(" [", 1)[0].strip().upper()
             if not m or m in ("NONE", "NULL"):

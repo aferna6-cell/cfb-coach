@@ -601,7 +601,7 @@ def offense_book_loadout(
     scored.sort(key=lambda t: (-t[0], t[1]))
     cards = []
     for score, _i, mid, meta, why, hits in scored[:cap]:
-        cards.append({
+        cards.append(attach_offense_detail({
             "id": mid,
             "name": meta.get("name") or mid,
             "side": "offense",
@@ -615,9 +615,310 @@ def offense_book_loadout(
             "why": why,
             "book_plays": hits,
             "score": score,
-        })
+        }, book_plays))
     names = [c["id"] for c in cards]
     loadout = {"defense": [], "offense": names, "replacing": [], "offense_only": True,
                "note": "N/A — offense only", "total": len(names), "cap": USER_ACTIVE_CAP,
                "meter": f"Active {len(names)}/{USER_ACTIVE_CAP} (O-only)", "source": "custom playbook + research"}
     return cards, loadout
+
+
+# ---------------------------------------------------------------------------
+# v1.15: exact CFB 27 offense Custom Adjustment settings (drill-down) + live
+# macro suggestion (only from the Active 8, only when it adds value)
+# ---------------------------------------------------------------------------
+
+_OSET_CACHE: dict[str, Any] | None = None
+
+
+def load_offense_settings() -> dict[str, Any]:
+    """``data/cfb27_offense_macros.json``: ordered in-game rows per offense macro,
+    their status (confirmed / assumed / default), citations and live fire rules."""
+    global _OSET_CACHE
+    if _OSET_CACHE is None:
+        import json
+
+        p = Path(__file__).resolve().parent / "data" / "cfb27_offense_macros.json"
+        try:
+            _OSET_CACHE = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _OSET_CACHE = {"macros": {}, "sections": [], "sources": []}
+    return _OSET_CACHE
+
+
+def _short_value(v: str) -> str:
+    import re
+
+    v = re.sub(r"\s*\((?:LS|RS|D-pad|LB|LT|RT|RB)[^)]*\)", "", str(v or ""))
+    return v.split(" — ")[0].strip()
+
+
+def macro_key_settings(mid: str) -> str:
+    """One-line summary of the non-default rows (what the live window shows)."""
+    m = (load_offense_settings().get("macros") or {}).get(mid) or {}
+    bits = []
+    for r in m.get("settings") or []:
+        if r.get("status") == "default" or str(r.get("value", "")).startswith("Default"):
+            continue
+        label = {"ID the Mike": "Mike ID", "OL Technique": "OL", "Chip Block — TE": "TE chip", "Chip Block — HB": "HB chip"}.get(r["setting"], r["setting"])
+        bits.append(f"{label} {_short_value(r['value'])}")
+    if not bits and m.get("settings"):
+        bits.append("stock routes; blocking cleanup only")
+    return " · ".join(bits)
+
+
+def _book_pairs(mid: str, book_plays: dict[str, list[str]] | None, *, cap: int = 6) -> list[str]:
+    """'Play (Formation)' for plays in his book the macro is built for."""
+    import re
+
+    m = (load_offense_settings().get("macros") or {}).get(mid) or {}
+    names = list(m.get("pairs_with") or [])
+    if not book_plays:
+        return names[:cap]
+
+    def nk(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for want in names:  # named pairs first, in doctrine order
+        for f, ps in book_plays.items():
+            for p in ps:
+                if nk(p) == nk(want) and nk(p) not in seen:
+                    out.append(f"{p} ({f})")
+                    seen.add(nk(p))
+    rx = m.get("play_re")
+    if rx and len(out) < cap:
+        for f, ps in book_plays.items():
+            for p in ps:
+                if nk(p) in seen or not re.search(rx, p, re.I) or not _play_kind_ok(m.get("fire") or {}, p):
+                    continue
+                out.append(f"{p} ({f})")
+                seen.add(nk(p))
+    return out[:cap]
+
+
+def offense_macro_detail(mid: str, book_plays: dict[str, list[str]] | None = None) -> dict[str, Any] | None:
+    """Everything the prep drill-down shows for one offense macro, or None if not an
+    offense macro with in-game settings on file."""
+    data = load_offense_settings()
+    m = (data.get("macros") or {}).get(mid)
+    if not m:
+        return None
+    rows = list(m.get("settings") or [])
+    cited = {c for r in rows for c in (r.get("cite") or [])}
+    for s in data.get("sections") or []:
+        cited.update(s.get("cite") or [])
+    meta = get_macro(mid) or {}
+    return {
+        "id": mid,
+        "xbox_name": meta.get("xbox_name") or meta.get("name") or mid,
+        "editor_path": list(data.get("editor_path") or []),
+        "in_game": data.get("in_game") or "",
+        "sections": list(data.get("sections") or []),
+        "settings": rows,
+        "fire_when": m.get("fire_when") or "",
+        "pairs_with": _book_pairs(mid, book_plays),
+        "key": macro_key_settings(mid),
+        "assumed": [r for r in rows if r.get("status") == "assumed"],
+        "sources": [s for s in data.get("sources") or [] if s.get("id") in cited],
+        "limits": data.get("limits") or "",
+    }
+
+
+def offense_copy_block(detail: dict[str, Any]) -> str:
+    """Tick-by-tick checklist in the in-game order (every row, defaults included)."""
+    name = detail.get("xbox_name") or detail.get("id")
+    lines = [f"MACRO: {name} (offense)", "Path: " + " > ".join(detail.get("editor_path") or []), f"[ ] Name: {name}"]
+    cur = None
+    for r in detail.get("settings") or []:
+        if r["section"] != cur:
+            cur = r["section"]
+            lines.append(cur + (" (per depth-chart slot)" if cur == "Hot Routes" else ""))
+        lines.append(f"  [ ] {r['setting']}: {r['value']}")
+    lines.append("[ ] Save -> set Active (Aidan cap 8)")
+    lines.append(f"In game: LB -> {name}")
+    if detail.get("fire_when"):
+        lines.append(f"Fire when: {detail['fire_when']}")
+    if detail.get("pairs_with"):
+        lines.append("Pairs with: " + ", ".join(detail["pairs_with"]))
+    return "\n".join(lines)
+
+
+def attach_offense_detail(card: dict[str, Any], book_plays: dict[str, list[str]] | None = None) -> dict[str, Any]:
+    """Add ``ingame`` (drill-down) to an offense macro card and regenerate its copy block."""
+    if (card.get("side") or "") != "offense":
+        return card
+    det = offense_macro_detail(str(card.get("id") or ""), book_plays)
+    if det:
+        card["ingame"] = det
+        card["copy_block"] = offense_copy_block(det)
+        card["book_plays"] = det["pairs_with"] if book_plays else card.get("book_plays") or []
+    return card
+
+
+# --- live suggestion ----------------------------------------------------------
+
+def classify_coverage(cov: str | None) -> set[str]:
+    c = (cov or "").lower()
+    out: set[str] = set()
+    if not c:
+        return out
+    if "cover 0" in c or "zero" in c:
+        out.add("c0")
+    if "pressure" in c or "blitz" in c:
+        out.add("pressure")
+    if "cover 1" in c or "man" in c:
+        out.add("man")
+    if "cover 2" in c or "invert" in c or "tampa" in c:
+        out.update({"c2", "two_high"})
+    if "cover 3" in c or "sky" in c or "buzz" in c:
+        out.add("c3")
+    if any(x in c for x in ("cover 4", "quarters", "palms", "cover 6", "cover 9", "match")):
+        out.update({"match", "two_high"})
+    if "two-high" in c or "two high" in c or "split" in c:
+        out.add("two_high")
+    return out
+
+
+def _play_kind_ok(fire: dict[str, Any], play: str) -> bool:
+    import re
+
+    from cfb_coach.cfb_catalog import is_run
+
+    rpo = bool(re.search(r"rpo", play or "", re.I))
+    if fire.get("rpo"):
+        return rpo
+    if fire.get("run"):
+        return is_run(play) and not rpo
+    if fire.get("pass"):
+        return not is_run(play) and not rpo
+    return True
+
+
+# Priority when several macros fit the same snap (most specific answer first)
+LIVE_MACRO_PRIORITY = ["ZERO", "O-HEAT", "PROT", "MAN", "C2", "C3", "MATCH", "O-RPO", "O-RUN", "RZ", "SHOT"]
+LEARNED_SUPPRESS = -0.15  # capped macro weight at/below this for this opponent → stop suggesting it
+
+
+def suggest_offense_macro(
+    *,
+    zone: str,
+    play: str,
+    formation: str = "",
+    coverage: str | None = None,
+    coverage_source: str = "none",
+    active: list[str] | None = None,
+    down: int | None = None,
+    repeated: bool = False,
+    weights: dict[str, float] | None = None,
+) -> dict[str, Any] | None:
+    """Pick at most one offense macro for this snap, or None.
+
+    Only macros in ``active`` (the current Active 8) are ever returned. Coverage macros
+    need a live pre-snap look (or a look repeated in this situation) — a last-snap
+    coverage alone never fires one. RZ is situational (inside the 20 / goal-to-go on a
+    paired pass). Plays must fit the macro (pass macros on passes, RUN on runs, RPO on
+    RPOs, and the play must be one the macro is built for)."""
+    import re
+
+    act = [a for a in (active or []) if a]
+    if not act or not play:
+        return None
+    data = load_offense_settings().get("macros") or {}
+    cls = classify_coverage(coverage)
+    cov_ok = bool(cls) and (coverage_source == "live" or repeated)
+    have_heat = any(a in act for a in ("O-HEAT", "PROT"))
+    for mid in LIVE_MACRO_PRIORITY:
+        if mid not in act or mid not in data:
+            continue
+        m = data[mid]
+        fire = m.get("fire") or {}
+        if zone not in (fire.get("zones") or ["open", "rz", "gl"]):
+            continue
+        if not _play_kind_ok(fire, play):
+            continue
+        named = any(re.sub(r"[^a-z0-9]", "", p.lower()) == re.sub(r"[^a-z0-9]", "", play.lower()) for p in m.get("pairs_with") or [])
+        if not named and not (m.get("play_re") and re.search(m["play_re"], play, re.I)):
+            continue
+        if fire.get("downs") and down not in fire["downs"]:
+            continue
+        want = set(fire.get("coverages") or [])
+        if want:
+            hit = cov_ok and bool(cls & want)
+            if not hit and fire.get("fallback_pressure") and not have_heat:
+                hit = cov_ok and "pressure" in cls
+            if not hit:
+                continue
+        if any(a.get("coverage") in cls and re.search(a.get("play_re") or "$^", play, re.I) for a in fire.get("avoid") or []):
+            continue
+        w = (weights or {}).get(mid)
+        if w is not None and w <= LEARNED_SUPPRESS:
+            continue
+        meta = get_macro(mid) or {}
+        trig = f"{coverage_source} {coverage} look" if want else f"{'goal-to-go' if zone == 'gl' else 'red zone'} pass"
+        return {
+            "id": mid,
+            "name": meta.get("xbox_name") or meta.get("name") or mid,
+            "why": f"{trig} on {play} ({(meta.get('purpose') or m.get('fire_when', '').split('.')[0]).replace(' — ', ': ')})",
+            "key": macro_key_settings(mid),
+            "settings": [r for r in m.get("settings") or [] if r.get("status") != "default"
+                         and not str(r.get("value", "")).startswith("Default")] or list(m.get("settings") or []),
+            "fire_when": m.get("fire_when") or "",
+            "learned_weight": w,
+        }
+    return None
+
+
+def active_offense_macros(db: Any, opponent_id: str) -> list[str]:
+    """The current offense Active 8 for live calls: what the last prep showed (stored
+    in meta), else the CPU loadout from the playbook of record, else the dynasty's
+    offensive Active list. Never anything outside that list."""
+    import json
+
+    if db is None:
+        return []
+    try:
+        raw = db.get_meta(f"active_macros_o:{opponent_id}")
+        if raw:
+            ids = [_offense_id(str(x)) for x in (json.loads(raw).get("offense") or [])]
+            return [i for i in ids if i][:USER_ACTIVE_CAP]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from cfb_coach.opponents import is_cpu_opponent
+
+        if is_cpu_opponent(opponent_id):
+            from cfb_coach.cfb_playbook import callable_book
+
+            book = callable_book(db) or {}
+            if book.get("formations"):
+                _cards, lo = offense_book_loadout(book["formations"])
+                return list(lo.get("offense") or [])[:USER_ACTIVE_CAP]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        lo = resolve_loadout_after_swaps(None)
+        return [i for i in (_offense_id(m) for m in (lo.get("offense") or [])) if i][:USER_ACTIVE_CAP]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _offense_id(x: str) -> str | None:
+    """Catalog id of an offense macro given its id or Xbox name ('RUN' -> 'O-RUN')."""
+    x = (x or "").strip().upper()
+    for cand in (x, f"O-{x}"):
+        meta = (load_macro_catalog().get("macros") or {}).get(cand)
+        if meta and (meta.get("side") or "") == "offense":
+            return cand
+    return None
+
+
+def store_active_offense_macros(db: Any, opponent_id: str, ids: list[str]) -> None:
+    import json
+    from datetime import datetime, timezone
+
+    if db is None:
+        return
+    db.set_meta(f"active_macros_o:{opponent_id}", json.dumps(
+        {"offense": list(ids)[:USER_ACTIVE_CAP], "ts": datetime.now(timezone.utc).isoformat()}))

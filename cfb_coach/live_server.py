@@ -120,6 +120,26 @@ class LivePlayController:
             "retrain_summary": self.retrain_summary,
             "log": [r.to_dict() for r in self.log],
             "book": self.book_state(),
+            "macro": self.macro_state(),
+        }
+
+    def macro_state(self) -> dict[str, Any] | None:
+        """v1.15: the Active-8 offense macro suggested with the pending call (or None)."""
+        call = self.last_call
+        if (call is None or self.ended or not getattr(call, "macro", None) or getattr(call, "side", "") != "offense"
+                or getattr(call, "macro_info", None) is None):  # CFB offense custom adjustments only
+            return None
+        mi = dict(getattr(call, "macro_info", None) or {})
+        head = call.headline() if hasattr(call, "headline") else f"PLAY: {call.play} ({call.formation}) + MACRO: {call.macro}"
+        return {
+            "id": call.macro,
+            "name": mi.get("name") or call.macro,
+            "headline": head,
+            "key": mi.get("key") or "",
+            "why": mi.get("why") or "",
+            "fire_when": mi.get("fire_when") or "",
+            "settings": [{"section": r.get("section"), "setting": r.get("setting"), "value": r.get("value")}
+                         for r in mi.get("settings") or []],
         }
 
     def _macro_of(self, call: Any) -> str | None:
@@ -403,6 +423,13 @@ def render_live_html(ctrl: LivePlayController) -> str:
     font-size: .8rem; color: var(--fg); background:#0d1117; border-radius: 6px;
     padding: .65rem; border: 1px solid var(--border); max-height: 320px; overflow-y: auto; }}
   .err {{ color: var(--danger); font-size: .85rem; min-height: 1.1rem; }}
+  #macro-box {{ border: 2px solid #d29922; background: #2a1f0a; border-radius: 8px; padding: .6rem .8rem; margin: -.35rem 0 .8rem; }}
+  #macro-box .mh {{ font-size: clamp(1.05rem, 2.4vw, 1.5rem); font-weight: 800; color: #f2cc60; }}
+  #macro-box .mk {{ font-family: ui-monospace, Consolas, monospace; font-size: .95rem; color: var(--fg); margin-top: .3rem; }}
+  #macro-box .mw {{ font-size: .8rem; color: var(--muted); margin-top: .25rem; }}
+  #macro-box table {{ font-size: .82rem; border-collapse: collapse; margin-top: .35rem; }}
+  #macro-box td {{ padding: .12rem .6rem .12rem 0; color: var(--fg); }}
+  #macro-box td.s {{ color: var(--muted); }}
   footer {{ margin-top: 1rem; font-size: .72rem; color: var(--muted); line-height: 1.4; }}
 </style>
 </head>
@@ -411,7 +438,8 @@ def render_live_html(ctrl: LivePlayController) -> str:
   <h1>Live Play <span class="badge" id="badge">{brand}</span> · keep sticks · type less</h1>
   <div class="heard" id="heard">vs {_esc(ctrl.opponent_id)}</div>
   <div class="call-label">PLAY</div>
-  <div class="call" id="call">waiting for first situation…</div>
+  <div class="call" id="call">{_esc(_call_main(ctrl))}</div>
+  {_macro_box_html(ctrl.macro_state())}
   <div class="err" id="err"></div>
 
   <section id="snap-panel">
@@ -508,7 +536,10 @@ function setErr(msg) {{ $("err").textContent = msg || ""; }}
 
 function renderState(st) {{
   if (!st) return;
-  $("call").textContent = st.call_text || "";
+  let callTxt = st.call_text || "";
+  if (st.macro) callTxt = callTxt.split("\\n").filter(l => !l.trim().startsWith("MACRO:")).join("\\n");  // shown in #macro-box
+  $("call").textContent = callTxt;
+  renderMacro(st.macro);
   $("heard").textContent = st.heard || ("vs " + (st.opponent_id || ""));
   const log = $("log");
   if (!st.log || !st.log.length) {{
@@ -539,6 +570,19 @@ function renderState(st) {{
     $("side-label").style.display = "";
   }}
 }}
+
+function renderMacro(m) {{
+  const box = $("macro-box");
+  if (!m) {{ box.hidden = true; return; }}
+  box.hidden = false;
+  $("macro-head").textContent = m.headline || ("+ MACRO: " + m.name);
+  $("macro-key").textContent = "LB → " + m.name + "  |  " + (m.key || "");
+  $("macro-why").textContent = m.why || "";
+  $("macro-rows").innerHTML = (m.settings || []).map(r =>
+    "<tr><td class='s'>" + esc(r.section) + "</td><td class='s'>" + esc(r.setting) + "</td><td>" + esc(r.value) + "</td></tr>").join("");
+}}
+
+function esc(s) {{ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }}
 
 function renderBook(b) {{
   if (!b) {{ $("book-panel").hidden = true; return; }}
@@ -652,6 +696,30 @@ fetch("/api/state").then(r => r.json()).then(st => renderState(st)).catch(() => 
 </body>
 </html>
 """
+
+
+def _call_main(ctrl: LivePlayController) -> str:
+    """Big call text; the MACRO line moves into the #macro-box banner when present."""
+    txt = ctrl.call_text or ""
+    if ctrl.macro_state():
+        txt = "\n".join(ln for ln in txt.split("\n") if not ln.strip().startswith("MACRO:"))
+    return txt
+
+
+def _macro_box_html(m: dict[str, Any] | None) -> str:
+    """Prominent PLAY + MACRO banner with the macro's key settings (expandable rows)."""
+    m = m or {}
+    rows = "".join(
+        f"<tr><td class='s'>{_esc(r.get('section'))}</td><td class='s'>{_esc(r.get('setting'))}</td><td>{_esc(r.get('value'))}</td></tr>"
+        for r in m.get("settings") or []
+    )
+    return f"""<div id="macro-box"{"" if m else " hidden"}>
+    <div class="mh" id="macro-head">{_esc(m.get("headline") or "")}</div>
+    <div class="mk" id="macro-key">{("LB → " + _esc(m.get("name")) + "  |  " + _esc(m.get("key"))) if m else ""}</div>
+    <div class="mw" id="macro-why">{_esc(m.get("why") or "")}</div>
+    <details id="macro-details"><summary class="mw">Macro settings (Custom Adjustments › Offense)</summary>
+      <table id="macro-rows">{rows}</table></details>
+  </div>"""
 
 
 def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
