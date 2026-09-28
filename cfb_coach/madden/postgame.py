@@ -49,8 +49,10 @@ def learn(db: Any, opponent_id: str) -> dict[str, Any]:
     status_changes: list[str] = []
     for m, res in macros.items():
         # Career record across all opponents in the Madden DB
+        # exact name (or its tagged form "NAME [status]") — a prefix match would mix MATCH with
+        # MATCH-4 or RUN with RUN-FIT now that the pool holds both games' macros (v1.17)
         rows = db.conn.execute(
-            "SELECT side, result FROM snaps WHERE UPPER(macro) LIKE ?", (f"{m}%",)
+            "SELECT side, result FROM snaps WHERE UPPER(macro) = ? OR UPPER(macro) LIKE ?", (m, f"{m} [%")
         ).fetchall()
         rec = [r for r in (_result_success(r["result"], r["side"]) for r in rows) if r is not None]
         if len(rec) >= PROMOTE_MIN_SNAPS:
@@ -131,7 +133,7 @@ def summary(db: Any, opponent_id: str, profile: str | None = None) -> str:
             if len(res) >= PROMOTE_MIN_SNAPS and sum(res) / len(res) >= PROMOTE_MIN_RATE:
                 promos.append({
                     "kind": "macro_loadout", "target": m, "status": "pending",
-                    "note": f"lab macro held {sum(res)}/{len(res)} — consider Active-8 on primary",
+                    "note": f"lab macro held {sum(res)}/{len(res)} — consider it for the primary 10 + 10",
                 })
         if promos:
             record_promotions(db, promos)

@@ -4,8 +4,9 @@ Every prep chooses a stock or custom playbook of record per side (see
 `cfb_coach.madden.playbook`). First custom / switch-to-custom emits a full
 formation checklist; successive custom preps show formation ADD/REMOVE only.
 Macro (Custom Adjustments) deltas stay ADD/EDIT/BENCH and meta_grounded;
-audible-slot swaps are tips, never install steps. Active-8 loadout + call tips
-ride along. Live `play` is hard-locked to the applied book.
+audible-slot swaps are tips, never install steps. The macro loadout (v1.17: 10 offense +
+10 defense per opponent, settings shared with CFB) + call tips ride along. Live `play` is
+hard-locked to the applied book.
 """
 
 from __future__ import annotations
@@ -29,7 +30,7 @@ from cfb_coach.madden.franchise import (
     normalize_profile,
     profile_config,
 )
-from cfb_coach.madden.macros import USER_ACTIVE_CAP, loadout_cards, macro_side, swap_plan
+from cfb_coach.madden.macros import PER_SIDE, macro_side
 from cfb_coach.opponents import is_cpu_opponent
 
 
@@ -158,31 +159,6 @@ def audible_tips(opp: dict[str, Any], book: dict[str, list[str]]) -> list[str]:
     return []
 
 
-def resolve_loadout(
-    active: list[str],
-    deltas: list[dict[str, Any]],
-    archetype: str | None,
-    *,
-    offense_only: bool,
-) -> tuple[list[str], list[dict[str, Any]], list[str]]:
-    """Apply macro ADDs (with swap at cap) → (active after, swap plans, replacing lines)."""
-    after = list(active)
-    swaps: list[dict[str, Any]] = []
-    replacing: list[str] = []
-    for d in deltas:
-        if d.get("kind") != "macro" or d.get("action") != "ADD" or d["target"] in after:
-            continue
-        counted = [m for m in after if not offense_only or macro_side(m) == "offense"]
-        if len(counted) >= USER_ACTIVE_CAP:
-            sp = swap_plan(d["target"], after, archetype)
-            d["swap_plan"] = sp
-            swaps.append(sp)
-            after.remove(sp["bench"])
-            replacing.append(f"replacing {sp['bench']} with {d['target']}")
-        after.append(d["target"])
-    return after, swaps, replacing
-
-
 def call_tips(opp: dict[str, Any], *, offense_only: bool, bl: dict[str, Any]) -> list[str]:
     lean = archetype_lean(opp.get("archetype"))
     tips: list[str] = []
@@ -257,22 +233,43 @@ def build_prep_plan(
     applied = get_applied_deltas(db, opponent_id)
     shown = book_deltas + filter_new_deltas(proposed, applied)
 
-    # 3) Active 8 (CFB parity): drill-down with Aidan's exact settings, missing ones flagged
-    active = list(pcfg["default_active"] or inv["macros_active"] + inv["offensive_macros"])
-    active_after, swaps, replacing = resolve_loadout(active, shown, arch, offense_only=offense_only)
-    cards, loadout = loadout_cards(active_after, db, offense_only=offense_only)
-    from cfb_coach.madden.macros import attach_detail, missing_settings_report
+    # 3) 10 offense + 10 defense macros (v1.17): ranked from this prep's live research, the
+    #    opponent's tendencies and per-opponent learned weights; settings shared with CFB
+    from cfb_coach.madden.macro_pool import pool_macro
+    from cfb_coach.madden.macro_select import select_loadout
+    from cfb_coach.madden.macros import (
+        attach_detail,
+        copy_checklist,
+        load_selection,
+        macro_status,
+        missing_settings_report,
+    )
 
-    for c in cards:
-        side_book = books.get(c.get("side") or "defense", {}).get("record", {}).get("formations")
-        attach_detail(c, side_book)
-    missing = missing_settings_report([c["id"] for c in cards])
-    budget = {
-        "meter": loadout["meter"],
-        "total": loadout["total"],
-        "cap": USER_ACTIVE_CAP,
-        "at_cap": loadout["total"] >= USER_ACTIVE_CAP,
-    }
+    lab_adds = [d["target"] for d in shown if d.get("kind") == "macro" and d.get("action") == "ADD"]
+    exclude = [] if pcfg["allow_experimental_active"] else [m for m in pcfg["default_benched"] if m not in lab_adds]
+    pick = select_loadout(
+        opponent_id, db=db, archetype=arch, scout=scout, offense_only=offense_only,
+        baseline=pcfg["default_active"] or inv["macros_active"] + inv["offensive_macros"],
+        previous=load_selection(db, opponent_id), lab_boost=lab_adds, exclude=exclude)
+    selection = {"offense": pick["offense"], "defense": pick["defense"]}
+    cards = []
+    for side in ("offense", "defense"):
+        rows = {r["id"]: r for r in pick["ranked"].get(side) or []}
+        side_book = books.get(side, {}).get("record", {}).get("formations")
+        for rank, mid in enumerate(selection[side], 1):
+            meta = pool_macro(mid) or {}
+            card = {"id": mid, "name": meta.get("xbox_name") or mid, "side": side, "slot": "active",
+                    "rank": rank, "score": rows.get(mid, {}).get("score"), "why": rows.get(mid, {}).get("why", ""),
+                    "purpose": meta.get("purpose") or "", "when_to_arm": meta.get("when_to_arm") or "",
+                    "validated_status": macro_status(mid, db)}
+            cards.append(attach_detail(card, side_book))
+    active_after = selection["offense"] + selection["defense"]
+    missing = missing_settings_report(active_after)
+    n_o, n_d = len(selection["offense"]), len(selection["defense"])
+    meter = f"Offense {n_o} (CPU — offense only)" if offense_only else f"Offense {n_o} · Defense {n_d}"
+    loadout = {"meter": meter, "total": n_o + n_d, "offense": selection["offense"], "defense": selection["defense"],
+               "per_side": PER_SIDE}
+    budget = {"meter": meter, "total": n_o + n_d, "cap": PER_SIDE, "at_cap": False}
 
     tips = call_tips(opp, offense_only=offense_only, bl=bl)
     tips.extend(audible_tips(opp, books["offense"]["record"]["formations"]))
@@ -307,13 +304,17 @@ def build_prep_plan(
         "applied_count": len(applied),
         "tips": tips,
         "ts": datetime.now(timezone.utc).isoformat(),
-        "active_cap": USER_ACTIVE_CAP,
+        "active_cap": PER_SIDE,
         "slot_budget": budget,
         "macro_cards": cards,
         "loadout": loadout,
+        "macro_selection": selection,
+        "macro_ranking": {s_: [{k: r[k] for k in ("id", "score", "why")} for r in rows_]
+                          for s_, rows_ in pick["ranked"].items()},
+        "copy_checklist": copy_checklist(selection),
         "active_after": active_after,
-        "replacing_lines": replacing,
-        "swap_banners": swaps,
+        "replacing_lines": [],
+        "swap_banners": [],
         "offense_only": offense_only,
         "macro_catalog_version": load_macro_catalog().get("version", "?"),
         "profile": pcfg["id"],
@@ -329,10 +330,9 @@ def build_prep_plan(
     if db is not None and persist:
         lock_books(db, books, applied=apply_books)
         save_prep(db, opponent_id, proposed, shown)
-        from cfb_coach.madden.macros import store_active
+        from cfb_coach.madden.macros import store_selection
 
-        store_active(db, opponent_id, active_after if not offense_only else
-                     [m for m in active_after if macro_side(m) == "offense"])
+        store_selection(db, opponent_id, selection)
     return plan
 
 
@@ -405,22 +405,23 @@ def format_delta_text(plan: dict[str, Any]) -> str:
             lines.append(f"      {d.get('before') or '—'} → {d.get('after') or '—'}")
         if d.get("why"):
             lines.append(f"      why: {d['why']}")
-    for r in plan.get("replacing_lines") or []:
-        lines.append(f"  Loadout: {r}")
-    lines.append(f"## Active loadout — {plan['loadout']['meter']}")
-    if plan["offense_only"]:
-        lines.append("  D macros: N/A — offense only (CPU)")
-    for c in plan["macro_cards"]:
-        lines.append(f"  - {c['id']} ({c.get('side')}) [{c.get('validated_status')}] — {c.get('purpose', '')}")
-        ing = c.get("ingame") or {}
-        if ing.get("has_settings"):
-            lines.append(f"      your settings: {ing.get('key')}")
-            if ing.get("gap_rows"):
-                lines.append("      MISSING (enter yours, nothing guessed): "
-                             + ", ".join(f"{g['section']} / {g['setting']}" for g in ing["gap_rows"]))
-        else:
-            lines.append("      NO EXACT SETTINGS ON FILE — enter yours: macro-settings --game madden27 "
-                         f"{c['id']} --set \"Section: Setting = value\"")
+    sel = plan.get("macro_selection") or {}
+    lines.append(f"## Macros — {plan['loadout']['meter']} (settings shared with CFB 27)")
+    for side in ("offense", "defense"):
+        if side == "defense" and plan["offense_only"]:
+            lines.append("  Defense: N/A — offense only (CPU)")
+            continue
+        lines.append(f"  {side.title()} ({len(sel.get(side) or [])})")
+        for c in [c for c in plan["macro_cards"] if c.get("side") == side]:
+            ing = c.get("ingame") or {}
+            lines.append(f"   {c.get('rank', 0):>2}. {c['id']} [{c.get('validated_status')}] — {c.get('purpose', '')}")
+            if ing.get("has_settings"):
+                lines.append(f"       your settings: {ing.get('key')}")
+            else:
+                lines.append("       NEEDS SETTINGS — no CFB macro with this name; enter yours: "
+                             f"macro-settings --game madden27 {c['id']} --set \"Section: Setting = value\"")
+    lines.append("## Copy checklist (all macros)")
+    lines.extend("  " + ln for ln in (plan.get("copy_checklist") or "").splitlines())
     lines.append("## Full playbook (show)")
     for side in ("offense",) if plan["offense_only"] else ("offense", "defense"):
         lines.extend("  " + ln for ln in format_book(plan["playbook"][side]["record"]).splitlines())

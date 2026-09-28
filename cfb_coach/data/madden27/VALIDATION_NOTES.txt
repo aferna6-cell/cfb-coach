@@ -109,14 +109,25 @@ PLAYBOOK OF RECORD, NOT A TEAM
 MACROS = MADDEN 27 CUSTOM ADJUSTMENTS (confirmed)
 - EA: Create & Share → Custom Adjustments; up to 20 per side saved, 10 active per
   game; in-game LB at the line (also at the top of the play-call menu). Same system
-  as CFB 27 — Aidan's hard cap of 8 O+D still applies (EA allows 10).
+  as CFB 27. v1.17: Madden uses 10 offense + 10 defense macros per opponent
+  (CFB 27 stays on its Active 8). NOTE: the EA note above reads "10 active per
+  game" — if that is 10 total rather than 10 per side, not all 20 can be Active
+  at once in game; confirm in the Custom Adjustments screen.
 - EA documents the CATEGORIES (fronts, leverage, coverage behavior, protection,
   pressure looks, route concepts, hot routes, individual assignments) but not the
   exact option labels. Every option label here is tagged `approx` — match it to the
   in-game name when building. No button sequences are invented.
 - All 10 catalog macros start `meta_grounded`. Postgame promotes to `proven`
   (3+ uses, >= 60% success) or demotes to `failed` (3+ uses, <= 30% success).
-- 6 D + 2 O = 8 Active for USER games. CPU games = offense-only.
+- v1.17 SHARED SETTINGS: settings come from the one store CFB uses
+  (macro_catalog.json exact rows + ~/.cfb-coach/macro_settings.json). A Madden macro
+  with the same name (same side) as a CFB macro gets its settings word for word
+  (HEAT, O-RPO); every CFB macro is also in the Madden pool (same editor). Madden-only
+  names (MATCH-4, FLAT-CAP, MESH-RAT, STACK, SPY, RUN-FIT, O-PROT, O-MAN) have no CFB
+  match and are flagged NEEDS SETTINGS — never filled from the approx rows.
+- v1.17: prep ranks 10 O + 10 D per opponent (live research hints, opponent
+  tendencies + persona, learned macro weights, baseline, settings on file). The
+  old 6 D + 2 O default list is the ranking's baseline. CPU = offense-only (10 O).
 
 SHARED PERSONAS
 - Opponents are the SAME cast as CFB (gavin, quen, tiano, gio, michael, harrison,

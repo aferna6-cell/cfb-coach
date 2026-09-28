@@ -16,13 +16,13 @@ from typing import Any
 
 from cfb_coach.format_call import format_defense, format_offense
 from cfb_coach.madden.data import (
-    get_macro,
     load_meta_baseline,
     load_seed,
     reads_for,
     user_job_for,
 )
-from cfb_coach.madden.macros import macro_side, tag_live
+from cfb_coach.madden.macro_pool import pool_macro as get_macro
+from cfb_coach.madden.macros import as_selection, best_for_family, tag_live
 from cfb_coach.madden.situation import Situation, concept_family
 from cfb_coach.opponents import is_cpu_opponent
 from cfb_coach.tendency import describe_coverage_policy, is_repeated_coverage, is_user_opponent
@@ -38,7 +38,7 @@ class MaddenCall:
     rationale: str = ""
     suggest_macro: str | None = None
     macro: str | None = None  # untagged macro name armed this snap (for logging)
-    macro_info: dict[str, Any] | None = None  # CFB parity: Active-8 custom adjustment + Aidan's settings
+    macro_info: dict[str, Any] | None = None  # the side's macro (of its 10) + Aidan's shared settings
 
     def macro_line(self) -> str:
         """'MACRO: O-MAN — LB → O-MAN | <your settings> · why: …' or ''."""
@@ -275,6 +275,7 @@ def _pick_offense(
     active: list[str],
     book: dict[str, list[str]],
 ) -> MaddenCall:
+    """``active`` = the OFFENSE 10 (prep rank order) — the only macros this call may name."""
     from cfb_coach.madden.catalog import is_run
 
     og = bl["offense_gameplan"]
@@ -347,9 +348,12 @@ def _pick_offense(
         if db is not None:
             for r in db.get_macro_weights(oid):
                 weights[str(r["macro"])] = float(r["weight"] or 0.0)
+        from cfb_coach.zones import zone_of_situation
+
         info = suggest_offense_macro(
-            play=play, coverage_class=cls, coverage_source=src, repeated=repeated, active=active,
-            archetype=arch, passing_down=bool(sit.down in (3, 4) and (sit.distance or 0) >= 5), weights=weights)
+            play=play, coverage_class=cls, coverage_source=src, repeated=repeated, active={"offense": active},
+            archetype=arch, passing_down=bool(sit.down in (3, 4) and (sit.distance or 0) >= 5), weights=weights,
+            zone=zone_of_situation(sit), down=sit.down)
     except Exception:  # noqa: BLE001
         info = None
     o_macro = info["id"] if info else None
@@ -459,6 +463,7 @@ def _pick_defense(
     active: list[str],
     book: dict[str, list[str]],
 ) -> MaddenCall:
+    """``active`` = the DEFENSE 10 (prep rank order) — the only macros this call may arm."""
     oid = opp["_id"]
     form, play, rationale = _base_defense(sit, opp, bl, rng)
     form, play, note = _fit_defense(form, play, book, bl, rng)
@@ -470,7 +475,16 @@ def _pick_defense(
 
     concept = sit.concept_hint
     fam = concept_family(concept)
-    fam_macro = (bl["macros_baseline"].get("concept_family_macro") or {}).get(fam or "")
+    weights: dict[str, float] = {}
+    if db is not None:
+        try:
+            weights = {str(r["macro"]).upper(): float(r["weight"] or 0.0) for r in db.get_macro_weights(oid)}
+        except Exception:  # noqa: BLE001
+            weights = {}
+    # v1.17: the family's best macro among THIS side's 10 (prep rank order); the baseline family
+    # macro is only named as a suggestion when none of the 10 answers it
+    fam_macro = best_for_family(fam, active, weights) or (
+        bl["macros_baseline"].get("concept_family_macro") or {}).get(fam or "")
     if concept:
         src = sit.concept_source or "none"
         repeated = _family_repeat_count(db, oid, fam) >= 2
@@ -501,13 +515,18 @@ def _pick_defense(
                     "SPY": ("Nickel Over", "Cover 4 Quarters"),
                     "RUN-FIT": ("4-3 Over", "Cover 3 Sky") if sit.short_yardage else (form, play),
                 }
+                if fam_macro not in cat_pair:  # shared CFB macros: the family's shell
+                    fam_pair = {"run": ("4-3 Over", "Cover 3 Sky") if sit.short_yardage else (form, play),
+                                "scram": ("Nickel Over", "Cover 4 Quarters")}
+                    shell = (_SOFT_SHELL.get(fam or "") or (None, ""))[0]
+                    cat_pair[fam_macro] = fam_pair.get(fam or "") or (("Nickel Over", shell) if shell else (form, play))
                 form, play = cat_pair.get(fam_macro, (form, play))
                 macro = fam_macro
                 user = (get_macro(fam_macro) or {}).get("user_job") or user_job_for(play)
                 rationale = f"REPEATED {fam} tendency ({concept}) — {play} + {fam_macro}"
             else:
-                suggest = f"{fam_macro} — repeated {concept} but benched; swap in at next break"
-                rationale += f" | REPEATED {concept} — {fam_macro} not Active"
+                suggest = f"{fam_macro} — repeated {concept} but not in your 10 D macros; re-prep to add it"
+                rationale += f" | REPEATED {concept} — {fam_macro} not in the defense 10"
         else:
             rationale += f" | REPEATED {concept} — stay sound base"
 
@@ -606,7 +625,8 @@ def make_call(
             opp = dict(prof)
     opp["_id"] = opponent_id
     rng = rng or random.Random()
-    active = list(active_macros or bl["macros_baseline"]["keep"])
+    # v1.17: 10 offense + 10 defense per opponent — each side only ever picks from its own list
+    sel = as_selection(active_macros if active_macros else list(bl["macros_baseline"]["keep"]))
 
     if last_coverage and not sit.coverage_hint:
         sit.coverage_hint, sit.coverage_source = last_coverage, "last"
@@ -616,7 +636,7 @@ def make_call(
     cpu = is_cpu_opponent(opponent_id)
     note = ""
     if cpu:
-        active = [m for m in active if macro_side(m) == "offense"]
+        sel["defense"] = []
         if sit.side == "defense":
             sit.side = "offense"
             note = "CPU = offense-only (no D calls) — switched to O | "
@@ -627,9 +647,9 @@ def make_call(
 
         raise NoActivePlaybook(f"No {sit.side} playbook given — run `prep --game madden27` first.")
     if sit.side == "defense":
-        call = _pick_defense(sit, opp, bl, db, rng, active, books["defense"])
+        call = _pick_defense(sit, opp, bl, db, rng, sel["defense"], books["defense"])
     else:
-        call = _pick_offense(sit, opp, bl, db, rng, active, books["offense"])
+        call = _pick_offense(sit, opp, bl, db, rng, sel["offense"], books["offense"])
     stamp = _sit_stamp(sit)
     call.rationale = note + call.rationale + (f" | {stamp}" if stamp else "")
     return call

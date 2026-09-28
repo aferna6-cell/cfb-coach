@@ -18,7 +18,7 @@ from cfb_coach.prep_browser import (
     ET,
     _esc,
     _render_delta_cards,
-    _render_macro_accordion,
+    _render_ingame_card,
     _render_meta_scout,
     _render_swap_banners,
     default_prep_dir,
@@ -40,6 +40,11 @@ _COPY_JS = """
         } else { done(); }
       });
     });
+"""
+
+
+_GROUP_CSS = """
+  h3.macro-group { margin: 14px 0 6px; font-size: 1rem; letter-spacing: 0.02em; }
 """
 
 
@@ -159,9 +164,41 @@ def _book_pick_line(plan: dict[str, Any], side: str) -> str:
             f"<div class='muted'>{_esc(bp.get('reason') or '')}</div></div>")
 
 
+def _render_macro_groups(plan: dict[str, Any], *, details: bool = False) -> str:
+    """v1.17: Offense (10) and Defense (10) groups, prep rank order. Every row expands to its
+    exact settings (shared with CFB 27 by name) — same drill-down as before. Then one copy
+    checklist for all of them, needs-settings flagged."""
+    offense_only = bool(plan.get("offense_only"))
+    cards = plan.get("macro_cards") or []
+    groups: list[str] = []
+    for side in ("offense", "defense"):
+        if side == "defense" and offense_only:
+            groups.append('<div class="empty">Defense macros: <b>N/A — offense only</b> (CPU coaching)</div>')
+            continue
+        mine = [c for c in cards if c.get("side") == side]
+        items = "".join(
+            _render_ingame_card(c, f"copy-{side[0]}-" + "".join(ch if ch.isalnum() else "-" for ch in str(c.get("id"))),
+                                details=details)
+            for c in mine)
+        groups.append(f"<h3 class='macro-group' id='macros-{side}'>{side.title()} ({len(mine)})</h3>"
+                      f"<div class='macro-list'>{items or '<div class=empty>none</div>'}</div>")
+    need = sum(1 for c in cards if c.get("missing_settings"))
+    head = (f"<div class='banner fail'><strong>{need} macro{'s' if need != 1 else ''} still need settings</strong> "
+            "(no CFB macro with that name — nothing is invented).</div>" if need and details else "")
+    checklist = (
+        "<div class='copy-wrap'><div class='copy-head'><h4>Copy checklist — all "
+        f"{len(cards)} macros</h4><button type='button' class='copy-btn' data-target='copy-all-macros'>Copy</button></div>"
+        f"<pre id='copy-all-macros' class='copy-block'>{_esc(plan.get('copy_checklist') or '')}</pre></div>")
+    meter = _esc((plan.get("loadout") or {}).get("meter") or "")
+    return (f"<div class='meter ok'><span class='meter-label'>Macros per opponent</span>"
+            f"<span class='meter-value'>{meter}</span>"
+            "<span class='meter-note'>settings shared with CFB 27 by macro name · everything you didn't set = Default</span></div>"
+            + head + "".join(groups) + checklist)
+
+
 def render_prep_html(plan: dict[str, Any]) -> str:
-    """Minimal prep page (CFB parity): O formations + audibles, D formations, Active-8 macros
-    with your exact settings. Everything else is on the details page."""
+    """Minimal prep page (CFB parity): O formations + audibles, D formations, the 10 offense +
+    10 defense macros with your exact settings. Everything else is on the details page."""
     oid = _esc(plan.get("opponent_id"))
     offense_only = bool(plan.get("offense_only"))
     scout = plan.get("meta_scout") or {}
@@ -176,16 +213,17 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     miss_html = ""
     if missing:
         miss_html = ("<div class='banner fail'><strong>Missing macro settings — nothing is invented.</strong> "
-                     "Enter yours with <code>macro-settings --game madden27 NAME --set \"Section: Setting = value\"</code>:"
+                     "Enter yours with <code>macro-settings --game madden27 NAME --set \"Section: Setting = value\"</code> "
+                     "(saved once, used by CFB 27 too):"
                      "<ul>" + "".join(f"<li>{_esc(m)}</li>" for m in missing) + "</ul></div>")
-    head = "Macros — Active 8 (offense only · CPU)" if offense_only else "Macros — Active 8 (O + D)"
+    head = "Macros — Offense (10) · offense only (CPU)" if offense_only else "Macros — Offense (10) · Defense (10)"
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Prep — {_esc(plan.get("display_name"))} · Madden 27 Franchise</title>
-<style>{_CSS}{MIN_CSS}</style>
+<style>{_CSS}{MIN_CSS}{_GROUP_CSS}</style>
 </head>
 <body>
   <div class="wrap">
@@ -199,16 +237,11 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     <section id="macros">
       <h2>{head}</h2>
       {miss_html}
-      {_render_macro_accordion(
-          plan.get("macro_cards") or [],
-          plan.get("slot_budget") or {},
-          offense_only=offense_only,
-          replacing_lines=list(plan.get("replacing_lines") or []),
-          loadout=plan.get("loadout") or {},
-      )}
+      {_render_macro_groups(plan)}
     </section>
     <footer>Live: <code>play --game madden27 -o {oid}</code> — calls come only from these formations
-      (PLAY: X + MACRO: Y). Details: {_esc(str(det))}</footer>
+      (PLAY: X + MACRO: Y — offense calls from the offense 10, defense calls from the defense 10).
+      Details: {_esc(str(det))}</footer>
   </div>
   <script>{_COPY_JS}</script>
 </body>
@@ -283,9 +316,9 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
     patch_lis = "".join(f"<li>{_esc(p)}</li>" for p in plan.get("patch_notes") or [])
     tip_lis = "".join(f"<li>{_esc(t)}</li>" for t in plan.get("tips") or [])
     loadout_h = (
-        "Active loadout — offense only (CPU)"
+        "Macros — offense 10 (CPU) — click to expand · Copy recipe"
         if offense_only
-        else "Active loadout (≤8 O+D) — click to expand · Copy recipe"
+        else "Macros — offense 10 + defense 10 — click to expand · Copy recipe"
     )
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -293,7 +326,7 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Prep details — {_esc(plan.get("display_name"))} · Madden 27 Franchise</title>
-<style>{_CSS}</style>
+<style>{_CSS}{_GROUP_CSS}</style>
 </head>
 <body>
   <div class="wrap">
@@ -333,19 +366,12 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
 
     <section>
       <h2>Macro adjustments</h2>
-      {_render_delta_cards(mac, "No macro changes — keep current Active-8")}
+      {_render_delta_cards(mac, "No macro changes")}
     </section>
 
     <section>
       <h2>{loadout_h}</h2>
-      {_render_macro_accordion(
-          plan.get("macro_cards") or [],
-          plan.get("slot_budget") or {},
-          offense_only=offense_only,
-          replacing_lines=list(plan.get("replacing_lines") or []),
-          loadout=plan.get("loadout") or {},
-          details=True,
-      )}
+      {_render_macro_groups(plan, details=True)}
     </section>
 
     <section>
@@ -360,9 +386,10 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
       to that book. Macros are Custom Adjustments you create (Create &amp; Share → Custom Adjustments).
       Every prep researches live (web + YouTube transcripts) and may recommend a different stock book
       (start: stock Buccaneers O / 49ers D for the Lions; switches need live research, a clear margin and a cooldown).
-      Macro settings shown as exact are ONLY the ones you entered (<code>macro-settings --game madden27</code>);
-      research guesses are listed here for reference and never used as settings.
-      Active loadout hard-capped at <b>8 O+D</b> for user games; CPU = offense-only.
+      Macro settings are shared with CFB 27 by macro name (same editor): a Madden macro named like a
+      CFB macro uses its settings word for word; any other macro NEEDS SETTINGS until you enter them
+      (<code>macro-settings --game madden27</code>). Research guesses are reference only, never settings.
+      <b>10 offense + 10 defense</b> macros per opponent for user games; CPU = offense-only (10 O).
       Personas are shared with CFB. Primary team: Detroit Lions (config --game madden27 --primary-team).
       Mark applied with <code>prep --game madden27 --opponent {oid} --mark-applied</code>.
     </footer>

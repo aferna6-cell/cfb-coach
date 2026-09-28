@@ -21,7 +21,7 @@ from cfb_coach.madden.franchise import (
     resolve_nfl_team,
     save_config,
 )
-from cfb_coach.madden.macros import USER_ACTIVE_CAP, split_loadout
+from cfb_coach.madden.macros import PER_SIDE, USER_ACTIVE_CAP, split_loadout
 from cfb_coach.madden.playcaller import make_call
 from cfb_coach.madden.prep import build_prep_plan
 from cfb_coach.madden.prep_browser import render_prep_html
@@ -233,17 +233,23 @@ class TestMaddenPrep(_Isolated):
         self.assertEqual(plan["version"], "madden27-2026-09")
         self.assertEqual(plan["meta_scout"]["baseline_fallback"], "madden27-2026-09")
 
-    def test_user_prep_eight_cap_and_html(self) -> None:
+    def test_user_prep_ten_plus_ten_and_html(self) -> None:
+        # v1.17: the Madden Active 8 became 10 offense + 10 defense per opponent (owner spec)
         plan = build_prep_plan("gavin", offline=True, persist=False)
         self.assertFalse(plan["offense_only"])
-        self.assertEqual(plan["loadout"]["total"], USER_ACTIVE_CAP)
+        self.assertEqual(plan["loadout"]["total"], 2 * PER_SIDE)
+        self.assertEqual((len(plan["macro_selection"]["offense"]), len(plan["macro_selection"]["defense"])),
+                         (PER_SIDE, PER_SIDE))
         self.assertTrue(plan["shown_deltas"])
         self.assertTrue(all(d["validated_status"] == "meta_grounded" for d in plan["shown_deltas"]))
         html = render_prep_html(plan)  # minimal page: formations, audibles, D formations, macros
         self.assertIn("Formations — Offense: Buccaneers (stock book)", html)
         self.assertIn("Formations — Defense: 49ers (stock book)", html)
         self.assertIn("Audibles (4 per formation)", html)
-        self.assertIn("Macros — Active 8 (O + D)", html)
+        self.assertIn("Macros — Offense (10) · Defense (10)", html)
+        self.assertIn("Offense (10)</h3>", html)
+        self.assertIn("Defense (10)</h3>", html)
+        self.assertIn("Copy checklist — all 20 macros", html)
         self.assertIn("Missing macro settings — nothing is invented", html)
         self.assertIn("No exact settings from Aidan on file for this macro.", html)
         self.assertNotIn("Show full playbook", html)  # details page only
@@ -260,14 +266,15 @@ class TestMaddenPrep(_Isolated):
         self.assertNotIn("assumed stocked", det)
         self.assertNotIn("cfb27-2026-09", det)
 
-    def test_lab_add_swaps_to_stay_at_cap(self) -> None:
+    def test_lab_add_lands_in_defense_ten(self) -> None:
+        # v1.17: no 8-cap swap any more — the lab ADD is ranked into the defense 10
         plan = build_prep_plan("quen", offline=True, persist=False, profile="lab")
         adds = [d for d in plan["shown_deltas"] if d["kind"] == "macro" and d["action"] == "ADD"]
         self.assertEqual([d["target"] for d in adds], ["HEAT"])
-        self.assertTrue(adds[0].get("swap_plan"))
-        self.assertIn("HEAT", plan["active_after"])
-        self.assertEqual(len(plan["active_after"]), USER_ACTIVE_CAP)
-        self.assertTrue(plan["replacing_lines"])
+        self.assertIsNone(adds[0].get("swap_plan"))
+        self.assertIn("HEAT", plan["macro_selection"]["defense"])
+        self.assertEqual(len(plan["macro_selection"]["defense"]), PER_SIDE)
+        self.assertEqual(plan["replacing_lines"], [])
 
     def test_thin_persona_picks_stock_book_nothing_to_build(self) -> None:
         plan = build_prep_plan("ryan", offline=True, persist=False)
@@ -460,7 +467,8 @@ class TestMaddenCli(_Isolated):
         rc, out = self.run_cli(["prep", "--game", "madden27", "-o", "gavin", "--offline", "--text"])
         self.assertEqual(rc, 0)
         self.assertIn("Madden 27 Franchise", out)
-        self.assertIn("(D 6 + O 2)", out)
+        self.assertIn("Offense 10 · Defense 10", out)
+        self.assertIn("## Copy checklist (all macros)", out)
         rc, out = self.run_cli(["prep", "--game", "madden27", "-o", "cpu", "--offline", "--text"])
         self.assertIn("N/A — offense only", out)
 

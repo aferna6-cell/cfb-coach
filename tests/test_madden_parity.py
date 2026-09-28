@@ -152,6 +152,7 @@ class TestMacrosVerbatim(_Isolated):
         d = macro_detail("MATCH-4")
         self.assertFalse(d["has_settings"])
         self.assertIn("no exact settings from Aidan on file", copy_block(d))
+        self.assertIn("NEEDS SETTINGS", copy_block(d))
         self.assertNotIn("Over the top", copy_block(d))  # research guess never used as a setting
         rc, out = self.run_cli(["macro-settings", "--game", "madden27", "MATCH-4",
                                 "--set", "Coverage: Shading = Over Top (Aidan)", "--set", "Zones: Deep Zone = Deep Match"])
@@ -161,23 +162,25 @@ class TestMacrosVerbatim(_Isolated):
                          [("Coverage", "Shading", "Over Top (Aidan)"), ("Zones", "Deep Zone", "Deep Match")])
         blk = copy_block(d)
         self.assertIn("[ ] Shading: Over Top (Aidan)", blk)
-        self.assertIn("[!] Missing from your settings", blk)
+        # v1.17 owner spec: fields Aidan didn't set are Default (no "[!] Missing" line any more)
+        self.assertNotIn("[!]", blk)
         self.assertIn("Everything else: Default", blk)
         rc, out = self.run_cli(["macro-settings", "--game", "madden27"])
         self.assertIn("MATCH-4", out)
-        self.assertIn("NO EXACT SETTINGS ON FILE", out)  # the others
+        self.assertIn("NEEDS SETTINGS", out)  # the others (v1.17 wording, owner spec)
+        self.assertIn("= CFB HEAT", out)  # same-name macros read CFB's settings
 
-    def test_prep_stores_active8_used_by_play(self) -> None:
-        from cfb_coach.madden.macros import load_active
+    def test_prep_stores_ten_plus_ten_used_by_play(self) -> None:
+        from cfb_coach.madden.macros import load_selection
 
         self.run_cli(["prep", "--game", "madden27", "-o", "quen", "--offline", "--text", "--franchise", "lab"])
         db = self.madden_db()
         try:
-            act = load_active(db, "quen")
+            sel = load_selection(db, "quen")
         finally:
             db.close()
-        self.assertEqual(len(act), 8)
-        self.assertIn("HEAT", act)  # lab ADD swapped in by this prep
+        self.assertEqual((len(sel["offense"]), len(sel["defense"])), (10, 10))
+        self.assertIn("HEAT", sel["defense"])  # lab ADD ranked in by this prep
         rc, out = self.run_cli(["play", "--game", "madden27", "-o", "quen", "--once", "1&10", "--no-overlay"])
         self.assertEqual(rc, 0)
         self.assertIn("HEAT", out.split("Active macros (from last prep):", 1)[1].split("\n", 1)[0])

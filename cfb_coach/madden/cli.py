@@ -28,7 +28,14 @@ PROFILE = GAMES[MADDEN27]
 
 
 def open_db() -> CoachDB:
-    return CoachDB(madden_db_path(), seed=load_seed())
+    db = CoachDB(madden_db_path(), seed=load_seed())
+    try:  # v1.17: stored Active 8 → 10 offense + 10 defense (nothing dropped; idempotent)
+        from cfb_coach.madden.macros import migrate_all_selections
+
+        migrate_all_selections(db)
+    except Exception:  # noqa: BLE001 — never block opening the DB
+        pass
+    return db
 
 
 def _require_opponent(raw: str) -> str:
@@ -49,21 +56,31 @@ def _profile_header(pid: str) -> str:
     return f"Madden 27 Franchise — {cfg['label']} ({cfg['mode']}){exp} — team: {cfg['team_label']}"
 
 
-def _active_after_prep(db: CoachDB, oid: str, pid: str) -> list[str]:
-    """Active-8 for live calls = what the last prep for this opponent set (CFB parity), else
-    profile default + ADD deltas already marked applied. Never anything outside that list."""
-    from cfb_coach.install_sheet import get_applied_deltas
-    from cfb_coach.madden.macros import load_active
-    from cfb_coach.madden.prep import resolve_loadout
+def _active_after_prep(db: CoachDB, oid: str, pid: str) -> dict[str, list[str]]:
+    """The 10 offense + 10 defense macros for live calls = what the last prep for this opponent
+    picked (a migrated Active 8 until the next prep), else a no-research pick from the same
+    ranking. Never anything outside those lists."""
+    from cfb_coach.madden.macro_select import select_loadout
+    from cfb_coach.madden.macros import load_selection
 
-    stored = load_active(db, oid)
+    stored = load_selection(db, oid)
     if stored:
         return stored
-    active = profile_config(pid)["default_active"]
-    applied = [d for d in get_applied_deltas(db, oid) if d.get("kind") == "macro"]
+    cfg = profile_config(pid)
     prof = db.get_opponent(oid) or {}
-    after, _, _ = resolve_loadout(active, applied, prof.get("archetype"), offense_only=is_cpu_opponent(oid))
-    return after
+    pick = select_loadout(oid, db=db, archetype=prof.get("archetype") or "", baseline=cfg["default_active"],
+                          offense_only=is_cpu_opponent(oid),
+                          exclude=[] if cfg["allow_experimental_active"] else cfg["default_benched"])
+    return {"offense": pick["offense"], "defense": pick["defense"]}
+
+
+def _active_line(active: dict[str, list[str]], cpu: bool) -> str:
+    o = ", ".join(active.get("offense") or []) or "none"
+    if cpu:
+        return f"Active macros (from last prep): O {len(active.get('offense') or [])}: {o}"
+    d = ", ".join(active.get("defense") or []) or "none"
+    return (f"Active macros (from last prep): O {len(active.get('offense') or [])}: {o} | "
+            f"D {len(active.get('defense') or [])}: {d}")
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +100,7 @@ def format_opponents() -> str:
             f"{o['persona_confidence']:<9}{o['confidence']}"
         )
     lines.append("")
-    lines.append("CPU = offense-only. User personas = O + D (8-macro cap).")
+    lines.append("CPU = offense-only (10 O macros). User personas = O + D (10 offense + 10 defense macros).")
     return "\n".join(lines)
 
 
@@ -129,32 +146,39 @@ def cmd_config(args: argparse.Namespace) -> int:
 
 
 def cmd_macro_settings(args: argparse.Namespace) -> int:
-    """Enter / show Aidan's exact Custom Adjustment settings (verbatim; gaps flagged, never invented)."""
-    from cfb_coach.madden.data import load_macro_catalog
-    from cfb_coach.madden.macros import copy_block, macro_detail, save_user_settings, settings_path
+    """Enter / show Aidan's exact Custom Adjustment settings — the SAME store CFB uses (a Madden
+    macro with a CFB macro's name gets its settings word for word; no match → needs settings)."""
+    from cfb_coach import macro_settings as ms
+    from cfb_coach.madden.macro_pool import pool_ids
+    from cfb_coach.madden.macros import copy_block, macro_detail, save_user_settings
 
+    only = bool(getattr(args, "this_game_only", False))
     if args.macro and (args.settings or args.clear or args.xbox_name):
         try:
             save_user_settings(args.macro, args.settings, replace=bool(args.replace),
-                               xbox_name=args.xbox_name, clear=bool(args.clear))
+                               xbox_name=args.xbox_name, clear=bool(args.clear), this_game_only=only)
         except ValueError as exc:
             raise SystemExit(str(exc)) from None
-        print(f"Saved → {settings_path()}")
-    ids = [args.macro.upper()] if args.macro else list(load_macro_catalog().get("macros") or {})
+        print(f"Saved → {ms.settings_path()} ({'Madden 27 only' if only else 'shared: Madden 27 + CFB 27'})")
+    ids = [args.macro.upper()] if args.macro else pool_ids()
+    if not args.macro:
+        print(f"Madden 27 macro settings — shared with CFB 27 by name → {ms.settings_path()}")
     for mid in ids:
         det = macro_detail(mid)
         if args.macro:
             print(copy_block(det))
+            print(f"Source: {det['settings_source']}")
             if det["gap_rows"]:
-                print("Research guesses for the missing settings (NOT used — confirm in game and enter yours):")
+                print("Research guesses (NOT settings — confirm in game and enter yours):")
                 for g in det["gap_rows"]:
                     print(f"  {g['section']} / {g['setting']}: {g['research_value']}")
         else:
-            st = f"{len(det['settings'])} setting(s) on file" if det["has_settings"] else "NO EXACT SETTINGS ON FILE"
-            miss = f"; missing {len(det['gap_rows'])}" if det["has_settings"] and det["gap_rows"] else ""
-            print(f"  {mid:<9} ({det['side']}) {st}{miss}")
+            src = f"= CFB {det['cfb_match']}" if det["cfb_match"] else "no CFB match"
+            st = f"{len(det['settings'])} setting(s) on file" if det["has_settings"] else "NEEDS SETTINGS"
+            print(f"  {mid:<14} ({det['side']:<7}) {src:<18} {st}")
     if not args.macro:
-        print(f"Enter yours: macro-settings --game madden27 MATCH-4 --set \"Coverage: Shading = <exact value>\"  → {settings_path()}")
+        print("Enter yours: macro-settings --game madden27 MATCH-4 --set \"Coverage: Shading = <exact value>\" "
+              "(add --this-game-only for a Madden-only override)")
     return 0
 
 
@@ -366,7 +390,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         print(str(exc).replace("<opp>", oid), file=sys.stderr)
         db.close()
         return 2
-    print(f"Active macros (from last prep): {', '.join(active) or 'none'}")
+    print(_active_line(active, cpu))
     print(f"Locked book: O = {books['offense']['name']} [{books['offense']['mode']}]"
           + ("" if cpu else f" · D = {books['defense']['name']} [{books['defense']['mode']}]")
           + " — calls stay inside it (playbook --game madden27 to list)")

@@ -475,7 +475,40 @@ def active_loadout_cards(
                 "xbox_steps": meta.get("xbox_steps") or list(XBOX_PATH),
             }
         )
+    for c in cards:
+        _apply_shared_edits(c)
     return cards, loadout
+
+
+def _apply_shared_edits(card: dict[str, Any]) -> dict[str, Any]:
+    """v1.17: a defense macro Aidan edited with ``macro-settings`` (from either game) shows the
+    shared rows. Untouched macros keep the catalog copy block exactly as before."""
+    if (card.get("side") or "defense") != "defense":
+        return card
+    try:
+        from cfb_coach import macro_settings as ms
+
+        mid = str(card.get("id") or "")
+        if not ms.has_user_rows(mid, "defense", "cfb27"):
+            return card
+        rows = ms.settings_for(mid, "defense", "cfb27")
+    except Exception:  # noqa: BLE001
+        return card
+    card["full_settings"] = {(r["section"] if r["setting"] == r["section"] else f"{r['section']} / {r['setting']}"):
+                             {"value": r["value"], "status": "confirmed", "section": r["section"]} for r in rows}
+    lines = [f"MACRO: {card.get('name') or mid} (D)", "Path: Create & Share → Custom Adjustments → Defense"]
+    cur = None
+    for r in rows:
+        if r["section"] != cur:
+            cur = r["section"]
+            lines += ["", f"## {cur}"]
+        lines.append(f"[ ] {r['value']}" if r["setting"] == r["section"] else f"[ ] {r['setting']}: {r['value']}")
+    orig = str(card.get("copy_block") or "").splitlines()
+    last = max((i for i, ln in enumerate(orig) if ln.startswith("[ ]")), default=len(orig) - 1)
+    tail = orig[last + 1:] or [f"In-game: LB → {card.get('name') or mid}"]  # his NOTE / WHEN lines
+    lines += ["", "[ ] Everything else: Default"] + tail
+    card["copy_block"] = "\n".join(lines)
+    return card
 
 
 def catalog_inventory_cards(
@@ -652,6 +685,21 @@ _SLOT_RE = __import__("re").compile(r"^(WR\d|TE\d?|HB|RB|FB|SLOT\d?)\s+(.+)$", _
 
 
 def aidan_offense_settings(mid: str) -> list[dict[str, Any]]:
+    """Aidan's own settings for an offense macro: the catalog rows below, plus any edits he
+    made with ``macro-settings`` (from either game — v1.17 shared store, ``macro_settings``).
+    With no edits on file this is exactly :func:`catalog_offense_rows`."""
+    rows = catalog_offense_rows(mid)
+    try:
+        from cfb_coach import macro_settings as ms
+
+        if ms.has_user_rows(mid, "offense", "cfb27"):
+            return ms.settings_for(mid, "offense", "cfb27")
+    except Exception:  # noqa: BLE001 — a bad user file never breaks CFB calls
+        pass
+    return rows
+
+
+def catalog_offense_rows(mid: str) -> list[dict[str, Any]]:
     """Aidan's own settings for an offense macro, verbatim from macro_catalog.json
     (``full_settings`` fields marked confirmed — the same source of truth as his defensive
     sheets). Route assignments split per slot ("WR1 deep cross" → WR1 / deep cross); protection

@@ -6,7 +6,7 @@
   "active_cap": {
     "user_online_dynasty": 8,
     "scope": "offense + defense Custom Adjustments combined (Aidan rule, user games)",
-    "note": "EA Madden 27 allows 20 saved per side and 10 active per game (EA gameplay deep dive) — honor Aidan's 8, same as CFB 27. CPU games = offense-only (O macros only).",
+    "note": "EA Madden 27 allows 20 saved per side and 10 active per game (EA gameplay deep dive). v1.17: prep picks 10 offense + 10 defense macros per opponent (Aidan's rule for Madden; CFB 27 stays on its Active 8). CPU games = offense-only (10 O macros).",
     "in_game_open": "LB at the line (also shown at the top of the play-call menu when holding the play button)"
   },
   "field_legend": {
@@ -96,7 +96,7 @@
       "xbox_steps": [
         "Create & Share → Custom Adjustments → Defense (EA-documented path)",
         "Create/Edit this macro → set the options below (labels approx — match to the in-game names) → Save",
-        "Set Active (Aidan cap 8 O+D; EA allows 10)",
+        "Set Active (v1.17: 10 offense + 10 defense per opponent)",
         "In-game: call the shell pair, then LB at the line → this macro"
       ],
       "full_settings": {
@@ -138,7 +138,7 @@
       "xbox_steps": [
         "Create & Share → Custom Adjustments → Defense (EA-documented path)",
         "Create/Edit this macro → set the options below (labels approx — match to the in-game names) → Save",
-        "Set Active (Aidan cap 8 O+D; EA allows 10)",
+        "Set Active (v1.17: 10 offense + 10 defense per opponent)",
         "In-game: call the shell pair, then LB at the line → this macro"
       ],
       "full_settings": {
@@ -180,7 +180,7 @@
       "xbox_steps": [
         "Create & Share → Custom Adjustments → Defense (EA-documented path)",
         "Create/Edit this macro → set the options below (labels approx — match to the in-game names) → Save",
-        "Set Active (Aidan cap 8 O+D; EA allows 10)",
+        "Set Active (v1.17: 10 offense + 10 defense per opponent)",
         "In-game: call the shell pair, then LB at the line → this macro"
       ],
       "full_settings": {
@@ -223,7 +223,7 @@
       "xbox_steps": [
         "Create & Share → Custom Adjustments → Defense (EA-documented path)",
         "Create/Edit this macro → set the options below (labels approx — match to the in-game names) → Save",
-        "Set Active (Aidan cap 8 O+D; EA allows 10)",
+        "Set Active (v1.17: 10 offense + 10 defense per opponent)",
         "In-game: call the shell pair, then LB at the line → this macro"
       ],
       "full_settings": {
@@ -265,7 +265,7 @@
       "xbox_steps": [
         "Create & Share → Custom Adjustments → Defense (EA-documented path)",
         "Create/Edit this macro → set the options below (labels approx — match to the in-game names) → Save",
-        "Set Active (Aidan cap 8 O+D; EA allows 10)",
+        "Set Active (v1.17: 10 offense + 10 defense per opponent)",
         "In-game: call the shell pair, then LB at the line → this macro"
       ],
       "full_settings": {
@@ -303,7 +303,7 @@
       "xbox_steps": [
         "Create & Share → Custom Adjustments → Defense (EA-documented path)",
         "Create/Edit this macro → set the options below (labels approx — match to the in-game names) → Save",
-        "Set Active (Aidan cap 8 O+D; EA allows 10)",
+        "Set Active (v1.17: 10 offense + 10 defense per opponent)",
         "In-game: call the shell pair, then LB at the line → this macro"
       ],
       "full_settings": {
@@ -340,7 +340,7 @@
       "xbox_steps": [
         "Create & Share → Custom Adjustments → Offense (EA-documented path)",
         "Create/Edit this macro → set protection / hot routes below (labels approx) → Save",
-        "Set Active (Aidan cap 8 O+D; EA allows 10)",
+        "Set Active (v1.17: 10 offense + 10 defense per opponent)",
         "In-game: LB at the line → this macro"
       ],
       "full_settings": {
@@ -384,7 +384,7 @@
       "xbox_steps": [
         "Create & Share → Custom Adjustments → Offense (EA-documented path)",
         "Create/Edit this macro → set protection / hot routes below (labels approx) → Save",
-        "Set Active (Aidan cap 8 O+D; EA allows 10)",
+        "Set Active (v1.17: 10 offense + 10 defense per opponent)",
         "In-game: LB at the line → this macro"
       ],
       "full_settings": {
@@ -421,7 +421,7 @@
       "xbox_steps": [
         "Create & Share → Custom Adjustments → Defense (EA-documented path)",
         "Create/Edit this macro → set the options below (labels approx — match to the in-game names) → Save",
-        "Set Active (Aidan cap 8 O+D; EA allows 10)",
+        "Set Active (v1.17: 10 offense + 10 defense per opponent)",
         "In-game: call the shell pair, then LB at the line → this macro"
       ],
       "full_settings": {
@@ -459,7 +459,7 @@
       "xbox_steps": [
         "Create & Share → Custom Adjustments → Offense (EA-documented path)",
         "Create/Edit this macro → set protection / hot routes below (labels approx) → Save",
-        "Set Active (Aidan cap 8 O+D; EA allows 10)",
+        "Set Active (v1.17: 10 offense + 10 defense per opponent)",
         "In-game: LB at the line → this macro"
       ],
       "full_settings": {
@@ -482,7 +482,7 @@
     "Custom Adjustments",
     "Offense or Defense",
     "Create / edit → set options → Save",
-    "Set Active (Aidan cap 8 O+D; EA allows 10)",
+    "Set Active (v1.17: 10 offense + 10 defense per opponent)",
     "In-game: LB at the line → pick the macro"
   ]
 }
