@@ -20,6 +20,30 @@ SOURCES CHECKED (2026-09-23)
   formation pages may list the union of plays across every book that has the
   formation; a specific book can be missing a play. Confirm in your custom playbook.
 
+RE-CHECK 2026-09-28 (Huddle.gg per-book formation pages; v1.16.0)
+- New per-book catalog: data/madden27/playbooks.json (scripts/build_madden27_playbooks.py).
+  Every stock-book formation now carries the plays of THAT book, not the union.
+  O books: Buccaneers, Shotgun Classic, Lions, Texans, Cardinals, Falcons, Dolphins,
+  Eagles, Saints, Bengals, Chargers. D books: 49ers, Titans, Raiders, Jaguars, Texans,
+  Vikings, Lions. Huddle's "Gun" family = "Shotgun" in game.
+- FIXED: Pistol Trips (Bucs) has NO "Stick" and NO "Flood" -> removed; audibles are
+  HB Zone WK / HB Dive / HB Stretch.
+- FIXED: Nickel Single Mug (49ers/Titans) has NO "Cover 3 Match" (it has Cover 3 and
+  Cover 3 Buzz Match) -> removed. "Dt Mike Loop 3" -> "DT Mike Loop 3".
+- FIXED: Shotgun Classic has NO Gun 5WR Tight (it has Gun 5WR Trio).
+- CONFIRMED: Texas Y-Stutter Wheel + Same Side Zone are in Gun Doubles Clamp Stack of
+  only 6 books (Bengals, Buccaneers, Commanders, Cowboys, Panthers, Saints) - NOT the
+  Lions or Shotgun Classic Clamp Stack.
+- CONFIRMED: Dime 3-2 Odd (Cover 4 Quarters, Tampa 2).
+- UNVERIFIED: "Gun Off Trips Close / Y Option Wheel" not found in the Chargers, Falcons
+  or Patriots lists -> removed from menus; persona formation list for c2_c3_mixer empty.
+- Book choice is now research-driven every prep (web + YouTube). Start: stock
+  Buccaneers O / 49ers D for the Detroit Lions; switch needs live research, margin
+  >= 0.20 and a 2-prep cooldown.
+- Macro settings: still NO in-game confirmation. Only settings Aidan enters with
+  `macro-settings --game madden27` are shown as exact; the approx rows below are
+  research guesses (details page only).
+
 VERDICTS ON THE ORIGINAL BRIEF'S PRIORS
   CONFIRMED
   - Gun Doubles Clamp Stack = THE meta formation (new in 27; 18+ books incl. Bucs,
@@ -42,7 +66,7 @@ VERDICTS ON THE ORIGINAL BRIEF'S PRIORS
   - "Nickel Mug" → no such formation. Saleh book: Nickel Over (home per guides),
     Nickel Single Mug, Nickel Double Mug, Nickel Load Mug, 2-4 Load Dbl Mug.
   - "DB Fire 2" → not found in any Saleh nickel/mug list. Verified sim pressures:
-    Nickel Sim 2, Field Sim 3 (Double Mug / Over), Dt Mike Loop 3 (Single Mug).
+    Nickel Sim 2, Field Sim 3 (Double Mug / Over), DT Mike Loop 3 (Single Mug).
   - Removed invented concept plays not present in those formations: Ohio Return /
     Flood Sail (Trips X Nasty), Quick Slants (5WR Tight), Mesh / Stick Wheel /
     HB Stretch (Clamp Stack), Cover 2 Sink, Cover 4 Drop, "Cover 1 Robber"

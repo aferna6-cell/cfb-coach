@@ -1,10 +1,13 @@
 """Madden Franchise profiles (primary / lab) + configurable primary team.
 
-primary = serious Franchise save (team TBD until Aidan sets it).
+primary = serious Franchise save — Detroit Lions by default (multi-user league).
 lab     = optional practice save (mirrors CFB ohio_state → alabama promote).
 
 Team config lives in <data dir>/madden27_config.json and can be overridden by
-CFB_COACH_MADDEN_PRIMARY_TEAM / CFB_COACH_MADDEN_LAB_TEAM.
+CFB_COACH_MADDEN_PRIMARY_TEAM / CFB_COACH_MADDEN_LAB_TEAM. With no config file the
+defaults below apply (Lions; offense starts on stock Buccaneers, defense on stock
+49ers, and prep's research may recommend a switch — `offense_book` / `defense_book`
+= "auto"). Pin a book with `config --game madden27 --o-book stock:Buccaneers`.
 """
 
 from __future__ import annotations
@@ -23,6 +26,14 @@ DEFAULT_PROFILE = PRIMARY
 PROFILE_CHOICES = ("primary", "lab")
 META_KEY = "franchise_profile"
 CONFIG_FILENAME = "madden27_config.json"
+DEFAULT_PRIMARY_TEAM = "Detroit Lions"
+DEFAULT_START_BOOK = {"offense": "Buccaneers", "defense": "49ers"}
+DEFAULT_CONFIG: dict[str, Any] = {
+    "primary_team": DEFAULT_PRIMARY_TEAM,
+    "lab_team": None,
+    "offense_book": "auto",  # auto = start on stock Buccaneers, research may recommend a switch
+    "defense_book": "auto",  # auto = start on stock 49ers
+}
 
 _PROFILE_ALIASES = {
     "primary": PRIMARY,
@@ -97,7 +108,7 @@ def config_path() -> Path:
 
 
 def load_config() -> dict[str, Any]:
-    cfg: dict[str, Any] = {"primary_team": None, "lab_team": None}
+    cfg: dict[str, Any] = dict(DEFAULT_CONFIG)
     path = config_path()
     if path.is_file():
         try:
@@ -123,10 +134,12 @@ def save_config(
     lab_team: str | None = None,
     clear_primary: bool = False,
     clear_lab: bool = False,
+    offense_book: str | None = None,
+    defense_book: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Update the on-disk config. Returns (config, warnings)."""
     path = config_path()
-    cfg: dict[str, Any] = {"primary_team": None, "lab_team": None}
+    cfg: dict[str, Any] = dict(DEFAULT_CONFIG)
     if path.is_file():
         try:
             cfg.update(json.loads(path.read_text(encoding="utf-8")))
@@ -146,6 +159,12 @@ def save_config(
                     f"{name!r} is not a current NFL team name — kept as a custom/relocated team."
                 )
             cfg[key] = name
+    from cfb_coach.madden.playbook import parse_choice
+
+    for key, side, raw in (("offense_book", "offense", offense_book), ("defense_book", "defense", defense_book)):
+        if raw:
+            mode, book = parse_choice(side, raw)  # raises ValueError on an unknown book
+            cfg[key] = mode if mode != "stock" else f"stock:{book}"
     cfg["updated_ts"] = datetime.now(timezone.utc).isoformat()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
@@ -160,6 +179,12 @@ def team_for_profile(profile: str | None, cfg: dict[str, Any] | None = None) -> 
 
 def team_label(team: str | None) -> str:
     return team or "TBD"
+
+
+def book_choice(side: str, cfg: dict[str, Any] | None = None) -> str:
+    """Configured default --o-book / --d-book (``auto`` unless Aidan pinned one)."""
+    cfg = cfg if cfg is not None else load_config()
+    return str(cfg.get(f"{side}_book") or "auto")
 
 
 # ---------------------------------------------------------------------------

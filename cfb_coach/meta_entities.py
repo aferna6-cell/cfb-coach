@@ -101,12 +101,12 @@ class _Vocab:
     plays: tuple[tuple[str, re.Pattern[str], tuple[str, ...], bool], ...]  # (play, rx, formations, generic)
 
 
-@lru_cache(maxsize=1)
-def vocab() -> _Vocab:
-    cat = formations()
+def build_vocab(cat: dict[str, list[str]], extra: dict[str, list[str]] | None = None) -> _Vocab:
+    """Vocabulary from any {formation: [plays]} catalog (CFB 27 or a Madden 27 side)."""
+    extra = extra or {}
     forms = []
     for f in cat:
-        alts = {normalise(f).strip()} | {normalise(a).strip() for a in _FORMATION_EXTRA.get(f, [])}
+        alts = {normalise(f).strip()} | {normalise(a).strip() for a in extra.get(f, [])}
         rx = re.compile("|".join(_name_pattern(a) for a in sorted(alts, key=len, reverse=True)))
         forms.append((f, rx))
     by_play: dict[str, list[str]] = {}
@@ -125,7 +125,12 @@ def vocab() -> _Vocab:
     return _Vocab(tuple(forms), tuple(plays_out))
 
 
-def extract_doc(text: str) -> dict[str, dict[str, int]]:
+@lru_cache(maxsize=1)
+def vocab() -> _Vocab:
+    return build_vocab(formations(), _FORMATION_EXTRA)
+
+
+def extract_doc(text: str, *, voc: _Vocab | None = None) -> dict[str, dict[str, int]]:
     """One document -> {'formations': {F: n}, 'pairs': {F::P: n}, 'plays': {P: n}} (raw mention counts)."""
     t = normalise(text)
     if len(t) < 4:
@@ -143,7 +148,7 @@ def extract_doc(text: str) -> dict[str, dict[str, int]]:
                 hi = mid
         return max(0, lo - 1)
 
-    v = vocab()
+    v = voc or vocab()
     f_hits: list[tuple[int, str]] = []
     out_f: dict[str, int] = {}
     for f, rx in v.forms:
@@ -181,7 +186,8 @@ def recency_weight(date_s: str | None, now: datetime) -> float:
     return round(0.5 ** (age / HALF_LIFE_DAYS), 4)
 
 
-def aggregate(docs: Iterable[dict[str, Any]], *, now: datetime | None = None) -> dict[str, Any]:
+def aggregate(docs: Iterable[dict[str, Any]], *, now: datetime | None = None,
+              voc: _Vocab | None = None) -> dict[str, Any]:
     """Docs ({label, kind, url, date, text}) -> recency-weighted named signals with per-source counts."""
     now = now or datetime.now(timezone.utc)
     agg: dict[str, dict[str, dict[str, Any]]] = {"formations": {}, "pairs": {}, "plays": {}}
@@ -191,7 +197,7 @@ def aggregate(docs: Iterable[dict[str, Any]], *, now: datetime | None = None) ->
         if not text:
             continue
         n_docs += 1
-        ex = extract_doc(text)
+        ex = extract_doc(text, voc=voc)
         w = recency_weight(d.get("date"), now) * KIND_WEIGHT.get(str(d.get("kind") or "page"), 0.8)
         for bucket in ("formations", "pairs", "plays"):
             for k, n in ex[bucket].items():
@@ -221,4 +227,4 @@ def squash(x: float, cap: float, scale: float) -> float:
     return cap * math.tanh(max(0.0, x) / scale)
 
 
-__all__ = ["aggregate", "extract_doc", "normalise", "recency_weight", "vocab"]
+__all__ = ["aggregate", "build_vocab", "extract_doc", "normalise", "recency_weight", "vocab"]

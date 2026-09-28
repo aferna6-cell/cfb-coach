@@ -59,11 +59,11 @@ class _Isolated(unittest.TestCase):
 
 
 class TestMaddenSeedAndMeta(unittest.TestCase):
-    def test_seed_loads_scheme_pack_and_primary_tbd(self) -> None:
+    def test_seed_loads_scheme_pack_and_primary_lions(self) -> None:
         seed = mdata.load_seed()
         self.assertEqual(seed["game"], "Madden 27")
         self.assertEqual(seed["mode"], "franchise")
-        self.assertIsNone(seed["league"]["franchise_profiles"]["primary"]["team"])
+        self.assertEqual(seed["league"]["franchise_profiles"]["primary"]["team"], "Detroit Lions")
         self.assertEqual(seed["league"]["franchise_profiles"]["primary"]["id"], "franchise_primary")
         self.assertEqual(seed["league"]["franchise_profiles"]["lab"]["id"], "franchise_lab")
         forms = seed["playbooks"]["offense_formations"]
@@ -239,14 +239,26 @@ class TestMaddenPrep(_Isolated):
         self.assertEqual(plan["loadout"]["total"], USER_ACTIVE_CAP)
         self.assertTrue(plan["shown_deltas"])
         self.assertTrue(all(d["validated_status"] == "meta_grounded" for d in plan["shown_deltas"]))
-        html = render_prep_html(plan)
-        self.assertIn("Playbook of record", html)
-        self.assertIn("Show full playbook", html)
-        self.assertNotIn("assumed stocked", html)
+        html = render_prep_html(plan)  # minimal page: formations, audibles, D formations, macros
+        self.assertIn("Formations — Offense: Buccaneers (stock book)", html)
+        self.assertIn("Formations — Defense: 49ers (stock book)", html)
+        self.assertIn("Audibles (4 per formation)", html)
+        self.assertIn("Macros — Active 8 (O + D)", html)
+        self.assertIn("Missing macro settings — nothing is invented", html)
+        self.assertIn("No exact settings from Aidan on file for this macro.", html)
+        self.assertNotIn("Show full playbook", html)  # details page only
         self.assertIn("Madden 27 Franchise", html)
-        self.assertIn("TBD", html)
-        self.assertIn("madden27-2026-09", html)
         self.assertNotIn("cfb27-2026-09", html)
+        from cfb_coach.madden.prep_browser import render_prep_details_html
+
+        det = render_prep_details_html(plan)
+        self.assertIn("Playbook of record", det)
+        self.assertIn("Show full playbook", det)
+        self.assertIn("Research → book + formation pick", det)
+        self.assertIn("Detroit Lions", det)
+        self.assertIn("madden27-2026-09", det)
+        self.assertNotIn("assumed stocked", det)
+        self.assertNotIn("cfb27-2026-09", det)
 
     def test_lab_add_swaps_to_stay_at_cap(self) -> None:
         plan = build_prep_plan("quen", offline=True, persist=False, profile="lab")
@@ -277,7 +289,7 @@ class TestPlaybookOfRecord(_Isolated):
             db.close()
 
     def test_first_custom_lists_every_formation_then_formation_diffs_only(self) -> None:
-        first = self._prep("gavin")
+        first = self._prep("gavin", o_book="custom")
         off = first["playbook"]["offense"]
         self.assertEqual(off["record"]["mode"], "custom")
         self.assertEqual(off["change"], "first_custom")
@@ -294,7 +306,7 @@ class TestPlaybookOfRecord(_Isolated):
             self.assertEqual(active_books(db, ("defense",))["defense"]["name"], "49ers")  # stock locks now
         finally:
             db.close()
-        self._prep("gavin", apply_books=True)  # prep --mark-applied
+        self._prep("gavin", apply_books=True)  # prep --mark-applied (auto stays on the custom book)
 
         nxt = self._prep("quen")
         off2 = nxt["playbook"]["offense"]
@@ -314,13 +326,19 @@ class TestPlaybookOfRecord(_Isolated):
         self.assertEqual(done["playbook"]["offense"]["change"], "none")
 
     def test_switch_custom_to_stock_and_back(self) -> None:
-        self._prep("gavin", apply_books=True)
+        self._prep("gavin", o_book="custom", apply_books=True)
         stock = self._prep("gavin", o_book="stock:Shotgun Classic")
         self.assertEqual(stock["playbook"]["offense"]["status"], "applied")  # stock locks immediately
         self.assertEqual(stock["playbook"]["offense"]["checklist"], [])
         rec = stock["playbook"]["offense"]["record"]
         self.assertEqual((rec["mode"], rec["name"]), ("stock", "Shotgun Classic"))
-        self.assertEqual(set(rec["formations"]), {"Gun Doubles Clamp Stack", "Gun 5WR Tight"})
+        from cfb_coach.madden import catalog
+
+        sc = catalog.book_formations("offense", "Shotgun Classic")
+        self.assertIn("Gun Doubles Clamp Stack", rec["formations"])
+        self.assertNotIn("Gun 5WR Tight", rec["formations"])  # seed fix: not in Shotgun Classic
+        for f, plays in rec["formations"].items():  # full formation, every play, from THAT book
+            self.assertEqual(plays, sc[f])
         back = self._prep("ryan", o_book="custom")
         self.assertEqual(back["playbook"]["offense"]["change"], "switch")
         self.assertTrue(back["playbook"]["offense"]["checklist"])  # full list on switch-to-custom
@@ -378,7 +396,7 @@ class TestPlaybookOfRecord(_Isolated):
             db.close()
 
     def test_playbook_cli_and_flag_guards(self) -> None:
-        self.run_cli(["prep", "--game", "madden27", "-o", "quen", "--offline", "--text"])
+        self.run_cli(["prep", "--game", "madden27", "-o", "quen", "--offline", "--text", "--o-book", "custom"])
         rc, out = self.run_cli(["playbook"])
         self.assertEqual(rc, 0)
         self.assertIn("Gun Tight", out)
@@ -393,9 +411,13 @@ class TestPlaybookOfRecord(_Isolated):
 
 
 class TestPrimaryTeamConfig(_Isolated):
-    def test_default_tbd_then_set_and_clear(self) -> None:
-        self.assertIsNone(load_config()["primary_team"])
-        self.assertIsNone(profile_config("primary")["team"])
+    def test_default_lions_then_set_and_clear(self) -> None:
+        self.assertEqual(load_config()["primary_team"], "Detroit Lions")
+        self.assertEqual(profile_config("primary")["team"], "Detroit Lions")
+        plan = build_prep_plan("ryan", offline=True, persist=False)
+        # Lions + stock Buccaneers O / 49ers D is the start; no live research → no switch
+        self.assertEqual(plan["playbook"]["offense"]["record"]["name"], "Buccaneers")
+        self.assertEqual(plan["playbook"]["defense"]["record"]["name"], "49ers")
         cfg, warn = save_config(primary_team="bucs")
         self.assertEqual(cfg["primary_team"], "Tampa Bay Buccaneers")
         self.assertEqual(warn, [])

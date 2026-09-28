@@ -129,10 +129,10 @@ class LivePlayController:
         }
 
     def macro_state(self) -> dict[str, Any] | None:
-        """v1.15: the Active-8 offense macro suggested with the pending call (or None)."""
+        """v1.15: the Active-8 macro on the pending call (CFB offense; Madden O + D) or None."""
         call = self.last_call
-        if (call is None or self.ended or not getattr(call, "macro", None) or getattr(call, "side", "") != "offense"
-                or getattr(call, "macro_info", None) is None):  # CFB offense custom adjustments only
+        if (call is None or self.ended or not getattr(call, "macro", None)
+                or getattr(call, "macro_info", None) is None):  # custom adjustments that carry macro_info
             return None
         mi = dict(getattr(call, "macro_info", None) or {})
         head = call.headline() if hasattr(call, "headline") else f"PLAY: {call.play} ({call.formation}) + MACRO: {call.macro}"
@@ -600,7 +600,7 @@ function renderDyn(st) {{
   if (!st.book) {{ $("dyn").innerHTML = ""; return; }}
   const b = st.book;
   let bk = b.name ? (b.name + (b.callable_rev ? " rev " + b.callable_rev + (b.confirmed ? " (applied)" : " (unconfirmed)") : "")) : "no custom book yet";
-  $("dyn").innerHTML = "Dynasty: <b>" + esc(st.dynasty_label || st.dynasty || "?") + "</b> · Book: <b>" + esc(bk) + "</b>"
+  $("dyn").innerHTML = esc(b.context_label || "Dynasty") + ": <b>" + esc(st.dynasty_label || st.dynasty || "?") + "</b> · Book: <b>" + esc(bk) + "</b>"
     + (st.dynasty_source ? " <span class='src'>(" + esc(st.dynasty_source) + ")</span>" : "");
 }}
 
@@ -610,7 +610,10 @@ function renderBook(b) {{
   if (b.error) {{ $("book-status").textContent = "Playbook unavailable: " + b.error; return; }}
   let msg = "";
   if (!b.callable_rev) msg = "No custom playbook yet — run prep.";
-  else if (!b.confirmed) msg = (b.name || "Book") + " rev " + b.callable_rev + " (" + (b.dynasty || "") + ") is UNCONFIRMED (first build): build it in CFB 27, then confirm below.";
+  const gl = b.game_label || "CFB 27";
+  $("btn-book-apply").textContent = "I applied these edits in " + gl;
+  if (!b.callable_rev) msg = b.empty_text || msg;
+  else if (!b.confirmed) msg = (b.name || "Book") + " rev " + b.callable_rev + " (" + (b.dynasty || "") + ") is UNCONFIRMED (first build): build it in " + gl + ", then confirm below.";
   else msg = "Locked to your applied " + (b.name || "book") + " rev " + b.callable_rev + " (" + (b.dynasty || "") + ").";
   if (b.pending_rev && b.confirmed) msg += " " + b.pending_edits + " pending edit(s) (rev " + b.pending_rev + ") are NOT callable until you confirm.";
   $("book-status").textContent = msg;
@@ -703,7 +706,7 @@ $("btn-end").addEventListener("click", async () => {{
 
 $("btn-book-apply").addEventListener("click", async () => {{
   setErr("");
-  if (!confirm("Confirm you made every edit in the CFB 27 custom playbook editor?")) return;
+  if (!confirm("Confirm you made every edit in the " + ($("btn-book-apply").textContent.replace("I applied these edits in ", "") || "CFB 27") + " custom playbook editor?")) return;
   try {{
     const rev = parseInt($("btn-book-apply").dataset.rev || "0", 10) || null;
     const data = await api("/api/book_apply", {{ rev: rev }});
@@ -728,7 +731,7 @@ def _dyn_line(ctrl: LivePlayController) -> str:
     else:
         bk = "no custom book yet"
     src = f" <span class='src'>({_esc(ctrl.dynasty_source)})</span>" if ctrl.dynasty_source else ""
-    return f"Dynasty: <b>{_esc(ctrl.dynasty_label or ctrl.dynasty)}</b> · Book: <b>{_esc(bk)}</b>{src}"
+    return f"{_esc(b.get('context_label') or 'Dynasty')}: <b>{_esc(ctrl.dynasty_label or ctrl.dynasty)}</b> · Book: <b>{_esc(bk)}</b>{src}"
 
 
 def _call_main(ctrl: LivePlayController) -> str:

@@ -74,6 +74,15 @@ class MetaPriors:
     lab_candidates: list[dict[str, Any]] = field(default_factory=list)
     formation: dict[str, float] = field(default_factory=dict)
     formation_why: dict[str, str] = field(default_factory=dict)
+    # zone-fit predicate (play, zone) -> bool; None = CFB 27 catalog. Madden passes its own.
+    fit: Any = None
+
+    def _zone_fit(self) -> Any:
+        if self.fit is not None:
+            return self.fit
+        from cfb_coach.cfb_catalog import zone_fit
+
+        return zone_fit
 
     @classmethod
     def build(cls, scout: Any | None = None, research: dict[str, Any] | None = None) -> "MetaPriors":
@@ -101,7 +110,7 @@ class MetaPriors:
         """v1.13: formations/plays NAMED in this prep's sources (web + YouTube
         transcripts) get a small zone-fit live boost, capped with the rest at LIVE_CAP."""
         try:
-            from cfb_coach.cfb_catalog import zone_fit
+            zone_fit = self._zone_fit()
         except Exception:  # noqa: BLE001
             return
         for key, v in (named.get("pairs") or {}).items():
@@ -130,9 +139,7 @@ class MetaPriors:
         if fm <= 0:
             return 0.0
         try:
-            from cfb_coach.cfb_catalog import zone_fit
-
-            if not zone_fit(play, zone):
+            if not self._zone_fit()(play, zone):
                 return 0.0
         except Exception:  # noqa: BLE001
             pass

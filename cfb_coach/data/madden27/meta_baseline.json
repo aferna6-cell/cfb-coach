@@ -92,7 +92,7 @@
       "Dollar (cited by guides; not in playbook-database formation list — confirm)"
     ],
     "coverage_mix": "Zone-match book: rush four, drop seven. Tampa 2 + Cover 4 Quarters exist in 23 of 24 Saleh formations; Cover 3 Match / Cov 3 Buzz Match / Cover 6 / Cover 2 Invert / Nickel 2 Trap off the same mug look. Man only when bunch/stack handled (Sep 16 TU: wrong-way press shading penalized).",
-    "pressure": "Sims/stunts (Nickel Sim 2, Field Sim 3, Dt Mike Loop 3) over contain — Sep 3 TU: OTs pick up contain + wide LBs. 'DB Fire 2' (brief) not found in any Saleh formation list.",
+    "pressure": "Sims/stunts (Nickel Sim 2, Field Sim 3, DT Mike Loop 3) over contain — Sep 3 TU: OTs pick up contain + wide LBs. 'DB Fire 2' (brief) not found in any Saleh formation list.",
     "launch_caveat": "Stock 3-4: DEs line up at OLB and drop into coverage (TimeSaver) — avoid until patched; prefer Saleh 4-3 / flexible nickel."
   },
   "offense_gameplan": {
@@ -146,14 +146,6 @@
           "tags": [
             "run",
             "vs_two_high"
-          ]
-        },
-        {
-          "formation": "Pistol Trips",
-          "play": "Flood",
-          "tags": [
-            "pass",
-            "vs_single_high"
           ]
         },
         {
@@ -289,15 +281,6 @@
             "vs_man",
             "vs_two_high"
           ]
-        },
-        {
-          "formation": "Gun Off Trips Close",
-          "play": "Y Option Wheel",
-          "tags": [
-            "pass",
-            "vs_man",
-            "vs_single_high"
-          ]
         }
       ],
       "two_minute": [
@@ -329,14 +312,6 @@
         {
           "formation": "Gun Doubles Clamp Stack",
           "play": "Texas Y-Stutter Wheel",
-          "tags": [
-            "pass",
-            "vs_man"
-          ]
-        },
-        {
-          "formation": "Gun Off Trips Close",
-          "play": "Y Option Wheel",
           "tags": [
             "pass",
             "vs_man"
@@ -431,10 +406,6 @@
         {
           "formation": "Gun 5WR Tight",
           "play": "Clear Deep"
-        },
-        {
-          "formation": "Pistol Trips",
-          "play": "Flood"
         }
       ],
       "two_high": [

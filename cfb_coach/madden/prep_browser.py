@@ -6,6 +6,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from cfb_coach.prep_book_html import (
+    MIN_CSS,
+    render_audibles_min,
+    render_formations_min,
+    research_fail_banner,
+    research_status_line,
+)
 from cfb_coach.prep_browser import (
     _CSS,
     ET,
@@ -114,7 +121,135 @@ def _render_playbook(plan: dict[str, Any]) -> str:
     return "<section><h2>Playbook of record (locked by this prep)</h2>" + "".join(parts) + "</section>"
 
 
+def details_path(opponent_id: str) -> Path:
+    from cfb_coach.games import GAMES, MADDEN27
+
+    return default_prep_dir() / f"{GAMES[MADDEN27].prep_prefix}details_{opponent_id.lower()}.html"
+
+
+def _min_book(plan: dict[str, Any], side: str) -> dict[str, Any]:
+    """CFB `render_formations_min` / `render_audibles_min` input from a Madden side plan."""
+    bp = (plan.get("playbook") or {}).get(side) or {}
+    rec = bp.get("record") or {}
+    label = "stock" if rec.get("mode") == "stock" else "custom"
+    return {
+        "name": f"{side.title()}: {rec.get('name')} ({label} book)",
+        "formation_list": rec.get("formation_list") or [
+            {"formation": f, "status": "applied", "source_book": rec.get("name"), "n_plays": len(ps), "note": ""}
+            for f, ps in (rec.get("formations") or {}).items()],
+        "pending": bp.get("status") == "pending",
+        "apply_cmd": f"PYTHONPATH=. python3 -m cfb_coach prep --game madden27 -o {plan.get('opponent_id')} --mark-applied",
+        "audibles": rec.get("audibles") or {},
+        "game_label": "Madden 27",
+    }
+
+
+def _book_pick_line(plan: dict[str, Any], side: str) -> str:
+    bp = (plan.get("playbook") or {}).get(side) or {}
+    rec = bp.get("record") or {}
+    team = ""
+    rows = (bp.get("recommendation") or {}).get("rows") or []
+    for r in rows:
+        if r.get("book") == rec.get("name") and r.get("team"):
+            team = f" ({r['team']} book)"
+    stock = rec.get("mode") == "stock"
+    how = (f"In game: select the <b>{_esc(rec.get('name'))}</b> {side} playbook{_esc(team)} — nothing to build."
+           if stock else "Build the custom book with the formations below.")
+    return (f"<div class='rline'><b>{side.title()} book: {_esc(rec.get('name'))}</b> — {how}"
+            f"<div class='muted'>{_esc(bp.get('reason') or '')}</div></div>")
+
+
 def render_prep_html(plan: dict[str, Any]) -> str:
+    """Minimal prep page (CFB parity): O formations + audibles, D formations, Active-8 macros
+    with your exact settings. Everything else is on the details page."""
+    oid = _esc(plan.get("opponent_id"))
+    offense_only = bool(plan.get("offense_only"))
+    scout = plan.get("meta_scout") or {}
+    det = plan.get("details_path") or str(details_path(plan.get("opponent_id") or ""))
+    o = _min_book(plan, "offense")
+    parts = [research_fail_banner(scout), _book_pick_line(plan, "offense"), render_formations_min(o),
+             render_audibles_min(o)]
+    if not offense_only:
+        d = _min_book(plan, "defense")
+        parts += [_book_pick_line(plan, "defense"), render_formations_min(d)]
+    missing = plan.get("missing_settings") or []
+    miss_html = ""
+    if missing:
+        miss_html = ("<div class='banner fail'><strong>Missing macro settings — nothing is invented.</strong> "
+                     "Enter yours with <code>macro-settings --game madden27 NAME --set \"Section: Setting = value\"</code>:"
+                     "<ul>" + "".join(f"<li>{_esc(m)}</li>" for m in missing) + "</ul></div>")
+    head = "Macros — Active 8 (offense only · CPU)" if offense_only else "Macros — Active 8 (O + D)"
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Prep — {_esc(plan.get("display_name"))} · Madden 27 Franchise</title>
+<style>{_CSS}{MIN_CSS}</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>vs {_esc(plan.get("display_name"))}
+        <span style="color:var(--muted);font-weight:500">· Madden 27 Franchise · {_esc((plan.get("profile_config") or {}).get("team_label"))}</span>
+      </h1>
+      <div class="rline">{_esc(research_status_line(scout))} · <a href="file:///{_esc(str(det).lstrip('/'))}">details</a></div>
+    </header>
+    {"".join(parts)}
+    <section id="macros">
+      <h2>{head}</h2>
+      {miss_html}
+      {_render_macro_accordion(
+          plan.get("macro_cards") or [],
+          plan.get("slot_budget") or {},
+          offense_only=offense_only,
+          replacing_lines=list(plan.get("replacing_lines") or []),
+          loadout=plan.get("loadout") or {},
+      )}
+    </section>
+    <footer>Live: <code>play --game madden27 -o {oid}</code> — calls come only from these formations
+      (PLAY: X + MACRO: Y). Details: {_esc(str(det))}</footer>
+  </div>
+  <script>{_COPY_JS}</script>
+</body>
+</html>
+"""
+
+
+def _render_research_madden(plan: dict[str, Any]) -> str:
+    """Research used for the book pick: named books per side + book scores + top named formations."""
+    scout = plan.get("meta_scout") or {}
+    named = scout.get("named_signals") or {}
+    yt = scout.get("youtube") or {}
+    rows = []
+    for side in ("offense",) if plan.get("offense_only") else ("offense", "defense"):
+        rec = ((plan.get("playbook") or {}).get(side) or {}).get("recommendation") or {}
+        score_rows = "".join(
+            f"<tr><td>{_esc(r['book'])}</td><td>{r['score']:.2f}</td><td class='muted'>"
+            + _esc(", ".join(f"{k} {v:+.2f}" for k, v in (r.get("parts") or {}).items() if v))
+            + f"</td><td class='muted'>{_esc(r.get('research_docs', 0))} src</td></tr>"
+            for r in (rec.get("rows") or [])[:8])
+        forms = list(((named.get(side) or {}).get("formations") or {}).items())[:8]
+        form_txt = ", ".join(f"{f} ({v.get('docs', 0)})" for f, v in forms) or "none named"
+        books = list(((named.get("books") or {}).get(side) or {}).items())[:6]
+        book_txt = ", ".join(f"{b} ({v.get('docs', 0)} src)" for b, v in books) or "none named"
+        rows.append(f"<h3>{side.title()}</h3><div class='why'>Books named: {_esc(book_txt)}</div>"
+                    f"<div class='why'>Formations named: {_esc(form_txt)}</div>"
+                    + (f"<table class='ca-set'><tr><th>Book</th><th>Score</th><th>Why</th><th></th></tr>{score_rows}</table>" if score_rows else "")
+                    + f"<div class='why'>{_esc(rec.get('reason') or '')}</div>")
+    vids = "".join(
+        f"<li><a href='{_esc(v.get('url'))}'>{_esc(v.get('title'))}</a> <span class='muted'>{_esc(v.get('channel') or '')} · "
+        f"{_esc((v.get('published') or '')[:10])} · {_esc(v.get('transcript_status') or '')}</span></li>"
+        for v in (yt.get("videos") or [])[:10])
+    yt_line = (f"YouTube: {yt.get('found', 0)} Madden 27 videos, {yt.get('transcripts', 0)} transcripts"
+               if yt else "YouTube research not run (offline / fallback).")
+    return (f"<section><h2>Research → book + formation pick</h2><div class='rline'>{_esc(research_status_line(scout))}</div>"
+            + "".join(rows) + f"<div class='why'>{_esc(yt_line)}</div><ul class='tips'>{vids}</ul></section>")
+
+
+def render_prep_details_html(plan: dict[str, Any]) -> str:
+    """Everything else (research, scores, book of record with every play, adjustments,
+    macro research notes) — written next to the minimal page, never auto-opened."""
     shown = plan.get("shown_deltas") or []
     pb = [d for d in shown if d.get("kind") == "playbook"]
     mac = [d for d in shown if d.get("kind") == "macro"]
@@ -130,9 +265,8 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     team_line = (
         f"Primary team: <b>{_esc(plan.get('primary_team'))}</b>"
         if plan.get("primary_team")
-        else "Primary team: <b>TBD</b> — books picked from the verified meta catalog "
-        "(Buccaneers / Shotgun Classic / custom O · 49ers Saleh D). Set later: "
-        "<code>config --game madden27 --primary-team &lt;NFL team&gt;</code>"
+        else "Primary team: <b>not set</b> — books picked from research + the verified catalog. Set: "
+        "<code>config --game madden27 --primary-team \"Detroit Lions\"</code>"
     )
     franchise_banner = (
         f'<div class="banner dyn {"exp" if exp else "ser"}">'
@@ -158,7 +292,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Prep — {_esc(plan.get("display_name"))} · Madden 27 Franchise</title>
+<title>Prep details — {_esc(plan.get("display_name"))} · Madden 27 Franchise</title>
 <style>{_CSS}</style>
 </head>
 <body>
@@ -179,6 +313,8 @@ def render_prep_html(plan: dict[str, Any]) -> str:
 
     {status}
     {franchise_banner}
+    {research_fail_banner(plan.get("meta_scout") or {})}
+    {_render_research_madden(plan)}
     {_render_meta_scout(plan.get("meta_scout") or {})}
 
     <section>
@@ -208,6 +344,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
           offense_only=offense_only,
           replacing_lines=list(plan.get("replacing_lines") or []),
           loadout=plan.get("loadout") or {},
+          details=True,
       )}
     </section>
 
@@ -221,10 +358,12 @@ def render_prep_html(plan: dict[str, Any]) -> str:
       a <b>stock</b> in-game book by exact name, or a <b>custom</b> book (full formation checklist on first
       build or switch; later preps only ADD / REMOVE whole formations). Live <code>play</code> calls are hard-locked
       to that book. Macros are Custom Adjustments you create (Create &amp; Share → Custom Adjustments).
-      Meta is community-derived (~Sep 2026, cross-checked 2026-09-23) and drifts after title updates;
-      macro option labels tagged <b>approx</b> need an in-game confirm.
+      Every prep researches live (web + YouTube transcripts) and may recommend a different stock book
+      (start: stock Buccaneers O / 49ers D for the Lions; switches need live research, a clear margin and a cooldown).
+      Macro settings shown as exact are ONLY the ones you entered (<code>macro-settings --game madden27</code>);
+      research guesses are listed here for reference and never used as settings.
       Active loadout hard-capped at <b>8 O+D</b> for user games; CPU = offense-only.
-      Personas are shared with CFB. Primary team stays TBD until you set it.
+      Personas are shared with CFB. Primary team: Detroit Lions (config --game madden27 --primary-team).
       Mark applied with <code>prep --game madden27 --opponent {oid} --mark-applied</code>.
     </footer>
   </div>
@@ -237,7 +376,13 @@ def render_prep_html(plan: dict[str, Any]) -> str:
 def write_prep_html(opponent_id: str, plan: dict[str, Any], *, path: Path | None = None) -> Path:
     out = path or prep_html_path(opponent_id)
     out.parent.mkdir(parents=True, exist_ok=True)
+    det = out.with_name(details_path(opponent_id).name)
+    plan.setdefault("details_path", str(det))
     out.write_text(render_prep_html(plan), encoding="utf-8")
+    try:  # details page next to it — written every prep, never auto-opened
+        det.write_text(render_prep_details_html(plan), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 
