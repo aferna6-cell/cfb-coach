@@ -26,7 +26,7 @@ def _base_macro(raw: str | None) -> str | None:
 
 
 def learn(db: Any, opponent_id: str) -> dict[str, Any]:
-    """Aggregate this opponent's snaps not yet learned; bump weights + macro status."""
+    """Learn from this opponent's new snaps: CFB retrain (rebuild_all) + macro proven/failed status."""
     since = int(db.get_meta(f"{LEARN_KEY}:{opponent_id}") or 0)
     snaps = list(reversed(db.get_recent_snaps(opponent_id, since_id=since, limit=500)))
     plays: dict[tuple[str, str, str], list[bool]] = defaultdict(list)
@@ -39,12 +39,15 @@ def learn(db: Any, opponent_id: str) -> dict[str, Any]:
         m = _base_macro(s["macro"])
         if m:
             macros[m].append(ok)
-    for (side, form, play), res in plays.items():
-        delta = 0.15 * (sum(res) - (len(res) - sum(res)))
-        db.bump_gameplan_weight(opponent_id, side, f"{form}::{play}", delta)
+    # CFB parity (v1.12 learning): rebuild every learned weight — per-opponent play / zone
+    # (open / red zone / goal line) / play-vs-look / macro weights — from ALL logged snaps +
+    # game W/L, with red-zone and turnover-aware scoring. Same code path as CFB postgame,
+    # written into this game's own DB (madden27.db, same schema as coach.db).
+    from cfb_coach.gameplan import learn_from_snaps
+
+    retrain = learn_from_snaps(db, opponent_id, since_id=since or None)
     status_changes: list[str] = []
     for m, res in macros.items():
-        db.bump_macro_weight(opponent_id, m, 0.15 * (sum(res) - (len(res) - sum(res))))
         # Career record across all opponents in the Madden DB
         rows = db.conn.execute(
             "SELECT side, result FROM snaps WHERE UPPER(macro) LIKE ?", (f"{m}%",)
@@ -56,20 +59,26 @@ def learn(db: Any, opponent_id: str) -> dict[str, Any]:
             if new and macro_status(m, db) != new:
                 set_status(db, m, new)
                 status_changes.append(f"{m} → {new} ({sum(rec)}/{len(rec)} success)")
+    session_id = None
+    try:
+        r = db.conn.execute(
+            "SELECT session_id FROM snaps WHERE opponent_id = ? AND session_id IS NOT NULL AND id > ? "
+            "ORDER BY id DESC LIMIT 1", (opponent_id, since)).fetchone()
+        session_id = r[0] if r else None
+    except Exception:  # noqa: BLE001
+        session_id = None
     if snaps:
         db.set_meta(f"{LEARN_KEY}:{opponent_id}", str(max(int(s["id"]) for s in snaps)))
-
-    from cfb_coach.retrain import apply_play_vs_look_weights, grade_play_vs_look
-
-    grades = grade_play_vs_look(list(snaps))
-    vs_changes = apply_play_vs_look_weights(db, opponent_id, grades)
     return {
         "snaps": len(snaps),
         "plays": plays,
         "macros": macros,
         "status_changes": status_changes,
-        "grades": grades,
-        "vs_look_changes": vs_changes,
+        "grades": retrain["grades"],
+        "vs_look_changes": retrain["vs_look_changes"],
+        "changes": retrain["changes"],
+        "rebuild": retrain["rebuild"],
+        "session_id": session_id,
     }
 
 
@@ -93,6 +102,14 @@ def summary(db: Any, opponent_id: str, profile: str | None = None) -> str:
         lines.append("## Macros used")
         for m, res in out["macros"].items():
             lines.append(f"  {m} [{macro_status(m, db)}]: {sum(res)}/{len(res)} success")
+    try:
+        from cfb_coach.learning import RULES_VERSION, format_postgame_v2
+
+        lines.append(f"## Retrain (all {db.count_snaps(opponent_id)} logged snaps re-scored under rules {RULES_VERSION} → "
+                     "per-opponent weights; red zone + turnover aware)")
+        lines.extend(format_postgame_v2(db, opponent_id, out["rebuild"], session_id=out.get("session_id")))
+    except Exception as exc:  # noqa: BLE001 — never break postgame
+        lines.append(f"  (retrain report unavailable: {type(exc).__name__}: {exc})")
     grades = out.get("grades") or []
     if grades:
         from cfb_coach.retrain import format_grades_summary

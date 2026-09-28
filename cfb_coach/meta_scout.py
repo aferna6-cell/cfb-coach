@@ -767,13 +767,16 @@ _OLD_TITLE_RX = re.compile(
 
 
 def _collect_docs(
-    sources: list[MetaSource], bodies: dict[str, str], *, now: datetime, max_age_days: int = 45
+    sources: list[MetaSource], bodies: dict[str, str], *, now: datetime, max_age_days: int = 45,
+    game_rx: re.Pattern[str] | None = None, old_rx: re.Pattern[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]]]:
     """(headlines, texts, docs). docs = {label, kind, url, date, text} for named-entity extraction.
 
     Feed items must be CFB 27 (Google News) and never an older title / Madden
     (by title), within ``max_age_days``.
     """
+    game_rx = game_rx or _CFB27
+    old_rx = old_rx or _OLD_TITLE_RX
     heads: list[dict[str, Any]] = []
     texts: list[str] = []
     docs: list[dict[str, Any]] = []
@@ -789,9 +792,9 @@ def _collect_docs(
                 if dt and (now - dt.astimezone(timezone.utc)).days > max_age_days:
                     continue
                 blob = f"{title}. {it.get('text') or ''}"
-                if not reddit and not _CFB27.search(blob):
-                    continue  # Google News: must be about CFB 27
-                if _OLD_TITLE_RX.search(title) and not _CFB27.search(title):
+                if not reddit and not game_rx.search(blob):
+                    continue  # Google News: must be about this game (CFB 27 / Madden 27)
+                if old_rx.search(title) and not game_rx.search(title):
                     continue  # older title (CFB 25/26) or Madden
                 heads.append(
                     {

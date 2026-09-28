@@ -10,8 +10,8 @@
         "id": "franchise_primary",
         "label": "Franchise primary",
         "mode": "serious",
-        "team": null,
-        "description": "Aidan's serious Franchise save. Primary team TBD — set later with `config --game madden27 --primary-team <NFL team>`. Until then prep/play run the unassigned meta scheme pack."
+        "team": "Detroit Lions",
+        "description": "Aidan's serious Franchise save — Detroit Lions (multi-user league: CPU weeks + head-to-head vs humans). Starts on the stock Buccaneers offense + stock 49ers defense; each prep's research may recommend another book. Change with `config --game madden27 --primary-team <NFL team>`."
       },
       "lab": {
         "id": "franchise_lab",
@@ -46,14 +46,14 @@
   },
   "scheme_pack": {
     "id": "madden27_meta_pack",
-    "label": "Unassigned primary scheme pack",
+    "label": "Detroit Lions primary — Buccaneers-stock O / 49ers-stock D starting books",
     "offense_source": "Buccaneers formations (Gun Doubles Clamp Stack, Gun Trips X Nasty, Gun 5WR Tight, Pistol Trips) — Bucs ranked #1 by Madden Prodigy (2026-08-11); later rankings lead with Shotgun Classic / Texans, but Clamp Stack is the consensus meta formation either way",
     "defense_source": "49ers / Titans Saleh 4-3 (consensus #1 D): Nickel Over home, Single/Double Mug disguise, Dime 3-2 Odd on passing downs; zone-match book — rush four, drop seven",
     "note": "Meta scheme, NOT Aidan's Franchise team. When a primary team is set, prep retargets deltas; personas and call language stay the same."
   },
   "doctrine_priors": {
     "free_reign": true,
-    "offense": "Clamp Stack home (Texas Y-Stutter Wheel / Mtn Shuffle Verts Smash / Return Bench); zone runs (Inside Zone, Same Side Zone, HB Stretch) vs two-high; 5WR Tight Mesh Post / Clear Deep / Mtn concepts on money downs. Avoid Aggressive blocking (Sep 3 TU holding).",
+    "offense": "Clamp Stack home (Texas Y-Stutter Wheel / Mtn Shuffle Verts Smash / Return Bench); zone runs (Inside Zone, Same Side Zone in the Bucs Clamp Stack, HB Stretch) vs two-high; 5WR Tight Mesh Post / Clear Deep / Mtn concepts on money downs. Avoid Aggressive blocking (Sep 3 TU holding).",
     "defense_default": "Nickel Over home (Cover 4 Quarters / Cover 3 Match / Tampa 2). Rush four, drop seven — zone-match, not a blitz book. Single Mug disguise; sims/stunts (Nickel Sim 2, Field Sim 3) over contain (Sep 3 TU: OTs pick up contain). One user job. Macros situational.",
     "prediction_rule": "One tell = log + mild bump. Targeted macro only on REPEATED tendency (2+) this game in similar D&D."
   },
@@ -61,7 +61,7 @@
     "offense_formations": {
       "Gun Doubles Clamp Stack": {
         "role": "primary",
-        "book": "Buccaneers (also Shotgun Classic, Cardinals, 15+ others)",
+        "book": "Buccaneers (the formation is in 18 books incl. Shotgun Classic, Lions, Cardinals — but its play list differs per book)",
         "core": [
           "Texas Y-Stutter Wheel",
           "Mtn Shuffle Verts Smash",
@@ -85,7 +85,27 @@
           "Mtn Shuffle Verts Smash",
           "Inside Zone",
           "Return Bench"
-        ]
+        ],
+        "family": "Shotgun",
+        "book_exclusive": {
+          "Texas Y-Stutter Wheel": [
+            "Bengals",
+            "Buccaneers",
+            "Commanders",
+            "Cowboys",
+            "Panthers",
+            "Saints"
+          ],
+          "Same Side Zone": [
+            "Bengals",
+            "Buccaneers",
+            "Commanders",
+            "Cowboys",
+            "Panthers",
+            "Saints"
+          ]
+        },
+        "note": "Texas Y-Stutter Wheel and Same Side Zone are Buccaneers-book plays; Shotgun Classic's (and the Lions') Clamp Stack does NOT have them (Huddle.gg, 2026-09-28)."
       },
       "Gun Trips X Nasty": {
         "role": "primary_pass",
@@ -110,11 +130,12 @@
           "Mtn Stick Wheel",
           "Switch HB Wheel",
           "Inside Zone"
-        ]
+        ],
+        "family": "Shotgun"
       },
       "Gun 5WR Tight": {
         "role": "money_down",
-        "book": "Buccaneers (also Jaguars, Shotgun Classic)",
+        "book": "Buccaneers (Shotgun family; also Jaguars). NOT in Shotgun Classic, which has Gun 5WR Trio instead",
         "core": [
           "Mesh Post",
           "Clear Deep",
@@ -135,7 +156,8 @@
           "Mesh Post",
           "Mtn Double Post",
           "Clear Deep"
-        ]
+        ],
+        "family": "Shotgun"
       },
       "Pistol Trips": {
         "role": "run_rz",
@@ -143,22 +165,20 @@
         "core": [
           "HB Zone WK",
           "HB Dive",
-          "HB Stretch",
-          "Stick",
-          "Flood"
+          "HB Stretch"
         ],
         "verified": [
           "HB Zone WK",
           "HB Dive",
-          "HB Stretch",
-          "Stick",
-          "Flood"
+          "HB Stretch"
         ],
         "audibles": [
           "HB Zone WK",
           "HB Dive",
-          "Flood"
-        ]
+          "HB Stretch"
+        ],
+        "note": "2026-09-28: Stick / Flood removed — not in the Buccaneers Pistol Trips list (Huddle.gg).",
+        "family": "Pistol"
       }
     },
     "defense_packages": {
@@ -186,17 +206,16 @@
         "calls": [
           "Tampa 2",
           "Cover 4 Quarters",
-          "Cover 3 Match",
           "Cover 1 Hole",
-          "Dt Mike Loop 3"
+          "DT Mike Loop 3"
         ],
         "verified": [
           "Tampa 2",
           "Cover 4 Quarters",
-          "Cover 3 Match",
           "Cover 1 Hole",
-          "Dt Mike Loop 3"
-        ]
+          "DT Mike Loop 3"
+        ],
+        "note": "2026-09-28: Cover 3 Match removed — Single Mug has Cover 3 / Cover 3 Buzz Match, not Cover 3 Match (Huddle.gg 49ers + Titans)."
       },
       "Nickel Double Mug": {
         "role": "same_look_pressure",
@@ -221,7 +240,10 @@
           "Cover 4 Quarters",
           "Tampa 2"
         ],
-        "verified": []
+        "verified": [
+          "Cover 4 Quarters",
+          "Tampa 2"
+        ]
       },
       "4-3 Over": {
         "role": "base_run_short_yardage",
@@ -276,14 +298,13 @@
         "Y Option Wheel"
       ],
       "why": "Civil.GG top-10: Y Option Wheel beats man and zone (Chargers concept).",
-      "verified": [
-        "Y Option Wheel"
-      ],
+      "verified": [],
       "books": [
         "Chargers",
         "Falcons",
         "Patriots"
-      ]
+      ],
+      "note": "Not found in the Huddle.gg Chargers / Falcons / Patriots books (2026-09-28) — unverified, never installed or called."
     }
   },
   "reads": {
@@ -320,9 +341,9 @@
     "Cover 2 Man": "User hook",
     "Nickel Sim 2": "User hot",
     "Cover 1 Hole": "User robber",
-    "Dt Mike Loop 3": "User hot",
     "Field Sim 3": "User hot",
-    "Cover 3 Sky": "User HB"
+    "Cover 3 Sky": "User HB",
+    "DT Mike Loop 3": "User hot"
   },
   "archetype_leans": {
     "split_field_zone": {
@@ -444,12 +465,11 @@
       },
       "Shotgun Classic": {
         "formations": [
-          "Gun Doubles Clamp Stack",
-          "Gun 5WR Tight"
+          "Gun Doubles Clamp Stack"
         ],
         "team": null,
-        "source": "TimeSaver #1 O (upd 2026-09-11); Clamp Stack + 5WR Tight present per Huddle/madden.tools",
-        "note": "Only the formations with verified play lists are callable; everything else in the book is not modeled yet."
+        "source": "TimeSaver #1 O (upd 2026-09-11); formation + play lists per Huddle.gg Shotgun Classic book (2026-09-28)",
+        "note": "Gun 5WR Tight is NOT in this book (it has Gun 5WR Trio). Its Clamp Stack has no Texas Y-Stutter Wheel / Same Side Zone. Play lists come from data/madden27/playbooks.json."
       }
     },
     "defense": {
@@ -526,8 +546,6 @@
     "pressure_heavy": [
       "Gun Tight"
     ],
-    "c2_c3_mixer": [
-      "Gun Off Trips Close"
-    ]
+    "c2_c3_mixer": []
   }
 }

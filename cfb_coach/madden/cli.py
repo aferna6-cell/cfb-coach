@@ -50,10 +50,15 @@ def _profile_header(pid: str) -> str:
 
 
 def _active_after_prep(db: CoachDB, oid: str, pid: str) -> list[str]:
-    """Active-8 for live calls = profile default + ADD deltas already marked applied."""
+    """Active-8 for live calls = what the last prep for this opponent set (CFB parity), else
+    profile default + ADD deltas already marked applied. Never anything outside that list."""
     from cfb_coach.install_sheet import get_applied_deltas
+    from cfb_coach.madden.macros import load_active
     from cfb_coach.madden.prep import resolve_loadout
 
+    stored = load_active(db, oid)
+    if stored:
+        return stored
     active = profile_config(pid)["default_active"]
     applied = [d for d in get_applied_deltas(db, oid) if d.get("kind") == "macro"]
     prof = db.get_opponent(oid) or {}
@@ -90,15 +95,20 @@ def cmd_opponents(_args: argparse.Namespace) -> int:
 def cmd_config(args: argparse.Namespace) -> int:
     changing = any(
         getattr(args, k, None)
-        for k in ("primary_team", "lab_team", "clear_primary", "clear_lab")
+        for k in ("primary_team", "lab_team", "clear_primary", "clear_lab", "o_book", "d_book")
     )
     if changing:
-        _, warnings = save_config(
-            primary_team=args.primary_team,
-            lab_team=args.lab_team,
-            clear_primary=bool(args.clear_primary),
-            clear_lab=bool(args.clear_lab),
-        )
+        try:
+            _, warnings = save_config(
+                primary_team=args.primary_team,
+                lab_team=args.lab_team,
+                clear_primary=bool(args.clear_primary),
+                clear_lab=bool(args.clear_lab),
+                offense_book=getattr(args, "o_book", None),
+                defense_book=getattr(args, "d_book", None),
+            )
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from None
         for w in warnings:
             print(f"warning: {w}")
     cfg = load_config()
@@ -107,8 +117,44 @@ def cmd_config(args: argparse.Namespace) -> int:
     print(f"Madden 27 Franchise config → {config_path()}")
     print(f"  primary team (franchise_primary): {team_label(cfg.get('primary_team'))}")
     print(f"  lab team     (franchise_lab):     {team_label(cfg.get('lab_team'))}")
+    from cfb_coach.madden.franchise import DEFAULT_START_BOOK
+
+    for side, key in (("offense", "offense_book"), ("defense", "defense_book")):
+        val = cfg.get(key) or "auto"
+        note = (f" (research picks each prep; starts on stock {DEFAULT_START_BOOK[side]})" if val == "auto" else "")
+        print(f"  {side} book: {val}{note}")
     if not cfg.get("primary_team"):
-        print("  Set later: config --game madden27 --primary-team \"<NFL team>\"")
+        print("  Set: config --game madden27 --primary-team \"Detroit Lions\"")
+    return 0
+
+
+def cmd_macro_settings(args: argparse.Namespace) -> int:
+    """Enter / show Aidan's exact Custom Adjustment settings (verbatim; gaps flagged, never invented)."""
+    from cfb_coach.madden.data import load_macro_catalog
+    from cfb_coach.madden.macros import copy_block, macro_detail, save_user_settings, settings_path
+
+    if args.macro and (args.settings or args.clear or args.xbox_name):
+        try:
+            save_user_settings(args.macro, args.settings, replace=bool(args.replace),
+                               xbox_name=args.xbox_name, clear=bool(args.clear))
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from None
+        print(f"Saved → {settings_path()}")
+    ids = [args.macro.upper()] if args.macro else list(load_macro_catalog().get("macros") or {})
+    for mid in ids:
+        det = macro_detail(mid)
+        if args.macro:
+            print(copy_block(det))
+            if det["gap_rows"]:
+                print("Research guesses for the missing settings (NOT used — confirm in game and enter yours):")
+                for g in det["gap_rows"]:
+                    print(f"  {g['section']} / {g['setting']}: {g['research_value']}")
+        else:
+            st = f"{len(det['settings'])} setting(s) on file" if det["has_settings"] else "NO EXACT SETTINGS ON FILE"
+            miss = f"; missing {len(det['gap_rows'])}" if det["has_settings"] and det["gap_rows"] else ""
+            print(f"  {mid:<9} ({det['side']}) {st}{miss}")
+    if not args.macro:
+        print(f"Enter yours: macro-settings --game madden27 MATCH-4 --set \"Coverage: Shading = <exact value>\"  → {settings_path()}")
     return 0
 
 
@@ -320,6 +366,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         print(str(exc).replace("<opp>", oid), file=sys.stderr)
         db.close()
         return 2
+    print(f"Active macros (from last prep): {', '.join(active) or 'none'}")
     print(f"Locked book: O = {books['offense']['name']} [{books['offense']['mode']}]"
           + ("" if cpu else f" · D = {books['defense']['name']} [{books['defense']['mode']}]")
           + " — calls stay inside it (playbook --game madden27 to list)")
@@ -340,10 +387,11 @@ def cmd_play(args: argparse.Namespace) -> int:
         heard = format_heard(sit)
         print(heard)
         call = make_call(sit, oid, db, active_macros=active)
+        print(call.headline())
         print(call.format())
         if args.why:
             print(f"  ({call.rationale})")
-        _write_overlay(overlay, call.format(), heard)
+        _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
         if overlay is not None:
             print(f"  overlay → {overlay}")
         db.close()
@@ -352,6 +400,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     use_html = not bool(getattr(args, "terminal", False) or getattr(args, "no_html", False))
     if use_html:
         from cfb_coach.live_server import LivePlayController, run_live_server
+        from cfb_coach.madden.playbook import live_apply, live_book_info
 
         def _make(sit, **kwargs):
             return make_call(sit, oid, db, active_macros=active, **kwargs)
@@ -370,7 +419,10 @@ def cmd_play(args: argparse.Namespace) -> int:
             brand="Madden 27 Franchise",
             play_cmd="cfb-coach play --game madden27",
             dynasty=pid,
+            dynasty_label=profile_config(pid)["label"],
             cpu_only=cpu,
+            book_info=lambda: live_book_info(db, cpu=cpu, profile_label=profile_config(pid)["label"]),
+            book_apply=lambda rev: live_apply(db, rev),
         )
         print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
         try:
@@ -443,8 +495,9 @@ def cmd_play(args: argparse.Namespace) -> int:
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )
+            print(call.headline())
             print(call.format())
-            _write_overlay(overlay, call.format(), heard)
+            _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
             last_call, last_sit = call, sit
             if sit.coverage_hint and sit.side == "offense":
                 last_cov = sit.coverage_hint

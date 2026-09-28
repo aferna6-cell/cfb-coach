@@ -237,7 +237,7 @@ def render_formations_min(book: dict[str, Any] | None) -> str:
     pending = bool(book.get("pending")) and bool(book.get("apply_cmd"))
     apply_html = ""
     if pending:
-        apply_html = ("<div class='apply'><div class='muted'>After you add/remove the marked formations in CFB 27 "
+        apply_html = (f"<div class='apply'><div class='muted'>After you add/remove the marked formations in {_esc(book.get('game_label') or 'CFB 27')} "
                       "(Create &amp; Share › Custom Playbooks), confirm:</div>" + _copy("book-apply-cmd", book["apply_cmd"], "Copy apply command") + "</div>")
     return f"""
     <section id="formations">

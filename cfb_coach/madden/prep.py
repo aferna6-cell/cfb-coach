@@ -222,16 +222,51 @@ def build_prep_plan(
     offense_only = is_cpu_opponent(opponent_id)
     arch = (opp.get("archetype") or "unknown").lower()
 
+    # 1) Fresh research every prep (web + YouTube transcripts, like CFB) — feeds the book pick
+    scout_dict: dict[str, Any]
+    scout = None
+    research: dict[str, Any] = {}
+    try:
+        from cfb_coach.madden.meta_scout import research_from_scout, run_madden_scout
+
+        scout = run_madden_scout(offline=offline, refresh=refresh_meta)
+        research = research_from_scout(scout)
+        scout_dict = scout.to_dict()
+    except Exception as exc:  # noqa: BLE001 — never break prep
+        scout_dict = {
+            "available": False,
+            "offline": offline,
+            "message": f"Scout unavailable — using cached/baseline {META_VERSION} ({type(exc).__name__})",
+            "baseline_fallback": META_VERSION,
+            "confidence": "low",
+            "mode": "seed",
+            "research_status": "failed",
+        }
+
+    # 2) Books of record: research recommends the O + D book (start: Buccaneers O / 49ers D)
+    if o_book is None or d_book is None:
+        from cfb_coach.madden.franchise import book_choice, load_config
+
+        cfg = load_config()
+        o_book = o_book if o_book is not None else book_choice("offense", cfg)
+        d_book = d_book if d_book is not None else book_choice("defense", cfg)
     books = plan_books(db, opp=opp, team=pcfg["team"], offense_only=offense_only,
-                       o_book=o_book, d_book=d_book)
+                       o_book=o_book, d_book=d_book, research=research, opponent_id=opponent_id)
     book_deltas = [d for side in ("offense", "defense") for d in books[side]["deltas"]]
     proposed = propose_deltas(opponent_id, opp, profile=pcfg["id"])
     applied = get_applied_deltas(db, opponent_id)
     shown = book_deltas + filter_new_deltas(proposed, applied)
 
+    # 3) Active 8 (CFB parity): drill-down with Aidan's exact settings, missing ones flagged
     active = list(pcfg["default_active"] or inv["macros_active"] + inv["offensive_macros"])
     active_after, swaps, replacing = resolve_loadout(active, shown, arch, offense_only=offense_only)
     cards, loadout = loadout_cards(active_after, db, offense_only=offense_only)
+    from cfb_coach.madden.macros import attach_detail, missing_settings_report
+
+    for c in cards:
+        side_book = books.get(c.get("side") or "defense", {}).get("record", {}).get("formations")
+        attach_detail(c, side_book)
+    missing = missing_settings_report([c["id"] for c in cards])
     budget = {
         "meter": loadout["meter"],
         "total": loadout["total"],
@@ -242,25 +277,17 @@ def build_prep_plan(
     tips = call_tips(opp, offense_only=offense_only, bl=bl)
     tips.extend(audible_tips(opp, books["offense"]["record"]["formations"]))
     if not pcfg["team"]:
-        tips.append("Primary team TBD — books picked from the verified meta catalog "
-                    "(set later: config --game madden27 --primary-team <NFL team>).")
+        tips.append("Primary team not set — books picked from research + the verified catalog "
+                    "(config --game madden27 --primary-team \"Detroit Lions\").")
+    if scout is not None:
+        try:
+            from cfb_coach.madden.meta_scout import apply_scout
 
-    scout_dict: dict[str, Any]
-    try:
-        from cfb_coach.madden.meta_scout import apply_scout, run_madden_scout
-
-        scout = run_madden_scout(offline=offline, refresh=refresh_meta)
-        s_tips, _ = apply_scout(scout, profile=pcfg["id"], offense_only=offense_only, active=active_after)
-        tips.extend(s_tips)
-        scout_dict = scout.to_dict()
-    except Exception as exc:  # noqa: BLE001 — never break prep
-        scout_dict = {
-            "available": False,
-            "offline": offline,
-            "message": f"Scout unavailable — using cached/baseline {META_VERSION} ({type(exc).__name__})",
-            "baseline_fallback": META_VERSION,
-            "confidence": "low",
-        }
+            s_tips, _ = apply_scout(scout, profile=pcfg["id"], offense_only=offense_only, active=active_after)
+            tips.extend(s_tips)
+            scout_dict = scout.to_dict()
+        except Exception:  # noqa: BLE001
+            pass
 
     plan = {
         "game_id": "madden27",
@@ -294,10 +321,18 @@ def build_prep_plan(
         "primary_team": profile_config("primary")["team"],
         "doctrine": doctrine_line(pcfg["team"]),
         "meta_scout": scout_dict,
+        "research": {"mode": research.get("mode") or scout_dict.get("mode") or "",
+                     "status": scout_dict.get("research_status") or "",
+                     "books": research.get("books") or {}},
+        "missing_settings": missing,
     }
     if db is not None and persist:
         lock_books(db, books, applied=apply_books)
         save_prep(db, opponent_id, proposed, shown)
+        from cfb_coach.madden.macros import store_active
+
+        store_active(db, opponent_id, active_after if not offense_only else
+                     [m for m in active_after if macro_side(m) == "offense"])
     return plan
 
 
@@ -338,6 +373,16 @@ def format_delta_text(plan: dict[str, Any]) -> str:
     ]
     from cfb_coach.madden.playbook import format_book
 
+    rs = plan.get("research") or {}
+    scout = plan.get("meta_scout") or {}
+    lines.append(f"## Research — {scout.get('message') or rs.get('mode') or 'n/a'}")
+    for side in ("offense",) if plan["offense_only"] else ("offense", "defense"):
+        top = list(((rs.get("books") or {}).get(side) or {}).items())[:4]
+        if top:
+            lines.append(f"  {side} books named: " + ", ".join(f"{b} ({v.get('docs', 0)} src)" for b, v in top))
+        rec = plan["playbook"][side].get("recommendation") or {}
+        if rec.get("rows"):
+            lines.append(f"  {side} book scores: " + ", ".join(f"{r['book']} {r['score']:.2f}" for r in rec["rows"][:4]))
     lines.append("## Playbook of record (locked by this prep)")
     for side in ("offense",) if plan["offense_only"] else ("offense", "defense"):
         bp = plan["playbook"][side]
@@ -367,12 +412,20 @@ def format_delta_text(plan: dict[str, Any]) -> str:
         lines.append("  D macros: N/A — offense only (CPU)")
     for c in plan["macro_cards"]:
         lines.append(f"  - {c['id']} ({c.get('side')}) [{c.get('validated_status')}] — {c.get('purpose', '')}")
+        ing = c.get("ingame") or {}
+        if ing.get("has_settings"):
+            lines.append(f"      your settings: {ing.get('key')}")
+            if ing.get("gap_rows"):
+                lines.append("      MISSING (enter yours, nothing guessed): "
+                             + ", ".join(f"{g['section']} / {g['setting']}" for g in ing["gap_rows"]))
+        else:
+            lines.append("      NO EXACT SETTINGS ON FILE — enter yours: macro-settings --game madden27 "
+                         f"{c['id']} --set \"Section: Setting = value\"")
     lines.append("## Full playbook (show)")
     for side in ("offense",) if plan["offense_only"] else ("offense", "defense"):
         lines.extend("  " + ln for ln in format_book(plan["playbook"][side]["record"]).splitlines())
     lines.append("## Call emphasis")
     lines.extend(f"  - {t}" for t in plan["tips"])
-    scout = plan.get("meta_scout") or {}
     if not scout.get("available"):
         lines.append(f"## Live meta scout\n  {scout.get('message') or 'Scout unavailable'}")
     return "\n".join(lines)

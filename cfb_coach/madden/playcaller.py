@@ -38,6 +38,23 @@ class MaddenCall:
     rationale: str = ""
     suggest_macro: str | None = None
     macro: str | None = None  # untagged macro name armed this snap (for logging)
+    macro_info: dict[str, Any] | None = None  # CFB parity: Active-8 custom adjustment + Aidan's settings
+
+    def macro_line(self) -> str:
+        """'MACRO: O-MAN — LB → O-MAN | <your settings> · why: …' or ''."""
+        if not self.macro:
+            return ""
+        mi = self.macro_info or {}
+        name = mi.get("name") or self.macro
+        return (f"MACRO: {name} — LB → {name} | {mi.get('key') or 'no exact settings on file — enter yours'}"
+                + (f"  · why: {mi['why']}" if mi.get("why") else ""))
+
+    def headline(self) -> str:
+        """'PLAY: Mesh Post (Gun 5WR Tight) + MACRO: O-MAN' (same as CFB)."""
+        head = f"PLAY: {self.play} ({self.formation})"
+        if self.macro:
+            head += f" + MACRO: {(self.macro_info or {}).get('name') or self.macro}"
+        return head
 
     def format(self) -> str:
         if self.side == "offense":
@@ -46,6 +63,8 @@ class MaddenCall:
             line = format_defense(self.formation, self.play, self.adj_or_macro, self.read_or_user)
         if self.suggest_macro:
             line += f"\n  SUGGEST macro: {self.suggest_macro}"
+        if self.macro_line():
+            line += f"\n  {self.macro_line()}"
         return line
 
 
@@ -133,6 +152,120 @@ def _book_menu(og: dict[str, Any], key: str, book: dict[str, list[str]]) -> tupl
 # Offense
 # ---------------------------------------------------------------------------
 
+BOOK_MENU_BONUS = 0.12  # CFB parity: play is in the situational meta menu
+SIT_BONUS = 0.12
+PERSONA_BONUS = 0.06
+LIVE_COVERAGE_BONUS = 0.10
+
+
+def madden_priors(research: dict[str, Any] | None = None) -> Any:
+    """CFB MetaPriors, Madden flavored: seed = the cited meta menus / coverage answers, live =
+    this prep's research (named formations + plays, web + YouTube), Madden zone-fit."""
+    from cfb_coach.madden.catalog import zone_fit
+    from cfb_coach.meta_align import MetaPriors
+
+    mp = MetaPriors(fit=zone_fit)
+    try:
+        og = load_meta_baseline()["offense_gameplan"]
+        zmap = {"goal_line": "gl", "red_zone": "rz"}
+        for key, menu in (og.get("situations") or {}).items():
+            z = zmap.get(key, "open")
+            for e in menu:
+                rec = mp.seed.setdefault((e["formation"], e["play"]), {
+                    "formation": e["formation"], "play": e["play"], "zones": {}, "refs": [],
+                    "why": "Madden 27 meta menu (cited baseline)", "coverage": {}})
+                rec["zones"][z] = max(float(rec["zones"].get(z, 0.0)), 0.15)
+        for cls, answers in (og.get("coverage_answers") or {}).items():
+            for e in answers:
+                rec = mp.seed.setdefault((e["formation"], e["play"]), {
+                    "formation": e["formation"], "play": e["play"], "zones": {}, "refs": [],
+                    "why": "Madden 27 coverage answer", "coverage": {}})
+                rec.setdefault("coverage", {})[{"single_high": "cover 3", "two_high": "cover 4", "cover2": "cover 2",
+                                                "man": "man", "pressure": "pressure"}.get(cls, cls)] = 0.2
+        if research is None:
+            research = _cached_research()
+        from cfb_coach.madden.playbook import side_named
+
+        named = side_named(research, "offense")
+        mp.live_mode = (research or {}).get("mode") or "none"
+        if named:
+            mp.add_named_boosts(named)
+            mp.add_named_formations(named)
+    except Exception:  # noqa: BLE001 — never break play calling
+        pass
+    return mp
+
+
+def _cached_research() -> dict[str, Any]:
+    try:
+        from cfb_coach.madden.meta_scout import _load_cache, research_from_scout
+
+        cached = _load_cache()
+        return research_from_scout(cached) if cached else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+class _MaddenRanker:
+    """The CFB `_Ranker` (learned zone weights + decayed meta prior + softmax/explore) with
+    Madden priors and learned weights from the Madden DB."""
+
+    def __init__(self, db: Any, opponent_id: str, side: str = "offense") -> None:
+        from cfb_coach.learning import LearnedWeights
+
+        try:
+            self.lw = LearnedWeights.load(db, opponent_id, side=side) if db is not None else LearnedWeights.empty()
+        except Exception:  # noqa: BLE001
+            self.lw = LearnedWeights.empty()
+        self.priors = madden_priors()
+
+    def rank(self, sit: Situation, pool: list[tuple[str, str]], bonus: dict[tuple[str, str], float]) -> list[dict[str, Any]]:
+        from cfb_coach.playcaller import _Ranker
+
+        return _Ranker.rank(self, sit, pool, bonus)  # type: ignore[arg-type]
+
+
+def _offense_pool(
+    sit: Situation, book: dict[str, list[str]], og: dict[str, Any], key: str, arch_pref: str | None,
+) -> tuple[list[tuple[str, str]], dict[tuple[str, str], float]]:
+    """Every zone-fit play in the locked formations (CFB v1.14 pool); the situational meta menu
+    and down-and-distance are bonuses, not filters."""
+    import re
+
+    from cfb_coach.madden.catalog import is_deep, is_run, zone_fit
+    from cfb_coach.zones import zone_of_situation
+
+    zone = zone_of_situation(sit)
+    pairs = [(f, p) for f, ps in book.items() for p in ps]
+    pool = [fp for fp in pairs if zone_fit(fp[1], zone)] or pairs
+    short = bool(sit.short_yardage or (sit.down in (2, 3, 4) and (sit.distance or 10) <= 2))
+    if zone == "open" and not short:
+        pool = [fp for fp in pool if not re.search(r"\bsneak\b|goal\s*line", fp[1], re.I)] or pool
+    menu = {(e["formation"], e["play"]): e for e in og["situations"].get(key, [])}
+    any_menu = {(e["formation"], e["play"]) for m in og["situations"].values() for e in m}
+    bonus: dict[tuple[str, str], float] = {}
+    for f, p in pool:
+        b = 0.0
+        if (f, p) in menu:
+            b += BOOK_MENU_BONUS
+            if arch_pref and arch_pref in (menu[(f, p)].get("tags") or []):
+                b += PERSONA_BONUS
+        elif (f, p) in any_menu:
+            b += 0.03
+        run, deep = is_run(p), is_deep(p)
+        dist = sit.distance or 10
+        if short:
+            b += SIT_BONUS if run else 0.0
+            b -= 0.10 if deep else 0.0
+        elif sit.down in (3, 4) and dist >= 7:
+            b += SIT_BONUS if not run else -0.20
+        if sit.two_minute:
+            b += 0.08 if not run else -0.05
+        if b:
+            bonus[(f, p)] = round(b, 3)
+    return pool, bonus
+
+
 def _pick_offense(
     sit: Situation,
     opp: dict[str, Any],
@@ -142,99 +275,88 @@ def _pick_offense(
     active: list[str],
     book: dict[str, list[str]],
 ) -> MaddenCall:
+    from cfb_coach.madden.catalog import is_run
+
     og = bl["offense_gameplan"]
     oid = opp["_id"]
     arch = _arch(opp)
     key = situation_key(sit)
-    menu, remenu = _book_menu(og, key, book)
     pref = _ARCH_PREF.get(arch)
-    entry = _weighted_pick(menu, rng, prefer_tag=pref)
-    form, play, adj = entry["formation"], entry["play"], entry.get("adj") or "No adj"
-    rationale = f"{key.replace('_', ' ')} menu" + (f" (persona {arch} → {pref})" if pref else "")
-    if remenu:
-        rationale += f" | {remenu}"
-    o_macro: str | None = None
-    answered_repeat = False
-
-    # Pressure persona: protection macro on some passing downs (still soft)
-    if arch == "pressure_heavy" and "pass" in (entry.get("tags") or []) and rng.random() < 0.4:
-        if "O-PROT" in active:
-            o_macro = "O-PROT"
-            rationale += " | pressure persona — O-PROT"
+    pool, bonus = _offense_pool(sit, book, og, key, pref)
 
     cov = sit.coverage_hint
-    if cov:
-        src = sit.coverage_source or "none"
-        repeated = is_repeated_coverage(db, oid, cov, sit, threshold=2)
-        live = src == "live"
-        policy = describe_coverage_policy(cov, live=live, last_snap=src == "last", repeated=repeated)
-        cls = coverage_class(cov)
-        answers = [a for a in og["coverage_answers"].get(cls or "", []) if _in_book(a, book)]
-        if live and repeated and answers:
-            ans = rng.choice(answers)
-            form, play = ans["formation"], ans["play"]
-            adj = ans.get("adj") or adj
-            if cls == "man" and "O-MAN" in active:
-                o_macro = "O-MAN"
-            if cls == "pressure" and adj == "O-PROT":
-                o_macro = "O-PROT" if "O-PROT" in active else None
-                adj = "Hot ready" if o_macro is None else adj
-            rationale = f"REPEATED {cov} — {cls} answer | {policy}"
-            answered_repeat = True
-        elif live and cls:
-            fits = [e for e in menu if f"vs_{cls}" in (e.get("tags") or [])]
-            if fits:
-                entry = _weighted_pick(fits, rng)
-                form, play = entry["formation"], entry["play"]
-                rationale = f"soft lean vs live {cov} ({cls}) | {policy}"
-            else:
-                rationale = f"{rationale} | {policy}"
-            if cls == "pressure":
-                adj = "Hot ready"
-        else:
-            rationale = f"{rationale} | {policy}"
+    src = sit.coverage_source or "none"
+    cls = coverage_class(cov) if cov else None
+    repeated = bool(cov) and is_repeated_coverage(db, oid, cov, sit, threshold=2)
+    policy = describe_coverage_policy(cov, live=src == "live", last_snap=src == "last", repeated=repeated) if cov else ""
+    answered_repeat = False
+    if cov and src == "live" and cls:
+        # soft lean vs a live look: menu plays tagged for it + cited coverage answers in the book
+        for e in og["situations"].get(key, []) + og["coverage_answers"].get(cls, []):
+            fp = (e["formation"], e["play"])
+            if fp in pool and (f"vs_{cls}" in (e.get("tags") or []) or e in og["coverage_answers"].get(cls, [])):
+                bonus[fp] = round(bonus.get(fp, 0.0) + LIVE_COVERAGE_BONUS * (2.0 if repeated else 1.0), 3)
+        answered_repeat = repeated and any(_in_book(a, book) for a in og["coverage_answers"].get(cls, []))
 
-    # Anti-repeat: same play 2+ of last 4 → rotate within the in-book menu
+    ranker = _MaddenRanker(db, oid, "offense")
+    rows = ranker.rank(sit, pool, bonus)
+    from cfb_coach.playcaller import _sample
+
+    pick = _sample(rows, rng) if rows else {"formation": next(iter(book)), "play": book[next(iter(book))][0], "total": 0.0}
+    form, play = pick["formation"], pick["play"]
+    rationale = (f"{key.replace('_', ' ')}: ranked {len(rows)} in-book plays (learned {pick.get('learned', 0):+.2f}, "
+                 f"meta {pick.get('meta', 0):+.2f}, sit {pick.get('sit', 0):+.2f})")
+    if pref:
+        rationale += f" | persona {arch} → {pref}"
+    if cov:
+        rationale += (f" | REPEATED {cov} — {cls} answer weighted" if answered_repeat else "") + f" | {policy}"
+
+    # Anti-repeat: same play 2+ of last 4 → next best different play
     if db is not None:
         from cfb_coach.gameplan import anti_repeat_penalty
 
         pen = anti_repeat_penalty(db, oid, form, play, side="offense")
         if pen >= 1.0:
-            alt = _weighted_pick(menu, rng, exclude_play=play)
-            rationale = f"anti-repeat → {alt['formation']}/{alt['play']} (pen={pen:.1f}) | {rationale}"
-            form, play = alt["formation"], alt["play"]
+            alt = next((r for r in rows if r["play"] != play), None)
+            if alt:
+                rationale = f"anti-repeat → {alt['formation']}/{alt['play']} (pen={pen:.1f}) | {rationale}"
+                form, play = alt["formation"], alt["play"]
 
     pivot = active_pivot(db, oid, "offense")
     if pivot and answered_repeat:
         rationale = f"{pivot} — REPEATED answer is the switch | {rationale}"
     elif pivot:
-        fams = og["pivot_families"]
-        was_run = play in fams["run"]["plays"] or play in ("HB Zone WK", "HB Dive", "HB Stretch", "Mid Zone")
-        order = ["quick", "stick", "run"] if was_run else ["run", "stick", "quick"]
-        if rng.random() < 0.35:
-            order.insert(0, "stick")
-        options: list[tuple[str, str]] = []
-        for fam_name in order:
-            fam = fams[fam_name]
-            options = [(fam["formation"], p) for p in fam["plays"] if _in_book({"formation": fam["formation"], "play": p}, book)]
-            if options:
-                break
-        if not options:  # family not in book → switch run ↔ pass within the in-book menu
-            want = "pass" if was_run else "run"
-            options = [(e["formation"], e["play"]) for e in menu if want in (e.get("tags") or [])] or [
-                (e["formation"], e["play"]) for e in menu if e["play"] != play
-            ] or [(form, play)]
-        form, play = rng.choice(options)
-        adj, o_macro = "No adj", None
+        was_run = is_run(play)
+        options = [r for r in rows if is_run(r["play"]) != was_run and r["play"] != play] or [r for r in rows if r["play"] != play]
+        if options:
+            alt = options[0] if rng.random() < 0.6 else rng.choice(options[:4])
+            form, play = alt["formation"], alt["play"]
         rationale = f"{pivot} → {form}/{play} | {rationale}"
 
     if not _in_book({"formation": form, "play": play}, book):  # hard guard — never leave the book
-        entry = _weighted_pick(menu, rng)
-        form, play = entry["formation"], entry["play"]
+        form = next(iter(book))
+        play = book[form][0]
         rationale += " | remenu: guard pulled call back into locked book"
-    if o_macro:
+
+    adj = "Hot ready" if cls == "pressure" and src == "live" else "No adj"
+    info = None
+    try:
+        from cfb_coach.madden.macros import suggest_offense_macro
+
+        weights: dict[str, float] = {}
+        if db is not None:
+            for r in db.get_macro_weights(oid):
+                weights[str(r["macro"])] = float(r["weight"] or 0.0)
+        info = suggest_offense_macro(
+            play=play, coverage_class=cls, coverage_source=src, repeated=repeated, active=active,
+            archetype=arch, passing_down=bool(sit.down in (3, 4) and (sit.distance or 0) >= 5), weights=weights)
+    except Exception:  # noqa: BLE001
+        info = None
+    o_macro = info["id"] if info else None
+    if info:
         adj = tag_live(o_macro, db)
-    return MaddenCall("offense", form, play, adj, reads_for(play), rationale, macro=o_macro)
+        rationale += f" | macro {info['name']}: {info['why']}"
+    return MaddenCall("offense", form, play, adj, reads_for(play), rationale, macro=o_macro, macro_info=info)
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +418,10 @@ def _family_repeat_count(db: Any, oid: str, family: str | None) -> int:
     return n
 
 
+def _pkg_family(f: str) -> str:
+    return (f.split()[0] if f else "").lower()
+
+
 def _fit_defense(
     form: str,
     play: str,
@@ -303,17 +429,24 @@ def _fit_defense(
     bl: dict[str, Any],
     rng: random.Random,
 ) -> tuple[str, str, str]:
-    """Pull a (package, call) back inside the locked defensive book (remenu, never warn)."""
+    """Pull a (package, call) back inside the locked defensive book (remenu, never warn).
+    Works for any recommended D book: same call in a same-family package first (Nickel/Dime/
+    4-3/Goal Line), then any package with that call, then the same coverage family."""
     if form in book and play in book[form]:
         return form, play, ""
-    home = bl["defense_gameplan"]["home_package"]
+    fam = _pkg_family(form)
     holders = [f for f in book if play in book[f]]
     if holders:
-        f = home if home in holders else holders[0]
+        same = [f for f in holders if _pkg_family(f) == fam]
+        home = bl["defense_gameplan"]["home_package"]
+        f = home if home in holders else (same[0] if same else holders[0])
         return f, play, f"remenu: {form} not in book → {f}"
-    pkg = form if form in book else (home if home in book else next(iter(book)))
+    pkgs = [f for f in book if _pkg_family(f) == fam] or [f for f in book if f == bl["defense_gameplan"]["home_package"]] or list(book)
+    pkg = pkgs[0]
+    cls = coverage_class(play)
     rot = [c for c in bl["defense_gameplan"]["home_rotation"] if c in book[pkg]]
-    call = rng.choice(rot) if rot else book[pkg][0]
+    same_cov = [c for c in book[pkg] if cls and coverage_class(c) == cls]
+    call = rng.choice(same_cov) if same_cov else (rng.choice(rot) if rot else book[pkg][0])
     return pkg, call, f"remenu: {form}/{play} not in book → {pkg}/{call}"
 
 
@@ -397,11 +530,16 @@ def _pick_defense(
         rationale += f" | {fitted[2]}"
 
     macro_out = tag_live(macro, db) if macro else "none"
+    info = None
+    if macro:
+        from cfb_coach.madden.macros import macro_info
+
+        info = macro_info(macro, f"REPEATED {fam} tendency ({concept}) — {play}")
     if suggest:
         head, _, rest = suggest.partition(" — ")
         if get_macro(head):
             suggest = tag_live(head, db) + (f" — {rest}" if rest else "")
-    return MaddenCall("defense", form, play, macro_out, user, rationale, suggest, macro=macro)
+    return MaddenCall("defense", form, play, macro_out, user, rationale, suggest, macro=macro, macro_info=info)
 
 
 # ---------------------------------------------------------------------------

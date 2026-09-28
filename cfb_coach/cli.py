@@ -185,6 +185,16 @@ def cmd_config(args: argparse.Namespace) -> int:
     return madden_cli.cmd_config(args)
 
 
+def cmd_macro_settings(args: argparse.Namespace) -> int:
+    from cfb_coach.games import is_madden
+
+    if not is_madden(args.game):
+        raise SystemExit("macro-settings applies to --game madden27 (CFB offense settings live in macro_catalog.json)")
+    from cfb_coach.madden import cli as madden_cli
+
+    return madden_cli.cmd_macro_settings(args)
+
+
 def cmd_prep(args: argparse.Namespace) -> int:
     handler = _madden_handler(args, "cmd_prep")
     if handler:
@@ -934,7 +944,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_cfg.add_argument("--lab-team", default=None, help="Optional lab Franchise team")
     p_cfg.add_argument("--clear-primary", action="store_true", help="Reset primary team to TBD")
     p_cfg.add_argument("--clear-lab", action="store_true", help="Reset lab team to TBD")
+    p_cfg.add_argument("--o-book", dest="o_book", default=None, metavar="auto|custom|stock:NAME",
+                       help="Default offense book for every prep (auto = research picks; start stock:Buccaneers)")
+    p_cfg.add_argument("--d-book", dest="d_book", default=None, metavar="auto|custom|stock:NAME",
+                       help="Default defense book for every prep (auto = research picks; start stock:49ers)")
     p_cfg.set_defaults(func=cmd_config)
+
+    p_ms = sub.add_parser(
+        "macro-settings",
+        help="Madden 27: enter / show YOUR exact Custom Adjustment settings (used verbatim; missing ones are flagged)",
+    )
+    _add_game_args(p_ms, franchise=False)
+    p_ms.set_defaults(game="madden27")
+    p_ms.add_argument("macro", nargs="?", default=None, help="Macro id, e.g. MATCH-4, O-PROT (omit to list all)")
+    p_ms.add_argument("--set", dest="settings", action="append", default=[], metavar='"Section: Setting = value"',
+                      help='One exact setting as it reads in game; repeat --set for each')
+    p_ms.add_argument("--replace", action="store_true", help="Replace all stored settings for this macro")
+    p_ms.add_argument("--xbox-name", default=None, help="The name you saved it under in game (if different)")
+    p_ms.add_argument("--clear", action="store_true", help="Delete your stored settings for this macro")
+    p_ms.set_defaults(func=cmd_macro_settings)
 
     p_book = sub.add_parser(
         "playbook",

@@ -102,6 +102,72 @@ _RZ_TITLE_RX = re.compile(r"red\s*zone|goal\s*line|inside\s+the\s+(?:5|10|20)|sh
 _DEFENSE_ONLY_RX = re.compile(r"\bdefen[cs]e\b|\bblitz\b|run\s+defen", re.I)
 
 
+@dataclass(frozen=True)
+class YTProfile:
+    """Which game a YouTube research pass is for (CFB 27 default; Madden 27 reuses every code path)."""
+
+    game: str
+    queries: tuple[tuple[str, str], ...]
+    channels: tuple[tuple[str, str], ...]
+    title_rx: re.Pattern[str]
+    old_rx: re.Pattern[str]
+    release: datetime
+    relevant_rx: re.Pattern[str]
+    defense_penalty: bool = True
+    desc_old_rx: re.Pattern[str] | None = None
+    old_reason: str = "older title / Madden"
+
+
+def cfb_profile() -> YTProfile:
+    """Built at call time from the module constants (tests monkeypatch them)."""
+    return YTProfile(
+        game="CFB 27",
+        queries=tuple(SEARCH_QUERIES),
+        channels=tuple(CREATOR_CHANNELS.items()),
+        title_rx=_CFB27_RX,
+        old_rx=_OLD_TITLE_RX,
+        release=CFB27_RELEASE,
+        relevant_rx=_RELEVANT_RX,
+        defense_penalty=True,
+        desc_old_rx=re.compile(r"madden\s*2[5-7]", re.I),
+    )
+
+
+MADDEN27_RELEASE = datetime(2026, 8, 1, tzinfo=timezone.utc)
+MADDEN_SEARCH_QUERIES = [
+    ("madden 27 best offense playbook meta", SP_THIS_MONTH),
+    ("madden 27 best defense playbook meta", SP_THIS_MONTH),
+    ("madden 27 red zone plays", SP_THIS_MONTH),
+    ("madden 27 best formations offense defense", SP_RELEVANCE),
+]
+# Madden-first creators (subset of the mixed CFB/Madden channels above — every
+# video is still filtered by title/date, so CFB uploads are dropped).
+MADDEN_CREATOR_CHANNELS: dict[str, str] = {
+    k: CREATOR_CHANNELS[k] for k in ("HuddleGG", "Ace Madden", "VENM Fire", "Civil", "CSwee123", "9to5erz", "C3Gaming")
+}
+_MADDEN27_RX = re.compile(r"madden\s*(?:nfl\s*)?27\b|\bm27\b|\bmadden27\b", re.I)
+_MADDEN_OLD_RX = re.compile(r"madden\s*(?:nfl\s*)?2[3-6]\b|\bmadden2[3-6]\b|college\s*football|\bcfb\b|\bncaa\b", re.I)
+_MADDEN_RELEVANT_RX = re.compile(
+    r"offen[cs]e|defen[cs]e|playbook|formation|\bplays?\b|meta|red\s*zone|goal\s*line|scheme|run\s*game|"
+    r"passing|money\s*play|audible|blitz|coverage|adjust|bunch|mesh|beat\s+any|unstoppable|best|stop", re.I
+)
+
+
+def madden_profile() -> YTProfile:
+    return YTProfile(
+        game="Madden 27",
+        queries=tuple(MADDEN_SEARCH_QUERIES),
+        channels=tuple(MADDEN_CREATOR_CHANNELS.items()),
+        title_rx=_MADDEN27_RX,
+        old_rx=_MADDEN_OLD_RX,
+        release=MADDEN27_RELEASE,
+        relevant_rx=_MADDEN_RELEVANT_RX,
+        defense_penalty=False,  # Madden prep researches BOTH sides (offense + defense book)
+        desc_old_rx=re.compile(r"college\s*football\s*2[5-7]|\bcfb\s*2[5-7]", re.I),
+        old_reason="older Madden title / CFB",
+    )
+
+
 @dataclass
 class Video:
     video_id: str
@@ -293,35 +359,39 @@ def _date(s: str) -> datetime | None:
         return None
 
 
-def classify_video(v: Video, *, now: datetime) -> tuple[bool, str]:
-    """Keep only current CFB 27 videos. Returns (keep, reason)."""
+def classify_video(v: Video, *, now: datetime, profile: YTProfile | None = None) -> tuple[bool, str]:
+    """Keep only current videos for the profile's game (CFB 27 default). Returns (keep, reason)."""
+    pr = profile or cfb_profile()
     blob = f"{v.title} {v.description}"
-    is27 = bool(_CFB27_RX.search(v.title) or _CFB27_RX.search(v.description[:400]))
-    old = bool(_OLD_TITLE_RX.search(v.title))
-    if old and not _CFB27_RX.search(v.title):
-        return False, "older title / Madden"
+    is27 = bool(pr.title_rx.search(v.title) or pr.title_rx.search(v.description[:400]))
+    old = bool(pr.old_rx.search(v.title))
+    if old and not pr.title_rx.search(v.title):
+        return False, pr.old_reason
     dt = _date(v.published)
-    if dt is not None and dt < CFB27_RELEASE:
-        return False, "published before CFB 27"
+    if dt is not None and dt < pr.release:
+        return False, f"published before {pr.game}"
     if dt is not None and (now - dt).days > MAX_VIDEO_AGE_DAYS:
         return False, f"older than {MAX_VIDEO_AGE_DAYS} days"
     if not is27:
-        return False, "not CFB 27"
-    if re.search(r"madden\s*2[5-7]", v.description[:600], re.I) and not _CFB27_RX.search(v.title):
-        return False, "older title / Madden"
-    if not _RELEVANT_RX.search(v.title) and not _RZ_TITLE_RX.search(blob):
+        return False, f"not {pr.game}"
+    if pr.desc_old_rx is not None and pr.desc_old_rx.search(v.description[:600]) and not pr.title_rx.search(v.title):
+        return False, pr.old_reason
+    if not pr.relevant_rx.search(v.title) and not _RZ_TITLE_RX.search(blob):
         return False, "not offense / playbook / meta"
     return True, "ok"
 
 
-def relevance(v: Video, *, now: datetime) -> float:
+def relevance(v: Video, *, now: datetime, profile: YTProfile | None = None) -> float:
+    pr = profile or cfb_profile()
     t = v.title
     score = 1.0
     if _RZ_TITLE_RX.search(t):
         score += 1.5
     if re.search(r"playbook|formation|offen[cs]e|meta|scheme|plays?\b", t, re.I):
         score += 1.0
-    if _DEFENSE_ONLY_RX.search(t) and not re.search(r"offen[cs]e", t, re.I):
+    if not pr.defense_penalty and re.search(r"defen[cs]e|coverage|blitz", t, re.I):
+        score += 0.6
+    if pr.defense_penalty and _DEFENSE_ONLY_RX.search(t) and not re.search(r"offen[cs]e", t, re.I):
         score -= 0.8
     dt = _date(v.published)
     if dt is not None:
@@ -489,12 +559,13 @@ def save_cached_transcript(video_id: str, rec: dict[str, Any]) -> None:
 # --- Orchestration -------------------------------------------------------------
 
 def discover(now: datetime, *, deadline: float, fetch: Callable[..., tuple[int, str]] = _get,
-             res: YTResult | None = None) -> list[Video]:
+             res: YTResult | None = None, profile: YTProfile | None = None) -> list[Video]:
+    pr = profile or cfb_profile()
     res = res if res is not None else YTResult()
     jobs: list[tuple[str, str, str]] = []  # (kind, url, label)
-    for q, sp in SEARCH_QUERIES:
+    for q, sp in pr.queries:
         jobs.append(("search", SEARCH_URL.format(q=urllib.parse.quote_plus(q), sp=sp), q))
-    for name, cid in CREATOR_CHANNELS.items():
+    for name, cid in pr.channels:
         jobs.append(("rss", FEED_URL.format(cid=cid), name))
     res.search_total = sum(1 for j in jobs if j[0] == "search")
     res.rss_total = sum(1 for j in jobs if j[0] == "rss")
@@ -529,12 +600,12 @@ def discover(now: datetime, *, deadline: float, fetch: Callable[..., tuple[int, 
     pool.shutdown(wait=False, cancel_futures=True)
     keep = []
     for v in found.values():
-        ok, why = classify_video(v, now=now)
+        ok, why = classify_video(v, now=now, profile=pr)
         if not ok:
-            if why == "older title / Madden":
+            if why == pr.old_reason:
                 res.rejected_old_title += 1
             continue
-        v.relevance = relevance(v, now=now)
+        v.relevance = relevance(v, now=now, profile=pr)
         keep.append(v)
     keep.sort(key=lambda v: -v.relevance)
     res.found = len(keep)
@@ -549,8 +620,9 @@ def run_youtube_research(
     max_transcripts: int = MAX_TRANSCRIPTS,
     fetch: Callable[..., tuple[int, str]] | None = None,
     transcript_fetchers: list[tuple[str, Callable[[str, float], str]]] | None = None,
+    profile: YTProfile | None = None,
 ) -> YTResult:
-    """Find current CFB 27 videos and pull transcripts. Bounded by ``budget_s``; never raises."""
+    """Find current CFB 27 (or ``profile``) videos and pull transcripts. Bounded by ``budget_s``; never raises."""
     t0 = time.monotonic()
     deadline = t0 + budget_s
     now = now or datetime.now(timezone.utc)
@@ -559,7 +631,7 @@ def run_youtube_research(
         if offline:
             res.notes.append("offline: YouTube skipped (cached transcripts are still used by id only when online)")
             return res
-        vids = discover(now, deadline=t0 + min(6.0, budget_s * 0.4), fetch=fetch or _get, res=res)
+        vids = discover(now, deadline=t0 + min(6.0, budget_s * 0.4), fetch=fetch or _get, res=res, profile=profile)
         # Transcripts never change: any found video with a cached transcript is used for free;
         # network attempts go to the most relevant uncached videos.
         texts: dict[str, str] = {}
@@ -696,6 +768,9 @@ def run_youtube_research(
 
 __all__ = [
     "CREATOR_CHANNELS",
+    "YTProfile",
+    "cfb_profile",
+    "madden_profile",
     "Video",
     "YTResult",
     "classify_video",
