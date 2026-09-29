@@ -1,0 +1,85 @@
+{
+ "note": "Madden 27 = CFB 27 Custom Adjustments editor (same editor, Aidan). Field list = every section/setting on Aidan's exact CFB defense sheets (data/macro_catalog.json), spelling variants merged. Research-built macros fill every field: a researched value where a source names one, else Default. Individuals lists the positions sources and his sheets use; others stay Default.",
+ "source": "data/macro_catalog.json (Aidan exact sheets 2026-09-22)",
+ "defense": {
+  "General": [
+   "Coverage Shading",
+   "Route Commit",
+   "Show Blitz",
+   "Guess Play",
+   "Defender Aggression",
+   "Gap Integrity",
+   "Strip Ball",
+   "Tackling",
+   "QB Contain",
+   "Option Read Key",
+   "Option Pitch Key",
+   "RPO Read Key",
+   "RPO Pass Key"
+  ],
+  "DL/LB": [
+   "DL Technique",
+   "DL Point of Attack",
+   "DL Stunts",
+   "LB Shift",
+   "LB Assignments"
+  ],
+  "Secondary": [
+   "Alignment",
+   "Coverage Shell",
+   "Matchup",
+   "CB Depth",
+   "CB Width",
+   "Safety Depth",
+   "Safety Width",
+   "Safety Midpoint",
+   "Ballhawk"
+  ],
+  "Zone Drops": [
+   "Flats",
+   "Curls",
+   "Hooks"
+  ],
+  "Strategy": [
+   "Zone Strategy",
+   "Plaster",
+   "Plaster Trigger",
+   "Plaster Time",
+   "Roll Coverage"
+  ],
+  "Coverage Checks": [
+   "Man-Bunch",
+   "C3 Match-Bunch",
+   "Quarters-Bunch",
+   "Palms-Bunch",
+   "Cover 6-Bunch",
+   "Quarters Stack",
+   "Quarters Trips",
+   "Quarters 1 Rec",
+   "Quarters 1 Rec Tight"
+  ],
+  "Individuals": [
+   "CB1",
+   "CB2",
+   "SLCB1",
+   "SLCB2",
+   "FS",
+   "SS",
+   "DT1"
+  ]
+ },
+ "aliases": {
+  "Shell": "Coverage Shell",
+  "Option keys": "Option Read Key",
+  "Option/RPO": "Option Read Key",
+  "Option/RPO keys": "Option Read Key",
+  "RPO": "RPO Read Key",
+  "Contain": "QB Contain",
+  "Defensive Technique": "DL Technique",
+  "Point of Attack": "DL Point of Attack",
+  "Stunts": "DL Stunts",
+  "Coverage Shade": "Coverage Shading",
+  "Slot CB1": "SLCB1",
+  "Slot CB2": "SLCB2"
+ }
+}

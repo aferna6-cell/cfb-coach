@@ -129,23 +129,32 @@ class LivePlayController:
         }
 
     def macro_state(self) -> dict[str, Any] | None:
-        """v1.15: the Active-8 macro on the pending call (CFB offense; Madden O + D) or None."""
+        """v1.15: the Active-8 macro on the pending call (CFB offense; Madden defense) or None.
+        v1.17 (Madden): also a pre-snap adjustment (hot route / audible / contain…) with its buttons."""
         call = self.last_call
-        if (call is None or self.ended or not getattr(call, "macro", None)
-                or getattr(call, "macro_info", None) is None):  # custom adjustments that carry macro_info
+        if call is None or self.ended:
             return None
-        mi = dict(getattr(call, "macro_info", None) or {})
         head = call.headline() if hasattr(call, "headline") else f"PLAY: {call.play} ({call.formation}) + MACRO: {call.macro}"
+        adj = getattr(call, "adjustment", None)
+        if not getattr(call, "macro", None) and adj:
+            return {"id": adj.get("id"), "name": adj.get("label"), "headline": head, "key": "",
+                    "press": adj.get("buttons") or "", "why": adj.get("why") or "", "fire_when": "",
+                    "settings": None, "kind": "adjustment"}
+        if not getattr(call, "macro", None) or getattr(call, "macro_info", None) is None:
+            return None  # custom adjustments that carry macro_info
+        mi = dict(getattr(call, "macro_info", None) or {})
         return {
             "id": call.macro,
             "name": mi.get("name") or call.macro,
             "headline": head,
             "key": mi.get("key") or "",
+            "press": mi.get("buttons") or f"LB → {mi.get('name') or call.macro}",
             "why": mi.get("why") or "",
             "fire_when": mi.get("fire_when") or "",
             "settings": [{"section": r.get("section"),
                           "setting": "" if r.get("setting") == r.get("section") else r.get("setting"),
                           "value": r.get("value")} for r in mi.get("settings") or []],
+            "kind": "macro",
         }
 
     def _macro_of(self, call: Any) -> str | None:
@@ -587,7 +596,7 @@ function renderMacro(m) {{
   if (!m) {{ box.hidden = true; return; }}
   box.hidden = false;
   $("macro-head").textContent = m.headline || ("+ MACRO: " + m.name);
-  $("macro-key").textContent = "LB → " + m.name + "  |  " + (m.key || "");
+  $("macro-key").textContent = (m.press || ("LB → " + m.name)) + (m.key ? "  |  " + m.key : "");
   $("macro-why").textContent = m.why || "";
   $("macro-rows").innerHTML = (m.settings || []).map(r =>
     "<tr><td class='s'>" + esc(r.section) + "</td><td class='s'>" + esc(r.setting) + "</td><td>" + esc(r.value) + "</td></tr>").join("")
@@ -738,7 +747,7 @@ def _call_main(ctrl: LivePlayController) -> str:
     """Big call text; the MACRO line moves into the #macro-box banner when present."""
     txt = ctrl.call_text or ""
     if ctrl.macro_state():
-        txt = "\n".join(ln for ln in txt.split("\n") if not ln.strip().startswith("MACRO:"))
+        txt = "\n".join(ln for ln in txt.split("\n") if not ln.strip().startswith(("MACRO:", "ADJ:")))
     return txt
 
 
@@ -751,9 +760,9 @@ def _macro_box_html(m: dict[str, Any] | None) -> str:
     ) + ("<tr><td class='s'></td><td class='s'>Everything else</td><td>Default</td></tr>" if m.get("settings") else "")
     return f"""<div id="macro-box"{"" if m else " hidden"}>
     <div class="mh" id="macro-head">{_esc(m.get("headline") or "")}</div>
-    <div class="mk" id="macro-key">{("LB → " + _esc(m.get("name")) + "  |  " + _esc(m.get("key"))) if m else ""}</div>
+    <div class="mk" id="macro-key">{(_esc(m.get("press") or ("LB → " + str(m.get("name")))) + (("  |  " + _esc(m.get("key"))) if m.get("key") else "")) if m else ""}</div>
     <div class="mw" id="macro-why">{_esc(m.get("why") or "")}</div>
-    <details id="macro-details"><summary class="mw">Macro settings (Aidan's exact settings; everything else Default)</summary>
+    <details id="macro-details"><summary class="mw">Macro settings (everything else Default)</summary>
       <table id="macro-rows">{rows}</table></details>
   </div>"""
 

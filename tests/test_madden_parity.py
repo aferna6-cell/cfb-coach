@@ -145,32 +145,30 @@ class TestResearchPicksBooks(_Isolated):
         self.assertIn("Gun Doubles Clamp Stack::Texas Y-Stutter Wheel", ns["offense"]["pairs"])
 
 
-class TestMacrosVerbatim(_Isolated):
-    def test_missing_settings_flagged_then_verbatim(self) -> None:
+class TestMacrosResearchBuilt(_Isolated):
+    def test_every_field_researched_or_default_and_cli_is_read_only(self) -> None:
+        # v1.17 owner spec: Madden defense macro settings are research-built, not typed in
+        from cfb_coach.madden import research_db as rdb
         from cfb_coach.madden.macros import copy_block, macro_detail
 
-        d = macro_detail("MATCH-4")
-        self.assertFalse(d["has_settings"])
-        self.assertIn("no exact settings from Aidan on file", copy_block(d))
-        self.assertIn("NEEDS SETTINGS", copy_block(d))
-        self.assertNotIn("Over the top", copy_block(d))  # research guess never used as a setting
-        rc, out = self.run_cli(["macro-settings", "--game", "madden27", "MATCH-4",
-                                "--set", "Coverage: Shading = Over Top (Aidan)", "--set", "Zones: Deep Zone = Deep Match"])
-        self.assertEqual(rc, 0)
-        d = macro_detail("MATCH-4")
-        self.assertEqual([(r["section"], r["setting"], r["value"]) for r in d["settings"]],
-                         [("Coverage", "Shading", "Over Top (Aidan)"), ("Zones", "Deep Zone", "Deep Match")])
+        d = macro_detail("TAMPA MABLE")
+        self.assertEqual(d["n_fields"], len(d["settings"]))
+        self.assertGreater(d["n_fields"], 40)  # the whole editor, not just the researched rows
+        by = {(r["section"], r["setting"]): r for r in d["settings"]}
+        self.assertEqual((by[("Zone Drops", "Flats")]["value"], by[("Zone Drops", "Flats")]["source"]), ("25", "civil-def-macros"))
+        self.assertEqual((by[("General", "Show Blitz")]["value"], by[("General", "Show Blitz")]["source"]), ("Default", "default"))
         blk = copy_block(d)
-        self.assertIn("[ ] Shading: Over Top (Aidan)", blk)
-        # v1.17 owner spec: fields Aidan didn't set are Default (no "[!] Missing" line any more)
-        self.assertNotIn("[!]", blk)
-        self.assertIn("Everything else: Default", blk)
+        self.assertIn("  [ ] Flats: 25   <- civil-def-macros", blk)
+        self.assertIn("In game: LB → TAMPA MABLE", blk)
         rc, out = self.run_cli(["macro-settings", "--game", "madden27"])
-        self.assertIn("MATCH-4", out)
-        self.assertIn("NEEDS SETTINGS", out)  # the others (v1.17 wording, owner spec)
-        self.assertIn("= CFB HEAT", out)  # same-name macros read CFB's settings
+        self.assertEqual(rc, 0)
+        self.assertIn("TAMPA MABLE", out)
+        self.assertIn("qb contain", out)
+        with self.assertRaises(SystemExit):
+            self.run_cli(["macro-settings", "--game", "madden27", "TAMPA MABLE", "--set", "Zone Drops: Flats = 10"])
+        self.assertEqual(rdb.validate(rdb.load()), [])
 
-    def test_prep_stores_ten_plus_ten_used_by_play(self) -> None:
+    def test_prep_stores_defense_ten_used_by_play(self) -> None:
         from cfb_coach.madden.macros import load_selection
 
         self.run_cli(["prep", "--game", "madden27", "-o", "quen", "--offline", "--text", "--franchise", "lab"])
@@ -179,11 +177,12 @@ class TestMacrosVerbatim(_Isolated):
             sel = load_selection(db, "quen")
         finally:
             db.close()
-        self.assertEqual((len(sel["offense"]), len(sel["defense"])), (10, 10))
-        self.assertIn("HEAT", sel["defense"])  # lab ADD ranked in by this prep
+        self.assertEqual((len(sel["offense"]), len(sel["defense"])), (0, 10))
         rc, out = self.run_cli(["play", "--game", "madden27", "-o", "quen", "--once", "1&10", "--no-overlay"])
         self.assertEqual(rc, 0)
-        self.assertIn("HEAT", out.split("Active macros (from last prep):", 1)[1].split("\n", 1)[0])
+        line = out.split("Active macros (from last prep):", 1)[1].split("\n", 1)[0]
+        self.assertIn(sel["defense"][0], line)
+        self.assertIn("offense: adjustments", line)
         self.assertIn("PLAY: ", out)
 
 
@@ -192,36 +191,30 @@ class TestPlayMacroCalls(_Isolated):
         return {"offense": pb.make_record("offense", "stock", "Buccaneers")["formations"],
                 "defense": pb.make_record("defense", "stock", "49ers")["formations"]}
 
-    def test_play_plus_macro_only_on_repeated_look(self) -> None:
+    def test_offense_adjustment_with_buttons_only_when_look_calls_for_it(self) -> None:
         db = self.madden_db()
         try:
-            one = make_call(parse_madden_situation("3&8 showing cover 1"), "gavin", db, rng=random.Random(1),
-                            playbook=self._books(), active_macros=["O-MAN", "O-PROT"])
-            self.assertIsNone(one.macro)
-            self.assertEqual(one.headline(), f"PLAY: {one.play} ({one.formation})")
-            for _ in range(2):
-                db.log_snap(opponent_id="gavin", side="offense", situation_raw="3&8", our_call="x",
-                            formation="x", play="x", result="+3", coverage_seen="Cover 1", down=3, distance=8)
+            prev = make_call(parse_madden_situation("3&8 cover 1"), "gavin", db, rng=random.Random(1),
+                             playbook=self._books())
+            self.assertIsNone(prev.adjustment)  # one previous-snap look: nothing
+            self.assertIsNone(prev.macro)  # offense never carries a macro
             hit = None
-            for seed in range(12):
+            for seed in range(20):
                 c = make_call(parse_madden_situation("3&8 showing cover 1"), "gavin", db, rng=random.Random(seed),
-                              playbook=self._books(), active_macros=["O-MAN", "O-PROT"])
-                if c.macro:
+                              playbook=self._books())
+                self.assertIsNone(c.macro)
+                if c.adjustment:
                     hit = c
                     break
             self.assertIsNotNone(hit)
-            self.assertEqual(hit.macro, "O-MAN")
-            self.assertEqual(hit.headline(), f"PLAY: {hit.play} ({hit.formation}) + MACRO: O-MAN")
+            self.assertEqual(hit.adjustment["label"], "Hot route WR1 → Slant")
+            self.assertEqual(hit.headline(), f"PLAY: {hit.play} ({hit.formation}) + ADJ: Hot route WR1 → Slant")
+            self.assertIn("press Y → tap WR1's icon button → pick Slant", hit.format())
             self.assertIn(hit.play, self._books()["offense"][hit.formation])
-            self.assertIn("no exact settings on file", hit.macro_line())
-            # not Active → never fired
-            c = make_call(parse_madden_situation("3&8 showing cover 1"), "gavin", db, rng=random.Random(0),
-                          playbook=self._books(), active_macros=["O-PROT"])
-            self.assertNotEqual(c.macro, "O-MAN")
         finally:
             db.close()
 
-    def test_defense_macro_has_macro_info_and_live_window_shows_it(self) -> None:
+    def test_defense_macro_has_buttons_and_live_window_shows_it(self) -> None:
         from cfb_coach.live_server import LivePlayController
 
         db = self.madden_db()
@@ -231,14 +224,16 @@ class TestPlayMacroCalls(_Isolated):
                             play="x", result="+20", concept_seen="Four Verticals")
             sit = parse_madden_situation("d 2&6 showing 4 verts", default_side="defense")
             call = make_call(sit, "gavin", db, rng=random.Random(0), playbook=self._books(),
-                             active_macros=["MATCH-4", "O-MAN"])
-            self.assertEqual(call.macro, "MATCH-4")
-            self.assertEqual(call.macro_info["id"], "MATCH-4")
+                             active_macros={"defense": ["QTRS OVERTOP", "TAMPA MABLE"]})
+            self.assertEqual(call.macro, "QTRS OVERTOP")
+            self.assertEqual(call.play, "Cover 4 Quarters")  # the researched base play, in the book
+            self.assertEqual(call.macro_info["buttons"], "LB → QTRS OVERTOP")
             ctrl = LivePlayController(db=db, opponent_id="gavin", make_call=lambda s, **k: call,
                                       parse_situation=parse_madden_situation, learn_summary=lambda: "")
             ctrl.last_call = call
             st = ctrl.macro_state()
-            self.assertEqual(st["headline"], f"PLAY: {call.play} ({call.formation}) + MACRO: MATCH-4")
+            self.assertEqual(st["headline"], f"PLAY: {call.play} ({call.formation}) + MACRO: QTRS OVERTOP")
+            self.assertEqual(st["press"], "LB → QTRS OVERTOP")
         finally:
             db.close()
 

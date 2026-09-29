@@ -164,36 +164,49 @@ def _book_pick_line(plan: dict[str, Any], side: str) -> str:
             f"<div class='muted'>{_esc(bp.get('reason') or '')}</div></div>")
 
 
+def _render_offense_adjustments(plan: dict[str, Any]) -> str:
+    """Offense uses no macros (v1.17): the researched pre-snap adjustments, each with its buttons."""
+    rows = "".join(
+        f"<tr><td>{_esc(a['vs'])}</td><td><b>{_esc(a['label'])}</b><div class='muted'>{_esc(a['why'])}</div></td>"
+        f"<td><code>{_esc(a['buttons'])}</code></td></tr>"
+        for a in plan.get("offense_adjustments") or [])
+    return ("<section id='offense-adjustments'><h2>Offense adjustments (no macros)</h2>"
+            "<div class='why'>Called live only when a live or repeated look calls for it — "
+            "the call line says <code>ADJ: … — press …</code>.</div>"
+            f"<table class='ca-set'><tr><th>vs look</th><th>Adjustment</th><th>Buttons (Xbox)</th></tr>{rows}</table></section>")
+
+
+def _render_controls(plan: dict[str, Any]) -> str:
+    rows = "".join(
+        f"<tr><td>{_esc(c['side'])}</td><td>{_esc(c['action'])}</td><td><code>{_esc(c['buttons'])}</code></td>"
+        f"<td>{_esc(c['confidence'])}</td><td class='muted'>{_esc(c['sources'])}</td></tr>"
+        for c in plan.get("controls") or [])
+    return ("<section><h2>Xbox pre-snap controls (research DB, cited)</h2>"
+            "<table class='ca-set'><tr><th>Side</th><th>Action</th><th>Buttons</th><th>Confidence</th><th>Sources</th></tr>"
+            f"{rows}</table></section>")
+
+
 def _render_macro_groups(plan: dict[str, Any], *, details: bool = False) -> str:
-    """v1.17: Offense (10) and Defense (10) groups, prep rank order. Every row expands to its
-    exact settings (shared with CFB 27 by name) — same drill-down as before. Then one copy
-    checklist for all of them, needs-settings flagged."""
+    """v1.17: the Defense (10) macros in prep rank order. Every row expands to EVERY editor field
+    (researched value + source, else Default) and the button to fire it; then one copy checklist."""
     offense_only = bool(plan.get("offense_only"))
-    cards = plan.get("macro_cards") or []
-    groups: list[str] = []
-    for side in ("offense", "defense"):
-        if side == "defense" and offense_only:
-            groups.append('<div class="empty">Defense macros: <b>N/A — offense only</b> (CPU coaching)</div>')
-            continue
-        mine = [c for c in cards if c.get("side") == side]
-        items = "".join(
-            _render_ingame_card(c, f"copy-{side[0]}-" + "".join(ch if ch.isalnum() else "-" for ch in str(c.get("id"))),
-                                details=details)
-            for c in mine)
-        groups.append(f"<h3 class='macro-group' id='macros-{side}'>{side.title()} ({len(mine)})</h3>"
-                      f"<div class='macro-list'>{items or '<div class=empty>none</div>'}</div>")
-    need = sum(1 for c in cards if c.get("missing_settings"))
-    head = (f"<div class='banner fail'><strong>{need} macro{'s' if need != 1 else ''} still need settings</strong> "
-            "(no CFB macro with that name — nothing is invented).</div>" if need and details else "")
+    cards = [c for c in plan.get("macro_cards") or [] if c.get("side") == "defense"]
+    if offense_only:
+        return '<div class="empty">Defense macros: <b>N/A — offense only</b> (CPU coaching)</div>'
+    items = "".join(
+        _render_ingame_card(c, "copy-d-" + "".join(ch if ch.isalnum() else "-" for ch in str(c.get("id"))),
+                            details=details)
+        for c in cards)
     checklist = (
-        "<div class='copy-wrap'><div class='copy-head'><h4>Copy checklist — all "
-        f"{len(cards)} macros</h4><button type='button' class='copy-btn' data-target='copy-all-macros'>Copy</button></div>"
+        "<div class='copy-wrap'><div class='copy-head'><h4>Copy checklist — defense "
+        f"{len(cards)}</h4><button type='button' class='copy-btn' data-target='copy-all-macros'>Copy</button></div>"
         f"<pre id='copy-all-macros' class='copy-block'>{_esc(plan.get('copy_checklist') or '')}</pre></div>")
     meter = _esc((plan.get("loadout") or {}).get("meter") or "")
     return (f"<div class='meter ok'><span class='meter-label'>Macros per opponent</span>"
             f"<span class='meter-value'>{meter}</span>"
-            "<span class='meter-note'>settings shared with CFB 27 by macro name · everything you didn't set = Default</span></div>"
-            + head + "".join(groups) + checklist)
+            "<span class='meter-note'>settings research-built (cited) · fields no source names = Default</span></div>"
+            f"<h3 class='macro-group' id='macros-defense'>Defense ({len(cards)})</h3>"
+            f"<div class='macro-list'>{items or '<div class=empty>none</div>'}</div>" + checklist)
 
 
 def render_prep_html(plan: dict[str, Any]) -> str:
@@ -209,14 +222,11 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     if not offense_only:
         d = _min_book(plan, "defense")
         parts += [_book_pick_line(plan, "defense"), render_formations_min(d)]
-    missing = plan.get("missing_settings") or []
-    miss_html = ""
-    if missing:
-        miss_html = ("<div class='banner fail'><strong>Missing macro settings — nothing is invented.</strong> "
-                     "Enter yours with <code>macro-settings --game madden27 NAME --set \"Section: Setting = value\"</code> "
-                     "(saved once, used by CFB 27 too):"
-                     "<ul>" + "".join(f"<li>{_esc(m)}</li>" for m in missing) + "</ul></div>")
-    head = "Macros — Offense (10) · offense only (CPU)" if offense_only else "Macros — Offense (10) · Defense (10)"
+    rstat = plan.get("research_db") or {}
+    miss_html = (f"<div class='banner {'fail' if rstat.get('stale') else 'info'}'>{_esc(rstat.get('line') or '')}</div>"
+                 if rstat else "")
+    head = "Defense macros — N/A (CPU, offense only)" if offense_only else "Defense macros (10)"
+    parts.insert(4, _render_offense_adjustments(plan))  # right after the offense audibles
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -240,7 +250,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
       {_render_macro_groups(plan)}
     </section>
     <footer>Live: <code>play --game madden27 -o {oid}</code> — calls come only from these formations
-      (PLAY: X + MACRO: Y — offense calls from the offense 10, defense calls from the defense 10).
+      (offense: PLAY: X + ADJ: Y with buttons; defense: PLAY: X + MACRO: Y from the defense 10, or an ADJ).
       Details: {_esc(str(det))}</footer>
   </div>
   <script>{_COPY_JS}</script>
@@ -316,9 +326,9 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
     patch_lis = "".join(f"<li>{_esc(p)}</li>" for p in plan.get("patch_notes") or [])
     tip_lis = "".join(f"<li>{_esc(t)}</li>" for t in plan.get("tips") or [])
     loadout_h = (
-        "Macros — offense 10 (CPU) — click to expand · Copy recipe"
+        "Offense adjustments (CPU — no macros)"
         if offense_only
-        else "Macros — offense 10 + defense 10 — click to expand · Copy recipe"
+        else "Defense macros (10) — click to expand · every field + source · Copy recipe"
     )
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -348,6 +358,7 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
     {franchise_banner}
     {research_fail_banner(plan.get("meta_scout") or {})}
     {_render_research_madden(plan)}
+    {_render_controls(plan)}
     {_render_meta_scout(plan.get("meta_scout") or {})}
 
     <section>
@@ -386,10 +397,10 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
       to that book. Macros are Custom Adjustments you create (Create &amp; Share → Custom Adjustments).
       Every prep researches live (web + YouTube transcripts) and may recommend a different stock book
       (start: stock Buccaneers O / 49ers D for the Lions; switches need live research, a clear margin and a cooldown).
-      Macro settings are shared with CFB 27 by macro name (same editor): a Madden macro named like a
-      CFB macro uses its settings word for word; any other macro NEEDS SETTINGS until you enter them
-      (<code>macro-settings --game madden27</code>). Research guesses are reference only, never settings.
-      <b>10 offense + 10 defense</b> macros per opponent for user games; CPU = offense-only (10 O).
+      Defense macros and their settings come from the research DB (daily research routine, pulled every
+      prep): every editor field shows the value a cited source names, else Default. Offense uses no macros —
+      live calls add one researched adjustment (hot route / audible / protection) with its Xbox buttons.
+      <b>10 defense macros</b> per opponent for user games; CPU = offense-only (adjustments).
       Personas are shared with CFB. Primary team: Detroit Lions (config --game madden27 --primary-team).
       Mark applied with <code>prep --game madden27 --opponent {oid} --mark-applied</code>.
     </footer>

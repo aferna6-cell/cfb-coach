@@ -1,8 +1,9 @@
-"""Madden macros (v1.17) — shared settings, 10 offense + 10 defense per opponent, live picks.
+"""Madden macros (v1.17) — 10 research-built DEFENSE macros per opponent, with buttons.
 
-Settings come from the ONE store CFB uses (``cfb_coach.macro_settings``): a Madden macro with
-the same name as a CFB macro gets that macro's settings word for word; one with no match
-"needs settings" (flagged, never filled). Everything Aidan didn't set is Default.
+Defense macros and their settings come from the research DB (``madden/research_db.py``,
+refreshed by the daily research routine and pulled by every prep): every Custom Adjustments
+field gets the value a cited source names, else Default. Offense uses no macros — see
+``madden/adjustments.py``.
 
 Status starts meta_grounded and is overridden per Madden DB by postgame (proven / failed)
 via meta key `macro_status_json`.
@@ -13,12 +14,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from cfb_coach import macro_settings as ms
 from cfb_coach.macros import FAILED, META_GROUNDED, PROVEN, UNVALIDATED, normalize_status
-from cfb_coach.madden.macro_pool import display_name, families, macro_side, pool_ids, pool_macro
+from cfb_coach.madden import research_db as rdb
+from cfb_coach.madden.macro_pool import display_name, families, macro_side, pool_macro
 
 GAME = "madden27"
-PER_SIDE = 10  # v1.17: 10 offense + 10 defense per opponent (replaces the Active 8)
+PER_SIDE = 10  # v1.17: 10 defense macros per opponent (offense = adjustments, no macros)
 USER_ACTIVE_CAP = 8  # legacy (pre-v1.17) Active-8 cap: only used to read / migrate old selections
 STATUS_META_KEY = "macro_status_json"
 
@@ -66,161 +67,97 @@ def split_loadout(active: list[str]) -> dict[str, list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# Aidan's settings (shared with CFB)
+# Research-built settings + buttons
 # ---------------------------------------------------------------------------
 
-EDITOR_PATH = {
-    "offense": ["Create & Share", "Custom Adjustments", "Offense", "Create / Edit"],
-    "defense": ["Create & Share", "Custom Adjustments", "Defense", "Create / Edit"],
-}
-IN_GAME = "At the line: LB → pick the custom adjustment (10 offense + 10 defense per opponent)"
+EDITOR_PATH = ["Create & Share", "Custom Adjustments", "Defense", "Create / Edit"]
 
 
-def settings_path():
-    return ms.settings_path()
+def activate_buttons(mid: str) -> str:
+    """How to fire it at the line (from the DB's cited Xbox controls)."""
+    return f"{rdb.buttons('defense', 'custom_adjustments').replace('pick the macro', display_name(mid))}"
 
 
-def save_user_settings(mid: str, settings: list[str], *, replace: bool = False,
-                       xbox_name: str | None = None, clear: bool = False,
-                       this_game_only: bool = False) -> dict[str, Any]:
-    """Store Aidan's exact settings, verbatim, in the store CFB reads too (shared by default;
-    ``this_game_only`` = a Madden-only override)."""
-    key = mid.upper()
-    if not pool_macro(key):
-        raise ValueError(f"unknown Madden macro {mid!r} (known: {', '.join(pool_ids())})")
-    return ms.save_settings(key, macro_side(key), settings, game=GAME if this_game_only else None,
-                            replace=replace, xbox_name=xbox_name, clear=clear)
-
-
-def aidan_settings(mid: str) -> list[dict[str, Any]]:
-    """His settings for this macro, verbatim from the shared store. Nothing else."""
-    key = (mid or "").upper()
-    if not pool_macro(key):
-        return []
-    return ms.settings_for(key, macro_side(key), GAME)
-
-
-def research_guesses(mid: str) -> list[dict[str, str]]:
-    """The Madden research catalog's approximate fields (details page, reference only)."""
-    out = []
-    for k, ent in ((pool_macro(mid) or {}).get("full_settings") or {}).items():
-        if not isinstance(ent, dict) or (ent.get("status") or "").lower() == "confirmed":
-            continue
-        sec, _, name = k.partition(" / ")
-        out.append({"section": sec, "setting": name or sec, "research_value": str(ent.get("value") or "")})
-    return out
+def settings_rows(mid: str) -> list[dict[str, Any]]:
+    """Every editor field: researched value (+ source) or Default."""
+    return rdb.full_settings(mid) if pool_macro(mid) else []
 
 
 def key_settings(mid: str, limit: int = 6) -> str:
-    """One-line summary for the live call / card header (the full list is in the drill-down)."""
-    rows = aidan_settings(mid)
-    bits = [f"{r['setting']} {r['value']}" if r["setting"] != r["section"] else f"{r['section']}: {r['value']}"
-            for r in rows]
+    """One-line summary of the RESEARCHED fields (the full list is in the drill-down)."""
+    bits = [f"{r['setting']} {r['value']}" for r in rdb.researched_rows(mid)] if pool_macro(mid) else []
     more = len(bits) - limit
     return " · ".join(bits[:limit]) + (f" · … (+{more} more — open the macro)" if more > 0 else "")
 
 
 def _pairs_in_book(mid: str, book: dict[str, list[str]] | None, *, cap: int = 6) -> list[str]:
-    import re
-
     m = pool_macro(mid) or {}
-    shell = str(m.get("shell_pair") or "")
-    out: list[str] = []
+    base = m.get("base") or {}
+    play = str(base.get("play") or "")
     if not book:
-        return [shell] if shell else []
-    for f, ps in book.items():
-        for p in ps:
-            if shell and ((f in shell and p in shell) or (p in shell and len(p) > 5)):
-                out.append(f"{p} ({f})")
-    if len(out) < cap:
-        fam = (m.get("concept_family") or (m.get("families") or [""])[0])
-        rx = {"vert": r"cover 4|quarters", "flood": r"cover 3 match|cover 3", "cross": r"tampa|cover 2",
-              "stack": r"cover 3 match|cover 1", "scram": r"cover 4|spy", "run": r"cover 3 sky|cover 1|cover 3",
-              "rpo": r"cover 3|match", "pressure": r"slant|stick|mesh|stutter|quick|screen|sim|fire|blitz",
-              "man": r"mesh|slant|drive|cross|wheel|switch", "two_high": r"inside zone|zone|stretch|dig|drive",
-              "single_high": r"flood|sail|cross|smash|corner", "cover2": r"smash|corner|dig|post",
-              "red_zone": r"slant|fade|stick|spot|mesh"}.get(fam)
-        if (m.get("side") == "defense") and fam == "pressure":
-            rx = r"sim|fire|blitz|mug"
-        if mid == "O-RPO":
-            rx = r"rpo|alert|inside zone"
-        if rx:
-            for f, ps in book.items():
-                for p in ps:
-                    lab = f"{p} ({f})"
-                    if lab not in out and re.search(rx, p, re.I):
-                        out.append(lab)
-                    if len(out) >= cap:
-                        break
+        return [m["shell_pair"]] if m.get("shell_pair") else []
+    out = [f"{p} ({f})" for f, ps in book.items() for p in ps if play and p.lower() in play.lower()]
     return out[:cap]
 
 
 def macro_detail(mid: str, book: dict[str, list[str]] | None = None) -> dict[str, Any]:
-    """Drill-down for one macro (CFB `offense_macro_detail` shape, both sides)."""
     key = (mid or "").upper()
     meta = pool_macro(key) or {}
-    side = meta.get("side") or "defense"
-    rows = aidan_settings(key)
-    user = ms.user_entry(key, side)
-    rep = ms.match_report(key, side, GAME)
-    guesses = [] if rows else research_guesses(key)
-    if rep["cfb_match"]:
-        src = f"shared with CFB 27 macro {rep['cfb_match']} (same name) — {ms.settings_path()}"
-    else:
-        src = f"no CFB 27 macro named {key} — yours only if entered ({ms.settings_path()})"
+    rows = settings_rows(key)
+    srcs = rdb.sources()
+    used = [s for s in dict.fromkeys(r["source"] for r in rows if r.get("source") != "default")]
+    researched = [r for r in rows if r.get("source") != "default"]
+    for r in rows:
+        s = srcs.get(r.get("source") or "")
+        r["research"] = (f"{s['title']}" + (f" — {r['note']}" if r.get("note") else "")) if s else ""
     return {
         "id": key,
-        "side": side,
-        "xbox_name": user.get("xbox_name") or display_name(key),
-        "editor_path": list(EDITOR_PATH.get(side) or []),
-        "in_game": IN_GAME,
+        "side": "defense",
+        "xbox_name": display_name(key),
+        "editor_path": list(EDITOR_PATH),
+        "in_game": f"At the line: {activate_buttons(key)}",
+        "buttons": activate_buttons(key),
         "settings": rows,
-        "has_settings": bool(rows),
-        "needs_settings": not rows,
-        "cfb_match": rep["cfb_match"],
-        "gaps": [f"{g['section']} / {g['setting']} — research guess only: {g['research_value']}" for g in guesses],
-        "gap_rows": guesses,
-        "settings_source": src,
+        "has_settings": bool(researched),
+        "needs_settings": not researched,
+        "n_researched": len(researched),
+        "n_fields": len(rows),
+        "gaps": [],
+        "gap_rows": [],
+        "settings_source": ("research-built from the research DB (daily routine); every field without a "
+                            "cited value is Default — " + rdb.status()["line"]),
         "fire_when": meta.get("when_to_arm") or "",
         "pairs_with": _pairs_in_book(key, book),
         "shell_pair": meta.get("shell_pair") or "",
         "key": key_settings(key),
         "purpose": meta.get("purpose") or "",
-        "sources": ([{"id": "research", "title": meta.get("source"), "url": "",
-                      "supports": "purpose / when to arm only — not your settings"}]
-                    if meta.get("source") else []),
+        "sources": [{"id": sid, "title": srcs[sid]["title"], "url": srcs[sid].get("url", ""),
+                     "supports": "research-built settings"} for sid in used + [s for s in meta.get("sources") or []
+                                                                             if s not in used] if sid in srcs],
         "hot_route_menu_source": "",
-        "limits": ("Settings are Aidan's, shared by name with CFB 27 (same editor); a field he didn't "
-                   "set is Default. Research labels are approximate and never used as settings."),
-        "set_cmd": f'PYTHONPATH=. python3 -m cfb_coach macro-settings --game madden27 {key} --set "Section: Setting = value"',
+        "limits": "Values are what the cited sources say; fields no source names are Default.",
     }
 
 
 def copy_block(detail: dict[str, Any]) -> str:
-    """Tick-by-tick: Aidan's settings verbatim, everything else Default; a loud flag when none."""
+    """Tick-by-tick: EVERY editor field (researched value or Default), then how to fire it."""
     name = detail.get("xbox_name") or detail.get("id")
-    lines = [f"MACRO: {name} ({detail.get('side')})", "Path: " + " > ".join(detail.get("editor_path") or []),
-             f"[ ] Name: {name}"]
+    lines = [f"MACRO: {name} (defense) — research-built, {detail.get('n_researched', 0)}/{detail.get('n_fields', 0)} "
+             "fields from sources, the rest Default",
+             "Path: " + " > ".join(detail.get("editor_path") or []), f"[ ] Name: {name}"]
+    if detail.get("shell_pair"):
+        lines.append(f"Base: {detail['shell_pair']}")
     cur = None
     for r in detail.get("settings") or []:
-        if r["setting"] == r["section"]:
-            lines.append(f"[ ] {r['section']}: {r['value']}")
-            cur = None
-            continue
         if r["section"] != cur:
             cur = r["section"]
             lines.append(cur)
-        lines.append(f"  [ ] {r['setting']}: {r['value']}")
-    if not detail.get("settings"):
-        lines.append("[!] NEEDS SETTINGS — no exact settings from Aidan on file for this macro "
-                     f"(no CFB macro with this name). Enter them: {detail.get('set_cmd')}")
-    lines.append("[ ] Everything else: Default")
-    lines.append("[ ] Save")
-    lines.append(f"In game: LB -> {name}")
+        tag = "" if r.get("source") == "default" else f"   <- {r.get('source')}"
+        lines.append(f"  [ ] {r['setting']}: {r['value']}{tag}")
+    lines.append("[ ] Save → set Active")
+    lines.append(f"In game: {detail.get('buttons')}")
     if detail.get("fire_when"):
         lines.append(f"Fire when: {detail['fire_when']}")
-    if detail.get("pairs_with"):
-        lines.append("Pairs with: " + ", ".join(detail["pairs_with"]))
     return "\n".join(lines)
 
 
@@ -234,27 +171,25 @@ def attach_detail(card: dict[str, Any], book: dict[str, list[str]] | None = None
 
 
 def missing_settings_report(ids: list[str]) -> list[str]:
-    return [f"{mid} ({macro_side(mid)}): no CFB macro with this name and none entered"
-            for mid in ids if not aidan_settings(mid)]
+    return [f"{mid}: no researched settings in the research DB (every field Default)"
+            for mid in ids if pool_macro(mid) and not rdb.researched_rows(mid)]
 
 
 def copy_checklist(selection: dict[str, list[str]]) -> str:
-    """One checklist for the whole loadout (offense 10 then defense 10), needs-settings flagged."""
-    lines: list[str] = []
-    for side in ("offense", "defense"):
-        ids = list(selection.get(side) or [])
-        if not ids:
-            continue
-        lines.append(f"{side.upper()} ({len(ids)})")
-        for i, mid in enumerate(ids, 1):
-            rows = aidan_settings(mid)
-            flag = f"{len(rows)} setting(s) — shared" if rows else "[!] NEEDS SETTINGS"
-            lines.append(f"  [ ] {i:>2}. {display_name(mid)} ({mid}) — {flag}")
+    """One checklist for the defense 10: name, researched fields, button to fire it."""
+    ids = list(selection.get("defense") or [])
+    if not ids:
+        return "DEFENSE: none (CPU game = offense only; offense uses adjustments, not macros)"
+    lines = [f"DEFENSE ({len(ids)}) — build in Create & Share > Custom Adjustments > Defense, then set Active"]
+    for i, mid in enumerate(ids, 1):
+        n = len(rdb.researched_rows(mid))
+        flag = f"{n} researched field(s), rest Default" if n else "[!] no researched fields"
+        lines.append(f"  [ ] {i:>2}. {display_name(mid)} — {flag} — fire: {activate_buttons(mid)}")
     return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
-# 10 + 10 per opponent (what live `play` may fire) + migration of the old Active 8
+# The defense 10 per opponent (what live `play` may fire) + migration of the old Active 8
 # ---------------------------------------------------------------------------
 
 ACTIVE_META_KEY = "active_macros:{opp}"
@@ -277,14 +212,15 @@ def store_selection(db: Any, opponent_id: str, selection: dict[str, list[str]]) 
         return
     db.set_meta(ACTIVE_META_KEY.format(opp=opponent_id), json.dumps({
         "schema": 2,
-        "offense": _clean(selection.get("offense") or [], "offense"),
+        "offense": [],
         "defense": _clean(selection.get("defense") or [], "defense"),
         "ts": datetime.now(timezone.utc).isoformat()}))
 
 
 def migrate_selection(db: Any, opponent_id: str) -> bool:
-    """Old ``{"active": [8 ids]}`` → ``{"schema": 2, "offense": [...], "defense": [...]}``.
-    Every stored macro is kept (split by side); the old record is backed up. Idempotent."""
+    """Old ``{"active": [8 ids]}`` → schema 2. The old record is kept verbatim as a backup
+    (``active_macros_legacy8:<opp>``); ids the research DB still has carry into the defense list,
+    and the next prep gives every old pick a carry-over bonus. Idempotent."""
     if db is None:
         return False
     key = ACTIVE_META_KEY.format(opp=opponent_id)
@@ -299,11 +235,8 @@ def migrate_selection(db: Any, opponent_id: str) -> bool:
         return False
     old = [str(x).upper() for x in rec.get("active") or []]
     db.set_meta(LEGACY_BACKUP_KEY.format(opp=opponent_id), raw)
-    db.set_meta(key, json.dumps({
-        "schema": 2,
-        "offense": _clean([m for m in old if macro_side(m) == "offense"], "offense"),
-        "defense": _clean([m for m in old if macro_side(m) == "defense"], "defense"),
-        "ts": rec.get("ts"), "migrated_from": "active_8"}))
+    db.set_meta(key, json.dumps({"schema": 2, "offense": [], "defense": _clean(old, "defense"),
+                                 "legacy": old, "ts": rec.get("ts"), "migrated_from": "active_8"}))
     return True
 
 
@@ -313,6 +246,17 @@ def migrate_all_selections(db: Any) -> list[str]:
         return []
     rows = db.conn.execute("SELECT key FROM meta WHERE key LIKE 'active_macros:%'").fetchall()
     return [r[0].split(":", 1)[1] for r in rows if migrate_selection(db, r[0].split(":", 1)[1])]
+
+
+def legacy_picks(db: Any, opponent_id: str) -> list[str]:
+    """Every macro name from the migrated Active 8 (kept even when the DB no longer has it)."""
+    if db is None:
+        return []
+    raw = db.get_meta(LEGACY_BACKUP_KEY.format(opp=opponent_id))
+    try:
+        return [str(x).upper() for x in (json.loads(raw).get("active") or [])] if raw else []
+    except ValueError:
+        return []
 
 
 def load_selection(db: Any, opponent_id: str) -> dict[str, list[str]] | None:
@@ -326,26 +270,24 @@ def load_selection(db: Any, opponent_id: str) -> dict[str, list[str]] | None:
         rec = json.loads(raw)
     except ValueError:
         return None
-    sel = {s: _clean(rec.get(s) or [], s) for s in ("offense", "defense")}
-    return sel if sel["offense"] or sel["defense"] else None
+    sel = {"offense": [], "defense": _clean(rec.get("defense") or [], "defense")}
+    return sel if sel["defense"] else None
 
 
 def load_active(db: Any, opponent_id: str) -> list[str] | None:
-    """Flat list (offense then defense) of the stored selection — legacy callers."""
     sel = load_selection(db, opponent_id)
-    return (sel["offense"] + sel["defense"]) if sel else None
+    return sel["defense"] if sel else None
 
 
 def as_selection(active: list[str] | dict[str, list[str]] | None) -> dict[str, list[str]]:
-    """Normalize a flat list or {offense, defense} into the per-side lists (order kept)."""
+    """Normalize a flat list or {offense, defense} into per-side lists (order kept)."""
     if isinstance(active, dict):
-        return {s: [str(x).upper() for x in active.get(s) or []] for s in ("offense", "defense")}
-    flat = [str(x).upper() for x in active or []]
-    return {s: [m for m in flat if pool_macro(m) and macro_side(m) == s] for s in ("offense", "defense")}
+        return {"offense": [], "defense": [str(x).upper() for x in active.get("defense") or []]}
+    return {"offense": [], "defense": [str(x).upper() for x in active or [] if pool_macro(str(x))]}
 
 
 # ---------------------------------------------------------------------------
-# Live picks: at most one macro per snap, from THAT side's 10, only when it helps
+# Live: at most one macro per D snap, from the defense 10, only when it helps
 # ---------------------------------------------------------------------------
 
 LEARNED_SUPPRESS = -0.15
@@ -357,10 +299,11 @@ def macro_info(mid: str, why: str, *, weight: float | None = None) -> dict[str, 
     return {
         "id": mid,
         "name": det["xbox_name"],
-        "side": meta.get("side") or "defense",
+        "side": "defense",
         "why": why,
-        "key": det["key"] or "needs settings — no exact settings on file",
-        "settings": det["settings"],
+        "key": det["key"] or "no researched fields",
+        "buttons": det["buttons"],
+        "settings": [r for r in det["settings"] if r.get("source") != "default"],
         "missing_settings": det["needs_settings"],
         "fire_when": meta.get("when_to_arm") or "",
         "learned_weight": weight,
@@ -373,95 +316,18 @@ def _suppressed(mid: str, weights: dict[str, float] | None) -> bool:
 
 
 def best_for_family(family: str | None, ranked: list[str], weights: dict[str, float] | None = None) -> str | None:
-    """Highest-ranked macro in ``ranked`` (one side's 10, prep order) that answers ``family``."""
+    """Highest-ranked macro in ``ranked`` (the defense 10, prep order) that answers ``family``."""
     if not family:
         return None
-    return next((m for m in ranked if family in families(m) and not _suppressed(m, weights)), None)
-
-
-def suggest_offense_macro(
-    *,
-    play: str,
-    coverage_class: str | None,
-    coverage_source: str,
-    repeated: bool,
-    active: list[str] | dict[str, list[str]],
-    archetype: str = "",
-    passing_down: bool = False,
-    weights: dict[str, float] | None = None,
-    zone: str = "open",
-    down: int | None = None,
-) -> dict[str, Any] | None:
-    """At most one macro from the OFFENSE 10 for this snap, or None (most snaps).
-
-    A coverage answer needs the look REPEATED this game (Madden arm rule, same doctrine as the
-    D macros); an RPO play takes the RPO macro only vs a live / repeated zone look (CFB rule);
-    red-zone passes on 3rd/4th down take RZ; a pressure persona on a passing down takes
-    protection. Otherwise no macro."""
-    import re
-
-    from cfb_coach.madden.catalog import is_run
-
-    ranked = as_selection(active)["offense"]
-    if not ranked or not play:
-        return None
-    rpo = bool(re.search(r"rpo|alert", play, re.I))
-    run = is_run(play) and not rpo
-    is_pass = not run and not rpo
-    look_ok = bool(coverage_class) and repeated and coverage_source in ("live", "last")
-    w = weights or {}
-
-    def pick(fam: str, why: str) -> dict[str, Any] | None:
-        mid = best_for_family(fam, ranked, w)
-        return macro_info(mid, why, weight=w.get(mid)) if mid else None
-
-    tries: list[tuple[str, str]] = []
-    if look_ok and is_pass:
-        look = {"pressure": "pressure", "man": "man", "cover2": "cover2",
-                "single_high": "single_high", "two_high": "two_high"}.get(coverage_class or "")
-        if look:
-            tries.append((look, f"repeated {coverage_class.replace('_', ' ')} look on {play}"))
-    if look_ok and run and coverage_class == "two_high":
-        tries.append(("two_high_run", f"repeated two-high look — run {play}"))
-    zone_look = coverage_class in ("two_high", "cover2", "single_high") and (coverage_source == "live" or repeated)
-    if rpo and zone_look:  # CFB O-RPO fire rule: a zone look (light box / soft edge), not every RPO
-        tries.append(("rpo", f"RPO {play} vs {coverage_source} {coverage_class.replace('_', ' ')} look — give/keep read"))
-    if is_pass and zone in ("rz", "gl") and down in (3, 4):
-        tries.append(("red_zone", f"{'goal-to-go' if zone == 'gl' else 'red zone'} money down — {play}"))
-    if is_pass and passing_down and archetype == "pressure_heavy":
-        tries.append(("pressure", "pressure persona on a passing down — protection first"))
-    for fam, why in tries:
-        got = pick(fam, why)
-        if got:
-            return got
-    return None
+    ok = [m for m in ranked if not _suppressed(m, weights)]
+    primary = next((m for m in ok if families(m)[:1] == [family]), None)  # its main answer first
+    return primary or next((m for m in ok if family in families(m)), None)
 
 
 __all__ = [
-    "FAILED",
-    "META_GROUNDED",
-    "PER_SIDE",
-    "PROVEN",
-    "USER_ACTIVE_CAP",
-    "aidan_settings",
-    "as_selection",
-    "attach_detail",
-    "best_for_family",
-    "copy_block",
-    "copy_checklist",
-    "load_active",
-    "load_selection",
-    "macro_detail",
-    "macro_side",
-    "macro_status",
-    "migrate_all_selections",
-    "migrate_selection",
-    "missing_settings_report",
-    "save_user_settings",
-    "set_status",
-    "split_loadout",
-    "status_overrides",
-    "store_selection",
-    "suggest_offense_macro",
-    "tag_live",
+    "FAILED", "META_GROUNDED", "PER_SIDE", "PROVEN", "USER_ACTIVE_CAP", "activate_buttons", "as_selection",
+    "attach_detail", "best_for_family", "copy_block", "copy_checklist", "key_settings", "legacy_picks",
+    "load_active", "load_selection", "macro_detail", "macro_info", "macro_side", "macro_status",
+    "migrate_all_selections", "migrate_selection", "missing_settings_report", "set_status", "settings_rows",
+    "split_loadout", "status_overrides", "store_selection", "tag_live",
 ]
