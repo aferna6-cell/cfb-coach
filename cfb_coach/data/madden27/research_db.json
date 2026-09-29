@@ -1,0 +1,1015 @@
+{
+ "schema": 1,
+ "game": "Madden 27",
+ "platform": "Xbox",
+ "updated": "2026-09-29T01:00:22+00:00",
+ "researched_by": "initial seed (Claude Code session) — the daily routine replaces this",
+ "youtube": {
+  "status": "blocked",
+  "note": "YouTube blocked transcript requests from the research machine this run (bot check); web sources only."
+ },
+ "sources": [
+  {
+   "id": "ea-deep-dive",
+   "kind": "web",
+   "title": "EA — Madden NFL 27 Gameplay Deep Dive",
+   "url": "https://www.ea.com/en/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay",
+   "date": "2026-07",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "civil-def-adj",
+   "kind": "web",
+   "title": "Civil.GG — In-Game Defensive Adjustments Madden 27",
+   "url": "https://www.civil.gg/tips/madden-27-in-game-defensive-adjustments",
+   "date": "",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "civil-def-macros",
+   "kind": "web",
+   "title": "Civil.GG — Best Defensive Macros in Madden 27",
+   "url": "https://www.civil.gg/tips/best-defensive-macros-madden-27",
+   "date": "",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "mmoexp-def-macros",
+   "kind": "web",
+   "title": "MMOEXP — Madden 27 Best Defensive Macros: 6 Custom Adjustments",
+   "url": "https://www.mmoexp.com/News/madden-27-best-defensive-macros-6-custom-adjustments.html",
+   "date": "2026-09-24",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "mmoexp-loop-man0",
+   "kind": "web",
+   "title": "MMOEXP — Madden NFL 27 Meta Defense: Loop Man 0 Blitz Macro Guide",
+   "url": "https://www.mmoexp.com/News/madden-nfl-27-meta-defense-loop-man-0-blitz-macro-guide.html",
+   "date": "2026-08-24",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "academy-dbfire2",
+   "kind": "web",
+   "title": "The Madden Academy — Best Defensive Macro After the Patch",
+   "url": "https://themaddenacademy.com/2026/09/mastering-madden-27-best-defensive-macro-after-the-patch",
+   "date": "2026-09-25",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "civil-def-guide",
+   "kind": "web",
+   "title": "Civil.GG — Madden 27 Defense Guide: Master Every Scheme",
+   "url": "https://www.civil.gg/tips/madden-27-complete-defense-guide",
+   "date": "",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "civil-rollouts",
+   "kind": "web",
+   "title": "Civil.GG — Containing QB Rollouts in Madden 27",
+   "url": "https://www.civil.gg/tips/madden-27-containing-qb-rollouts",
+   "date": "",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "timesaver-verts",
+   "kind": "web",
+   "title": "TimeSaver — How to Stop Four Verticals in Madden NFL 27",
+   "url": "https://timesaver.gg/blog/madden-nfl-27-how-to-stop-four-verticals",
+   "date": "2026-09-19",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "realsport-controls",
+   "kind": "web",
+   "title": "Realsport101 — Madden 27 Controls Guide",
+   "url": "https://realsport101.com/article/madden-27-controls-guide-how-to-master-offense-and-defense",
+   "date": "2026-08-26",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "civil-offense",
+   "kind": "web",
+   "title": "Civil.GG — Madden 27 Offense Guide",
+   "url": "https://www.civil.gg/tips/madden-27-complete-offense-guide",
+   "date": "",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "civil-macro-setup",
+   "kind": "web",
+   "title": "Civil.GG — Custom Adjustment Macros Setup Madden 27",
+   "url": "https://www.civil.gg/tips/madden-27-custom-adjustment-macros-setup",
+   "date": "",
+   "accessed": "2026-09-29"
+  },
+  {
+   "id": "ea-help-hotroute",
+   "kind": "web",
+   "title": "EA Help — How to pass, catch, kick, and defend in Madden NFL 27",
+   "url": "https://help.ea.com/en/articles/madden-nfl/pass-kick-catch-and-defend/",
+   "date": "",
+   "accessed": "2026-09-29",
+   "note": "hot route method via search summary; page returned 503 on direct fetch"
+  },
+  {
+   "id": "prodigy-beat-man",
+   "kind": "web",
+   "title": "Madden Prodigy — How to Beat Man Coverage in Madden 27",
+   "url": "https://www.maddenprodigy.com/how-to-beat-man-coverage-in-madden-27/",
+   "date": "",
+   "accessed": "2026-09-29",
+   "note": "via search summary; direct fetch blocked"
+  },
+  {
+   "id": "meta-baseline",
+   "kind": "repo",
+   "title": "cfb-coach Madden 27 meta baseline (cited, madden27-2026-09)",
+   "url": "cfb_coach/data/madden27/meta_baseline.json",
+   "date": "2026-09-23",
+   "accessed": "2026-09-29"
+  }
+ ],
+ "controls_xbox": {
+  "offense": {
+   "audible": {
+    "buttons": "X → the button shown for that audible",
+    "sources": [
+     "realsport-controls"
+    ],
+    "confidence": "single-source"
+   },
+   "hot_route": {
+    "buttons": "Y → tap the receiver's icon button → pick the route on the hot-route menu (right stick or D-pad)",
+    "sources": [
+     "realsport-controls",
+     "ea-help-hotroute"
+    ],
+    "confidence": "confirmed"
+   },
+   "pass_protection": {
+    "buttons": "LT → pick the protection",
+    "sources": [
+     "realsport-controls"
+    ],
+    "confidence": "single-source"
+   },
+   "custom_adjustments": {
+    "buttons": "LB → pick the adjustment",
+    "sources": [
+     "realsport-controls",
+     "ea-deep-dive",
+     "civil-macro-setup"
+    ],
+    "confidence": "confirmed"
+   },
+   "fake_snap": {
+    "buttons": "RB",
+    "sources": [
+     "realsport-controls"
+    ],
+    "confidence": "single-source"
+   },
+   "motion": {
+    "buttons": "VERIFY: hold B then left stick (Civil.GG) vs right stick left/right (Realsport101)",
+    "sources": [
+     "civil-offense",
+     "realsport-controls"
+    ],
+    "confidence": "conflict"
+   },
+   "flip_run": {
+    "buttons": "right stick (flip the run — under center / pistol)",
+    "sources": [
+     "civil-offense"
+    ],
+    "confidence": "single-source"
+   }
+  },
+  "defense": {
+   "custom_adjustments": {
+    "buttons": "LB → pick the macro",
+    "sources": [
+     "ea-deep-dive",
+     "civil-macro-setup",
+     "realsport-controls"
+    ],
+    "confidence": "confirmed"
+   },
+   "coverage_hub": {
+    "buttons": "hold LT (Global Coverage Adjustment hub)",
+    "sources": [
+     "ea-deep-dive",
+     "civil-def-adj"
+    ],
+    "confidence": "confirmed"
+   },
+   "press_back_off": {
+    "buttons": "hold LT → left stick (alignment: press / back off)",
+    "sources": [
+     "civil-def-adj",
+     "ea-deep-dive"
+    ],
+    "confidence": "confirmed"
+   },
+   "shade": {
+    "buttons": "hold LT → pick the shade (over / under / inside / outside) in the hub",
+    "sources": [
+     "ea-deep-dive",
+     "civil-def-guide"
+    ],
+    "confidence": "confirmed"
+   },
+   "commit": {
+    "buttons": "hold LT → pick commit inside / outside in the hub",
+    "sources": [
+     "ea-deep-dive",
+     "civil-def-guide"
+    ],
+    "confidence": "confirmed"
+   },
+   "zone_strategy": {
+    "buttons": "hold LT → D-pad (zone cover strategy)",
+    "sources": [
+     "civil-def-adj",
+     "ea-deep-dive"
+    ],
+    "confidence": "confirmed"
+   },
+   "dline": {
+    "buttons": "right stick left → left stick (D-line alignment: pinch / spread / shift)",
+    "sources": [
+     "civil-def-adj"
+    ],
+    "confidence": "single-source"
+   },
+   "stunt": {
+    "buttons": "right stick left → RB → pick the stunt",
+    "sources": [
+     "civil-def-adj",
+     "civil-rollouts"
+    ],
+    "confidence": "confirmed"
+   },
+   "lb": {
+    "buttons": "right stick right → pick the LB adjustment (blitz / zone out)",
+    "sources": [
+     "civil-def-adj"
+    ],
+    "confidence": "single-source"
+   },
+   "show_blitz": {
+    "buttons": "RB → show blitz",
+    "sources": [
+     "civil-def-adj",
+     "civil-def-guide"
+    ],
+    "confidence": "confirmed"
+   },
+   "qb_contain": {
+    "buttons": "RB then LB",
+    "sources": [
+     "civil-def-adj",
+     "civil-rollouts",
+     "civil-def-guide"
+    ],
+    "confidence": "confirmed"
+   },
+   "individual": {
+    "buttons": "Y → tap the defender's icon → pick the assignment",
+    "sources": [
+     "civil-def-adj"
+    ],
+    "confidence": "single-source"
+   }
+  }
+ },
+ "defense_macros": [
+  {
+   "id": "TAMPA MABLE",
+   "name": "TAMPA MABLE",
+   "answers": [
+    "cross",
+    "flood"
+   ],
+   "meta_rank": 1,
+   "base": {
+    "formation": "Nickel",
+    "play": "Tampa 2"
+   },
+   "purpose": "Stops corners and crossers at the same time (25-yard flats, 5-yard curls, slot corners curl-flat)",
+   "when": "Repeated crossers / corner routes; auto flip on for nickel sets",
+   "settings": [
+    {
+     "section": "Zone Drops",
+     "setting": "Flats",
+     "value": "25",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "Zone Drops",
+     "setting": "Curls",
+     "value": "5",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "Individuals",
+     "setting": "SLCB1",
+     "value": "Curl Flat",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "Individuals",
+     "setting": "SLCB2",
+     "value": "Curl Flat",
+     "source": "civil-def-macros"
+    }
+   ],
+   "sources": [
+    "civil-def-macros",
+    "mmoexp-def-macros"
+   ]
+  },
+  {
+   "id": "PRESS SHADE IN",
+   "name": "PRESS SHADE IN",
+   "answers": [
+    "cross",
+    "stack"
+   ],
+   "meta_rank": 2,
+   "base": {
+    "formation": "Nickel",
+    "play": "Cover 2 Man"
+   },
+   "purpose": "Man coverage that takes away slants, crossers and drags (forces routes outside)",
+   "when": "Repeated slants / crossers / drags vs man",
+   "settings": [
+    {
+     "section": "Secondary",
+     "setting": "Alignment",
+     "value": "Press",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "General",
+     "setting": "Coverage Shading",
+     "value": "Inside",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "General",
+     "setting": "Route Commit",
+     "value": "Inside",
+     "source": "civil-def-macros"
+    }
+   ],
+   "sources": [
+    "civil-def-macros",
+    "mmoexp-def-macros"
+   ]
+  },
+  {
+   "id": "LOOP MAN 0",
+   "name": "LOOP MAN 0",
+   "answers": [
+    "pressure"
+   ],
+   "meta_rank": 3,
+   "base": {
+    "formation": "Nickel 2-4 Double Mug",
+    "play": "Mid Blitz 0"
+   },
+   "purpose": "Four-man inside pressure off looping edges; forces rushed throws",
+   "when": "Passing downs vs a QB who holds the ball; not vs a player who IDs it",
+   "settings": [
+    {
+     "section": "General",
+     "setting": "QB Contain",
+     "value": "Both",
+     "source": "mmoexp-loop-man0"
+    },
+    {
+     "section": "DL/LB",
+     "setting": "DL Technique",
+     "value": "Pinch",
+     "source": "mmoexp-loop-man0"
+    },
+    {
+     "section": "DL/LB",
+     "setting": "DL Point of Attack",
+     "value": "Inside",
+     "source": "mmoexp-loop-man0"
+    },
+    {
+     "section": "General",
+     "setting": "Coverage Shading",
+     "value": "Inside",
+     "source": "mmoexp-loop-man0"
+    },
+    {
+     "section": "General",
+     "setting": "Route Commit",
+     "value": "Inside",
+     "source": "mmoexp-loop-man0"
+    },
+    {
+     "section": "Individuals",
+     "setting": "Left Edge",
+     "value": "Curl Flat",
+     "source": "mmoexp-loop-man0"
+    },
+    {
+     "section": "Individuals",
+     "setting": "Right Edge",
+     "value": "Curl Flat",
+     "source": "mmoexp-loop-man0"
+    },
+    {
+     "section": "Zone Drops",
+     "setting": "Zone Drops",
+     "value": "15",
+     "source": "mmoexp-loop-man0",
+     "note": "source: 'Zone Drops 15 yards' (field not named)"
+    },
+    {
+     "section": "Secondary",
+     "setting": "QB Depth",
+     "value": "5",
+     "source": "mmoexp-loop-man0",
+     "note": "field name as the source writes it"
+    },
+    {
+     "section": "Coverage Checks",
+     "setting": "Man Coverage Stack",
+     "value": "Combo",
+     "source": "mmoexp-loop-man0"
+    }
+   ],
+   "sources": [
+    "mmoexp-loop-man0"
+   ]
+  },
+  {
+   "id": "TEX 4 MAN",
+   "name": "TEX 4 MAN",
+   "answers": [
+    "pressure",
+    "run"
+   ],
+   "meta_rank": 4,
+   "base": {
+    "formation": "any 4-man front",
+    "play": "any"
+   },
+   "purpose": "Interior pressure vs shotgun and inside runs",
+   "when": "Inside runs / shotgun passing downs",
+   "settings": [
+    {
+     "section": "DL/LB",
+     "setting": "DL Technique",
+     "value": "Spread",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "DL/LB",
+     "setting": "DL Stunts",
+     "value": "Texas 4 Man",
+     "source": "civil-def-macros"
+    }
+   ],
+   "sources": [
+    "civil-def-macros",
+    "mmoexp-def-macros"
+   ]
+  },
+  {
+   "id": "TEX2 L CONT",
+   "name": "TEX2 L CONT",
+   "answers": [
+    "pressure",
+    "scram"
+   ],
+   "meta_rank": 5,
+   "base": {
+    "formation": "any 4-man front",
+    "play": "any"
+   },
+   "purpose": "Left-side Texas stunt with contain on the right edge — pressure without losing the edge",
+   "when": "Mobile QB rolling right on passing downs",
+   "settings": [
+    {
+     "section": "General",
+     "setting": "QB Contain",
+     "value": "Right",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "DL/LB",
+     "setting": "DL Technique",
+     "value": "Spread",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "DL/LB",
+     "setting": "DL Stunts",
+     "value": "Left Tex 2 Man",
+     "source": "civil-def-macros"
+    }
+   ],
+   "sources": [
+    "civil-def-macros",
+    "mmoexp-def-macros"
+   ]
+  },
+  {
+   "id": "TEX2 R CONT",
+   "name": "TEX2 R CONT",
+   "answers": [
+    "pressure",
+    "scram"
+   ],
+   "meta_rank": 6,
+   "base": {
+    "formation": "any 4-man front",
+    "play": "any"
+   },
+   "purpose": "Right-side Texas stunt with contain on the left edge",
+   "when": "Mobile QB rolling left on passing downs",
+   "settings": [
+    {
+     "section": "General",
+     "setting": "QB Contain",
+     "value": "Left",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "DL/LB",
+     "setting": "DL Technique",
+     "value": "Spread",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "DL/LB",
+     "setting": "DL Stunts",
+     "value": "Right Tex 2 Man",
+     "source": "civil-def-macros"
+    }
+   ],
+   "sources": [
+    "civil-def-macros",
+    "mmoexp-def-macros"
+   ]
+  },
+  {
+   "id": "RZ COVER 2",
+   "name": "RZ COVER 2",
+   "answers": [
+    "red_zone",
+    "run",
+    "rpo"
+   ],
+   "meta_rank": 7,
+   "base": {
+    "formation": "Nickel",
+    "play": "Tampa 2"
+   },
+   "purpose": "Goal-line / red-zone stops: pinched line, contain, conservative option and RPO keys",
+   "when": "Inside the 20",
+   "settings": [
+    {
+     "section": "DL/LB",
+     "setting": "DL Technique",
+     "value": "Pinch",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "DL/LB",
+     "setting": "DL Point of Attack",
+     "value": "Inside",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "General",
+     "setting": "QB Contain",
+     "value": "On",
+     "source": "civil-def-macros",
+     "note": "source: 'Contain: Yes'"
+    },
+    {
+     "section": "Secondary",
+     "setting": "Safety Depth",
+     "value": "5",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "Strategy",
+     "setting": "Zone Strategy",
+     "value": "Aggressive",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "General",
+     "setting": "Option Read Key",
+     "value": "Conservative",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "General",
+     "setting": "RPO Pass Key",
+     "value": "Conservative",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "Secondary",
+     "setting": "Safety Width",
+     "value": "Pinch",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "Individuals",
+     "setting": "CB1",
+     "value": "Cloud Flat",
+     "source": "civil-def-macros",
+     "note": "or Hard Flat"
+    },
+    {
+     "section": "Individuals",
+     "setting": "CB2",
+     "value": "Cloud Flat",
+     "source": "civil-def-macros",
+     "note": "or Hard Flat"
+    },
+    {
+     "section": "Individuals",
+     "setting": "FS",
+     "value": "Inside Quarters",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "Individuals",
+     "setting": "SS",
+     "value": "Inside Quarters",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "Secondary",
+     "setting": "QB Depth",
+     "value": "5",
+     "source": "civil-def-macros",
+     "note": "field name as the source writes it"
+    }
+   ],
+   "sources": [
+    "civil-def-macros",
+    "mmoexp-def-macros"
+   ]
+  },
+  {
+   "id": "SAFE DEEP",
+   "name": "SAFE DEEP",
+   "answers": [
+    "prevent",
+    "vert"
+   ],
+   "meta_rank": 8,
+   "base": {
+    "formation": "any",
+    "play": "Cover 6 / Tampa 2 / Cover 3"
+   },
+   "purpose": "End-of-half: keep everything in front, keep contain",
+   "when": "Two-minute / protecting a lead; long passing downs",
+   "settings": [
+    {
+     "section": "Strategy",
+     "setting": "Zone Strategy",
+     "value": "Conservative",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "General",
+     "setting": "QB Contain",
+     "value": "On",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "General",
+     "setting": "Option Read Key",
+     "value": "Conservative",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "General",
+     "setting": "RPO Read Key",
+     "value": "Conservative",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "Strategy",
+     "setting": "Plaster",
+     "value": "Off",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "Coverage Checks",
+     "setting": "Zone It",
+     "value": "On",
+     "source": "civil-def-macros"
+    },
+    {
+     "section": "Secondary",
+     "setting": "CB Depth",
+     "value": "5",
+     "source": "civil-def-macros",
+     "note": "source: 'DB depth: 5 yards'"
+    },
+    {
+     "section": "Secondary",
+     "setting": "Safety Depth",
+     "value": "12",
+     "source": "civil-def-macros",
+     "note": "source: 9 or 12 — 12 for prevent"
+    }
+   ],
+   "sources": [
+    "civil-def-macros"
+   ]
+  },
+  {
+   "id": "QTRS OVERTOP",
+   "name": "QTRS OVERTOP",
+   "answers": [
+    "vert"
+   ],
+   "meta_rank": 9,
+   "base": {
+    "formation": "Nickel",
+    "play": "Cover 4 Quarters"
+   },
+   "purpose": "Four verticals / seams: two-high, corners off, deep defenders overtop, conservative deep zones",
+   "when": "Repeated four verticals / seams",
+   "settings": [
+    {
+     "section": "Secondary",
+     "setting": "Alignment",
+     "value": "Back Off",
+     "source": "timesaver-verts"
+    },
+    {
+     "section": "General",
+     "setting": "Coverage Shading",
+     "value": "Overtop",
+     "source": "timesaver-verts"
+    },
+    {
+     "section": "Strategy",
+     "setting": "Zone Strategy",
+     "value": "Conservative",
+     "source": "timesaver-verts",
+     "note": "source: conservative Smart Zone / Deep Zone Focus"
+    }
+   ],
+   "sources": [
+    "timesaver-verts"
+   ]
+  },
+  {
+   "id": "DIME FIRE 2",
+   "name": "DIME FIRE 2",
+   "answers": [
+    "pressure"
+   ],
+   "meta_rank": 10,
+   "base": {
+    "formation": "Dime 3-2",
+    "play": "DB Fire 2"
+   },
+   "purpose": "Pass-blitz vs pass-heavy offenses: inside man, cloud-flat corners, pinch the line",
+   "when": "Obvious passing downs",
+   "settings": [
+    {
+     "section": "General",
+     "setting": "Coverage Shading",
+     "value": "Inside",
+     "source": "academy-dbfire2",
+     "note": "source: 'man coverage with inside matchups'"
+    },
+    {
+     "section": "Individuals",
+     "setting": "CB1",
+     "value": "Cloud Flat",
+     "source": "academy-dbfire2"
+    },
+    {
+     "section": "Individuals",
+     "setting": "CB2",
+     "value": "Cloud Flat",
+     "source": "academy-dbfire2"
+    },
+    {
+     "section": "DL/LB",
+     "setting": "DL Technique",
+     "value": "Pinch Left",
+     "source": "academy-dbfire2"
+    },
+    {
+     "section": "Secondary",
+     "setting": "Coverage Shell",
+     "value": "Cover 2",
+     "source": "academy-dbfire2"
+    },
+    {
+     "section": "General",
+     "setting": "Show Blitz",
+     "value": "Linebackers",
+     "source": "academy-dbfire2"
+    }
+   ],
+   "sources": [
+    "academy-dbfire2"
+   ]
+  },
+  {
+   "id": "SKY CONTAIN",
+   "name": "SKY CONTAIN",
+   "answers": [
+    "scram",
+    "run"
+   ],
+   "meta_rank": 11,
+   "base": {
+    "formation": "4-2-5 3 High",
+    "play": "Cover 3 Sky"
+   },
+   "purpose": "Stops the run and scrambles: Cover 3 Sky with contain, safety in the box",
+   "when": "Mobile QB scrambles / zone runs",
+   "settings": [
+    {
+     "section": "General",
+     "setting": "QB Contain",
+     "value": "On",
+     "source": "civil-def-guide"
+    },
+    {
+     "section": "Secondary",
+     "setting": "Safety Depth",
+     "value": "9",
+     "source": "civil-def-guide"
+    },
+    {
+     "section": "Secondary",
+     "setting": "Safety Width",
+     "value": "Pinch",
+     "source": "civil-def-guide"
+    },
+    {
+     "section": "Strategy",
+     "setting": "Zone Strategy",
+     "value": "Aggressive",
+     "source": "civil-def-guide",
+     "note": "source: Balance or Aggressive"
+    },
+    {
+     "section": "Secondary",
+     "setting": "QB Depth",
+     "value": "5",
+     "source": "civil-def-guide",
+     "note": "field name as the source writes it"
+    }
+   ],
+   "sources": [
+    "civil-def-guide",
+    "civil-rollouts"
+   ]
+  }
+ ],
+ "defense_adjustments": [
+  {
+   "id": "qb_contain",
+   "label": "QB contain",
+   "answers": [
+    "scram"
+   ],
+   "control": "qb_contain",
+   "why": "ends hold the edge — stops rollouts / scrambles from any coverage",
+   "sources": [
+    "civil-rollouts",
+    "civil-def-guide"
+   ]
+  },
+  {
+   "id": "back_off_overtop",
+   "label": "Back off + overtop",
+   "answers": [
+    "vert"
+   ],
+   "control": "press_back_off",
+   "extra_control": "shade",
+   "why": "corners off the line, deep defenders on the outside/deep shoulder vs verticals",
+   "sources": [
+    "timesaver-verts"
+   ]
+  },
+  {
+   "id": "shade_in_commit_in",
+   "label": "Shade inside + commit inside",
+   "answers": [
+    "cross",
+    "stack"
+   ],
+   "control": "shade",
+   "extra_control": "commit",
+   "why": "takes away slants / crossers / drags",
+   "sources": [
+    "civil-def-macros",
+    "civil-def-guide"
+   ]
+  },
+  {
+   "id": "pinch_dline",
+   "label": "Pinch the D-line",
+   "answers": [
+    "run"
+   ],
+   "control": "dline",
+   "why": "interior fits vs inside zone / dive",
+   "sources": [
+    "civil-def-macros"
+   ]
+  },
+  {
+   "id": "show_blitz_bail",
+   "label": "Show blitz, then bail",
+   "answers": [
+    "prevent"
+   ],
+   "control": "show_blitz",
+   "why": "show pressure pre-snap, drop into coverage",
+   "sources": [
+    "timesaver-verts",
+    "civil-def-guide"
+   ]
+  }
+ ],
+ "offense_adjustments": [
+  {
+   "id": "hot_slant_vs_man",
+   "type": "hot_route",
+   "vs": [
+    "man"
+   ],
+   "target": "WR1",
+   "route": "Slant",
+   "why": "slants separate instantly vs pressed / tight man",
+   "sources": [
+    "prodigy-beat-man"
+   ]
+  },
+  {
+   "id": "hot_hb_flat_vs_pressure",
+   "type": "hot_route",
+   "vs": [
+    "pressure"
+   ],
+   "target": "HB",
+   "route": "Flat",
+   "why": "fast outlet vs a blitz — on man blitzes take the back",
+   "sources": [
+    "prodigy-beat-man"
+   ]
+  },
+  {
+   "id": "audible_run_vs_two_high",
+   "type": "audible",
+   "vs": [
+    "two_high"
+   ],
+   "target": "run audible",
+   "route": "",
+   "why": "two-high shell = light box: check to a zone run",
+   "sources": [
+    "meta-baseline"
+   ]
+  },
+  {
+   "id": "max_protect_vs_pressure",
+   "type": "pass_protection",
+   "vs": [
+    "pressure"
+   ],
+   "target": "protection",
+   "route": "Max protect",
+   "why": "keep extra blockers in vs repeated pressure",
+   "sources": [
+    "realsport-controls"
+   ]
+  }
+ ],
+ "playbooks": {
+  "note": "Book research also runs live every prep (madden/meta_scout.py); the routine records what it found here.",
+  "offense": [],
+  "defense": []
+ }
+}

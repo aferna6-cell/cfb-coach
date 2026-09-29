@@ -233,6 +233,6 @@ def doctrine_line(team: str | None = None) -> str:
     return (
         f"Doctrine (Madden 27 Franchise): meta-grounded scheme pack, {who}. "
         "One tell = log + mild bump; targeted macro only on REPEATED tendency this game. "
-        "User games O+D within 8-macro cap; CPU = offense-only. "
+        "User games: 10 research-built defense macros per opponent, offense calls carry pre-snap adjustments (with buttons); CPU = offense-only. "
         "Most D snaps Nickel Over Cover 4 Quarters / Cover 3 Match / Tampa 2 with no macro (rush four, drop seven)."
     )

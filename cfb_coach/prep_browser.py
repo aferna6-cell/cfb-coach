@@ -380,9 +380,11 @@ def _render_ingame_card(c: dict[str, Any], cid: str, *, details: bool = False) -
     return f"""
             <details class="macro-card slot-active" data-macro="{_esc(mid)}">
               <summary>
+                {f'<span class="mrank">{int(c["rank"])}.</span>' if c.get("rank") else ""}
                 <span class="mname">{_esc(name)}</span>
                 <span class="mside">{_esc(c.get("side") or "offense")}</span>
                 {_val_badge(str(status)) if details else ""}
+                {'<span class="mneeds">NEEDS SETTINGS</span>' if c.get("missing_settings") else ""}
                 <span class="mkey">{_esc(det.get("key") or "")}</span>
               </summary>
               <div class="macro-body">
@@ -628,6 +630,9 @@ _CSS = """
   }
   .macro-body { padding: 0 14px 14px; border-top: 1px solid var(--border); }
   .mkey { color: var(--muted); font-size: 0.78rem; margin-left: 10px; font-weight: 400; }
+  .mrank { color: var(--muted); font-weight: 600; margin-right: 4px; }
+  .mneeds { color: var(--warn); border: 1px solid var(--warn); border-radius: 4px; padding: 0 6px;
+            font-size: 0.72rem; font-weight: 700; margin-left: 8px; }
   .mfire, .mpairs { margin: 8px 0; font-size: 0.9rem; }
   .mfire b, .mpairs b { color: var(--accent); }
   .pchip { display: inline-block; margin: 2px 6px 2px 0; padding: 2px 8px; border-radius: 999px;

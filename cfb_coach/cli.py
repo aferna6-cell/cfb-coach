@@ -188,8 +188,10 @@ def cmd_config(args: argparse.Namespace) -> int:
 def cmd_macro_settings(args: argparse.Namespace) -> int:
     from cfb_coach.games import is_madden
 
-    if not is_madden(args.game):
-        raise SystemExit("macro-settings applies to --game madden27 (CFB offense settings live in macro_catalog.json)")
+    if not is_madden(args.game):  # v1.17: same shared store as Madden (settings are per macro name)
+        from cfb_coach.macro_settings import cfb_cli
+
+        return cfb_cli(args)
     from cfb_coach.madden import cli as madden_cli
 
     return madden_cli.cmd_macro_settings(args)
@@ -952,7 +954,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_ms = sub.add_parser(
         "macro-settings",
-        help="Madden 27: enter / show YOUR exact Custom Adjustment settings (used verbatim; missing ones are flagged)",
+        help="Enter / show YOUR exact Custom Adjustment settings — one store shared by CFB 27 + Madden 27 "
+             "(used verbatim; macros with none are flagged)",
     )
     _add_game_args(p_ms, franchise=False)
     p_ms.set_defaults(game="madden27")
@@ -962,6 +965,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_ms.add_argument("--replace", action="store_true", help="Replace all stored settings for this macro")
     p_ms.add_argument("--xbox-name", default=None, help="The name you saved it under in game (if different)")
     p_ms.add_argument("--clear", action="store_true", help="Delete your stored settings for this macro")
+    p_ms.add_argument("--this-game-only", dest="this_game_only", action="store_true",
+                      help="Store as an override for this game only (default: shared by CFB 27 + Madden 27)")
+    p_ms.add_argument("--side", choices=("offense", "defense"), default=None,
+                      help="CFB only: which side, when the name exists on both (e.g. HEAT)")
     p_ms.set_defaults(func=cmd_macro_settings)
 
     p_book = sub.add_parser(
