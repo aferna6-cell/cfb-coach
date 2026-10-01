@@ -279,6 +279,49 @@ def _offense_pool(
     return pool, bonus
 
 
+SCOUT_MIN_SHARE = 0.45
+
+
+def _scouted_coverage_bonus(
+    sit: Situation,
+    oid: str,
+    db: Any,
+    og: dict[str, Any],
+    pool: list[tuple[str, str]],
+    bonus: dict[tuple[str, str], float],
+) -> str:
+    """No look typed: lean toward the cited answers to the coverage this opponent usually
+    plays in this down bucket (your logs). Mutates ``bonus``; returns a rationale note."""
+    if db is None:
+        return ""
+    try:
+        from cfb_coach.scouting import expected_coverage, scout_opponent
+
+        report = scout_opponent(db, oid, coverage_class_of=coverage_class)
+        classes, scope, n = expected_coverage(report, sit)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not classes or n < 4:
+        return ""
+    cls, share = max(classes.items(), key=lambda kv: kv[1])
+    if share < SCOUT_MIN_SHARE:
+        return ""
+    answers = {(e["formation"], e["play"]) for e in og["coverage_answers"].get(cls, [])}
+    try:
+        from cfb_coach.ai_research import opponent_counters
+
+        named = {p for rc in opponent_counters("madden27", oid, "offense") if rc.get("vs_class") == cls for p in rc.get("plays") or []}
+        answers |= {fp for fp in pool if fp[1] in named}
+    except Exception:  # noqa: BLE001
+        pass
+    hit = 0
+    for fp in pool:
+        if fp in answers:
+            bonus[fp] = round(bonus.get(fp, 0.0) + LIVE_COVERAGE_BONUS * share, 3)
+            hit += 1
+    return f"scout {scope}: they play {cls} {round(share * 100)}% (n={n})" + (f" — {cls} answers weighted" if hit else "")
+
+
 def _pick_offense(
     sit: Situation,
     opp: dict[str, Any],
@@ -313,11 +356,15 @@ def _pick_offense(
             if fp in pool and (f"vs_{cls}" in (e.get("tags") or []) or e in og["coverage_answers"].get(cls, [])):
                 bonus[fp] = round(bonus.get(fp, 0.0) + LIVE_COVERAGE_BONUS * (2.0 if repeated else 1.0), 3)
         answered_repeat = repeated and any(_in_book(a, book) for a in og["coverage_answers"].get(cls, []))
+    scout_note = "" if cov else _scouted_coverage_bonus(sit, oid, db, og, pool, bonus)
 
     ranker = _MaddenRanker(db, oid, "offense")
     rows = ranker.rank(sit, pool, bonus)
+    from cfb_coach import ingame
     from cfb_coach.playcaller import _sample
 
+    bench = ingame.bench_for_situation(db, sit, "offense")
+    rows = ingame.drop_benched(rows, bench)
     pick = _sample(rows, rng) if rows else {"formation": next(iter(book)), "play": book[next(iter(book))][0], "total": 0.0}
     form, play = pick["formation"], pick["play"]
     rationale = (f"{key.replace('_', ' ')}: ranked {len(rows)} in-book plays (learned {pick.get('learned', 0):+.2f}, "
@@ -326,6 +373,10 @@ def _pick_offense(
         rationale += f" | persona {arch} → {pref}"
     if cov:
         rationale += (f" | REPEATED {cov} — {cls} answer weighted" if answered_repeat else "") + f" | {policy}"
+    if scout_note:
+        rationale += f" | {scout_note}"
+    if bench.benched:
+        rationale += f" | {bench.note()}"
 
     # Anti-repeat: same play 2+ of last 4 → next best different play
     if db is not None:
@@ -460,6 +511,34 @@ def _fit_defense(
     return pkg, call, f"remenu: {form}/{play} not in book → {pkg}/{call}"
 
 
+def _select_base_defense(
+    sit: Situation,
+    oid: str,
+    db: Any,
+    bl: dict[str, Any],
+    rng: random.Random,
+    book: dict[str, list[str]],
+    *,
+    exclude: set[str] | None = None,
+) -> Any:
+    """Whole-book defense pick (``defense_select``); None → legacy Nickel Over rotation."""
+    try:
+        from cfb_coach.ai_research import opponent_counters
+        from cfb_coach.learning import LearnedWeights
+        from cfb_coach.madden.defense_select import coverage_seen_family, select_defense
+        from cfb_coach.scouting import scout_opponent
+
+        report = scout_opponent(db, oid, family_of=concept_family, coverage_class_of=coverage_seen_family) if db is not None else None
+        lw = LearnedWeights.load(db, oid, side="defense") if db is not None else None
+        return select_defense(
+            sit, oid, db, book, rng, baseline=bl, scouting=report,
+            research_counters=opponent_counters("madden27", oid, "defense"),
+            exclude_families=exclude, lw=lw,
+        )
+    except Exception:  # noqa: BLE001 — never break a live call
+        return None
+
+
 def _pick_defense(
     sit: Situation,
     opp: dict[str, Any],
@@ -471,12 +550,17 @@ def _pick_defense(
 ) -> MaddenCall:
     """``active`` = the DEFENSE 10 (prep rank order) — the only macros this call may arm."""
     oid = opp["_id"]
-    form, play, rationale = _base_defense(sit, opp, bl, rng)
+    picked = _select_base_defense(sit, oid, db, bl, rng, book)
+    if picked is not None:
+        form, play, rationale, user = picked.formation, picked.play, picked.rationale, picked.user_job
+    else:
+        form, play, rationale = _base_defense(sit, opp, bl, rng)
+        user = user_job_for(play)
     form, play, note = _fit_defense(form, play, book, bl, rng)
     if note:
         rationale += f" | {note}"
+        user = user_job_for(play)
     macro: str | None = None
-    user = user_job_for(play)
     suggest: str | None = None
     d_adj: dict[str, Any] | None = None
 
@@ -543,10 +627,17 @@ def _pick_defense(
         # Arming the REPEATED-tendency macro is the family switch — keep it
         rationale = f"{pivot} — keep {macro} (REPEATED answer is the switch) | {rationale}"
     elif pivot:
-        dg = bl["defense_gameplan"]
-        form, play, macro, d_adj = dg["home_package"], rng.choice(list(dg["home_rotation"])), None, None
-        user = user_job_for(play)
-        rationale = f"{pivot} → {form}/{play} | {rationale}"
+        from cfb_coach.madden.defense_select import call_family
+
+        switched = _select_base_defense(sit, oid, db, bl, rng, book, exclude={call_family(play)} - {None})
+        if switched is not None:
+            form, play, user = switched.formation, switched.play, switched.user_job
+        else:
+            dg = bl["defense_gameplan"]
+            form, play = dg["home_package"], rng.choice(list(dg["home_rotation"]))
+            user = user_job_for(play)
+        macro, d_adj = None, None
+        rationale = f"{pivot} → {form}/{play} (new coverage family) | {rationale}"
         suggest = suggest or "macros cleared — re-arm only on repeated tendency"
 
     fitted = _fit_defense(form, play, book, bl, rng)
@@ -598,7 +689,7 @@ def active_pivot(db: Any, opponent_id: str, side: str) -> str | None:
     n = 3 if hard else 2
     if side == "offense":
         return f"{tag} last {n} O snaps failed — switch family (zone run ↔ Mesh Post ↔ Mtn Stick Wheel), no hero shot"
-    return f"{tag} last {n} D snaps failed — reset Nickel Over base, clear chase macros"
+    return f"{tag} last {n} D snaps failed — switch coverage family, clear chase macros"
 
 
 # ---------------------------------------------------------------------------

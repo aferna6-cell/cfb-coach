@@ -7,6 +7,7 @@ dispatches to cfb_coach.madden.cli (Madden 27 Franchise).
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from cfb_coach.db import CoachDB, resolve_db_path_from_env
@@ -198,6 +199,8 @@ def cmd_macro_settings(args: argparse.Namespace) -> int:
 
 
 def cmd_prep(args: argparse.Namespace) -> int:
+    if getattr(args, "live_scout", False):
+        os.environ["CFB_COACH_LIVE_SCOUT"] = "1"
     handler = _madden_handler(args, "cmd_prep")
     if handler:
         return handler(args)
@@ -804,12 +807,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_prep.add_argument(
         "--offline",
         action="store_true",
-        help="Skip the live meta fetch (use last cache, else the seed research in meta_baseline.json)",
+        help="No network: use the last downloaded daily research (else the copy in this checkout / seed research)",
     )
     p_prep.add_argument(
         "--refresh-meta",
         action="store_true",
-        help="(Kept for compatibility) every prep now researches live; the cache is only a fallback when sources fail",
+        help="(Kept for compatibility) prep always loads the newest daily AI research",
+    )
+    p_prep.add_argument(
+        "--live-scout",
+        action="store_true",
+        help="Scrape the web during prep (old keyword scout) instead of using the daily AI research",
     )
     _add_game_args(p_prep)
     p_prep.add_argument(

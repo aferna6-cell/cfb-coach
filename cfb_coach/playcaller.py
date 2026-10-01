@@ -628,9 +628,15 @@ def _pick_offense_inner(
     rows = ranker.rank(sit, menu, bonus=bonus)
     if book:
         rows = _demote_rows(rows, book)
+    from cfb_coach import ingame
+
+    bench = ingame.bench_for_situation(db, sit, "offense")
+    rows = ingame.drop_benched(rows, bench)
     pick = _sample(rows, rng)
     form, play = pick["formation"], pick["play"]
     rationale = f"{rationale} | {_rank_note(sit, pick, rows)}"
+    if bench.benched:
+        rationale += f" | {bench.note()}"
     form, play, adj, rationale, _ = _soft_coverage_lean(
         form, play, adj, rationale, sit, opp, db, rng
     )
@@ -991,6 +997,16 @@ def _macro_for_family(family: str | None) -> str:
     }.get(family or "", "targeted macro")
 
 
+_D_CHANGEUPS = [
+    ("Nickel Over", "Cover 3 Sky"),
+    ("Nickel Over", "Cover 4 Quarters"),
+    ("Nickel Over", "Tampa 2"),
+    ("Dime Normal", "Cover 4 Quarters"),
+    ("Nickel Double Mug", "Mid Blitz 0"),
+    ("4-3 Even 6-1", "Cover 3 Buzz"),
+]
+
+
 def _pick_defense(
     sit: Situation,
     opp: dict[str, Any],
@@ -1015,6 +1031,17 @@ def _pick_defense(
         suggest = suggest or f"{macro} — low film; keep base zone"
         macro = "none"
         rationale += " | low-confidence opponent — strip macro"
+
+    from cfb_coach import ingame
+
+    bench = ingame.bench_for_situation(db, sit, "defense")
+    if bench.is_benched(form, play):
+        alts = [fp for fp in _D_CHANGEUPS if fp[1] != play and not bench.is_benched(*fp)]
+        if alts:
+            form, play = rng.choice(alts)
+            macro = "none"
+            user = _USER_FOR_PLAY.get(play, "User hook")
+            rationale = f"{bench.note()} → {form}/{play} | {rationale}"
 
     # Mid-game PIVOT: last 3 D snaps failed → reset to Nickel Over base, clear chase macros
     if db is not None:
