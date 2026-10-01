@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "game": "cfb27",
+  "researched_at": "2026-10-01T12:48:00-04:00",
+  "researched_by": "Cursor daily research",
+  "summary": "Title Update 1.012 (Sept 22) weakened QB spin moves behind the line and made custom-adjustment contains reliable again, after 1.010 (Sept 3) toned down overly effective man coverage. Bunch is the consensus passing meta (Washington State Gun Bunch X Nasty, Ohio State, Charlotte) and 4-2-5 / 4-2-5 Man Pressure are the top defensive books. Match quarters (Box check vs bunch) and Cover 6 are the standard answers to bunch crossers and verticals; underneath-first passing beats two-high.",
+  "patch": {
+    "version": "1.012",
+    "date": "2026-09-22",
+    "title": "Title Update - September 22, 2026",
+    "url": "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes",
+    "notes": [
+      "Improved Run Action block targeting to detect threats",
+      "Contains called via Custom Adjustments are now respected",
+      "Reduced effectiveness of QB Spin Moves behind the line of scrimmage",
+      "WR catch success tuned for off-target and hurried passes",
+      "Fixed field goal blocking with looping defenders"
+    ]
+  },
+  "findings": [
+    {"claim": "Sept 22 update 1.012 reduced QB spin move effectiveness behind the line and fixed custom-adjustment contains not being respected.", "side": "general", "source": "MP1st", "url": "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes", "published": "2026-09-22", "confidence": "high"},
+    {"claim": "Sept 3 update 1.010 targeted overly effective man coverage (pass lead, route running, jostle, man press penalty) and fixed Cloud Flats ignoring user drop depths and Combo converting to Lock in press.", "side": "defense", "source": "EA Campus Huddle", "url": "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/title-update-september-3rd-2026", "published": "2026-09-02", "confidence": "high"},
+    {"claim": "Bunch is the CFB 27 passing meta: Washington State Gun Bunch X Nasty is the most complete offensive book (man and zone beaters, runs via Pistol Trips / Pistol U Off Trips), red zone from Singleback Deuce Close.", "side": "offense", "source": "Madden Turf", "url": "https://maddenturf.com/cfb-27-best-playbooks/", "published": "2026-09", "confidence": "medium"},
+    {"claim": "4-2-5 Man Pressure (3-3 Cub, Nickel, Dime, man blitzes mixed with zone) is the consensus number two defensive book behind base 4-2-5.", "side": "defense", "source": "Madden Turf", "url": "https://maddenturf.com/cfb-27-best-playbooks/", "published": "2026-09", "confidence": "medium"},
+    {"claim": "4-2-5 Even Cover 3 Sky with a slid line, linebacker blitz and QB contain on both sides is a popular saved blitz macro that gets home against slide protection.", "side": "defense", "source": "MMOexp guide", "url": "https://www.mmoexp.com/News/college-football-27-guide-4-2-5-man-pressure-defense-how-to-dominate-with-unstoppable-blitzes.html", "published": "2026-09", "confidence": "low"},
+    {"claim": "Post-update settings: Auto Base Protection to Empty and Blocking to Balanced; aggressive blocking now draws holding and speed boosting is gone.", "side": "offense", "source": "games.gg", "url": "https://games.gg/ea-sports-college-football-27/guides/college-football-27-best-playbooks/", "published": "2026-09", "confidence": "medium"},
+    {"claim": "Cover 4 Quarters with the Box match check is the answer to bunch crossers and rubs; Cover 6 switches to Palms vs trips and Box vs bunch.", "side": "defense", "source": "U4GM / UTNice Cover 6 guide", "url": "https://www.utnice.com/news/college-football-27-cover-6-defense-guide-principles-core-structure-response-mechanism", "published": "2026-09", "confidence": "medium"},
+    {"claim": "Mabel-style zone macro (cloud flats ~25 yds, slot curl flats 5 yds, hook curls) takes away sideline floods and corners, funneling throws to the user in the middle.", "side": "defense", "source": "MMOexp zone macros guide", "url": "https://www.mmoexp.com/News/college-football-27-guide-zone-macros-how-to-stop-sideline-floods-corners-and-deep-throws.html", "published": "2026-09", "confidence": "low"},
+    {"claim": "Beat Cover 4 underneath first (flats, drags, quick outs, curls, RB routes); only take posts and deep shots after the quarter safety or flat defender cheats.", "side": "offense", "source": "Madden Prodigy", "url": "https://www.maddenprodigy.com/how-to-beat-cover-4-college-football-27/", "published": "2026-09", "confidence": "medium"},
+    {"claim": "Beat Cover 3 with flood concepts, flats, curls, crossers and seams thrown before the middle safety closes.", "side": "offense", "source": "Madden Prodigy", "url": "https://www.maddenprodigy.com/how-to-beat-cover-3-college-football-27/", "published": "2026-09", "confidence": "medium"},
+    {"claim": "Beat blitz with quick slants, drags, mesh, Texas and RB outlets; use motion to confirm man.", "side": "offense", "source": "Madden Prodigy", "url": "https://www.maddenprodigy.com/how-to-beat-blitzes-college-football-27/", "published": "2026-09", "confidence": "medium"},
+    {"claim": "A live content update reportedly lets CPU defenses adjust to repeated outside runs, so spamming stretch vs CPU is less reliable.", "side": "offense", "source": "Frendvibe (U4GM recap)", "url": "https://frendvibe.com/blogs/37106/Major-College-Football-27-Fixes-Arrive-U4GM-Highlights-What-Players", "published": "2026-09", "confidence": "low"}
+  ],
+  "meta_offense": [
+    "Gun Bunch X Nasty (Washington State) — Cross Wheels, Mesh, bunch floods",
+    "Pistol Trips / Pistol U Off Trips runs out of the same personnel",
+    "Underneath-first vs two-high: Mesh Spot, Stick, Curl Flat, RB routes",
+    "Flood / Sail vs Cover 3",
+    "Quick game and Texas / mesh vs man blitz"
+  ],
+  "meta_defense": [
+    "4-2-5 and 4-2-5 Man Pressure books (3-3 Cub, Nickel, Dime)",
+    "Cover 4 Quarters with Box check vs bunch",
+    "Cover 6 (Palms vs trips, Box vs bunch)",
+    "4-2-5 Even Cover 3 Sky LB blitz + QB contain macro",
+    "Mabel zone drops vs sideline floods"
+  ],
+  "suggestions": [
+    {"side": "defense", "label": "Quarters Box vs bunch", "tip": "Against Gun Bunch looks call Cover 4 Quarters with the Box match check and user the deep middle; it passes off Cross Wheels and mesh rubs.", "macro_hint": null, "source_url": "https://www.u4gm.com/ar/college-football-27/blog-how-to-stop-bunch-formations-in-cfb-27"},
+    {"side": "defense", "label": "Contains work again", "tip": "Since 1.012, contains set in custom adjustments are respected and QB spin moves are weaker — keep QB contain on vs scramblers instead of spying.", "macro_hint": null, "source_url": "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes"},
+    {"side": "offense", "label": "Take it underneath vs two-high", "tip": "Against Cover 4 / Cover 6, hit flats, drags and curls until a safety comes down, then go post or corner.", "macro_hint": null, "source_url": "https://www.maddenprodigy.com/how-to-beat-cover-4-college-football-27/"},
+    {"side": "offense", "label": "Vary runs vs CPU", "tip": "CPU defenses reportedly key on repeated outside runs now — alternate Inside Zone / outside zone instead of spamming stretch.", "macro_hint": null, "source_url": "https://frendvibe.com/blogs/37106/Major-College-Football-27-Fixes-Arrive-U4GM-Highlights-What-Players"},
+    {"side": "offense", "label": "Protection settings", "tip": "Set Auto Base Protection to Empty and Blocking to Balanced; aggressive blocking now draws holding.", "macro_hint": null, "source_url": "https://games.gg/ea-sports-college-football-27/guides/college-football-27-best-playbooks/"}
+  ],
+  "opponents": {
+    "gavin": {
+      "notes": ["From his seed profile (best in league): IZ/split zone early, Four Verticals and Cross Wheels for explosives, Mesh/Flood/Levels intermediate, scrambles when coverage carries. Defense is split-field zone (Cover 6/9/Quarters, Cover 3 Sky), rarely man blitzes."],
+      "defense_counters": [
+        {"vs": "Four Verticals", "vs_family": "vert", "families": ["two_high", "cover2"], "calls": ["Cover 4 Quarters", "Cover 6", "Tampa 2"], "why": "two-high caps both seams; user the deep middle", "source_url": "https://www.maddenprodigy.com/college-football-27-defense-guide/"},
+        {"vs": "Cross Wheels", "vs_family": "cross", "families": ["two_high", "man"], "calls": ["Cover 4 Quarters", "Cover 1 Hole"], "why": "Box match check passes off bunch crossers and the wheel", "source_url": "https://www.u4gm.com/ar/college-football-27/blog-how-to-stop-bunch-formations-in-cfb-27"},
+        {"vs": "Inside Zone", "vs_family": "run", "families": ["single_high", "two_high"], "calls": ["Cover 3 Sky", "Cover 4 Quarters"], "why": "eight-man box or quarters safeties fit the run downhill", "source_url": "https://www.maddenprodigy.com/college-football-27-defense-guide/"}
+      ],
+      "offense_counters": [
+        {"vs": "Cover 6", "vs_class": "two_high", "plays": ["Mesh Spot", "Curl Flat", "Stick"], "why": "underneath first vs four deep", "source_url": "https://www.maddenprodigy.com/how-to-beat-cover-4-college-football-27/"},
+        {"vs": "Cover 3 Sky", "vs_class": "single_high", "plays": ["Flood", "Levels Sail", "Smash"], "why": "flood stresses the flat and deep-third defenders", "source_url": "https://www.maddenprodigy.com/how-to-beat-cover-3-college-football-27/"}
+      ]
+    },
+    "quen": {
+      "notes": ["From his seed profile: Cross Wheels, RPO bubbles, IZ, High-Low Cross, verts with a mobile QB. Pressure-heavy defense (Sam/Will Blitz, Nickel 2 Trap) over Cover 2 / Cover 3 Sky / Match."],
+      "defense_counters": [
+        {"vs": "Cross Wheels", "vs_family": "cross", "families": ["two_high", "cover2"], "calls": ["Cover 4 Quarters", "Tampa 2"], "why": "Box check vs bunch; keep a robber in the crossing lane", "source_url": "https://www.u4gm.com/ar/college-football-27/blog-how-to-stop-bunch-formations-in-cfb-27"},
+        {"vs": "RPO bubbles", "vs_family": "rpo", "families": ["single_high"], "calls": ["Cover 3 Match"], "why": "match flat defender squeezes the bubble while the box plays the run", "source_url": "https://www.maddenprodigy.com/college-football-27-defense-guide/"},
+        {"vs": "QB scramble", "vs_family": "scram", "families": ["single_high", "man"], "calls": ["Cover 3 Sky", "Cover 1 Hole"], "why": "contains are respected since 1.012; keep both edges contained", "source_url": "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes"}
+      ],
+      "offense_counters": [
+        {"vs": "Sam / Will Blitz", "vs_class": "pressure", "plays": ["Mesh", "Slants", "Drive"], "why": "fast-breaking inside routes and RB outlet beat the blitz", "source_url": "https://www.maddenprodigy.com/how-to-beat-blitzes-college-football-27/"},
+        {"vs": "Cover 2", "vs_class": "cover2", "plays": ["Smash", "Four Verticals", "Flood"], "why": "corner and seam routes attack the hole and middle", "source_url": "https://www.maddenprodigy.com/madden-27-beat-cover-2/"}
+      ]
+    },
+    "tiano": {
+      "notes": ["From his seed profile: HB Angle is his money play, Cross Wheels and mesh/drive-post stress, deep run menu (IZ, OZ, Duo, Trap, Mid Draw), tempo. Defense mixes Cover 2 Invert / Cover 2 / Cover 3 Sky-Cloud / Cover 1 Hole / Nickel Sim."],
+      "defense_counters": [
+        {"vs": "HB Angle", "vs_family": "cross", "families": ["man"], "calls": ["Cover 1 Hole", "Cover 2 Man"], "why": "man linebacker on the back plus a hole player sitting on the angle break", "source_url": "https://www.maddenprodigy.com/college-football-27-defense-guide/"},
+        {"vs": "Inside Zone / Duo", "vs_family": "run", "families": ["single_high", "pressure"], "calls": ["Cover 3 Sky", "Cover 3 Buzz"], "why": "eight in the box with a downhill safety", "source_url": "https://www.maddenprodigy.com/college-football-27-defense-guide/"}
+      ],
+      "offense_counters": [
+        {"vs": "Cover 2 Invert", "vs_class": "cover2", "plays": ["Smash", "Flood"], "why": "corner route behind the hard flat", "source_url": "https://www.maddenprodigy.com/madden-27-beat-cover-2/"},
+        {"vs": "Cover 1 Hole", "vs_class": "man", "plays": ["Mesh", "Slants"], "why": "rubs and quick in-breakers vs man", "source_url": "https://www.maddenprodigy.com/how-to-beat-blitzes-college-football-27/"}
+      ]
+    },
+    "gio": {"notes": ["Thin film in the seed (Miami-era Florida, defense too slow). Use general meta counters until your logs fill in."], "defense_counters": [], "offense_counters": []},
+    "michael": {"notes": ["Thin film in the seed (close 22-21 game). Use general meta counters until your logs fill in."], "defense_counters": [], "offense_counters": []},
+    "harrison": {"notes": ["No concept detail in the seed. Use general meta counters until your logs fill in."], "defense_counters": [], "offense_counters": []},
+    "jaxon": {"notes": ["No concept detail in the seed. Use general meta counters until your logs fill in."], "defense_counters": [], "offense_counters": []},
+    "ryan": {"notes": ["Empty seed. Use general meta counters until your logs fill in."], "defense_counters": [], "offense_counters": []},
+    "james": {"notes": ["Empty seed. Use general meta counters until your logs fill in."], "defense_counters": [], "offense_counters": []},
+    "cpu": {
+      "notes": ["CPU defense in the seed plays two-high on money downs (Cover 4 Palms 3rd-long, Cover 2 Man 4th, Tampa 2, Cover 2 Hard Flat / Invert). Take the free underneath throw; don't force Mesh Post/Whip into sticks coverage.", "CPU reportedly adjusts to repeated outside runs now (low confidence) — mix run directions."],
+      "defense_counters": [],
+      "offense_counters": [
+        {"vs": "Cover 4 Palms", "vs_class": "two_high", "plays": ["Curl Flat", "Stick", "Mesh Spot"], "why": "underneath first vs four deep on 3rd-long", "source_url": "https://www.maddenprodigy.com/how-to-beat-cover-4-college-football-27/"},
+        {"vs": "Tampa 2 / Cover 2 Invert", "vs_class": "cover2", "plays": ["Smash", "Flood"], "why": "corner route into the hole behind the flat", "source_url": "https://www.maddenprodigy.com/madden-27-beat-cover-2/"},
+        {"vs": "Cover 2 Man", "vs_class": "man", "plays": ["Mesh", "Slants", "Drive"], "why": "rubs and in-breakers under two-deep man", "source_url": "https://www.maddenprodigy.com/how-to-beat-blitzes-college-football-27/"}
+      ]
+    }
+  },
+  "sources": [
+    {"title": "CFB 27 Update 1.012 Patch Notes (Sept 22)", "url": "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes", "kind": "patch", "published": "2026-09-22", "accessed": "2026-10-01"},
+    {"title": "CFB 27 update with QB spin move and catch tuning", "url": "https://consolepcgaming.com/ea-sports-college-football-27-update-is-available-with-qb-spin-move-and-catch-tuning/", "kind": "patch", "published": "2026-09-22", "accessed": "2026-10-01"},
+    {"title": "EA — CFB 27 Title Update September 3, 2026", "url": "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/title-update-september-3rd-2026", "kind": "patch", "published": "2026-09-02", "accessed": "2026-10-01"},
+    {"title": "The Best Playbooks for CFB 27 (Madden Turf)", "url": "https://maddenturf.com/cfb-27-best-playbooks/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "CFB 27 Best Playbooks and Settings (games.gg)", "url": "https://games.gg/ea-sports-college-football-27/guides/college-football-27-best-playbooks/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "CFB 27 4-2-5 Man Pressure guide (MMOexp)", "url": "https://www.mmoexp.com/News/college-football-27-guide-4-2-5-man-pressure-defense-how-to-dominate-with-unstoppable-blitzes.html", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "CFB 27 Defense Guide (Madden Prodigy)", "url": "https://www.maddenprodigy.com/college-football-27-defense-guide/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "CFB 27 Cover 6 Defense Guide (UTNice)", "url": "https://www.utnice.com/news/college-football-27-cover-6-defense-guide-principles-core-structure-response-mechanism", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "How to Stop Bunch Formations in CFB 27 (U4GM)", "url": "https://www.u4gm.com/ar/college-football-27/blog-how-to-stop-bunch-formations-in-cfb-27", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "CFB 27 Zone Macros vs floods (MMOexp)", "url": "https://www.mmoexp.com/News/college-football-27-guide-zone-macros-how-to-stop-sideline-floods-corners-and-deep-throws.html", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "How to Beat Cover 4 in CFB 27 (Madden Prodigy)", "url": "https://www.maddenprodigy.com/how-to-beat-cover-4-college-football-27/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "How to Beat Cover 3 in CFB 27 (Madden Prodigy)", "url": "https://www.maddenprodigy.com/how-to-beat-cover-3-college-football-27/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "How to Beat Blitzes in CFB 27 (Madden Prodigy)", "url": "https://www.maddenprodigy.com/how-to-beat-blitzes-college-football-27/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "How to Beat Cover 2 (Madden Prodigy)", "url": "https://www.maddenprodigy.com/madden-27-beat-cover-2/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "Major CFB 27 fixes recap (Frendvibe/U4GM)", "url": "https://frendvibe.com/blogs/37106/Major-College-Football-27-Fixes-Arrive-U4GM-Highlights-What-Players", "kind": "news", "published": "2026-09", "accessed": "2026-10-01"}
+  ]
+}

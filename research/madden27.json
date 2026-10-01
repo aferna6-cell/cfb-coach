@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "game": "madden27",
+  "researched_at": "2026-10-01T12:48:00-04:00",
+  "researched_by": "Cursor daily research",
+  "summary": "Title Update 1.007 (Sept 30) is mostly Franchise salary-cap and CPU roster fixes plus catch-from-sack and run-action blocking tuning; 1.006 (Sept 16) extended downfield pass lead and tuned jostle / man press. Cover 4 Quarters (with match checks) is the community base defense vs the vertical and return-route meta, DB Fire 2 is the preferred pressure over Cover 0, and Cover 6 is called the strongest run fit. On offense the Buccaneers Gun Doubles Clamp Stack (Texas Y-Stutter Wheel vs man, Motion Shuffle Vert Smash vs Cover 3, Return Bench vs Cover 2) and the Jets Empty Motion Mesh Rail lead.",
+  "patch": {
+    "version": "1.007",
+    "date": "2026-09-30",
+    "url": "https://mp1st.com/title-updates-and-patches/madden-nfl-27-update-1-007-tweaks-salary-cap-management-september-30",
+    "notes": [
+      "Dynamic Salary Cap and CPU roster management fixes in Franchise",
+      "WR catch success tuned on throws out of sack situations",
+      "Improved Run Action block targeting",
+      "Fixed field goal blocking with looping defenders",
+      "Game clock fix after delay of game"
+    ]
+  },
+  "findings": [
+    {"claim": "Sept 30 update 1.007 fixes Dynamic Salary Cap and CPU signing/trade logic in Franchise, tunes WR catches from sack situations, and improves run-action block targeting.", "side": "general", "source": "MP1st", "url": "https://mp1st.com/title-updates-and-patches/madden-nfl-27-update-1-007-tweaks-salary-cap-management-september-30", "published": "2026-09-30", "confidence": "high"},
+    {"claim": "Sept 16 update extended default pass lead on downfield throws, tuned WR acceleration out of jostle wins, and increased the Man Press penalty for shading the wrong way.", "side": "general", "source": "EA Gridiron Notes", "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-nfl-27-title-update-september-16", "published": "2026-09-15", "confidence": "high"},
+    {"claim": "Cover 4 Quarters is the community go-to vs the vertical-heavy meta; Match Coverage Checks on Cover 3 Match, Quarters, Palms and Cover 6 are the cleanest counter to return routes and floods; DB Fire 2 beats Cover 0 vs return-route offenses.", "side": "defense", "source": "games.gg starter defense guide", "url": "https://games.gg/madden-nfl-27/guides/madden-nfl-27-starter-defensive-guide/", "published": "2026-09", "confidence": "medium"},
+    {"claim": "To stop Four Verticals play two-high (Cover 4, Cover 2, Tampa 2), user the deep middle and use Overtop leverage; never sit in Cover 1 / Cover 3.", "side": "defense", "source": "Timesaver", "url": "https://timesaver.gg/blog/madden-nfl-27-how-to-stop-four-verticals", "published": "2026-09", "confidence": "medium"},
+    {"claim": "Vs runs: Cover 4 Quarters / Palms for inside runs, OLB Fire 2 for outside runs with lead blockers, Cover 6 as the strongest overall run defense; Texas 4-Man stunt vs inside runs.", "side": "defense", "source": "EA Tips & Tricks", "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/tips-and-tricks-hub/m27-how-to-stop-the-run", "published": "2026-09", "confidence": "high"},
+    {"claim": "4-3 Even 6-1 Cover 4 Quarters and Dime 2-3 Odd DB Fire 2 are standout meta defensive calls.", "side": "defense", "source": "Game Rant", "url": "https://gamerant.com/madden-27-best-offensive-defensive-playbooks/", "published": "2026-09", "confidence": "medium"},
+    {"claim": "Buccaneers Gun Doubles Clamp Stack: Texas Y-Stutter Wheel vs man, Motion Shuffle Vert Smash vs Cover 3, Return Bench vs Cover 2.", "side": "offense", "source": "MMOexp", "url": "https://www.mmoexp.com/News/madden-27-doubles-clamp-stack-scheme-offense-playbook.html", "published": "2026-09", "confidence": "medium"},
+    {"claim": "Jets Empty Motion Mesh Rail's motion HB wheel beats man deep; Gun Empty Ace adds QB Zone, Return Trail Go, Stick and Curls HB Post.", "side": "offense", "source": "EA Tips & Tricks", "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/tips-and-tricks-hub/m27-best-offensive-playbooks", "published": "2026-09", "confidence": "high"},
+    {"claim": "Beat Cover 4 with flats, RB routes, flood reads and runs when safeties bail; beat Cover 3 with flats, curls, seams and floods.", "side": "offense", "source": "Madden Prodigy", "url": "https://www.maddenprodigy.com/how-to-beat-cover-4-madden-27/", "published": "2026-09", "confidence": "medium"}
+  ],
+  "meta_offense": [
+    "Gun Doubles Clamp Stack (Buccaneers) — Texas Y-Stutter Wheel, Motion Shuffle Vert Smash, Return Bench",
+    "Gun Empty Ace / Empty Motion Mesh Rail (Jets)",
+    "Return-route and flood concepts",
+    "Pistol HB Zone and HB Dive runs"
+  ],
+  "meta_defense": [
+    "Cover 4 Quarters with match checks",
+    "Cover 6 vs runs and verticals",
+    "Tampa 2 vs Four Verticals",
+    "DB Fire 2 (Dime 2-3 Odd) pressure",
+    "Texas 4-Man stunt vs inside runs"
+  ],
+  "suggestions": [
+    {"side": "defense", "label": "Two-high vs verts", "tip": "Against Four Verticals play Cover 4 Quarters, Cover 2 or Tampa 2 with Overtop leverage and user the deep middle.", "macro_hint": "QTRS OVERTOP", "source_url": "https://timesaver.gg/blog/madden-nfl-27-how-to-stop-four-verticals"},
+    {"side": "defense", "label": "DB Fire 2 over Cover 0", "tip": "When you need pressure vs return routes, DB Fire 2 wins more reps than Cover 0.", "macro_hint": null, "source_url": "https://games.gg/madden-nfl-27/guides/madden-nfl-27-starter-defensive-guide/"},
+    {"side": "defense", "label": "Cover 6 vs the run", "tip": "Cover 6 with a user safety on the Cover 2 side attacking downhill is the strongest run fit.", "macro_hint": null, "source_url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/tips-and-tricks-hub/m27-how-to-stop-the-run"},
+    {"side": "offense", "label": "Clamp Stack by coverage", "tip": "Man: Texas Y-Stutter Wheel. Cover 3: Motion Shuffle Vert Smash. Cover 2: Return Bench.", "macro_hint": null, "source_url": "https://www.mmoexp.com/News/madden-27-doubles-clamp-stack-scheme-offense-playbook.html"}
+  ],
+  "opponents": {
+    "gavin": {
+      "notes": ["No Madden-specific profile; carried over from his CFB tendencies (verticals, Cross Wheels, mesh, IZ, split-field zone defense). Low confidence until your Madden logs fill in."],
+      "defense_counters": [
+        {"vs": "Four Verticals", "vs_family": "vert", "families": ["two_high", "cover2"], "calls": ["Cover 4 Quarters", "Tampa 2", "Cover 6"], "why": "two-high caps the seams", "source_url": "https://timesaver.gg/blog/madden-nfl-27-how-to-stop-four-verticals"},
+        {"vs": "Cross Wheels", "vs_family": "cross", "families": ["two_high", "man"], "calls": ["Cover 4 Quarters", "Cover 1 Hole"], "why": "match checks pass off crossers", "source_url": "https://games.gg/madden-nfl-27/guides/madden-nfl-27-starter-defensive-guide/"}
+      ],
+      "offense_counters": [
+        {"vs": "Cover 6", "vs_class": "two_high", "plays": ["Return Bench", "Mesh Spot"], "why": "underneath and sideline vs two-high", "source_url": "https://www.maddenprodigy.com/how-to-beat-cover-4-madden-27/"}
+      ]
+    },
+    "tiano": {
+      "notes": ["No Madden-specific profile; carried over from CFB (HB Angle, Cross Wheels, deep run menu). Low confidence."],
+      "defense_counters": [
+        {"vs": "Inside Zone", "vs_family": "run", "families": ["two_high", "pressure"], "calls": ["Cover 4 Quarters", "Cover 6"], "why": "quarters safeties fit inside runs", "source_url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/tips-and-tricks-hub/m27-how-to-stop-the-run"}
+      ],
+      "offense_counters": [
+        {"vs": "Cover 3", "vs_class": "single_high", "plays": ["Motion Shuffle Vert Smash"], "why": "RB shuffle pulls the flat defender", "source_url": "https://www.mmoexp.com/News/madden-27-doubles-clamp-stack-scheme-offense-playbook.html"}
+      ]
+    },
+    "jaxon": {"notes": ["No profile yet. Use general meta counters until your Madden logs fill in."], "defense_counters": [], "offense_counters": []},
+    "cpu": {
+      "notes": ["CPU is offense-only in the coach. Take underneath throws vs two-high and use Clamp Stack coverage answers."],
+      "defense_counters": [],
+      "offense_counters": [
+        {"vs": "Cover 4", "vs_class": "two_high", "plays": ["Return Bench", "Stick"], "why": "flats and sideline before deep shots", "source_url": "https://www.maddenprodigy.com/how-to-beat-cover-4-madden-27/"},
+        {"vs": "Cover 3", "vs_class": "single_high", "plays": ["Motion Shuffle Vert Smash"], "why": "RB shuffle and smash vs single-high", "source_url": "https://www.mmoexp.com/News/madden-27-doubles-clamp-stack-scheme-offense-playbook.html"},
+        {"vs": "Man", "vs_class": "man", "plays": ["Texas Y-Stutter Wheel", "Empty Motion Mesh Rail"], "why": "wheel and mesh rubs beat man", "source_url": "https://www.mmoexp.com/News/madden-27-doubles-clamp-stack-scheme-offense-playbook.html"}
+      ]
+    }
+  },
+  "sources": [
+    {"title": "Madden 27 Update 1.007 (Sept 30)", "url": "https://mp1st.com/title-updates-and-patches/madden-nfl-27-update-1-007-tweaks-salary-cap-management-september-30", "kind": "patch", "published": "2026-09-30", "accessed": "2026-10-01"},
+    {"title": "EA — Madden 27 Title Update September 16", "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-nfl-27-title-update-september-16", "kind": "patch", "published": "2026-09-15", "accessed": "2026-10-01"},
+    {"title": "Madden 27 Starter Defensive Guide (games.gg)", "url": "https://games.gg/madden-nfl-27/guides/madden-nfl-27-starter-defensive-guide/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "How to Stop Four Verticals in Madden 27 (Timesaver)", "url": "https://timesaver.gg/blog/madden-nfl-27-how-to-stop-four-verticals", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "EA Tips — How to Stop the Run", "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/tips-and-tricks-hub/m27-how-to-stop-the-run", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "Best Offensive and Defensive Playbooks in Madden 27 (Game Rant)", "url": "https://gamerant.com/madden-27-best-offensive-defensive-playbooks/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "Madden 27 Doubles Clamp Stack offense (MMOexp)", "url": "https://www.mmoexp.com/News/madden-27-doubles-clamp-stack-scheme-offense-playbook.html", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "EA Tips — Best Offensive Playbooks", "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/tips-and-tricks-hub/m27-best-offensive-playbooks", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "How to Beat Cover 4 in Madden 27 (Madden Prodigy)", "url": "https://www.maddenprodigy.com/how-to-beat-cover-4-madden-27/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"}
+  ]
+}
