@@ -731,7 +731,8 @@ def _render_meta_freshness(scout: dict[str, Any]) -> str:
     if not mode:  # older / Madden scout results
         mode = "cache" if scout.get("from_cache") else ("live" if scout.get("available") else "seed")
     cache_label = "CACHED FALLBACK (live research did not run)" if scout.get("research_status") else "cached today"
-    label = {"live": "LIVE — fetched this prep", "cache": cache_label, "seed": "seed research (offline / no cache)"}.get(
+    label = {"live": "LIVE — fetched this prep", "cache": cache_label, "seed": "seed research (offline / no cache)",
+             "ai": "DAILY AI RESEARCH"}.get(
         mode, mode or "?"
     )
     rows = []
@@ -1103,6 +1104,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
         research_fail_banner,
         research_status_line,
     )
+    from cfb_coach.scouting import opponent_study_html
 
     try:
         ts_raw = plan.get("ts") or ""
@@ -1142,6 +1144,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     </header>
     {research_fail_banner(scout)}
     <div class="rline">{_esc(research_status_line(scout))}</div>
+    {opponent_study_html(plan.get("scouting_lines") or [], plan.get("opponent_research") or [])}
     {render_formations_min(book)}
     {render_audibles_min(book)}
     <section id="macros">

@@ -641,12 +641,13 @@ def build_prep_plan(
     tips = call_emphasis_tips(opponent_id, opp)
     eg = effective_gameplan(opponent_id, db)
 
-    # Live meta scout — rich prep edge (Alabama users ~once/season)
+    # Daily AI research (scheduled agent) — `prep --live-scout` runs the old web scraper
     scout_dict: dict[str, Any] = {}
     try:
-        from cfb_coach.meta_scout import apply_scout_bias, run_meta_scout
+        from cfb_coach.ai_research import prep_research
+        from cfb_coach.meta_scout import apply_scout_bias
 
-        scout = run_meta_scout(offline=offline, refresh=refresh_meta)
+        scout = prep_research("cfb27", offline=offline)
         proposed, tips, affect = apply_scout_bias(
             proposed, scout, dynasty=dynasty, tips=tips
         )
@@ -743,6 +744,14 @@ def build_prep_plan(
         "doctrine": doctrine_line(),
         "meta_scout": scout_dict,
     }
+    try:  # scouting from his logged snaps + the daily research's counters for him
+        from cfb_coach.ai_research import opponent_lines
+        from cfb_coach.scouting import scout_opponent, scouting_lines
+
+        plan["scouting_lines"] = scouting_lines(scout_opponent(db, opponent_id))
+        plan["opponent_research"] = opponent_lines("cfb27", opponent_id)
+    except Exception:  # noqa: BLE001 — never break prep
+        plan["scouting_lines"], plan["opponent_research"] = [], []
     # v1.12: learned zone plan (open / red zone / goal line) aligned to the meta
     try:
         from cfb_coach.meta_align import build_prep_alignment

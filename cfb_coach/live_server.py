@@ -76,6 +76,7 @@ class LivePlayController:
     retrain_summary: str = ""
     result_wl: str | None = None
     score: str | None = None
+    quarter: int | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
     # v1.13 (CFB): playbook-of-record hooks — optional so Madden is unaffected
     book_info: Callable[[], dict[str, Any] | None] | None = None
@@ -126,7 +127,38 @@ class LivePlayController:
             "log": [r.to_dict() for r in self.log],
             "book": self.book_state(),
             "macro": self.macro_state(),
+            "quarter": self.quarter,
+            "benched": self.benched_state(),
         }
+
+    def benched_state(self) -> dict[str, list[str]]:
+        """Calls benched for the rest of this half, per side."""
+        from cfb_coach.ingame import bench_report
+
+        out: dict[str, list[str]] = {}
+        for side in ("offense",) if self.cpu_only else ("offense", "defense"):
+            try:
+                rep = bench_report(self.db, self.session_id, side, self.quarter)
+            except Exception:  # noqa: BLE001 — never break live play
+                continue
+            if rep.benched:
+                out[side] = rep.lines()
+        return out
+
+    def _set_quarter(self, quarter: Any) -> None:
+        try:
+            q = int(quarter) if quarter not in (None, "") else None
+        except (TypeError, ValueError):
+            q = None
+        if q is not None and 1 <= q <= 5:
+            self.quarter = q
+
+    def _stamp(self, sit: Any) -> Any:
+        extras = getattr(sit, "extras", None)
+        if isinstance(extras, dict):
+            extras["session_id"] = self.session_id or None
+            extras["quarter"] = self.quarter
+        return sit
 
     def macro_state(self) -> dict[str, Any] | None:
         """v1.15: the Active-8 macro on the pending call (CFB offense; Madden defense) or None.
@@ -166,15 +198,34 @@ class LivePlayController:
             return getattr(call, "adj_or_macro", None)
         return None
 
-    def _log_pending_result(self, outcome_raw: str) -> dict[str, Any] | None:
+    def _their_call(self, their: str, side: str) -> tuple[str | None, str | None]:
+        """'what they ran' on the snap just played → (coverage, concept) to log.
+        On offense that's their defense (coverage + the pressure/front words);
+        on defense it's their offensive concept."""
+        text = (their or "").strip()
+        if not text:
+            return None, None
+        try:
+            parsed = self.parse_situation(text, default_side=side)
+        except Exception:  # noqa: BLE001
+            parsed = None
+        cov = getattr(parsed, "coverage_hint", None)
+        concept = getattr(parsed, "concept_hint", None)
+        if side == "offense":
+            return cov, text
+        return cov, concept or text
+
+    def _log_pending_result(self, outcome_raw: str, their: str = "") -> dict[str, Any] | None:
         if not self.last_call or not self.last_sit:
             return None
         parsed = parse_outcome(outcome_raw)
         result_text = parsed.to_result_text()
         sit = self.last_sit
         call = self.last_call
-        cov = getattr(sit, "coverage_hint", None) or self.last_coverage
-        concept = getattr(sit, "concept_hint", None) or self.last_concept
+        their_cov, their_concept = self._their_call(their, call.side)
+        cov = their_cov or getattr(sit, "coverage_hint", None) or self.last_coverage
+        concept = their_concept or getattr(sit, "concept_hint", None) or self.last_concept
+        quarter = (getattr(sit, "extras", None) or {}).get("quarter") or self.quarter
         # Prefer coverage for offense / concept for defense in look column
         look = (cov if call.side == "offense" else concept) or cov or concept or ""
 
@@ -189,6 +240,7 @@ class LivePlayController:
             down=getattr(sit, "down", None),
             distance=getattr(sit, "distance", None),
             yardline=getattr(sit, "yardline", None),
+            quarter=quarter,
             result=result_text,
             coverage_seen=cov,
             concept_seen=concept,
@@ -233,14 +285,15 @@ class LivePlayController:
         except TypeError:
             return self.make_call(sit)
 
-    def call_only(self, sit_raw: str, *, side: str | None = None) -> dict[str, Any]:
+    def call_only(self, sit_raw: str, *, side: str | None = None, quarter: Any = None) -> dict[str, Any]:
         with self.lock:
             if self.ended:
                 return {"ok": False, "error": "game already ended"}
+            self._set_quarter(quarter)
             side_use = side or self.default_side
             if self.cpu_only:
                 side_use = "offense"
-            sit = self.parse_situation(sit_raw, default_side=side_use)
+            sit = self._stamp(self.parse_situation(sit_raw, default_side=side_use))
             from cfb_coach.situation import format_heard
 
             try:
@@ -264,23 +317,26 @@ class LivePlayController:
         outcome: str,
         sit_raw: str,
         side: str | None = None,
+        quarter: Any = None,
+        their: str = "",
     ) -> dict[str, Any]:
         with self.lock:
             if self.ended:
                 return {"ok": False, "error": "game already ended"}
             logged = None
             if self.last_call is not None and (outcome or "").strip():
-                logged = self._log_pending_result(outcome)
+                logged = self._log_pending_result(outcome, their=their)
             elif self.last_call is not None and not (outcome or "").strip():
                 # Allow first snap without prior outcome
                 pass
             elif (outcome or "").strip() and self.last_call is None:
                 return {"ok": False, "error": "no prior call to attach outcome to"}
 
+            self._set_quarter(quarter)
             side_use = side or self.default_side
             if self.cpu_only:
                 side_use = "offense"
-            sit = self.parse_situation(sit_raw, default_side=side_use)
+            sit = self._stamp(self.parse_situation(sit_raw, default_side=side_use))
             from cfb_coach.situation import format_heard
 
             try:
@@ -480,9 +536,21 @@ def render_live_html(ctrl: LivePlayController) -> str:
       <label>or free text</label>
       <input class="wide" id="outcome-text" placeholder="+13 / gain 13 / incomplete / sack …"/>
     </div>
+    <div class="row">
+      <label title="Their call on the snap you just logged: their coverage/blitz when you had the ball, their concept when they had it">they ran</label>
+      <input class="wide" id="their" placeholder="cover 6 · A-gap blitz · cross wheels · mesh"/>
+    </div>
 
     <h2 style="margin-top:1rem">Next situation</h2>
     <div class="row">
+      <label>quarter</label>
+      <select id="quarter">
+        <option value="1">1st</option>
+        <option value="2">2nd</option>
+        <option value="3">3rd</option>
+        <option value="4">4th</option>
+        <option value="5">OT</option>
+      </select>
       <label>down</label>
       <input type="number" id="down" min="1" max="4" value="1"/>
       <label>distance</label>
@@ -509,6 +577,11 @@ def render_live_html(ctrl: LivePlayController) -> str:
       <button type="button" class="primary" id="btn-submit">Submit → log + new PLAY</button>
       <button type="button" id="btn-call-only">Call only (no log)</button>
     </div>
+  </section>
+
+  <section id="bench-panel" hidden>
+    <h2>Benched this half (kept failing)</h2>
+    <div id="bench-list" style="font-size:.85rem"></div>
   </section>
 
   <section id="book-panel" hidden>
@@ -582,6 +655,8 @@ function renderState(st) {{
   }}
   renderBook(st.book);
   renderDyn(st);
+  renderBench(st.benched);
+  if (st.quarter) $("quarter").value = String(st.quarter);
   if (st.cpu_only) {{
     $("side").style.display = "none";
     $("side-label").style.display = "none";
@@ -601,6 +676,13 @@ function renderMacro(m) {{
   $("macro-rows").innerHTML = (m.settings || []).map(r =>
     "<tr><td class='s'>" + esc(r.section) + "</td><td class='s'>" + esc(r.setting) + "</td><td>" + esc(r.value) + "</td></tr>").join("")
     + (m.settings ? "<tr><td class='s'></td><td class='s'>Everything else</td><td>Default</td></tr>" : "");
+}}
+
+function renderBench(b) {{
+  const sides = Object.entries(b || {{}}).filter(([, rows]) => rows && rows.length);
+  $("bench-panel").hidden = !sides.length;
+  $("bench-list").innerHTML = sides.map(([side, rows]) =>
+    "<div><b>" + (side === "offense" ? "O" : "D") + "</b>: " + rows.map(esc).join(" · ") + "</div>").join("");
 }}
 
 function esc(s) {{ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }}
@@ -682,10 +764,11 @@ $("btn-submit").addEventListener("click", async () => {{
   try {{
     const out = currentOutcome();
     const sit = buildSit();
-    const body = {{ outcome: out, sit: sit, side: $("side").value }};
+    const body = {{ outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value, their: ($("their").value || "").trim() }};
     const data = await api("/api/result_call", body);
     outcomeChoice = "";
     $("outcome-text").value = "";
+    $("their").value = "";
     document.querySelectorAll("#outcome-btns button.outcome").forEach(b => b.style.outline = "");
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
@@ -694,7 +777,7 @@ $("btn-submit").addEventListener("click", async () => {{
 $("btn-call-only").addEventListener("click", async () => {{
   setErr("");
   try {{
-    const data = await api("/api/call", {{ sit: buildSit(), side: $("side").value }});
+    const data = await api("/api/call", {{ sit: buildSit(), side: $("side").value, quarter: $("quarter").value }});
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -816,7 +899,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                     if not sit:
                         self._json(400, {"ok": False, "error": "sit required"})
                         return
-                    self._json(200, ctrl.call_only(sit, side=body.get("side")))
+                    self._json(200, ctrl.call_only(sit, side=body.get("side"), quarter=body.get("quarter")))
                     return
                 if path in ("/api/result_call", "/api/result+call"):
                     sit = (body.get("sit") or body.get("situation") or "").strip()
@@ -829,6 +912,8 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             outcome=body.get("outcome") or body.get("result") or "",
                             sit_raw=sit,
                             side=body.get("side"),
+                            quarter=body.get("quarter"),
+                            their=body.get("their") or "",
                         ),
                     )
                     return

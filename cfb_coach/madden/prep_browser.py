@@ -217,6 +217,8 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     scout = plan.get("meta_scout") or {}
     det = plan.get("details_path") or str(details_path(plan.get("opponent_id") or ""))
     o = _min_book(plan, "offense")
+    from cfb_coach.scouting import opponent_study_html
+
     parts = [research_fail_banner(scout), _book_pick_line(plan, "offense"), render_formations_min(o),
              render_audibles_min(o)]
     if not offense_only:
@@ -227,6 +229,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
                  if rstat else "")
     head = "Defense macros — N/A (CPU, offense only)" if offense_only else "Defense macros (10)"
     parts.insert(4, _render_offense_adjustments(plan))  # right after the offense audibles
+    parts.insert(1, opponent_study_html(plan.get("scouting_lines") or [], plan.get("opponent_research") or []))
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>

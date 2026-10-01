@@ -151,14 +151,15 @@ def build_prep_plan(
     offense_only = is_cpu_opponent(opponent_id)
     arch = (opp.get("archetype") or "unknown").lower()
 
-    # 1) Fresh research every prep (web + YouTube transcripts, like CFB) — feeds the book pick
+    # 1) Daily AI research (scheduled agent) feeds the book pick; `--live-scout` runs the web scraper
     scout_dict: dict[str, Any]
     scout = None
     research: dict[str, Any] = {}
     try:
-        from cfb_coach.madden.meta_scout import research_from_scout, run_madden_scout
+        from cfb_coach.ai_research import prep_research
+        from cfb_coach.madden.meta_scout import research_from_scout
 
-        scout = run_madden_scout(offline=offline, refresh=refresh_meta)
+        scout = prep_research("madden27", offline=offline)
         research = research_from_scout(scout)
         scout_dict = scout.to_dict()
     except Exception as exc:  # noqa: BLE001 — never break prep
@@ -281,6 +282,7 @@ def build_prep_plan(
                      "status": scout_dict.get("research_status") or "",
                      "books": research.get("books") or {}},
         "missing_settings": missing,
+        **_opponent_study(db, opponent_id),
     }
     if db is not None and persist:
         lock_books(db, books, applied=apply_books)
@@ -289,6 +291,20 @@ def build_prep_plan(
 
         store_selection(db, opponent_id, selection)
     return plan
+
+
+def _opponent_study(db: Any, opponent_id: str) -> dict[str, Any]:
+    """Scouting from your logs + the daily research's counters for this opponent."""
+    try:
+        from cfb_coach.ai_research import opponent_lines
+        from cfb_coach.madden.defense_select import coverage_seen_family
+        from cfb_coach.madden.situation import concept_family
+        from cfb_coach.scouting import scout_opponent, scouting_lines
+
+        report = scout_opponent(db, opponent_id, family_of=concept_family, coverage_class_of=coverage_seen_family)
+        return {"scouting_lines": scouting_lines(report), "opponent_research": opponent_lines("madden27", opponent_id)}
+    except Exception:  # noqa: BLE001 — never break prep
+        return {"scouting_lines": [], "opponent_research": []}
 
 
 def save_prep(db: Any, opponent_id: str, proposed: list[dict[str, Any]], shown: list[dict[str, Any]]) -> None:
