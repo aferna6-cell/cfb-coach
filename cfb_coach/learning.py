@@ -16,6 +16,9 @@ caller also never read the learned weights. v2 fixes all of that:
 * Weights are a shrunken, squashed mean — ``cap * tanh(mean)`` with pseudo-count
   ``PRIOR_OBS`` — so nothing snowballs and ordering is preserved.
 * Game over uses result_wl + score margin (small, capped adjustments).
+* A live us-them score logged on the snap (`score_us=` / `score_them=` in notes)
+  tags the snap. Late, two-score snaps get a small leverage bump (capped).
+  Snaps with no live score are unchanged. The final game score stays winner-first.
 * ``rebuild_all`` recomputes every weight from scratch from all logged snaps +
   game results. It is deterministic and idempotent, so postgame simply rebuilds.
 
@@ -51,6 +54,8 @@ LEVERAGE_BY_DOWN = {1: 1.0, 2: 1.0, 3: 2.0, 4: 3.0}
 LEVERAGE_GOAL_TO_GO_FLOOR = 2.0  # any goal-to-go snap counts >= 2x
 LEVERAGE_GOAL_TO_GO_MULT = 1.25  # 3rd & goal = 2.5x, 4th & goal = 3x (capped)
 LEVERAGE_MAX = 3.0
+# Late snaps that were logged with a live us-them score and a two-score margin.
+SCORE_SENSITIVE_LEV = 1.1
 
 # --- Outcome scores (offense-centric: normal success +1, normal failure -1) ---
 SCORE_SUCCESS = 1.0
@@ -129,6 +134,7 @@ def constants_table() -> list[tuple[str, str]]:
         ("play vs family", f"{REC_PLAY_SHARE} play + {REC_FAMILY_SHARE} family; coverage term x{REC_COVERAGE_LIVE} live / x{REC_COVERAGE_LAST} last snap"),
         ("meta prior", f"fades as n_obs grows: prior x {REC_META_PRIOR_OBS}/({REC_META_PRIOR_OBS}+n_obs); untested play {REC_UNTESTED_PENALTY}"),
         ("call sampling", f"softmax T={REC_TEMPERATURE}, {REC_EXPLORE:.0%} spread evenly (keeps testing the menu)"),
+        ("live score", f"notes score_us/score_them tag the snap; Q4+ and margin ≥ 8 → leverage x{SCORE_SENSITIVE_LEV} (capped)"),
     ]
 
 
@@ -307,7 +313,7 @@ def evaluate_snap(s: Any) -> SnapEval | None:
         elif "sack" in tags:
             base = 1.5
 
-    return SnapEval(
+    ev = SnapEval(
         snap_id=int(_get(s, "id") or 0),
         session_id=_get(s, "session_id"),
         opponent_id=str(_get(s, "opponent_id") or ""),
@@ -329,6 +335,25 @@ def evaluate_snap(s: Any) -> SnapEval | None:
         leverage=leverage_for(down, gtg),
         tags=tags,
     )
+    _attach_logged_score(ev, s)
+    return ev
+
+
+def _attach_logged_score(ev: SnapEval, snap: Any) -> None:
+    """Tag snaps that were logged with a live us-them score. Numeric grade stays put
+    except a small capped leverage bump on late two-score snaps."""
+    from cfb_coach.game_score import parse_snap_score_note
+
+    parsed = parse_snap_score_note(_get(snap, "notes"))
+    if parsed is None:
+        return
+    us, them = parsed
+    ev.tags.add("live_score")
+    ev.notes.append(f"live score {us}-{them}")
+    q = _int_or_none(_get(snap, "quarter"))
+    if q is not None and q >= 4 and abs(us - them) >= 8:
+        ev.tags.add("score_sensitive")
+        ev.leverage = min(LEVERAGE_MAX, round(ev.leverage * SCORE_SENSITIVE_LEV, 3))
 
 
 # ===========================================================================
@@ -627,9 +652,11 @@ def load_evals(conn: sqlite3.Connection, *, opponent_id: str | None = None) -> l
     conn.row_factory = sqlite3.Row
     cols = {r[1] for r in conn.execute("PRAGMA table_info(snaps)").fetchall()}
     sess = "session_id" if "session_id" in cols else "NULL AS session_id"
+    notes = "notes" if "notes" in cols else "NULL AS notes"
+    quarter = "quarter" if "quarter" in cols else "NULL AS quarter"
     sql = (
         f"SELECT id, opponent_id, side, down, distance, yardline, formation, play, macro, "
-        f"result, coverage_seen, concept_seen, {sess} FROM snaps"
+        f"result, coverage_seen, concept_seen, {sess}, {notes}, {quarter} FROM snaps"
     )
     params: tuple = ()
     if opponent_id:
@@ -640,7 +667,8 @@ def load_evals(conn: sqlite3.Connection, *, opponent_id: str | None = None) -> l
     for r in conn.execute(sql, params).fetchall():
         e = evaluate_snap(dict(r))
         if e is not None:
-            e.notes = []
+            # Drive/W-L notes are added later. Keep the live-score note from the snap.
+            e.notes = [n for n in e.notes if n.startswith("live score")]
             evals.append(e)
     return evals
 
