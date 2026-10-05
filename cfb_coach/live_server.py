@@ -25,6 +25,12 @@ ParseSitFn = Callable[..., Any]
 LearnFn = Callable[..., str]
 
 
+def _live_score_notes(sit: Any) -> str | None:
+    from cfb_coach.game_score import snap_notes_for
+
+    return snap_notes_for(sit)
+
+
 @dataclass
 class LogRow:
     formation: str
@@ -75,8 +81,9 @@ class LivePlayController:
     ended: bool = False
     retrain_summary: str = ""
     result_wl: str | None = None
-    score: str | None = None
+    score: str | None = None  # final game-over score (winner-first); not the live us-them score
     quarter: int | None = None
+    live_score: Any | None = None  # GameScore us-them, persists across snaps
     lock: threading.Lock = field(default_factory=threading.Lock)
     # v1.13 (CFB): playbook-of-record hooks — optional so Madden is unaffected
     book_info: Callable[[], dict[str, Any] | None] | None = None
@@ -123,6 +130,13 @@ class LivePlayController:
             "ended": self.ended,
             "result_wl": self.result_wl,
             "score": self.score,
+            "live_score": (
+                None if self.live_score is None else {
+                    "us": self.live_score.us,
+                    "them": self.live_score.them,
+                    "label": self.live_score.label,
+                }
+            ),
             "retrain_summary": self.retrain_summary,
             "log": [r.to_dict() for r in self.log],
             "book": self.book_state(),
@@ -153,11 +167,37 @@ class LivePlayController:
         if q is not None and 1 <= q <= 5:
             self.quarter = q
 
+    def set_live_score(self, us: Any, them: Any) -> None:
+        """Set or clear the session score. Both blank clears; one blank is ignored."""
+        from cfb_coach.game_score import GameScore
+
+        def _blank(v: Any) -> bool:
+            return v is None or str(v).strip() == ""
+
+        if _blank(us) and _blank(them):
+            self.live_score = None
+            return
+        if _blank(us) or _blank(them):
+            return
+        try:
+            self.live_score = GameScore(int(us), int(them))
+        except (TypeError, ValueError):
+            return
+
     def _stamp(self, sit: Any) -> Any:
+        from cfb_coach.game_score import LiveContext, absorb_and_stamp
+
         extras = getattr(sit, "extras", None)
         if isinstance(extras, dict):
             extras["session_id"] = self.session_id or None
-            extras["quarter"] = self.quarter
+            # Quarter from the dropdown wins unless the sit line itself named one.
+            if extras.get("quarter") in (None, "") and self.quarter is not None:
+                extras["quarter"] = self.quarter
+        ctx = LiveContext(score=self.live_score, quarter=self.quarter)
+        absorb_and_stamp(sit, ctx)
+        self.live_score = ctx.score
+        if ctx.quarter is not None:
+            self.quarter = ctx.quarter
         return sit
 
     def macro_state(self) -> dict[str, Any] | None:
@@ -245,6 +285,7 @@ class LivePlayController:
             coverage_seen=cov,
             concept_seen=concept,
             session_id=self.session_id or None,
+            notes=_live_score_notes(sit),
         )
         # Mild live bumps (same spirit as terminal loop)
         try:
@@ -285,11 +326,22 @@ class LivePlayController:
         except TypeError:
             return self.make_call(sit)
 
-    def call_only(self, sit_raw: str, *, side: str | None = None, quarter: Any = None) -> dict[str, Any]:
+    def call_only(
+        self,
+        sit_raw: str,
+        *,
+        side: str | None = None,
+        quarter: Any = None,
+        score_us: Any = None,
+        score_them: Any = None,
+        score_set: bool = False,
+    ) -> dict[str, Any]:
         with self.lock:
             if self.ended:
                 return {"ok": False, "error": "game already ended"}
             self._set_quarter(quarter)
+            if score_set:
+                self.set_live_score(score_us, score_them)
             side_use = side or self.default_side
             if self.cpu_only:
                 side_use = "offense"
@@ -319,10 +371,15 @@ class LivePlayController:
         side: str | None = None,
         quarter: Any = None,
         their: str = "",
+        score_us: Any = None,
+        score_them: Any = None,
+        score_set: bool = False,
     ) -> dict[str, Any]:
         with self.lock:
             if self.ended:
                 return {"ok": False, "error": "game already ended"}
+            if score_set:
+                self.set_live_score(score_us, score_them)
             logged = None
             if self.last_call is not None and (outcome or "").strip():
                 logged = self._log_pending_result(outcome, their=their)
@@ -447,6 +504,9 @@ def _esc(s: Any) -> str:
 
 def render_live_html(ctrl: LivePlayController) -> str:
     brand = _esc(ctrl.brand)
+    sc = ctrl.live_score
+    us_v = "" if sc is None else str(sc.us)
+    them_v = "" if sc is None else str(sc.them)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -551,6 +611,10 @@ def render_live_html(ctrl: LivePlayController) -> str:
         <option value="4">4th</option>
         <option value="5">OT</option>
       </select>
+      <label title="Our score. Sticks until you change it. Us-them, not the final winner-first score.">us</label>
+      <input type="number" id="score-us" min="0" max="99" placeholder="—" value="{_esc(us_v)}"/>
+      <label title="Their score">them</label>
+      <input type="number" id="score-them" min="0" max="99" placeholder="—" value="{_esc(them_v)}"/>
       <label>down</label>
       <input type="number" id="down" min="1" max="4" value="1"/>
       <label>distance</label>
@@ -657,6 +721,13 @@ function renderState(st) {{
   renderDyn(st);
   renderBench(st.benched);
   if (st.quarter) $("quarter").value = String(st.quarter);
+  if (st.live_score) {{
+    $("score-us").value = st.live_score.us;
+    $("score-them").value = st.live_score.them;
+  }} else if (document.activeElement !== $("score-us") && document.activeElement !== $("score-them")) {{
+    $("score-us").value = "";
+    $("score-them").value = "";
+  }}
   if (st.cpu_only) {{
     $("side").style.display = "none";
     $("side-label").style.display = "none";
@@ -764,7 +835,7 @@ $("btn-submit").addEventListener("click", async () => {{
   try {{
     const out = currentOutcome();
     const sit = buildSit();
-    const body = {{ outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value, their: ($("their").value || "").trim() }};
+    const body = {{ outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value, their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value }};
     const data = await api("/api/result_call", body);
     outcomeChoice = "";
     $("outcome-text").value = "";
@@ -777,7 +848,7 @@ $("btn-submit").addEventListener("click", async () => {{
 $("btn-call-only").addEventListener("click", async () => {{
   setErr("");
   try {{
-    const data = await api("/api/call", {{ sit: buildSit(), side: $("side").value, quarter: $("quarter").value }});
+    const data = await api("/api/call", {{ sit: buildSit(), side: $("side").value, quarter: $("quarter").value, score_us: $("score-us").value, score_them: $("score-them").value }});
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -899,7 +970,11 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                     if not sit:
                         self._json(400, {"ok": False, "error": "sit required"})
                         return
-                    self._json(200, ctrl.call_only(sit, side=body.get("side"), quarter=body.get("quarter")))
+                    self._json(200, ctrl.call_only(
+                        sit, side=body.get("side"), quarter=body.get("quarter"),
+                        score_us=body.get("score_us"), score_them=body.get("score_them"),
+                        score_set=("score_us" in body or "score_them" in body),
+                    ))
                     return
                 if path in ("/api/result_call", "/api/result+call"):
                     sit = (body.get("sit") or body.get("situation") or "").strip()
@@ -914,6 +989,9 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             side=body.get("side"),
                             quarter=body.get("quarter"),
                             their=body.get("their") or "",
+                            score_us=body.get("score_us"),
+                            score_them=body.get("score_them"),
+                            score_set=("score_us" in body or "score_them" in body),
                         ),
                     )
                     return

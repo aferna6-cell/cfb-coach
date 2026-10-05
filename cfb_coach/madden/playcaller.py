@@ -274,6 +274,9 @@ def _offense_pool(
             b += SIT_BONUS if not run else -0.20
         if sit.two_minute:
             b += 0.08 if not run else -0.05
+        from cfb_coach.game_score import offense_score_bonus
+
+        b += offense_score_bonus(sit, p, run=run, deep=deep)
         if b:
             bonus[(f, p)] = round(b, 3)
     return pool, bonus
@@ -775,4 +778,9 @@ def make_call(
         call = _pick_offense(sit, opp, bl, db, rng, sel["offense"], books["offense"], audibles=audibles)
     stamp = _sit_stamp(sit)
     call.rationale = note + call.rationale + (f" | {stamp}" if stamp else "")
+    from cfb_coach.game_score import score_call_note
+
+    snote = score_call_note(sit)
+    if snote:
+        call.rationale += f" | {snote}"
     return call

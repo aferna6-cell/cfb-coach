@@ -198,7 +198,9 @@ def select_defense(
     from cfb_coach.zones import zone_of_situation
 
     key = mix_key(sit)
-    mix = dict(MIX[key])
+    from cfb_coach.game_score import shift_defense_mix
+
+    mix = shift_defense_mix(dict(MIX[key]), sit)
     notes: list[str] = []
     forms = eligible_formations(sit, book)
     pool = [(f, p) for f in forms for p in book.get(f, [])]

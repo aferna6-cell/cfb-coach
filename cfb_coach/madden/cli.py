@@ -249,6 +249,9 @@ def cmd_call(args: argparse.Namespace) -> int:
         sit = parse_madden_situation(args.situation, default_side=args.side or "offense")
         if args.side:
             sit.side = args.side
+        from cfb_coach.game_score import absorb_and_stamp, context_from_args
+
+        absorb_and_stamp(sit, context_from_args(args))
         from cfb_coach.madden.playbook import NoActivePlaybook
 
         try:
@@ -340,6 +343,8 @@ def _write_overlay(path: Path | None, text: str, short: str) -> None:
 
 
 def _log_result(db: CoachDB, oid: str, call: Any, sit: Any, result: str) -> tuple[str | None, str | None]:
+    from cfb_coach.game_score import snap_notes_for
+
     res_sit = parse_madden_situation(result, default_side=sit.side)
     cov = res_sit.coverage_hint or sit.coverage_hint
     concept = res_sit.concept_hint or sit.concept_hint
@@ -348,6 +353,8 @@ def _log_result(db: CoachDB, oid: str, call: Any, sit: Any, result: str) -> tupl
         our_call=call.format().split("\n")[0], formation=call.formation, play=call.play,
         macro=call.macro, down=sit.down, distance=sit.distance, yardline=sit.yardline,
         result=result, coverage_seen=cov, concept_seen=concept,
+        quarter=(getattr(sit, "extras", None) or {}).get("quarter"),
+        notes=snap_notes_for(sit),
     )
     success = any(w in result.lower() for w in ("td", "+", "good", "convert", "stop", "sack", "int"))
     if concept and call.side == "defense":
@@ -396,9 +403,18 @@ def cmd_play(args: argparse.Namespace) -> int:
         print("User game — O + D. Prefix 'd ' for defense. Commands: side o|d | result <text> | why | quit")
     print("  Type D&D (+ yl) + previous play/coverage name, e.g. '2&7 my 35 stick wheel' | '1&10 cover 3 match'")
     print("  Live look only with: showing / live / pre-snap / aligned (e.g. 'showing cover 2 man')")
+    print("  Score (optional, us-them): --score 21-14, or `score 21-14` / `score clear` mid-game.")
+    print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. Close early games stay neutral.")
+
+    from cfb_coach.game_score import absorb_and_stamp, context_from_args, interpret_live_command, sit_prompt
+
+    live_ctx = context_from_args(args)
+    if live_ctx.describe():
+        print(f"  Game situation: {live_ctx.describe()} (sticks until you update it)")
 
     if getattr(args, "once", None):
         sit = parse_madden_situation(args.once, default_side="offense")
+        absorb_and_stamp(sit, live_ctx)
         heard = format_heard(sit)
         print(heard)
         call = make_call(sit, oid, db, active_macros=active)
@@ -438,6 +454,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             cpu_only=cpu,
             book_info=lambda: live_book_info(db, cpu=cpu, profile_label=profile_config(pid)["label"]),
             book_apply=lambda rev: live_apply(db, rev),
+            live_score=live_ctx.score,
+            quarter=live_ctx.quarter,
         )
         print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
         try:
@@ -466,7 +484,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     try:
         while True:
             try:
-                raw = input(f"[{side[0].upper()}] sit> ").strip()
+                raw = input(sit_prompt(side, live_ctx)).strip()
             except EOFError:
                 print()
                 break
@@ -501,8 +519,13 @@ def cmd_play(args: argparse.Namespace) -> int:
                     if tip and (s == "offense" or not cpu):
                         print(f"  {tip}")
                 continue
+            score_msg = interpret_live_command(raw, live_ctx)
+            if score_msg is not None:
+                print(score_msg)
+                continue
 
             sit = parse_madden_situation(raw, default_side=side)
+            absorb_and_stamp(sit, live_ctx)
             heard = format_heard(sit)
             print(heard)
             call = make_call(

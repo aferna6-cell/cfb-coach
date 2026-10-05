@@ -384,6 +384,9 @@ def cmd_call(args: argparse.Namespace) -> int:
         sit = parse_situation(args.situation, default_side=args.side or "offense")
         if args.side:
             sit.side = args.side
+        from cfb_coach.game_score import absorb_and_stamp, context_from_args
+
+        absorb_and_stamp(sit, context_from_args(args))
         from cfb_coach.dynasty import resolve_dynasty
 
         call = make_call(sit, oid, db, dynasty=resolve_dynasty(db, oid, getattr(args, "dynasty", None))[0])
@@ -432,6 +435,14 @@ def cmd_play(args: argparse.Namespace) -> int:
     print("  Aidan UX: type D&D (+ yl) + previous play/coverage name — no need to say 'last'.")
     print("  Examples: '1&10 my 35 mesh spot' | '2&7 deep flood' | '1&10 cover 2'")
     print("  Live look only with: showing / live / pre-snap / aligned (e.g. 'showing cover 2')")
+    print("  Score (optional, us-them): --score 21-14, or `score 21-14` / `score clear` mid-game.")
+    print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. Close early games stay neutral.")
+
+    from cfb_coach.game_score import absorb_and_stamp, context_from_args, interpret_live_command, sit_prompt, snap_notes_for
+
+    live_ctx = context_from_args(args)
+    if live_ctx.describe():
+        print(f"  Game situation: {live_ctx.describe()} (sticks until you update it)")
 
     # Overlay: default ON for interactive play; --no-overlay disables; --once skips browser
     no_overlay = bool(getattr(args, "no_overlay", False))
@@ -449,6 +460,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         # Non-interactive: still refresh overlay file if enabled, but do not auto-open
         default_side = "offense"
         sit = parse_situation(args.once, default_side=default_side)
+        absorb_and_stamp(sit, live_ctx)
         heard = format_heard(sit)
         print(heard)
         call = make_call(sit, oid, db, dynasty=dynasty)
@@ -495,6 +507,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             cpu_only=cpu_only,
             book_info=lambda: _book_live_info(db, dynasty),
             book_apply=lambda rev: _book_live_apply(db, dynasty, rev),
+            live_score=live_ctx.score,
+            quarter=live_ctx.quarter,
         )
         print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
         try:
@@ -543,7 +557,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     try:
         while True:
             try:
-                raw = input(f"[{default_side[0].upper()}] sit> ").strip()
+                raw = input(sit_prompt(default_side, live_ctx)).strip()
             except EOFError:
                 print()
                 break
@@ -596,6 +610,8 @@ def cmd_play(args: argparse.Namespace) -> int:
                     down=last_sit.down,
                     distance=last_sit.distance,
                     yardline=last_sit.yardline,
+                    quarter=(getattr(last_sit, "extras", None) or {}).get("quarter"),
+                    notes=snap_notes_for(last_sit),
                     result=result,
                     coverage_seen=cov_seen,
                     concept_seen=concept_seen,
@@ -631,8 +647,13 @@ def cmd_play(args: argparse.Namespace) -> int:
                         if line.strip():
                             print(f"  {line.strip()}")
                 continue
+            score_msg = interpret_live_command(raw, live_ctx)
+            if score_msg is not None:
+                print(score_msg)
+                continue
 
             sit = parse_situation(raw, default_side=default_side)
+            absorb_and_stamp(sit, live_ctx)
             heard = format_heard(sit)
             print(heard)
             # Pass previous-snap signals as last-only context (not hard-counters)
@@ -847,6 +868,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_play.add_argument("--why", action="store_true", help="Show rationale")
     p_play.add_argument(
+        "--score",
+        default=None,
+        metavar="US-THEM",
+        help="Current score, us-them (e.g. 21-14). Optional; persists for the session. "
+             "Update mid-game with `score 17-21` or `score clear`.",
+    )
+    p_play.add_argument(
+        "--quarter",
+        type=int,
+        choices=(1, 2, 3, 4, 5),
+        default=None,
+        help="Current quarter (5 = OT). Optional. Also `quarter 4` or `q4` on the sit line.",
+    )
+    p_play.add_argument(
         "--dynasty",
         choices=("alabama", "ohio_state"),
         default=None,
@@ -919,6 +954,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_call.add_argument("--situation", "-s", required=True)
     p_call.add_argument("--side", choices=("offense", "defense"), default=None)
     p_call.add_argument("--why", action="store_true")
+    p_call.add_argument(
+        "--score",
+        default=None,
+        metavar="US-THEM",
+        help="Current score, us-them (e.g. 21-14). Optional. Same flag for CFB and --game madden27.",
+    )
+    p_call.add_argument(
+        "--quarter",
+        type=int,
+        choices=(1, 2, 3, 4, 5),
+        default=None,
+        help="Current quarter (5 = OT). Optional; score stays neutral early and close without it.",
+    )
     _add_game_args(p_call, franchise=False)
     p_call.set_defaults(func=cmd_call)
 

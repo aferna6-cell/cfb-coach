@@ -47,7 +47,7 @@ During the game Aidan should **not** need the terminal. `play` starts a small **
 
 1. **Big PLAY** call at the top.
 2. **Last snap outcome** — buttons/fields: gain N / loss N / incomplete / sack / TD / INT / fumble lost / stop / convert (or free text like `+13`).
-3. **Next situation** — down, distance, my/opp yard line, last play or look name (check **live** for pre-snap `showing …`).
+3. **Next situation** — quarter, **us / them score** (optional, sticks across snaps), down, distance, my/opp yard line, last play or look name (check **live** for pre-snap `showing …`).
 4. **Submit** → logs the previous call’s result into SQLite, returns the next PLAY, appends a row to the on-page **game log**.
 5. **End game** — Win/Loss + score (e.g. `24-17`) → **Game over → retrain**. Closes the session, grades **formation+play vs coverage/look** (success rate + avg yards), bumps/demotes gameplan weights, updates macro proven/failed thresholds, and shows a short summary on the page.
 
@@ -343,7 +343,7 @@ PYTHONPATH=. python3 -m cfb_coach play --game madden27 -o gavin      # End game 
 PYTHONPATH=. python3 -m cfb_coach postgame --game madden27 -o gavin
 ```
 
-`--game madden` works as an alias. Every CFB prep/play flag carries over (`--text`, `--no-open`, `--offline`, `--refresh-meta`, `--mark-applied`, `--once`, `--why`, `--overlay`, `--no-overlay`, `--terminal`, `--html-port`).
+`--game madden` works as an alias. Every CFB prep/play flag carries over (`--text`, `--no-open`, `--offline`, `--refresh-meta`, `--mark-applied`, `--once`, `--why`, `--overlay`, `--no-overlay`, `--terminal`, `--html-port`, `--score`, `--quarter`).
 
 | Command | Madden 27 purpose |
 |---|---|
@@ -353,7 +353,7 @@ PYTHONPATH=. python3 -m cfb_coach postgame --game madden27 -o gavin
 | `prep --game madden27 -o <id> --franchise lab` | Lab profile (lab → primary promotions after postgame) |
 | `playbook --game madden27` | Print the book of record (every formation + play + audibles) |
 | `play --game madden27 -o <id>` | **HTML live window** (default): `PLAY: X (formation) + MACRO: Y` / `+ ADJ: Y` with the buttons to press, hard-locked to the book; `--terminal` for sit> |
-| `call --game madden27 -o <id> -s "d 3&8" --why` | One-shot call |
+| `call --game madden27 -o <id> -s "d 3&8" --score 21-14 --quarter 4 --why` | One-shot call; `--score` is us-them and optional |
 | `macro-settings --game madden27 [NAME]` | Show the research-built defense macros (every field + source) and the Xbox controls |
 | `macro-settings --game cfb27 [NAME --set "Section: Setting = value"]` | CFB: edit your exact sheets (`~/.cfb-coach/macro_settings.json`; untouched = catalog) |
 | `postgame --game madden27 -o <id> [--franchise lab]` | CFB retrain v2 into per-opponent weights; macro `proven`/`failed`; lab → primary |
@@ -510,6 +510,39 @@ Nickel Over — Cover 4 Quarters | VERT | User #3 seam
 ```
 
 Platform: Xbox. Prefer formation / play / macro **names**. Do not invent PlayStation button sequences.
+
+## Live score (us vs them)
+
+Optional for both CFB 27 and `--game madden27`. Leave it unset and calls match the old mix. The score **modulates** down/distance, quarter, red zone, and the opponent persona; it does not replace them. A close 1st/2nd quarter stays neutral. Late (4th / OT / 2-min) and two-score games lean the mix: milk the clock when up, tempo and explosives when trailing, prevent (soft shell) when up big, more pressure when down. 4th-down go/don't and a 2-point note show up in `--why` when that decision is live. There is no separate 2-point play to call.
+
+Live score is **us-them** (your points first). The end-game box is still the final winner-first score for retrain (`24-17` on a win).
+
+```bash
+# CFB one-shot
+PYTHONPATH=. python3 -m cfb_coach call -o gavin -s "1&10 my 40" --quarter 4 --score 28-7 --side defense --why
+PYTHONPATH=. python3 -m cfb_coach call -o gavin -s "1&10 my 40" --quarter 4 --score 7-28 --side defense --why
+
+# Madden — same flags
+PYTHONPATH=. python3 -m cfb_coach call --game madden27 -o gavin -s "1&10 my 35" --quarter 4 --score 7-24 --why
+
+# Session (score sticks until you change it)
+PYTHONPATH=. python3 -m cfb_coach play -o gavin --terminal --score 14-14 --quarter 1
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 -o gavin --terminal --score 14-14
+```
+
+Mid-game, in the `sit>` loop (CFB or Madden):
+
+```text
+score 21-17          # us 21, them 17 — sticks for later snaps
+score us 17 them 24
+quarter 4            # or put q4 on the sit line: 2&6 my 40 q4
+score 17-24          # update without retyping down and distance
+score clear          # back to score-neutral calls
+```
+
+HTML live window (CFB and Madden): the **us** and **them** boxes next to quarter persist across Submit / Call only. Change them when the score changes; clear both to ignore score again.
+
+Logged snaps store `score_us` / `score_them` in notes when a live score was set. Retrain still uses the final game score. A Q4 snap with a two-score live margin gets a small leverage bump; snaps with no live score are unchanged.
 
 ## Play loop (typed live + overlay) — v1.9.6
 

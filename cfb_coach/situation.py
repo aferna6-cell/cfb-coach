@@ -27,6 +27,9 @@ class Situation:
     # Parallel to coverage_source for offense/defense play-name tells
     concept_source: str = "none"  # live | last | none
     notes: str = ""
+    # Live score is us-them (Aidan's points first). Unset = ignore score.
+    score_us: int | None = None
+    score_them: int | None = None
     extras: dict = field(default_factory=dict)
 
     @property
@@ -156,6 +159,11 @@ def format_heard(sit: Situation) -> str:
         parts.append("GL")
     if sit.two_minute:
         parts.append("2min")
+    q = (sit.extras or {}).get("quarter")
+    if q:
+        parts.append("OT" if int(q) >= 5 else f"Q{q}")
+    if sit.score_us is not None and sit.score_them is not None:
+        parts.append(f"{sit.score_us}-{sit.score_them}")
     if sit.coverage_hint:
         src = sit.coverage_source or "none"
         if src == "last":
@@ -240,6 +248,16 @@ def parse_situation(raw: str, default_side: str = "offense") -> Situation:
             sit.red_zone = True
     if _2MIN_RE.search(text):
         sit.two_minute = True
+
+    from cfb_coach.game_score import parse_inline_quarter, parse_inline_score
+
+    inline_score = parse_inline_score(text)
+    if inline_score is not None:
+        sit.score_us = inline_score.us
+        sit.score_them = inline_score.them
+    inline_q = parse_inline_quarter(text)
+    if inline_q is not None:
+        sit.extras["quarter"] = inline_q
 
     if sit.distance is not None:
         if sit.distance <= 3:
