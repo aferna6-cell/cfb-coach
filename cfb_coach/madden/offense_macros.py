@@ -283,6 +283,102 @@ def attach_detail(card: dict[str, Any], book: dict[str, list[str]] | None = None
     return card
 
 
+def _coverage_hit(fire: dict[str, Any], cls: set[str], cov_ok: bool, have_heat: bool) -> bool:
+    want = set(fire.get("coverages") or [])
+    if not want:
+        return True
+    hit = cov_ok and bool(cls & want)
+    if not hit and fire.get("fallback_pressure") and not have_heat:
+        hit = cov_ok and "pressure" in cls
+    return hit
+
+
+def _avoided(fire: dict[str, Any], cls: set[str], play: str) -> bool:
+    return any(
+        a.get("coverage") in cls and re.search(a.get("play_re") or "$^", play, re.I)
+        for a in fire.get("avoid") or []
+    )
+
+
+def _pair_key(item: str) -> tuple[str, str]:
+    play, _, rest = item.partition(" (")
+    form = rest[:-1] if rest.endswith(")") else ""
+    return form, play
+
+
+def situation_macro(
+    *,
+    zone: str,
+    coverage: str | None,
+    coverage_source: str,
+    active: list[str],
+    down: int | None = None,
+    repeated: bool = False,
+    book: dict[str, list[str]] | None = None,
+    weights: dict[str, float] | None = None,
+    score_phase: str | None = None,
+    pool: list[tuple[str, str]] | None = None,
+) -> dict[str, Any] | None:
+    """The stored offense Custom Adjustment this snap should call, before a play is sampled.
+
+    Walks the same fire rules as ``suggest_for_snap`` (zone, down, live or repeated
+    coverage, the macro's when-to-fire). A blank snap with no look does not invent a
+    coverage from old logs. Returns None unless at least one in-book pair is also in
+    ``pool`` (the situational play list). Protecting a lead skips SHOT."""
+    from cfb_coach.macros import LIVE_MACRO_PRIORITY, classify_coverage
+    from cfb_coach.madden.macros import LEARNED_SUPPRESS
+
+    act = clean_ids(active)
+    if not act or not book:
+        return None
+    data = load_offense_settings().get("macros") or {}
+    cls = classify_coverage(coverage)
+    cov_ok = bool(cls) and (coverage_source == "live" or repeated)
+    have_heat = any(a in act for a in ("O-HEAT", "PROT"))
+    allowed = set(pool) if pool is not None else None
+    for mid in LIVE_MACRO_PRIORITY:
+        if mid not in act or mid not in data:
+            continue
+        if mid == "SHOT" and score_phase in ("protect", "prevent"):
+            continue
+        w = (weights or {}).get(mid)
+        if w is not None and w <= LEARNED_SUPPRESS:
+            continue
+        fire = data[mid].get("fire") or {}
+        if zone not in (fire.get("zones") or ["open", "rz", "gl"]):
+            continue
+        if fire.get("downs") and down not in fire["downs"]:
+            continue
+        if not _coverage_hit(fire, cls, cov_ok, have_heat):
+            continue
+        keys: list[tuple[str, str]] = []
+        for item in pairs_in_book(mid, book, cap=80):
+            form, play = _pair_key(item)
+            if _avoided(fire, cls, play):
+                continue
+            if allowed is not None and (form, play) not in allowed:
+                continue
+            keys.append((form, play))
+        if not keys:
+            continue
+        det = offense_detail(mid, book)
+        want = set(fire.get("coverages") or [])
+        trig = f"{coverage_source} {coverage}" if want else ("red zone" if zone in ("rz", "gl") else "run")
+        return {
+            "id": mid,
+            "name": det["xbox_name"],
+            "side": "offense",
+            "why": trig,
+            "key": det["key"],
+            "buttons": det["buttons"],
+            "settings": [r for r in det["settings"]],
+            "fire_when": det["fire_when"],
+            "learned_weight": w,
+            "pairs": keys,
+        }
+    return None
+
+
 def suggest_for_snap(
     *,
     zone: str,
@@ -294,6 +390,7 @@ def suggest_for_snap(
     repeated: bool = False,
     book: dict[str, list[str]] | None = None,
     weights: dict[str, float] | None = None,
+    score_phase: str | None = None,
 ) -> dict[str, Any] | None:
     """One offense Custom Adjustment for this snap, or None.
 
@@ -312,28 +409,25 @@ def suggest_for_snap(
     for mid in LIVE_MACRO_PRIORITY:
         if mid not in act or mid not in data:
             continue
+        if mid == "SHOT" and score_phase in ("protect", "prevent"):
+            continue
         w = (weights or {}).get(mid)
         if w is not None and w <= LEARNED_SUPPRESS:
             continue
         fire = data[mid].get("fire") or {}
         if zone not in (fire.get("zones") or ["open", "rz", "gl"]):
             continue
-        pairs = pairs_in_book(mid, book, cap=20)
+        pairs = pairs_in_book(mid, book, cap=80)
         if not any(play.lower() == item.split(" (", 1)[0].lower() for item in pairs):
             continue
         if fire.get("downs") and down not in fire["downs"]:
             continue
-        want = set(fire.get("coverages") or [])
-        if want:
-            hit = cov_ok and bool(cls & want)
-            if not hit and fire.get("fallback_pressure") and not have_heat:
-                hit = cov_ok and "pressure" in cls
-            if not hit:
-                continue
-        if any(a.get("coverage") in cls and re.search(a.get("play_re") or "$^", play, re.I)
-               for a in fire.get("avoid") or []):
+        if not _coverage_hit(fire, cls, cov_ok, have_heat):
+            continue
+        if _avoided(fire, cls, play):
             continue
         det = offense_detail(mid, book)
+        want = set(fire.get("coverages") or [])
         trig = f"{coverage_source} {coverage}" if want else ("red zone" if zone in ("rz", "gl") else "run")
         return {
             "id": mid,
@@ -351,5 +445,6 @@ def suggest_for_snap(
 
 __all__ = [
     "activate_buttons", "attach_detail", "clean_ids", "copy_block", "known", "offense_detail",
-    "pairs_in_book", "rank_offense", "select_offense", "suggest_for_snap", "xbox_name",
+    "pairs_in_book", "rank_offense", "select_offense", "situation_macro", "suggest_for_snap",
+    "xbox_name",
 ]

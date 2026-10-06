@@ -172,6 +172,49 @@ class TestCustomGameplan(_Isolated):
         finally:
             db.close()
 
+    def test_live_call_fires_a_stored_macro_only_when_its_trigger_matches(self) -> None:
+        import random
+
+        from cfb_coach.madden.playcaller import make_call
+        from cfb_coach.madden.situation import parse_madden_situation
+
+        db = self.madden_db()
+        try:
+            plan = build_prep_plan("james", db=db, offline=True)
+            self.assertIn("MAN", plan["macro_selection"]["offense"])
+            self.assertIn("RZ COVER 2", plan["macro_selection"]["defense"])
+            self.assertIn("SAFE DEEP", plan["macro_selection"]["defense"])
+            book = plan["playbook"]["offense"]["record"]["formations"]
+
+            off = make_call(parse_madden_situation("1&10 showing cover 1"), "james", db, rng=random.Random(1))
+            self.assertEqual(off.macro, "MAN")
+            self.assertIn("MACRO: MAN", off.headline())
+            self.assertIn("LB → MAN", off.format())
+            self.assertIn(off.play, book[off.formation])
+
+            quiet_o = make_call(parse_madden_situation("1&10"), "james", db, rng=random.Random(1))
+            self.assertIsNone(quiet_o.macro)
+            self.assertNotIn("MACRO:", quiet_o.headline())
+            quiet_d = make_call(parse_madden_situation("d 1&10"), "james", db, rng=random.Random(1))
+            self.assertIsNone(quiet_d.macro)
+            self.assertNotIn("MACRO:", quiet_d.headline())
+
+            de = make_call(parse_madden_situation("d 1&10 opp 15"), "james", db, rng=random.Random(1))
+            self.assertEqual(de.macro, "RZ COVER 2")
+            self.assertIn("MACRO: RZ COVER 2", de.headline())
+            self.assertIn("LB → RZ COVER 2", de.format())
+            dbook = plan["playbook"]["defense"]["record"]["formations"]
+            self.assertIn(de.play, dbook[de.formation])
+
+            lead = make_call(
+                parse_madden_situation("d 1&10 score 24-10 q4"), "james", db, rng=random.Random(1),
+            )
+            self.assertEqual(lead.macro, "SAFE DEEP")
+            self.assertIn("LB → SAFE DEEP", lead.format())
+            self.assertIn(lead.play, dbook[lead.formation])
+        finally:
+            db.close()
+
     def test_tiny_book_never_invents_a_play(self) -> None:
         book = {"Gun Doubles Clamp Stack": ["Inside Zone", "Texas Y-Stutter Wheel"]}
         dbook = {"Nickel Over": ["Cover 4 Quarters"]}
