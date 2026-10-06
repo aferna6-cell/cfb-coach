@@ -1,15 +1,9 @@
-"""Madden 27 prep: pick and rank 10 DEFENSE macros per opponent (v1.17).
+"""Madden 27 prep: 8 offense + 8 defense Custom Adjustments per user opponent.
 
-The pool is the research DB's defense macros (daily research routine, pulled every prep).
-Each is scored from:
-
-  * the research DB's meta rank (what the latest research says is meta now),
-  * this prep's live scout hits (their concept family),
-  * the opponent's tendencies — persona archetype + concepts logged vs them,
-  * per-opponent learned weights (``macro_weights`` in madden27.db) + postgame status,
-  * the last prep's pick / a migrated Active 8 (stability).
-
-Every score part is listed in the card's ``why``. Offense has no macros (adjustments instead).
+Defense comes from the research DB (meta rank, live scout, tendencies, learned weights).
+Offense comes from Aidan's confirmed Custom Adjustments, ranked for this opponent's
+coverage looks, and kept only when a play in the trimmed book matches.
+CPU games stay offense-only (no macros).
 """
 
 from __future__ import annotations
@@ -19,7 +13,7 @@ from typing import Any
 
 from cfb_coach.macros import FAILED, PROVEN
 from cfb_coach.madden.macro_pool import families, pool_ids, pool_macro
-from cfb_coach.madden.macros import LEARNED_SUPPRESS, PER_SIDE, macro_status
+from cfb_coach.madden.macros import LEARNED_SUPPRESS, LOADOUT_N, macro_status
 
 W_META_TOP = 0.50  # research DB meta_rank 1 … decays by W_META_STEP per rank
 W_META_STEP = 0.03
@@ -124,6 +118,24 @@ def rank_defense(
     return rows
 
 
+def snap_concept_families(db: Any, opponent_id: str) -> Counter:
+    """Concept families on snaps where we were on defense (their offense), before postgame."""
+    out: Counter = Counter()
+    if db is None:
+        return out
+    from cfb_coach.madden.situation import concept_family
+
+    try:
+        snaps = db.get_recent_snaps(opponent_id, side="defense", limit=40)
+    except Exception:  # noqa: BLE001
+        return out
+    for snap in snaps:
+        fam = concept_family(snap["concept_seen"] if hasattr(snap, "keys") else "")
+        if fam:
+            out[fam] += 1
+    return out
+
+
 def select_loadout(
     opponent_id: str,
     *,
@@ -132,17 +144,33 @@ def select_loadout(
     scout: Any = None,
     offense_only: bool = False,
     previous: list[str] | None = None,
+    previous_offense: list[str] | None = None,
+    offense_book: dict[str, list[str]] | None = None,
+    n: int = LOADOUT_N,
 ) -> dict[str, Any]:
-    """{"offense": [] (adjustments, no macros), "defense": [10 ids] (empty for CPU), "ranked": rows}."""
-    out: dict[str, Any] = {"offense": [], "defense": [], "ranked": []}
+    """{"offense": [8 ids], "defense": [8 ids], "ranked": defense rows, "ranked_offense": rows}.
+
+    CPU (``offense_only``) gets neither. Offense ids are Aidan's Custom Adjustments that
+    pair with ``offense_book``.
+    """
+    out: dict[str, Any] = {"offense": [], "defense": [], "ranked": [], "ranked_offense": []}
     if offense_only:
         return out
+    from cfb_coach.madden.offense_macros import select_offense
+
+    tends = tendency_families(db, opponent_id) + snap_concept_families(db, opponent_id)
+    weights = learned_weights(db, opponent_id)
     rows = rank_defense(db=db, archetype=archetype, hint_families=research_hint_families(scout),
-                        tendencies=tendency_families(db, opponent_id),
-                        weights=learned_weights(db, opponent_id), previous=previous)
+                        tendencies=tends, weights=weights, previous=previous)
     out["ranked"] = rows
-    out["defense"] = [r["id"] for r in rows[:PER_SIDE]]
+    out["defense"] = [r["id"] for r in rows[:n]]
+    offense, ranked_o = select_offense(opponent_id, db=db, archetype=archetype, book=offense_book,
+                                       previous=previous_offense, weights=weights, n=n)
+    out["offense"] = offense
+    out["ranked_offense"] = ranked_o
     return out
 
 
-__all__ = ["rank_defense", "research_hint_families", "select_loadout", "tendency_families"]
+__all__ = [
+    "rank_defense", "research_hint_families", "select_loadout", "snap_concept_families", "tendency_families",
+]

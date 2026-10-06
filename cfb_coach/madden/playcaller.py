@@ -22,7 +22,7 @@ from cfb_coach.madden.data import (
     user_job_for,
 )
 from cfb_coach.madden.macro_pool import pool_macro as get_macro
-from cfb_coach.madden.macros import as_selection, best_for_family, tag_live
+from cfb_coach.madden.macros import LOADOUT_N, as_selection, best_for_family, tag_live
 from cfb_coach.madden.situation import Situation, concept_family
 from cfb_coach.opponents import is_cpu_opponent
 from cfb_coach.tendency import describe_coverage_policy, is_repeated_coverage, is_user_opponent
@@ -335,8 +335,7 @@ def _pick_offense(
     book: dict[str, list[str]],
     audibles: dict[str, list[str]] | None = None,
 ) -> MaddenCall:
-    """Offense has no macros (v1.17): ``active`` is unused; the call may carry one adjustment."""
-    del active
+    """User games may arm one offense Custom Adjustment from ``active`` when the play and look match."""
     from cfb_coach.madden.catalog import is_run
 
     og = bl["offense_gameplan"]
@@ -410,17 +409,36 @@ def _pick_offense(
 
     adj = "Hot ready" if cls == "pressure" and src == "live" else "No adj"
     adjustment = None
-    try:  # v1.17: offense uses no macros — one researched pre-snap adjustment when the look calls for it
-        from cfb_coach.madden.adjustments import offense_adjustment
+    macro = None
+    info = None
+    zone = "gl" if sit.goal_line else "rz" if sit.red_zone else "open"
+    try:
+        from cfb_coach.madden.offense_macros import suggest_for_snap
 
-        adjustment = offense_adjustment(play=play, formation=form, coverage_class=cls, coverage_source=src,
-                                        repeated=repeated, audibles=audibles)
+        weights = {}
+        if db is not None:
+            weights = {str(r["macro"]).upper(): float(r["weight"] or 0.0) for r in db.get_macro_weights(oid)}
+        info = suggest_for_snap(zone=zone, play=play, coverage=cov, coverage_source=src, active=active,
+                                down=sit.down, repeated=repeated, book=book, weights=weights)
     except Exception:  # noqa: BLE001 — never break a call
-        adjustment = None
-    if adjustment:
-        adj = adjustment["label"]
-        rationale += f" | adj {adjustment['label']}: {adjustment['why']}"
-    return MaddenCall("offense", form, play, adj, reads_for(play), rationale, adjustment=adjustment)
+        info = None
+    if info:
+        macro = info["id"]
+        adj = "No adj"
+        rationale += f" | MACRO {info['name']}: {info['why']}"
+    else:
+        try:  # one researched pre-snap adjustment when no Custom Adjustment matches the look
+            from cfb_coach.madden.adjustments import offense_adjustment
+
+            adjustment = offense_adjustment(play=play, formation=form, coverage_class=cls, coverage_source=src,
+                                            repeated=repeated, audibles=audibles)
+        except Exception:  # noqa: BLE001 — never break a call
+            adjustment = None
+        if adjustment:
+            adj = adjustment["label"]
+            rationale += f" | adj {adjustment['label']}: {adjustment['why']}"
+    return MaddenCall("offense", form, play, adj, reads_for(play), rationale, macro=macro, macro_info=info,
+                      adjustment=adjustment)
 
 
 # ---------------------------------------------------------------------------
@@ -551,7 +569,7 @@ def _pick_defense(
     active: list[str],
     book: dict[str, list[str]],
 ) -> MaddenCall:
-    """``active`` = the DEFENSE 10 (prep rank order) — the only macros this call may arm."""
+    """``active`` = the defense Custom Adjustments (prep rank order) — the only D macros this call may arm."""
     oid = opp["_id"]
     picked = _select_base_defense(sit, oid, db, bl, rng, book)
     if picked is not None:
@@ -575,8 +593,8 @@ def _pick_defense(
             weights = {str(r["macro"]).upper(): float(r["weight"] or 0.0) for r in db.get_macro_weights(oid)}
         except Exception:  # noqa: BLE001
             weights = {}
-    # v1.17: the family's best macro among the defense 10 (prep rank order); when none of the 10
-    # answers it, the research DB's best one is only named as a suggestion (re-prep to carry it)
+    # The family's best macro among the defense loadout (prep rank order). When none of them
+    # answers it, the research DB's best one is only named as a suggestion (re-prep to carry it).
     from cfb_coach.madden.macro_pool import pool_ids
 
     by_rank = sorted(pool_ids("defense"), key=lambda m: (get_macro(m) or {}).get("meta_rank", 99))
@@ -618,11 +636,11 @@ def _pick_defense(
                 user = (get_macro(fam_macro) or {}).get("user_job") or user_job_for(play)
                 rationale = f"REPEATED {fam} tendency ({concept}) — {play} + {fam_macro}"
             else:
-                suggest = f"{fam_macro} — repeated {concept} but not in your 10 D macros; re-prep to add it"
-                rationale += f" | REPEATED {concept} — {fam_macro} not in the defense 10"
+                suggest = f"{fam_macro} — repeated {concept} but not in your defense macros; re-prep to add it"
+                rationale += f" | REPEATED {concept} — {fam_macro} not in the defense macros"
                 d_adj = _d_adjustment(fam, concept)
         else:
-            rationale += f" | REPEATED {concept} — no macro in the defense 10 answers it"
+            rationale += f" | REPEATED {concept} — no defense macro answers it"
             d_adj = _d_adjustment(fam, concept)
 
     pivot = active_pivot(db, oid, "defense")
@@ -739,13 +757,13 @@ def make_call(
             opp = dict(prof)
     opp["_id"] = opponent_id
     rng = rng or random.Random()
-    # v1.17: 10 offense + 10 defense per opponent — each side only ever picks from its own list
+    # Each side only arms Custom Adjustments from its own list.
     if active_macros:
         sel = as_selection(active_macros)
-    else:  # no prep yet: the research DB's top 10 by meta rank
+    else:  # no prep yet: research DB's top defense macros. Offense waits for a prep.
         from cfb_coach.madden.macro_pool import pool_ids
 
-        top = sorted(pool_ids("defense"), key=lambda m: (get_macro(m) or {}).get("meta_rank", 99))[:10]
+        top = sorted(pool_ids("defense"), key=lambda m: (get_macro(m) or {}).get("meta_rank", 99))[:LOADOUT_N]
         sel = {"offense": [], "defense": top}
 
     if last_coverage and not sit.coverage_hint:

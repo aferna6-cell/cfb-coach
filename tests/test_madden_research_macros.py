@@ -17,6 +17,7 @@ from cfb_coach.madden.adjustments import defense_adjustment, offense_adjustment
 from cfb_coach.madden.macro_pool import pool_ids
 from cfb_coach.madden.macro_select import rank_defense, select_loadout
 from cfb_coach.madden.macros import (
+    LOADOUT_N,
     PER_SIDE,
     copy_checklist,
     legacy_picks,
@@ -131,18 +132,27 @@ class TestResearchDB(_DB):
 
 
 class TestDefenseTen(_DB):
-    def test_prep_defense_ten_no_offense_macros(self) -> None:
+    def test_prep_eight_offense_and_eight_defense_macros(self) -> None:
         plan = build_prep_plan("gavin", offline=True, persist=False)
         sel = plan["macro_selection"]
-        self.assertEqual(sel["offense"], [])
-        self.assertEqual(len(sel["defense"]), PER_SIDE)
-        self.assertEqual(len(set(sel["defense"])), PER_SIDE)
+        self.assertEqual(len(sel["offense"]), LOADOUT_N)
+        self.assertEqual(len(sel["defense"]), LOADOUT_N)
+        self.assertEqual(len(set(sel["offense"])), LOADOUT_N)
+        self.assertEqual(len(set(sel["defense"])), LOADOUT_N)
         for c in plan["macro_cards"]:
             det = c["ingame"]
-            self.assertEqual(c["side"], "defense")
-            self.assertEqual(det["buttons"], f"LB → {c['id']}")
-            self.assertEqual(len(det["settings"]), det["n_fields"])
-            self.assertIn(f"In game: LB → {c['id']}", c["copy_block"])
+            self.assertIn(c["side"], ("offense", "defense"))
+            self.assertIn("LB", det["buttons"])
+            self.assertIn("In game:", c["copy_block"])
+            if c["side"] == "defense":
+                self.assertEqual(det["buttons"], f"LB → {c['id']}")
+                self.assertEqual(len(det["settings"]), det["n_fields"])
+                self.assertGreater(det["n_fields"], 40)
+            else:
+                self.assertTrue(det["settings"])
+                self.assertIn("Everything else: Default", c["copy_block"])
+                for row in det["settings"]:
+                    self.assertEqual(row["source"], "aidan_notes")
         self.assertIn("fire: LB →", plan["copy_checklist"])
         self.assertTrue(plan["offense_adjustments"])
         for a in plan["offense_adjustments"]:
@@ -160,7 +170,7 @@ class TestDefenseTen(_DB):
             base = select_loadout("gavin", db=db)
             self.assertEqual(base["defense"][0], "TAMPA MABLE")  # research meta #1
             out = [m for m in pool_ids("defense") if m not in base["defense"]]
-            self.assertEqual(len(out), len(pool_ids("defense")) - PER_SIDE)
+            self.assertEqual(len(out), len(pool_ids("defense")) - LOADOUT_N)
             # opponent tendency: repeated scrambles lift the scramble answers
             for _ in range(5):
                 db.bump_tendency("gavin", "offense_concept", "QB scramble")
@@ -260,7 +270,7 @@ class TestMigrationAndLearning(_DB):
             self.assertEqual(json.loads(db.get_meta("active_macros_legacy8:gavin"))["active"], self.OLD)
             self.assertEqual(legacy_picks(db, "gavin"), self.OLD)
             plan = build_prep_plan("gavin", db=db, offline=True)
-            self.assertEqual(len(plan["macro_selection"]["defense"]), PER_SIDE)
+            self.assertEqual(len(plan["macro_selection"]["defense"]), LOADOUT_N)
             self.assertEqual(json.loads(db.get_meta("active_macros:gavin"))["schema"], 2)
             self.assertEqual(legacy_picks(db, "gavin"), self.OLD)  # the old picks are never deleted
         finally:
