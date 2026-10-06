@@ -243,8 +243,9 @@ class TestMaddenPrep(_Isolated):
         self.assertTrue(plan["shown_deltas"])
         self.assertTrue(all(d["validated_status"] == "meta_grounded" for d in plan["shown_deltas"]))
         html = render_prep_html(plan)  # minimal page: formations, audibles, adjustments, D formations, macros
-        self.assertIn("Formations — Offense: Buccaneers (stock book)", html)
-        self.assertIn("Formations — Defense: 49ers (stock book)", html)
+        self.assertIn("Formations — Offense: Buccaneers (custom book)", html)
+        self.assertIn("Formations — Defense: 49ers (custom book)", html)
+        self.assertIn("Game plan — 8 offense + 8 defense", html)
         self.assertIn("Audibles (4 per formation)", html)
         self.assertIn("Offense adjustments (no macros)", html)
         self.assertIn("Hot route WR1 → Slant", html)
@@ -274,12 +275,14 @@ class TestMaddenPrep(_Isolated):
         self.assertEqual(len(plan["macro_selection"]["defense"]), PER_SIDE)
         self.assertEqual(plan["replacing_lines"], [])
 
-    def test_thin_persona_picks_stock_book_nothing_to_build(self) -> None:
+    def test_thin_persona_saves_trimmed_plan_as_custom(self) -> None:
         plan = build_prep_plan("ryan", offline=True, persist=False)
         off = plan["playbook"]["offense"]
-        self.assertEqual((off["record"]["mode"], off["record"]["name"]), ("stock", "Buccaneers"))
+        self.assertEqual((off["record"]["mode"], off["record"]["name"], off["record"]["source_book"]),
+                         ("custom", "Buccaneers", "Buccaneers"))
         self.assertEqual(off["checklist"], [])
-        self.assertEqual({d["action"] for d in plan["shown_deltas"]}, {"USE STOCK"})
+        self.assertEqual(off["status"], "applied")
+        self.assertEqual({d["action"] for d in plan["shown_deltas"]}, {"USE CUSTOM"})
 
 
 class TestPlaybookOfRecord(_Isolated):
@@ -466,6 +469,8 @@ class TestMaddenCli(_Isolated):
         self.assertEqual(rc, 0)
         self.assertIn("Madden 27 Franchise", out)
         self.assertIn("Defense 10 macros · offense: adjustments", out)
+        self.assertIn("## Game plan — 8 offense + 8 defense", out)
+        self.assertIn("CALL:", out)
         self.assertIn("## Offense adjustments (no macros)", out)
         self.assertIn("## Copy checklist", out)
         rc, out = self.run_cli(["prep", "--game", "madden27", "-o", "cpu", "--offline", "--text"])

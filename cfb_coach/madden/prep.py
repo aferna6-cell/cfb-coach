@@ -128,6 +128,56 @@ def call_tips(opp: dict[str, Any], *, offense_only: bool, bl: dict[str, Any]) ->
     return [t for t in tips if t.split(":", 1)[-1].strip()]
 
 
+def _save_opponent_team(db: Any, opponent_id: str, raw: str) -> str:
+    import json
+
+    from cfb_coach.madden.franchise import resolve_nfl_team
+
+    name, _known = resolve_nfl_team(raw)
+    prof = dict(db.get_opponent(opponent_id) or {})
+    prof["nfl_team"] = name
+    prof["team_now"] = name
+    db.conn.execute(
+        "UPDATE opponents SET team_now = ?, profile_json = ? WHERE id = ?",
+        (name, json.dumps(prof), opponent_id),
+    )
+    db.conn.commit()
+    return name
+
+
+def formations_for_gameplan(
+    side_plan: dict[str, Any],
+    applied: dict[str, Any] | None,
+) -> tuple[dict[str, list[str]], dict[str, list[str]], list[str]]:
+    """Plays the game plan may use: the latest applied custom book.
+
+    A pending install (explicit editor custom) does not replace the applied book.
+    A stock pin is a visible fallback, not the default.
+    """
+    warnings: list[str] = []
+    rec = dict(side_plan.get("record") or {})
+    side = side_plan.get("side") or rec.get("side") or ""
+    if side_plan.get("status") == "pending":
+        if applied and applied.get("formations"):
+            warnings.append(
+                f"{side.title()} book change is still pending — game-plan macros use the latest "
+                f"applied book ({applied.get('name')} [{applied.get('mode')}] rev {applied.get('rev')})."
+            )
+            rec = applied
+        else:
+            warnings.append(
+                f"WARNING: no applied {side} playbook yet — game-plan macros are empty until that book is applied."
+            )
+            return {}, {}, warnings
+    if rec.get("mode") != "custom":
+        warnings.append(
+            f"WARNING: no custom {side} playbook is set "
+            f"(falling back to {rec.get('name')} [{rec.get('mode')}]). "
+            "Run prep without a stock book pin to use the coach's trimmed custom plan."
+        )
+    return dict(rec.get("formations") or {}), dict(rec.get("audibles") or {}), warnings
+
+
 def build_prep_plan(
     opponent_id: str,
     opp: dict[str, Any] | None = None,
@@ -140,10 +190,21 @@ def build_prep_plan(
     o_book: str | None = None,
     d_book: str | None = None,
     apply_books: bool = False,
+    opp_team: str | None = None,
+    n_gameplan: int = 8,
 ) -> dict[str, Any]:
     from cfb_coach.madden.playbook import lock_books, plan_books
 
+    if opp_team and db is not None:
+        _save_opponent_team(db, opponent_id, opp_team)
     opp = opp or load_profile(opponent_id, db)
+    if opp_team:
+        from cfb_coach.madden.franchise import resolve_nfl_team
+
+        name, _known = resolve_nfl_team(opp_team)
+        opp = dict(opp)
+        opp["nfl_team"] = name
+        opp["team_now"] = name
     if profile is None:
         profile = get_session_profile(db)
     pcfg = profile_config(profile)
@@ -284,12 +345,39 @@ def build_prep_plan(
         "missing_settings": missing,
         **_opponent_study(db, opponent_id),
     }
+    from cfb_coach.madden.gameplan_macros import DEFAULT_COUNT, build_gameplan
+    from cfb_coach.madden.playbook import load_books
+
+    applied_books = load_books(db) if db is not None else {}
+    playbook_warnings: list[str] = []
+    o_forms, o_aud, o_warn = formations_for_gameplan(books["offense"], applied_books.get("offense"))
+    playbook_warnings.extend(o_warn)
+    if offense_only:
+        d_forms: dict[str, list[str]] = {}
+    else:
+        d_forms, _d_aud, d_warn = formations_for_gameplan(books["defense"], applied_books.get("defense"))
+        playbook_warnings.extend(d_warn)
+    gameplan = build_gameplan(
+        offense_book=o_forms,
+        defense_book=d_forms,
+        audibles=o_aud,
+        opp=opp,
+        db=db,
+        opponent_id=opponent_id,
+        n=n_gameplan if n_gameplan is not None else DEFAULT_COUNT,
+        offense_only=offense_only,
+        baseline=bl,
+    )
+    playbook_warnings.extend(gameplan.get("warnings") or [])
+
     if db is not None and persist:
         lock_books(db, books, applied=apply_books)
         save_prep(db, opponent_id, proposed, shown)
         from cfb_coach.madden.macros import store_selection
 
-        store_selection(db, opponent_id, selection)
+        store_selection(db, opponent_id, selection, gameplan=gameplan)
+    plan["gameplan"] = gameplan
+    plan["playbook_warnings"] = playbook_warnings
     return plan
 
 
@@ -341,7 +429,10 @@ def format_delta_text(plan: dict[str, Any]) -> str:
         f"# PREP — vs {plan['display_name']} (persona: {plan['archetype']})  |  "
         f"{plan['game']} / {plan['version']}",
         f"Franchise profile: {pcfg['label']} ({pcfg['mode']}) — team: {pcfg['team_label']}",
+        f"Opponent team: {plan.get('team') or 'persona'}",
     ]
+    for warning in plan.get("playbook_warnings") or []:
+        lines.append(warning if str(warning).startswith("WARNING:") else f"WARNING: {warning}")
     from cfb_coach.madden.playbook import format_book
 
     rs = plan.get("research") or {}
@@ -376,6 +467,9 @@ def format_delta_text(plan: dict[str, Any]) -> str:
             lines.append(f"      {d.get('before') or '—'} → {d.get('after') or '—'}")
         if d.get("why"):
             lines.append(f"      why: {d['why']}")
+    from cfb_coach.madden.gameplan_macros import format_gameplan
+
+    lines.append(format_gameplan(plan.get("gameplan")))
     lines.append(f"## {(plan.get('research_db') or {}).get('line', '')}")
     lines.append("## Offense adjustments (no macros) — called live only when the look calls for it")
     for a in plan.get("offense_adjustments") or []:

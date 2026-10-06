@@ -205,16 +205,35 @@ def _clean(ids: list[Any], side: str) -> list[str]:
     return out[:PER_SIDE]
 
 
-def store_selection(db: Any, opponent_id: str, selection: dict[str, list[str]]) -> None:
+def store_selection(
+    db: Any,
+    opponent_id: str,
+    selection: dict[str, list[str]],
+    *,
+    gameplan: dict[str, Any] | None = None,
+) -> None:
     from datetime import datetime, timezone
 
     if db is None:
         return
-    db.set_meta(ACTIVE_META_KEY.format(opp=opponent_id), json.dumps({
+    research_d = _clean(selection.get("defense") or [], "defense")
+    offense: list[Any] = []
+    defense: list[Any] = list(research_d)
+    payload: dict[str, Any] = {
         "schema": 2,
-        "offense": [],
-        "defense": _clean(selection.get("defense") or [], "defense"),
-        "ts": datetime.now(timezone.utc).isoformat()}))
+        "offense": offense,
+        "defense": defense,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    if gameplan is not None:
+        o_pkgs = [p for p in (gameplan.get("offense") or []) if isinstance(p, dict) and p.get("id")]
+        d_pkgs = [p for p in (gameplan.get("defense") or []) if isinstance(p, dict) and p.get("id")]
+        payload["offense"] = [p["id"] for p in o_pkgs]
+        payload["defense"] = [p["id"] for p in d_pkgs]
+        payload["packages"] = {p["id"]: p for p in o_pkgs + d_pkgs}
+        payload["research_defense"] = research_d
+        payload["gameplan_count"] = gameplan.get("per_side")
+    db.set_meta(ACTIVE_META_KEY.format(opp=opponent_id), json.dumps(payload))
 
 
 def migrate_selection(db: Any, opponent_id: str) -> bool:
@@ -270,8 +289,38 @@ def load_selection(db: Any, opponent_id: str) -> dict[str, list[str]] | None:
         rec = json.loads(raw)
     except ValueError:
         return None
-    sel = {"offense": [], "defense": _clean(rec.get("defense") or [], "defense")}
+    raw_def = rec.get("research_defense")
+    if raw_def is None:
+        raw_def = rec.get("defense") or []
+    sel = {"offense": [], "defense": _clean(raw_def, "defense")}
     return sel if sel["defense"] else None
+
+
+def load_gameplan(db: Any, opponent_id: str) -> dict[str, list[dict[str, Any]]] | None:
+    """The 8+8 call packages stored with this opponent's schema-2 selection."""
+    if db is None:
+        return None
+    raw = db.get_meta(ACTIVE_META_KEY.format(opp=opponent_id))
+    if not raw:
+        return None
+    try:
+        rec = json.loads(raw)
+    except ValueError:
+        return None
+    packages = dict(rec.get("packages") or {})
+    if not packages:
+        return None
+
+    def expand(ids: list[Any]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for item in ids or []:
+            if isinstance(item, dict):
+                out.append(item)
+            elif item in packages:
+                out.append(packages[item])
+        return out
+
+    return {"offense": expand(rec.get("offense") or []), "defense": expand(rec.get("defense") or [])}
 
 
 def load_active(db: Any, opponent_id: str) -> list[str] | None:
@@ -327,7 +376,7 @@ def best_for_family(family: str | None, ranked: list[str], weights: dict[str, fl
 __all__ = [
     "FAILED", "META_GROUNDED", "PER_SIDE", "PROVEN", "USER_ACTIVE_CAP", "activate_buttons", "as_selection",
     "attach_detail", "best_for_family", "copy_block", "copy_checklist", "key_settings", "legacy_picks",
-    "load_active", "load_selection", "macro_detail", "macro_info", "macro_side", "macro_status",
+    "load_active", "load_gameplan", "load_selection", "macro_detail", "macro_info", "macro_side", "macro_status",
     "migrate_all_selections", "migrate_selection", "missing_settings_report", "set_status", "settings_rows",
     "split_loadout", "status_overrides", "store_selection", "tag_live",
 ]
