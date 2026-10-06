@@ -1091,7 +1091,9 @@ def _pick_defense(
             from cfb_coach.gameplan import active_pivot
 
             tip = active_pivot(db, _opp_id(opp), "defense")
-            if tip:
+            if tip and macro and macro not in ("none", ""):
+                rationale = f"{tip.message} — keep {macro} (repeated answer) | {rationale}"
+            elif tip:
                 form, play, macro = "Nickel Over", rng.choice(
                     ["Cover 3 Sky", "Cover 4 Quarters", "Tampa 2"]
                 ), "none"

@@ -14,7 +14,6 @@ from cfb_coach.db import CoachDB, resolve_db_path_from_env
 from cfb_coach.opponents import format_opponent_list, resolve_opponent
 from cfb_coach.playcaller import make_call
 from cfb_coach.situation import parse_situation, format_heard
-from cfb_coach.tendency import mild_bump_concept, mild_bump_coverage
 from cfb_coach.dynasty import (
     DEFAULT_DYNASTY,
     dynasty_config,
@@ -435,10 +434,11 @@ def cmd_play(args: argparse.Namespace) -> int:
     print("  Aidan UX: type D&D (+ yl) + previous play/coverage name — no need to say 'last'.")
     print("  Examples: '1&10 my 35 mesh spot' | '2&7 deep flood' | '1&10 cover 2'")
     print("  Live look only with: showing / live / pre-snap / aligned (e.g. 'showing cover 2')")
+    print("  A play or result with no down (mesh, 4 verts, cover 2, +7, td, int) is the last snap, not a new call. undo removes it.")
     print("  Score (optional, us-them): --score 21-14, or `score 21-14` / `score clear` mid-game.")
     print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. Close early games stay neutral.")
 
-    from cfb_coach.game_score import absorb_and_stamp, context_from_args, interpret_live_command, sit_prompt, snap_notes_for
+    from cfb_coach.game_score import absorb_and_stamp, context_from_args, interpret_live_command, sit_prompt
 
     live_ctx = context_from_args(args)
     if live_ctx.describe():
@@ -541,6 +541,12 @@ def cmd_play(args: argparse.Namespace) -> int:
     # Previous-snap observations — mild context only, never auto hard-counter
     last_coverage: str | None = None
     last_concept: str | None = None
+    from cfb_coach.last_snap import LastSnapBook
+
+    snap_book = LastSnapBook(db, oid, parse_situation)
+    if live_ctx.score is not None:
+        snap_book.spot.score_us = live_ctx.score.us
+        snap_book.spot.score_them = live_ctx.score.them
 
     def _refresh_overlay(call_obj, sit_obj, heard: str = "") -> None:
         if overlay_path is None:
@@ -589,70 +595,44 @@ def cmd_play(args: argparse.Namespace) -> int:
             if low == "why" and last_call:
                 print(f"  ({last_call.rationale})")
                 continue
-            if low.startswith("result ") or low.startswith("log "):
-                if not last_call or not last_sit:
-                    print("  No call to log yet.")
-                    continue
-                result = raw.split(" ", 1)[1].strip()
-                # Optional inline coverage/concept in result: "result +4 cov c2 invert"
-                res_sit = parse_situation(result, default_side=last_sit.side)
-                cov_seen = res_sit.coverage_hint or last_sit.coverage_hint
-                concept_seen = res_sit.concept_hint or last_sit.concept_hint
+            if low in ("undo", "undo last"):
+                print(snap_book.undo())
+                if snap_book.spot.score_us is not None:
+                    from cfb_coach.game_score import GameScore
 
-                db.log_snap(
-                    opponent_id=oid,
-                    side=last_call.side,
-                    situation_raw=last_sit.raw,
-                    our_call=last_call.format().split("\n")[0],
-                    formation=last_call.formation,
-                    play=last_call.play,
-                    macro=last_call.adj_or_macro if last_call.side == "defense" else getattr(last_call, "macro", None),
-                    down=last_sit.down,
-                    distance=last_sit.distance,
-                    yardline=last_sit.yardline,
-                    quarter=(getattr(last_sit, "extras", None) or {}).get("quarter"),
-                    notes=snap_notes_for(last_sit),
-                    result=result,
-                    coverage_seen=cov_seen,
-                    concept_seen=concept_seen,
-                )
-                success = any(
-                    w in result.lower()
-                    for w in ("td", "+", "good", "convert", "stop", "sack", "int")
-                )
-                # ONE tell = mild bump only (symmetric O/D)
-                if concept_seen and last_call.side == "defense":
-                    mild_bump_concept(
-                        db, oid, concept_seen, last_sit, success=success
-                    )
-                    last_concept = concept_seen
-                    print(
-                        f"  logged: {result} | mild bump concept={concept_seen} "
-                        "(no hard-counter next snap)"
-                    )
-                elif cov_seen and last_call.side == "offense":
-                    mild_bump_coverage(db, oid, cov_seen, last_sit)
-                    last_coverage = cov_seen
-                    print(
-                        f"  logged: {result} | mild bump coverage={cov_seen} "
-                        "(no hard-counter next snap)"
-                    )
-                else:
-                    print(f"  logged: {result}")
-                from cfb_coach.gameplan import format_pivot_hints
-
-                tip = format_pivot_hints(db, oid)
-                if tip:
-                    for line in tip.splitlines()[1:]:
-                        if line.strip():
-                            print(f"  {line.strip()}")
+                    live_ctx.score = GameScore(snap_book.spot.score_us, snap_book.spot.score_them or 0)
                 continue
             score_msg = interpret_live_command(raw, live_ctx)
             if score_msg is not None:
                 print(score_msg)
+                if live_ctx.score is not None:
+                    snap_book.spot.score_us = live_ctx.score.us
+                    snap_book.spot.score_them = live_ctx.score.them
+                continue
+            note_raw = raw.split(" ", 1)[1].strip() if low.startswith(("result ", "log ")) else raw
+            noted = snap_book.handle(note_raw)
+            if noted is not None:
+                print(noted)
+                if snap_book.concept and last_call and last_call.side == "defense":
+                    last_concept = snap_book.concept
+                if snap_book.coverage and last_call and last_call.side == "offense":
+                    last_coverage = snap_book.coverage
+                if snap_book.spot.score_us is not None:
+                    from cfb_coach.game_score import GameScore
+
+                    live_ctx.score = GameScore(snap_book.spot.score_us, snap_book.spot.score_them or 0)
+                if snap_book.wrote:
+                    from cfb_coach.gameplan import format_pivot_hints
+
+                    tip = format_pivot_hints(db, oid)
+                    if tip:
+                        for line in tip.splitlines()[1:]:
+                            if line.strip():
+                                print(f"  {line.strip()}")
                 continue
 
             sit = parse_situation(raw, default_side=default_side)
+            snap_book.stamp_situation(sit)
             absorb_and_stamp(sit, live_ctx)
             heard = format_heard(sit)
             print(heard)
@@ -668,6 +648,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             print(call.format())
             _refresh_overlay(call, sit, heard)
             last_call, last_sit = call, sit
+            snap_book.remember_call(call, sit)
             # If this sit itself named a live/last coverage or concept, remember for NEXT snap
             if sit.coverage_hint and sit.side == "offense":
                 last_coverage = sit.coverage_hint
