@@ -179,7 +179,6 @@ class TestMaddenTerminal(_Isolated):
         lines = [
             "d 1&10", "4 verts", "+15",
             "d 2&8", "4 verts", "+18",
-            "d 3&7", "4 verts", "+11",
             "d 2&6 showing 4 verts",
             "undo", "q",
         ]
@@ -202,9 +201,9 @@ class TestMaddenTerminal(_Isolated):
             # until a second undo. One undo is the result. Both concepts stay.
             self.assertEqual(
                 [r["concept_seen"] for r in rows],
-                ["Four Verticals", "Four Verticals", "Four Verticals"],
+                ["Four Verticals", "Four Verticals"],
             )
-            self.assertEqual(rows[0]["macro"], "none")
+            self.assertEqual(rows[0]["macro"], "SAFE DEEP")
         finally:
             db.close()
 
@@ -302,15 +301,16 @@ class TestMaddenBrowserMacro(_Isolated):
         ctrl.call_only("d 1&10", side="defense")
         ctrl.result_and_call(outcome="+15", sit_raw="d 2&8 4 verts", side="defense")
         ctrl.result_and_call(outcome="+18", sit_raw="d 2&6 4 verts", side="defense")
-        ctrl.result_and_call(outcome="+11", sit_raw="d 3&7 4 verts", side="defense")
         rows = db.get_session_snaps("m1")
-        self.assertEqual([r["concept_seen"] for r in rows], ["Four Verticals", "Four Verticals", "Four Verticals"])
-        self.assertTrue(all(r["macro"] == "none" for r in rows))
+        self.assertEqual([r["concept_seen"] for r in rows], ["Four Verticals", "Four Verticals"])
+        # The first call had no look. The second printed a SUGGEST, and that id is the snap column.
+        self.assertEqual(rows[0]["macro"], "none")
+        self.assertEqual(rows[1]["macro"], "SAFE DEEP")
         live = ctrl.call_only("d 2&6 showing 4 verts", side="defense")
         self.assertIn("SAFE DEEP", live["call_text"], live["call_text"])
         self.assertIn("LB → SAFE DEEP", live["call_text"])
         self.assertNotIn("SUGGEST", live["call_text"])
-        self.assertEqual(len(db.get_session_snaps("m1")), 3)
+        self.assertEqual(len(db.get_session_snaps("m1")), 2)
         logged = ctrl.result_and_call(outcome="+7", sit_raw="d 1&10", side="defense")
         self.assertTrue(logged["ok"], logged)
         self.assertEqual(db.get_session_snaps("m1")[-1]["macro"], "SAFE DEEP")

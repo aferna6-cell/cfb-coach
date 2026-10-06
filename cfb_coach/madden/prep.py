@@ -117,7 +117,7 @@ def call_tips(opp: dict[str, Any], *, offense_only: bool, bl: dict[str, Any]) ->
     lean = archetype_lean(opp.get("archetype"))
     tips: list[str] = []
     if offense_only:
-        tips.append("CPU game = offense-only coaching (no D calls / no D macros)")
+        tips.append("CPU game = offense coaching (8 offense macros; no D calls / no D macros)")
     tips.append(f"O: {lean.get('offense', '')}")
     if not offense_only:
         tips.append(f"D: {lean.get('defense', '')}")
@@ -248,7 +248,8 @@ def build_prep_plan(
     applied = get_applied_deltas(db, opponent_id)
     shown = book_deltas + filter_new_deltas(proposed, applied)
 
-    # 3) User games: 8 offense + 8 defense Custom Adjustments. CPU: neither (adjustments only).
+    # 3) User games: 8 offense + 8 defense Custom Adjustments.
+    #    CPU: the same 8 offense macros; defense macros stay off.
     from cfb_coach.madden import research_db as rdb
     from cfb_coach.madden.adjustments import controls_table, offense_plan
     from cfb_coach.madden.macro_pool import pool_macro
@@ -270,7 +271,7 @@ def build_prep_plan(
         opponent_id, db=db, archetype=arch, scout=scout, offense_only=offense_only,
         previous=(stored.get("defense") or []) + legacy_picks(db, opponent_id),
         previous_offense=stored.get("offense") or [],
-        offense_book=None if offense_only else o_forms,
+        offense_book=o_forms,
     )
     selection = {"offense": list(pick["offense"]), "defense": list(pick["defense"])}
     rows = {r["id"]: r for r in pick["ranked"]}
@@ -293,7 +294,7 @@ def build_prep_plan(
     missing = missing_settings_report(active_after)
     n_o, n_d = len(selection["offense"]), len(selection["defense"])
     if offense_only:
-        meter = "Offense: adjustments (CPU — offense only)"
+        meter = f"{n_o} offense Custom Adjustments (CPU — defense off, offense only)"
     else:
         meter = f"{n_o} offense + {n_d} defense Custom Adjustments"
     loadout = {"meter": meter, "total": n_o + n_d, "offense": selection["offense"],
@@ -435,14 +436,20 @@ def mark_applied(db: Any, opponent_id: str, deltas: list[dict[str, Any]]) -> Non
 def _format_custom_adjustments(plan: dict[str, Any]) -> list[str]:
     """The headline: Custom Adjustment macros, never play calls."""
     sel = plan.get("macro_selection") or {}
-    if plan.get("offense_only"):
-        return ["## Custom Adjustments: N/A — offense only (CPU; adjustments, not macros)"]
     n_o, n_d = len(sel.get("offense") or []), len(sel.get("defense") or [])
-    lines = [
-        f"## Custom Adjustments — {n_o} offense + {n_d} defense",
-        "These are macros: Create & Share → Custom Adjustments, saved per side, LB in game.",
-        "A field with no cited value is Default. Plays below are only from the trimmed custom book.",
-    ]
+    if plan.get("offense_only"):
+        lines = [
+            f"## Custom Adjustments — {n_o} offense (CPU — defense off)",
+            "Offense macros use the same rules as a user game. Defense macros stay off.",
+            "These are macros: Create & Share → Custom Adjustments, saved per side, LB in game.",
+            "A field with no cited value is Default. Plays below are only from the trimmed custom book.",
+        ]
+    else:
+        lines = [
+            f"## Custom Adjustments — {n_o} offense + {n_d} defense",
+            "These are macros: Create & Share → Custom Adjustments, saved per side, LB in game.",
+            "A field with no cited value is Default. Plays below are only from the trimmed custom book.",
+        ]
     by_side = {"offense": [], "defense": []}
     for card in plan.get("macro_cards") or []:
         by_side.setdefault(card.get("side") or "", []).append(card)

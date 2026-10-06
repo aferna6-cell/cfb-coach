@@ -71,7 +71,9 @@ def _active_after_prep(db: CoachDB, oid: str, pid: str) -> dict[str, list[str]]:
 
 def _active_line(active: dict[str, list[str]], cpu: bool) -> str:
     if cpu:
-        return "Active macros (from last prep): none — CPU = offense only; offense calls carry adjustments"
+        o = ", ".join(active.get("offense") or []) or "none"
+        return (f"Active macros (from last prep): O {len(active.get('offense') or [])}: {o} | "
+                "D off (CPU)")
     o = ", ".join(active.get("offense") or []) or "none"
     d = ", ".join(active.get("defense") or []) or "none"
     return (f"Active macros (from last prep): O {len(active.get('offense') or [])}: {o} | "
@@ -156,7 +158,7 @@ def cmd_config(args: argparse.Namespace) -> int:
     print("  live macros: " + ("on" if macros_on else "off")
           + (" — play --game madden27 --no-macros turns off one session;"
              " config --macros turns them back on" if not macros_on else
-             " — only a confirmed live look, red zone, or clock/score; config --no-macros turns them off"))
+             " — a matching look, repeated tendency, or red zone / clock / score; config --no-macros turns them off"))
     if not cfg.get("primary_team"):
         print("  Set: config --game madden27 --primary-team \"Detroit Lions\"")
     return 0
@@ -248,7 +250,10 @@ def cmd_prep(args: argparse.Namespace) -> int:
         print(doctrine_line(profile_config(pid)["team"]))
         sel = plan.get("macro_selection") or {}
         if plan["offense_only"]:
-            print("Custom Adjustments: none (CPU — offense only).")
+            print(
+                f"Custom Adjustments: {len(sel.get('offense') or [])} offense "
+                "(CPU — defense off). Create & Share → Custom Adjustments, LB in game."
+            )
         else:
             print(
                 f"Custom Adjustments: {len(sel.get('offense') or [])} offense + "
@@ -257,7 +262,7 @@ def cmd_prep(args: argparse.Namespace) -> int:
         for warning in plan.get("playbook_warnings") or []:
             print(warning if str(warning).startswith("WARNING:") else f"WARNING: {warning}")
         if plan["offense_only"]:
-            print("CPU opponent — OFFENSE-ONLY prep (no D macros).")
+            print("CPU opponent — offense macros only (no D calls, no D macros).")
         if args.mark_applied:
             print(f"Marked proposed deltas applied for {oid}.")
         elif n == 0:
@@ -419,8 +424,8 @@ def cmd_play(args: argparse.Namespace) -> int:
     print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. Close early games stay neutral.")
     macros_on = _session_live_macros(args)
     if macros_on:
-        print("  Live macros: on. A call stays plain unless the look is on the field and already confirmed,")
-        print("  or the snap is red zone / two-minute / protecting a lead. --no-macros turns them off.")
+        print("  Live macros: on. A stored macro shows when its trigger matches (live look, repeated")
+        print("  tendency, red zone, two-minute, protecting a lead). --no-macros turns them off.")
     else:
         print("  Live macros: OFF. Plays still come out; no Custom Adjustment is suggested.")
 

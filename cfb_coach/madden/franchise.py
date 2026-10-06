@@ -236,9 +236,9 @@ def doctrine_line(team: str | None = None) -> str:
     who = f"primary team {team}" if team else "primary team TBD"
     return (
         f"Doctrine (Madden 27 Franchise): meta-grounded scheme pack, {who}. "
-        "One tell = log + mild bump. A live macro only when that look is on the field "
-        "and already confirmed, or the snap is red zone / two-minute / protecting a lead, "
-        "then not again for a few snaps. config --no-macros turns them off. "
-        "User games: 8 offense + 8 defense Custom Adjustments (LB); CPU = offense-only. "
+        "One tell = log + mild bump; targeted macro on a REPEATED tendency this game, "
+        "or when its when-to-fire matches the snap. config --no-macros turns live macros off. "
+        "User games: 8 offense + 8 defense Custom Adjustments (LB); "
+        "CPU = 8 offense macros, no defense macros. "
         "Most D snaps Nickel Over Cover 4 Quarters / Cover 3 Match / Tampa 2 with no macro (rush four, drop seven)."
     )

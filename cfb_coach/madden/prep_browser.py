@@ -235,17 +235,18 @@ def _render_controls(plan: dict[str, Any]) -> str:
 def _render_macro_groups(plan: dict[str, Any], *, details: bool = False) -> str:
     """8 offense + 8 defense Custom Adjustments. Each card is the editor settings and LB."""
     offense_only = bool(plan.get("offense_only"))
-    if offense_only:
-        return '<div class="empty">Custom Adjustments: <b>none — offense only</b> (CPU coaching)</div>'
     blocks = []
     for side, title in (("offense", "Offense"), ("defense", "Defense")):
         cards = [c for c in plan.get("macro_cards") or [] if c.get("side") == side]
-        items = "".join(
-            _render_ingame_card(c, f"copy-{side[0]}-" + "".join(ch if ch.isalnum() else "-" for ch in str(c.get("id"))),
-                                details=details)
-            for c in cards)
+        if not cards and offense_only and side == "defense":
+            items = "<div class='empty'>N/A — defense off (CPU)</div>"
+        else:
+            items = "".join(
+                _render_ingame_card(c, f"copy-{side[0]}-" + "".join(ch if ch.isalnum() else "-" for ch in str(c.get("id"))),
+                                    details=details)
+                for c in cards) or "<div class=empty>none</div>"
         blocks.append(f"<h3 class='macro-group' id='macros-{side}'>{title} ({len(cards)})</h3>"
-                      f"<div class='macro-list'>{items or '<div class=empty>none</div>'}</div>")
+                      f"<div class='macro-list'>{items}</div>")
     n_o = len([c for c in plan.get("macro_cards") or [] if c.get("side") == "offense"])
     n_d = len([c for c in plan.get("macro_cards") or [] if c.get("side") == "defense"])
     checklist = (
@@ -273,7 +274,8 @@ def render_prep_html(plan: dict[str, Any]) -> str:
                  if rstat else "")
     sel = plan.get("macro_selection") or {}
     if offense_only:
-        head = "Custom Adjustments — none (CPU, offense only)"
+        head = (f"Custom Adjustments — {len(sel.get('offense') or [])} offense "
+                "(CPU — defense off)")
     else:
         head = (f"Custom Adjustments — {len(sel.get('offense') or [])} offense + "
                 f"{len(sel.get('defense') or [])} defense")
@@ -379,7 +381,7 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
     patch_lis = "".join(f"<li>{_esc(p)}</li>" for p in plan.get("patch_notes") or [])
     tip_lis = "".join(f"<li>{_esc(t)}</li>" for t in plan.get("tips") or [])
     loadout_h = (
-        "Custom Adjustments — none (CPU, offense only)"
+        "Custom Adjustments — 8 offense (CPU — defense off) · click to expand · Copy recipe"
         if offense_only
         else "Custom Adjustments — 8 offense + 8 defense · click to expand · Copy recipe"
     )
