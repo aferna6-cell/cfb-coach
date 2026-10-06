@@ -3,6 +3,8 @@
 Same doctrine as CFB (symmetric O + D):
   - One tell = log + mild bump only; bare coverage/play name = previous snap.
   - Coverage-/concept-specific answers only on a REPEATED tendency (2+) this game.
+  - A stored Custom Adjustment also fires when its own when-to-fire matches this snap
+    (field, down, score/clock). A quiet snap stays a plain play call.
   - Default = base situational call (D&D, field, persona archetype prior).
   - PIVOT after 2 fails (user soft) / 3 fails (hard) on a side.
 CPU opponents are offense-only.
@@ -22,7 +24,7 @@ from cfb_coach.madden.data import (
     user_job_for,
 )
 from cfb_coach.madden.macro_pool import pool_macro as get_macro
-from cfb_coach.madden.macros import as_selection, best_for_family, tag_live
+from cfb_coach.madden.macros import LEARNED_SUPPRESS, LOADOUT_N, as_selection, best_for_family, load_selection, tag_live
 from cfb_coach.madden.situation import Situation, concept_family
 from cfb_coach.opponents import is_cpu_opponent
 from cfb_coach.tendency import describe_coverage_policy, is_repeated_coverage, is_user_opponent
@@ -335,8 +337,7 @@ def _pick_offense(
     book: dict[str, list[str]],
     audibles: dict[str, list[str]] | None = None,
 ) -> MaddenCall:
-    """Offense has no macros (v1.17): ``active`` is unused; the call may carry one adjustment."""
-    del active
+    """User games arm one stored offense Custom Adjustment when its fire rules match this snap."""
     from cfb_coach.madden.catalog import is_run
 
     og = bl["offense_gameplan"]
@@ -360,6 +361,40 @@ def _pick_offense(
                 bonus[fp] = round(bonus.get(fp, 0.0) + LIVE_COVERAGE_BONUS * (2.0 if repeated else 1.0), 3)
         answered_repeat = repeated and any(_in_book(a, book) for a in og["coverage_answers"].get(cls, []))
     scout_note = "" if cov else _scouted_coverage_bonus(sit, oid, db, og, pool, bonus)
+
+    weights: dict[str, float] = {}
+    if db is not None:
+        try:
+            weights = {str(r["macro"]).upper(): float(r["weight"] or 0.0) for r in db.get_macro_weights(oid)}
+        except Exception:  # noqa: BLE001
+            weights = {}
+    zone = "gl" if sit.goal_line else "rz" if sit.red_zone else "open"
+    score_phase = None
+    try:
+        from cfb_coach.game_score import classify
+
+        ctx = classify(sit)
+        score_phase = ctx.phase if ctx else None
+    except Exception:  # noqa: BLE001
+        score_phase = None
+    # Steer onto an in-book pair when a stored macro's when-to-fire already matches.
+    # No look and no field/clock trigger leaves the full pool alone.
+    try:
+        from cfb_coach.madden.offense_macros import situation_macro
+
+        steer = situation_macro(
+            zone=zone, coverage=cov, coverage_source=src, active=active, down=sit.down,
+            repeated=repeated, book=book, weights=weights, score_phase=score_phase, pool=pool,
+        )
+    except Exception:  # noqa: BLE001 — never break a call
+        steer = None
+    if steer:
+        allowed = set(steer["pairs"])
+        narrowed = [fp for fp in pool if fp in allowed]
+        if narrowed:
+            pool = narrowed
+        else:
+            steer = None
 
     ranker = _MaddenRanker(db, oid, "offense")
     rows = ranker.rank(sit, pool, bonus)
@@ -410,17 +445,33 @@ def _pick_offense(
 
     adj = "Hot ready" if cls == "pressure" and src == "live" else "No adj"
     adjustment = None
-    try:  # v1.17: offense uses no macros — one researched pre-snap adjustment when the look calls for it
-        from cfb_coach.madden.adjustments import offense_adjustment
+    macro = None
+    info = None
+    try:
+        from cfb_coach.madden.offense_macros import suggest_for_snap
 
-        adjustment = offense_adjustment(play=play, formation=form, coverage_class=cls, coverage_source=src,
-                                        repeated=repeated, audibles=audibles)
+        info = suggest_for_snap(zone=zone, play=play, coverage=cov, coverage_source=src, active=active,
+                                down=sit.down, repeated=repeated, book=book, weights=weights,
+                                score_phase=score_phase)
     except Exception:  # noqa: BLE001 — never break a call
-        adjustment = None
-    if adjustment:
-        adj = adjustment["label"]
-        rationale += f" | adj {adjustment['label']}: {adjustment['why']}"
-    return MaddenCall("offense", form, play, adj, reads_for(play), rationale, adjustment=adjustment)
+        info = None
+    if info:
+        macro = info["id"]
+        adj = "No adj"
+        rationale += f" | MACRO {info['name']}: {info['why']}"
+    else:
+        try:  # one researched pre-snap adjustment when no Custom Adjustment matches the look
+            from cfb_coach.madden.adjustments import offense_adjustment
+
+            adjustment = offense_adjustment(play=play, formation=form, coverage_class=cls, coverage_source=src,
+                                            repeated=repeated, audibles=audibles)
+        except Exception:  # noqa: BLE001 — never break a call
+            adjustment = None
+        if adjustment:
+            adj = adjustment["label"]
+            rationale += f" | adj {adjustment['label']}: {adjustment['why']}"
+    return MaddenCall("offense", form, play, adj, reads_for(play), rationale, macro=macro, macro_info=info,
+                      adjustment=adjustment)
 
 
 # ---------------------------------------------------------------------------
@@ -542,6 +593,53 @@ def _select_base_defense(
         return None
 
 
+def _situation_defense_macro(
+    sit: Situation,
+    active: list[str],
+    weights: dict[str, float],
+) -> tuple[str, str] | None:
+    """A stored defense Custom Adjustment whose when-text is this snap, or None.
+
+    Repeated concept families are handled by the caller and win over this.
+    Phrases that need an unobservable tell (holds the ball, roll direction,
+    every passing down) are not triggers, so a normal 3rd-and-long stays quiet.
+    """
+    import re
+
+    def ok(mid: str) -> bool:
+        w = weights.get(mid)
+        return mid in active and not (w is not None and w <= LEARNED_SUPPRESS)
+
+    def when(mid: str) -> str:
+        return str((get_macro(mid) or {}).get("when_to_arm") or "")
+
+    if sit.red_zone or sit.goal_line:
+        for mid in active:
+            if ok(mid) and re.search(r"inside the 20", when(mid), re.I):
+                return mid, "inside the 20"
+    phase = None
+    try:
+        from cfb_coach.game_score import classify
+
+        ctx = classify(sit)
+        phase = ctx.phase if ctx else None
+    except Exception:  # noqa: BLE001
+        phase = None
+    clock = bool(sit.two_minute)
+    lead = phase in ("protect", "prevent")
+    if not clock and not lead:
+        return None
+    for mid in active:
+        text = when(mid)
+        if not ok(mid):
+            continue
+        if clock and re.search(r"two[\s-]*minute", text, re.I):
+            return mid, "two-minute"
+        if lead and re.search(r"protecting a lead", text, re.I):
+            return mid, f"protecting a lead ({phase})"
+    return None
+
+
 def _pick_defense(
     sit: Situation,
     opp: dict[str, Any],
@@ -551,7 +649,7 @@ def _pick_defense(
     active: list[str],
     book: dict[str, list[str]],
 ) -> MaddenCall:
-    """``active`` = the DEFENSE 10 (prep rank order) — the only macros this call may arm."""
+    """``active`` = the defense Custom Adjustments (prep rank order) — the only D macros this call may arm."""
     oid = opp["_id"]
     picked = _select_base_defense(sit, oid, db, bl, rng, book)
     if picked is not None:
@@ -564,6 +662,7 @@ def _pick_defense(
         rationale += f" | {note}"
         user = user_job_for(play)
     macro: str | None = None
+    macro_why: str | None = None
     suggest: str | None = None
     d_adj: dict[str, Any] | None = None
 
@@ -575,8 +674,8 @@ def _pick_defense(
             weights = {str(r["macro"]).upper(): float(r["weight"] or 0.0) for r in db.get_macro_weights(oid)}
         except Exception:  # noqa: BLE001
             weights = {}
-    # v1.17: the family's best macro among the defense 10 (prep rank order); when none of the 10
-    # answers it, the research DB's best one is only named as a suggestion (re-prep to carry it)
+    # The family's best macro among the defense loadout (prep rank order). When none of them
+    # answers it, the research DB's best one is only named as a suggestion (re-prep to carry it).
     from cfb_coach.madden.macro_pool import pool_ids
 
     by_rank = sorted(pool_ids("defense"), key=lambda m: (get_macro(m) or {}).get("meta_rank", 99))
@@ -618,11 +717,11 @@ def _pick_defense(
                 user = (get_macro(fam_macro) or {}).get("user_job") or user_job_for(play)
                 rationale = f"REPEATED {fam} tendency ({concept}) — {play} + {fam_macro}"
             else:
-                suggest = f"{fam_macro} — repeated {concept} but not in your 10 D macros; re-prep to add it"
-                rationale += f" | REPEATED {concept} — {fam_macro} not in the defense 10"
+                suggest = f"{fam_macro} — repeated {concept} but not in your defense macros; re-prep to add it"
+                rationale += f" | REPEATED {concept} — {fam_macro} not in the defense macros"
                 d_adj = _d_adjustment(fam, concept)
         else:
-            rationale += f" | REPEATED {concept} — no macro in the defense 10 answers it"
+            rationale += f" | REPEATED {concept} — no defense macro answers it"
             d_adj = _d_adjustment(fam, concept)
 
     pivot = active_pivot(db, oid, "defense")
@@ -639,9 +738,24 @@ def _pick_defense(
             dg = bl["defense_gameplan"]
             form, play = dg["home_package"], rng.choice(list(dg["home_rotation"]))
             user = user_job_for(play)
-        macro, d_adj = None, None
+        macro, macro_why, d_adj = None, None, None
         rationale = f"{pivot} → {form}/{play} (new coverage family) | {rationale}"
         suggest = suggest or "macros cleared — re-arm only on repeated tendency"
+    elif macro is None:
+        hit = _situation_defense_macro(sit, active, weights)
+        if hit:
+            mid, why = hit
+            base_play = str(((get_macro(mid) or {}).get("base") or {}).get("play") or "")
+            single = bool(base_play) and "/" not in base_play and base_play.lower() != "any"
+            if single and base_play in {p for ps in book.values() for p in ps}:
+                holders = [f for f, ps in book.items() if base_play in ps]
+                home = bl["defense_gameplan"]["home_package"]
+                form, play = (home if home in holders else holders[0]), base_play
+            macro = mid
+            user = (get_macro(mid) or {}).get("user_job") or user_job_for(play)
+            macro_why = f"{why} — {play}"
+            d_adj = None
+            rationale += f" | {macro_why} + {macro}"
 
     fitted = _fit_defense(form, play, book, bl, rng)
     if fitted[:2] != (form, play):
@@ -655,7 +769,7 @@ def _pick_defense(
     if macro:
         from cfb_coach.madden.macros import macro_info
 
-        info = macro_info(macro, f"REPEATED {fam} tendency ({concept}) — {play}")
+        info = macro_info(macro, macro_why or f"REPEATED {fam} tendency ({concept}) — {play}")
     if suggest:
         head, _, rest = suggest.partition(" — ")
         if get_macro(head):
@@ -739,13 +853,16 @@ def make_call(
             opp = dict(prof)
     opp["_id"] = opponent_id
     rng = rng or random.Random()
-    # v1.17: 10 offense + 10 defense per opponent — each side only ever picks from its own list
+    # Each side only arms Custom Adjustments from its own list.
+    # Omitted active_macros reads the prep store (active_macros:<opp>) when one exists.
+    if active_macros is None and db is not None:
+        active_macros = load_selection(db, opponent_id)
     if active_macros:
         sel = as_selection(active_macros)
-    else:  # no prep yet: the research DB's top 10 by meta rank
+    else:  # no prep yet: research DB's top defense macros. Offense waits for a prep.
         from cfb_coach.madden.macro_pool import pool_ids
 
-        top = sorted(pool_ids("defense"), key=lambda m: (get_macro(m) or {}).get("meta_rank", 99))[:10]
+        top = sorted(pool_ids("defense"), key=lambda m: (get_macro(m) or {}).get("meta_rank", 99))[:LOADOUT_N]
         sel = {"offense": [], "defense": top}
 
     if last_coverage and not sit.coverage_hint:

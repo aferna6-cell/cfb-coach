@@ -23,7 +23,7 @@ from cfb_coach.madden.data import (
     load_seed,
 )
 from cfb_coach.madden.franchise import doctrine_line, get_session_profile, profile_config
-from cfb_coach.madden.macros import PER_SIDE
+from cfb_coach.madden.macros import LOADOUT_N
 from cfb_coach.opponents import is_cpu_opponent
 
 
@@ -248,8 +248,7 @@ def build_prep_plan(
     applied = get_applied_deltas(db, opponent_id)
     shown = book_deltas + filter_new_deltas(proposed, applied)
 
-    # 3) Defense: 10 research-built macros (research DB pulled this prep + live scout +
-    #    tendencies + learned weights). Offense: no macros — researched adjustments with buttons.
+    # 3) User games: 8 offense + 8 defense Custom Adjustments. CPU: neither (adjustments only).
     from cfb_coach.madden import research_db as rdb
     from cfb_coach.madden.adjustments import controls_table, offense_plan
     from cfb_coach.madden.macro_pool import pool_macro
@@ -262,15 +261,27 @@ def build_prep_plan(
         macro_status,
         missing_settings_report,
     )
+    from cfb_coach.madden.offense_macros import attach_detail as attach_offense
 
     rdb.load(pull=not offline)
-    prev = (load_selection(db, opponent_id) or {}).get("defense") or []
-    pick = select_loadout(opponent_id, db=db, archetype=arch, scout=scout, offense_only=offense_only,
-                          previous=prev + legacy_picks(db, opponent_id))
-    selection = {"offense": [], "defense": pick["defense"]}
+    stored = load_selection(db, opponent_id) or {}
+    o_forms = (books.get("offense") or {}).get("record", {}).get("formations")
+    pick = select_loadout(
+        opponent_id, db=db, archetype=arch, scout=scout, offense_only=offense_only,
+        previous=(stored.get("defense") or []) + legacy_picks(db, opponent_id),
+        previous_offense=stored.get("offense") or [],
+        offense_book=None if offense_only else o_forms,
+    )
+    selection = {"offense": list(pick["offense"]), "defense": list(pick["defense"])}
     rows = {r["id"]: r for r in pick["ranked"]}
+    o_rows = {r["id"]: r for r in pick.get("ranked_offense") or []}
     d_book = books.get("defense", {}).get("record", {}).get("formations")
     cards = []
+    for rank, mid in enumerate(selection["offense"], 1):
+        card = {"id": mid, "side": "offense", "slot": "active", "rank": rank,
+                "score": o_rows.get(mid, {}).get("score"), "why": o_rows.get(mid, {}).get("why", ""),
+                "validated_status": macro_status(mid, db)}
+        cards.append(attach_offense(card, o_forms))
     for rank, mid in enumerate(selection["defense"], 1):
         meta = pool_macro(mid) or {}
         card = {"id": mid, "name": meta.get("xbox_name") or mid, "side": "defense", "slot": "active",
@@ -280,10 +291,14 @@ def build_prep_plan(
         cards.append(attach_detail(card, d_book))
     active_after = list(selection["defense"])
     missing = missing_settings_report(active_after)
-    n_d = len(selection["defense"])
-    meter = "Offense: adjustments (CPU — offense only)" if offense_only else f"Defense {n_d} macros · offense: adjustments"
-    loadout = {"meter": meter, "total": n_d, "offense": [], "defense": selection["defense"], "per_side": PER_SIDE}
-    budget = {"meter": meter, "total": n_d, "cap": PER_SIDE, "at_cap": False}
+    n_o, n_d = len(selection["offense"]), len(selection["defense"])
+    if offense_only:
+        meter = "Offense: adjustments (CPU — offense only)"
+    else:
+        meter = f"{n_o} offense + {n_d} defense Custom Adjustments"
+    loadout = {"meter": meter, "total": n_o + n_d, "offense": selection["offense"],
+               "defense": selection["defense"], "per_side": LOADOUT_N}
+    budget = {"meter": meter, "total": n_o + n_d, "cap": LOADOUT_N, "at_cap": n_o >= LOADOUT_N and n_d >= LOADOUT_N}
     research_db_status = rdb.status()
 
     tips = call_tips(opp, offense_only=offense_only, bl=bl)
@@ -319,7 +334,7 @@ def build_prep_plan(
         "applied_count": len(applied),
         "tips": tips,
         "ts": datetime.now(timezone.utc).isoformat(),
-        "active_cap": PER_SIDE,
+        "active_cap": LOADOUT_N,
         "slot_budget": budget,
         "macro_cards": cards,
         "loadout": loadout,
@@ -417,6 +432,51 @@ def mark_applied(db: Any, opponent_id: str, deltas: list[dict[str, Any]]) -> Non
     db.save_install_sheet(opponent_id, sheet)
 
 
+def _format_custom_adjustments(plan: dict[str, Any]) -> list[str]:
+    """The headline: Custom Adjustment macros, never play calls."""
+    sel = plan.get("macro_selection") or {}
+    if plan.get("offense_only"):
+        return ["## Custom Adjustments: N/A — offense only (CPU; adjustments, not macros)"]
+    n_o, n_d = len(sel.get("offense") or []), len(sel.get("defense") or [])
+    lines = [
+        f"## Custom Adjustments — {n_o} offense + {n_d} defense",
+        "These are macros: Create & Share → Custom Adjustments, saved per side, LB in game.",
+        "A field with no cited value is Default. Plays below are only from the trimmed custom book.",
+    ]
+    by_side = {"offense": [], "defense": []}
+    for card in plan.get("macro_cards") or []:
+        by_side.setdefault(card.get("side") or "", []).append(card)
+    for side, title in (("offense", "OFFENSE"), ("defense", "DEFENSE")):
+        cards = by_side.get(side) or []
+        lines.append(f"### {title} ({len(cards)})")
+        for card in cards:
+            ing = card.get("ingame") or {}
+            name = ing.get("xbox_name") or card.get("name") or card.get("id")
+            lines.append(f"  {card.get('rank', 0):>2}. {name} [{card.get('validated_status')}] — {card.get('purpose') or ''}")
+            lines.append(f"      Fire when: {ing.get('fire_when') or card.get('when_to_arm') or ''}")
+            lines.append(f"      Buttons: {ing.get('buttons') or ''}")
+            if side == "offense":
+                for row in ing.get("settings") or []:
+                    label = row["setting"] if row["setting"] != row["section"] else row["section"]
+                    lines.append(f"      [ ] {label}: {row['value']}")
+                lines.append("      [ ] Everything else: Default")
+            else:
+                lines.append(f"      Settings: {ing.get('n_researched', 0)}/{ing.get('n_fields', 0)} fields from a "
+                             f"cited source, the rest Default — {ing.get('key')}")
+            pairs = ing.get("pairs_with") or []
+            if pairs:
+                lines.append("      Pairs with: " + ", ".join(pairs))
+            if ing.get("pair_note"):
+                lines.append(f"      {ing['pair_note']}")
+            if ing.get("gaps"):
+                lines.append("      Needs verification (not entered): " + "; ".join(ing["gaps"]))
+            if card.get("why"):
+                lines.append(f"      why: {card['why']}")
+    lines.append("## Copy checklist")
+    lines.extend("  " + ln for ln in (plan.get("copy_checklist") or "").splitlines())
+    return lines
+
+
 def _status_label(bp: dict[str, Any], oid: str) -> str:
     if bp.get("status") == "pending":
         return f"PENDING (build it, then prep --game madden27 -o {oid} --mark-applied; live calls use the last locked book)"
@@ -433,6 +493,7 @@ def format_delta_text(plan: dict[str, Any]) -> str:
     ]
     for warning in plan.get("playbook_warnings") or []:
         lines.append(warning if str(warning).startswith("WARNING:") else f"WARNING: {warning}")
+    lines.extend(_format_custom_adjustments(plan))
     from cfb_coach.madden.playbook import format_book
 
     rs = plan.get("research") or {}
@@ -467,24 +528,10 @@ def format_delta_text(plan: dict[str, Any]) -> str:
             lines.append(f"      {d.get('before') or '—'} → {d.get('after') or '—'}")
         if d.get("why"):
             lines.append(f"      why: {d['why']}")
-    from cfb_coach.madden.gameplan_macros import format_gameplan
-
-    lines.append(format_gameplan(plan.get("gameplan")))
     lines.append(f"## {(plan.get('research_db') or {}).get('line', '')}")
-    lines.append("## Offense adjustments (no macros) — called live only when the look calls for it")
+    lines.append("## Pre-snap adjustments (not macros) — only when no Custom Adjustment is armed")
     for a in plan.get("offense_adjustments") or []:
         lines.append(f"  - vs {a['vs']}: {a['label']} — {a['buttons']}  ({a['why']})")
-    if plan["offense_only"]:
-        lines.append("## Defense macros: N/A — offense only (CPU)")
-    else:
-        lines.append(f"## Defense macros — {plan['loadout']['meter']} (research-built settings)")
-        for c in plan["macro_cards"]:
-            ing = c.get("ingame") or {}
-            lines.append(f"   {c.get('rank', 0):>2}. {c['id']} [{c.get('validated_status')}] — {c.get('purpose', '')}")
-            lines.append(f"       fire: {ing.get('buttons')} · {ing.get('n_researched', 0)}/{ing.get('n_fields', 0)} "
-                         f"fields researched: {ing.get('key')}")
-        lines.append("## Copy checklist")
-        lines.extend("  " + ln for ln in (plan.get("copy_checklist") or "").splitlines())
     lines.append("## Full playbook (show)")
     for side in ("offense",) if plan["offense_only"] else ("offense", "defense"):
         lines.extend("  " + ln for ln in format_book(plan["playbook"][side]["record"]).splitlines())

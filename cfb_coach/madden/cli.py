@@ -57,8 +57,7 @@ def _profile_header(pid: str) -> str:
 
 
 def _active_after_prep(db: CoachDB, oid: str, pid: str) -> dict[str, list[str]]:
-    """The defense 10 for live calls = what the last prep for this opponent picked, else a
-    no-live-research pick from the same ranking. Offense has no macros (adjustments)."""
+    """Custom Adjustments from the last prep. Without one, rank defense only (no offense book yet)."""
     from cfb_coach.madden.macro_select import select_loadout
     from cfb_coach.madden.macros import legacy_picks, load_selection
 
@@ -69,14 +68,16 @@ def _active_after_prep(db: CoachDB, oid: str, pid: str) -> dict[str, list[str]]:
     prof = db.get_opponent(oid) or {}
     pick = select_loadout(oid, db=db, archetype=prof.get("archetype") or "", offense_only=is_cpu_opponent(oid),
                           previous=legacy_picks(db, oid))
-    return {"offense": [], "defense": pick["defense"]}
+    return {"offense": list(pick["offense"]), "defense": list(pick["defense"])}
 
 
 def _active_line(active: dict[str, list[str]], cpu: bool) -> str:
     if cpu:
         return "Active macros (from last prep): none — CPU = offense only; offense calls carry adjustments"
+    o = ", ".join(active.get("offense") or []) or "none"
     d = ", ".join(active.get("defense") or []) or "none"
-    return f"Active macros (from last prep): D {len(active.get('defense') or [])}: {d} | offense: adjustments"
+    return (f"Active macros (from last prep): O {len(active.get('offense') or [])}: {o} | "
+            f"D {len(active.get('defense') or [])}: {d}")
 
 
 # ---------------------------------------------------------------------------
@@ -225,11 +226,14 @@ def cmd_prep(args: argparse.Namespace) -> int:
                 print(f"  BUILD CUSTOM {side.upper()} BOOK — {len(bp['checklist'])} formations (see browser / playbook --game madden27)")
         print(_profile_header(pid))
         print(doctrine_line(profile_config(pid)["team"]))
-        gp = plan.get("gameplan") or {}
-        print(
-            f"Game plan: {len(gp.get('offense') or [])} offense + "
-            f"{len(gp.get('defense') or [])} defense call packages (custom book)."
-        )
+        sel = plan.get("macro_selection") or {}
+        if plan["offense_only"]:
+            print("Custom Adjustments: none (CPU — offense only).")
+        else:
+            print(
+                f"Custom Adjustments: {len(sel.get('offense') or [])} offense + "
+                f"{len(sel.get('defense') or [])} defense (Create & Share → Custom Adjustments, LB in game)."
+            )
         for warning in plan.get("playbook_warnings") or []:
             print(warning if str(warning).startswith("WARNING:") else f"WARNING: {warning}")
         if plan["offense_only"]:

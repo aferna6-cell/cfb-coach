@@ -21,7 +21,7 @@ from cfb_coach.madden.franchise import (
     resolve_nfl_team,
     save_config,
 )
-from cfb_coach.madden.macros import PER_SIDE, USER_ACTIVE_CAP
+from cfb_coach.madden.macros import LOADOUT_N, USER_ACTIVE_CAP
 from cfb_coach.madden.playcaller import make_call
 from cfb_coach.madden.prep import build_prep_plan
 from cfb_coach.madden.prep_browser import render_prep_html
@@ -210,15 +210,16 @@ class TestMaddenPlaycaller(_Isolated):
         try:
             one = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
             self.assertIsNone(one.macro)
-            # v1.17: defense macros come from the research DB — the vertical answer is QTRS OVERTOP
-            self.assertIn("QTRS OVERTOP", one.suggest_macro or "")
+            # No prep yet: the default 8. QTRS OVERTOP (meta #9, primary verts answer) is outside it,
+            # so the verts suggestion is the best macro inside the 8 (SAFE DEEP also answers vert).
+            self.assertIn("SAFE DEEP", one.suggest_macro or "")
             for _ in range(2):
                 db.log_snap(opponent_id="gavin", side="defense", situation_raw="d 2&6",
                             our_call="x", formation="Nickel Mug", play="Cover 4 Quarters",
                             result="+20", concept_seen="Four Verticals")
             rep = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
-            self.assertEqual(rep.macro, "QTRS OVERTOP")
-            self.assertIn("MACRO: QTRS OVERTOP — press LB → QTRS OVERTOP", rep.format())
+            self.assertEqual(rep.macro, "SAFE DEEP")
+            self.assertIn("MACRO: SAFE DEEP — press LB → SAFE DEEP", rep.format())
             prev = make_call(parse_madden_situation("d 2&6 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
             self.assertIsNone(prev.macro)  # previous-snap tell never arms (CFB parity)
         finally:
@@ -234,34 +235,39 @@ class TestMaddenPrep(_Isolated):
         self.assertEqual(plan["version"], "madden27-2026-09")
         self.assertEqual(plan["meta_scout"]["baseline_fallback"], "madden27-2026-09")
 
-    def test_user_prep_defense_ten_offense_adjustments_and_html(self) -> None:
-        # v1.17: 10 research-built defense macros; offense uses adjustments (no macros)
+    def test_user_prep_eight_custom_adjustments_and_html(self) -> None:
         plan = build_prep_plan("gavin", offline=True, persist=False)
         self.assertFalse(plan["offense_only"])
-        self.assertEqual(plan["loadout"]["total"], PER_SIDE)
-        self.assertEqual((len(plan["macro_selection"]["offense"]), len(plan["macro_selection"]["defense"])), (0, PER_SIDE))
+        self.assertEqual(plan["loadout"]["total"], LOADOUT_N * 2)
+        self.assertEqual((len(plan["macro_selection"]["offense"]), len(plan["macro_selection"]["defense"])),
+                         (LOADOUT_N, LOADOUT_N))
         self.assertTrue(plan["shown_deltas"])
         self.assertTrue(all(d["validated_status"] == "meta_grounded" for d in plan["shown_deltas"]))
-        html = render_prep_html(plan)  # minimal page: formations, audibles, adjustments, D formations, macros
+        html = render_prep_html(plan)
         self.assertIn("Formations — Offense: Buccaneers (custom book)", html)
         self.assertIn("Formations — Defense: 49ers (custom book)", html)
-        self.assertIn("Game plan — 8 offense + 8 defense", html)
+        self.assertIn("Custom Adjustments — 8 offense + 8 defense", html)
+        self.assertIn("Offense (8)</h3>", html)
+        self.assertIn("Defense (8)</h3>", html)
+        self.assertNotIn("Game plan — 8 offense + 8 defense", html)
+        self.assertNotIn(">CALL:", html)
         self.assertIn("Audibles (4 per formation)", html)
-        self.assertIn("Offense adjustments (no macros)", html)
+        self.assertIn("Pre-snap adjustments (not macros)", html)
         self.assertIn("Hot route WR1 → Slant", html)
-        self.assertIn("Y → tap the receiver", html)  # the hot-route buttons are on the page
-        self.assertIn("Defense macros (10)", html)
-        self.assertIn("Defense (10)</h3>", html)
-        self.assertIn("Copy checklist — defense 10", html)
+        self.assertIn("Y → tap the receiver", html)
+        self.assertIn("Copy checklist — 8 offense + 8 defense", html)
         self.assertIn("Research DB:", html)
-        self.assertNotIn("Show full playbook", html)  # details page only
+        self.assertNotIn("Show full playbook", html)
         self.assertIn("Madden 27 Franchise", html)
         self.assertNotIn("cfb27-2026-09", html)
+        self.assertIn("WR1", html)
+        self.assertIn("Everything else", html)
         from cfb_coach.madden.prep_browser import render_prep_details_html
 
         det = render_prep_details_html(plan)
         self.assertIn("Playbook of record", det)
         self.assertIn("Show full playbook", det)
+        self.assertIn("Call sheet — plays, not Custom Adjustments", det)
         self.assertIn("Research → book + formation pick", det)
         self.assertIn("Detroit Lions", det)
         self.assertIn("madden27-2026-09", det)
@@ -272,7 +278,8 @@ class TestMaddenPrep(_Isolated):
         # v1.17: macros are rebuilt from the research DB every prep — no hand ADD / swap deltas
         plan = build_prep_plan("quen", offline=True, persist=False, profile="lab")
         self.assertEqual([d for d in plan["shown_deltas"] if d["kind"] == "macro"], [])
-        self.assertEqual(len(plan["macro_selection"]["defense"]), PER_SIDE)
+        self.assertEqual(len(plan["macro_selection"]["defense"]), LOADOUT_N)
+        self.assertEqual(len(plan["macro_selection"]["offense"]), LOADOUT_N)
         self.assertEqual(plan["replacing_lines"], [])
 
     def test_thin_persona_saves_trimmed_plan_as_custom(self) -> None:
@@ -468,10 +475,13 @@ class TestMaddenCli(_Isolated):
         rc, out = self.run_cli(["prep", "--game", "madden27", "-o", "gavin", "--offline", "--text"])
         self.assertEqual(rc, 0)
         self.assertIn("Madden 27 Franchise", out)
-        self.assertIn("Defense 10 macros · offense: adjustments", out)
-        self.assertIn("## Game plan — 8 offense + 8 defense", out)
-        self.assertIn("CALL:", out)
-        self.assertIn("## Offense adjustments (no macros)", out)
+        self.assertIn("## Custom Adjustments — 8 offense + 8 defense", out)
+        self.assertNotIn("## Game plan — 8 offense + 8 defense", out)
+        self.assertNotIn("CALL:", out)
+        self.assertIn("### OFFENSE (8)", out)
+        self.assertIn("### DEFENSE (8)", out)
+        self.assertIn("Everything else: Default", out)
+        self.assertIn("## Pre-snap adjustments (not macros)", out)
         self.assertIn("## Copy checklist", out)
         rc, out = self.run_cli(["prep", "--game", "madden27", "-o", "cpu", "--offline", "--text"])
         self.assertIn("N/A — offense only", out)

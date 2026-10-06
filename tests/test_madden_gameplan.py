@@ -1,11 +1,11 @@
-"""Madden prep game plan: trimmed custom book, 8+8 call packages, opponent tailoring."""
+"""Madden user-game prep: 8+8 Custom Adjustments on the trimmed custom book."""
 
 from __future__ import annotations
 
 import json
 
 from cfb_coach.madden.gameplan_macros import build_gameplan
-from cfb_coach.madden.macros import load_gameplan, load_selection
+from cfb_coach.madden.macros import load_selection
 from cfb_coach.madden.prep import build_prep_plan, format_delta_text
 from tests.test_madden27 import _Isolated
 
@@ -29,28 +29,72 @@ class TestCustomGameplan(_Isolated):
         self.assertEqual(plan["playbook"]["defense"]["status"], "applied")
         self.assertFalse(plan["playbook_warnings"])
 
-    def test_eight_and_eight_only_use_custom_book_plays(self) -> None:
+    def test_eight_and_eight_custom_adjustments_pair_with_the_book(self) -> None:
         plan = build_prep_plan("james", offline=True, persist=False)
-        gp = plan["gameplan"]
-        self.assertEqual(len(gp["offense"]), 8)
-        self.assertEqual(len(gp["defense"]), 8)
-        self.assertEqual(len({m["id"] for m in gp["offense"]}), 8)
-        self.assertEqual(len({m["id"] for m in gp["defense"]}), 8)
-        situations = {m["situation"] for m in gp["offense"]}
-        self.assertTrue({"opener", "3rd_short", "3rd_long", "red_zone", "two_minute", "vs_blitz", "vs_run", "vs_pass"} <= situations)
+        sel = plan["macro_selection"]
+        self.assertEqual(len(sel["offense"]), 8)
+        self.assertEqual(len(sel["defense"]), 8)
         o_book = plan["playbook"]["offense"]["record"]["formations"]
         d_book = plan["playbook"]["defense"]["record"]["formations"]
-        o_ok, d_ok = _pairs(o_book), _pairs(d_book)
-        for m in gp["offense"]:
-            self.assertIn((m["formation"], m["play"]), o_ok, m)
-            self.assertTrue(m["when"] and m["read"] and m["counter"] and m["adjustments"])
-            self.assertIn("score", m["score_situation"].lower())
-        for m in gp["defense"]:
-            self.assertIn((m["formation"], m["play"]), d_ok, m)
+        o_plays = {p for plays in o_book.values() for p in plays}
+        d_plays = {p for plays in d_book.values() for p in plays}
+        man = next(c for c in plan["macro_cards"] if c["id"] == "MAN")
+        settings = {(r["setting"], r["value"]) for r in man["ingame"]["settings"]}
+        self.assertIn(("WR1", "deep cross"), settings)
+        self.assertIn(("WR2", "zig"), settings)
+        self.assertIn(("WR3", "short cross"), settings)
+        self.assertIn(("TE", "wheel"), settings)
+        self.assertIn(("HB", "Texas"), settings)
+        self.assertIn("Everything else: Default", man["copy_block"])
+        self.assertNotIn("Motion", man["copy_block"])
+        self.assertIn("LB → MAN", man["ingame"]["buttons"])
+        from cfb_coach.madden.research_db import editor_fields
+
+        known_fields = {(sec, name) for sec, names in (editor_fields().get("defense") or {}).items() for name in names}
+        for card in plan["macro_cards"]:
+            ing = card["ingame"]
+            self.assertTrue(ing["buttons"].startswith("LB"))
+            if card["side"] == "defense":
+                for row in ing["settings"]:
+                    if row.get("new_field"):
+                        self.assertNotEqual(row["source"], "default")
+                    else:
+                        self.assertIn((row["section"], row["setting"]), known_fields)
+                    if row["source"] == "default":
+                        self.assertEqual(row["value"], "Default")
+            book = o_book if card["side"] == "offense" else d_book
+            plays = o_plays if card["side"] == "offense" else d_plays
+            for pair in ing.get("pairs_with") or []:
+                if pair.endswith("(any call in this formation)"):
+                    self.assertIn(pair.split(" (", 1)[0], book)
+                    continue
+                play, _, rest = pair.partition(" (")
+                self.assertIn(play, plays, card["id"])
+                self.assertTrue(rest.endswith(")"))
         text = format_delta_text(plan)
-        self.assertIn("## Game plan — 8 offense + 8 defense", text)
-        self.assertIn("CALL:", text)
+        self.assertTrue(text.split("## Research", 1)[0].count("## Custom Adjustments — 8 offense + 8 defense") == 1)
+        self.assertNotIn("## Game plan", text)
+        self.assertNotIn("CALL:", text)
+        self.assertIn("WR1: deep cross", text)
         self.assertNotIn("WARNING:", text)
+        from cfb_coach.madden.offense_macros import suggest_for_snap
+
+        armed = suggest_for_snap(
+            zone="open", play="Mesh", coverage="Cover 1", coverage_source="live",
+            active=sel["offense"], book=o_book,
+        )
+        self.assertIsNotNone(armed)
+        self.assertEqual(armed["id"], "MAN")
+        self.assertIn("LB → MAN", armed["buttons"])
+        self.assertIsNone(suggest_for_snap(
+            zone="open", play="Mesh", coverage="Cover 1", coverage_source="last",
+            active=sel["offense"], book=o_book,
+        ))
+        # the call sheet still exists for the details page, and still stays inside the book
+        for m in plan["gameplan"]["offense"]:
+            self.assertIn((m["formation"], m["play"]), _pairs(o_book))
+        for m in plan["gameplan"]["defense"]:
+            self.assertIn((m["formation"], m["play"]), _pairs(d_book))
 
     def test_stock_pin_warns_and_still_stays_inside_that_book(self) -> None:
         plan = build_prep_plan("james", offline=True, persist=False, o_book="stock:Buccaneers", d_book="stock:49ers")
@@ -83,15 +127,16 @@ class TestCustomGameplan(_Isolated):
             plan = build_prep_plan("james", db=db, offline=True)
             raw = json.loads(db.get_meta("active_macros:james"))
             self.assertEqual(raw["schema"], 2)
+            self.assertEqual(raw["offense"], plan["macro_selection"]["offense"])
+            self.assertEqual(raw["defense"], plan["macro_selection"]["defense"])
+            self.assertNotIn("packages", raw)
             self.assertEqual(len(raw["offense"]), 8)
             self.assertEqual(len(raw["defense"]), 8)
-            self.assertEqual(len(raw["research_defense"]), 10)
-            stored = load_gameplan(db, "james")
-            self.assertEqual([m["id"] for m in stored["offense"]], raw["offense"])
-            self.assertEqual(load_selection(db, "james")["defense"], plan["macro_selection"]["defense"])
-            for m in stored["offense"] + stored["defense"]:
-                book = plan["playbook"][m["side"]]["record"]["formations"]
-                self.assertIn(m["play"], book[m["formation"]])
+            self.assertIn("MAN", raw["offense"])
+            self.assertTrue(all(" " in mid or mid.isupper() for mid in raw["defense"]))
+            stored = load_selection(db, "james")
+            self.assertEqual(stored["offense"], raw["offense"])
+            self.assertEqual(stored["defense"], raw["defense"])
         finally:
             db.close()
 
@@ -111,15 +156,62 @@ class TestCustomGameplan(_Isolated):
                 )
             plan = build_prep_plan("james", db=db, offline=True, opp_team="Minnesota Vikings")
             self.assertEqual(plan["team"], "Minnesota Vikings")
-            note = plan["gameplan"]["opponent_note"]
-            self.assertIn("Vikings", note)
-            self.assertIn("Four Verticals", note)
-            self.assertIn("Cover 3", note)
-            blob = json.dumps(plan["gameplan"])
-            self.assertIn("Four Verticals", blob)
-            self.assertIn("Vikings", blob)
+            self.assertIn("QTRS OVERTOP", plan["macro_selection"]["defense"])
+            c3 = next(c for c in plan["macro_cards"] if c["id"] == "C3")
+            self.assertIn("logged coverage", c3["why"])
+            bare = build_prep_plan("ryan", offline=True, persist=False)
+            self.assertLess(
+                next(c["rank"] for c in plan["macro_cards"] if c["id"] == "C3"),
+                next(c["rank"] for c in bare["macro_cards"] if c["id"] == "C3"),
+            )
+            quen = build_prep_plan("quen", offline=True, persist=False)
+            self.assertIn("O-HEAT", quen["macro_selection"]["offense"])
+            self.assertNotIn("O-HEAT", plan["macro_selection"]["offense"])
             prof = db.get_opponent("james")
             self.assertEqual(prof["nfl_team"], "Minnesota Vikings")
+        finally:
+            db.close()
+
+    def test_live_call_fires_a_stored_macro_only_when_its_trigger_matches(self) -> None:
+        import random
+
+        from cfb_coach.madden.playcaller import make_call
+        from cfb_coach.madden.situation import parse_madden_situation
+
+        db = self.madden_db()
+        try:
+            plan = build_prep_plan("james", db=db, offline=True)
+            self.assertIn("MAN", plan["macro_selection"]["offense"])
+            self.assertIn("RZ COVER 2", plan["macro_selection"]["defense"])
+            self.assertIn("SAFE DEEP", plan["macro_selection"]["defense"])
+            book = plan["playbook"]["offense"]["record"]["formations"]
+
+            off = make_call(parse_madden_situation("1&10 showing cover 1"), "james", db, rng=random.Random(1))
+            self.assertEqual(off.macro, "MAN")
+            self.assertIn("MACRO: MAN", off.headline())
+            self.assertIn("LB → MAN", off.format())
+            self.assertIn(off.play, book[off.formation])
+
+            quiet_o = make_call(parse_madden_situation("1&10"), "james", db, rng=random.Random(1))
+            self.assertIsNone(quiet_o.macro)
+            self.assertNotIn("MACRO:", quiet_o.headline())
+            quiet_d = make_call(parse_madden_situation("d 1&10"), "james", db, rng=random.Random(1))
+            self.assertIsNone(quiet_d.macro)
+            self.assertNotIn("MACRO:", quiet_d.headline())
+
+            de = make_call(parse_madden_situation("d 1&10 opp 15"), "james", db, rng=random.Random(1))
+            self.assertEqual(de.macro, "RZ COVER 2")
+            self.assertIn("MACRO: RZ COVER 2", de.headline())
+            self.assertIn("LB → RZ COVER 2", de.format())
+            dbook = plan["playbook"]["defense"]["record"]["formations"]
+            self.assertIn(de.play, dbook[de.formation])
+
+            lead = make_call(
+                parse_madden_situation("d 1&10 score 24-10 q4"), "james", db, rng=random.Random(1),
+            )
+            self.assertEqual(lead.macro, "SAFE DEEP")
+            self.assertIn("LB → SAFE DEEP", lead.format())
+            self.assertIn(lead.play, dbook[lead.formation])
         finally:
             db.close()
 
