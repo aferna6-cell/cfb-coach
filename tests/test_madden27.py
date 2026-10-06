@@ -210,18 +210,29 @@ class TestMaddenPlaycaller(_Isolated):
         try:
             one = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
             self.assertIsNone(one.macro)
-            # No prep yet: the default 8. QTRS OVERTOP (meta #9, primary verts answer) is outside it,
-            # so the verts suggestion is the best macro inside the 8 (SAFE DEEP also answers vert).
-            self.assertIn("SAFE DEEP", one.suggest_macro or "")
+            self.assertIsNone(one.suggest_macro)
+            self.assertNotIn("SUGGEST", one.format())
             for _ in range(2):
                 db.log_snap(opponent_id="gavin", side="defense", situation_raw="d 2&6",
-                            our_call="x", formation="Nickel Mug", play="Cover 4 Quarters",
-                            result="+20", concept_seen="Four Verticals")
+                            our_call="x", formation="Nickel Over", play="Cover 4 Quarters",
+                            result="+20", concept_seen="Four Verticals", macro="none")
+            early = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
+            self.assertIsNone(early.macro)
+            self.assertIsNone(early.suggest_macro)
+            db.log_snap(opponent_id="gavin", side="defense", situation_raw="d 2&6",
+                        our_call="x", formation="Nickel Over", play="Cover 4 Quarters",
+                        result="+20", concept_seen="Four Verticals", macro="none")
+            # No prep yet: the default 8. QTRS OVERTOP (meta #9, primary verts answer) is outside it,
+            # so the verts macro inside the 8 is SAFE DEEP.
             rep = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
             self.assertEqual(rep.macro, "SAFE DEEP")
             self.assertIn("MACRO: SAFE DEEP — press LB → SAFE DEEP", rep.format())
-            prev = make_call(parse_madden_situation("d 2&6 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
-            self.assertIsNone(prev.macro)  # previous-snap tell never arms (CFB parity)
+            db.log_snap(opponent_id="gavin", side="defense", situation_raw="d 2&6 showing 4 verts",
+                        our_call=rep.format(), formation=rep.formation, play=rep.play,
+                        result="+8", concept_seen="Four Verticals", macro=rep.macro)
+            cooled = make_call(parse_madden_situation("d 1&10 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
+            self.assertIsNone(cooled.macro)
+            self.assertNotIn("MACRO:", cooled.format())
         finally:
             db.close()
 
@@ -440,6 +451,34 @@ class TestPrimaryTeamConfig(_Isolated):
         self.assertIn("matches primary team", plan["playbook"]["offense"]["reason"])
         cfg, _ = save_config(clear_primary=True)
         self.assertIsNone(cfg["primary_team"])
+
+    def test_config_no_macros_sticks_and_the_play_flag_overrides(self) -> None:
+        rc, out = self.run_cli(["config", "--game", "madden27", "--no-macros"])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("live macros: off", out)
+        self.assertFalse(load_config()["live_macros"])
+        self.run_cli(["prep", "--game", "madden27", "-o", "james", "--offline", "--text"])
+        rc, off = self.run_cli(
+            ["play", "--game", "madden27", "-o", "james", "--once", "d 1&10 opp 15", "--no-overlay"],
+        )
+        self.assertEqual(rc, 0, off)
+        self.assertNotIn("MACRO:", off)
+        self.assertIn("Live macros: OFF", off)
+        rc, out = self.run_cli(["config", "--game", "madden27", "--macros"])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("live macros: on", out)
+        rc, on = self.run_cli(
+            ["play", "--game", "madden27", "-o", "james", "--once", "d 1&10 opp 15", "--no-overlay"],
+        )
+        self.assertEqual(rc, 0, on)
+        self.assertIn("MACRO: RZ COVER 2", on)
+        rc, forced = self.run_cli(
+            ["play", "--game", "madden27", "-o", "james", "--once", "d 1&10 opp 15",
+             "--no-macros", "--no-overlay"],
+        )
+        self.assertEqual(rc, 0, forced)
+        self.assertNotIn("MACRO:", forced)
+        self.assertTrue(load_config()["live_macros"])
 
     def test_team_resolution_and_env_override(self) -> None:
         self.assertEqual(resolve_nfl_team("49ers"), ("San Francisco 49ers", True))

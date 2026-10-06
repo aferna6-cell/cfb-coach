@@ -433,6 +433,7 @@ def suggest_for_snap(
             "id": mid,
             "name": det["xbox_name"],
             "side": "offense",
+            "kind": "situation" if not want else "look",
             "why": f"{trig} on {play}",
             "key": det["key"],
             "buttons": det["buttons"],

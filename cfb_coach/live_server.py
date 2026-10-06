@@ -233,13 +233,11 @@ class LivePlayController:
         }
 
     def _macro_of(self, call: Any) -> str | None:
+        from cfb_coach.last_snap import shown_macro
+
         if call is None:
             return None
-        if getattr(call, "macro", None):
-            return call.macro
-        if getattr(call, "side", "") == "defense":
-            return getattr(call, "adj_or_macro", None)
-        return None
+        return shown_macro(call)
 
     def _book(self):
         from cfb_coach.last_snap import LastSnapBook

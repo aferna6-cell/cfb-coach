@@ -901,6 +901,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Classic terminal sit> loop instead of the HTML live window (default: HTML ON)",
     )
     p_play.add_argument(
+        "--no-macros",
+        dest="no_macros",
+        action="store_true",
+        help="Madden only: this session suggests no Custom Adjustment (the play call is unchanged). "
+             "config --game madden27 --no-macros keeps them off.",
+    )
+    p_play.add_argument(
         "--html-port",
         type=int,
         default=None,
@@ -948,6 +955,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_call.add_argument("--situation", "-s", required=True)
     p_call.add_argument("--side", choices=("offense", "defense"), default=None)
     p_call.add_argument("--why", action="store_true")
+    p_call.add_argument(
+        "--no-macros",
+        dest="no_macros",
+        action="store_true",
+        help="Madden only: suggest no Custom Adjustment on this call.",
+    )
     p_call.add_argument(
         "--score",
         default=None,
@@ -1000,6 +1013,10 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Default offense book for every prep (auto = research picks; start stock:Buccaneers)")
     p_cfg.add_argument("--d-book", dest="d_book", default=None, metavar="auto|custom|stock:NAME",
                        help="Default defense book for every prep (auto = research picks; start stock:49ers)")
+    p_cfg.add_argument("--no-macros", dest="no_macros", action="store_true",
+                       help="Turn live Custom Adjustment suggestions off until --macros")
+    p_cfg.add_argument("--macros", dest="macros", action="store_true",
+                       help="Turn live Custom Adjustment suggestions back on (still rare)")
     p_cfg.set_defaults(func=cmd_config)
 
     p_ms = sub.add_parser(
