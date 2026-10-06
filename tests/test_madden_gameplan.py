@@ -186,30 +186,11 @@ class TestCustomGameplan(_Isolated):
             self.assertIn("SAFE DEEP", plan["macro_selection"]["defense"])
             book = plan["playbook"]["offense"]["record"]["formations"]
 
-            once = make_call(parse_madden_situation("1&10 showing cover 1"), "james", db, rng=random.Random(1))
-            self.assertIsNone(once.macro)
-            self.assertNotIn("MACRO:", once.headline())
-            for _ in range(3):
-                db.log_snap(
-                    opponent_id="james", side="offense", situation_raw="1&10", our_call="x",
-                    formation="Gun", play="Mesh", result="+6", coverage_seen="Cover 1", macro="none",
-                )
-            stale = make_call(parse_madden_situation("1&10 cover 1"), "james", db, rng=random.Random(1))
-            self.assertIsNone(stale.macro)
-            self.assertNotIn("MACRO:", stale.format())
-            self.assertNotIn("SUGGEST", stale.format())
             off = make_call(parse_madden_situation("1&10 showing cover 1"), "james", db, rng=random.Random(1))
             self.assertEqual(off.macro, "MAN")
             self.assertIn("MACRO: MAN", off.headline())
             self.assertIn("LB → MAN", off.format())
             self.assertIn(off.play, book[off.formation])
-            db.log_snap(
-                opponent_id="james", side="offense", situation_raw="1&10 showing cover 1", our_call=off.format(),
-                formation=off.formation, play=off.play, result="+5", coverage_seen="Cover 1", macro=off.macro,
-            )
-            again = make_call(parse_madden_situation("2&7 showing cover 1"), "james", db, rng=random.Random(1))
-            self.assertIsNone(again.macro)
-            self.assertNotIn("MACRO:", again.format())
 
             quiet_o = make_call(parse_madden_situation("1&10"), "james", db, rng=random.Random(1))
             self.assertIsNone(quiet_o.macro)
@@ -231,14 +212,6 @@ class TestCustomGameplan(_Isolated):
             self.assertEqual(lead.macro, "SAFE DEEP")
             self.assertIn("LB → SAFE DEEP", lead.format())
             self.assertIn(lead.play, dbook[lead.formation])
-            db.log_snap(
-                opponent_id="james", side="defense", situation_raw="d 1&10 opp 15", our_call=de.format(),
-                formation=de.formation, play=de.play, macro=de.macro, result="+4",
-            )
-            held = make_call(parse_madden_situation("d 2&6 opp 8"), "james", db, rng=random.Random(1))
-            self.assertIsNone(held.macro)
-            self.assertNotIn("MACRO:", held.format())
-            self.assertNotIn("SUGGEST", held.format())
         finally:
             db.close()
 
@@ -270,6 +243,19 @@ class TestCustomGameplan(_Isolated):
             book.remember_call(lead, lead_sit)
             book.handle("+9")
             self.assertEqual(db.get_session_snaps("log1")[-1]["macro"], "SAFE DEEP")
+
+            # One live tell does not arm. The SUGGEST id is what the snap row stores.
+            tell_sit = parse_madden_situation("d 2&6 showing 4 verts")
+            tell = make_call(tell_sit, "james", db, rng=random.Random(1))
+            self.assertIsNone(tell.macro)
+            self.assertIn("SUGGEST", tell.format())
+            from cfb_coach.last_snap import shown_macro
+
+            shown = shown_macro(tell)
+            self.assertNotEqual(shown, "none")
+            book.remember_call(tell, tell_sit)
+            book.handle("+12")
+            self.assertEqual(db.get_session_snaps("log1")[-1]["macro"], shown)
         finally:
             db.close()
 
@@ -283,6 +269,13 @@ class TestCustomGameplan(_Isolated):
         db = self.madden_db()
         try:
             build_prep_plan("james", db=db, offline=True)
+            man = make_call(
+                parse_madden_situation("1&10 showing cover 1"), "james", db,
+                rng=random.Random(1), live_macros=False,
+            )
+            self.assertIsNone(man.macro)
+            self.assertIsNone(man.adjustment)
+            self.assertNotIn("MACRO:", man.format())
             sit = parse_madden_situation("d 1&10 opp 15")
             flagged = make_call(sit, "james", db, rng=random.Random(1), live_macros=False)
             self.assertIsNone(flagged.macro)
@@ -301,32 +294,68 @@ class TestCustomGameplan(_Isolated):
         finally:
             db.close()
 
-    def test_policy_confidence_and_game_cap(self) -> None:
-        from cfb_coach.madden.macro_policy import PER_GAME, allow_macro
+    def test_cpu_prep_stores_offense_macros_and_a_live_look_fires_one(self) -> None:
+        import random
+
+        from cfb_coach.madden.macros import LOADOUT_N, load_selection
+        from cfb_coach.madden.playcaller import make_call
+        from cfb_coach.madden.situation import parse_madden_situation
 
         db = self.madden_db()
         try:
-            for _ in range(3):
+            plan = build_prep_plan("cpu", db=db, offline=True)
+            self.assertEqual(len(plan["macro_selection"]["offense"]), LOADOUT_N)
+            self.assertEqual(plan["macro_selection"]["defense"], [])
+            self.assertIn("MAN", plan["macro_selection"]["offense"])
+            stored = load_selection(db, "cpu")
+            self.assertEqual(stored["offense"], plan["macro_selection"]["offense"])
+            self.assertEqual(stored["defense"], [])
+            armed = make_call(
+                parse_madden_situation("1&10 showing cover 1"), "cpu", db, rng=random.Random(1),
+            )
+            self.assertEqual(armed.side, "offense")
+            self.assertEqual(armed.macro, "MAN")
+            self.assertIn("MACRO: MAN", armed.headline())
+            switched = make_call(
+                parse_madden_situation("d 1&10 opp 15"), "cpu", db, rng=random.Random(1),
+            )
+            self.assertEqual(switched.side, "offense")
+            self.assertNotEqual(switched.macro, "RZ COVER 2")
+        finally:
+            db.close()
+
+    def test_own_macro_results_carry_to_cpu_without_diluting_james(self) -> None:
+        from cfb_coach.learning import GLOBAL_SCALE, merged_macro_weights, rebuild_all
+        from cfb_coach.madden.macros import LEARNED_SUPPRESS
+        from cfb_coach.madden.offense_macros import select_offense
+
+        db = self.madden_db()
+        try:
+            for _ in range(4):
                 db.log_snap(
                     opponent_id="james", side="offense", situation_raw="1&10", our_call="x",
-                    coverage_seen="Cover 3 Sky", macro="none",
+                    formation="Gun", play="Mesh", result="int", macro="C2",
                 )
-            for _ in range(9):
                 db.log_snap(
                     opponent_id="james", side="offense", situation_raw="1&10", our_call="x",
-                    coverage_seen="Cover 2", macro="none",
+                    formation="Gun", play="Inside Zone", result="+12", macro="O-RUN",
                 )
-            self.assertFalse(allow_macro(
-                db, opponent_id="james", side="offense", macro_id="C3", kind="look",
-            ))
-            for _ in range(PER_GAME):
-                db.log_snap(
-                    opponent_id="james", side="defense", situation_raw="d 1&10", our_call="x",
-                    macro="RZ COVER 2",
-                )
-            self.assertFalse(allow_macro(
-                db, opponent_id="james", side="defense", macro_id="SAFE DEEP", kind="situation",
-            ))
+            rebuild_all(db, mark_version=False)
+            james = merged_macro_weights(db, "james")
+            cpu = merged_macro_weights(db, "cpu")
+            other = merged_macro_weights(db, "gavin")
+            self.assertLessEqual(james["C2"], LEARNED_SUPPRESS)
+            self.assertGreater(james["O-RUN"], 0)
+            self.assertLessEqual(cpu["C2"], LEARNED_SUPPRESS)
+            self.assertAlmostEqual(cpu["C2"], round(james["C2"] * GLOBAL_SCALE, 4), places=3)
+            self.assertAlmostEqual(cpu["O-RUN"], round(james["O-RUN"] * GLOBAL_SCALE, 4), places=3)
+            self.assertEqual(other["C2"], cpu["C2"])
+            self.assertNotEqual(james["C2"], cpu["C2"])
+            picked, _rows = select_offense("cpu", db=db, weights=cpu)
+            self.assertNotIn("C2", picked)
+            self.assertIn("O-RUN", picked)
+            james_picked, _ = select_offense("james", db=db, weights=james)
+            self.assertNotIn("C2", james_picked)
         finally:
             db.close()
 

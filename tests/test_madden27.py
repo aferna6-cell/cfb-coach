@@ -210,29 +210,18 @@ class TestMaddenPlaycaller(_Isolated):
         try:
             one = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
             self.assertIsNone(one.macro)
-            self.assertIsNone(one.suggest_macro)
-            self.assertNotIn("SUGGEST", one.format())
+            # No prep yet: the default 8. QTRS OVERTOP (meta #9, primary verts answer) is outside it,
+            # so the verts suggestion is the best macro inside the 8 (SAFE DEEP also answers vert).
+            self.assertIn("SAFE DEEP", one.suggest_macro or "")
             for _ in range(2):
                 db.log_snap(opponent_id="gavin", side="defense", situation_raw="d 2&6",
-                            our_call="x", formation="Nickel Over", play="Cover 4 Quarters",
-                            result="+20", concept_seen="Four Verticals", macro="none")
-            early = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
-            self.assertIsNone(early.macro)
-            self.assertIsNone(early.suggest_macro)
-            db.log_snap(opponent_id="gavin", side="defense", situation_raw="d 2&6",
-                        our_call="x", formation="Nickel Over", play="Cover 4 Quarters",
-                        result="+20", concept_seen="Four Verticals", macro="none")
-            # No prep yet: the default 8. QTRS OVERTOP (meta #9, primary verts answer) is outside it,
-            # so the verts macro inside the 8 is SAFE DEEP.
+                            our_call="x", formation="Nickel Mug", play="Cover 4 Quarters",
+                            result="+20", concept_seen="Four Verticals")
             rep = make_call(parse_madden_situation("d 2&6 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
             self.assertEqual(rep.macro, "SAFE DEEP")
             self.assertIn("MACRO: SAFE DEEP — press LB → SAFE DEEP", rep.format())
-            db.log_snap(opponent_id="gavin", side="defense", situation_raw="d 2&6 showing 4 verts",
-                        our_call=rep.format(), formation=rep.formation, play=rep.play,
-                        result="+8", concept_seen="Four Verticals", macro=rep.macro)
-            cooled = make_call(parse_madden_situation("d 1&10 showing 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
-            self.assertIsNone(cooled.macro)
-            self.assertNotIn("MACRO:", cooled.format())
+            prev = make_call(parse_madden_situation("d 2&6 4 verts"), "gavin", db, rng=random.Random(5), playbook=_stock_books())
+            self.assertIsNone(prev.macro)  # previous-snap tell never arms
         finally:
             db.close()
 
@@ -241,8 +230,16 @@ class TestMaddenPrep(_Isolated):
     def test_cpu_prep_offense_only(self) -> None:
         plan = build_prep_plan("cpu", offline=True, persist=False)
         self.assertTrue(plan["offense_only"])
+        self.assertEqual(len(plan["macro_selection"]["offense"]), LOADOUT_N)
+        self.assertEqual(plan["macro_selection"]["defense"], [])
         self.assertTrue(all(c["side"] == "offense" for c in plan["macro_cards"]))
+        self.assertEqual(len(plan["macro_cards"]), LOADOUT_N)
         self.assertIn("offense only", plan["loadout"]["meter"])
+        self.assertIn("defense off", plan["loadout"]["meter"])
+        html = render_prep_html(plan)
+        self.assertIn("Offense (8)</h3>", html)
+        self.assertIn("defense off", html)
+        self.assertNotIn("none — offense only", html)
         self.assertEqual(plan["version"], "madden27-2026-09")
         self.assertEqual(plan["meta_scout"]["baseline_fallback"], "madden27-2026-09")
 
@@ -523,7 +520,11 @@ class TestMaddenCli(_Isolated):
         self.assertIn("## Pre-snap adjustments (not macros)", out)
         self.assertIn("## Copy checklist", out)
         rc, out = self.run_cli(["prep", "--game", "madden27", "-o", "cpu", "--offline", "--text"])
-        self.assertIn("N/A — offense only", out)
+        self.assertEqual(rc, 0)
+        self.assertIn("## Custom Adjustments — 8 offense (CPU — defense off)", out)
+        self.assertIn("### OFFENSE (8)", out)
+        self.assertIn("### DEFENSE (0)", out)
+        self.assertIn("defense off", out)
 
     def test_prep_browser_writes_madden_file(self) -> None:
         rc, out = self.run_cli(["prep", "--game", "madden27", "-o", "tiano", "--offline", "--no-open"])

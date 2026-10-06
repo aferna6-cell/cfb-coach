@@ -875,6 +875,48 @@ def ensure_rules_current(db: Any, *, printer=print, backup: bool = True) -> dict
 # ===========================================================================
 
 
+def merged_macro_weights(db: Any, opponent_id: str) -> dict[str, float]:
+    """Macro weights for one opponent, with the global bucket filling the gaps.
+
+    Same rule as ``LearnedWeights.load``: this opponent's own number wins, so a
+    James weight is not added on top of the global copy of those same snaps.
+    A weight of 0 is "no opinion" and does not block the fill. CPU, and any
+    other opponent with no weight for that macro, inherit the global bucket
+    (``GLOBAL_SCALE`` of every logged snap). A human with fewer than 3 snaps
+    also borrows a 0.25-diluted CPU prior before that fill.
+    """
+    if db is None:
+        return {}
+
+    def _load(bucket: str) -> dict[str, float]:
+        out: dict[str, float] = {}
+        try:
+            rows = db.get_macro_weights(bucket)
+        except Exception:  # noqa: BLE001
+            return out
+        for r in rows:
+            w = float(r["weight"] or 0.0)
+            if w == 0.0:
+                continue
+            out[str(r["macro"]).upper()] = w
+        return out
+
+    layers = [_load(opponent_id)]
+    if opponent_id != "cpu":
+        try:
+            n_opp = int(db.count_snaps(opponent_id))
+        except Exception:  # noqa: BLE001
+            n_opp = 0
+        if n_opp < 3:
+            layers.append({k: v * 0.25 for k, v in _load("cpu").items()})
+    layers.append(_load("global"))
+    merged: dict[str, float] = {}
+    for layer in layers:
+        for key, weight in layer.items():
+            merged.setdefault(key, weight)
+    return merged
+
+
 class LearnedWeights:
     """Merged learned weights for one opponent (global + cpu/opponent), clamped."""
 

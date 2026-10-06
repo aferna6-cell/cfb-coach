@@ -3,7 +3,7 @@
 Defense comes from the research DB (meta rank, live scout, tendencies, learned weights).
 Offense comes from Aidan's confirmed Custom Adjustments, ranked for this opponent's
 coverage looks, and kept only when a play in the trimmed book matches.
-CPU games stay offense-only (no macros).
+CPU games get the 8 offense macros and no defense macros.
 """
 
 from __future__ import annotations
@@ -69,10 +69,13 @@ def tendency_families(db: Any, opponent_id: str) -> Counter:
 
 
 def learned_weights(db: Any, opponent_id: str) -> dict[str, float]:
+    """Opponent weights, with the global bucket filling macros this opponent has not learned."""
     if db is None:
         return {}
     try:
-        return {str(r["macro"]).upper(): float(r["weight"] or 0.0) for r in db.get_macro_weights(opponent_id)}
+        from cfb_coach.learning import merged_macro_weights
+
+        return merged_macro_weights(db, opponent_id)
     except Exception:  # noqa: BLE001
         return {}
 
@@ -150,24 +153,24 @@ def select_loadout(
 ) -> dict[str, Any]:
     """{"offense": [8 ids], "defense": [8 ids], "ranked": defense rows, "ranked_offense": rows}.
 
-    CPU (``offense_only``) gets neither. Offense ids are Aidan's Custom Adjustments that
-    pair with ``offense_book``.
+    CPU (``offense_only``) gets the 8 offense macros that pair with ``offense_book``
+    and no defense macros. Without a book, a CPU loadout stays empty.
     """
-    out: dict[str, Any] = {"offense": [], "defense": [], "ranked": [], "ranked_offense": []}
-    if offense_only:
-        return out
     from cfb_coach.madden.offense_macros import select_offense
 
-    tends = tendency_families(db, opponent_id) + snap_concept_families(db, opponent_id)
+    out: dict[str, Any] = {"offense": [], "defense": [], "ranked": [], "ranked_offense": []}
     weights = learned_weights(db, opponent_id)
-    rows = rank_defense(db=db, archetype=archetype, hint_families=research_hint_families(scout),
-                        tendencies=tends, weights=weights, previous=previous)
-    out["ranked"] = rows
-    out["defense"] = [r["id"] for r in rows[:n]]
-    offense, ranked_o = select_offense(opponent_id, db=db, archetype=archetype, book=offense_book,
-                                       previous=previous_offense, weights=weights, n=n)
-    out["offense"] = offense
-    out["ranked_offense"] = ranked_o
+    if not offense_only:
+        tends = tendency_families(db, opponent_id) + snap_concept_families(db, opponent_id)
+        rows = rank_defense(db=db, archetype=archetype, hint_families=research_hint_families(scout),
+                            tendencies=tends, weights=weights, previous=previous)
+        out["ranked"] = rows
+        out["defense"] = [r["id"] for r in rows[:n]]
+    if offense_book is not None or not offense_only:
+        offense, ranked_o = select_offense(opponent_id, db=db, archetype=archetype, book=offense_book,
+                                           previous=previous_offense, weights=weights, n=n)
+        out["offense"] = offense
+        out["ranked_offense"] = ranked_o
     return out
 
 

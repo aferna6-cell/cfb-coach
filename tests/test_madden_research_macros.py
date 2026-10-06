@@ -96,20 +96,35 @@ class TestResearchDB(_DB):
         newer["updated"] = "2026-09-30T09:00:00+00:00"
         newer["defense_macros"][0]["name"] = newer["defense_macros"][0]["name"]  # same shape
         rdb.reset()
-        with mock.patch.object(rdb, "_git_pull_db", return_value=newer):
+        with mock.patch.object(rdb, "_git_pull_db", return_value=newer), \
+                mock.patch.object(rdb, "_github_db", return_value=None):
             rdb.load(pull=True)
         self.assertEqual(rdb.load()["updated"], "2026-09-30T09:00:00+00:00")
         self.assertIn("pulled origin/madden-research-db", rdb.status()["line"])
         rdb.reset()  # next prep offline: the last pulled copy, not the older packaged seed
-        with mock.patch.object(rdb, "_git_pull_db", return_value=None):
+        with mock.patch.object(rdb, "_git_pull_db", return_value=None), \
+                mock.patch.object(rdb, "_github_db", return_value=None):
             rdb.load(pull=True)
         self.assertEqual(rdb.load()["updated"], "2026-09-30T09:00:00+00:00")
         self.assertIn("last pulled copy", rdb.status()["line"])
-        rdb.reset()  # a broken pull is refused
+        rdb.reset()  # a broken pull is refused; an older branch loses to a newer GitHub copy
         broken = dict(newer, defense_macros=[])
-        with mock.patch.object(rdb, "_git_pull_db", return_value=broken):
+        github = copy.deepcopy(newer)
+        github["updated"] = "2026-10-06T10:01:00+00:00"
+        stale_branch = copy.deepcopy(newer)
+        stale_branch["updated"] = "2026-09-01T00:00:00+00:00"
+        with mock.patch.object(rdb, "_git_pull_db", return_value=broken), \
+                mock.patch.object(rdb, "_github_db", return_value=github):
             rdb.load(pull=True)
+        self.assertEqual(rdb.load()["updated"], "2026-10-06T10:01:00+00:00")
+        self.assertIn("GitHub main", rdb.status()["origin"])
         self.assertGreaterEqual(len(rdb.defense_macros()), PER_SIDE)
+        rdb.reset()  # the cached winner beats a later, older branch
+        with mock.patch.object(rdb, "_git_pull_db", return_value=stale_branch), \
+                mock.patch.object(rdb, "_github_db", return_value=None):
+            rdb.load(pull=True)
+        self.assertEqual(rdb.load()["updated"], "2026-10-06T10:01:00+00:00")
+        self.assertIn("last pulled copy", rdb.status()["origin"])
 
     def test_stale_db_is_flagged(self) -> None:
         old = copy.deepcopy(rdb.load())
@@ -160,9 +175,13 @@ class TestDefenseTen(_DB):
 
     def test_cpu_gets_offense_adjustments_only(self) -> None:
         plan = build_prep_plan("cpu", offline=True, persist=False)
-        self.assertEqual(plan["macro_selection"], {"offense": [], "defense": []})
+        self.assertEqual(len(plan["macro_selection"]["offense"]), LOADOUT_N)
+        self.assertEqual(plan["macro_selection"]["defense"], [])
         self.assertTrue(plan["offense_adjustments"])
-        self.assertIn("offense only", copy_checklist(plan["macro_selection"]))
+        checklist = copy_checklist(plan["macro_selection"])
+        self.assertIn("OFFENSE (8)", checklist)
+        self.assertIn("DEFENSE (0)", checklist)
+        self.assertNotIn("No Custom Adjustments", checklist)
 
     def test_ranking_uses_research_rank_tendencies_and_learned_weights(self) -> None:
         db = self.madden_db()
