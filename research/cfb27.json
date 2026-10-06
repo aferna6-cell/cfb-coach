@@ -1,23 +1,26 @@
 {
   "schema": 1,
   "game": "cfb27",
-  "researched_at": "2026-10-01T12:48:00-04:00",
+  "researched_at": "2026-10-06T10:17:35-04:00",
   "researched_by": "Cursor daily research",
-  "summary": "Title Update 1.012 (Sept 22) weakened QB spin moves behind the line and made custom-adjustment contains reliable again, after 1.010 (Sept 3) toned down overly effective man coverage. Bunch is the consensus passing meta (Washington State Gun Bunch X Nasty, Ohio State, Charlotte) and 4-2-5 / 4-2-5 Man Pressure are the top defensive books. Match quarters (Box check vs bunch) and Cover 6 are the standard answers to bunch crossers and verticals; underneath-first passing beats two-high.",
+  "summary": "Title Update 5 shipped Oct 1 as versions 1.013 and 1.014: Ballhawk now strafes, QB slides near the first-down line no longer super dive, QB-sneak audibles no longer auto pinch or spread the defensive line, and interceptions carried into the end zone are no longer safeties. TU5 has no coverage, blitz, route, blocking, or pass-rush tuning, and no 1.015 was found as of Oct 6, so the Sept 22 (1.012 / TU 4.5) spin and contain changes and the Sept 3 (1.010) man-coverage changes still stand. Bunch remains the consensus passing meta (Washington State Gun Bunch X Nasty, Ohio State, Charlotte) and 4-2-5 / 4-2-5 Man Pressure remain the top defensive books. Match quarters (Box check vs bunch) and Cover 6 are the standard answers to bunch crossers and verticals; underneath-first passing beats two-high.",
   "patch": {
-    "version": "1.012",
-    "date": "2026-09-22",
-    "title": "Title Update - September 22, 2026",
-    "url": "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes",
+    "version": "1.014",
+    "date": "2026-10-01",
+    "title": "Title Update 5 - October 1, 2026 (1.013 and 1.014)",
+    "url": "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/cfb27-title-update-october-1st-2026",
     "notes": [
-      "Improved Run Action block targeting to detect threats",
-      "Contains called via Custom Adjustments are now respected",
-      "Reduced effectiveness of QB Spin Moves behind the line of scrimmage",
-      "WR catch success tuned for off-target and hurried passes",
-      "Fixed field goal blocking with looping defenders"
+      "Added functionality to allow users to strafe while in Ballhawk.",
+      "Fixed an issue where the QB would super dive when attempting to slide near the first down line.",
+      "Fixed an issue where the Defensive Line would auto pinch or spread when audibling in or out of QB sneak.",
+      "Fixed an issue where Interceptions caught near and carried into the endzone would be ruled a Safety."
     ]
   },
   "findings": [
+    {"claim": "Title Update 5 (posted Sept 30 for an Oct 1 release) adds strafing while in Ballhawk, and fixes QB super dives on slides near the first-down line, the defensive line auto pinching or spreading when audibling in or out of QB sneak, and interceptions caught near and carried into the end zone being ruled a safety. The gameplay list has no coverage, blitz, route, blocking, or pass-rush tuning; other TU5 changes are Dynasty coach goals and coach points, Road to Glory practice freezes, Ultimate Team EVO fixes, an Online H2H uniform fix, new uniforms, and PS5 crowd audio.", "side": "general", "source": "EA Campus Huddle", "url": "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/cfb27-title-update-october-1st-2026", "published": "2026-09-30", "confidence": "high"},
+    {"claim": "Oct 1 Title Update 5 shipped as two back-to-back downloads, version 1.013 and then 1.014 about an hour or two later, with one consolidated note set.", "side": "general", "source": "MP1st", "url": "https://mp1st.com/title-updates-and-patches/college-football-27-receives-two-updates-on-october-1-update-1-013-1-014", "published": "2026-10-01", "confidence": "high"},
+    {"claim": "Insider Gaming's patch history labels the Oct 1 notes as Title Update 5 (the latest update listed) and the prior gameplay notes — run-action blocking, custom-adjustment contains, reduced QB spin, WR catch tuning, and the field-goal block fix — as Title Update 4.5.", "side": "general", "source": "Insider Gaming", "url": "https://insider-gaming.com/college-football-27-patch-notes/", "published": "2026-09-30", "confidence": "high"},
+    {"claim": "Oct 6 recheck: games.gg (updated Oct 1) still ranks Washington State Gun Bunch X Nasty as the most complete offensive book, lists Oregon State and Colorado as post-update alternatives, and keeps Auto Base Protection on Empty with Blocking on Balanced. 4-2-5 Man Pressure (3-3 Cub) and base 4-2-5 remain the top defensive books, with Dollar against spread.", "side": "general", "source": "games.gg", "url": "https://games.gg/ea-sports-college-football-27/guides/college-football-27-best-playbooks-and-defensive-guide/", "published": "2026-10-01", "confidence": "medium"},
     {"claim": "Sept 22 update 1.012 reduced QB spin move effectiveness behind the line and fixed custom-adjustment contains not being respected.", "side": "general", "source": "MP1st", "url": "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes", "published": "2026-09-22", "confidence": "high"},
     {"claim": "Sept 3 update 1.010 targeted overly effective man coverage (pass lead, route running, jostle, man press penalty) and fixed Cloud Flats ignoring user drop depths and Combo converting to Lock in press.", "side": "defense", "source": "EA Campus Huddle", "url": "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/title-update-september-3rd-2026", "published": "2026-09-02", "confidence": "high"},
     {"claim": "Bunch is the CFB 27 passing meta: Washington State Gun Bunch X Nasty is the most complete offensive book (man and zone beaters, runs via Pistol Trips / Pistol U Off Trips), red zone from Singleback Deuce Close.", "side": "offense", "source": "Madden Turf", "url": "https://maddenturf.com/cfb-27-best-playbooks/", "published": "2026-09", "confidence": "medium"},
@@ -46,6 +49,9 @@
     "Mabel zone drops vs sideline floods"
   ],
   "suggestions": [
+    {"side": "defense", "label": "Strafe in Ballhawk", "tip": "Ballhawk now allows strafing, so a user-controlled defender can stay in the passing lane while ballhawking.", "macro_hint": null, "source_url": "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/cfb27-title-update-october-1st-2026"},
+    {"side": "defense", "label": "Set the DL on QB sneak", "tip": "Audibling in or out of QB sneak no longer auto pinches or spreads the defensive line — set the line shift yourself if you want a pinch or a spread.", "macro_hint": null, "source_url": "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/cfb27-title-update-october-1st-2026"},
+    {"side": "offense", "label": "Slide at the sticks", "tip": "Sliding near the first-down line no longer super dives, so a slide at the sticks is a normal slide again.", "macro_hint": null, "source_url": "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/cfb27-title-update-october-1st-2026"},
     {"side": "defense", "label": "Quarters Box vs bunch", "tip": "Against Gun Bunch looks call Cover 4 Quarters with the Box match check and user the deep middle; it passes off Cross Wheels and mesh rubs.", "macro_hint": null, "source_url": "https://www.u4gm.com/ar/college-football-27/blog-how-to-stop-bunch-formations-in-cfb-27"},
     {"side": "defense", "label": "Contains work again", "tip": "Since 1.012, contains set in custom adjustments are respected and QB spin moves are weaker — keep QB contain on vs scramblers instead of spying.", "macro_hint": null, "source_url": "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes"},
     {"side": "offense", "label": "Take it underneath vs two-high", "tip": "Against Cover 4 / Cover 6, hit flats, drags and curls until a safety comes down, then go post or corner.", "macro_hint": null, "source_url": "https://www.maddenprodigy.com/how-to-beat-cover-4-college-football-27/"},
@@ -105,11 +111,15 @@
     }
   },
   "sources": [
+    {"title": "EA — CFB 27 Title Update October 1, 2026 (TU5)", "url": "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/cfb27-title-update-october-1st-2026", "kind": "patch", "published": "2026-09-30", "accessed": "2026-10-06"},
+    {"title": "CFB 27 Updates 1.013 and 1.014 (Oct 1)", "url": "https://mp1st.com/title-updates-and-patches/college-football-27-receives-two-updates-on-october-1-update-1-013-1-014", "kind": "patch", "published": "2026-10-01", "accessed": "2026-10-06"},
+    {"title": "College Football 27 Patch Notes and History (Insider Gaming)", "url": "https://insider-gaming.com/college-football-27-patch-notes/", "kind": "patch", "published": "2026-09-30", "accessed": "2026-10-06"},
     {"title": "CFB 27 Update 1.012 Patch Notes (Sept 22)", "url": "https://mp1st.com/title-updates-and-patches/college-football-27-update-1-012-september-22-brings-gameplay-changes", "kind": "patch", "published": "2026-09-22", "accessed": "2026-10-01"},
     {"title": "CFB 27 update with QB spin move and catch tuning", "url": "https://consolepcgaming.com/ea-sports-college-football-27-update-is-available-with-qb-spin-move-and-catch-tuning/", "kind": "patch", "published": "2026-09-22", "accessed": "2026-10-01"},
     {"title": "EA — CFB 27 Title Update September 3, 2026", "url": "https://www.ea.com/games/ea-sports-college-football/college-football-27/news/title-update-september-3rd-2026", "kind": "patch", "published": "2026-09-02", "accessed": "2026-10-01"},
-    {"title": "The Best Playbooks for CFB 27 (Madden Turf)", "url": "https://maddenturf.com/cfb-27-best-playbooks/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "The Best Playbooks for CFB 27 (Madden Turf)", "url": "https://maddenturf.com/cfb-27-best-playbooks/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-06"},
     {"title": "CFB 27 Best Playbooks and Settings (games.gg)", "url": "https://games.gg/ea-sports-college-football-27/guides/college-football-27-best-playbooks/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
+    {"title": "CFB 27 Best Playbooks and Defensive Guide (games.gg)", "url": "https://games.gg/ea-sports-college-football-27/guides/college-football-27-best-playbooks-and-defensive-guide/", "kind": "guide", "published": "2026-10-01", "accessed": "2026-10-06"},
     {"title": "CFB 27 4-2-5 Man Pressure guide (MMOexp)", "url": "https://www.mmoexp.com/News/college-football-27-guide-4-2-5-man-pressure-defense-how-to-dominate-with-unstoppable-blitzes.html", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
     {"title": "CFB 27 Defense Guide (Madden Prodigy)", "url": "https://www.maddenprodigy.com/college-football-27-defense-guide/", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
     {"title": "CFB 27 Cover 6 Defense Guide (UTNice)", "url": "https://www.utnice.com/news/college-football-27-cover-6-defense-guide-principles-core-structure-response-mechanism", "kind": "guide", "published": "2026-09", "accessed": "2026-10-01"},
