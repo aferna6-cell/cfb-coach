@@ -87,6 +87,11 @@ def _render_playbook(plan: dict[str, Any]) -> str:
                 f"install exactly these {len(bp['checklist'])} formations "
                 "(Create &amp; Share → custom playbook)<ol>" + items + "</ol></div>"
             )
+        elif rec.get("source_book"):
+            head = (
+                f"<div class='banner ok'>Custom plan — trimmed from the in-game <b>{_esc(rec.get('source_book'))}</b> "
+                f"{side} book. These formations are the book of record. Nothing to build in the custom editor.</div>"
+            )
         elif change == "stock_select":
             head = (
                 f"<div class='banner ok'>Use the in-game stock book <b>{_esc(rec.get('name'))}</b>"
@@ -157,11 +162,52 @@ def _book_pick_line(plan: dict[str, Any], side: str) -> str:
     for r in rows:
         if r.get("book") == rec.get("name") and r.get("team"):
             team = f" ({r['team']} book)"
-    stock = rec.get("mode") == "stock"
-    how = (f"In game: select the <b>{_esc(rec.get('name'))}</b> {side} playbook{_esc(team)} — nothing to build."
-           if stock else "Build the custom book with the formations below.")
+    if rec.get("source_book"):
+        how = (f"Custom plan trimmed from the <b>{_esc(rec.get('source_book'))}</b> {side} book{_esc(team)}. "
+               "Game-plan macros use only these formations.")
+    elif rec.get("mode") == "stock":
+        how = f"In game: select the <b>{_esc(rec.get('name'))}</b> {side} playbook{_esc(team)} — nothing to build."
+    else:
+        how = "Build the custom book with the formations below."
     return (f"<div class='rline'><b>{side.title()} book: {_esc(rec.get('name'))}</b> — {how}"
             f"<div class='muted'>{_esc(bp.get('reason') or '')}</div></div>")
+
+
+def _render_gameplan(plan: dict[str, Any]) -> str:
+    """8+8 call packages. Every formation/play is from the custom book."""
+    gp = plan.get("gameplan") or {}
+    warns = "".join(
+        f"<div class='banner fail'><strong>Playbook warning.</strong> {_esc(w)}</div>"
+        for w in (plan.get("playbook_warnings") or [])
+    )
+
+    def side_html(title: str, macros: list[dict[str, Any]]) -> str:
+        if not macros:
+            empty = "N/A — offense only (CPU)" if title == "Defense" and gp.get("offense_only") else "none"
+            return f"<h3>{_esc(title)}</h3><div class='empty'>{empty}</div>"
+        rows = []
+        for i, m in enumerate(macros, 1):
+            rows.append(
+                "<article class='gp'>"
+                f"<h4>{i}. {_esc(m.get('label'))} <span class='muted'>{_esc(m.get('id'))}</span></h4>"
+                f"<div class='call'><b>CALL:</b> {_esc(m.get('play'))} ({_esc(m.get('formation'))})</div>"
+                f"<div><b>When:</b> {_esc(m.get('when'))} {_esc(m.get('score_situation') or '')}</div>"
+                f"<div><b>Pre-snap:</b> {_esc(m.get('adjustments'))}</div>"
+                f"<div><b>Read:</b> {_esc(m.get('read'))}</div>"
+                f"<div><b>Counter:</b> {_esc(m.get('counter'))}</div>"
+                + (f"<div class='muted'>{_esc(m.get('why'))}</div>" if m.get("why") else "")
+                + "</article>"
+            )
+        return f"<h3>{_esc(title)} ({len(macros)})</h3>" + "".join(rows)
+
+    note = _esc(gp.get("opponent_note") or "")
+    return (
+        f"<section id='gameplan'><h2>Game plan — {len(gp.get('offense') or [])} offense + "
+        f"{len(gp.get('defense') or [])} defense</h2>"
+        f"<div class='why'>Packages use only plays in the custom playbook (the coach's trimmed plan). {note}</div>"
+        f"{warns}{side_html('Offense', list(gp.get('offense') or []))}"
+        f"{side_html('Defense', list(gp.get('defense') or []))}</section>"
+    )
 
 
 def _render_offense_adjustments(plan: dict[str, Any]) -> str:
@@ -230,6 +276,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     head = "Defense macros — N/A (CPU, offense only)" if offense_only else "Defense macros (10)"
     parts.insert(4, _render_offense_adjustments(plan))  # right after the offense audibles
     parts.insert(1, opponent_study_html(plan.get("scouting_lines") or [], plan.get("opponent_research") or []))
+    parts.insert(2, _render_gameplan(plan))
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -439,13 +486,15 @@ def generate_and_open(
     refresh_meta: bool = False,
     o_book: str | None = None,
     d_book: str | None = None,
+    opp_team: str | None = None,
+    n_gameplan: int = 8,
 ) -> tuple[Path, dict[str, Any]]:
     from cfb_coach.madden.prep import build_prep_plan, mark_applied
 
     plan = build_prep_plan(
         opponent_id, db=db, persist=persist, profile=profile,
         offline=offline, refresh_meta=refresh_meta, o_book=o_book, d_book=d_book,
-        apply_books=mark,
+        apply_books=mark, opp_team=opp_team, n_gameplan=n_gameplan,
     )
     if mark and db is not None:
         mark_applied(db, opponent_id, plan["proposed_deltas"])

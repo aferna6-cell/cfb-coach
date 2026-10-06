@@ -197,6 +197,8 @@ def cmd_prep(args: argparse.Namespace) -> int:
                 oid, db=db, persist=True, profile=pid,
                 offline=args.offline, refresh_meta=args.refresh_meta,
                 o_book=args.o_book, d_book=args.d_book, apply_books=args.mark_applied,
+                opp_team=getattr(args, "opp_team", None),
+                n_gameplan=getattr(args, "gameplan", 8),
             )
             if args.mark_applied:
                 mark_applied(db, oid, plan["proposed_deltas"])
@@ -210,6 +212,8 @@ def cmd_prep(args: argparse.Namespace) -> int:
             mark=args.mark_applied, profile=pid,
             offline=args.offline, refresh_meta=args.refresh_meta,
             o_book=args.o_book, d_book=args.d_book,
+            opp_team=getattr(args, "opp_team", None),
+            n_gameplan=getattr(args, "gameplan", 8),
         )
         n = len(plan.get("shown_deltas") or [])
         print(f"Prep (Madden 27 Franchise) vs {plan['display_name']} → {path}")
@@ -221,6 +225,13 @@ def cmd_prep(args: argparse.Namespace) -> int:
                 print(f"  BUILD CUSTOM {side.upper()} BOOK — {len(bp['checklist'])} formations (see browser / playbook --game madden27)")
         print(_profile_header(pid))
         print(doctrine_line(profile_config(pid)["team"]))
+        gp = plan.get("gameplan") or {}
+        print(
+            f"Game plan: {len(gp.get('offense') or [])} offense + "
+            f"{len(gp.get('defense') or [])} defense call packages (custom book)."
+        )
+        for warning in plan.get("playbook_warnings") or []:
+            print(warning if str(warning).startswith("WARNING:") else f"WARNING: {warning}")
         if plan["offense_only"]:
             print("CPU opponent — OFFENSE-ONLY prep (no D macros).")
         if args.mark_applied:

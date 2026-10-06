@@ -846,14 +846,27 @@ def build_parser() -> argparse.ArgumentParser:
         dest="o_book",
         default=None,
         metavar="auto|custom|stock:NAME",
-        help="Madden only: offensive playbook of record (default auto; e.g. stock:Buccaneers, stock:'Shotgun Classic', custom)",
+        help="Madden only: offensive playbook of record (default auto = coach's trimmed custom plan; stock:NAME forces stock)",
     )
     p_prep.add_argument(
         "--d-book",
         dest="d_book",
         default=None,
         metavar="auto|custom|stock:NAME",
-        help="Madden only: defensive playbook of record (default auto → stock:49ers)",
+        help="Madden only: defensive playbook of record (default auto = trimmed custom plan, start 49ers)",
+    )
+    p_prep.add_argument(
+        "--opp-team",
+        default=None,
+        metavar="TEAM",
+        help='Madden only: opponent NFL team for this prep (saved on the persona), e.g. "Minnesota Vikings"',
+    )
+    p_prep.add_argument(
+        "--gameplan",
+        type=int,
+        default=8,
+        metavar="N",
+        help="Madden only: offense and defense call-package macros to build (default 8 each)",
     )
     p_prep.set_defaults(func=cmd_prep)
 
