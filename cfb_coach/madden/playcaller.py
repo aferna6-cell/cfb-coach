@@ -2,9 +2,10 @@
 
 Same doctrine as CFB (symmetric O + D):
   - One tell = log + mild bump only; bare coverage/play name = previous snap.
-  - Coverage-/concept-specific answers only on a REPEATED tendency (2+) this game.
-  - A stored Custom Adjustment also fires when its own when-to-fire matches this snap
-    (field, down, score/clock). A quiet snap stays a plain play call.
+  - The play is chosen first. A Custom Adjustment label is separate, and off
+    unless the trigger is unambiguous (cfb_coach.madden.macro_policy): a live
+    look that is already a clear tendency, or red zone / two-minute / a lead,
+    then a cooldown. Zero in a game is normal. --no-macros shows none.
   - Default = base situational call (D&D, field, persona archetype prior).
   - PIVOT after 2 fails (user soft) / 3 fails (hard) on a side.
 CPU opponents are offense-only.
@@ -455,10 +456,32 @@ def _pick_offense(
                                 score_phase=score_phase)
     except Exception:  # noqa: BLE001 — never break a call
         info = None
+    # Fire rules picked a macro. Show it only when the rarity bar is met.
+    # Withholding the label does not send the snap back through adjustments,
+    # and it does not change the play already sampled above.
+    withheld = False
+    if info:
+        from cfb_coach.madden.macro_policy import allow_macro
+
+        session_id = (getattr(sit, "extras", None) or {}).get("session_id")
+        try:
+            show = allow_macro(
+                db, opponent_id=oid, side="offense", macro_id=info["id"],
+                kind=info.get("kind") or "look", session_id=session_id,
+                live=(src == "live"),
+                enabled=(getattr(sit, "extras", None) or {}).get("live_macros", True) is not False,
+            )
+        except Exception:  # noqa: BLE001
+            show = False
+        if not show:
+            info = None
+            withheld = True
     if info:
         macro = info["id"]
         adj = "No adj"
         rationale += f" | MACRO {info['name']}: {info['why']}"
+    elif withheld:
+        pass
     else:
         try:  # one researched pre-snap adjustment when no Custom Adjustment matches the look
             from cfb_coach.madden.adjustments import offense_adjustment
@@ -764,6 +787,12 @@ def _pick_defense(
             user = user_job_for(play)
         rationale += f" | {fitted[2]}"
 
+    # Play and package are final. The block above is what switches a call onto a
+    # macro's base play; this only keeps or drops the label.
+    macro, macro_why, suggest = _gate_defense_label(
+        db, oid, sit, macro, macro_why, suggest, fam,
+    )
+
     macro_out = tag_live(macro, db) if macro else "none"
     info = None
     if macro:
@@ -778,6 +807,47 @@ def _pick_defense(
         rationale += f" | adj {d_adj['label']}"
     return MaddenCall("defense", form, play, macro_out, user, rationale, suggest, macro=macro, macro_info=info,
                       adjustment=None if macro else d_adj)
+
+
+def _gate_defense_label(
+    db: Any,
+    oid: str,
+    sit: Situation,
+    macro: str | None,
+    macro_why: str | None,
+    suggest: str | None,
+    fam: str | None,
+) -> tuple[str | None, str | None, None]:
+    """Keep a defense macro label only when ``macro_policy`` allows it.
+
+    The formation and play were already chosen, including any base-play switch
+    the arming branch made. This does not put that play back.
+    """
+    from cfb_coach.madden.macro_policy import allow_macro
+
+    session_id = (getattr(sit, "extras", None) or {}).get("session_id")
+
+    enabled = (getattr(sit, "extras", None) or {}).get("live_macros", True) is not False
+    live_look = (getattr(sit, "concept_source", None) == "live")
+
+    def show(mid: str, kind: str) -> bool:
+        try:
+            return allow_macro(
+                db, opponent_id=oid, side="defense", macro_id=mid, kind=kind,
+                session_id=session_id, family=fam if kind == "look" else None,
+                live=live_look, enabled=enabled,
+            )
+        except Exception:  # noqa: BLE001
+            return False
+
+    if macro and show(macro, "situation" if macro_why else "look"):
+        # An armed snap does not also print a SUGGEST line.
+        return macro, macro_why, None
+    # Anything the arming branch would not call — a previous snap, one tell,
+    # a macro that is not in the 8 — stays off the screen. A SUGGEST line is
+    # the spam this gate exists to stop.
+    del suggest
+    return None, None, None
 
 
 def _d_adjustment(fam: str | None, concept: str | None) -> dict[str, Any] | None:
@@ -838,6 +908,7 @@ def make_call(
     last_concept: str | None = None,
     active_macros: list[str] | None = None,
     playbook: dict[str, dict[str, list[str]]] | None = None,
+    live_macros: bool | None = None,
 ) -> MaddenCall:
     """One call. `playbook` = {side: {formation: [plays]}} locked by prep; defaults to the
     DB's locked (applied) books. Raises NoActivePlaybook when the needed side has no
@@ -853,6 +924,11 @@ def make_call(
             opp = dict(prof)
     opp["_id"] = opponent_id
     rng = rng or random.Random()
+    from cfb_coach.madden.macro_policy import resolve_live_macros
+
+    if not isinstance(getattr(sit, "extras", None), dict):
+        sit.extras = {}
+    sit.extras["live_macros"] = resolve_live_macros(live_macros)
     # Each side only arms Custom Adjustments from its own list.
     # Omitted active_macros reads the prep store (active_macros:<opp>) when one exists.
     if active_macros is None and db is not None:

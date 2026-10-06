@@ -33,6 +33,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "lab_team": None,
     "offense_book": "auto",  # auto = start on stock Buccaneers, research may recommend a switch
     "defense_book": "auto",  # auto = start on stock 49ers
+    "live_macros": True,  # False = play shows no Custom Adjustment (config --no-macros)
 }
 
 _PROFILE_ALIASES = {
@@ -136,6 +137,7 @@ def save_config(
     clear_lab: bool = False,
     offense_book: str | None = None,
     defense_book: str | None = None,
+    live_macros: bool | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Update the on-disk config. Returns (config, warnings)."""
     path = config_path()
@@ -165,6 +167,8 @@ def save_config(
         if raw:
             mode, book = parse_choice(side, raw)  # raises ValueError on an unknown book
             cfg[key] = mode if mode != "stock" else f"stock:{book}"
+    if live_macros is not None:
+        cfg["live_macros"] = bool(live_macros)
     cfg["updated_ts"] = datetime.now(timezone.utc).isoformat()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
@@ -232,7 +236,9 @@ def doctrine_line(team: str | None = None) -> str:
     who = f"primary team {team}" if team else "primary team TBD"
     return (
         f"Doctrine (Madden 27 Franchise): meta-grounded scheme pack, {who}. "
-        "One tell = log + mild bump; targeted macro only on REPEATED tendency this game. "
+        "One tell = log + mild bump. A live macro only when that look is on the field "
+        "and already confirmed, or the snap is red zone / two-minute / protecting a lead, "
+        "then not again for a few snaps. config --no-macros turns them off. "
         "User games: 8 offense + 8 defense Custom Adjustments (LB); CPU = offense-only. "
         "Most D snaps Nickel Over Cover 4 Quarters / Cover 3 Match / Tampa 2 with no macro (rush four, drop seven)."
     )

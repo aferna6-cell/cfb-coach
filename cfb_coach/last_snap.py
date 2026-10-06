@@ -163,14 +163,22 @@ def advance_ball(sit: Any, result: str, side: str, spot: BallSpot) -> tuple[Ball
     return new, f"now {new.down}&{new.distance}{where}"
 
 
+def shown_macro(call: Any) -> str:
+    """The Custom Adjustment this call puts on screen, or ``none``."""
+    if call is None:
+        return "none"
+    mid = getattr(call, "macro", None)
+    if mid and str(mid).strip().lower() not in ("", "none", "null"):
+        return str(mid).strip()
+    from cfb_coach.madden.macro_policy import macro_id_from_suggest
+
+    return macro_id_from_suggest(getattr(call, "suggest_macro", None)) or "none"
+
+
 def _macro_of(call: Any) -> str | None:
     if call is None:
         return None
-    if getattr(call, "macro", None):
-        return call.macro
-    if getattr(call, "side", "") == "defense":
-        return getattr(call, "adj_or_macro", None)
-    return None
+    return shown_macro(call)
 
 
 def _prev_look(parse_situation: Callable[..., Any], text: str, side: str) -> tuple[str | None, str | None]:
@@ -400,4 +408,5 @@ class LastSnapBook:
 
 __all__ = [
     "BallSpot", "LastSnapBook", "advance_ball", "classify_last_snap", "refresh_marks",
+    "shown_macro",
 ]

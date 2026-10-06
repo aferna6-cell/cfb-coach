@@ -186,11 +186,30 @@ class TestCustomGameplan(_Isolated):
             self.assertIn("SAFE DEEP", plan["macro_selection"]["defense"])
             book = plan["playbook"]["offense"]["record"]["formations"]
 
+            once = make_call(parse_madden_situation("1&10 showing cover 1"), "james", db, rng=random.Random(1))
+            self.assertIsNone(once.macro)
+            self.assertNotIn("MACRO:", once.headline())
+            for _ in range(3):
+                db.log_snap(
+                    opponent_id="james", side="offense", situation_raw="1&10", our_call="x",
+                    formation="Gun", play="Mesh", result="+6", coverage_seen="Cover 1", macro="none",
+                )
+            stale = make_call(parse_madden_situation("1&10 cover 1"), "james", db, rng=random.Random(1))
+            self.assertIsNone(stale.macro)
+            self.assertNotIn("MACRO:", stale.format())
+            self.assertNotIn("SUGGEST", stale.format())
             off = make_call(parse_madden_situation("1&10 showing cover 1"), "james", db, rng=random.Random(1))
             self.assertEqual(off.macro, "MAN")
             self.assertIn("MACRO: MAN", off.headline())
             self.assertIn("LB → MAN", off.format())
             self.assertIn(off.play, book[off.formation])
+            db.log_snap(
+                opponent_id="james", side="offense", situation_raw="1&10 showing cover 1", our_call=off.format(),
+                formation=off.formation, play=off.play, result="+5", coverage_seen="Cover 1", macro=off.macro,
+            )
+            again = make_call(parse_madden_situation("2&7 showing cover 1"), "james", db, rng=random.Random(1))
+            self.assertIsNone(again.macro)
+            self.assertNotIn("MACRO:", again.format())
 
             quiet_o = make_call(parse_madden_situation("1&10"), "james", db, rng=random.Random(1))
             self.assertIsNone(quiet_o.macro)
@@ -212,6 +231,102 @@ class TestCustomGameplan(_Isolated):
             self.assertEqual(lead.macro, "SAFE DEEP")
             self.assertIn("LB → SAFE DEEP", lead.format())
             self.assertIn(lead.play, dbook[lead.formation])
+            db.log_snap(
+                opponent_id="james", side="defense", situation_raw="d 1&10 opp 15", our_call=de.format(),
+                formation=de.formation, play=de.play, macro=de.macro, result="+4",
+            )
+            held = make_call(parse_madden_situation("d 2&6 opp 8"), "james", db, rng=random.Random(1))
+            self.assertIsNone(held.macro)
+            self.assertNotIn("MACRO:", held.format())
+            self.assertNotIn("SUGGEST", held.format())
+        finally:
+            db.close()
+
+    def test_logged_snap_stores_the_macro_on_screen(self) -> None:
+        import random
+
+        from cfb_coach.last_snap import LastSnapBook
+        from cfb_coach.madden.playcaller import make_call
+        from cfb_coach.madden.situation import parse_madden_situation
+
+        db = self.madden_db()
+        try:
+            build_prep_plan("james", db=db, offline=True)
+            book = LastSnapBook(db, "james", parse_madden_situation, session_id="log1")
+            plain_sit = parse_madden_situation("d 1&10")
+            plain = make_call(plain_sit, "james", db, rng=random.Random(1))
+            self.assertIsNone(plain.macro)
+            self.assertIsNone(plain.suggest_macro)
+            self.assertNotIn("MACRO:", plain.format())
+            self.assertNotIn("SUGGEST", plain.format())
+            book.remember_call(plain, plain_sit)
+            book.handle("+4")
+            self.assertEqual(db.get_session_snaps("log1")[0]["macro"], "none")
+
+            lead_sit = parse_madden_situation("d 1&10 score 24-10 q4")
+            lead = make_call(lead_sit, "james", db, rng=random.Random(1))
+            self.assertEqual(lead.macro, "SAFE DEEP")
+            self.assertIn("MACRO: SAFE DEEP", lead.format())
+            book.remember_call(lead, lead_sit)
+            book.handle("+9")
+            self.assertEqual(db.get_session_snaps("log1")[-1]["macro"], "SAFE DEEP")
+        finally:
+            db.close()
+
+    def test_no_macros_silences_even_a_red_zone(self) -> None:
+        import random
+
+        from cfb_coach.madden.franchise import save_config
+        from cfb_coach.madden.playcaller import make_call
+        from cfb_coach.madden.situation import parse_madden_situation
+
+        db = self.madden_db()
+        try:
+            build_prep_plan("james", db=db, offline=True)
+            sit = parse_madden_situation("d 1&10 opp 15")
+            flagged = make_call(sit, "james", db, rng=random.Random(1), live_macros=False)
+            self.assertIsNone(flagged.macro)
+            self.assertIsNone(flagged.suggest_macro)
+            self.assertNotIn("MACRO:", flagged.format())
+            self.assertTrue(flagged.play)
+            on = make_call(sit, "james", db, rng=random.Random(1), live_macros=True)
+            self.assertEqual(on.macro, "RZ COVER 2")
+            self.assertEqual((flagged.formation, flagged.play), (on.formation, on.play))
+            save_config(live_macros=False)
+            stored = make_call(sit, "james", db, rng=random.Random(1))
+            self.assertIsNone(stored.macro)
+            save_config(live_macros=True)
+            back = make_call(sit, "james", db, rng=random.Random(1))
+            self.assertEqual(back.macro, "RZ COVER 2")
+        finally:
+            db.close()
+
+    def test_policy_confidence_and_game_cap(self) -> None:
+        from cfb_coach.madden.macro_policy import PER_GAME, allow_macro
+
+        db = self.madden_db()
+        try:
+            for _ in range(3):
+                db.log_snap(
+                    opponent_id="james", side="offense", situation_raw="1&10", our_call="x",
+                    coverage_seen="Cover 3 Sky", macro="none",
+                )
+            for _ in range(9):
+                db.log_snap(
+                    opponent_id="james", side="offense", situation_raw="1&10", our_call="x",
+                    coverage_seen="Cover 2", macro="none",
+                )
+            self.assertFalse(allow_macro(
+                db, opponent_id="james", side="offense", macro_id="C3", kind="look",
+            ))
+            for _ in range(PER_GAME):
+                db.log_snap(
+                    opponent_id="james", side="defense", situation_raw="d 1&10", our_call="x",
+                    macro="RZ COVER 2",
+                )
+            self.assertFalse(allow_macro(
+                db, opponent_id="james", side="defense", macro_id="SAFE DEEP", kind="situation",
+            ))
         finally:
             db.close()
 

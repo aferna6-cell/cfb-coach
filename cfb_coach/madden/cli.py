@@ -104,11 +104,27 @@ def cmd_opponents(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _session_live_macros(args: argparse.Namespace) -> bool:
+    """``--no-macros`` forces this session off. Otherwise the config decides."""
+    from cfb_coach.madden.macro_policy import resolve_live_macros
+
+    if getattr(args, "no_macros", False):
+        return False
+    return resolve_live_macros(None)
+
+
 def cmd_config(args: argparse.Namespace) -> int:
+    if getattr(args, "no_macros", False) and getattr(args, "macros", False):
+        raise SystemExit("Pass only one of --no-macros or --macros.")
+    live_macros = None
+    if getattr(args, "no_macros", False):
+        live_macros = False
+    elif getattr(args, "macros", False):
+        live_macros = True
     changing = any(
         getattr(args, k, None)
         for k in ("primary_team", "lab_team", "clear_primary", "clear_lab", "o_book", "d_book")
-    )
+    ) or live_macros is not None
     if changing:
         try:
             _, warnings = save_config(
@@ -118,6 +134,7 @@ def cmd_config(args: argparse.Namespace) -> int:
                 clear_lab=bool(args.clear_lab),
                 offense_book=getattr(args, "o_book", None),
                 defense_book=getattr(args, "d_book", None),
+                live_macros=live_macros,
             )
         except ValueError as exc:
             raise SystemExit(str(exc)) from None
@@ -135,6 +152,11 @@ def cmd_config(args: argparse.Namespace) -> int:
         val = cfg.get(key) or "auto"
         note = (f" (research picks each prep; starts on stock {DEFAULT_START_BOOK[side]})" if val == "auto" else "")
         print(f"  {side} book: {val}{note}")
+    macros_on = bool(cfg.get("live_macros", True))
+    print("  live macros: " + ("on" if macros_on else "off")
+          + (" — play --game madden27 --no-macros turns off one session;"
+             " config --macros turns them back on" if not macros_on else
+             " — only a confirmed live look, red zone, or clock/score; config --no-macros turns them off"))
     if not cfg.get("primary_team"):
         print("  Set: config --game madden27 --primary-team \"Detroit Lions\"")
     return 0
@@ -268,7 +290,10 @@ def cmd_call(args: argparse.Namespace) -> int:
         from cfb_coach.madden.playbook import NoActivePlaybook
 
         try:
-            call = make_call(sit, oid, db, active_macros=_active_after_prep(db, oid, pid))
+            call = make_call(
+                sit, oid, db, active_macros=_active_after_prep(db, oid, pid),
+                live_macros=_session_live_macros(args),
+            )
         except NoActivePlaybook as exc:
             print(str(exc).replace("<opp>", oid), file=sys.stderr)
             return 2
@@ -392,6 +417,12 @@ def cmd_play(args: argparse.Namespace) -> int:
     print("  A play or result with no down (mesh, 4 verts, cover 2, +7, td, int) is the last snap, not a new call. undo removes it.")
     print("  Score (optional, us-them): --score 21-14, or `score 21-14` / `score clear` mid-game.")
     print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. Close early games stay neutral.")
+    macros_on = _session_live_macros(args)
+    if macros_on:
+        print("  Live macros: on. A call stays plain unless the look is on the field and already confirmed,")
+        print("  or the snap is red zone / two-minute / protecting a lead. --no-macros turns them off.")
+    else:
+        print("  Live macros: OFF. Plays still come out; no Custom Adjustment is suggested.")
 
     from cfb_coach.game_score import absorb_and_stamp, context_from_args, interpret_live_command, sit_prompt
 
@@ -404,7 +435,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         absorb_and_stamp(sit, live_ctx)
         heard = format_heard(sit)
         print(heard)
-        call = make_call(sit, oid, db, active_macros=active)
+        call = make_call(sit, oid, db, active_macros=active, live_macros=macros_on)
         print(call.headline())
         print(call.format())
         if args.why:
@@ -421,6 +452,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         from cfb_coach.madden.playbook import live_apply, live_book_info
 
         def _make(sit, **kwargs):
+            kwargs.setdefault("live_macros", macros_on)
             return make_call(sit, oid, db, active_macros=active, **kwargs)
 
         def _learn():
@@ -539,7 +571,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             heard = format_heard(sit)
             print(heard)
             call = make_call(
-                sit, oid, db, active_macros=active,
+                sit, oid, db, active_macros=active, live_macros=macros_on,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )
