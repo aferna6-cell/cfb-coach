@@ -322,9 +322,14 @@ def migrate_selection(db: Any, opponent_id: str) -> bool:
 
 
 def migrate_all_selections(db: Any) -> list[str]:
-    """Migrate every opponent's stored Active 8 in this Madden DB (e.g. jaxon)."""
+    """Migrate every opponent's stored Active 8 in this Madden DB (e.g. jaxon).
+
+    Also drops a one-time bogus ``proven`` mark when that macro's learned weight
+    is still at or below the suppress line (O-RPO after the 19-0 CPU game).
+    """
     if db is None:
         return []
+    migrate_proven_below_suppress(db)
     rows = db.conn.execute("SELECT key FROM meta WHERE key LIKE 'active_macros:%'").fetchall()
     return [r[0].split(":", 1)[1] for r in rows if migrate_selection(db, r[0].split(":", 1)[1])]
 
@@ -411,6 +416,9 @@ def as_selection(active: list[str] | dict[str, list[str]] | None) -> dict[str, l
 # ---------------------------------------------------------------------------
 
 LEARNED_SUPPRESS = -0.15
+# Benched unless the user opts in. Same names as madden/meta_scout._EXPERIMENTAL.
+EXPERIMENTAL_MACROS = frozenset({"HEAT", "O-RPO"})
+PROVEN_SUPPRESS_META = "macro_proven_suppress_v1"
 
 
 def macro_info(mid: str, why: str, *, weight: float | None = None) -> dict[str, Any]:
@@ -435,6 +443,134 @@ def _suppressed(mid: str, weights: dict[str, float] | None) -> bool:
     return w is not None and w <= LEARNED_SUPPRESS
 
 
+def is_experimental_macro(mid: str | None) -> bool:
+    """True for a lab macro (O-RPO, HEAT) that prep must not auto-fill."""
+    key = (mid or "").upper()
+    if key in EXPERIMENTAL_MACROS:
+        return True
+    try:
+        from cfb_coach.madden.data import load_macro_catalog
+
+        cat = (load_macro_catalog().get("macros") or {}).get(key) or {}
+    except Exception:  # noqa: BLE001
+        return False
+    return str(cat.get("inventory") or "") == "benched"
+
+
+def experimental_opt_in(
+    mid: str,
+    *,
+    allow: bool | None = None,
+    swaps: set[str] | None = None,
+) -> bool:
+    """Config flag opts every experimental macro in. ``--swap-macro ID`` opts in one."""
+    if allow is None or swaps is None:
+        from cfb_coach.madden.franchise import load_config
+
+        cfg = load_config()
+        if allow is None:
+            allow = bool(cfg.get("experimental_macros"))
+        if swaps is None:
+            swaps = {str(x).upper() for x in (cfg.get("experimental_swaps") or [])}
+    named = {str(x).upper() for x in (swaps or set())}
+    return bool(allow) or (mid or "").upper() in named
+
+
+def slot_eligible(
+    mid: str,
+    weights: dict[str, float] | None,
+    *,
+    allow: bool | None = None,
+    swaps: set[str] | None = None,
+) -> bool:
+    """A prep slot stays empty for a suppressed macro or an experimental one that was not opted in."""
+    if _suppressed(mid, weights):
+        return False
+    if is_experimental_macro(mid) and not experimental_opt_in(mid, allow=allow, swaps=swaps):
+        return False
+    return True
+
+
+def clear_status(db: Any, name: str) -> None:
+    cur = status_overrides(db)
+    cur.pop((name or "").upper(), None)
+    db.set_meta(STATUS_META_KEY, json.dumps(cur))
+
+
+def migrate_proven_below_suppress(db: Any) -> list[str]:
+    """Once per DB: drop ``proven`` when every stored weight for that macro is at or below suppress.
+
+    O-RPO was marked proven on any gain >= 0 (11/15) while its learned weight was -2.22.
+    A later legitimate proven mark is left alone — this does not run again.
+    """
+    if db is None:
+        return []
+    try:
+        if db.get_meta(PROVEN_SUPPRESS_META):
+            return []
+    except Exception:  # noqa: BLE001
+        return []
+    weights: dict[str, list[float]] = {}
+    try:
+        for r in db.conn.execute("SELECT macro, weight FROM macro_weights").fetchall():
+            w = float(r["weight"] or 0.0)
+            if w == 0.0:
+                continue
+            weights.setdefault(str(r["macro"]).upper(), []).append(w)
+    except Exception:  # noqa: BLE001
+        weights = {}
+    cleared: list[str] = []
+    for name, status in list(status_overrides(db).items()):
+        if status != PROVEN:
+            continue
+        ws = weights.get(name.upper(), [])
+        if ws and max(ws) <= LEARNED_SUPPRESS:
+            clear_status(db, name)
+            cleared.append(name)
+    try:
+        db.set_meta(PROVEN_SUPPRESS_META, "1")
+    except Exception:  # noqa: BLE001
+        pass
+    return cleared
+
+
+def macros_cooled_this_half(db: Any, session_id: str | None, quarter: Any) -> set[str]:
+    """Macro ids that gave up the ball on a snap already logged in this half.
+
+    The half is the same window as the in-game bench: quarters 1–2, then 3 and later.
+    No session or no quarter means nothing is cooled.
+    """
+    from cfb_coach.ingame import half_of
+    from cfb_coach.outcome import parse_outcome
+
+    if db is None or not session_id:
+        return set()
+    try:
+        half = half_of(int(quarter)) if quarter not in (None, "") else None
+    except (TypeError, ValueError):
+        half = None
+    if half is None:
+        return set()
+    try:
+        rows = db.get_session_snaps(session_id)
+    except Exception:  # noqa: BLE001
+        return set()
+    out: set[str] = set()
+    for r in rows:
+        try:
+            q = r["quarter"]
+        except (KeyError, IndexError, TypeError):
+            q = None
+        if half_of(q) != half:
+            continue
+        if parse_outcome(r["result"]).kind not in ("int", "fumble"):
+            continue
+        name = str(r["macro"] or "").split(" [", 1)[0].strip().upper()
+        if name and name != "NONE":
+            out.add(name)
+    return out
+
+
 def best_for_family(family: str | None, ranked: list[str], weights: dict[str, float] | None = None) -> str | None:
     """Highest-ranked macro in ``ranked`` (the defense 10, prep order) that answers ``family``."""
     if not family:
@@ -449,6 +585,8 @@ __all__ = [
     "as_selection", "book_pairs",
     "attach_detail", "best_for_family", "copy_block", "copy_checklist", "key_settings", "legacy_picks",
     "load_active", "load_gameplan", "load_selection", "macro_detail", "macro_info", "macro_side", "macro_status",
-    "migrate_all_selections", "migrate_selection", "missing_settings_report", "set_status", "settings_rows",
+    "clear_status", "experimental_opt_in", "is_experimental_macro", "macros_cooled_this_half",
+    "migrate_all_selections", "migrate_proven_below_suppress", "migrate_selection",
+    "missing_settings_report", "set_status", "settings_rows", "slot_eligible",
     "split_loadout", "status_overrides", "store_selection", "tag_live",
 ]

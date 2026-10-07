@@ -1017,6 +1017,14 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Turn live Custom Adjustment suggestions off until --macros")
     p_cfg.add_argument("--macros", dest="macros", action="store_true",
                        help="Turn live Custom Adjustment suggestions back on (still rare)")
+    p_cfg.add_argument("--experimental-macros", dest="experimental_macros", action="store_true",
+                       help="Let experimental macros (O-RPO, HEAT) into the primary list")
+    p_cfg.add_argument("--no-experimental-macros", dest="no_experimental_macros", action="store_true",
+                       help="Keep experimental macros out of the primary list")
+    p_cfg.add_argument("--swap-macro", dest="swap_macro", default=None, metavar="ID",
+                       help="Opt one experimental macro into the primary list, e.g. O-RPO")
+    p_cfg.add_argument("--unswap-macro", dest="unswap_macro", default=None, metavar="ID",
+                       help="Take one experimental macro back out of the primary list")
     p_cfg.set_defaults(func=cmd_config)
 
     p_ms = sub.add_parser(

@@ -139,6 +139,60 @@ def snap_concept_families(db: Any, opponent_id: str) -> Counter:
     return out
 
 
+def prep_window(rows: list[dict[str, Any]], n: int, *, require_fit: bool = False) -> list[dict[str, Any]]:
+    """The n slots, in rank order, before suppressed and experimental names are removed.
+
+    The learned-weight hammer (−1) pushes a bad macro down the list and lets the next
+    name slide into the 8. Slot choice ignores that hammer so the bad macro still
+    occupies the slot, and the caller leaves the slot empty instead of backfilling.
+    """
+    def natural(row: dict[str, Any]) -> float:
+        score = float(row["score"])
+        hammer = (row.get("parts") or {}).get("learned weight")
+        if isinstance(hammer, (int, float)) and float(hammer) <= -0.999:
+            score -= float(hammer)
+        return score
+
+    ordered = sorted(rows, key=natural, reverse=True)
+    if require_fit:
+        ordered = [r for r in ordered if r.get("fits", True)]
+    return ordered[:n]
+
+
+def apply_slots(
+    rows: list[dict[str, Any]],
+    n: int,
+    weights: dict[str, float] | None,
+    *,
+    require_fit: bool = False,
+    allow: bool | None = None,
+    swaps: set[str] | None = None,
+) -> list[str]:
+    """Primary ids. Ineligible names leave a hole. Only an opted-in experimental macro may fill one."""
+    from cfb_coach.madden.macros import is_experimental_macro, slot_eligible
+
+    window = prep_window(rows, n, require_fit=require_fit)
+    picked = [r["id"] for r in window if slot_eligible(r["id"], weights, allow=allow, swaps=swaps)]
+    if len(picked) >= n:
+        return picked
+    seen = set(picked)
+    for r in rows:
+        if len(picked) >= n:
+            break
+        mid = r["id"]
+        if mid in seen:
+            continue
+        if require_fit and not r.get("fits", True):
+            continue
+        if not is_experimental_macro(mid):
+            continue
+        if not slot_eligible(mid, weights, allow=allow, swaps=swaps):
+            continue
+        picked.append(mid)
+        seen.add(mid)
+    return picked
+
+
 def select_loadout(
     opponent_id: str,
     *,
@@ -150,11 +204,15 @@ def select_loadout(
     previous_offense: list[str] | None = None,
     offense_book: dict[str, list[str]] | None = None,
     n: int = LOADOUT_N,
+    allow_experimental: bool | None = None,
+    swaps: set[str] | None = None,
 ) -> dict[str, Any]:
-    """{"offense": [8 ids], "defense": [8 ids], "ranked": defense rows, "ranked_offense": rows}.
+    """{"offense": [ids], "defense": [ids], "ranked": defense rows, "ranked_offense": rows}.
 
-    CPU (``offense_only``) gets the 8 offense macros that pair with ``offense_book``
+    CPU (``offense_only``) gets the offense macros that pair with ``offense_book``
     and no defense macros. Without a book, a CPU loadout stays empty.
+    A suppressed macro, or an experimental one the user did not opt into, leaves
+    its slot empty. The next name is not pulled up to fill it.
     """
     from cfb_coach.madden.offense_macros import select_offense
 
@@ -165,15 +223,21 @@ def select_loadout(
         rows = rank_defense(db=db, archetype=archetype, hint_families=research_hint_families(scout),
                             tendencies=tends, weights=weights, previous=previous)
         out["ranked"] = rows
-        out["defense"] = [r["id"] for r in rows[:n]]
+        out["defense"] = apply_slots(
+            rows, n, weights, allow=allow_experimental, swaps=swaps,
+        )
     if offense_book is not None or not offense_only:
-        offense, ranked_o = select_offense(opponent_id, db=db, archetype=archetype, book=offense_book,
-                                           previous=previous_offense, weights=weights, n=n)
+        offense, ranked_o = select_offense(
+            opponent_id, db=db, archetype=archetype, book=offense_book,
+            previous=previous_offense, weights=weights, n=n,
+            allow_experimental=allow_experimental, swaps=swaps,
+        )
         out["offense"] = offense
         out["ranked_offense"] = ranked_o
     return out
 
 
 __all__ = [
-    "rank_defense", "research_hint_families", "select_loadout", "snap_concept_families", "tendency_families",
+    "apply_slots", "prep_window", "rank_defense", "research_hint_families", "select_loadout",
+    "snap_concept_families", "tendency_families",
 ]

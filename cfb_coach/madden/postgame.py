@@ -10,9 +10,8 @@ from collections import defaultdict
 from typing import Any
 
 from cfb_coach.dynasty import list_alabama_promotions, promote, record_promotions
-from cfb_coach.gameplan import _result_success
 from cfb_coach.madden.franchise import LAB, normalize_profile, profile_config
-from cfb_coach.madden.macros import FAILED, PROVEN, macro_status, set_status
+from cfb_coach.madden.macros import FAILED, LEARNED_SUPPRESS, PROVEN, macro_status, set_status
 
 PROMOTE_MIN_SNAPS = 3
 PROMOTE_MIN_RATE = 0.6
@@ -25,6 +24,43 @@ def _base_macro(raw: str | None) -> str | None:
     return None if name in ("", "NONE") else name
 
 
+def snap_success(row: Any) -> bool | None:
+    """Down-and-distance success for Madden status. A turnover is a hard failure.
+
+    1st down needs 40% of the yards, 2nd needs 60%, 3rd and 4th need all of them.
+    Same grades as ``learning.evaluate_snap``. CFB's ``outcome_success`` is unchanged.
+    """
+    from cfb_coach.learning import evaluate_snap
+
+    ev = evaluate_snap(row)
+    if ev is None:
+        return None
+    return bool(ev.success)
+
+
+def _bucket_weight(db: Any, bucket: str, macro: str) -> float | None:
+    try:
+        rows = db.get_macro_weights(bucket)
+    except Exception:  # noqa: BLE001
+        return None
+    for r in rows:
+        if str(r["macro"]).upper() != macro.upper():
+            continue
+        w = float(r["weight"] or 0.0)
+        if w != 0.0:
+            return w
+    return None
+
+
+def proven_blocked(db: Any, macro: str, opponent_id: str) -> bool:
+    """True when this opponent's weight or the global weight is at or below suppress."""
+    for bucket in ("global", opponent_id):
+        w = _bucket_weight(db, bucket, macro)
+        if w is not None and w <= LEARNED_SUPPRESS:
+            return True
+    return False
+
+
 def learn(db: Any, opponent_id: str) -> dict[str, Any]:
     """Learn from this opponent's new snaps: CFB retrain (rebuild_all) + macro proven/failed status."""
     since = int(db.get_meta(f"{LEARN_KEY}:{opponent_id}") or 0)
@@ -32,7 +68,7 @@ def learn(db: Any, opponent_id: str) -> dict[str, Any]:
     plays: dict[tuple[str, str, str], list[bool]] = defaultdict(list)
     macros: dict[str, list[bool]] = defaultdict(list)
     for s in snaps:
-        ok = _result_success(s["result"], s["side"])
+        ok = snap_success(s)
         if ok is None:
             continue
         plays[(s["side"], s["formation"] or "?", s["play"] or "?")].append(ok)
@@ -52,12 +88,16 @@ def learn(db: Any, opponent_id: str) -> dict[str, Any]:
         # exact name (or its tagged form "NAME [status]") — a prefix match would mix MATCH with
         # MATCH-4 or RUN with RUN-FIT now that the pool holds both games' macros (v1.17)
         rows = db.conn.execute(
-            "SELECT side, result FROM snaps WHERE UPPER(macro) = ? OR UPPER(macro) LIKE ?", (m, f"{m} [%")
+            "SELECT side, result, down, distance, yardline FROM snaps "
+            "WHERE UPPER(macro) = ? OR UPPER(macro) LIKE ?", (m, f"{m} [%")
         ).fetchall()
-        rec = [r for r in (_result_success(r["result"], r["side"]) for r in rows) if r is not None]
+        rec = [ok for ok in (snap_success(r) for r in rows) if ok is not None]
         if len(rec) >= PROMOTE_MIN_SNAPS:
             rate = sum(rec) / len(rec)
             new = PROVEN if rate >= PROMOTE_MIN_RATE else FAILED if rate <= FAIL_MAX_RATE else None
+            # A negative learned weight is not a proven macro, even when the raw rate clears 60%.
+            if new == PROVEN and proven_blocked(db, m, opponent_id):
+                new = None
             if new and macro_status(m, db) != new:
                 set_status(db, m, new)
                 status_changes.append(f"{m} → {new} ({sum(rec)}/{len(rec)} success)")

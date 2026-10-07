@@ -34,6 +34,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "offense_book": "auto",  # auto = start on stock Buccaneers, research may recommend a switch
     "defense_book": "auto",  # auto = start on stock 49ers
     "live_macros": True,  # False = play shows no Custom Adjustment (config --no-macros)
+    # Experimental macros (O-RPO, HEAT) stay out of the primary list unless one of these is set.
+    "experimental_macros": False,
+    "experimental_swaps": [],
 }
 
 _PROFILE_ALIASES = {
@@ -138,6 +141,9 @@ def save_config(
     offense_book: str | None = None,
     defense_book: str | None = None,
     live_macros: bool | None = None,
+    experimental_macros: bool | None = None,
+    swap_macro: str | None = None,
+    unswap_macro: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Update the on-disk config. Returns (config, warnings)."""
     path = config_path()
@@ -169,6 +175,16 @@ def save_config(
             cfg[key] = mode if mode != "stock" else f"stock:{book}"
     if live_macros is not None:
         cfg["live_macros"] = bool(live_macros)
+    if experimental_macros is not None:
+        cfg["experimental_macros"] = bool(experimental_macros)
+    swaps = [str(x).upper() for x in (cfg.get("experimental_swaps") or []) if str(x).strip()]
+    if swap_macro:
+        key = str(swap_macro).upper()
+        if key not in swaps:
+            swaps.append(key)
+    if unswap_macro:
+        swaps = [s for s in swaps if s != str(unswap_macro).upper()]
+    cfg["experimental_swaps"] = swaps
     cfg["updated_ts"] = datetime.now(timezone.utc).isoformat()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")

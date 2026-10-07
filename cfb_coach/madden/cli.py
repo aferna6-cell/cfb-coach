@@ -118,15 +118,23 @@ def _session_live_macros(args: argparse.Namespace) -> bool:
 def cmd_config(args: argparse.Namespace) -> int:
     if getattr(args, "no_macros", False) and getattr(args, "macros", False):
         raise SystemExit("Pass only one of --no-macros or --macros.")
+    if getattr(args, "experimental_macros", False) and getattr(args, "no_experimental_macros", False):
+        raise SystemExit("Pass only one of --experimental-macros or --no-experimental-macros.")
     live_macros = None
     if getattr(args, "no_macros", False):
         live_macros = False
     elif getattr(args, "macros", False):
         live_macros = True
+    experimental = None
+    if getattr(args, "no_experimental_macros", False):
+        experimental = False
+    elif getattr(args, "experimental_macros", False):
+        experimental = True
     changing = any(
         getattr(args, k, None)
-        for k in ("primary_team", "lab_team", "clear_primary", "clear_lab", "o_book", "d_book")
-    ) or live_macros is not None
+        for k in ("primary_team", "lab_team", "clear_primary", "clear_lab", "o_book", "d_book",
+                  "swap_macro", "unswap_macro")
+    ) or live_macros is not None or experimental is not None
     if changing:
         try:
             _, warnings = save_config(
@@ -137,6 +145,9 @@ def cmd_config(args: argparse.Namespace) -> int:
                 offense_book=getattr(args, "o_book", None),
                 defense_book=getattr(args, "d_book", None),
                 live_macros=live_macros,
+                experimental_macros=experimental,
+                swap_macro=getattr(args, "swap_macro", None),
+                unswap_macro=getattr(args, "unswap_macro", None),
             )
         except ValueError as exc:
             raise SystemExit(str(exc)) from None
@@ -159,6 +170,14 @@ def cmd_config(args: argparse.Namespace) -> int:
           + (" — play --game madden27 --no-macros turns off one session;"
              " config --macros turns them back on" if not macros_on else
              " — a matching look, repeated tendency, or red zone / clock / score; config --no-macros turns them off"))
+    exp_on = bool(cfg.get("experimental_macros"))
+    swaps = [str(x).upper() for x in (cfg.get("experimental_swaps") or [])]
+    exp_line = "on" if exp_on else "off"
+    if swaps:
+        exp_line += " — swapped in: " + ", ".join(swaps)
+    else:
+        exp_line += " — O-RPO and HEAT stay benched (config --swap-macro O-RPO, or --experimental-macros)"
+    print(f"  experimental macros: {exp_line}")
     if not cfg.get("primary_team"):
         print("  Set: config --game madden27 --primary-team \"Detroit Lions\"")
     return 0

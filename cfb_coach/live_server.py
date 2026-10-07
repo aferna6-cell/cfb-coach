@@ -7,6 +7,7 @@ keeps the classic typed loop.
 from __future__ import annotations
 
 import json
+import re
 import socket
 import threading
 import traceback
@@ -45,6 +46,38 @@ class LogRow:
             + (f" · {self.result}" if self.result else "")
             + (f" vs {self.look}" if self.look else ""),
         }
+
+
+_RAW_DOWN = re.compile(
+    r"\b([1-4])(?:st|nd|rd|th)?\s*(?:&|and)\s*(?:\d+|goal|g|inches)\b",
+    re.I,
+)
+_RAW_SPOT = re.compile(
+    r"\b(?:(?:my|our|own|opp(?:onent)?s?|their)\s*(?:yl|yard\s*line)?\s*\d{1,2}"
+    r"|(?:yl|yardline)\s*\d{1,2})\b",
+    re.I,
+)
+
+
+def _sync_raw_to_spot(sit: Any) -> None:
+    """Rewrite the typed down and yardline so the logged line matches the snap.
+
+    The form often still shows the previous down. The numeric spot is already the
+    ball after the result; the raw line was left behind, so ``situation_raw`` was
+    one snap late. Coverage and concept words stay.
+    """
+    raw = getattr(sit, "raw", "") or ""
+    down = getattr(sit, "down", None)
+    dist = getattr(sit, "distance", None)
+    if not raw or down is None or dist is None:
+        return
+    updated = _RAW_DOWN.sub(f"{int(down)}&{int(dist)}", raw, count=1)
+    yl = getattr(sit, "yardline", None)
+    if yl is not None and _RAW_SPOT.search(updated):
+        phrase = f"opp {100 - int(yl)}" if int(yl) > 50 else f"my {int(yl)}"
+        updated = _RAW_SPOT.sub(phrase, updated, count=1)
+    if updated != raw:
+        sit.raw = updated
 
 
 def _same_spot(sit: Any, other: Any) -> bool:
@@ -409,6 +442,7 @@ class LivePlayController:
                 if book.spot.yardline is not None:
                     sit.yardline = book.spot.yardline
                 refresh_marks(sit)
+                _sync_raw_to_spot(sit)
             from cfb_coach.situation import format_heard
 
             try:
