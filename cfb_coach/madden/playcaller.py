@@ -339,6 +339,30 @@ def _scouted_coverage_bonus(
     return f"scout {scope}: they play {cls} {round(share * 100)}% (n={n})" + (f" — {cls} answers weighted" if hit else "")
 
 
+def _cooled_macros(db: Any, sit: Situation) -> set[str]:
+    """Macros that threw a pick or a fumble earlier this half. Empty without a session."""
+    from cfb_coach.madden.macros import macros_cooled_this_half
+
+    extras = getattr(sit, "extras", None) or {}
+    return macros_cooled_this_half(db, extras.get("session_id"), extras.get("quarter"))
+
+
+def narrow_pool(pool: list[tuple[str, str]], steer: dict[str, Any]) -> list[tuple[str, str]]:
+    """Keep the macro's pairs. An RPO steer also keeps every designed run already in the pool.
+
+    The ranker still chooses run or pass. The RPO list is not allowed to be the whole menu.
+    """
+    from cfb_coach.madden.catalog import is_run
+
+    allowed = {tuple(p) for p in (steer.get("pairs") or [])}
+    if steer.get("rpo"):
+        for fp in pool:
+            if is_run(fp[1]):
+                allowed.add(fp)
+    narrowed = [fp for fp in pool if fp in allowed]
+    return narrowed
+
+
 def _pick_offense(
     sit: Situation,
     opp: dict[str, Any],
@@ -375,6 +399,7 @@ def _pick_offense(
     scout_note = "" if cov else _scouted_coverage_bonus(sit, oid, db, og, pool, bonus)
 
     weights = _learned_macros(db, oid)
+    cooled = _cooled_macros(db, sit)
     zone = "gl" if sit.goal_line else "rz" if sit.red_zone else "open"
     score_phase = None
     try:
@@ -392,12 +417,12 @@ def _pick_offense(
         steer = situation_macro(
             zone=zone, coverage=cov, coverage_source=src, active=active, down=sit.down,
             repeated=repeated, book=book, weights=weights, score_phase=score_phase, pool=pool,
+            cooled=cooled,
         )
     except Exception:  # noqa: BLE001 — never break a call
         steer = None
     if steer:
-        allowed = set(steer["pairs"])
-        narrowed = [fp for fp in pool if fp in allowed]
+        narrowed = narrow_pool(pool, steer)
         if narrowed:
             pool = narrowed
         else:
@@ -459,7 +484,7 @@ def _pick_offense(
 
         info = suggest_for_snap(zone=zone, play=play, coverage=cov, coverage_source=src, active=active,
                                 down=sit.down, repeated=repeated, book=book, weights=weights,
-                                score_phase=score_phase)
+                                score_phase=score_phase, cooled=cooled)
     except Exception:  # noqa: BLE001 — never break a call
         info = None
     # Fire rules picked a macro. --no-macros withholds the label and does not
@@ -684,11 +709,16 @@ def _pick_defense(
     concept = sit.concept_hint
     fam = concept_family(concept)
     weights = _learned_macros(db, oid)
+    cooled = _cooled_macros(db, sit)
+    if cooled:
+        active = [m for m in active if m not in cooled]
     # The family's best macro among the defense loadout (prep rank order). When none of them
     # answers it, the research DB's best one is only named as a suggestion (re-prep to carry it).
     from cfb_coach.madden.macro_pool import pool_ids
 
     by_rank = sorted(pool_ids("defense"), key=lambda m: (get_macro(m) or {}).get("meta_rank", 99))
+    if cooled:
+        by_rank = [m for m in by_rank if m not in cooled]
     fam_macro = best_for_family(fam, active, weights) or best_for_family(fam, by_rank, weights)
     if concept:
         src = sit.concept_source or "none"

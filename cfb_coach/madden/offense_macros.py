@@ -187,10 +187,21 @@ def select_offense(
     previous: list[str] | None = None,
     weights: dict[str, float] | None = None,
     n: int = 8,
+    allow_experimental: bool | None = None,
+    swaps: set[str] | None = None,
 ) -> tuple[list[str], list[dict[str, Any]]]:
+    """Top fits. A suppressed or un-opted experimental macro leaves its slot empty.
+
+    The next name is not pulled in to fill that hole. ``allow_experimental`` /
+    ``swaps`` opt a lab macro in (config flag or an explicit ``--swap-macro``).
+    """
+    from cfb_coach.madden.macro_select import apply_slots
+
     rows = rank_offense(db=db, opponent_id=opponent_id, archetype=archetype, book=book,
                         previous=previous, weights=weights)
-    picked = [r["id"] for r in rows if r["fits"] and r["score"] > -1.0][:n]
+    picked = apply_slots(
+        rows, n, weights, require_fit=True, allow=allow_experimental, swaps=swaps,
+    )
     return picked, rows
 
 
@@ -306,6 +317,44 @@ def _pair_key(item: str) -> tuple[str, str]:
     return form, play
 
 
+def _ready(
+    mid: str,
+    act: list[str],
+    data: dict[str, Any],
+    weights: dict[str, float] | None,
+    cooled: set[str] | None,
+    score_phase: str | None,
+) -> tuple[float | None, dict[str, Any]] | None:
+    """None when this macro cannot arm. Otherwise (learned weight, fire block)."""
+    from cfb_coach.madden.macros import LEARNED_SUPPRESS
+
+    if mid not in act or mid not in data:
+        return None
+    if cooled and mid in cooled:
+        return None
+    if mid == "SHOT" and score_phase in ("protect", "prevent"):
+        return None
+    w = (weights or {}).get(mid)
+    if w is not None and w <= LEARNED_SUPPRESS:
+        return None
+    return w, data[mid].get("fire") or {}
+
+
+def _choose_weighted(cands: list[tuple[str, float | None]]) -> tuple[str, float | None] | None:
+    """Highest learned weight. A missing weight is neutral (0). Ties keep the old priority."""
+    if not cands:
+        return None
+    from cfb_coach.macros import LIVE_MACRO_PRIORITY
+
+    def key(item: tuple[str, float | None]) -> tuple[float, int]:
+        mid, w = item
+        weight = 0.0 if w is None else float(w)
+        prio = LIVE_MACRO_PRIORITY.index(mid) if mid in LIVE_MACRO_PRIORITY else 99
+        return (-weight, prio)
+
+    return min(cands, key=key)
+
+
 def situation_macro(
     *,
     zone: str,
@@ -318,15 +367,16 @@ def situation_macro(
     weights: dict[str, float] | None = None,
     score_phase: str | None = None,
     pool: list[tuple[str, str]] | None = None,
+    cooled: set[str] | None = None,
 ) -> dict[str, Any] | None:
     """The stored offense Custom Adjustment this snap should call, before a play is sampled.
 
-    Walks the same fire rules as ``suggest_for_snap`` (zone, down, live or repeated
-    coverage, the macro's when-to-fire). A blank snap with no look does not invent a
+    Every macro whose fire rules match this look is a candidate. The highest learned
+    weight wins (a missing weight is neutral). Ties keep ``LIVE_MACRO_PRIORITY``, which
+    is what CFB still walks on its own. A blank snap with no look does not invent a
     coverage from old logs. Returns None unless at least one in-book pair is also in
-    ``pool`` (the situational play list). Protecting a lead skips SHOT."""
+    ``pool``. Protecting a lead skips SHOT. ``cooled`` macros stay off for the half."""
     from cfb_coach.macros import LIVE_MACRO_PRIORITY, classify_coverage
-    from cfb_coach.madden.macros import LEARNED_SUPPRESS
 
     act = clean_ids(active)
     if not act or not book:
@@ -336,15 +386,12 @@ def situation_macro(
     cov_ok = bool(cls) and (coverage_source == "live" or repeated)
     have_heat = any(a in act for a in ("O-HEAT", "PROT"))
     allowed = set(pool) if pool is not None else None
+    found: list[tuple[str, float | None, list[tuple[str, str]], dict[str, Any]]] = []
     for mid in LIVE_MACRO_PRIORITY:
-        if mid not in act or mid not in data:
+        ready = _ready(mid, act, data, weights, cooled, score_phase)
+        if ready is None:
             continue
-        if mid == "SHOT" and score_phase in ("protect", "prevent"):
-            continue
-        w = (weights or {}).get(mid)
-        if w is not None and w <= LEARNED_SUPPRESS:
-            continue
-        fire = data[mid].get("fire") or {}
+        w, fire = ready
         if zone not in (fire.get("zones") or ["open", "rz", "gl"]):
             continue
         if fire.get("downs") and down not in fire["downs"]:
@@ -361,22 +408,29 @@ def situation_macro(
             keys.append((form, play))
         if not keys:
             continue
-        det = offense_detail(mid, book)
-        want = set(fire.get("coverages") or [])
-        trig = f"{coverage_source} {coverage}" if want else ("red zone" if zone in ("rz", "gl") else "run")
-        return {
-            "id": mid,
-            "name": det["xbox_name"],
-            "side": "offense",
-            "why": trig,
-            "key": det["key"],
-            "buttons": det["buttons"],
-            "settings": [r for r in det["settings"]],
-            "fire_when": det["fire_when"],
-            "learned_weight": w,
-            "pairs": keys,
-        }
-    return None
+        found.append((mid, w, keys, fire))
+    chosen = _choose_weighted([(mid, w) for mid, w, _keys, _fire in found])
+    if chosen is None:
+        return None
+    mid, w = chosen
+    _keys = next(keys for name, _w, keys, _fire in found if name == mid)
+    fire = next(block for name, _w, _keys, block in found if name == mid)
+    det = offense_detail(mid, book)
+    want = set(fire.get("coverages") or [])
+    trig = f"{coverage_source} {coverage}" if want else ("red zone" if zone in ("rz", "gl") else "run")
+    return {
+        "id": mid,
+        "name": det["xbox_name"],
+        "side": "offense",
+        "why": trig,
+        "key": det["key"],
+        "buttons": det["buttons"],
+        "settings": [r for r in det["settings"]],
+        "fire_when": det["fire_when"],
+        "learned_weight": w,
+        "pairs": _keys,
+        "rpo": bool(fire.get("rpo")),
+    }
 
 
 def suggest_for_snap(
@@ -391,13 +445,14 @@ def suggest_for_snap(
     book: dict[str, list[str]] | None = None,
     weights: dict[str, float] | None = None,
     score_phase: str | None = None,
+    cooled: set[str] | None = None,
 ) -> dict[str, Any] | None:
     """One offense Custom Adjustment for this snap, or None.
 
     Only ids in ``active``. The called play has to be one of the macro's pairs in the
-    trimmed book. A coverage macro needs a live look (or a look repeated this game)."""
+    trimmed book. When more than one macro fits that play, the higher learned weight
+    wins. A coverage macro needs a live look (or a look repeated this game)."""
     from cfb_coach.macros import LIVE_MACRO_PRIORITY, classify_coverage
-    from cfb_coach.madden.macros import LEARNED_SUPPRESS
 
     act = clean_ids(active)
     if not act or not play or not book:
@@ -406,15 +461,12 @@ def suggest_for_snap(
     cls = classify_coverage(coverage)
     cov_ok = bool(cls) and (coverage_source == "live" or repeated)
     have_heat = any(a in act for a in ("O-HEAT", "PROT"))
+    found: list[tuple[str, float | None, dict[str, Any]]] = []
     for mid in LIVE_MACRO_PRIORITY:
-        if mid not in act or mid not in data:
+        ready = _ready(mid, act, data, weights, cooled, score_phase)
+        if ready is None:
             continue
-        if mid == "SHOT" and score_phase in ("protect", "prevent"):
-            continue
-        w = (weights or {}).get(mid)
-        if w is not None and w <= LEARNED_SUPPRESS:
-            continue
-        fire = data[mid].get("fire") or {}
+        w, fire = ready
         if zone not in (fire.get("zones") or ["open", "rz", "gl"]):
             continue
         pairs = pairs_in_book(mid, book, cap=80)
@@ -426,22 +478,27 @@ def suggest_for_snap(
             continue
         if _avoided(fire, cls, play):
             continue
-        det = offense_detail(mid, book)
-        want = set(fire.get("coverages") or [])
-        trig = f"{coverage_source} {coverage}" if want else ("red zone" if zone in ("rz", "gl") else "run")
-        return {
-            "id": mid,
-            "name": det["xbox_name"],
-            "side": "offense",
-            "kind": "situation" if not want else "look",
-            "why": f"{trig} on {play}",
-            "key": det["key"],
-            "buttons": det["buttons"],
-            "settings": [r for r in det["settings"]],
-            "fire_when": det["fire_when"],
-            "learned_weight": w,
-        }
-    return None
+        found.append((mid, w, fire))
+    chosen = _choose_weighted([(mid, w) for mid, w, _fire in found])
+    if chosen is None:
+        return None
+    mid, w = chosen
+    fire = next(block for name, _w, block in found if name == mid)
+    det = offense_detail(mid, book)
+    want = set(fire.get("coverages") or [])
+    trig = f"{coverage_source} {coverage}" if want else ("red zone" if zone in ("rz", "gl") else "run")
+    return {
+        "id": mid,
+        "name": det["xbox_name"],
+        "side": "offense",
+        "kind": "situation" if not want else "look",
+        "why": f"{trig} on {play}",
+        "key": det["key"],
+        "buttons": det["buttons"],
+        "settings": [r for r in det["settings"]],
+        "fire_when": det["fire_when"],
+        "learned_weight": w,
+    }
 
 
 __all__ = [
