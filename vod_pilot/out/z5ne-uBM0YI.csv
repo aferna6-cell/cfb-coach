@@ -1,0 +1,10 @@
+ts,opponent_id,side,down,distance,yardline,quarter,situation_raw,our_call,formation,play,macro,result,coverage_seen,concept_seen,notes,session_id
+vod:z5ne-uBM0YI:34.0,vod:thenewera23,offense,1,10,,1,1st & 10 q1 3:56,,,HB Slam,,+0,,corner post streak wheel,vod_pilot game=madden27 video=z5ne-uBM0YI t=34.0-86.0 result_kind=no_gain not logged to coach.db,vod:z5ne-uBM0YI
+vod:z5ne-uBM0YI:87.0,vod:thenewera23,offense,2,10,,1,2nd & 10 q1 3:26,,,,,+0,,,vod_pilot game=madden27 video=z5ne-uBM0YI t=87.0-87.0 result_kind=no_gain not logged to coach.db,vod:z5ne-uBM0YI
+vod:z5ne-uBM0YI:88.0,vod:thenewera23,offense,3,10,,1,3rd & 10 q1 3:23,,,,,convert,Cover 3 Buzz Match,,vod_pilot game=madden27 video=z5ne-uBM0YI t=88.0-100.0 result_kind=convert not logged to coach.db,vod:z5ne-uBM0YI
+vod:z5ne-uBM0YI:102.0,vod:thenewera23,offense,1,10,,1,1st & 10 q1 2:57,,,,,td,Cover 1 Contain,corner post streak flat,vod_pilot game=madden27 video=z5ne-uBM0YI t=102.0-124.0 result_kind=td not logged to coach.db,vod:z5ne-uBM0YI
+vod:z5ne-uBM0YI:136.0,vod:thenewera23,offense,,,,1,q1 2:39,,,Kickoff,,,,,vod_pilot game=madden27 video=z5ne-uBM0YI t=136.0-139.0 result_kind=unknown not logged to coach.db,vod:z5ne-uBM0YI
+vod:z5ne-uBM0YI:140.0,vod:thenewera23,offense,1,10,,1,1st & 10 q1 2:37,,,,,+0,,,vod_pilot game=madden27 video=z5ne-uBM0YI t=140.0-145.0 result_kind=no_gain not logged to coach.db,vod:z5ne-uBM0YI
+vod:z5ne-uBM0YI:146.0,vod:thenewera23,offense,2,10,35,1,2nd & 10 own 35 q1 2:36,,,,,,,,vod_pilot game=madden27 video=z5ne-uBM0YI t=146.0-153.0 result_kind=unknown not logged to coach.db,vod:z5ne-uBM0YI
+vod:z5ne-uBM0YI:154.0,vod:thenewera23,offense,2,5,,1,2nd & 5 q1 2:36,,,,,convert,,,vod_pilot game=madden27 video=z5ne-uBM0YI t=154.0-156.0 result_kind=convert not logged to coach.db,vod:z5ne-uBM0YI
+vod:z5ne-uBM0YI:160.0,vod:thenewera23,offense,1,10,,1,1st & 10 q1 2:34,,,,,,,,vod_pilot game=madden27 video=z5ne-uBM0YI t=160.0-175.0 result_kind=unknown not logged to coach.db,vod:z5ne-uBM0YI
