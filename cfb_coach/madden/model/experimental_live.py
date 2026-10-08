@@ -310,9 +310,7 @@ def apply_experimental_offense(
     pairs, bonuses = situational_offense_candidates(
         sit, book, db=db, opponent_id=opponent_id
     )
-    # Heuristic pick must remain in the eligible set when possible.
-    if heur_form and heur_play and (heur_form, heur_play) not in pairs:
-        pairs = list(pairs) + [(heur_form, heur_play)]
+    # Model-primary: heuristic is only the fallback, never an extra candidate.
     if not pairs:
         return _fallback(MLStatus.INVALID_OUTPUT)
 
@@ -357,8 +355,9 @@ def apply_experimental_offense(
             coverage_source=cov_src,
             opponent_id=opponent_id,
             opponent_type=opp_type,
-            heuristic=(heur_form, heur_play) if heur_form and heur_play else None,
-            heuristic_bonuses=bonuses,
+            heuristic=None,
+            heuristic_bonuses={},
+            near_tie_margin=0.0,
         )
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
@@ -404,21 +403,21 @@ def apply_experimental_offense(
         if cov_src == "last" and cov_hint:
             explanation += " | last-snap coverage used as soft prior only"
 
-        if agree:
-            call = heuristic_call
-            call.rationale = (getattr(call, "rationale", "") or "") + f" | {explanation}"
-        else:
-            call = rebuild_offense_attachments(
-                formation=ml_form,
-                play=ml_play,
-                sit=sit,
-                book=book,
-                active=list(active or []),
-                db=db,
-                opponent_id=opponent_id,
-                rationale=f"{explanation} | sealed rebuild of reads/macros for ML pick",
-                audibles=audibles,
-            )
+        # Always build the model-selected call, even when the play name agrees
+        # with the heuristic. Accessories must never be inherited by accident.
+        call = rebuild_offense_attachments(
+            formation=ml_form,
+            play=ml_play,
+            sit=sit,
+            book=book,
+            active=list(active or []),
+            db=db,
+            opponent_id=opponent_id,
+            rationale=f"{explanation} | model-primary reconstructed call",
+            audibles=audibles,
+            model_action_policy=True,
+            play_prediction=top,
+        )
 
         info = {
             "heuristic_formation": heur_form,
