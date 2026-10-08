@@ -50,9 +50,14 @@ def _maybe_shadow(
 
         mode = ml_inference.resolve_mode(db)
         pending = getattr(call, "_pending_ml_decision", None)
-        if mode is CoachingMode.HEURISTIC and pending is None:
+        pending_d = getattr(call, "_pending_defense_shadow", None)
+        if mode is CoachingMode.HEURISTIC and pending is None and pending_d is None:
             return None
-        if mode not in (CoachingMode.SHADOW, CoachingMode.EXPERIMENTAL) and pending is None:
+        if (
+            mode not in (CoachingMode.SHADOW, CoachingMode.EXPERIMENTAL)
+            and pending is None
+            and pending_d is None
+        ):
             return None
         # Prefer an explicit game/session; never use opponent_id as game_id.
         gid = game_id or session_id
@@ -71,6 +76,17 @@ def _maybe_shadow(
             from cfb_coach.madden.model.experimental_live import commit_experimental_decision
 
             row_id = commit_experimental_decision(
+                db,
+                call,
+                game_id=gid,
+                snap_id=snap_id,
+                snap_seq=seq,
+                session_id=gid,
+            )
+        elif pending_d is not None and is_new:
+            from cfb_coach.madden.model.defense_shadow import commit_defense_shadow
+
+            row_id = commit_defense_shadow(
                 db,
                 call,
                 game_id=gid,

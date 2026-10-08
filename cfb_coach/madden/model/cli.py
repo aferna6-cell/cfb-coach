@@ -559,6 +559,111 @@ def cmd_ml_research_refresh(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def cmd_ml_defense_shadow_status(args: argparse.Namespace) -> int:
+    """Show Stage 3 defense shadow advisor status (never enables live control)."""
+    from cfb_coach.madden.model import defense_shadow as dshadow
+
+    del args
+    db = open_madden_db()
+    try:
+        print("defense_shadow_log:", "on" if dshadow.logging_enabled(db) else "off")
+        print("defense_shadow_control:", "on" if dshadow.control_enabled(db) else "off")
+        print("activation:", json.dumps(dshadow.refuse_activation(db), indent=2))
+        print("experimental_offense_mode:", inference_mod.resolve_mode(db).value)
+        print("note: defense shadow never changes the live defensive call in this sprint")
+    finally:
+        db.close()
+    return 0
+
+
+def cmd_ml_defense_shadow_report(args: argparse.Namespace) -> int:
+    """Postgame heuristic vs defense-shadow comparison (no counterfactual credit)."""
+    from cfb_coach.madden.model import defense_shadow as dshadow
+
+    db = open_madden_db()
+    try:
+        report = dshadow.postgame_defense_shadow_report(
+            db, game_id=getattr(args, "game_id", None)
+        )
+        print(json.dumps(report, indent=2, default=str))
+    finally:
+        db.close()
+    return 0
+
+
+def cmd_ml_defense_shadow_activate(args: argparse.Namespace) -> int:
+    """Explicit Stage 3 activation path — always refuses until readiness criteria are met."""
+    from cfb_coach.madden.model import defense_shadow as dshadow
+
+    del args
+    db = open_madden_db()
+    try:
+        result = dshadow.refuse_activation(db)
+        print(json.dumps(result, indent=2, default=str))
+        print(
+            "Readiness criteria: docs/madden_ml_defense_shadow.md",
+            file=sys.stderr,
+        )
+    finally:
+        db.close()
+    return 2
+
+
+def cmd_ml_defense_shadow_demo(args: argparse.Namespace) -> int:
+    """Print example shadow recommendations for common opponent tendencies (no DB writes)."""
+    from cfb_coach.madden.model import defense_shadow as dshadow
+    from cfb_coach.madden.model.defense_opponent import OpponentOffenseModel, FamilyEvidence
+    from cfb_coach.madden.playcaller import MaddenCall
+    from cfb_coach.situation import Situation
+
+    del args
+    book = {
+        "Nickel Over": ["Cover 3 Sky", "Cover 4 Quarters", "Tampa 2", "Cover 1 Hole", "Mid Blitz"],
+        "Nickel Normal": ["Cover 2 Man", "Cover 3 Match", "Cover 6", "Safe"],
+        "4-3 Over": ["Cover 3 Sky", "Cover 1 Robber", "Pinch"],
+    }
+    armed = ["TAMPA MABLE", "SAFE DEEP", "PRESS SHADE IN", "LOOP MAN 0", "RZ COVER 2", "TEX 4 MAN", "TEX2 L CONT", "TEX2 R CONT"]
+    scenarios = [
+        ("crossers", {"cross": FamilyEvidence(count=8, success_vs_us=5)}, Situation(raw="3&7", side="defense", down=3, distance=7, yardline=55)),
+        ("flood", {"flood": FamilyEvidence(count=6, success_vs_us=4)}, Situation(raw="2&8", side="defense", down=2, distance=8, yardline=48)),
+        ("rpo_run", {"rpo": FamilyEvidence(count=5), "inside_zone": FamilyEvidence(count=7)}, Situation(raw="1&10", side="defense", down=1, distance=10, yardline=40)),
+        ("scramble", {"scram": FamilyEvidence(count=6, success_vs_us=4)}, Situation(raw="3&5", side="defense", down=3, distance=5, yardline=60)),
+        ("third_long", {"vert": FamilyEvidence(count=5)}, Situation(raw="3&12", side="defense", down=3, distance=12, yardline=45, long_yardage=True)),
+        ("red_zone", {"cross": FamilyEvidence(count=4)}, Situation(raw="2&G", side="defense", down=2, distance=5, yardline=95, red_zone=True)),
+    ]
+    examples = []
+    for name, fams, sit in scenarios:
+        model = OpponentOffenseModel(
+            opponent_id="demo_human",
+            opponent_kind="human",
+            n_defense_snaps=sum(e.count for e in fams.values()),
+            families=dict(fams),
+            evidence_quality="empirical_light",
+        )
+        heur = MaddenCall("defense", "Nickel Over", "Cover 3 Sky", "No adj", "User hooks", "heuristic")
+        # Inject model via temporary ranking path
+        concepts = {k: 0.5 for k in fams}
+        ranked = dshadow.rank_defense_candidates(
+            book=book,
+            sit=sit,
+            opponent_model=model,
+            concept_weights=concepts,
+            heuristic=("Nickel Over", "Cover 3 Sky"),
+        )
+        top = ranked[0] if ranked else {}
+        examples.append(
+            {
+                "tendency": name,
+                "shadow": f"{top.get('formation')} — {top.get('play')}",
+                "coverage_family": top.get("coverage_family"),
+                "score": round(float(top.get("score") or 0), 3),
+                "heuristic": "Nickel Over — Cover 3 Sky",
+            }
+        )
+    print(json.dumps({"examples": examples, "controlled": False}, indent=2))
+    return 0
+
+
 def _percentile(values: list[float], pct: float) -> float | None:
     if not values:
         return None
@@ -894,6 +999,31 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_pg.add_argument("--game-id", default=None)
     p_pg.set_defaults(func=cmd_ml_postgame_experimental)
+
+    p_ds = ml_sub.add_parser(
+        "defense-shadow-status",
+        help="Stage 3 defense shadow advisor status (log-only; control stays off)",
+    )
+    p_ds.set_defaults(func=cmd_ml_defense_shadow_status)
+
+    p_dr = ml_sub.add_parser(
+        "defense-shadow-report",
+        help="Postgame heuristic vs defense-shadow comparison",
+    )
+    p_dr.add_argument("--game-id", default=None)
+    p_dr.set_defaults(func=cmd_ml_defense_shadow_report)
+
+    p_da = ml_sub.add_parser(
+        "defense-shadow-activate",
+        help="Stage 3 activation path (always refuses until readiness criteria are met)",
+    )
+    p_da.set_defaults(func=cmd_ml_defense_shadow_activate)
+
+    p_dd = ml_sub.add_parser(
+        "defense-shadow-demo",
+        help="Example shadow recommendations for common opponent tendencies",
+    )
+    p_dd.set_defaults(func=cmd_ml_defense_shadow_demo)
 
     p_rr = ml_sub.add_parser(
         "research-refresh",
