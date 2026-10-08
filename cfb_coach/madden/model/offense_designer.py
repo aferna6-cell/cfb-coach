@@ -42,6 +42,18 @@ def _identity(proposal: Mapping[str, Any]) -> str:
     })
 
 
+def _revoke_generated_macro_approvals(db: Any) -> None:
+    """A newly installed/restored playbook requires re-arming macro slots."""
+    try:
+        keys = db.conn.execute(
+            "SELECT key FROM meta WHERE key LIKE 'ml_offense_verified_macros.v1:%'"
+        ).fetchall()
+        for row in keys:
+            db.set_meta(row[0], "")
+    except Exception:  # noqa: BLE001 — no legacy table means none active
+        pass
+
+
 def _load_artifact(db: Any) -> experimental_model.ExperimentalArtifact:
     path = resolve_artifact_path(db)
     if path:
@@ -342,6 +354,7 @@ def confirm_installed(db: Any, *, proposal_id: str, attestation: str) -> dict[st
     db.set_meta(META_HISTORY, _canonical(history[-30:]))
     # Carry blueprint proposals forward for separate manual validation. Never
     # activate a generated macro simply because its playbook was installed.
+    _revoke_generated_macro_approvals(db)
     db.set_meta(META_BLUEPRINTS, _canonical({
         "proposal_id": proposal_id, "macro_blueprints": pending.get("macro_blueprints") or [],
     }))
@@ -388,16 +401,7 @@ def rollback_design(db: Any, *, proposal_id: str, attestation: str) -> dict[str,
     db.set_meta(META_HISTORY, _canonical(history[-30:]))
     # The associated generated macros are no longer presumed installed or armed.
     db.set_meta(META_BLUEPRINTS, "")
-    # Disable generated-macro recommendations after reverting the custom
-    # playbook; require separate re-verification for another installed build.
-    try:
-        keys = db.conn.execute(
-            "SELECT key FROM meta WHERE key LIKE 'ml_offense_verified_macros.v1:%'"
-        ).fetchall()
-        for row in keys:
-            db.set_meta(row[0], "")
-    except Exception:  # noqa: BLE001
-        pass
+    _revoke_generated_macro_approvals(db)
     return {"rolled_back": True, "proposal_id": proposal_id,
             "revision": restored["rev"], "formations": list(restored["formations"])}
 
