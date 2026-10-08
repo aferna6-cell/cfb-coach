@@ -36,14 +36,23 @@ def _maybe_shadow(
     session_id: str | None = None,
     tracker: Any | None = None,
 ) -> int | None:
-    """Opt-in shadow scoring shared by HTML, terminal, and one-shot paths."""
+    """Seal snap identity then shadow-score or commit experimental decision.
+
+    Shared by HTML (via controller), terminal, and one-shot paths. Experimental
+    decisions produced in ``make_call`` are committed here with real ids —
+    never as anonymous rows.
+    """
     try:
         from cfb_coach.madden.model import inference as ml_inference
         from cfb_coach.madden.model.identity import LiveDecisionTracker, next_seq_from_db
         from cfb_coach.madden.model.schema import CoachingMode
         from cfb_coach.session import start_session
 
-        if ml_inference.resolve_mode(db) is not CoachingMode.SHADOW:
+        mode = ml_inference.resolve_mode(db)
+        pending = getattr(call, "_pending_ml_decision", None)
+        if mode is CoachingMode.HEURISTIC and pending is None:
+            return None
+        if mode not in (CoachingMode.SHADOW, CoachingMode.EXPERIMENTAL) and pending is None:
             return None
         # Prefer an explicit game/session; never use opponent_id as game_id.
         gid = game_id or session_id
@@ -57,20 +66,33 @@ def _maybe_shadow(
             play=getattr(call, "play", None),
             situation_raw=getattr(sit, "raw", None),
         )
-        _decision, row_id = ml_inference.evaluate_live_shadow(
-            db=db,
-            situation=sit,
-            call=call,
-            opponent_id=opponent_id,
-            game_id=gid,
-            snap_id=snap_id,
-            snap_seq=seq,
-            session_id=gid,
-            run=is_new,
-        )
+        row_id = None
+        if pending is not None and is_new:
+            from cfb_coach.madden.model.experimental_live import commit_experimental_decision
+
+            row_id = commit_experimental_decision(
+                db,
+                call,
+                game_id=gid,
+                snap_id=snap_id,
+                snap_seq=seq,
+                session_id=gid,
+            )
+        elif mode is CoachingMode.SHADOW and is_new:
+            _decision, row_id = ml_inference.evaluate_live_shadow(
+                db=db,
+                situation=sit,
+                call=call,
+                opponent_id=opponent_id,
+                game_id=gid,
+                snap_id=snap_id,
+                snap_seq=seq,
+                session_id=gid,
+                run=is_new,
+            )
         tr.bind_decision_row(row_id)
         return row_id
-    except Exception:  # noqa: BLE001 — shadow must never break live coaching
+    except Exception:  # noqa: BLE001 — ML must never break live coaching
         return None
 
 

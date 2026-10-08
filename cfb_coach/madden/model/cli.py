@@ -327,7 +327,18 @@ def cmd_ml_experimental(args: argparse.Namespace) -> int:
             print(f"trained: {dest}")
             print(f"evidence_quality: {art.evidence_quality}")
             print(f"n_supervised: {art.n_supervised}")
+            print(f"n_discounted_priors: {art.n_discounted_priors}")
+            print(f"knowledge_version: {art.knowledge_version}")
+            print(f"knowledge_origin: {art.knowledge_origin or '(none)'}")
+            print(f"model_version: {art.model_version}")
+            print(f"artifact_path: {dest}")
             print(f"note: {art.note}")
+            if art.n_supervised == 0:
+                print(
+                    "WARNING: zero supervised rows in this DB — do not claim the "
+                    "eight historical games trained the model until audit-history "
+                    "on the laptop confirms their data was included."
+                )
         inference_mod.set_mode(db, CoachingMode.EXPERIMENTAL)
         print("mode: experimental")
         print("EXPERIMENTAL PILOT — not a validated competitive model.")
@@ -337,6 +348,71 @@ def cmd_ml_experimental(args: argparse.Namespace) -> int:
         print("Restore heuristic: python -m cfb_coach ml heuristic")
     finally:
         db.close()
+    return 0
+
+
+def cmd_ml_experimental_preflight(args: argparse.Namespace) -> int:
+    """Reproducible laptop preflight: locate DB, audit, train, print versions.
+
+    Does not enable experimental mode unless ``--enable`` is passed.
+    Never invents historical games.
+    """
+    del args
+    print("=== Madden ML experimental preflight ===")
+    print("--- find-db ---")
+    cmd_ml_find_db(argparse.Namespace())
+    src = madden_db_path()
+    if not src.is_file():
+        print("STOP: no madden DB found. Set CFB_COACH_MADDEN_DB or run Franchise logging first.")
+        return 2
+    print("--- backup-db ---")
+    cmd_ml_backup(argparse.Namespace(out=None))
+    print("--- audit-history ---")
+    cmd_ml_audit_history(argparse.Namespace())
+    print("--- inspect ---")
+    cmd_ml_inspect(argparse.Namespace(path=[]))
+    print("--- train-experimental --seed 7 --install ---")
+    rc = cmd_ml_train_experimental(
+        argparse.Namespace(
+            seed=7,
+            side="offense",
+            path=[],
+            out=None,
+            install=True,
+            db=True,
+        )
+    )
+    if rc != 0:
+        return rc
+    from cfb_coach.madden.model import experimental_live as exp_live
+    from cfb_coach.madden.model import experimental_model as exp_mod
+
+    db = open_madden_db()
+    try:
+        # Preflight must not silently activate experimental mode.
+        inference_mod.set_mode(db, CoachingMode.HEURISTIC)
+        art_path = exp_live.resolve_artifact_path(db)
+        print(f"active_artifact_path: {art_path}")
+        if art_path and art_path.is_file():
+            art = exp_mod.load_artifact(art_path)
+            print(f"supervised_count: {art.n_supervised}")
+            print(f"discounted_prior_count: {art.n_discounted_priors}")
+            print(f"knowledge_version: {art.knowledge_version}")
+            print(f"knowledge_origin: {art.knowledge_origin or '(none)'}")
+            print(f"model_version: {art.model_version}")
+            print(f"evidence_quality: {art.evidence_quality}")
+            if art.n_supervised == 0:
+                print(
+                    "NO CLAIM: eight historical games did NOT train this artifact "
+                    "from this DB (n_supervised=0). Re-run on the laptop DB that "
+                    "contains those Franchise sessions."
+                )
+        print("mode remains: heuristic (use `ml experimental` to opt in)")
+        print("mode_check:", inference_mod.resolve_mode(db).value)
+    finally:
+        db.close()
+    print("=== preflight complete ===")
+    print("Next (explicit): python -m cfb_coach ml experimental --retrain")
     return 0
 
 
@@ -406,9 +482,20 @@ def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
             "n_supervised": art.n_supervised,
             "n_discounted_priors": art.n_discounted_priors,
             "global_rate": art.global_rate,
+            "knowledge_version": art.knowledge_version,
+            "knowledge_origin": art.knowledge_origin,
+            "model_version": art.model_version,
+            "research_concept_boost": art.research_concept_boost,
+            "research_family_boost": art.research_family_boost,
             "note": art.note,
         }
     }
+    print(f"supervised_count: {art.n_supervised}")
+    print(f"discounted_prior_count: {art.n_discounted_priors}")
+    print(f"knowledge_version: {art.knowledge_version}")
+    print(f"knowledge_origin: {art.knowledge_origin or '(none)'}")
+    print(f"model_version: {art.model_version}")
+    print(f"artifact_path: {dest}")
     try:
         from cfb_coach.madden.model import evaluate as evaluate_mod
         from cfb_coach.madden.model import train as train_mod
@@ -761,6 +848,12 @@ def build_ml_subparser(sub: Any) -> None:
         help="Retrain the experimental artifact before enabling",
     )
     p_ex.set_defaults(func=cmd_ml_experimental)
+
+    p_pf = ml_sub.add_parser(
+        "experimental-preflight",
+        help="Laptop preflight: find-db → backup → audit → inspect → train-experimental",
+    )
+    p_pf.set_defaults(func=cmd_ml_experimental_preflight)
 
     p_ah = ml_sub.add_parser(
         "audit-history",

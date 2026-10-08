@@ -241,7 +241,21 @@ class LivePlayController:
     def _ensure_tracker(self) -> Any:
         if self.ml_tracker is not None:
             return self.ml_tracker
-        if not self.enable_execution_verify and self.shadow_evaluate is None:
+        needs = bool(self.enable_execution_verify or self.shadow_evaluate is not None)
+        # Experimental calls carry a pending decision that must be sealed+committed.
+        if getattr(self.last_call, "_pending_ml_decision", None) is not None:
+            needs = True
+        if not needs:
+            # Still allocate identity when experimental mode is active.
+            try:
+                from cfb_coach.madden.model import inference as ml_inference
+                from cfb_coach.madden.model.schema import CoachingMode
+
+                if ml_inference.resolve_mode(self.db) is CoachingMode.EXPERIMENTAL:
+                    needs = True
+            except Exception:  # noqa: BLE001
+                pass
+        if not needs:
             return None
         from cfb_coach.madden.model.identity import LiveDecisionTracker, next_seq_from_db
 
@@ -254,7 +268,14 @@ class LivePlayController:
         return self.ml_tracker
 
     def _seal_and_shadow(self, sit: Any, call: Any) -> tuple[str | None, int | None, int | None]:
-        """Allocate snap identity and optionally run shadow once. Returns snap_id, seq, decision_row."""
+        """Allocate snap identity; commit experimental decision or run shadow once.
+
+        Experimental decisions are produced in ``make_call`` without a snap id.
+        This is the single identity-aware logging point.
+        """
+        # Ensure tracker when this call has a pending experimental decision.
+        if getattr(call, "_pending_ml_decision", None) is not None:
+            self.enable_execution_verify = True
         tracker = self._ensure_tracker()
         if tracker is None:
             return None, None, None
@@ -265,7 +286,23 @@ class LivePlayController:
             situation_raw=getattr(sit, "raw", None),
         )
         row_id = tracker.pending_ml_decision_row_id
-        if self.shadow_evaluate is not None and is_new:
+        # Commit experimental decision with sealed identity (once per new seal).
+        if is_new and getattr(call, "_pending_ml_decision", None) is not None:
+            try:
+                from cfb_coach.madden.model.experimental_live import commit_experimental_decision
+
+                row_id = commit_experimental_decision(
+                    self.db,
+                    call,
+                    game_id=tracker.game_id,
+                    snap_id=snap_id,
+                    snap_seq=seq,
+                    session_id=self.session_id,
+                )
+            except Exception:  # noqa: BLE001 — never break live play
+                row_id = None
+            tracker.bind_decision_row(row_id)
+        elif self.shadow_evaluate is not None and is_new:
             try:
                 row_id = self.shadow_evaluate(
                     sit,

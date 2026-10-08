@@ -214,7 +214,16 @@ def to_scout_result(doc: dict[str, Any], game: str, *, origin: str = "", now: da
         r.baseline_fallback = BASELINE_VERSION
         r.named_signals = named_signals(_docs(doc), now=now)
         if patch:
-            r.patch_notes = [f"{patch.get('date', '')} {patch.get('version', '')}: " + "; ".join(patch.get("notes") or [])]
+            # Same dict shape as CFB — prep_browser expects version/date/title/bullets.
+            r.patch_notes = [
+                {
+                    "version": patch.get("version") or "?",
+                    "date": patch.get("date") or "",
+                    "title": patch.get("title") or "Title update",
+                    "bullets": list(patch.get("notes") or []),
+                    "url": patch.get("url") or "",
+                }
+            ]
     else:
         from cfb_coach.meta_entities import aggregate
 

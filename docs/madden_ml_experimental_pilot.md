@@ -34,6 +34,29 @@ python -m cfb_coach ml confirm-execution \
   --evidence 'recording at 12:04 — confirmed Mesh'
 ```
 
+## Laptop preflight (real Franchise DB)
+
+The agent environment has no Franchise history. On the laptop that logged games:
+
+```bash
+python -m cfb_coach ml find-db
+python -m cfb_coach ml backup-db
+python -m cfb_coach ml audit-history
+python -m cfb_coach ml inspect
+python -m cfb_coach ml experimental-preflight
+# equivalent stepwise:
+python -m cfb_coach ml train-experimental --seed 7 --install
+# then explicit opt-in (preflight leaves mode=heuristic):
+python -m cfb_coach ml experimental --retrain
+```
+
+`experimental-preflight` prints `supervised_count`, `discounted_prior_count`,
+`knowledge_version`, `model_version`, and `active_artifact_path`.
+
+**Do not claim the eight historical games trained the model** until the laptop
+audit shows those Franchise sessions contributed supervised rows
+(`n_supervised > 0` from that DB). An empty/agent DB trains prior-driven only.
+
 ## Train / compare experimental model
 
 ```bash
@@ -48,7 +71,11 @@ python -m cfb_coach ml research-refresh
 python -m cfb_coach ml research-refresh --dry-run
 ```
 
-Scheduled: `.github/workflows/madden-research-daily.yml`  
+Scheduled workflow file: `.github/workflows/madden-research-daily.yml`  
+**Not operational for unattended daily runs** until installed on the default
+branch (`main`) and a successful Actions run is confirmed. Deploy path that
+does **not** merge experimental gameplay: `docs/madden_research_deploy.md`.
+
 Candidates land under `research/candidates/`. Active five formations and armed
 Custom Adjustments are **never** overwritten without user confirmation.
 

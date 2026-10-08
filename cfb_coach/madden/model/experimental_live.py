@@ -3,10 +3,14 @@
 Disabled by default. When ``ml_mode=experimental``:
 
 1. Heuristic (incl. VOD) still produces a candidate.
-2. The experimental model ranks legal in-book offense plays within 150 ms.
+2. The model ranks only *situationally eligible* in-book offense plays
+   (reuses heuristic pool: zone fit, short yardage, 3rd-and-long, two-minute).
 3. If the model pick differs, reads / Custom Adjustments are rebuilt for that
    play — never a post-hoc display swap of the heuristic's reads.
 4. On timeout, error, illegal candidate, or missing artifact → heuristic.
+
+Decision logging is deferred until snap identity is sealed
+(:func:`commit_experimental_decision`) so every row has a real game/snap id.
 
 Defense is never selected by this mode. CPU remains offense-only.
 """
@@ -15,6 +19,7 @@ from __future__ import annotations
 
 import time
 import traceback
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
@@ -36,6 +41,7 @@ from cfb_coach.opponents import is_cpu_opponent
 META_ARTIFACT = "ml_experimental_artifact"
 META_KNOWLEDGE = "ml_knowledge_version"
 META_DATA_VERSION = "ml_data_version"
+PENDING_ATTR = "_pending_ml_decision"
 
 
 def resolve_artifact_path(db: Any = None) -> Path | None:
@@ -58,6 +64,43 @@ def set_artifact_path(db: Any, path: str | Path) -> None:
     db.set_meta(META_ARTIFACT, str(path))
 
 
+def situational_offense_candidates(
+    sit: Any,
+    book: dict[str, list[str]],
+    *,
+    db: Any = None,
+    opponent_id: str | None = None,
+) -> tuple[list[tuple[str, str]], dict[tuple[str, str], float]]:
+    """Football-eligible in-book candidates — not the full installed menu.
+
+    Reuses heuristic ``_offense_pool`` (zone fit, short yardage, 3rd-long,
+    two-minute) and soft anti-repeat penalties. ML may only override among
+    these appropriately eligible plays.
+    """
+    from cfb_coach.madden.data import load_meta_baseline
+    from cfb_coach.madden.playcaller import _offense_pool, situation_key
+
+    og = load_meta_baseline()["offense_gameplan"]
+    key = situation_key(sit)
+    arch_pref = None
+    pool, bonus = _offense_pool(sit, book, og, key, arch_pref)
+    if not pool:
+        pool = [(f, p) for f, ps in (book or {}).items() for p in (ps or [])]
+        bonus = {}
+    # Soft anti-repeat: down-weight recently used plays (still eligible).
+    if db is not None and opponent_id:
+        try:
+            from cfb_coach.gameplan import anti_repeat_penalty
+
+            for form, play in list(pool):
+                pen = float(anti_repeat_penalty(db, opponent_id, form, play, side="offense") or 0.0)
+                if pen:
+                    bonus[(form, play)] = round(bonus.get((form, play), 0.0) - 0.05 * pen, 3)
+        except Exception:  # noqa: BLE001
+            pass
+    return pool, bonus
+
+
 def rebuild_offense_attachments(
     *,
     formation: str,
@@ -72,15 +115,24 @@ def rebuild_offense_attachments(
 ) -> Any:
     """Build reads / macro / adjustment for an already-chosen in-book play."""
     from cfb_coach.madden.data import reads_for
-    from cfb_coach.madden.playcaller import MaddenCall
-    from cfb_coach.madden.playcaller import coverage_class
+    from cfb_coach.madden.playcaller import MaddenCall, coverage_class
     from cfb_coach.tendency import is_repeated_coverage
 
     cov = getattr(sit, "coverage_hint", None)
     src = getattr(sit, "coverage_source", None) or "none"
     cls = coverage_class(cov) if cov else None
-    repeated = bool(cov) and is_repeated_coverage(db, opponent_id, cov, sit, threshold=2)
-    zone = "gl" if getattr(sit, "goal_line", False) else "rz" if getattr(sit, "red_zone", False) else "open"
+    # Repeated confirmation only when live (or tendency engine) says so —
+    # last-snap alone is not confirmation.
+    repeated = False
+    if cov and src == "live":
+        repeated = is_repeated_coverage(db, opponent_id, cov, sit, threshold=2)
+    zone = (
+        "gl"
+        if getattr(sit, "goal_line", False)
+        else "rz"
+        if getattr(sit, "red_zone", False)
+        else "open"
+    )
     score_phase = None
     try:
         from cfb_coach.game_score import classify
@@ -160,14 +212,6 @@ def rebuild_offense_attachments(
     )
 
 
-def _legal_pairs(book: dict[str, list[str]]) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
-    for form, plays in (book or {}).items():
-        for play in plays or []:
-            out.append((form, play))
-    return out
-
-
 def apply_experimental_offense(
     *,
     heuristic_call: Any,
@@ -182,12 +226,20 @@ def apply_experimental_offense(
     session_id: str | None = None,
     snap_seq: int | None = None,
     budget_ms: float | None = None,
+    commit: bool | None = None,
 ) -> tuple[Any, CoachingDecision]:
-    """Maybe replace the offense call with an ML pick; always return a decision log."""
+    """Maybe replace the offense call with an ML pick.
+
+    When ``commit`` is False (default if ``snap_id`` is missing), the decision
+    is attached to the call for later :func:`commit_experimental_decision`
+    after seal — never an anonymous DB row.
+    """
     from cfb_coach.madden.model.schema import Possession
 
     decision_ts = datetime.now(timezone.utc).isoformat()
     budget = float(ML_LATENCY_BUDGET_MS if budget_ms is None else budget_ms)
+    if commit is None:
+        commit = bool(snap_id)
     heur_form = getattr(heuristic_call, "formation", None)
     heur_play = getattr(heuristic_call, "play", None)
     heur_cand = None
@@ -198,6 +250,17 @@ def apply_experimental_offense(
             )
     except ValueError:
         heur_cand = None
+
+    def _attach(call: Any, dec: CoachingDecision, info: dict[str, Any] | None = None) -> None:
+        try:
+            setattr(call, PENDING_ATTR, dec)
+        except Exception:  # noqa: BLE001
+            pass
+        if info is not None:
+            try:
+                call.ml_experimental = info  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001
+                pass
 
     def _fallback(status: MLStatus, latency: float | None = None) -> tuple[Any, CoachingDecision]:
         dec = CoachingDecision(
@@ -222,33 +285,34 @@ def apply_experimental_offense(
             propensity_method=PropensityMethod.UNKNOWN,
             accepted=Tri.UNKNOWN,
         )
-        if db is not None:
+        info = {
+            "heuristic_formation": heur_form,
+            "heuristic_play": heur_play,
+            "ml_formation": None,
+            "ml_play": None,
+            "final_formation": heur_form,
+            "final_play": heur_play,
+            "evidence_quality": "fallback",
+            "explanation": f"experimental fallback → heuristic ({status.value})",
+            "fell_back": True,
+        }
+        _attach(heuristic_call, dec, info)
+        if commit and db is not None and snap_id:
             try:
                 db.log_ml_decision(dec, agree=None)
             except Exception:  # noqa: BLE001
                 pass
-        # Annotate heuristic call so HTML still shows fallback notice.
-        try:
-            heuristic_call.ml_experimental = {  # type: ignore[attr-defined]
-                "heuristic_formation": heur_form,
-                "heuristic_play": heur_play,
-                "ml_formation": None,
-                "ml_play": None,
-                "final_formation": heur_form,
-                "final_play": heur_play,
-                "evidence_quality": "fallback",
-                "explanation": f"experimental fallback → heuristic ({status.value})",
-                "fell_back": True,
-            }
-        except Exception:  # noqa: BLE001
-            pass
         return heuristic_call, dec
 
-    # Defense / non-offense: never select.
     if str(getattr(heuristic_call, "side", "offense") or "offense").startswith("d"):
         return _fallback(MLStatus.CIRCUIT_OPEN)
 
-    pairs = _legal_pairs(book)
+    pairs, bonuses = situational_offense_candidates(
+        sit, book, db=db, opponent_id=opponent_id
+    )
+    # Heuristic pick must remain in the eligible set when possible.
+    if heur_form and heur_play and (heur_form, heur_play) not in pairs:
+        pairs = list(pairs) + [(heur_form, heur_play)]
     if not pairs:
         return _fallback(MLStatus.INVALID_OUTPUT)
 
@@ -256,17 +320,12 @@ def apply_experimental_offense(
     started = time.perf_counter()
     try:
         if artifact_path is None:
-            # Train a prior-driven artifact on the fly from whatever trustworthy
-            # evidence exists (may be empty → labeled prior_driven).
             from cfb_coach.madden.model import dataset as dataset_mod
+            from cfb_coach.games import data_dir
 
             rows = dataset_mod.build_rows(db=db) if db is not None else []
             art = exp_mod.train_experimental(rows, side="offense")
-            dest = Path(str(artifact_path or "")) if artifact_path else None
-            if dest is None:
-                from cfb_coach.games import data_dir
-
-                dest = Path(data_dir()) / "madden_ml_experimental" / "offense.json"
+            dest = Path(data_dir()) / "madden_ml_experimental" / "offense.json"
             exp_mod.save_artifact(art, dest)
             if db is not None:
                 set_artifact_path(db, dest)
@@ -280,11 +339,12 @@ def apply_experimental_offense(
         if elapsed > budget:
             return _fallback(MLStatus.TIMEOUT, elapsed)
 
-        # Pre-snap coverage hint only (live/last) — never invent post-snap coverage.
-        cov_hint = None
-        src = getattr(sit, "coverage_source", None) or ""
-        if src in ("live", "last") and getattr(sit, "coverage_hint", None):
-            cov_hint = sit.coverage_hint
+        # Pre-snap coverage handling: live = observed; last = soft prior only.
+        cov_hint = getattr(sit, "coverage_hint", None)
+        cov_src = getattr(sit, "coverage_source", None) or "none"
+        if cov_src not in ("live", "last"):
+            cov_hint = None
+            cov_src = "none"
 
         opp_type = "cpu" if is_cpu_opponent(opponent_id) else "human"
         ranked = exp_mod.rank_candidates(
@@ -294,9 +354,11 @@ def apply_experimental_offense(
             distance=getattr(sit, "distance", None),
             yardline=getattr(sit, "yardline", None),
             coverage_hint=cov_hint,
+            coverage_source=cov_src,
             opponent_id=opponent_id,
             opponent_type=opp_type,
             heuristic=(heur_form, heur_play) if heur_form and heur_play else None,
+            heuristic_bonuses=bonuses,
         )
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
@@ -306,6 +368,10 @@ def apply_experimental_offense(
 
         top = ranked[0]
         ml_form, ml_play = top["formation"], top["play"]
+        # Hard guard: ML pick must be in situational pool (or the heuristic).
+        legal_set = set(pairs)
+        if (ml_form, ml_play) not in legal_set:
+            return _fallback(MLStatus.INVALID_OUTPUT, latency)
         try:
             ml_cand = candidate_in_book(
                 book, side=Possession.OFFENSE, formation=ml_form, play=ml_play
@@ -324,26 +390,24 @@ def apply_experimental_offense(
 
         quality = str(top.get("evidence_quality") or artifact.evidence_quality)
         prior_tag = "prior-driven" if quality == "prior_driven" else quality
+        unc = top.get("uncertainty")
         agree = int(ml_form == heur_form and ml_play == heur_play)
         explanation = (
             f"ML experimental [{prior_tag}] → {ml_form}/{ml_play} "
-            f"(p={top['probability']:.3f}, family={top.get('play_family')})"
+            f"(p={top['probability']:.3f}, concept={top.get('play_concept')}, "
+            f"unc={unc})"
         )
         if heur_form and heur_play:
-            explanation = (
-                f"heuristic={heur_form}/{heur_play} | {explanation}"
-            )
+            explanation = f"heuristic={heur_form}/{heur_play} | {explanation}"
         if top.get("near_tie_kept_heuristic"):
             explanation += " | near-tie kept heuristic"
+        if cov_src == "last" and cov_hint:
+            explanation += " | last-snap coverage used as soft prior only"
 
-        # Sealed rebuild when ML differs — never keep heuristic reads/macros.
         if agree:
             call = heuristic_call
             call.rationale = (getattr(call, "rationale", "") or "") + f" | {explanation}"
         else:
-            base_rationale = (
-                f"{explanation} | sealed rebuild of reads/macros for ML pick"
-            )
             call = rebuild_offense_attachments(
                 formation=ml_form,
                 play=ml_play,
@@ -352,35 +416,29 @@ def apply_experimental_offense(
                 active=list(active or []),
                 db=db,
                 opponent_id=opponent_id,
-                rationale=base_rationale,
+                rationale=f"{explanation} | sealed rebuild of reads/macros for ML pick",
                 audibles=audibles,
             )
 
-        # Attach display metadata for HTML / CLI.
-        if not isinstance(getattr(call, "extras", None), dict):
-            try:
-                call.extras = {}  # type: ignore[attr-defined]
-            except Exception:  # noqa: BLE001
-                pass
-        try:
-            call.ml_experimental = {  # type: ignore[attr-defined]
-                "heuristic_formation": heur_form,
-                "heuristic_play": heur_play,
-                "ml_formation": ml_form,
-                "ml_play": ml_play,
-                "final_formation": call.formation,
-                "final_play": call.play,
-                "evidence_quality": quality,
-                "explanation": explanation,
-                "model_version": artifact.model_version,
-                "knowledge_version": artifact.knowledge_version,
-                "data_version": artifact.data_version,
-                "probability": top["probability"],
-                "rankings": ranked[:8],
-                "fell_back": False,
-            }
-        except Exception:  # noqa: BLE001
-            pass
+        info = {
+            "heuristic_formation": heur_form,
+            "heuristic_play": heur_play,
+            "ml_formation": ml_form,
+            "ml_play": ml_play,
+            "final_formation": call.formation,
+            "final_play": call.play,
+            "evidence_quality": quality,
+            "explanation": explanation,
+            "model_version": artifact.model_version,
+            "knowledge_version": artifact.knowledge_version,
+            "knowledge_origin": artifact.knowledge_origin,
+            "data_version": artifact.data_version,
+            "probability": top["probability"],
+            "uncertainty": unc,
+            "rankings": ranked[:8],
+            "fell_back": False,
+            "n_eligible_candidates": len(pairs),
+        }
 
         dec = CoachingDecision(
             decision_ts=decision_ts,
@@ -406,7 +464,8 @@ def apply_experimental_offense(
             propensity_method=PropensityMethod.DETERMINISTIC,
             accepted=Tri.UNKNOWN,
         )
-        if db is not None:
+        _attach(call, dec, info)
+        if commit and db is not None and snap_id:
             try:
                 db.log_ml_decision(dec, agree=agree)
             except Exception:  # noqa: BLE001
@@ -416,6 +475,57 @@ def apply_experimental_offense(
         traceback.format_exc()
         latency = (time.perf_counter() - started) * 1000.0
         return _fallback(MLStatus.EXCEPTION, latency)
+
+
+def commit_experimental_decision(
+    db: Any,
+    call: Any,
+    *,
+    game_id: str,
+    snap_id: str,
+    snap_seq: int,
+    session_id: str | None = None,
+) -> int | None:
+    """Persist the pending experimental decision with sealed snap identity.
+
+    Idempotent on ``snap_id``. Returns ``ml_decisions.id`` or None.
+    """
+    dec = getattr(call, PENDING_ATTR, None)
+    if dec is None or not isinstance(dec, CoachingDecision):
+        return None
+    if dec.mode is not CoachingMode.EXPERIMENTAL:
+        return None
+    stamped = replace(
+        dec,
+        game_id=game_id,
+        snap_id=snap_id,
+        snap_seq=snap_seq,
+        session_id=session_id or game_id,
+    )
+    agree = None
+    if stamped.heuristic_pick and stamped.shadow_pick:
+        agree = int(
+            stamped.heuristic_pick.formation == stamped.shadow_pick.formation
+            and stamped.heuristic_pick.play == stamped.shadow_pick.play
+        )
+    elif stamped.fell_back:
+        agree = None
+    try:
+        row_id = db.log_ml_decision(stamped, agree=agree)
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        setattr(call, PENDING_ATTR, stamped)
+        info = getattr(call, "ml_experimental", None)
+        if isinstance(info, dict):
+            info = dict(info)
+            info["snap_id"] = snap_id
+            info["game_id"] = game_id
+            info["committed"] = True
+            call.ml_experimental = info  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        pass
+    return int(row_id) if row_id is not None else None
 
 
 def maybe_apply_experimental(
@@ -432,7 +542,11 @@ def maybe_apply_experimental(
     session_id: str | None = None,
     snap_seq: int | None = None,
 ) -> Any:
-    """No-op unless mode is experimental. Never raises into the live path."""
+    """No-op unless mode is experimental. Never raises into the live path.
+
+    Does not write the DB unless ``snap_id`` is already known (rare). Live
+    callers must :func:`commit_experimental_decision` after sealing.
+    """
     try:
         from cfb_coach.madden.model import inference as inference_mod
         from cfb_coach.madden.playbook import active_books, eligible
@@ -458,6 +572,7 @@ def maybe_apply_experimental(
             snap_id=snap_id,
             session_id=session_id,
             snap_seq=snap_seq,
+            commit=bool(snap_id),
         )
         return new_call
     except Exception:  # noqa: BLE001
@@ -473,6 +588,8 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
         params.extend([game_id, game_id])
     sql += " ORDER BY id ASC"
     rows = list(db.conn.execute(sql, params))
+    # Drop anonymous rows (pre-fix bug) from attribution rates.
+    identified = [r for r in rows if r["snap_id"]]
     outcomes: dict[str, Any] = {}
     try:
         for row in db.conn.execute("SELECT * FROM ml_outcomes"):
@@ -480,30 +597,37 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
     except Exception:  # noqa: BLE001
         pass
 
-    n = len(rows)
-    ok = [r for r in rows if r["shadow_status"] == MLStatus.OK.value]
-    fallback = [r for r in rows if r["shadow_status"] != MLStatus.OK.value]
+    n = len(identified)
+    ok = [r for r in identified if r["shadow_status"] == MLStatus.OK.value]
+    fallback = [r for r in identified if r["shadow_status"] != MLStatus.OK.value]
     agree = [r for r in ok if r["agree"] == 1]
     disagree = [r for r in ok if r["agree"] == 0]
     verified = 0
-    for r in rows:
+    linked_outcomes = 0
+    for r in identified:
         outc = outcomes.get(str(r["snap_id"] or ""))
         if outc is None:
             continue
+        linked_outcomes += 1
         if outc["executed_status"] == "identified" and outc["executed_verification"] == "verified":
             verified += 1
 
+    orphan_anonymous = len(rows) - len(identified)
     return {
         "n_experimental_calls": n,
+        "anonymous_unlinked_rows_ignored": orphan_anonymous,
         "model_ok": len(ok),
         "fallback_or_failure": len(fallback),
         "fallback_rate": round(len(fallback) / n, 3) if n else 0.0,
         "agree_with_heuristic": len(agree),
         "disagree_with_heuristic": len(disagree),
         "verified_executions_linked": verified,
+        "outcomes_linked": linked_outcomes,
+        "game_id_filter": game_id,
         "disagreements": [
             {
                 "snap_id": r["snap_id"],
+                "game_id": r["game_id"],
                 "heuristic": f"{r['heuristic_formation']}/{r['heuristic_play']}",
                 "ml": f"{r['shadow_formation']}/{r['shadow_play']}",
                 "final_displayed": f"{r['final_formation']}/{r['final_play']}",
@@ -517,6 +641,6 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
         ],
         "caveat": (
             "This report does not claim win-rate or yardage improvement from "
-            "unobserved counterfactuals."
+            "unobserved counterfactuals. Rows without snap_id are ignored."
         ),
     }

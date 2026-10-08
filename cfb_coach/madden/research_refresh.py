@@ -66,6 +66,7 @@ def _fetch(url: str, timeout: float = 12.0) -> dict[str, Any]:
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — allowlisted https
             body = resp.read(500_000).decode("utf-8", errors="replace")
+            text = re.sub(r"\s+", " ", body)
             return {
                 "url": url,
                 "ok": True,
@@ -73,7 +74,8 @@ def _fetch(url: str, timeout: float = 12.0) -> dict[str, Any]:
                 "retrieved_at": _now().isoformat(),
                 "bytes": len(body),
                 "title_guess": _guess_title(body),
-                "snippet": re.sub(r"\s+", " ", body)[:400],
+                "snippet": text[:400],
+                "body_text": text[:20_000],
             }
     except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
         return {
@@ -82,6 +84,174 @@ def _fetch(url: str, timeout: float = 12.0) -> dict[str, Any]:
             "error": f"{type(exc).__name__}: {exc}",
             "retrieved_at": _now().isoformat(),
         }
+
+
+# Patterns for extracting candidate findings — never invent Custom Adjustment settings.
+_PATCH_RE = re.compile(
+    r"(?:title\s*update|update|patch)\s*(1\.\d{2,3})",
+    re.I,
+)
+_GAMEPLAY_RE = re.compile(
+    r"(cover\s*[0-6]|quarters|tampa\s*2|db\s*fire|man\s*press|pass\s*lead|"
+    r"four\s*verticals|mesh|flood|return\s*bench|rpo|salary\s*cap|"
+    r"catch\s*success|run[\s-]*action|block(?:ing)?)",
+    re.I,
+)
+_DISCOVERY_SEED = (
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news",
+    "https://mp1st.com/?s=madden+27+title+update",
+)
+
+
+def _extract_findings(fetch: dict[str, Any], *, legal_plays: set[str]) -> list[dict[str, Any]]:
+    """Extract reviewable finding candidates from fetched text. Never fabricates CA settings."""
+    if not fetch.get("ok"):
+        return []
+    text = str(fetch.get("body_text") or fetch.get("snippet") or "")
+    title = str(fetch.get("title_guess") or "")
+    url = str(fetch.get("url") or "")
+    retrieved = str(fetch.get("retrieved_at") or _now().isoformat())
+    out: list[dict[str, Any]] = []
+    patch = None
+    m = _PATCH_RE.search(title) or _PATCH_RE.search(text[:2000])
+    if m:
+        patch = m.group(1)
+        out.append(
+            {
+                "claim": f"Source references Madden title update/patch {patch}.",
+                "side": "general",
+                "source": title[:80] or url,
+                "url": url,
+                "published": None,
+                "retrieved_at": retrieved,
+                "confidence": "medium",
+                "evidence_type": "confirmed_mechanic_candidate",
+                "game_version": patch,
+                "note": "Candidate only — verify against official patch notes before promoting",
+            }
+        )
+    # Named legal plays mentioned in the page (soft, opinion unless EA).
+    mentioned = sorted({p for p in legal_plays if p and re.search(re.escape(p), text, re.I)})[:8]
+    for play in mentioned:
+        out.append(
+            {
+                "claim": f"Source mentions play/concept {play!r} in Madden 27 coverage.",
+                "side": "offense",
+                "source": title[:80] or url,
+                "url": url,
+                "published": None,
+                "retrieved_at": retrieved,
+                "confidence": "low",
+                "evidence_type": "player_opinion_or_mention",
+                "game_version": patch,
+                "play_names": [play],
+                "note": "Mention only — not a verified matchup probability",
+            }
+        )
+    # Gameplay keyword sentences (short excerpts).
+    for match in _GAMEPLAY_RE.finditer(text):
+        start = max(0, match.start() - 80)
+        end = min(len(text), match.end() + 120)
+        excerpt = text[start:end].strip()
+        if len(excerpt) < 40:
+            continue
+        side = "defense" if re.search(r"cover|quarters|tampa|db\s*fire|man\s*press", excerpt, re.I) else "offense"
+        is_ea = "ea.com" in url
+        out.append(
+            {
+                "claim": excerpt[:240],
+                "side": side,
+                "source": title[:80] or url,
+                "url": url,
+                "published": None,
+                "retrieved_at": retrieved,
+                "confidence": "medium" if is_ea else "low",
+                "evidence_type": "confirmed_mechanic_candidate" if is_ea else "player_opinion_or_mention",
+                "game_version": patch,
+                "note": "Extracted excerpt — human review required; do not auto-promote",
+            }
+        )
+        if len(out) >= 12:
+            break
+    # Deduplicate by claim prefix.
+    seen: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for f in out:
+        key = str(f.get("claim") or "")[:80].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(f)
+    return deduped
+
+
+def _diff_findings(
+    active: dict[str, Any] | None, extracted: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Meaningful differences vs the active research file (candidate review list)."""
+    old_claims = {
+        str(f.get("claim") or "").strip().lower()[:100]
+        for f in ((active or {}).get("findings") or [])
+        if isinstance(f, dict)
+    }
+    old_patch = str(((active or {}).get("patch") or {}).get("version") or "")
+    diffs: list[dict[str, Any]] = []
+    for f in extracted:
+        claim = str(f.get("claim") or "").strip()
+        key = claim.lower()[:100]
+        if key and key not in old_claims:
+            diffs.append(
+                {
+                    "type": "new_finding_candidate",
+                    "claim": claim[:240],
+                    "source_url": f.get("url"),
+                    "confidence": f.get("confidence"),
+                    "evidence_type": f.get("evidence_type"),
+                    "game_version": f.get("game_version"),
+                }
+            )
+        gv = str(f.get("game_version") or "")
+        if gv and old_patch and gv != old_patch:
+            diffs.append(
+                {
+                    "type": "possible_patch_bump",
+                    "old_patch": old_patch,
+                    "seen": gv,
+                    "source_url": f.get("url"),
+                    "confidence": "medium",
+                    "evidence_type": "confirmed_mechanic_candidate",
+                    "note": "Newer patch observed — discount older findings until reviewed",
+                }
+            )
+    # Dedup diffs
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for d in diffs:
+        k = f"{d.get('type')}|{d.get('claim') or d.get('seen')}|{d.get('source_url')}"
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(d)
+    return out[:40]
+
+
+def _discover_urls(fetches: list[dict[str, Any]]) -> list[str]:
+    """Follow obvious Madden 27 news links from hub pages (bounded)."""
+    found: list[str] = []
+    for f in fetches:
+        if not f.get("ok"):
+            continue
+        text = str(f.get("body_text") or "")
+        for href in re.findall(r'href=["\'](https?://[^"\']+)["\']', text):
+            low = href.lower()
+            if "madden" not in low and "title-update" not in low and "patch" not in low:
+                continue
+            if any(x in low for x in ("ea.com", "mp1st.com", "gamerant.com", "timesaver")):
+                if href not in found and href not in EA_NEWS_URLS + SECONDARY_URLS:
+                    found.append(href)
+            if len(found) >= 4:
+                return found
+    return found
 
 
 def _guess_title(html: str) -> str:
@@ -177,12 +347,24 @@ def build_candidate_report(
     fetches: list[dict[str, Any]],
     active: dict[str, Any] | None,
     contradictions: list[dict[str, Any]],
+    extracted_findings: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     retrieved = _now().isoformat()
     ok_fetches = [f for f in fetches if f.get("ok")]
     failed = [f for f in fetches if not f.get("ok")]
+    # Strip large body_text from persisted fetches (keep snippet).
+    slim_fetches = []
+    for f in fetches:
+        slim = {k: v for k, v in f.items() if k != "body_text"}
+        slim_fetches.append(slim)
     validation_errs = ai_research.validate(active, "madden27") if active else ["no active research file"]
     legal = _legal_play_names()
+    extracted = list(extracted_findings or [])
+    newest_patch = None
+    for f in extracted:
+        if f.get("game_version"):
+            newest_patch = f["game_version"]
+            break
     # Do not invent Custom Adjustment editor settings.
     return {
         "schema": 1,
@@ -197,9 +379,10 @@ def build_candidate_report(
         "sources_attempted": len(fetches),
         "sources_ok": len(ok_fetches),
         "sources_failed": failed,
-        "fetches": fetches,
+        "fetches": slim_fetches,
+        "extracted_findings": extracted,
         "contradictions_or_changes": contradictions,
-        "patch_aware_discount": _patch_discount(active, None),
+        "patch_aware_discount": _patch_discount(active, newest_patch),
         "legal_play_name_count": len(legal),
         "policy_guards": {
             "overwrite_active_five_formations": False,
@@ -207,17 +390,20 @@ def build_candidate_report(
             "requires_user_confirmation_for_policy": True,
             "fabricated_citations_forbidden": True,
             "guessed_custom_adjustment_settings_forbidden": True,
+            "unattended_daily_requires_workflow_on_default_branch": True,
         },
         "change_summary": (
-            f"Fetched {len(ok_fetches)}/{len(fetches)} sources. "
-            f"{len(contradictions)} possible change(s) flagged for review. "
+            f"Fetched {len(ok_fetches)}/{len(fetches)} sources; "
+            f"extracted {len(extracted)} finding candidate(s); "
+            f"{len(contradictions)} meaningful difference(s) flagged. "
             "Active research/madden27.json and research_db.json were NOT modified."
         ),
         "next_steps": [
             "Review candidate report under research/candidates/",
-            "Manually edit research/madden27.json only with cited findings",
+            "Manually promote cited findings into research/madden27.json after validation",
             "Run scripts/validate_ai_research.py before committing",
             "Do not change the applied five formations or armed macros without confirmation",
+            "Scheduled refresh is not live until the workflow exists on the default branch",
         ],
     }
 
@@ -230,13 +416,36 @@ def run_research_refresh(
     """Execute one research refresh. Preserves active KB on failure."""
     active = _load_active()
     fetches: list[dict[str, Any]] = []
-    for url in EA_NEWS_URLS + SECONDARY_URLS:
+    seed_urls = list(EA_NEWS_URLS + SECONDARY_URLS)
+    for url in seed_urls:
+        fetches.append(_fetch(url))
+    # Discover a few additional recent links from hubs (bounded).
+    for url in _discover_urls(fetches):
         fetches.append(_fetch(url))
 
     ok_any = any(f.get("ok") for f in fetches)
+    legal = _legal_play_names()
+    extracted: list[dict[str, Any]] = []
+    if ok_any:
+        for f in fetches:
+            extracted.extend(_extract_findings(f, legal_plays=legal))
     contradictions = _detect_contradictions(active, fetches) if ok_any else []
+    contradictions.extend(_diff_findings(active, extracted))
+    unique_c: list[dict[str, Any]] = []
+    seen2: set[str] = set()
+    for c in contradictions:
+        key = f"{c.get('type')}|{c.get('claim') or c.get('seen')}|{c.get('source_url')}"
+        if key in seen2:
+            continue
+        seen2.add(key)
+        unique_c.append(c)
+    contradictions = unique_c[:40]
+
     report = build_candidate_report(
-        fetches=fetches, active=active, contradictions=contradictions
+        fetches=fetches,
+        active=active,
+        contradictions=contradictions,
+        extracted_findings=extracted,
     )
 
     if not ok_any:
