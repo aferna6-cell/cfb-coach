@@ -1,4 +1,4 @@
-# Madden ML coach — test report (Sprint 3.1)
+# Madden ML coach — test report (Sprint 3.1 + HTML idempotency)
 
 Branch: `madden-ml/coach` (PR #20). Environment: Ubuntu, Python 3.12, `pip install -e '.[dev]'`, `PYTHONPATH=.`.
 
@@ -10,12 +10,12 @@ PYTHONPATH=. python3 -m pytest tests -p no:cacheprovider -q
 
 | Run | Result |
 | --- | --- |
-| 1 | **384 passed** in ~48s |
-| 2 | **384 passed** (repeat) |
+| 1 | see latest push notes |
+| 2 | see latest push notes |
 
-`tests/madden_ml`: **53 passed** (schema + pipeline + Sprint 3 live + Sprint 3.1 integrity).
+CI: `.github/workflows/pytest.yml` runs the full suite twice (includes Playwright Chromium for browser idempotency).
 
-CI: `.github/workflows/pytest.yml` runs the full suite twice on PRs/pushes.
+HTML browser pad now mints/reuses `idempotency_key` via `claimIdempotencyKey` / `apiAction` / `withUiLock` (sessionStorage-backed). Covered by `tests/madden_ml/test_html_idempotency.py` and `tests/madden_ml/test_browser_idempotency_playwright.py`.
 
 ## Sprint 3.1 integrity coverage
 

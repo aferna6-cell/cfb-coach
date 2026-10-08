@@ -71,7 +71,7 @@ After each play, optionally confirm: **unknown** (default) | **used recommended*
 
 Recommendations are never auto-marked as executed. Supervised training attributes results to the **verified executed** play (or trusted VOD observation), not the recommendation when they differ.
 
-HTTP clients may send `idempotency_key` on `/api/call`, `/api/result_call`, `/api/undo`, and `/api/end_game` to make retries safe.
+The default HTML live pad sends `idempotency_key` on `/api/call`, `/api/result_call`, `/api/undo`, `/api/end_game`, and `/api/book_apply`. Keys are stored in `sessionStorage` so retries after network failure reuse the same key; a new intentional action mints a new key. Double-clicks are ignored while a request is in flight.
 
 ## Data-quality smoke test (laptop)
 

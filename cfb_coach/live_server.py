@@ -1083,15 +1083,111 @@ function renderBook(b) {{
     "<div><b>" + f + "</b>: " + ps.join(", ") + "</div>").join("");
 }}
 
-async function api(path, body) {{
-  const res = await fetch(path, {{
-    method: "POST",
-    headers: {{"Content-Type": "application/json"}},
-    body: JSON.stringify(body || {{}}),
+/* ---- Idempotency for browser actions (durable across retries / refresh) ---- */
+const IDEM_STORE = "cfb_coach_live_idempotency_v1";
+const ACTION_BTN_IDS = ["btn-submit", "btn-undo", "btn-call-only", "btn-end", "btn-book-apply"];
+let uiLocked = false;
+
+function newIdempotencyKey() {{
+  if (window.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return "k-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+}}
+
+function actionFingerprint(path, body) {{
+  const copy = Object.assign({{}}, body || {{}});
+  delete copy.idempotency_key;
+  delete copy.request_key;
+  return path + "|" + JSON.stringify(copy);
+}}
+
+function loadPending() {{
+  try {{ return JSON.parse(sessionStorage.getItem(IDEM_STORE) || "null"); }}
+  catch (e) {{ return null; }}
+}}
+
+function savePending(p) {{
+  try {{
+    if (p) sessionStorage.setItem(IDEM_STORE, JSON.stringify(p));
+    else sessionStorage.removeItem(IDEM_STORE);
+  }} catch (e) {{ /* private mode / quota — in-memory only this page */ }}
+}}
+
+function setBusy(busy) {{
+  ACTION_BTN_IDS.forEach(id => {{
+    const el = $(id);
+    if (!el) return;
+    if (busy) {{
+      el.dataset.wasDisabled = el.disabled ? "1" : "0";
+      el.disabled = true;
+    }} else {{
+      el.disabled = el.dataset.wasDisabled === "1";
+      delete el.dataset.wasDisabled;
+    }}
   }});
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error || ("HTTP " + res.status));
+}}
+
+function claimIdempotencyKey(path, body) {{
+  const fp = actionFingerprint(path, body);
+  const pending = loadPending();
+  // Retry / double-submit of the same intentional action reuses the key.
+  if (pending && pending.path === path && pending.fingerprint === fp && pending.key) {{
+    pending.status = "in_flight";
+    pending.ts = Date.now();
+    savePending(pending);
+    return pending.key;
+  }}
+  // New intentional action → new key.
+  const key = newIdempotencyKey();
+  savePending({{ path: path, fingerprint: fp, key: key, status: "in_flight", ts: Date.now() }});
+  return key;
+}}
+
+async function apiAction(path, body) {{
+  const fp = actionFingerprint(path, body);
+  const key = claimIdempotencyKey(path, body);
+  const payload = Object.assign({{}}, body || {{}}, {{ idempotency_key: key }});
+  let res;
+  try {{
+    res = await fetch(path, {{
+      method: "POST",
+      headers: {{"Content-Type": "application/json"}},
+      body: JSON.stringify(payload),
+    }});
+  }} catch (netErr) {{
+    // Ambiguous network failure: server may have applied — keep key for retry.
+    savePending({{ path: path, fingerprint: fp, key: key, status: "ambiguous", ts: Date.now() }});
+    throw new Error("Network error — retry the same action (idempotency key kept)");
+  }}
+  let data = null;
+  try {{
+    data = await res.json();
+  }} catch (parseErr) {{
+    savePending({{ path: path, fingerprint: fp, key: key, status: "ambiguous", ts: Date.now() }});
+    throw new Error("Ambiguous response — retry the same action (idempotency key kept)");
+  }}
+  if (!res.ok || !data.ok) {{
+    if (res.status >= 500) {{
+      savePending({{ path: path, fingerprint: fp, key: key, status: "ambiguous", ts: Date.now() }});
+    }} else {{
+      // Clear client/validation errors so a corrected form gets a fresh key.
+      savePending(null);
+    }}
+    throw new Error((data && data.error) || ("HTTP " + res.status));
+  }}
+  savePending(null);
   return data;
+}}
+
+async function withUiLock(fn) {{
+  if (uiLocked) return null; // ignore double-click while in flight
+  uiLocked = true;
+  setBusy(true);
+  try {{
+    return await fn();
+  }} finally {{
+    uiLocked = false;
+    setBusy(false);
+  }}
 }}
 
 function buildSit() {{
@@ -1129,17 +1225,20 @@ document.querySelectorAll("#outcome-btns button.outcome").forEach(btn => {{
 $("btn-submit").addEventListener("click", async () => {{
   setErr("");
   try {{
-    const out = currentOutcome();
-    const sit = buildSit();
-    const exec = (document.querySelector('input[name="exec"]:checked') || {{}}).value || "unknown";
-    const body = {{
-      outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value,
-      their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value,
-      executed_status: exec,
-      executed_formation: ($("exec-formation").value || "").trim() || null,
-      executed_play: ($("exec-play").value || "").trim() || null,
-    }};
-    const data = await api("/api/result_call", body);
+    const data = await withUiLock(async () => {{
+      const out = currentOutcome();
+      const sit = buildSit();
+      const exec = (document.querySelector('input[name="exec"]:checked') || {{}}).value || "unknown";
+      const body = {{
+        outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value,
+        their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value,
+        executed_status: exec,
+        executed_formation: ($("exec-formation").value || "").trim() || null,
+        executed_play: ($("exec-play").value || "").trim() || null,
+      }};
+      return await apiAction("/api/result_call", body);
+    }});
+    if (!data) return; // double-click ignored
     outcomeChoice = "";
     $("outcome-text").value = "";
     $("their").value = "";
@@ -1164,7 +1263,8 @@ document.querySelectorAll('input[name="exec"]').forEach(r => {{
 $("btn-undo").addEventListener("click", async () => {{
   setErr("");
   try {{
-    const data = await api("/api/undo", {{}});
+    const data = await withUiLock(async () => apiAction("/api/undo", {{}}));
+    if (!data) return;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -1172,7 +1272,11 @@ $("btn-undo").addEventListener("click", async () => {{
 $("btn-call-only").addEventListener("click", async () => {{
   setErr("");
   try {{
-    const data = await api("/api/call", {{ sit: buildSit(), side: $("side").value, quarter: $("quarter").value, score_us: $("score-us").value, score_them: $("score-them").value }});
+    const data = await withUiLock(async () => apiAction("/api/call", {{
+      sit: buildSit(), side: $("side").value, quarter: $("quarter").value,
+      score_us: $("score-us").value, score_them: $("score-them").value,
+    }}));
+    if (!data) return;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -1181,10 +1285,11 @@ $("btn-end").addEventListener("click", async () => {{
   setErr("");
   if (!confirm("End game and run retrain on this log?")) return;
   try {{
-    const data = await api("/api/end_game", {{
+    const data = await withUiLock(async () => apiAction("/api/end_game", {{
       result_wl: $("wl").value,
       score: $("score").value || "",
-    }});
+    }}));
+    if (!data) return;
     renderState(data.state);
     $("summary").hidden = false;
     $("summary").textContent = data.retrain_summary || data.state.retrain_summary || "";
@@ -1195,8 +1300,11 @@ $("btn-book-apply").addEventListener("click", async () => {{
   setErr("");
   if (!confirm("Confirm you made every edit in the " + ($("btn-book-apply").textContent.replace("I applied these edits in ", "") || "CFB 27") + " custom playbook editor?")) return;
   try {{
-    const rev = parseInt($("btn-book-apply").dataset.rev || "0", 10) || null;
-    const data = await api("/api/book_apply", {{ rev: rev }});
+    const data = await withUiLock(async () => {{
+      const rev = parseInt($("btn-book-apply").dataset.rev || "0", 10) || null;
+      return await apiAction("/api/book_apply", {{ rev: rev }});
+    }});
+    if (!data) return;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
