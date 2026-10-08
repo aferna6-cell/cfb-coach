@@ -416,6 +416,22 @@ def verified_created_macros(db: Any, opponent_id: str) -> list[dict[str, Any]]:
     return [dict(m) for m in obj.get("macros") or [] if m.get("name") and m.get("verified_armed")]
 
 
+def unverify_created_macro(db: Any, *, name: str, opponent_id: str) -> dict[str, Any]:
+    """Immediately stop live ML from offering a removed/unarmed custom macro."""
+    existing = verified_created_macros(db, opponent_id)
+    remaining = [m for m in existing if m["name"] != name]
+    if len(remaining) == len(existing):
+        return {"name": name, "opponent_id": opponent_id, "was_verified": False}
+    db.set_meta(
+        META_APPROVED.format(opponent=opponent_id),
+        _canonical({"schema": 1, "macros": remaining}),
+    )
+    return {
+        "name": name, "opponent_id": opponent_id, "was_verified": True,
+        "now_callable": False,
+    }
+
+
 def verify_created_macro(
     db: Any, *, name: str, opponent_id: str,
     attestation: str, retire_existing: str | None = None,
