@@ -93,7 +93,7 @@ class DesignerBrowserTests(unittest.TestCase):
         self.assertIn("browser-test-model", markup)
         self.assertIn("Stock source:", markup)
         self.assertIn('href="https://huddle.gg/27/playbooks/', markup)
-        self.assertIn("Settings", markup)
+        self.assertIn("<th>Setting</th>", markup)
         self.assertIn("Research:", markup)
         self.assertIn("Madden Prodigy", markup)
         self.assertIn("source", markup.lower())
@@ -110,7 +110,7 @@ class DesignerBrowserTests(unittest.TestCase):
         self.assertIn('id="confirm-copy"', markup)
         self.assertIn("disabled", markup)
         self.assertIn(plan["proposal_id"], markup)
-        self.assertIn("checks are local", markup.lower() if "checks are local" in markup.lower() else markup.lower().replace("checkboxes", "checks are local"))
+        self.assertIn("checkboxes are local to this browser", markup.lower())
         self.assertEqual(playbook.load_books(self.db)["offense"], self.old)
 
     def test_installed_browser_only_after_attestation(self) -> None:
