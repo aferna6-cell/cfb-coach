@@ -29,7 +29,7 @@ def _run_audible(formation: str, audibles: dict[str, list[str]] | None) -> str |
     return next((p for p in (audibles or {}).get(formation) or [] if is_run(p)), None)
 
 
-def offense_adjustment(
+def offense_adjustment_candidates(
     *,
     play: str,
     formation: str,
@@ -37,8 +37,8 @@ def offense_adjustment(
     coverage_source: str,
     repeated: bool,
     audibles: dict[str, list[str]] | None = None,
-) -> dict[str, Any] | None:
-    """At most one offense adjustment for this snap, or None (most snaps).
+) -> list[dict[str, Any]]:
+    """All verified, context-eligible offense adjustments for model ranking.
 
     Needs a LIVE look or a look REPEATED this game (never one previous-snap tell). Pass plays
     get the hot route / protection the research names for that look; a pass vs a two-high look
@@ -47,9 +47,10 @@ def offense_adjustment(
 
     look_ok = bool(coverage_class) and (coverage_source == "live" or repeated)
     if not look_ok or not play:
-        return None
+        return []
     rpo = bool(re.search(r"rpo|alert", play, re.I))
     passing = not is_run(play) and not rpo
+    choices: list[dict[str, Any]] = []
     for a in rdb.offense_adjustments():
         if coverage_class not in (a.get("vs") or []):
             continue
@@ -70,10 +71,27 @@ def offense_adjustment(
         else:
             label = f"{a.get('route') or kind.replace('_', ' ').title()}"
             btn = rdb.buttons("offense", _CONTROL.get(kind, kind)).replace("pick the protection", f"pick {a.get('route')}")
-        return {"id": a.get("id"), "side": "offense", "kind": kind, "label": label, "buttons": btn,
+        choices.append({"id": a.get("id"), "side": "offense", "kind": kind, "label": label, "buttons": btn,
                 "why": f"{coverage_source} {coverage_class.replace('_', ' ')} look — {a.get('why')}",
-                "sources": _sources(a.get("sources") or [])}
-    return None
+                "sources": _sources(a.get("sources") or [])})
+    return choices
+
+
+def offense_adjustment(
+    *,
+    play: str,
+    formation: str,
+    coverage_class: str | None,
+    coverage_source: str,
+    repeated: bool,
+    audibles: dict[str, list[str]] | None = None,
+) -> dict[str, Any] | None:
+    """Existing heuristic-compatible first eligible researched adjustment."""
+    choices = offense_adjustment_candidates(
+        play=play, formation=formation, coverage_class=coverage_class,
+        coverage_source=coverage_source, repeated=repeated, audibles=audibles,
+    )
+    return choices[0] if choices else None
 
 
 def defense_adjustment(family: str | None, *, why: str = "") -> dict[str, Any] | None:
@@ -117,4 +135,4 @@ def controls_table() -> list[dict[str, str]]:
     return rows
 
 
-__all__ = ["controls_table", "defense_adjustment", "offense_adjustment", "offense_plan"]
+__all__ = ["controls_table", "defense_adjustment", "offense_adjustment", "offense_adjustment_candidates", "offense_plan"]
