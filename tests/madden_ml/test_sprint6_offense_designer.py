@@ -142,6 +142,21 @@ class ModelDesignedOffenseTests(unittest.TestCase):
         self.assertEqual(restored["formations"], self.old["formations"])
         self.assertEqual(restored["rev"], p["book"]["rev"] + 1)
 
+    def test_normal_prep_cannot_silently_replace_approved_ml_book(self) -> None:
+        pending = designer.stage_design(self.db, self.plan())
+        designer.confirm_installed(
+            self.db, proposal_id=pending["proposal_id"],
+            attestation="I installed every listed play and formation in Madden.",
+        )
+        before = playbook.load_books(self.db)["offense"]
+        plan = playbook.plan_side(
+            "offense", before, opp={"_id": "cpu", "archetype": ""},
+            choice=None, team="Detroit Lions",
+        )
+        self.assertEqual(plan["record"]["formations"], before["formations"])
+        self.assertEqual(plan["change"], "none")
+        self.assertEqual(plan["deltas"], [])
+
     def test_refuse_stale_playbook_revision(self) -> None:
         pending = designer.stage_design(self.db, self.plan())
         state = playbook._load_state(self.db)
