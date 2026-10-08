@@ -874,6 +874,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_play.add_argument("--why", action="store_true", help="Show rationale")
     p_play.add_argument(
+        "--ml-human-control",
+        action="store_true",
+        help="Madden only: allow EXPERIMENTAL offensive ML calls during this human-opponent play session. "
+             "Off by default; requires `ml experimental`; heuristic rollback: `ml heuristic`.",
+    )
+    p_play.add_argument(
         "--score",
         default=None,
         metavar="US-THEM",

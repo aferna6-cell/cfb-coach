@@ -541,11 +541,14 @@ def maybe_apply_experimental(
     snap_id: str | None = None,
     session_id: str | None = None,
     snap_seq: int | None = None,
+    allow_human_ml: bool = False,
 ) -> Any:
     """No-op unless mode is experimental. Never raises into the live path.
 
-    Does not write the DB unless ``snap_id`` is already known (rare). Live
-    callers must :func:`commit_experimental_decision` after sealing.
+    Human-opponent offense requires an explicit per-session ``allow_human_ml``
+    opt-in; the flag is not persisted in the database. CPU offense behavior
+    is unchanged. Does not write the DB unless ``snap_id`` is already known.
+    Live callers must commit after sealing.
     """
     try:
         from cfb_coach.madden.model import inference as inference_mod
@@ -554,6 +557,12 @@ def maybe_apply_experimental(
         if inference_mod.resolve_mode(db) is not CoachingMode.EXPERIMENTAL:
             return call
         if str(getattr(call, "side", "") or "").startswith("d"):
+            return call
+        from cfb_coach.opponents import is_cpu_opponent
+
+        # Experimental offense is CPU-ready; human play control is a separate,
+        # deliberate game-session opt-in. No global/sticky "human mode".
+        if not is_cpu_opponent(opponent_id) and not allow_human_ml:
             return call
         if book is None:
             raw = active_books(db, ("offense",))

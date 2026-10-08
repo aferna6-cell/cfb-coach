@@ -909,6 +909,7 @@ def make_call(
     active_macros: list[str] | None = None,
     playbook: dict[str, dict[str, list[str]]] | None = None,
     live_macros: bool | None = None,
+    allow_human_ml: bool = False,
 ) -> MaddenCall:
     """One call. `playbook` = {side: {formation: [plays]}} locked by prep; defaults to the
     DB's locked (applied) books. Raises NoActivePlaybook when the needed side has no
@@ -988,6 +989,7 @@ def make_call(
                 book=books.get("offense") or {},
                 active=sel.get("offense") or [],
                 audibles=audibles,
+                allow_human_ml=allow_human_ml,
             )
         except Exception:  # noqa: BLE001 — never break live coaching
             pass
