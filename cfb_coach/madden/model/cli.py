@@ -589,18 +589,28 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
     """
     from cfb_coach.madden.model import offense_designer as designer
 
-    if args.show and (args.stage or args.confirm_installed or args.verify_macro):
+    if args.show and (args.stage or args.confirm_installed or args.verify_macro or args.rollback_design):
         print("--show cannot be combined with mutation flags", file=sys.stderr)
         return 2
-    if sum(bool(x) for x in (args.stage, args.confirm_installed, args.verify_macro)) > 1:
+    if sum(bool(x) for x in (args.stage, args.confirm_installed, args.verify_macro, args.rollback_design)) > 1:
         print("Stage/confirm/verify are separate deliberate actions", file=sys.stderr)
         return 2
-    read_only = not bool(args.stage or args.confirm_installed or args.verify_macro)
+    read_only = not bool(args.stage or args.confirm_installed or args.verify_macro or args.rollback_design)
     db = open_madden_db(read_only=read_only)
     try:
         if args.show:
             data = designer.staged_design(db)
             print(json.dumps(data or {"status": "no_staged_design"}, indent=2))
+            return 0
+        if args.rollback_design:
+            try:
+                result = designer.rollback_design(
+                    db, proposal_id=args.rollback_design, attestation=args.attest or ""
+                )
+            except ValueError as exc:
+                print(f"Rollback refused: {exc}", file=sys.stderr)
+                return 2
+            print(json.dumps(result, indent=2))
             return 0
         if args.verify_macro:
             try:
@@ -1039,6 +1049,8 @@ def build_ml_subparser(sub: Any) -> None:
     p_od.add_argument("--confirm-installed", metavar="PROPOSAL_ID", default=None,
                       help="Confirm ALL proposed plays/formations were built and checked inside Madden")
     p_od.add_argument("--attest", default=None, help="Explicit in-game installation/activation evidence")
+    p_od.add_argument("--rollback-design", metavar="PROPOSAL_ID", default=None,
+                      help="Restore prior offense only after reinstallation in Madden")
     p_od.add_argument("--verify-macro", metavar="NAME", default=None,
                       help="Verify a generated macro was built and armed in Madden")
     p_od.add_argument("--retire-existing", metavar="ID", default=None,
