@@ -76,6 +76,14 @@ def choose_model_play(
                 penalty += 0.09 + 0.03 * (screen_exposure - 2)
             if concept_exposure >= 3:
                 penalty += 0.03
+        # Strong model evidence can overcome repetition: don't force weaker
+        # calls merely to diversify. A gap > 18pp caps the exposure penalty.
+        others = [
+            float(r["probability"]) for r in ranked
+            if (r["formation"], r["play"]) != key
+        ]
+        if others and float(row["probability"]) - max(others) > 0.18:
+            penalty = min(penalty, 0.10)
         # Do not rewrite calibrated model probabilities as penalized forecasts.
         row["selection_penalty"] = round(penalty, 5)
         row["selection_score"] = round(float(row["probability"]) - penalty, 7)
