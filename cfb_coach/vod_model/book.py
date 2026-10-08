@@ -1,8 +1,8 @@
 """Playbook edits driven by a VOD model, with an audit log and a revert snapshot.
 
-Only names that already exist in the stock book the trimmed book was built
-from, or in another catalogued book for that game, can be added. A miss is
-skipped. Nothing here invents a play name.
+A name is added when the stock catalog already has it, or when a play mapping
+names one formation and that formation's play list is in the catalog or in the
+mapping file. A miss stays display-only. Nothing here invents a play name.
 
 Madden writes the new record straight into ``active_playbook_json`` applied
 state. There is no pending confirmation: the next live snap reads that book.
@@ -79,6 +79,129 @@ def _audit_row(
         "tier": tier,
         "look": cell.look,
     }
+
+
+def _note_mapping(row: dict[str, Any], index: Any, hit: Any, raw: str) -> dict[str, Any]:
+    if index is None or hit is None:
+        return row
+    row["mapping_version"] = index.version_label
+    row["mapped"] = hit.display(raw)
+    return row
+
+
+def _catalog_book_name(side: str, hit: Any) -> str | None:
+    from cfb_coach.madden import catalog
+    from cfb_coach.vod_model.mappings import norm_name
+
+    by_norm = {norm_name(name): name for name in catalog.book_names(side)}
+    candidates = [hit.playbook_name, hit.catalog_book, hit.playbook]
+    slug = (hit.playbook or "").strip().lower()
+    for suffix in ("-off", "-offense", "-def", "-defense"):
+        if slug.endswith(suffix):
+            candidates.append(slug[: -len(suffix)].replace("-", " "))
+            break
+    for candidate in candidates:
+        found = by_norm.get(norm_name(candidate))
+        if found:
+            return found
+    return None
+
+
+def _plays_for_mapping(hit: Any, side: str) -> tuple[str, str, str, list[str]] | None:
+    """(book label, formation, play, full play list), or None to stay display-only.
+
+    A catalogued book supplies the formation's play list. A book the coach does
+    not catalogue uses the mapping's play list, and only when that list is the
+    formation's plays (more than the single call).
+    """
+    from cfb_coach.madden import catalog
+    from cfb_coach.vod_model.mappings import norm_name
+
+    book = _catalog_book_name(side, hit)
+    if book:
+        stock = catalog.book_formations(side, book)
+        formation = next((name for name in stock if norm_name(name) == norm_name(hit.formation)), None)
+        if formation:
+            play = catalog.canonical_play(side, book, formation, hit.play_name)
+            if play:
+                return book, formation, play, list(stock[formation])
+    plays = [play for play in hit.plays if isinstance(play, str) and play.strip()]
+    if len(plays) < 2:
+        return None
+    play = next((item for item in plays if norm_name(item) == norm_name(hit.play_name)), None)
+    if play is None:
+        return None
+    label = hit.playbook_name or hit.catalog_book or hit.playbook
+    return label, hit.formation, play, plays
+
+
+def _mapping_resolution(hit: Any, forms: dict[str, list[str]], *, side: str) -> dict[str, Any] | None:
+    """The mapping's formation, or None when the book must not change.
+
+    None means the mapped formation already has the play, or the mapping cannot
+    be placed and the cell stays display-only. The resolver's default book is
+    not a fallback: the mapping's formation wins.
+    """
+    from cfb_coach.vod_model.mappings import norm_name
+
+    existing = None
+    for fname, plays in forms.items():
+        if norm_name(fname) != norm_name(hit.formation):
+            continue
+        existing = fname
+        for play in plays:
+            if norm_name(play) == norm_name(hit.play_name):
+                return None
+        break
+    placed = _plays_for_mapping(hit, side)
+    if placed is None:
+        return None
+    book, formation, play, plays = placed
+    if existing is not None:
+        current = list(forms[existing])
+        if play not in current:
+            current.append(play)
+        return {
+            "formation": existing, "play": play, "book": book,
+            "action": "add_play", "plays": current,
+        }
+    return {
+        "formation": formation, "play": play, "book": book,
+        "action": "add_formation", "plays": list(plays),
+    }
+
+
+def _cfb_from_mapping(hit: Any, have: dict[str, list[str]]) -> tuple[str, str, str | None, list[str]] | None:
+    from cfb_coach.cfb_catalog import book_plays, canonical_formation, canonical_play, formation_books
+    from cfb_coach.vod_model.mappings import norm_name
+
+    def _already(formation: str, play: str) -> bool:
+        for fname, plays in have.items():
+            if norm_name(fname) == norm_name(formation) and any(norm_name(item) == norm_name(play) for item in plays):
+                return True
+        return False
+
+    formation = canonical_formation(hit.formation)
+    if formation:
+        play = canonical_play(formation, hit.play_name)
+        if play:
+            books = formation_books(formation)
+            wanted = {norm_name(hit.playbook_name), norm_name(hit.playbook), norm_name(hit.catalog_book)}
+            source = next((book for book in books if norm_name(book) in wanted), None)
+            if source is None and books:
+                source = books[0]
+            plays = list(book_plays(formation, source))
+            if any(norm_name(item) == norm_name(play) for item in plays):
+                if _already(formation, play):
+                    return None
+                return formation, play, source, plays
+    plays = [play for play in hit.plays if isinstance(play, str) and play.strip()]
+    if len(plays) >= 2 and any(norm_name(item) == norm_name(hit.play_name) for item in plays):
+        play = next(item for item in plays if norm_name(item) == norm_name(hit.play_name))
+        if _already(hit.formation, play):
+            return None
+        return hit.formation, play, (hit.playbook_name or None), plays
+    return None
 
 
 def _why(cell: VodCell, tier: str, look: str) -> str:
@@ -211,9 +334,18 @@ def consider_madden(
     source = record.get("source_book") or (record.get("name") if record.get("mode") == "stock" else None)
     actionable = [c for c in cells if cell_tier(c, tentative_n=model.tentative_n) in ("med", "high")]
     chosen = select_cell(actionable, lambda _cell: 0.0, tentative_n=model.tentative_n)
-    if chosen is None or _in_book(forms, chosen.call):
+    if chosen is None:
         return []
-    resolved = resolve_madden("offense", source if isinstance(source, str) else None, forms, chosen.call)
+    from cfb_coach.vod_model.mappings import load_mappings
+
+    index = load_mappings()
+    hit = index.lookup(game, chosen.call) if index else None
+    if hit is not None:
+        resolved = _mapping_resolution(hit, forms, side="offense")
+    else:
+        resolved = None if _in_book(forms, chosen.call) else resolve_madden(
+            "offense", source if isinstance(source, str) else None, forms, chosen.call,
+        )
     if resolved is None:
         return []
     if persist and db is not None:
@@ -234,6 +366,7 @@ def consider_madden(
         replaced=edit["replaced"], why=_why(chosen, tier, look), tier=tier,
     )
     row["source_book"] = edit["book"]
+    _note_mapping(row, index, hit, chosen.call)
     if persist and db is not None:
         audit = _load_list(db, AUDIT_KEY)
         audit.append(row)
@@ -353,15 +486,25 @@ def consider_cfb(
     )
     if chosen_cell is None:
         return []
-    resolved = resolve_cfb(chosen_cell.call)
-    if resolved is None:
-        return []
-    formation, play, source = resolved
-    if formation in have and play in (have.get(formation) or []):
-        return []
-    plays = list(book_plays(formation, source))
-    if play not in plays:
-        return []
+    from cfb_coach.vod_model.mappings import load_mappings
+
+    index = load_mappings()
+    hit = index.lookup(game, chosen_cell.call) if index else None
+    if hit is not None:
+        placed = _cfb_from_mapping(hit, have)
+        if placed is None:
+            return []
+        formation, play, source, plays = placed
+    else:
+        resolved = resolve_cfb(chosen_cell.call)
+        if resolved is None:
+            return []
+        formation, play, source = resolved
+        if formation in have and play in (have.get(formation) or []):
+            return []
+        plays = list(book_plays(formation, source))
+        if play not in plays:
+            return []
     formations = copy.deepcopy(cur["book"].get("formations") or {})
     replaced = ""
     cap = int(PRACTICAL.get("max_formations") or 8)
@@ -379,6 +522,7 @@ def consider_cfb(
         chosen_cell, game=game, opponent_id=opponent_id, action=action, changed=changed,
         replaced=replaced, why=_why(chosen_cell, tier, look), tier=tier,
     )
+    _note_mapping(row, index, hit, chosen_cell.call)
     if not persist:
         return [row]
     history = _load_list(db, HISTORY_KEY)

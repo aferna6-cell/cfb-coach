@@ -171,7 +171,14 @@ def sheet_bonus(cell: VodCell, *, tentative_n: int | None = None) -> float:
     return quality_weight() * weight * cell.shrunk_success * VOD_SHEET_SCALE
 
 
-def beater_lines(model: VodModel, game: str, opponent_type: str, *, limit_looks: int = 6) -> list[str]:
+def beater_lines(
+    model: VodModel,
+    game: str,
+    opponent_type: str,
+    *,
+    limit_looks: int = 6,
+    label_of: Callable[[VodCell], str] | None = None,
+) -> list[str]:
     lines: list[str] = []
     names = model.looks(game, opponent_type, "family")[:limit_looks]
     for name in names:
@@ -181,8 +188,9 @@ def beater_lines(model: VodModel, game: str, opponent_type: str, *, limit_looks:
         for cell in cells[:3]:
             tier = cell_tier(cell, tentative_n=model.tentative_n)
             mark = " tentative" if cell.tentative or tier in ("none", "low") else ""
+            label = label_of(cell) if label_of else cell.call
             bits.append(
-                f"{cell.call} n={cell.n} shrunk={cell.shrunk_success:.2f} "
+                f"{label} n={cell.n} shrunk={cell.shrunk_success:.2f} "
                 f"lb={cell.lower_bound:.2f} tier={tier}{mark}"
             )
         look_n = model.look_n.get((game, opponent_type, "family", name), 0)

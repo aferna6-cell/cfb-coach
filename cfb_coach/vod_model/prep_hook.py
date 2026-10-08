@@ -21,28 +21,52 @@ from cfb_coach.vod_model.prior import (
 )
 
 
+def _mapping_bits(game: str) -> tuple[Any, Any]:
+    from cfb_coach.vod_model.mappings import load_mappings
+
+    index = load_mappings()
+
+    def label_of(cell: Any) -> str:
+        if index is None:
+            return cell.call
+        hit = index.lookup(cell.game or game, cell.call)
+        return hit.display(cell.call) if hit else cell.call
+
+    return index, label_of
+
+
 def _report(model: Any, game: str, opponent_type: str, changes: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
+    index, label_of = _mapping_bits(game)
+    report = {
         "version": model.version,
         "game": game,
         "opponent_type": opponent_type,
         "quality_weight": quality_weight(),
         "log_nudge": log_nudge(),
-        "beater_lines": beater_lines(model, game, opponent_type),
+        "beater_lines": beater_lines(model, game, opponent_type, label_of=label_of if index else None),
         "changes": changes,
         "frozen": book_frozen(),
     }
+    if index is not None:
+        report["mapping_version"] = index.version_label
+    return report
 
 
 def _bonus(model: Any, game: str, opponent_type: str, look: str | None, forms: dict[str, list[str]]) -> dict[tuple[str, str], float]:
     if not look or not forms:
         return {}
     from cfb_coach.madden.catalog import norm
+    from cfb_coach.vod_model.mappings import load_mappings, match_pair
 
     index = {norm(play): (formation, play) for formation, plays in forms.items() for play in plays}
+    mappings = load_mappings()
     bonus: dict[tuple[str, str], float] = {}
     for cell in cells_for_hint(model, game, opponent_type, look):
-        pair = index.get(norm(cell.call))
+        hit = mappings.lookup(game, cell.call) if mappings else None
+        if hit is not None:
+            pair = match_pair(forms, hit.play_name, hit.formation)
+        else:
+            pair = index.get(norm(cell.call))
         if pair is None:
             continue
         extra = sheet_bonus(cell, tentative_n=model.tentative_n)
