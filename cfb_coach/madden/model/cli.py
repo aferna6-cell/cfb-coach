@@ -465,6 +465,52 @@ def cmd_ml_confirm_execution(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ml_recover_game_execution(args: argparse.Namespace) -> int:
+    """One-time recovery for game 141d4a16b4184ee7 (dry-run unless --apply)."""
+    from cfb_coach.madden.model import execution_recovery as recovery
+
+    game_id = str(getattr(args, "game_id", None) or recovery.RECOVERY_GAME_ID)
+    attestation = getattr(args, "attest", None)
+    apply = bool(getattr(args, "apply", False))
+    backup = getattr(args, "backup", None)
+
+    db = open_madden_db()
+    try:
+        if apply:
+            report = recovery.apply_recovery(
+                db,
+                game_id=game_id,
+                attestation=str(attestation or ""),
+                backup_path=backup,
+                apply=True,
+            )
+        else:
+            report = recovery.preview_recovery(
+                db, game_id=game_id, attestation=attestation
+            )
+        print(json.dumps(report, indent=2, default=str))
+        if apply and report.get("applied"):
+            print(
+                f"before_verified={report['before']['n_verified_executions']} "
+                f"after_verified={report['after']['n_verified_executions']} "
+                f"delta={report.get('delta_verified')}",
+                file=sys.stderr,
+            )
+            print(
+                f"before_supervised_game={report['before']['n_game_supervised_rows']} "
+                f"after_supervised_game={report['after']['n_game_supervised_rows']}",
+                file=sys.stderr,
+            )
+            print(f"backup={report.get('backup')}", file=sys.stderr)
+        if not report.get("ok", True) and apply:
+            return 2
+        if apply and not report.get("applied"):
+            return 2
+    finally:
+        db.close()
+    return 0
+
+
 def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
     """Train the hierarchical shrinkage experimental model (no promotion gate)."""
     from cfb_coach.madden.model import experimental_live as exp_live
@@ -871,6 +917,35 @@ def build_ml_subparser(sub: Any) -> None:
     p_ce.add_argument("--evidence", required=True, help="Recording note / recollection")
     p_ce.add_argument("--macro", default=None)
     p_ce.set_defaults(func=cmd_ml_confirm_execution)
+
+    p_rec = ml_sub.add_parser(
+        "recover-game-execution",
+        help=(
+            "One-time recovery for experimental game 141d4a16b4184ee7 "
+            "(dry-run by default; requires --attest + --apply to mutate)"
+        ),
+    )
+    p_rec.add_argument(
+        "--game-id",
+        default=None,
+        help="Must be 141d4a16b4184ee7 (locked); other games refused",
+    )
+    p_rec.add_argument(
+        "--attest",
+        default=None,
+        help="Explicit confirmation that final displayed calls were executed",
+    )
+    p_rec.add_argument(
+        "--apply",
+        action="store_true",
+        help="Apply recovery after backup (omit for dry-run preview)",
+    )
+    p_rec.add_argument(
+        "--backup",
+        default=None,
+        help="Backup destination path (default: <db_dir>/backups/...)",
+    )
+    p_rec.set_defaults(func=cmd_ml_recover_game_execution)
 
     p_te = ml_sub.add_parser(
         "train-experimental",
