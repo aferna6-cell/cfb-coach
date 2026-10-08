@@ -10,16 +10,16 @@ PYTHONPATH=. python -m pytest tests -p no:cacheprovider -q
 
 | Run | Result |
 | --- | --- |
-| 1 | **352 passed** in ~40s |
-| 2 | **352 passed** in ~37s |
+| 1 | **358 passed** in ~39s |
+| 2 | **358 passed** in ~38s |
 
 No nondeterministic failures observed across the two full runs.
 
-`tests/madden_ml`: **25 passed** (schema + pipeline) on two consecutive runs.
+`tests/madden_ml`: **27 passed** (schema + pipeline) on consecutive runs.
 
 ## Baseline vs this branch
 
-From `docs/madden_ml/QA_BASELINE.md` (`madden-ml/qa` at `2def811`): collection aborted on missing numpy (320 collected / 1 error). This branch already includes numpy in the `dev` extra and the demo-cwd fix from earlier PR #20 commits. Current suite collects and passes 352 tests (schema + pipeline + prior suite).
+From `docs/madden_ml/QA_BASELINE.md` (`madden-ml/qa` at `2def811`): collection aborted on missing numpy (320 collected / 1 error). This branch already includes numpy in the `dev` extra and the demo-cwd fix from earlier PR #20 commits. Current suite collects and passes **358** tests (schema + pipeline + prior suite + VOD flag tests from this branch tip).
 
 ## Integration demonstration type
 
