@@ -589,18 +589,30 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
     """
     from cfb_coach.madden.model import offense_designer as designer
 
-    if args.show and (args.stage or args.confirm_installed):
-        print("--show cannot be combined with --stage or --confirm-installed", file=sys.stderr)
+    if args.show and (args.stage or args.confirm_installed or args.verify_macro):
+        print("--show cannot be combined with mutation flags", file=sys.stderr)
         return 2
-    if args.stage and args.confirm_installed:
-        print("Stage and confirm are separate deliberate actions", file=sys.stderr)
+    if sum(bool(x) for x in (args.stage, args.confirm_installed, args.verify_macro)) > 1:
+        print("Stage/confirm/verify are separate deliberate actions", file=sys.stderr)
         return 2
-    read_only = not bool(args.stage or args.confirm_installed)
+    read_only = not bool(args.stage or args.confirm_installed or args.verify_macro)
     db = open_madden_db(read_only=read_only)
     try:
         if args.show:
             data = designer.staged_design(db)
             print(json.dumps(data or {"status": "no_staged_design"}, indent=2))
+            return 0
+        if args.verify_macro:
+            try:
+                result = designer.verify_created_macro(
+                    db, name=args.verify_macro, opponent_id=args.opponent,
+                    attestation=args.attest or "",
+                    retire_existing=args.retire_existing,
+                )
+            except ValueError as exc:
+                print(f"Macro verification refused: {exc}", file=sys.stderr)
+                return 2
+            print(json.dumps(result, indent=2))
             return 0
         if args.confirm_installed:
             try:
@@ -1026,7 +1038,11 @@ def build_ml_subparser(sub: Any) -> None:
     p_od.add_argument("--stage", action="store_true", help="Store proposal only; live locked book stays untouched")
     p_od.add_argument("--confirm-installed", metavar="PROPOSAL_ID", default=None,
                       help="Confirm ALL proposed plays/formations were built and checked inside Madden")
-    p_od.add_argument("--attest", default=None, help="Explicit in-game installation evidence")
+    p_od.add_argument("--attest", default=None, help="Explicit in-game installation/activation evidence")
+    p_od.add_argument("--verify-macro", metavar="NAME", default=None,
+                      help="Verify a generated macro was built and armed in Madden")
+    p_od.add_argument("--retire-existing", metavar="ID", default=None,
+                      help="Explicitly replace an existing active offense macro in the eight-slot loadout")
     p_od.set_defaults(func=cmd_ml_offense_design)
 
     p_pg = ml_sub.add_parser(
