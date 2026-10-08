@@ -131,7 +131,7 @@ class DesignerBrowserTests(unittest.TestCase):
         self.assertIsNotNone(saved)
         markup = browser.render_html(self.db, saved, mode="installed", opponent_id="cpu")
         self.assertIn("INSTALLED — CALLABLE", markup)
-        self.assertIn("Installed &amp; callable", markup) if "Installed &amp; callable" in markup else self.assertIn("Installed & callable", markup)
+        self.assertIn("Installed & callable", markup)
         self.assertIn("Macro", markup)
         self.assertIn("Draft — not callable", markup)
         self.assertIn('id="confirm-copy"', browser.render_html(
