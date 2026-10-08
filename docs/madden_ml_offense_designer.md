@@ -70,8 +70,12 @@ python -m cfb_coach ml offense-design \
 ```
 
 Only then does the new offensive book become the in-DB applied/locked book,
-callable by the model. Defense and existing game outcomes are unchanged.
-The previous applied book is saved in the design history.
+callable by the model. Ordinary `prep --game madden27` preserves this
+explicitly installed model-designed offense instead of quietly replacing it
+with the old heuristic seed core. A future `ml offense-design --stage` or
+explicit `--o-book` override may change it. Defense and existing game
+outcomes are unchanged. The previous applied book is saved in the design
+history.
 
 You can later restore the old offense *after rebuilding it inside Madden*:
 
