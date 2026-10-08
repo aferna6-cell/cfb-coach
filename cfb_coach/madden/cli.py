@@ -27,7 +27,7 @@ PROFILE = GAMES[MADDEN27]
 
 def open_db() -> CoachDB:
     db = CoachDB(madden_db_path(), seed=load_seed())
-    try:  # v1.17: stored Active 8 → 10 offense + 10 defense (nothing dropped; idempotent)
+    try:  # stored Active 8 selections migrate in place; the live loadout is 8 offense + 8 defense
         from cfb_coach.madden.macros import migrate_all_selections
 
         migrate_all_selections(db)
@@ -97,7 +97,7 @@ def format_opponents() -> str:
             f"{o['persona_confidence']:<9}{o['confidence']}"
         )
     lines.append("")
-    lines.append("CPU = offense-only (adjustments). User personas = O + D (10 defense macros; offense adjustments).")
+    lines.append("CPU = offense-only (adjustments). User personas = O + D (8 offense + 8 defense).")
     return "\n".join(lines)
 
 

@@ -12,7 +12,7 @@ dependencies = []
 
 [project.optional-dependencies]
 vision = ["numpy", "opencv-python", "dxcam", "mss"]
-dev = ["pytest"]
+dev = ["pytest", "numpy"]
 youtube = ["youtube-transcript-api>=1.0", "yt-dlp"]
 
 [project.scripts]

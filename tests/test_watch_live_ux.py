@@ -295,14 +295,16 @@ class TestDemoStillWorks(unittest.TestCase):
         import os
         import subprocess
         import sys
+        from pathlib import Path
 
+        root = Path(__file__).resolve().parents[1]
         r = subprocess.run(
             [sys.executable, "-m", "cfb_coach", "watch", "--demo", "--once"],
-            cwd="/workspace/cfb-coach",
+            cwd=root,
             capture_output=True,
             text=True,
             timeout=30,
-            env={**dict(os.environ), "PYTHONPATH": "/workspace/cfb-coach"},
+            env={**dict(os.environ), "PYTHONPATH": str(root)},
         )
         self.assertEqual(r.returncode, 0, msg=r.stderr + r.stdout)
         self.assertIn("CO-PILOT", r.stdout)

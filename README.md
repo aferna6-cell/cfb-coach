@@ -24,6 +24,7 @@ Optional editable install:
 
 ```bash
 pip install -e .
+pip install -e '.[dev]'    # pytest and numpy (VOD success tests)
 cfb-coach prep --opponent quen
 ```
 
@@ -869,7 +870,7 @@ PYTHONPATH=. python3 -m cfb_coach prep --opponent cpu --dynasty ohio_state --no-
 PYTHONPATH=. python3 -m cfb_coach watch --demo --once
 PYTHONPATH=. python3 -m cfb_coach watch --setup
 PYTHONPATH=. python3 -m unittest discover -s tests -v
-# or: pip install pytest && pytest -q
+# or: pip install -e '.[dev]' && pytest -q
 PYTHONPATH=. python3 -m cfb_coach postgame -o cpu --report   # tendency report if session logged
 ```
 
