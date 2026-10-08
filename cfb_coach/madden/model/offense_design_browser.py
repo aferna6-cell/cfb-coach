@@ -169,10 +169,18 @@ def render_html(
             f'--verify-macro {name} '
             '--attest "I built this Custom Adjustment with the sourced settings and armed it in Madden."'
         )
+        disable_cmd = (
+            f"python -m cfb_coach ml offense-design -o {opponent_id} --unverify-macro {name}"
+        )
         cmd_html = (
             f'<pre id="macro-cmd-{index}">{esc(cmd)}</pre>'
             f'<button data-copy="macro-cmd-{index}">Copy macro verification command</button>'
-            if is_installed and not verified else ""
+            if is_installed and not verified else (
+                f'<p class="muted">If you remove this macro from Madden, disable it in the coach:</p>'
+                f'<pre id="macro-disable-{index}">{esc(disable_cmd)}</pre>'
+                f'<button data-copy="macro-disable-{index}">Copy disable-macro command</button>'
+                if verified else ""
+            )
         )
         macros.append(
             f'<details><summary><b>{esc(name)}</b><span class="pill">{esc(macro_status)}</span></summary>'
