@@ -529,9 +529,27 @@ def cmd_play(args: argparse.Namespace) -> int:
     pid = _profile_arg(args, db)
     active = _active_after_prep(db, oid, pid)
     cpu = is_cpu_opponent(oid)
+    human_ml_control = bool(getattr(args, "ml_human_control", False)) and not cpu
+    if human_ml_control:
+        from cfb_coach.madden.model import inference as ml_inference
+        from cfb_coach.madden.model.schema import CoachingMode
+
+        if ml_inference.resolve_mode(db) is not CoachingMode.EXPERIMENTAL:
+            print(
+                "Human offensive ML requires experimental mode. Run "
+                "`python -m cfb_coach ml experimental --retrain` first.",
+                file=sys.stderr,
+            )
+            db.close()
+            return 2
     overlay = _overlay_path(args)
 
     print(f"LIVE PLAY — Madden 27 Franchise vs {oid}  (db: {db.path})")
+    if human_ml_control:
+        print("HUMAN OFFENSE ML PILOT: ON for this play session only (opt-in).")
+        print("  Instant rollback for next call: python -m cfb_coach ml heuristic")
+    elif not cpu:
+        print("HUMAN OFFENSE ML PILOT: OFF (heuristic offense; use --ml-human-control to opt in).")
     print(_profile_header(pid))
     print(doctrine_line(profile_config(pid)["team"]))
     from cfb_coach.madden.playbook import NoActivePlaybook, active_books, load_pending
@@ -585,7 +603,10 @@ def cmd_play(args: argparse.Namespace) -> int:
         absorb_and_stamp(sit, live_ctx)
         heard = format_heard(sit)
         print(heard)
-        call = make_call(sit, oid, db, active_macros=_active_now(), live_macros=macros_on)
+        call = make_call(
+            sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
+            allow_human_ml=human_ml_control,
+        )
         _maybe_shadow(db, sit, call, oid)
         print(call.headline())
         print(call.format())
@@ -605,6 +626,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         def _make(sit, **kwargs):
             kwargs.setdefault("live_macros", macros_on)
             kwargs.setdefault("active_macros", _active_now())
+            kwargs.setdefault("allow_human_ml", human_ml_control)
             return make_call(sit, oid, db, **kwargs)
 
         def _learn():
@@ -726,6 +748,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             print(heard)
             call = make_call(
                 sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
+                allow_human_ml=human_ml_control,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )
