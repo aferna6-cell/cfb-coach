@@ -557,6 +557,13 @@ class LivePlayController:
         """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
             return None
+        # Only an action actually offered with the final call can be
+        # explicitly confirmed. A stale hidden checkbox must not fabricate it.
+        applied_recommended_action = bool(
+            applied_recommended_action
+            and executed_status == "used_recommended"
+            and self._pending_offense_action()
+        )
         book = self._book()
         if book.call is None:
             book.remember_call(self.last_call, self.last_sit)
