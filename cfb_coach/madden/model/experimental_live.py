@@ -112,6 +112,8 @@ def rebuild_offense_attachments(
     opponent_id: str,
     rationale: str,
     audibles: dict[str, list[str]] | None = None,
+    model_action_policy: bool = False,
+    play_prediction: dict[str, Any] | None = None,
 ) -> Any:
     """Build reads / macro / adjustment for an already-chosen in-book play."""
     from cfb_coach.madden.data import reads_for
@@ -150,6 +152,36 @@ def rebuild_offense_attachments(
     except Exception:  # noqa: BLE001
         weights = {}
         cooled = set()
+
+    if model_action_policy:
+        from cfb_coach.madden.model.offense_action_policy import choose_offense_action
+
+        decision = choose_offense_action(
+            formation=formation, play=play, sit=sit, book=book,
+            active=active, weights=weights, cooled=cooled,
+            score_phase=score_phase, audibles=audibles,
+            prediction=play_prediction,
+            allow_macros=(getattr(sit, "extras", None) or {}).get(
+                "live_macros", True
+            ) is not False,
+            repeated=repeated,
+        )
+        chosen_macro = decision.get("macro")
+        chosen_adj = decision.get("adjustment")
+        call = MaddenCall(
+            "offense", formation, play,
+            chosen_adj["label"] if chosen_adj else "No adj",
+            reads_for(play),
+            rationale + f" | ACTION {decision['kind']}: {decision['reason']}",
+            macro=chosen_macro["id"] if chosen_macro else None,
+            macro_info=chosen_macro,
+            adjustment=chosen_adj,
+        )
+        call.ml_offense_action = {
+            key: value for key, value in decision.items()
+            if key not in ("macro", "adjustment")
+        }
+        return call
 
     adj = "Hot ready" if cls == "pressure" and src == "live" else "No adj"
     adjustment = None
@@ -418,6 +450,9 @@ def apply_experimental_offense(
             model_action_policy=True,
             play_prediction=top,
         )
+        latency = (time.perf_counter() - started) * 1000.0
+        if latency > budget:
+            return _fallback(MLStatus.TIMEOUT, latency)
 
         info = {
             "heuristic_formation": heur_form,
@@ -437,6 +472,8 @@ def apply_experimental_offense(
             "rankings": ranked[:8],
             "fell_back": False,
             "n_eligible_candidates": len(pairs),
+            "selection_policy": "model_primary",
+            "offense_action": getattr(call, "ml_offense_action", None),
         }
 
         dec = CoachingDecision(
