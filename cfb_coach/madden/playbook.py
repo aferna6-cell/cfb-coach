@@ -607,6 +607,23 @@ def plan_side(
     (or an already-applied editor custom with no ``source_book``) stays on the in-game
     custom-install path (checklist, then formation ADD/REMOVE)."""
     mode_req, book_req = parse_choice(side, choice)
+    # An explicitly installed ML-designed custom book must not be silently
+    # rewritten by ordinary heuristic-based prep. A new design must be staged
+    # and confirmed through `ml offense-design`; explicit --o-book still wins.
+    if (
+        side == "offense" and current
+        and current.get("name") == "ML Designed Offense (custom)"
+        and mode_req == "auto"
+    ):
+        rec = dict(current)
+        rec["formation_list"] = formation_list(side, rec, current)
+        return {
+            "side": side, "record": rec, "status": "applied",
+            "change": "none", "deltas": [], "checklist": [],
+            "reason": "ML-designed custom offense stays locked until an explicit redesign",
+            "recommendation": None, "focus": None,
+            "previous": {"mode": current.get("mode"), "name": current.get("name")},
+        }
     named = side_named(research, side)
     cur_mode = (current or {}).get("mode")
 

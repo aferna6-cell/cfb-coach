@@ -30,6 +30,8 @@ def choose_offense_action(
     prediction: Mapping[str, Any] | None = None,
     allow_macros: bool = True,
     repeated: bool = False,
+    db: Any = None,
+    opponent_id: str = "",
 ) -> dict[str, Any]:
     """Choose exactly one eligible researched action, or none.
 
@@ -96,6 +98,39 @@ def choose_offense_action(
             })
         except (ValueError, TypeError, KeyError):
             continue
+
+    # User-confirmed, model-created custom macros are kept in a separate
+    # auditable registry. A *draft blueprint* is never eligible, even if the
+    # selected play fits and the research looks promising.
+    if allow_macros and db is not None and opponent_id and credible_look:
+        from cfb_coach.madden.model.offense_designer import verified_created_macros
+        from cfb_coach.madden import research_db
+        for created in verified_created_macros(db, opponent_id):
+            if created.get("coverage") != cls:
+                continue
+            if not any(
+                item.get("formation") == formation and item.get("play") == play
+                for item in created.get("base_pairs") or []
+            ):
+                continue
+            if not created.get("settings") or not created.get("source_ids"):
+                continue
+            name = created["name"]
+            buttons = research_db.buttons("offense", "custom_adjustments").replace(
+                "pick the adjustment", name
+            )
+            payload = {
+                "id": name, "name": name, "side": "offense", "kind": "look",
+                "buttons": buttons, "why": created.get("fire_when") or "",
+                "settings": created["settings"],
+                "source_ids": created["source_ids"],
+                "verified_armed": True,
+            }
+            rows.append({
+                "kind": "macro", "id": name,
+                "score": round(0.255 + 0.12 * confidence + 0.05 * (probability - 0.5), 5),
+                "why": payload["why"], "payload": payload,
+            })
 
     if credible_look:
         for a in offense_adjustment_candidates(

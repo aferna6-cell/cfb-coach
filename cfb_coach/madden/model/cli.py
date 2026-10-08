@@ -581,6 +581,80 @@ def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ml_offense_design(args: argparse.Namespace) -> int:
+    """Preview/stage a model-generated custom offensive book and macro blueprints.
+
+    A proposal never edits the active book until the user explicitly confirms
+    actual Madden in-game installation with its exact proposal ID.
+    """
+    from cfb_coach.madden.model import offense_designer as designer
+
+    if args.show and (args.stage or args.confirm_installed or args.verify_macro or args.rollback_design):
+        print("--show cannot be combined with mutation flags", file=sys.stderr)
+        return 2
+    if sum(bool(x) for x in (args.stage, args.confirm_installed, args.verify_macro, args.rollback_design)) > 1:
+        print("Stage/confirm/verify are separate deliberate actions", file=sys.stderr)
+        return 2
+    read_only = not bool(args.stage or args.confirm_installed or args.verify_macro or args.rollback_design)
+    db = open_madden_db(read_only=read_only)
+    try:
+        if args.show:
+            data = designer.staged_design(db)
+            print(json.dumps(data or {"status": "no_staged_design"}, indent=2))
+            return 0
+        if args.rollback_design:
+            try:
+                result = designer.rollback_design(
+                    db, proposal_id=args.rollback_design, attestation=args.attest or ""
+                )
+            except ValueError as exc:
+                print(f"Rollback refused: {exc}", file=sys.stderr)
+                return 2
+            print(json.dumps(result, indent=2))
+            return 0
+        if args.verify_macro:
+            try:
+                result = designer.verify_created_macro(
+                    db, name=args.verify_macro, opponent_id=args.opponent,
+                    attestation=args.attest or "",
+                    retire_existing=args.retire_existing,
+                )
+            except ValueError as exc:
+                print(f"Macro verification refused: {exc}", file=sys.stderr)
+                return 2
+            print(json.dumps(result, indent=2))
+            return 0
+        if args.confirm_installed:
+            try:
+                result = designer.confirm_installed(
+                    db, proposal_id=args.confirm_installed, attestation=args.attest or ""
+                )
+            except ValueError as exc:
+                print(f"Installation refused: {exc}", file=sys.stderr)
+                return 2
+            print(json.dumps(result, indent=2))
+            return 0
+        try:
+            design = designer.design_offense(
+                db, opponent_id=args.opponent,
+                max_formations=args.max_formations, max_plays=args.max_plays
+            )
+            if args.stage:
+                design = designer.stage_design(db, design)
+        except (ValueError, OSError) as exc:
+            print(f"Offense design unavailable: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(design, indent=2))
+        print(
+            "STAGED ONLY — verify/build all proposed formations, plays and any "
+            "macro blueprints inside Madden. Existing applied book remains locked."
+            if args.stage else "DRY RUN — no database or playbook changes."
+        )
+        return 0
+    finally:
+        db.close()
+
+
 def cmd_ml_postgame_experimental(args: argparse.Namespace) -> int:
     from cfb_coach.madden.model import experimental_live as exp_live
 
@@ -962,6 +1036,26 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_te.add_argument("--no-db", dest="db", action="store_false", default=True)
     p_te.set_defaults(func=cmd_ml_train_experimental)
+
+    p_od = ml_sub.add_parser(
+        "offense-design",
+        help="Model proposes custom offense formations, individual plays and new macro drafts (dry-run default)",
+    )
+    p_od.add_argument("--opponent", "-o", default="cpu")
+    p_od.add_argument("--max-formations", type=int, default=5)
+    p_od.add_argument("--max-plays", type=int, default=10)
+    p_od.add_argument("--show", action="store_true", help="Show staged design without modifying DB")
+    p_od.add_argument("--stage", action="store_true", help="Store proposal only; live locked book stays untouched")
+    p_od.add_argument("--confirm-installed", metavar="PROPOSAL_ID", default=None,
+                      help="Confirm ALL proposed plays/formations were built and checked inside Madden")
+    p_od.add_argument("--attest", default=None, help="Explicit in-game installation/activation evidence")
+    p_od.add_argument("--rollback-design", metavar="PROPOSAL_ID", default=None,
+                      help="Restore prior offense only after reinstallation in Madden")
+    p_od.add_argument("--verify-macro", metavar="NAME", default=None,
+                      help="Verify a generated macro was built and armed in Madden")
+    p_od.add_argument("--retire-existing", metavar="ID", default=None,
+                      help="Explicitly replace an existing active offense macro in the eight-slot loadout")
+    p_od.set_defaults(func=cmd_ml_offense_design)
 
     p_pg = ml_sub.add_parser(
         "postgame-experimental",

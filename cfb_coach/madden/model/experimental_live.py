@@ -166,6 +166,8 @@ def rebuild_offense_attachments(
                 "live_macros", True
             ) is not False,
             repeated=repeated,
+            db=db,
+            opponent_id=opponent_id,
         )
         chosen_macro = decision.get("macro")
         chosen_adj = decision.get("adjustment")
