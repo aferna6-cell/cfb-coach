@@ -1,0 +1,10 @@
+{
+ "label_version": "v0.7",
+ "latest_sha256": "55d7291768f563ef38141baa6515bd1a4ad33a5ae2cda570aaea3fab652a9d9e",
+ "labels_data_sha256": "5519256b290dfba43ea98c7953572b1a3c8ee8c62ef5b29a11d75bf39268c081",
+ "input_signature": "6f0321647522",
+ "script_version": "train_vod_model.v2",
+ "script_sha256": "e9b2bd5d4586744ca6ae9b2327b40796d6a9fe00639638c8fab4830e6421a7e4",
+ "model_dir": "/workspace/vod_data/models/v0.7",
+ "trained_at": "2026-10-07T23:26:04-04:00"
+}

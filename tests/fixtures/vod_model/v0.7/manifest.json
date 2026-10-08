@@ -1,0 +1,60 @@
+{
+ "label_version": "v0.7",
+ "trained_at": "2026-10-07T23:26:04-04:00",
+ "script": "/workspace/vod_analyst/train_vod_model.py",
+ "script_version": "train_vod_model.v2",
+ "script_sha256": "e9b2bd5d4586744ca6ae9b2327b40796d6a9fe00639638c8fab4830e6421a7e4",
+ "latest_json": {
+  "latest": "v0.7",
+  "path": "/workspace/vod_data/labels/v0.7",
+  "schema_version": "vod_labels.v0",
+  "vods": 21,
+  "rows": 1336,
+  "clean_pairs": 334,
+  "script_version": "vodx-5ad673d48d",
+  "input_signature": "6f0321647522",
+  "created_at": "2026-10-07T22:22:23-04:00",
+  "note": "Each label build is a full re-run into a new v0.<N>; old dirs are never overwritten."
+ },
+ "latest_json_sha256": "55d7291768f563ef38141baa6515bd1a4ad33a5ae2cda570aaea3fab652a9d9e",
+ "labels_dir": "/workspace/vod_data/labels/v0.7",
+ "label_files": [
+  "2883655220.jsonl.gz",
+  "2886412188.jsonl.gz",
+  "2886562590.jsonl.gz",
+  "2886939685.jsonl.gz",
+  "2887242556.jsonl.gz",
+  "2888385213.jsonl.gz",
+  "2888676597.jsonl.gz",
+  "2888962249.jsonl.gz",
+  "2893436892.jsonl.gz",
+  "2894295495.jsonl.gz",
+  "2_FbmZ0N1VI.jsonl.gz",
+  "F8Hm324SMtg.jsonl.gz",
+  "GUoFPJzfiUk.jsonl.gz",
+  "JtJrgW6fiqQ.jsonl.gz",
+  "LcaOxAWYfOE.jsonl.gz",
+  "O5Srxi9uyjc.jsonl.gz",
+  "OMnOZf77jLk.jsonl.gz",
+  "TQ6wuGCOnpA.jsonl.gz",
+  "Zt4w2yKrkZQ.jsonl.gz",
+  "iuLDDLDhcN4.jsonl.gz",
+  "z5ne-uBM0YI.jsonl.gz"
+ ],
+ "labels_data_sha256": "5519256b290dfba43ea98c7953572b1a3c8ee8c62ef5b29a11d75bf39268c081",
+ "label_side_files_sha256": {
+  "manifest.json": "7eddf79012e920b3576d0cf2adf31e78092a5097f3890c1ed974260e35e842dc",
+  "summary.json": "f03c6e5e6bd26cd6ad5109afdb6c339e82b7d0028265e1e42f9d3acfab3c88aa",
+  "accuracy.json": "0556c9a0d22d9f69ee23de05437104e6d83e16e51b6d4d175de154f87bbbd10e"
+ },
+ "snaps_notes_sha256": "658254c72e9d29c4db3e1d42f5424bcafdcd0cf18b2f3528e3f375baefe98070",
+ "rows_loaded": 1336,
+ "outputs": [
+  "model_params.json",
+  "metrics.json",
+  "beaters.json",
+  "metrics.md",
+  "manifest.json"
+ ],
+ "rerun": "python3 /workspace/vod_analyst/train_vod_model.py --force"
+}

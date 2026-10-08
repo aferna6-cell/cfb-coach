@@ -849,6 +849,18 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="N",
         help="Madden only: offense and defense call-package macros to build (default 8 each)",
     )
+    p_prep.add_argument(
+        "--no-vod-prior",
+        dest="no_vod_prior",
+        action="store_true",
+        help="Ignore the trained VOD model for this prep (no call-quality prior, no playbook edits).",
+    )
+    p_prep.add_argument(
+        "--freeze-vod-book",
+        dest="freeze_vod_book",
+        action="store_true",
+        help="Use VOD call quality but do not add or swap plays in the book.",
+    )
     p_prep.set_defaults(func=cmd_prep)
 
     p_play = sub.add_parser(
@@ -908,6 +920,18 @@ def build_parser() -> argparse.ArgumentParser:
              "config --game madden27 --no-macros keeps them off.",
     )
     p_play.add_argument(
+        "--no-vod-prior",
+        dest="no_vod_prior",
+        action="store_true",
+        help="This session ignores the trained VOD model (calls and the book stay on logged + meta signals).",
+    )
+    p_play.add_argument(
+        "--freeze-vod-book",
+        dest="freeze_vod_book",
+        action="store_true",
+        help="This session may use VOD to pick an in-book play, and will not edit the book.",
+    )
+    p_play.add_argument(
         "--html-port",
         type=int,
         default=None,
@@ -960,6 +984,18 @@ def build_parser() -> argparse.ArgumentParser:
         dest="no_macros",
         action="store_true",
         help="Madden only: suggest no Custom Adjustment on this call.",
+    )
+    p_call.add_argument(
+        "--no-vod-prior",
+        dest="no_vod_prior",
+        action="store_true",
+        help="Ignore the trained VOD model on this call.",
+    )
+    p_call.add_argument(
+        "--freeze-vod-book",
+        dest="freeze_vod_book",
+        action="store_true",
+        help="Allow an in-book VOD call and do not edit the book.",
     )
     p_call.add_argument(
         "--score",
@@ -1025,6 +1061,16 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Opt one experimental macro into the primary list, e.g. O-RPO")
     p_cfg.add_argument("--unswap-macro", dest="unswap_macro", default=None, metavar="ID",
                        help="Take one experimental macro back out of the primary list")
+    p_cfg.add_argument("--no-vod-prior", dest="no_vod_prior", action="store_true",
+                       help="Turn the VOD model prior off until --vod-prior (no book edits either)")
+    p_cfg.add_argument("--vod-prior", dest="vod_prior", action="store_true",
+                       help="Turn the VOD model prior back on")
+    p_cfg.add_argument("--freeze-vod-book", dest="freeze_vod_book", action="store_true",
+                       help="Keep VOD calls and stop playbook adds/swaps until --unfreeze-vod-book")
+    p_cfg.add_argument("--unfreeze-vod-book", dest="unfreeze_vod_book", action="store_true",
+                       help="Allow the VOD model to add or swap catalogued plays again")
+    p_cfg.add_argument("--vod-models", dest="vod_models", default=None, metavar="DIR",
+                       help="Directory of LAST_TRAINED.json and vX.Y/ (else CFB_COACH_VOD_MODELS)")
     p_cfg.set_defaults(func=cmd_config)
 
     p_ms = sub.add_parser(
@@ -1201,7 +1247,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    from cfb_coach.vod_model.flags import use_cli_flags
+
+    with use_cli_flags(
+        no_vod_prior=bool(getattr(args, "no_vod_prior", False)),
+        freeze_vod_book=bool(getattr(args, "freeze_vod_book", False)),
+    ):
+        return args.func(args)
 
 
 if __name__ == "__main__":

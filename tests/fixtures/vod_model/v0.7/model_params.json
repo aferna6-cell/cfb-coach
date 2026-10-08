@@ -1,0 +1,2382 @@
+{
+ "label_version": "v0.7",
+ "script_version": "train_vod_model.v2",
+ "strata": {
+  "madden27/cpu": {
+   "n_train_rows": 194,
+   "base_rate": 0.4948,
+   "hp_selection": [
+    {
+     "hp": [
+      1.0,
+      1.0,
+      16.0
+     ],
+     "inner_logloss": 0.786525
+    },
+    {
+     "hp": [
+      1.0,
+      1.0,
+      128.0
+     ],
+     "inner_logloss": 0.786711
+    },
+    {
+     "hp": [
+      1.0,
+      1.0,
+      1024.0
+     ],
+     "inner_logloss": 0.786736
+    },
+    {
+     "hp": [
+      1.0,
+      4.0,
+      16.0
+     ],
+     "inner_logloss": 0.759852
+    },
+    {
+     "hp": [
+      1.0,
+      4.0,
+      128.0
+     ],
+     "inner_logloss": 0.759971
+    },
+    {
+     "hp": [
+      1.0,
+      4.0,
+      1024.0
+     ],
+     "inner_logloss": 0.759989
+    },
+    {
+     "hp": [
+      1.0,
+      16.0,
+      16.0
+     ],
+     "inner_logloss": 0.756609
+    },
+    {
+     "hp": [
+      1.0,
+      16.0,
+      128.0
+     ],
+     "inner_logloss": 0.756751
+    },
+    {
+     "hp": [
+      1.0,
+      16.0,
+      1024.0
+     ],
+     "inner_logloss": 0.756771
+    },
+    {
+     "hp": [
+      1.0,
+      64.0,
+      16.0
+     ],
+     "inner_logloss": 0.757367
+    },
+    {
+     "hp": [
+      1.0,
+      64.0,
+      128.0
+     ],
+     "inner_logloss": 0.757551
+    },
+    {
+     "hp": [
+      1.0,
+      64.0,
+      1024.0
+     ],
+     "inner_logloss": 0.757578
+    },
+    {
+     "hp": [
+      1.0,
+      256.0,
+      16.0
+     ],
+     "inner_logloss": 0.757772
+    },
+    {
+     "hp": [
+      1.0,
+      256.0,
+      128.0
+     ],
+     "inner_logloss": 0.757973
+    },
+    {
+     "hp": [
+      1.0,
+      256.0,
+      1024.0
+     ],
+     "inner_logloss": 0.758002
+    },
+    {
+     "hp": [
+      4.0,
+      1.0,
+      16.0
+     ],
+     "inner_logloss": 0.741555
+    },
+    {
+     "hp": [
+      4.0,
+      1.0,
+      128.0
+     ],
+     "inner_logloss": 0.74173
+    },
+    {
+     "hp": [
+      4.0,
+      1.0,
+      1024.0
+     ],
+     "inner_logloss": 0.741753
+    },
+    {
+     "hp": [
+      4.0,
+      4.0,
+      16.0
+     ],
+     "inner_logloss": 0.717567
+    },
+    {
+     "hp": [
+      4.0,
+      4.0,
+      128.0
+     ],
+     "inner_logloss": 0.717718
+    },
+    {
+     "hp": [
+      4.0,
+      4.0,
+      1024.0
+     ],
+     "inner_logloss": 0.717739
+    },
+    {
+     "hp": [
+      4.0,
+      16.0,
+      16.0
+     ],
+     "inner_logloss": 0.715594
+    },
+    {
+     "hp": [
+      4.0,
+      16.0,
+      128.0
+     ],
+     "inner_logloss": 0.715784
+    },
+    {
+     "hp": [
+      4.0,
+      16.0,
+      1024.0
+     ],
+     "inner_logloss": 0.715811
+    },
+    {
+     "hp": [
+      4.0,
+      64.0,
+      16.0
+     ],
+     "inner_logloss": 0.716923
+    },
+    {
+     "hp": [
+      4.0,
+      64.0,
+      128.0
+     ],
+     "inner_logloss": 0.717163
+    },
+    {
+     "hp": [
+      4.0,
+      64.0,
+      1024.0
+     ],
+     "inner_logloss": 0.717196
+    },
+    {
+     "hp": [
+      4.0,
+      256.0,
+      16.0
+     ],
+     "inner_logloss": 0.717517
+    },
+    {
+     "hp": [
+      4.0,
+      256.0,
+      128.0
+     ],
+     "inner_logloss": 0.717777
+    },
+    {
+     "hp": [
+      4.0,
+      256.0,
+      1024.0
+     ],
+     "inner_logloss": 0.717813
+    },
+    {
+     "hp": [
+      16.0,
+      1.0,
+      16.0
+     ],
+     "inner_logloss": 0.723152
+    },
+    {
+     "hp": [
+      16.0,
+      1.0,
+      128.0
+     ],
+     "inner_logloss": 0.723287
+    },
+    {
+     "hp": [
+      16.0,
+      1.0,
+      1024.0
+     ],
+     "inner_logloss": 0.723306
+    },
+    {
+     "hp": [
+      16.0,
+      4.0,
+      16.0
+     ],
+     "inner_logloss": 0.700348
+    },
+    {
+     "hp": [
+      16.0,
+      4.0,
+      128.0
+     ],
+     "inner_logloss": 0.700502
+    },
+    {
+     "hp": [
+      16.0,
+      4.0,
+      1024.0
+     ],
+     "inner_logloss": 0.700524
+    },
+    {
+     "hp": [
+      16.0,
+      16.0,
+      16.0
+     ],
+     "inner_logloss": 0.699123
+    },
+    {
+     "hp": [
+      16.0,
+      16.0,
+      128.0
+     ],
+     "inner_logloss": 0.699359
+    },
+    {
+     "hp": [
+      16.0,
+      16.0,
+      1024.0
+     ],
+     "inner_logloss": 0.699392
+    },
+    {
+     "hp": [
+      16.0,
+      64.0,
+      16.0
+     ],
+     "inner_logloss": 0.700803
+    },
+    {
+     "hp": [
+      16.0,
+      64.0,
+      128.0
+     ],
+     "inner_logloss": 0.701106
+    },
+    {
+     "hp": [
+      16.0,
+      64.0,
+      1024.0
+     ],
+     "inner_logloss": 0.701148
+    },
+    {
+     "hp": [
+      16.0,
+      256.0,
+      16.0
+     ],
+     "inner_logloss": 0.701515
+    },
+    {
+     "hp": [
+      16.0,
+      256.0,
+      128.0
+     ],
+     "inner_logloss": 0.701842
+    },
+    {
+     "hp": [
+      16.0,
+      256.0,
+      1024.0
+     ],
+     "inner_logloss": 0.701888
+    }
+   ],
+   "model": {
+    "intercept": 0.052661,
+    "coef": {
+     "call": {
+      "94 will": 0.069666,
+      "bench": 0.027363,
+      "bunch levels": 0.025554,
+      "cheat inside zone": 0.031029,
+      "cheat post dagger wheel": 0.024969,
+      "cheat te hitch n go": -0.027676,
+      "close fb trail": 0.029921,
+      "corner strike": -0.027431,
+      "counter y": -0.051337,
+      "curl combo": 0.030522,
+      "curl flat": 0.066271,
+      "curl ohio": -0.028028,
+      "curls": 0.0281,
+      "dagger": 0.02647,
+      "dagger whip": 0.024993,
+      "dbl ins": -0.029973,
+      "deep stick": -0.052592,
+      "dig stick": 0.022513,
+      "double dig": 0.019727,
+      "dragon spacing": -0.032764,
+      "drive": -0.029704,
+      "drive stutter flat": -0.058953,
+      "empty mtn flood h-trail": 0.023595,
+      "empty mtn salem": 0.026664,
+      "empty slot under": -0.03239,
+      "escortpacrossers": 0.028028,
+      "f trail": 0.029191,
+      "fake jet hb wheel": -0.02881,
+      "flanker drive": 0.034891,
+      "four verticals": -0.035301,
+      "hb angle": 0.033358,
+      "hb base": -0.056739,
+      "hb counter": -0.054095,
+      "hb dive": -0.004617,
+      "hb dive alert bubble": 0.033499,
+      "hb duo": 0.022611,
+      "hb gut": 0.034951,
+      "hb iso": -0.026271,
+      "hb mid draw": -0.023364,
+      "hb mid zone": 0.002136,
+      "hb power": 0.031989,
+      "hb power o": -0.023331,
+      "hb slam": 0.028484,
+      "hb slip screen": -0.019015,
+      "hb stretch": 0.004407,
+      "hb zone toss": -0.024672,
+      "hop pa boot slide": 0.026602,
+      "inside attack": 0.007127,
+      "inside zone": -0.072495,
+      "jet pass fk zone": -0.026317,
+      "jet touch pass": 0.03431,
+      "levels sail": 0.027865,
+      "mesh": 0.029542,
+      "mesh hb corner": 0.030429,
+      "mesh slot out": -0.030005,
+      "mesh spot": -0.020166,
+      "mtn bunch option": -0.02516,
+      "mtn cross switch": -0.02844,
+      "mtn dagger": 0.031615,
+      "mtn fade smash": -0.023545,
+      "mtn hb cross screen": -0.0254,
+      "mtn hb plunge": -0.025545,
+      "mtn rub smash": -0.027517,
+      "mtn slot hitch": -0.029038,
+      "mtn slot under": -0.033574,
+      "mtn snag under": 0.033104,
+      "mtn y-shake": 0.026399,
+      "mtn z spot": 0.023394,
+      "mtnbunchcrossdig": -0.02672,
+      "mtnbunchwhipsmash": -0.026231,
+      "outside zone": 0.005233,
+      "overstormbravestretchalertbubble": -0.030185,
+      "pa boot levels": 0.028211,
+      "pa boot lt": -0.027789,
+      "pa boot shot": 0.033682,
+      "pa sprint hb flat": 0.001911,
+      "pa te flood": -0.027508,
+      "pacrosssit": -0.02547,
+      "paswitchverts": 0.028361,
+      "power o": 0.035783,
+      "quick short post": 0.030614,
+      "reload mesh spot": -0.029794,
+      "return pa z over": -0.027266,
+      "returnrpoalertswing": -0.026569,
+      "returnsprintcomeback": -0.026231,
+      "rpo alert bubble": -0.02805,
+      "rpo alert out": 0.024126,
+      "rpo alert screen": 0.030833,
+      "rpo read bubble": -0.02706,
+      "sail dig": -0.033559,
+      "shockh option": -0.028518,
+      "slant flat": 0.03521,
+      "slant smash": -0.032092,
+      "slant spacing": -0.027508,
+      "slant stick": -0.026629,
+      "smash": 0.060741,
+      "speed option": 0.032741,
+      "spot lead swing": 0.029922,
+      "spot n go": 0.027325,
+      "stick": -0.029704,
+      "stick spacing": 0.029868,
+      "stick wheel": 0.028082,
+      "stretch": -0.029736,
+      "stretch alert bubble": -0.026317,
+      "te corner": -0.031841,
+      "verts wrseam": 0.028812,
+      "wide zone": 0.031088,
+      "y curl post": -0.026586,
+      "z spot goalline": 0.029709,
+      "z swirl in": -0.024446,
+      "zone alert bubble": -0.028556,
+      "zone wk": -0.004801
+     },
+     "call_class": {
+      "none": 0.064944,
+      "pass": -0.010868,
+      "run": -0.07659,
+      "unknown": 0.022514
+     },
+     "call_x_family": {
+      "94 will|cover_1": 0.024635,
+      "94 will|cover_2": 0.045031,
+      "bench|tampa_2": 0.027363,
+      "bunch levels|cover_9": 0.025554,
+      "cheat inside zone|cover_6": 0.031029,
+      "cheat te hitch n go|cover_2": -0.027676,
+      "close fb trail|cover_2": 0.029921,
+      "corner strike|cover_4": -0.027431,
+      "counter y|tampa_2": -0.051337,
+      "curl combo|cover_1": 0.030522,
+      "curl flat|cover_1": 0.034259,
+      "curl flat|cover_3": 0.032011,
+      "curl ohio|other": -0.028028,
+      "curls|cover_3": 0.0281,
+      "dagger whip|cover_6": 0.024993,
+      "dagger|cover_4": 0.02647,
+      "dbl ins|cover_3": -0.029973,
+      "deep stick|cover_1": -0.025228,
+      "deep stick|cover_3": -0.027363,
+      "dig stick|cover_4": 0.022513,
+      "double dig|cover_1": -0.033097,
+      "double dig|cover_3": 0.030334,
+      "double dig|cover_6": 0.022489,
+      "dragon spacing|pressure_other": -0.032764,
+      "drive stutter flat|cover_1": -0.029907,
+      "drive stutter flat|cover_3": -0.029046,
+      "drive|cover_3": -0.029704,
+      "empty mtn flood h-trail|tampa_2": 0.023595,
+      "empty mtn salem|cover_3": 0.026664,
+      "empty slot under|other": -0.03239,
+      "escortpacrossers|cover_3": 0.028028,
+      "f trail|cover_2": 0.029191,
+      "fake jet hb wheel|cover_3": -0.02881,
+      "flanker drive|cover_2_man": 0.034891,
+      "four verticals|cover_3": -0.035301,
+      "hb angle|cover_2_man": 0.033358,
+      "hb base|cover_1": -0.026442,
+      "hb base|cover_2": -0.030297,
+      "hb counter|cover_0": -0.028531,
+      "hb counter|cover_3": -0.025565,
+      "hb dive alert bubble|cover_1": 0.033499,
+      "hb dive|cover_1": -0.042536,
+      "hb dive|cover_2": -0.030665,
+      "hb dive|cover_3": 0.060226,
+      "hb dive|cover_4": 0.033861,
+      "hb dive|tampa_2": -0.025502,
+      "hb duo|cover_6": 0.022611,
+      "hb gut|cover_1": 0.034951,
+      "hb iso|cover_1": -0.030947,
+      "hb iso|cover_2_man": -0.028415,
+      "hb iso|cover_9": 0.033091,
+      "hb mid draw|cover_1": -0.023364,
+      "hb mid zone|cover_3": 0.029434,
+      "hb mid zone|pressure_other": -0.027298,
+      "hb power o|cover_1": -0.027605,
+      "hb power o|cover_3": 0.002568,
+      "hb power o|cover_4": 0.03221,
+      "hb power o|cover_6": -0.030504,
+      "hb power|cover_3": 0.031989,
+      "hb slam|pressure_other": 0.028484,
+      "hb slip screen|cover_2": 0.033874,
+      "hb slip screen|cover_2_man": -0.027921,
+      "hb slip screen|cover_3": -0.024969,
+      "hb stretch|cover_1": 0.031041,
+      "hb stretch|cover_2": -0.026344,
+      "hb stretch|tampa_2": -0.00029,
+      "hb zone toss|cover_1": -0.024672,
+      "hop pa boot slide|cover_9": 0.026602,
+      "inside attack|cover_1": 0.035225,
+      "inside attack|cover_3": -0.028098,
+      "inside zone|cover_3": -0.072495,
+      "jet pass fk zone|cover_3": -0.026317,
+      "jet touch pass|cover_3": 0.03431,
+      "levels sail|cover_0": 0.027865,
+      "mesh hb corner|cover_3": 0.030429,
+      "mesh slot out|cover_2": -0.030005,
+      "mesh spot|cover_2": 0.030977,
+      "mesh spot|cover_3": -0.076505,
+      "mesh spot|cover_6": 0.025363,
+      "mesh|cover_1": 0.029542,
+      "mtn bunch option|cover_2": -0.02516,
+      "mtn cross switch|cover_1": -0.02844,
+      "mtn dagger|cover_1": 0.031615,
+      "mtn fade smash|cover_1": -0.023545,
+      "mtn hb cross screen|cover_1": -0.0254,
+      "mtn hb plunge|tampa_2": -0.025545,
+      "mtn rub smash|cover_1": -0.027517,
+      "mtn slot hitch|cover_1": -0.029038,
+      "mtn slot under|cover_3": -0.033574,
+      "mtn snag under|cover_1": 0.033104,
+      "mtn y-shake|cover_6": 0.026399,
+      "mtn z spot|cover_9": 0.023394,
+      "mtnbunchcrossdig|cover_1": -0.02672,
+      "mtnbunchwhipsmash|cover_1": -0.026231,
+      "outside zone|cover_1": -0.025632,
+      "outside zone|cover_6": 0.030865,
+      "pa boot levels|pressure_other": 0.028211,
+      "pa boot lt|cover_2": -0.027789,
+      "pa boot shot|cover_3": 0.033682,
+      "pa sprint hb flat|cover_0": -0.03094,
+      "pa sprint hb flat|tampa_2": 0.032851,
+      "pa te flood|tampa_2": -0.027508,
+      "pacrosssit|cover_2_man": -0.02547,
+      "paswitchverts|cover_2": 0.028361,
+      "power o|cover_1": 0.035783,
+      "quick short post|cover_3": 0.030614,
+      "reload mesh spot|cover_2_man": -0.029794,
+      "return pa z over|cover_2_man": -0.027266,
+      "returnrpoalertswing|cover_3": -0.026569,
+      "returnsprintcomeback|cover_1": -0.026231,
+      "rpo alert bubble|cover_3": -0.02805,
+      "rpo alert out|cover_3": 0.024126,
+      "rpo alert screen|cover_3": 0.030833,
+      "rpo read bubble|cover_3": -0.02706,
+      "sail dig|cover_6": -0.033559,
+      "shockh option|cover_3": -0.028518,
+      "slant flat|cover_3": 0.03521,
+      "slant smash|tampa_2": -0.032092,
+      "slant spacing|tampa_2": -0.027508,
+      "slant stick|other": -0.026629,
+      "smash|cover_6": 0.029638,
+      "smash|pressure_other": 0.031103,
+      "speed option|cover_2": 0.032741,
+      "spot lead swing|cover_3": 0.029922,
+      "spot n go|cover_0": 0.027325,
+      "stick spacing|tampa_2": 0.029868,
+      "stick wheel|cover_1": 0.028082,
+      "stick|cover_3": -0.029704,
+      "stretch alert bubble|cover_3": -0.026317,
+      "te corner|pressure_other": -0.031841,
+      "verts wrseam|cover_3": 0.028812,
+      "wide zone|cover_3": 0.031088,
+      "y curl post|cover_3": -0.026586,
+      "z spot goalline|tampa_2": 0.029709,
+      "z swirl in|cover_2_man": -0.024446,
+      "zone alert bubble|cover_1": -0.028556,
+      "zone wk|cover_1": -0.027886,
+      "zone wk|cover_3": 0.02814,
+      "zone wk|cover_6": -0.033441,
+      "zone wk|pressure_other": 0.028385
+     },
+     "class_x_family": {
+      "none|cover_2_man": 0.016587,
+      "none|none": 0.054062,
+      "none|other": -0.005705,
+      "pass|cover_0": 0.012125,
+      "pass|cover_1": -0.015053,
+      "pass|cover_2": -0.010309,
+      "pass|cover_2_man": -0.020588,
+      "pass|cover_3": -0.054511,
+      "pass|cover_4": 0.010776,
+      "pass|cover_6": 0.034463,
+      "pass|cover_9": 0.037775,
+      "pass|none": 0.012484,
+      "pass|other": -0.043523,
+      "pass|pressure_other": -0.002645,
+      "pass|tampa_2": 0.028139,
+      "run|cover_0": -0.014265,
+      "run|cover_1": -0.046042,
+      "run|cover_2": -0.024902,
+      "run|cover_2_man": -0.014208,
+      "run|cover_3": 0.014385,
+      "run|cover_4": 0.033036,
+      "run|cover_6": 0.010281,
+      "run|cover_9": 0.016546,
+      "run|none": -0.014868,
+      "run|pressure_other": 0.014785,
+      "run|tampa_2": -0.051337,
+      "unknown|cover_1": -0.027274,
+      "unknown|cover_2": 0.051291,
+      "unknown|cover_2_man": -0.012735,
+      "unknown|cover_3": 0.013125,
+      "unknown|cover_6": 0.013199,
+      "unknown|none": -0.015092
+     },
+     "def_adj": {
+      "yes": -0.015586
+     },
+     "dist": {
+      "long": -0.001234,
+      "medium": 0.121001,
+      "short": -0.027724,
+      "xlong": -0.092042
+     },
+     "down": {
+      "1": -0.05914,
+      "2": 0.013886,
+      "3": 0.030871,
+      "4": 0.014383
+     },
+     "down_x_dist": {
+      "1|long": -0.048048,
+      "1|short": 0.018478,
+      "2|long": 0.041566,
+      "2|medium": 0.053455,
+      "2|short": -0.028671,
+      "2|xlong": -0.059406,
+      "3|long": 0.005865,
+      "3|medium": 0.026643,
+      "3|short": -0.030458,
+      "3|xlong": 0.013385,
+      "4|medium": -0.019598,
+      "4|short": 0.026789
+     },
+     "look": {
+      "1 fs fire": -0.026231,
+      "1 robber press": 0.059464,
+      "1 slant crash": -0.026231,
+      "2 invert hard flat": 0.001402,
+      "3 buzz match wk": -0.002218,
+      "blitz lb lurk 1": 0.024635,
+      "bracket switch willie": -0.028028,
+      "cb tex sim 2": -0.030297,
+      "cov 3 buzz match wk": 0.03431,
+      "cover 1": -0.033097,
+      "cover 1 hole": -0.135042,
+      "cover 1 robber": 0.010095,
+      "cover 1 robber press": 0.028082,
+      "cover 1 ss blitz": 0.011408,
+      "cover 1 sting": 0.022513,
+      "cover 2": 0.030977,
+      "cover 2 contain": 0.022952,
+      "cover 2 invert": -0.022915,
+      "cover 2 man": -0.095063,
+      "cover 2 match": -0.030005,
+      "cover 3 buzz": 0.007938,
+      "cover 3 buzz match": -0.026404,
+      "cover 3 cloud": -0.049513,
+      "cover 3 cloud str": 0.025502,
+      "cover 3 hard flat": -0.056538,
+      "cover 3 lock": -0.05029,
+      "cover 3 match": -0.078913,
+      "cover 3 sky": -0.010235,
+      "cover 3 sky press": -0.028518,
+      "cover 4 drop": -0.027431,
+      "cover 4 quarters": 0.092542,
+      "cover 6": 0.123602,
+      "cover 6 invert": 0.025363,
+      "cover 6 trap": -0.030504,
+      "cover 6 willie": -0.002576,
+      "cover 9 show 2": 0.075551,
+      "cover2manreturnrporeadflatwheel": 0.033174,
+      "dbl safety blitz": -0.027298,
+      "dime blitz 2": 0.028361,
+      "double te": -0.011409,
+      "free fire": 0.028484,
+      "fs fire 1": -0.027508,
+      "fs will blitz 0": -0.032146,
+      "hammer oblast": -0.059018,
+      "hot blitz 3": 0.029434,
+      "lb blitz": -0.027508,
+      "lb blitz 1": 0.003209,
+      "lb blitz 3": 0.033813,
+      "lb sting 1": -0.014887,
+      "mid blitz": -0.033574,
+      "mike ss1 dog": -0.031841,
+      "mike will blitz": -0.004552,
+      "nickel blitz 1": 0.035936,
+      "nickel blitz 2": 0.032741,
+      "nickel overload 3": 0.05477,
+      "nickel sim 3": 0.030334,
+      "olb blitz 1": -0.055491,
+      "overload blitz": 0.033091,
+      "pinch": 0.028385,
+      "roll cover 2 invert": 0.022079,
+      "roll cover 3 cloud": -0.029973,
+      "sam blitz 3": 0.031473,
+      "sam crash 3": -0.059409,
+      "sam edge 3": 0.033682,
+      "sam i sting": 0.031103,
+      "saw blitz 1": -0.02456,
+      "ss blitz 3": 0.036467,
+      "tampa 2": 0.03176,
+      "weak blitz 1": -0.026442,
+      "zero blitz": 0.027865
+     },
+     "look_family": {
+      "cover_0": -0.00214,
+      "cover_1": -0.088369,
+      "cover_2": 0.01608,
+      "cover_2_man": -0.030944,
+      "cover_3": -0.027002,
+      "cover_4": 0.043812,
+      "cover_6": 0.057943,
+      "cover_9": 0.054321,
+      "none": 0.036586,
+      "other": -0.049228,
+      "pressure_other": 0.01214,
+      "tampa_2": -0.023198
+     },
+     "off_adj": {
+      "yes": 0.210766
+     },
+     "pressure": {
+      "yes": 0.054862
+     },
+     "score": {
+      "close": -0.045874,
+      "not_close": 0.016728,
+      "unk": 0.029146
+     },
+     "side": {
+      "defense": -0.00492,
+      "offense": 0.038975,
+      "unknown": -0.034055
+     },
+     "time": {
+      "late_half": 0.05977,
+      "normal": 0.075105,
+      "unk": -0.134875
+     },
+     "zone": {
+      "opp": -0.030126,
+      "own": 0.108947,
+      "own_deep": -0.052718,
+      "red_zone": 0.014526,
+      "unk": -0.040628
+     }
+    },
+    "hyperparams": {
+     "lambda_situation": 16.0,
+     "lambda_entity": 16.0,
+     "lambda_interaction": 16.0
+    }
+   },
+   "situation_only_model": {
+    "intercept": 0.061906,
+    "coef": {
+     "dist": {
+      "long": -0.005539,
+      "medium": 0.116688,
+      "short": -0.020951,
+      "xlong": -0.090197
+     },
+     "down": {
+      "1": -0.062145,
+      "2": 0.006545,
+      "3": 0.029472,
+      "4": 0.026127
+     },
+     "down_x_dist": {
+      "1|long": -0.046701,
+      "1|short": 0.015629,
+      "2|long": 0.042455,
+      "2|medium": 0.051611,
+      "2|short": -0.027607,
+      "2|xlong": -0.063187,
+      "3|long": 0.001476,
+      "3|medium": 0.0255,
+      "3|short": -0.030328,
+      "3|xlong": 0.018088,
+      "4|medium": -0.018767,
+      "4|short": 0.031831
+     },
+     "score": {
+      "close": -0.041144,
+      "not_close": 0.012272,
+      "unk": 0.028872
+     },
+     "side": {
+      "defense": -0.006045,
+      "offense": 0.0378,
+      "unknown": -0.031755
+     },
+     "time": {
+      "late_half": 0.070174,
+      "normal": 0.077728,
+      "unk": -0.147903
+     },
+     "zone": {
+      "opp": -0.031552,
+      "own": 0.137826,
+      "own_deep": -0.057678,
+      "red_zone": 0.006243,
+      "unk": -0.054839
+     }
+    },
+    "hyperparams": {
+     "lambda_situation": 16.0,
+     "lambda_entity": 16.0,
+     "lambda_interaction": 64.0
+    }
+   }
+  },
+  "madden27/human": {
+   "n_train_rows": 299,
+   "base_rate": 0.4849,
+   "hp_selection": [
+    {
+     "hp": [
+      1.0,
+      1.0,
+      16.0
+     ],
+     "inner_logloss": 0.720933
+    },
+    {
+     "hp": [
+      1.0,
+      1.0,
+      128.0
+     ],
+     "inner_logloss": 0.720915
+    },
+    {
+     "hp": [
+      1.0,
+      1.0,
+      1024.0
+     ],
+     "inner_logloss": 0.720913
+    },
+    {
+     "hp": [
+      1.0,
+      4.0,
+      16.0
+     ],
+     "inner_logloss": 0.725119
+    },
+    {
+     "hp": [
+      1.0,
+      4.0,
+      128.0
+     ],
+     "inner_logloss": 0.725125
+    },
+    {
+     "hp": [
+      1.0,
+      4.0,
+      1024.0
+     ],
+     "inner_logloss": 0.725126
+    },
+    {
+     "hp": [
+      1.0,
+      16.0,
+      16.0
+     ],
+     "inner_logloss": 0.733132
+    },
+    {
+     "hp": [
+      1.0,
+      16.0,
+      128.0
+     ],
+     "inner_logloss": 0.733269
+    },
+    {
+     "hp": [
+      1.0,
+      16.0,
+      1024.0
+     ],
+     "inner_logloss": 0.733287
+    },
+    {
+     "hp": [
+      1.0,
+      64.0,
+      16.0
+     ],
+     "inner_logloss": 0.737692
+    },
+    {
+     "hp": [
+      1.0,
+      64.0,
+      128.0
+     ],
+     "inner_logloss": 0.737912
+    },
+    {
+     "hp": [
+      1.0,
+      64.0,
+      1024.0
+     ],
+     "inner_logloss": 0.73794
+    },
+    {
+     "hp": [
+      1.0,
+      256.0,
+      16.0
+     ],
+     "inner_logloss": 0.739264
+    },
+    {
+     "hp": [
+      1.0,
+      256.0,
+      128.0
+     ],
+     "inner_logloss": 0.739513
+    },
+    {
+     "hp": [
+      1.0,
+      256.0,
+      1024.0
+     ],
+     "inner_logloss": 0.739545
+    },
+    {
+     "hp": [
+      4.0,
+      1.0,
+      16.0
+     ],
+     "inner_logloss": 0.692765
+    },
+    {
+     "hp": [
+      4.0,
+      1.0,
+      128.0
+     ],
+     "inner_logloss": 0.692824
+    },
+    {
+     "hp": [
+      4.0,
+      1.0,
+      1024.0
+     ],
+     "inner_logloss": 0.692832
+    },
+    {
+     "hp": [
+      4.0,
+      4.0,
+      16.0
+     ],
+     "inner_logloss": 0.69904
+    },
+    {
+     "hp": [
+      4.0,
+      4.0,
+      128.0
+     ],
+     "inner_logloss": 0.699147
+    },
+    {
+     "hp": [
+      4.0,
+      4.0,
+      1024.0
+     ],
+     "inner_logloss": 0.699161
+    },
+    {
+     "hp": [
+      4.0,
+      16.0,
+      16.0
+     ],
+     "inner_logloss": 0.708364
+    },
+    {
+     "hp": [
+      4.0,
+      16.0,
+      128.0
+     ],
+     "inner_logloss": 0.708622
+    },
+    {
+     "hp": [
+      4.0,
+      16.0,
+      1024.0
+     ],
+     "inner_logloss": 0.708656
+    },
+    {
+     "hp": [
+      4.0,
+      64.0,
+      16.0
+     ],
+     "inner_logloss": 0.71373
+    },
+    {
+     "hp": [
+      4.0,
+      64.0,
+      128.0
+     ],
+     "inner_logloss": 0.714089
+    },
+    {
+     "hp": [
+      4.0,
+      64.0,
+      1024.0
+     ],
+     "inner_logloss": 0.714135
+    },
+    {
+     "hp": [
+      4.0,
+      256.0,
+      16.0
+     ],
+     "inner_logloss": 0.715616
+    },
+    {
+     "hp": [
+      4.0,
+      256.0,
+      128.0
+     ],
+     "inner_logloss": 0.716011
+    },
+    {
+     "hp": [
+      4.0,
+      256.0,
+      1024.0
+     ],
+     "inner_logloss": 0.716061
+    },
+    {
+     "hp": [
+      16.0,
+      1.0,
+      16.0
+     ],
+     "inner_logloss": 0.677917
+    },
+    {
+     "hp": [
+      16.0,
+      1.0,
+      128.0
+     ],
+     "inner_logloss": 0.678039
+    },
+    {
+     "hp": [
+      16.0,
+      1.0,
+      1024.0
+     ],
+     "inner_logloss": 0.678055
+    },
+    {
+     "hp": [
+      16.0,
+      4.0,
+      16.0
+     ],
+     "inner_logloss": 0.684356
+    },
+    {
+     "hp": [
+      16.0,
+      4.0,
+      128.0
+     ],
+     "inner_logloss": 0.684562
+    },
+    {
+     "hp": [
+      16.0,
+      4.0,
+      1024.0
+     ],
+     "inner_logloss": 0.684588
+    },
+    {
+     "hp": [
+      16.0,
+      16.0,
+      16.0
+     ],
+     "inner_logloss": 0.69417
+    },
+    {
+     "hp": [
+      16.0,
+      16.0,
+      128.0
+     ],
+     "inner_logloss": 0.694559
+    },
+    {
+     "hp": [
+      16.0,
+      16.0,
+      1024.0
+     ],
+     "inner_logloss": 0.694609
+    },
+    {
+     "hp": [
+      16.0,
+      64.0,
+      16.0
+     ],
+     "inner_logloss": 0.700186
+    },
+    {
+     "hp": [
+      16.0,
+      64.0,
+      128.0
+     ],
+     "inner_logloss": 0.700701
+    },
+    {
+     "hp": [
+      16.0,
+      64.0,
+      1024.0
+     ],
+     "inner_logloss": 0.700768
+    },
+    {
+     "hp": [
+      16.0,
+      256.0,
+      16.0
+     ],
+     "inner_logloss": 0.702383
+    },
+    {
+     "hp": [
+      16.0,
+      256.0,
+      128.0
+     ],
+     "inner_logloss": 0.702946
+    },
+    {
+     "hp": [
+      16.0,
+      256.0,
+      1024.0
+     ],
+     "inner_logloss": 0.703018
+    }
+   ],
+   "model": {
+    "intercept": -0.093648,
+    "coef": {
+     "call": {
+      "angle out": -0.311152,
+      "bench": -0.299866,
+      "bench hb angle": 0.451127,
+      "bench pivot": 1.435635,
+      "chip wr corner": -0.441597,
+      "close mtn y read option": -0.297484,
+      "crack toss": -0.330169,
+      "curl combo": 0.333396,
+      "curl flat": -0.45365,
+      "dagger whip": 0.331977,
+      "deep in": -0.385866,
+      "double post": 0.555039,
+      "dragon spacing": -0.325215,
+      "fb dive": 0.413512,
+      "flanker dig": -0.100292,
+      "flood drive": -0.474522,
+      "fork z-dig": 0.43844,
+      "four verticals": 0.307248,
+      "hb dive": 0.198185,
+      "hb slam": 0.096892,
+      "hb slip screen": -0.070557,
+      "hb stretch": 0.440514,
+      "hb zone": -0.386519,
+      "inside smash": -0.274181,
+      "inside zone": 0.293695,
+      "inside zone split": -0.271349,
+      "levels": 0.377782,
+      "mesh hb rail": 0.370722,
+      "mesh spot": 0.359332,
+      "mtn flood hb sneak": -0.329162,
+      "mtn jailbreak screen": 0.505287,
+      "mtn stick": -0.360942,
+      "pa boot flow": -0.405891,
+      "pa cross": -0.318896,
+      "pa dig": -0.346126,
+      "pa scissors": -0.350792,
+      "pa te leak": 0.424922,
+      "pa x deep out": 0.409873,
+      "qb zone": -0.106704,
+      "read option": -0.219163,
+      "rpo glance post": 0.432787,
+      "sftmtnpay-fork": -0.292468,
+      "slants": -0.417919,
+      "spacing": 0.389817,
+      "spot y cross": -0.560396,
+      "stick nod vertical": -0.280861,
+      "switch wr drag": 0.316794,
+      "verticals": -0.799551,
+      "verts hb under": 1.260622,
+      "xseam": -0.307174,
+      "y flat goalline": -0.403806,
+      "y stick": 0.440102,
+      "z spot shake": 0.002699,
+      "zone weak": -0.299588
+     },
+     "call_class": {
+      "none": -0.011392,
+      "pass": 0.057821,
+      "run": -0.014631,
+      "unknown": -0.031799
+     },
+     "call_x_family": {
+      "angle out|pressure_other": -0.019447,
+      "bench hb angle|cover_4": 0.028195,
+      "bench pivot|cover_1": 0.019819,
+      "bench pivot|cover_2": 0.006621,
+      "bench pivot|cover_3": 0.027106,
+      "bench pivot|pressure_other": 0.012836,
+      "bench pivot|tampa_2": 0.009317,
+      "bench|cover_2": -0.018742,
+      "chip wr corner|tampa_2": -0.0276,
+      "close mtn y read option|pressure_other": -0.018593,
+      "crack toss|pressure_other": -0.020636,
+      "curl combo|pressure_other": 0.020837,
+      "curl flat|cover_3": -0.028353,
+      "dagger whip|cover_2_man": 0.020749,
+      "double post|cover_1": -0.033309,
+      "double post|cover_3": 0.052717,
+      "double post|tampa_2": 0.015282,
+      "dragon spacing|tampa_2": -0.020326,
+      "fb dive|pressure_other": 0.025845,
+      "flanker dig|cover_0": 0.022291,
+      "flanker dig|cover_1": 0.074602,
+      "flanker dig|cover_3": 0.013917,
+      "flanker dig|cover_4": -0.015125,
+      "flanker dig|pressure_other": -0.052896,
+      "flanker dig|tampa_2": -0.014996,
+      "flood drive|cover_0": -0.029658,
+      "fork z-dig|cover_2": 0.027402,
+      "four verticals|cover_4": 0.019203,
+      "hb dive|pressure_other": 0.033751,
+      "hb slam|other": -0.020016,
+      "hb slam|tampa_2": 0.026072,
+      "hb slip screen|cover_2": -0.025737,
+      "hb slip screen|tampa_2": 0.021327,
+      "hb stretch|cover_4": 0.027532,
+      "inside smash|cover_2": -0.017136,
+      "inside zone split|cover_3": -0.016959,
+      "inside zone|cover_2": -0.01881,
+      "inside zone|cover_4": 0.018145,
+      "inside zone|tampa_2": 0.019021,
+      "levels|cover_3": 0.023611,
+      "mesh hb rail|cover_4": 0.02317,
+      "mesh spot|pressure_other": 0.022458,
+      "mtn flood hb sneak|pressure_other": -0.020573,
+      "mtn jailbreak screen|man_other": 0.014756,
+      "mtn jailbreak screen|pressure_other": 0.016825,
+      "mtn stick|cover_0": -0.022559,
+      "pa boot flow|cover_3": -0.025368,
+      "pa cross|cover_4": -0.019931,
+      "pa dig|tampa_2": -0.021633,
+      "pa te leak|cover_4": 0.026558,
+      "pa x deep out|cover_0": 0.025617,
+      "read option|cover_3": -0.013698,
+      "rpo glance post|pressure_other": 0.027049,
+      "sftmtnpay-fork|cover_4": -0.018279,
+      "slants|pressure_other": -0.02612,
+      "spacing|pressure_other": 0.024364,
+      "spot y cross|tampa_2": -0.035025,
+      "stick nod vertical|cover_3": -0.017554,
+      "switch wr drag|tampa_2": 0.0198,
+      "verticals|cover_2_man": -0.013848,
+      "verticals|cover_4": -0.036124,
+      "verts hb under|cover_1": 0.041821,
+      "verts hb under|cover_2": 0.019664,
+      "verts hb under|cover_3": -0.034756,
+      "verts hb under|cover_6": 0.025934,
+      "verts hb under|cover_9": 0.012679,
+      "verts hb under|man_other": 0.013447,
+      "xseam|cover_4": -0.019198,
+      "y flat goalline|pressure_other": -0.025238,
+      "y stick|cover_2": 0.027506,
+      "zone weak|cover_4": -0.018724
+     },
+     "class_x_family": {
+      "none|cover_0": 0.018628,
+      "none|cover_1": -0.010774,
+      "none|cover_3": -0.008368,
+      "none|cover_4": 0.002313,
+      "none|cover_6": -0.011825,
+      "none|none": 0.017402,
+      "none|other": 0.014429,
+      "none|pressure_other": -0.033404,
+      "none|tampa_2": 0.000207,
+      "pass|cover_0": -0.002154,
+      "pass|cover_1": 0.051466,
+      "pass|cover_2": 0.00979,
+      "pass|cover_2_man": 0.00345,
+      "pass|cover_3": 0.00566,
+      "pass|cover_4": 0.012973,
+      "pass|cover_6": 0.012967,
+      "pass|cover_9": 0.006339,
+      "pass|man_other": 0.014101,
+      "pass|none": -0.032953,
+      "pass|pressure_other": 0.003108,
+      "pass|tampa_2": -0.026927,
+      "run|cover_2": -0.009405,
+      "run|cover_3": -0.015329,
+      "run|cover_4": 0.013476,
+      "run|none": -0.026096,
+      "run|other": -0.010008,
+      "run|pressure_other": 0.010184,
+      "run|tampa_2": 0.022546,
+      "unknown|cover_4": -0.018739,
+      "unknown|pressure_other": -0.01306
+     },
+     "def_adj": {
+      "yes": 0.28193
+     },
+     "dist": {
+      "long": -0.0281,
+      "medium": 0.227362,
+      "short": -0.038642,
+      "unk": 0.026908,
+      "xlong": -0.187528
+     },
+     "down": {
+      "1": -0.163078,
+      "2": 0.030298,
+      "3": 0.063213,
+      "4": 0.042659,
+      "unk": 0.026908
+     },
+     "down_x_dist": {
+      "1|long": -0.080406,
+      "1|medium": 0.021665,
+      "1|short": -0.022798,
+      "2|long": 0.028686,
+      "2|medium": -0.005787,
+      "2|short": 0.004708,
+      "2|xlong": -0.012458,
+      "3|long": 0.03767,
+      "3|medium": 0.081428,
+      "3|short": -0.001231,
+      "3|xlong": -0.086261,
+      "4|medium": 0.016374,
+      "4|xlong": 0.004955,
+      "unk|unk": 0.013454
+     },
+     "look": {
+      "1 lb dog": 0.175746,
+      "2 invert hard flat": -0.274181,
+      "blitz dt pop": -0.818457,
+      "buck slant 3": -0.367006,
+      "cover 1": -0.344777,
+      "cover 1 contain": 0.382687,
+      "cover 1 hole": 0.662799,
+      "cover 1 robber": 0.564769,
+      "cover 1 robber press": -0.532946,
+      "cover 2 hard flat": 0.170619,
+      "cover 2 invert": 0.105943,
+      "cover 2 man": 0.11041,
+      "cover 3 cloud": -0.649163,
+      "cover 3 match": 0.321151,
+      "cover 3 sky": 0.249759,
+      "cover 4": 0.205397,
+      "cover 4 drop": 0.078475,
+      "cover 4 palms": -0.192552,
+      "cover 4 show 2": -0.46102,
+      "cover 6": -0.144299,
+      "cover 6 willie": 0.18086,
+      "cover 9 show 2": 0.202861,
+      "db fire 2": -0.604495,
+      "deephalf;cloudflat": -0.320254,
+      "double te": 0.461733,
+      "edge blitz 3": 0.314045,
+      "fs fire 3": 0.240692,
+      "fs will blitz 0": 0.190538,
+      "gaps a b": 0.269195,
+      "gl man": 0.236092,
+      "hot blitz 3": -0.316719,
+      "lb sting 1": 0.203331,
+      "mid blitz": -0.19942,
+      "nickel sim 2": 0.144005,
+      "olb fire man": 0.215156,
+      "overload 3 seam": 0.147932,
+      "pinch buck 0": 0.356653,
+      "pinch buck o": -0.049721,
+      "roll cover 2 invert": -0.300966,
+      "sam will blitz": -0.002684,
+      "sam will blitz (4-3 even 6-1)": 0.370722,
+      "silver shoot pinch": -0.441542,
+      "sim pressure 3": 0.253516,
+      "tampa 2": 0.537817
+     },
+     "look_family": {
+      "cover_0": 0.016473,
+      "cover_1": 0.040692,
+      "cover_2": 0.000384,
+      "cover_2_man": 0.00345,
+      "cover_3": -0.018036,
+      "cover_4": 0.010024,
+      "cover_6": 0.001143,
+      "cover_9": 0.006339,
+      "man_other": 0.014101,
+      "none": -0.041647,
+      "other": 0.004421,
+      "pressure_other": -0.033172,
+      "tampa_2": -0.004173
+     },
+     "off_adj": {
+      "yes": -0.76415
+     },
+     "pressure": {
+      "yes": -0.033142
+     },
+     "score": {
+      "close": -0.120249,
+      "unk": 0.120249
+     },
+     "side": {
+      "defense": -0.238536,
+      "offense": 0.084703,
+      "unknown": 0.153833
+     },
+     "time": {
+      "late_half": -0.019177,
+      "normal": 0.153722,
+      "unk": -0.134545
+     },
+     "zone": {
+      "opp": -0.022258,
+      "own": 0.013485,
+      "own_deep": 0.007426,
+      "red_zone": 0.001574,
+      "unk": -0.000228
+     }
+    },
+    "hyperparams": {
+     "lambda_situation": 16.0,
+     "lambda_entity": 1.0,
+     "lambda_interaction": 16.0
+    }
+   },
+   "situation_only_model": {
+    "intercept": -0.017964,
+    "coef": {
+     "dist": {
+      "long": -0.08295,
+      "medium": 0.24858,
+      "short": 0.010242,
+      "unk": 0.04441,
+      "xlong": -0.220281
+     },
+     "down": {
+      "1": -0.105188,
+      "2": 0.015891,
+      "3": 0.003999,
+      "4": 0.040888,
+      "unk": 0.04441
+     },
+     "down_x_dist": {
+      "1|long": -0.080636,
+      "1|medium": 0.039695,
+      "1|short": -0.011653,
+      "2|long": 0.015421,
+      "2|medium": -0.001039,
+      "2|short": 0.020668,
+      "2|xlong": -0.027104,
+      "3|long": 0.02374,
+      "3|medium": 0.06952,
+      "3|short": -0.003894,
+      "3|xlong": -0.087367,
+      "4|medium": 0.016114,
+      "4|xlong": 0.00433,
+      "unk|unk": 0.022205
+     },
+     "score": {
+      "close": -0.084251,
+      "unk": 0.084251
+     },
+     "side": {
+      "defense": -0.247798,
+      "offense": 0.033869,
+      "unknown": 0.21393
+     },
+     "time": {
+      "late_half": 0.013603,
+      "normal": 0.162338,
+      "unk": -0.175941
+     },
+     "zone": {
+      "opp": 0.01816,
+      "own": -0.020199,
+      "own_deep": 0.003939,
+      "red_zone": 0.008808,
+      "unk": -0.010708
+     }
+    },
+    "hyperparams": {
+     "lambda_situation": 16.0,
+     "lambda_entity": 16.0,
+     "lambda_interaction": 64.0
+    }
+   }
+  },
+  "cfb27/cpu": {
+   "n_train_rows": 104,
+   "base_rate": 0.4327,
+   "hp_selection": "default (fewer than 3 VODs for inner CV)",
+   "model": {
+    "intercept": -0.13023,
+    "coef": {
+     "call": {
+      "45 quick base": 0.029598,
+      "counter y": -0.071364,
+      "deep cross": -0.019169,
+      "deep flood": 0.037346,
+      "doubleflares": -0.010065,
+      "fade out": -0.01178,
+      "hb dive": -0.018359,
+      "hb power o": -0.011525,
+      "hb power rt": -0.008294,
+      "hb slip screen": 0.001109,
+      "hb stretch": -0.011116,
+      "hb zone wk": 0.039454,
+      "inside zone": -0.023856,
+      "levels": -0.01735,
+      "levels out": -0.013729,
+      "mesh spot": -0.020347,
+      "mtn z under": -0.026128,
+      "pa flood": -0.02981,
+      "pa slot under": 0.039225,
+      "rpo read bubble": -0.000253,
+      "shock h option": 0.037112,
+      "slot cross": -0.017173,
+      "slot drive": 0.029388,
+      "spacing": 0.01873,
+      "speed option": 0.017239,
+      "stick": 0.026891,
+      "stick slot option": -0.014383,
+      "wheel smash": -0.015535
+     },
+     "call_class": {
+      "none": 0.256579,
+      "pass": -0.131871,
+      "run": -0.084446,
+      "unknown": -0.040261
+     },
+     "call_x_family": {
+      "deep flood|cover_3": 0.009337,
+      "doubleflares|tampa_2": -0.002516,
+      "fade out|cover_3": -0.002945,
+      "hb dive|cover_4": -0.00459,
+      "hb power o|cover_3": -0.002881,
+      "hb power rt|cover_3": -0.002073,
+      "hb slip screen|cover_3": -0.005696,
+      "hb stretch|cover_3": -0.002779,
+      "hb zone wk|cover_1": 0.009863,
+      "inside zone|cover_2": -0.001914,
+      "inside zone|cover_2_man": -0.00405,
+      "levels out|cover_1": -0.003432,
+      "mesh spot|pressure_other": -0.005087,
+      "mtn z under|cover_1": -0.006532,
+      "pa flood|cover_4": -0.007453,
+      "pa slot under|cover_4": 0.009806,
+      "slot cross|cover_1": -0.004293,
+      "slot drive|cover_2": 0.007347,
+      "spacing|cover_9": 0.004683,
+      "stick slot option|cover_3": -0.003596,
+      "stick|cover_1": 0.006723,
+      "wheel smash|cover_2": -0.003884
+     },
+     "class_x_family": {
+      "none|cover_2_man": 0.120525,
+      "none|cover_3": -0.062898,
+      "none|cover_9": 0.136892,
+      "none|none": 0.111623,
+      "none|other": -0.049563,
+      "pass|cover_1": -0.120556,
+      "pass|cover_2": 0.055411,
+      "pass|cover_3": -0.046404,
+      "pass|cover_4": 0.037661,
+      "pass|cover_9": 0.074922,
+      "pass|none": -0.051516,
+      "pass|pressure_other": -0.081389,
+      "run|cover_1": 0.157814,
+      "run|cover_2": -0.030628,
+      "run|cover_2_man": -0.064797,
+      "run|cover_3": -0.12374,
+      "run|cover_4": -0.073436,
+      "run|none": 0.050341,
+      "unknown|tampa_2": -0.040261
+     },
+     "def_adj": {
+      "yes": 0.010741
+     },
+     "dist": {
+      "long": -0.2124,
+      "medium": 0.393829,
+      "short": -0.139586,
+      "xlong": -0.041843
+     },
+     "down": {
+      "1": -0.464366,
+      "2": 0.346182,
+      "3": 0.118184
+     },
+     "down_x_dist": {
+      "1|long": -0.057732,
+      "1|short": -0.174451,
+      "2|long": -0.11469,
+      "2|medium": 0.095398,
+      "2|short": 0.186047,
+      "2|xlong": 0.006336,
+      "3|long": 0.066223,
+      "3|medium": 0.101516,
+      "3|short": -0.081389,
+      "3|xlong": -0.027258
+     },
+     "look": {
+      "1edge pinch": -0.013729,
+      "cover 1 hole": 0.066344,
+      "cover 1 lb blitz": -0.026128,
+      "cover 2 man": 0.013932,
+      "cover 3 match": 0.018233,
+      "cover 3 sky": -0.014383,
+      "cover 4 drop field": -0.02981,
+      "cover 4 quarters": 0.020866,
+      "cover1containpress": -0.017173,
+      "cover2tampadrop": 0.029388,
+      "cover3buzzmable": -0.008294,
+      "double te": -0.012391,
+      "edge blitz 3": -0.011525,
+      "hot blitz 3": 0.02623,
+      "lb cross 3 show 2": 0.000266,
+      "nickel sim 2": -0.007657,
+      "overload 3 press": 0.00695,
+      "sam blitz 2": -0.015535,
+      "saw blitz 3": -0.022784,
+      "ss zone blitz": -0.020347,
+      "tampa 2": -0.010065
+     },
+     "look_family": {
+      "cover_1": 0.037258,
+      "cover_2": 0.024784,
+      "cover_2_man": 0.055728,
+      "cover_3": -0.233043,
+      "cover_4": -0.035775,
+      "cover_9": 0.211814,
+      "none": 0.110447,
+      "other": -0.049563,
+      "pressure_other": -0.081389,
+      "tampa_2": -0.040261
+     },
+     "off_adj": {
+      "yes": -0.035259
+     },
+     "pressure": {
+      "yes": -0.338104
+     },
+     "score": {
+      "close": -0.15502,
+      "not_close": 0.227674,
+      "unk": -0.072654
+     },
+     "side": {
+      "defense": -0.110426,
+      "offense": -0.117672,
+      "unknown": 0.228098
+     },
+     "time": {
+      "late_half": 0.085794,
+      "normal": 0.053007,
+      "unk": -0.138801
+     },
+     "zone": {
+      "opp": 0.508929,
+      "own": -0.422634,
+      "own_deep": -0.502816,
+      "red_zone": 0.096009,
+      "unk": 0.320513
+     }
+    },
+    "hyperparams": {
+     "lambda_situation": 2.0,
+     "lambda_entity": 16.0,
+     "lambda_interaction": 64.0
+    }
+   },
+   "situation_only_model": {
+    "intercept": 0.105781,
+    "coef": {
+     "dist": {
+      "long": -0.191802,
+      "medium": 0.45429,
+      "short": -0.202455,
+      "xlong": -0.060033
+     },
+     "down": {
+      "1": -0.453083,
+      "2": 0.337446,
+      "3": 0.115637
+     },
+     "down_x_dist": {
+      "1|long": -0.057274,
+      "1|short": -0.169267,
+      "2|long": -0.111856,
+      "2|medium": 0.103607,
+      "2|short": 0.190092,
+      "2|xlong": -0.013119,
+      "3|long": 0.07323,
+      "3|medium": 0.123539,
+      "3|short": -0.122053,
+      "3|xlong": -0.016897
+     },
+     "score": {
+      "close": -0.201706,
+      "not_close": 0.260042,
+      "unk": -0.058336
+     },
+     "side": {
+      "defense": -0.039224,
+      "offense": -0.217668,
+      "unknown": 0.256892
+     },
+     "time": {
+      "late_half": 0.092867,
+      "normal": 0.082123,
+      "unk": -0.17499
+     },
+     "zone": {
+      "opp": 0.543779,
+      "own": -0.447071,
+      "own_deep": -0.404398,
+      "red_zone": 0.057884,
+      "unk": 0.249806
+     }
+    },
+    "hyperparams": {
+     "lambda_situation": 2.0,
+     "lambda_entity": 16.0,
+     "lambda_interaction": 64.0
+    }
+   }
+  },
+  "cfb27/human": {
+   "n_train_rows": 289,
+   "base_rate": 0.3979,
+   "hp_selection": [
+    {
+     "hp": [
+      1.0,
+      1.0,
+      16.0
+     ],
+     "inner_logloss": 0.704154
+    },
+    {
+     "hp": [
+      1.0,
+      1.0,
+      128.0
+     ],
+     "inner_logloss": 0.70415
+    },
+    {
+     "hp": [
+      1.0,
+      1.0,
+      1024.0
+     ],
+     "inner_logloss": 0.70415
+    },
+    {
+     "hp": [
+      1.0,
+      4.0,
+      16.0
+     ],
+     "inner_logloss": 0.699962
+    },
+    {
+     "hp": [
+      1.0,
+      4.0,
+      128.0
+     ],
+     "inner_logloss": 0.699958
+    },
+    {
+     "hp": [
+      1.0,
+      4.0,
+      1024.0
+     ],
+     "inner_logloss": 0.699958
+    },
+    {
+     "hp": [
+      1.0,
+      16.0,
+      16.0
+     ],
+     "inner_logloss": 0.697805
+    },
+    {
+     "hp": [
+      1.0,
+      16.0,
+      128.0
+     ],
+     "inner_logloss": 0.6978
+    },
+    {
+     "hp": [
+      1.0,
+      16.0,
+      1024.0
+     ],
+     "inner_logloss": 0.6978
+    },
+    {
+     "hp": [
+      1.0,
+      64.0,
+      16.0
+     ],
+     "inner_logloss": 0.696999
+    },
+    {
+     "hp": [
+      1.0,
+      64.0,
+      128.0
+     ],
+     "inner_logloss": 0.696994
+    },
+    {
+     "hp": [
+      1.0,
+      64.0,
+      1024.0
+     ],
+     "inner_logloss": 0.696993
+    },
+    {
+     "hp": [
+      1.0,
+      256.0,
+      16.0
+     ],
+     "inner_logloss": 0.696772
+    },
+    {
+     "hp": [
+      1.0,
+      256.0,
+      128.0
+     ],
+     "inner_logloss": 0.696767
+    },
+    {
+     "hp": [
+      1.0,
+      256.0,
+      1024.0
+     ],
+     "inner_logloss": 0.696767
+    },
+    {
+     "hp": [
+      4.0,
+      1.0,
+      16.0
+     ],
+     "inner_logloss": 0.687954
+    },
+    {
+     "hp": [
+      4.0,
+      1.0,
+      128.0
+     ],
+     "inner_logloss": 0.687952
+    },
+    {
+     "hp": [
+      4.0,
+      1.0,
+      1024.0
+     ],
+     "inner_logloss": 0.687952
+    },
+    {
+     "hp": [
+      4.0,
+      4.0,
+      16.0
+     ],
+     "inner_logloss": 0.683925
+    },
+    {
+     "hp": [
+      4.0,
+      4.0,
+      128.0
+     ],
+     "inner_logloss": 0.683923
+    },
+    {
+     "hp": [
+      4.0,
+      4.0,
+      1024.0
+     ],
+     "inner_logloss": 0.683923
+    },
+    {
+     "hp": [
+      4.0,
+      16.0,
+      16.0
+     ],
+     "inner_logloss": 0.681964
+    },
+    {
+     "hp": [
+      4.0,
+      16.0,
+      128.0
+     ],
+     "inner_logloss": 0.681962
+    },
+    {
+     "hp": [
+      4.0,
+      16.0,
+      1024.0
+     ],
+     "inner_logloss": 0.681962
+    },
+    {
+     "hp": [
+      4.0,
+      64.0,
+      16.0
+     ],
+     "inner_logloss": 0.681188
+    },
+    {
+     "hp": [
+      4.0,
+      64.0,
+      128.0
+     ],
+     "inner_logloss": 0.681187
+    },
+    {
+     "hp": [
+      4.0,
+      64.0,
+      1024.0
+     ],
+     "inner_logloss": 0.681187
+    },
+    {
+     "hp": [
+      4.0,
+      256.0,
+      16.0
+     ],
+     "inner_logloss": 0.680962
+    },
+    {
+     "hp": [
+      4.0,
+      256.0,
+      128.0
+     ],
+     "inner_logloss": 0.68096
+    },
+    {
+     "hp": [
+      4.0,
+      256.0,
+      1024.0
+     ],
+     "inner_logloss": 0.68096
+    },
+    {
+     "hp": [
+      16.0,
+      1.0,
+      16.0
+     ],
+     "inner_logloss": 0.679096
+    },
+    {
+     "hp": [
+      16.0,
+      1.0,
+      128.0
+     ],
+     "inner_logloss": 0.679096
+    },
+    {
+     "hp": [
+      16.0,
+      1.0,
+      1024.0
+     ],
+     "inner_logloss": 0.679096
+    },
+    {
+     "hp": [
+      16.0,
+      4.0,
+      16.0
+     ],
+     "inner_logloss": 0.674595
+    },
+    {
+     "hp": [
+      16.0,
+      4.0,
+      128.0
+     ],
+     "inner_logloss": 0.674596
+    },
+    {
+     "hp": [
+      16.0,
+      4.0,
+      1024.0
+     ],
+     "inner_logloss": 0.674596
+    },
+    {
+     "hp": [
+      16.0,
+      16.0,
+      16.0
+     ],
+     "inner_logloss": 0.672408
+    },
+    {
+     "hp": [
+      16.0,
+      16.0,
+      128.0
+     ],
+     "inner_logloss": 0.672409
+    },
+    {
+     "hp": [
+      16.0,
+      16.0,
+      1024.0
+     ],
+     "inner_logloss": 0.672409
+    },
+    {
+     "hp": [
+      16.0,
+      64.0,
+      16.0
+     ],
+     "inner_logloss": 0.671549
+    },
+    {
+     "hp": [
+      16.0,
+      64.0,
+      128.0
+     ],
+     "inner_logloss": 0.67155
+    },
+    {
+     "hp": [
+      16.0,
+      64.0,
+      1024.0
+     ],
+     "inner_logloss": 0.67155
+    },
+    {
+     "hp": [
+      16.0,
+      256.0,
+      16.0
+     ],
+     "inner_logloss": 0.671294
+    },
+    {
+     "hp": [
+      16.0,
+      256.0,
+      128.0
+     ],
+     "inner_logloss": 0.671295
+    },
+    {
+     "hp": [
+      16.0,
+      256.0,
+      1024.0
+     ],
+     "inner_logloss": 0.671295
+    }
+   ],
+   "model": {
+    "intercept": -0.134354,
+    "coef": {
+     "call": {
+      "curl flat": -0.001376,
+      "deep cross": 0.002367,
+      "orbit z spot": 0.001976,
+      "spacing x-wheel": 0.001958,
+      "titto": 0.00225
+     },
+     "call_class": {
+      "none": -0.057397,
+      "pass": 0.039394,
+      "unknown": 0.018002
+     },
+     "call_x_family": {
+      "titto|cover_1": 0.036005
+     },
+     "class_x_family": {
+      "none|cover_4": -0.071682,
+      "none|cover_6": 0.018915,
+      "none|none": -0.048529,
+      "none|other": 0.054503,
+      "none|pressure_other": 0.020674,
+      "none|tampa_2": -0.031278,
+      "pass|none": 0.039394,
+      "unknown|cover_1": 0.018002
+     },
+     "def_adj": {
+      "yes": 0.001838
+     },
+     "dist": {
+      "long": -0.011594,
+      "medium": 0.033835,
+      "short": 0.080546,
+      "xlong": -0.102787
+     },
+     "down": {
+      "1": -0.28057,
+      "2": 0.174287,
+      "3": 0.074046,
+      "4": 0.032237
+     },
+     "down_x_dist": {
+      "1|long": -0.157425,
+      "1|short": -0.003779,
+      "1|xlong": 0.020919,
+      "2|long": 0.07862,
+      "2|medium": 0.047181,
+      "2|short": 0.002649,
+      "2|xlong": -0.041306,
+      "3|long": 0.056889,
+      "3|medium": -0.030263,
+      "3|short": 0.041403,
+      "3|xlong": -0.031006,
+      "4|long": 0.016119
+     },
+     "look": {
+      "cloudflat": 0.001515,
+      "cover 1 robber press": 0.00225,
+      "cover 3 cloud": -0.001482,
+      "cover 4 quarters": -0.010172,
+      "cover 6": 0.002364,
+      "deephalf": 0.00227,
+      "double te": 0.003527,
+      "mancoverage": -0.001855,
+      "sam will blitz": 0.002584,
+      "seamflat;deephalf": 0.001356,
+      "tampa 2": -0.001217
+     },
+     "look_family": {
+      "cover_1": 0.018002,
+      "cover_4": -0.071682,
+      "cover_6": 0.018915,
+      "none": -0.009135,
+      "other": 0.054503,
+      "pressure_other": 0.020674,
+      "tampa_2": -0.031278
+     },
+     "off_adj": {
+      "yes": 0.005446
+     },
+     "pressure": {
+      "yes": 0.020674
+     },
+     "score": {
+      "close": 0.045822,
+      "not_close": -0.18117,
+      "unk": 0.135347
+     },
+     "side": {
+      "defense": -0.004977,
+      "offense": -0.118463,
+      "unknown": 0.123439
+     },
+     "time": {
+      "late_half": 0.186375,
+      "normal": -0.146211,
+      "unk": -0.040163
+     },
+     "zone": {
+      "opp": 0.189408,
+      "own": -0.171409,
+      "own_deep": -0.076863,
+      "red_zone": 0.136622,
+      "unk": -0.077757
+     }
+    },
+    "hyperparams": {
+     "lambda_situation": 16.0,
+     "lambda_entity": 256.0,
+     "lambda_interaction": 16.0
+    }
+   },
+   "situation_only_model": {
+    "intercept": -0.244941,
+    "coef": {
+     "dist": {
+      "long": -0.012672,
+      "medium": 0.034237,
+      "short": 0.080301,
+      "xlong": -0.101866
+     },
+     "down": {
+      "1": -0.278957,
+      "2": 0.1728,
+      "3": 0.073982,
+      "4": 0.032174
+     },
+     "down_x_dist": {
+      "1|long": -0.156078,
+      "1|short": -0.004224,
+      "1|xlong": 0.020823,
+      "2|long": 0.078237,
+      "2|medium": 0.046701,
+      "2|short": 0.003381,
+      "2|xlong": -0.041919,
+      "3|long": 0.055418,
+      "3|medium": -0.029583,
+      "3|short": 0.040993,
+      "3|xlong": -0.029837,
+      "4|long": 0.016087
+     },
+     "score": {
+      "close": 0.04561,
+      "not_close": -0.183751,
+      "unk": 0.138141
+     },
+     "side": {
+      "defense": -0.004728,
+      "offense": -0.117531,
+      "unknown": 0.122259
+     },
+     "time": {
+      "late_half": 0.184988,
+      "normal": -0.14455,
+      "unk": -0.040438
+     },
+     "zone": {
+      "opp": 0.189137,
+      "own": -0.17504,
+      "own_deep": -0.075858,
+      "red_zone": 0.137411,
+      "unk": -0.07565
+     }
+    },
+    "hyperparams": {
+     "lambda_situation": 16.0,
+     "lambda_entity": 16.0,
+     "lambda_interaction": 64.0
+    }
+   }
+  }
+ }
+}

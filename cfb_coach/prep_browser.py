@@ -1092,6 +1092,12 @@ _COPY_JS = """  <script>
 """
 
 
+def _render_vod_prep(plan: dict[str, Any]) -> str:
+    from cfb_coach.vod_model.report import render_vod_html
+
+    return render_vod_html(plan)
+
+
 def render_prep_html(plan: dict[str, Any]) -> str:
     """v1.14 prep page — ONLY what Aidan needs at the console: the formations to have in
     the custom playbook (new / in book / remove + the one apply command), the audibles,
@@ -1147,6 +1153,7 @@ def render_prep_html(plan: dict[str, Any]) -> str:
     {opponent_study_html(plan.get("scouting_lines") or [], plan.get("opponent_research") or [])}
     {render_formations_min(book)}
     {render_audibles_min(book)}
+    {_render_vod_prep(plan)}
     <section id="macros">
       <h2>{"Macros — offense custom adjustments (CPU game)" if offense_only else "Macros — Active loadout (≤8)"}</h2>
       {macros}

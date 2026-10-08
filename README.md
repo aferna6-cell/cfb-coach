@@ -346,7 +346,9 @@ PYTHONPATH=. python3 -m cfb_coach prep --game madden27 -o james --opp-team "Minn
 PYTHONPATH=. python3 -m cfb_coach postgame --game madden27 -o gavin
 ```
 
-`--game madden` works as an alias. Every CFB prep/play flag carries over (`--text`, `--no-open`, `--offline`, `--refresh-meta`, `--mark-applied`, `--once`, `--why`, `--overlay`, `--no-overlay`, `--terminal`, `--html-port`, `--score`, `--quarter`).
+`--game madden` works as an alias. Every CFB prep/play flag carries over (`--text`, `--no-open`, `--offline`, `--refresh-meta`, `--mark-applied`, `--once`, `--why`, `--overlay`, `--no-overlay`, `--terminal`, `--html-port`, `--score`, `--quarter`). `--no-macros` still turns Custom Adjustments off for one session. `--no-vod-prior` turns the trained VOD model off. `--freeze-vod-book` keeps VOD call choices and blocks playbook adds and swaps.
+
+**VOD model (optional).** Point `CFB_COACH_VOD_MODELS` (or `config --game madden27 --vod-models DIR`) at a directory that contains `LAST_TRAINED.json` and `vX.Y/`. The coach loads that version and ignores any `model_dir` path inside the file. VOD success is the primary call-quality signal (weight `1.0`, `CFB_COACH_VOD_QUALITY_WEIGHT`). Your logged games are a nudge (`0.25`, `CFB_COACH_VOD_LOG_NUDGE`) that can break a near-tie and cannot override a wider VOD gap. Logged tendencies pick the defensive look. Samples under the bar (below 8 snaps, or still tentative / under 15 snaps and 3 VODs) are shown on the prep page and do not change the call or the book. A med or high cell may add or swap a catalogued formation into the applied book immediately — live play and Custom Adjustment pairs use that book on the next snap, with no confirm step. Every edit is audited (n, success, lower bound, tier, model version) and can be reverted. A missing model changes nothing.
 
 | Command | Madden 27 purpose |
 |---|---|
