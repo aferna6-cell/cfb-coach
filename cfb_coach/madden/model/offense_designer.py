@@ -138,7 +138,7 @@ def _macro_drafts(formations: Mapping[str, list[str]], sources: Mapping[str, str
                 "fire_when": f"live pre-snap {coverage}; only with matching passing play",
                 "base_pairs": [
                     {"formation": f, "play": p, "catalog_book": sources[f]}
-                    for f, p in pass_pairs[:6]
+                    for f, p in pass_pairs
                 ],
                 "settings": [{
                     "section": section, "setting": setting, "value": route,
