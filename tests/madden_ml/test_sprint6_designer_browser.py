@@ -167,14 +167,14 @@ class DesignerBrowserTests(unittest.TestCase):
     def test_html_file_opens_in_browser_unless_disabled(self) -> None:
         plan = self.design()
         out = Path(self.tmp.name) / "designer.html"
-        with mock.patch.object(browser.webbrowser, "open") as opened:
+        with mock.patch("cfb_coach.prep_browser.open_prep_html") as opened:
             actual = browser.write_and_open(
                 self.db, plan, path=out, opponent_id="cpu", open_browser=True
             )
         self.assertEqual(out, actual)
-        opened.assert_called_once_with(out.resolve().as_uri())
+        opened.assert_called_once_with(out, open_browser=True)
         self.assertIn("<!doctype html>", out.read_text())
-        with mock.patch.object(browser.webbrowser, "open") as opened:
+        with mock.patch("cfb_coach.prep_browser.open_prep_html") as opened:
             browser.write_and_open(
                 self.db, plan, path=out, opponent_id="cpu", open_browser=False
             )
