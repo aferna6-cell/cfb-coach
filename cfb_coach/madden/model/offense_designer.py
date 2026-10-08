@@ -19,6 +19,8 @@ from cfb_coach.madden.model.experimental_live import resolve_artifact_path
 
 META_PENDING = "ml_offense_design_pending.v1"
 META_HISTORY = "ml_offense_design_history.v1"
+META_BLUEPRINTS = "ml_offense_created_blueprints.v1"
+META_APPROVED = "ml_offense_verified_macros.v1:{opponent}"
 MAX_FORMATIONS = 5
 MAX_PLAYS_PER_FORMATION = 10
 
@@ -132,7 +134,8 @@ def _macro_drafts(formations: Mapping[str, list[str]], sources: Mapping[str, str
             setting = target if kind == "hot_route" else "Protection"
             drafts.append({
                 "name": name,
-                "kind": kind,
+                "kind": kind, "coverage": str(coverage),
+                "source_book_constraint": "exact verified formation/play pair",
                 "status": "DRAFT_NEEDS_IN_GAME_VERIFICATION",
                 "fire_when": f"live pre-snap {coverage}; only with matching passing play",
                 "base_pairs": [
@@ -327,9 +330,86 @@ def confirm_installed(db: Any, *, proposal_id: str, attestation: str) -> dict[st
     state["pending"].pop("offense", None)
     playbook._save_state(db, state)
     db.set_meta(META_HISTORY, _canonical(history[-30:]))
+    # Carry blueprint proposals forward for separate manual validation. Never
+    # activate a generated macro simply because its playbook was installed.
+    db.set_meta(META_BLUEPRINTS, _canonical({
+        "proposal_id": proposal_id, "macro_blueprints": pending.get("macro_blueprints") or [],
+    }))
     db.set_meta(META_PENDING, "")
     return {
         "confirmed": True, "proposal_id": proposal_id, "revision": new["rev"],
         "formations": list(new["formations"]), "plays": sum(len(p) for p in new["formations"].values()),
         "macro_blueprints_activated": 0,
+    }
+
+
+def verified_created_macros(db: Any, opponent_id: str) -> list[dict[str, Any]]:
+    """Only editor-verified, explicitly armed user-created macros."""
+    raw = db.get_meta(META_APPROVED.format(opponent=opponent_id)) if db else None
+    try:
+        obj = json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        return []
+    return [dict(m) for m in obj.get("macros") or [] if m.get("name") and m.get("verified_armed")]
+
+
+def verify_created_macro(
+    db: Any, *, name: str, opponent_id: str,
+    attestation: str, retire_existing: str | None = None,
+) -> dict[str, Any]:
+    """Approve exactly one generated macro already created and armed in Madden.
+
+    Requires a user statement verifying the editor rows and active game slot.
+    Cannot silently replace another macro or exceed eight active slots.
+    """
+    from cfb_coach.madden import macros as stored
+
+    if len((attestation or "").strip()) < 25:
+        raise ValueError("In-game macro creation, settings and armed slot attestation required")
+    raw = db.get_meta(META_BLUEPRINTS)
+    try:
+        designs = json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        designs = {}
+    rows = designs.get("macro_blueprints") or []
+    blueprint = next((m for m in rows if m.get("name") == name), None)
+    if not blueprint:
+        raise ValueError("Name is not a generated macro blueprint from a confirmed installed design")
+    active_book = playbook.load_books(db).get("offense") or {}
+    pairs = [
+        item for item in blueprint["base_pairs"]
+        if item.get("play") in (active_book.get("formations") or {}).get(item.get("formation"), [])
+    ]
+    if not pairs or not blueprint.get("settings") or not blueprint.get("source_ids"):
+        raise ValueError("Macro not grounded in installed playbook and researched settings")
+    existing = verified_created_macros(db, opponent_id)
+    if any(m["name"] == name for m in existing):
+        return {"name": name, "already_verified": True}
+    current = stored.load_selection(db, opponent_id) or {"offense": [], "defense": []}
+    current_o = list(current.get("offense") or [])
+    replace = (retire_existing or "").upper().strip()
+    if replace and replace not in current_o:
+        raise ValueError("The existing macro to retire is not in this opponent's loadout")
+    if len(current_o) + len(existing) - (1 if replace else 0) >= stored.LOADOUT_N:
+        raise ValueError("All eight slots occupied; explicitly retire an existing macro after swapping it in Madden")
+    approved = dict(blueprint)
+    approved.update({
+        "verified_armed": True, "opponent_id": opponent_id,
+        "verified_ts": datetime.now(timezone.utc).isoformat(),
+        "evidence": attestation.strip(), "base_pairs": pairs,
+    })
+    # Preserve existing call packages / defense macro state verbatim.
+    if replace:
+        key = stored.ACTIVE_META_KEY.format(opp=opponent_id)
+        stored_raw = db.get_meta(key)
+        data = json.loads(stored_raw) if stored_raw else {"schema": 2, "offense": [], "defense": []}
+        data["offense"] = [k for k in (data.get("offense") or []) if str(k).upper() != replace]
+        db.set_meta(key, _canonical(data))
+    db.set_meta(
+        META_APPROVED.format(opponent=opponent_id),
+        _canonical({"schema": 1, "macros": existing + [approved]}),
+    )
+    return {
+        "name": name, "verified_armed": True, "retired_existing": replace or None,
+        "source_actions": approved["source_ids"], "base_pairs": pairs,
     }
