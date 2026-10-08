@@ -20,7 +20,7 @@ The live path, when it is wired later, is one sealed `CoachingDecision`:
 2. `adapters.situation_to_state` is the only builder of `GameState` and `PreSnapObservation` from that situation.
 3. Candidates come from the applied book via `candidate_in_book`. Names that are not in the book are not ranked. `legal_candidates` drops anything that is not confirmed in-book.
 4. The deterministic caller still produces `heuristic_pick`, including reads, macro, pivot, and the book guard.
-5. `policy.rank_plays(game_state, candidate_plays, roster_context, opponent_context, recent_history)` scores that pool. `recent_history` is an argument, not a field on `GameState`, and it contains only snaps that already ended.
+5. `policy.rank_plays(game_state, candidate_plays, roster_context, opponent_context, recent_history)` scores that pool. `recent_history` is an argument, not a field on `GameState`. Each entry is a `(CoachingDecision, SnapOutcome | None)` pair for a snap that already ended.
 6. Mode decides what is shown. Guards stay authoritative. A VOD override is an input prior inside this sequence, not a mutation after the call is sealed.
 7. The sealed record stores the shown play, the policy that actually sampled it, and the propensity of that policy. Post-snap labels stay on `SnapOutcome` and `ExecutedPlay`.
 
@@ -46,6 +46,8 @@ The shadow-game counter counts only rows with `shadow_status == OK`. A timeout o
 ## Contracts
 
 Stable records use `madden-ml.schema.1` (`CONTRACT_VERSION`). `PlayRanking` and `OpponentContext` are provisional (`madden-ml.provisional.1`). The Strategist may add fields to those two. That bump does not change the stable version. A stable payload stamped with the provisional version is rejected, and the reverse.
+
+`PlayRanking.status` is `ok`, `low_confidence`, `model_missing`, or `invalid_output`. `status_detail` is optional text. The ranking has no fallback reason; hybrid fallback stays on `CoachingDecision`. `OpponentContext` has no stale flag. `seeded_from_key` and `seed_shrink_weight` are both unset or both set, the weight is in `[0, 1]`, and the seed key shares the row's opponent id without equaling the row's own key.
 
 Unknown is `None` in Python, JSON `null`, SQLite `NULL`, and the CSV cell `__UNKNOWN__` (`CSV_UNKNOWN`). Every enum has `UNKNOWN`. Do not write `0`, `False`, or a guessed play name for a missing fact.
 

@@ -9,6 +9,7 @@ import sys
 import unittest
 from enum import Enum
 from pathlib import Path
+from typing import get_type_hints
 
 from cfb_coach.game_score import GameScore
 from cfb_coach.madden.model import policy
@@ -19,6 +20,7 @@ from cfb_coach.madden.model.schema import (
     ML_LOW_CONFIDENCE,
     PROVISIONAL_SCHEMA_VERSION,
     PROVISIONAL_TYPES,
+    RANKING_STATUSES,
     SCHEMA_RECORD_TYPES,
     YARDS_MAX,
     AdjustmentRef,
@@ -300,6 +302,93 @@ class SchemaRoundTripTest(unittest.TestCase):
             ],
         )
         self.assertNotIn("recent_history", {item.name for item in GameState.__dataclass_fields__.values()})
+        self.assertNotIn("recent", {item.name for item in GameState.__dataclass_fields__.values()})
+        history = get_type_hints(policy.rank_plays)["recent_history"]
+        self.assertIn("CoachingDecision", str(history))
+        self.assertIn("SnapOutcome", str(history))
+        self.assertNotIn("RecentSnap", str(history))
+
+    def test_rank_plays_history_and_ranking_status(self) -> None:
+        self.assertEqual(
+            RANKING_STATUSES,
+            frozenset(
+                {
+                    MLStatus.OK,
+                    MLStatus.LOW_CONFIDENCE,
+                    MLStatus.MODEL_MISSING,
+                    MLStatus.INVALID_OUTPUT,
+                }
+            ),
+        )
+        self.assertNotIn("fallback_reason", PlayRanking.__dataclass_fields__)
+        self.assertNotIn("stale", OpponentContext.__dataclass_fields__)
+        detail = PlayRanking(status=MLStatus.LOW_CONFIDENCE, status_detail="confidence=0.41")
+        self.assertEqual(_round_trip(detail), detail)
+        self.assertEqual(to_dict(detail)["status"], "low_confidence")
+        for status in RANKING_STATUSES:
+            self.assertEqual(_round_trip(PlayRanking(status=status)).status, status)
+
+        legacy = to_dict(PlayRanking(policy_version="policy-0.1.0"))
+        legacy.pop("status")
+        legacy.pop("status_detail")
+        loaded = from_dict(json.loads(json.dumps(legacy)))
+        self.assertIs(loaded.status, MLStatus.OK)
+        self.assertIsNone(loaded.status_detail)
+        self.assertEqual(loaded.policy_version, "policy-0.1.0")
+
+        bare = from_dict({"__type__": "PlayRanking"})
+        self.assertIs(bare.status, MLStatus.OK)
+        self.assertIsNone(bare.status_detail)
+
+        for status in (
+            MLStatus.WORKER_BUSY,
+            MLStatus.TIMEOUT,
+            MLStatus.EXCEPTION,
+            MLStatus.CIRCUIT_OPEN,
+            MLStatus.UNKNOWN,
+        ):
+            with self.assertRaises(ValueError):
+                PlayRanking(status=status)
+            payload = to_dict(PlayRanking())
+            payload["status"] = status.value
+            with self.assertRaises(ValueError):
+                from_dict(payload)
+
+    def test_opponent_seed_pair(self) -> None:
+        row_key = dict(opponent_id="james", patch_id="1.007", roster_snapshot_id="r2", table_version="1")
+        prior = OpponentContextKey(opponent_id="james", patch_id="1.006", roster_snapshot_id="r1", table_version="1")
+        seeded = OpponentContext(**row_key, seeded_from_key=prior, seed_shrink_weight=0.25)
+        self.assertEqual(_round_trip(seeded), seeded)
+        self.assertEqual(_round_trip(OpponentContext(**row_key, seeded_from_key=prior, seed_shrink_weight=0.0)).seed_shrink_weight, 0.0)
+        self.assertEqual(_round_trip(OpponentContext(**row_key, seeded_from_key=prior, seed_shrink_weight=1.0)).seed_shrink_weight, 1.0)
+
+        legacy = to_dict(OpponentContext(opponent_id="james"))
+        legacy.pop("seeded_from_key")
+        legacy.pop("seed_shrink_weight")
+        loaded = from_dict(json.loads(json.dumps(legacy)))
+        self.assertIsNone(loaded.seeded_from_key)
+        self.assertIsNone(loaded.seed_shrink_weight)
+        self.assertEqual(loaded.opponent_id, "james")
+        bare = from_dict({"__type__": "OpponentContext"})
+        self.assertIsNone(bare.seeded_from_key)
+        self.assertIsNone(bare.seed_shrink_weight)
+
+        invalid = [
+            dict(row_key, seeded_from_key=prior, seed_shrink_weight=None),
+            dict(row_key, seeded_from_key=None, seed_shrink_weight=0.25),
+            dict(row_key, seeded_from_key=prior, seed_shrink_weight=-0.01),
+            dict(row_key, seeded_from_key=prior, seed_shrink_weight=1.01),
+            dict(row_key, seeded_from_key=OpponentContextKey(opponent_id="cpu", patch_id="1.006"), seed_shrink_weight=0.25),
+            dict(row_key, seeded_from_key=OpponentContextKey(**row_key), seed_shrink_weight=0.25),
+        ]
+        for kwargs in invalid:
+            with self.assertRaises(ValueError, msg=kwargs):
+                OpponentContext(**kwargs)
+            payload = to_dict(OpponentContext(**row_key))
+            payload["seeded_from_key"] = to_dict(kwargs["seeded_from_key"]) if kwargs["seeded_from_key"] else None
+            payload["seed_shrink_weight"] = kwargs["seed_shrink_weight"]
+            with self.assertRaises(ValueError, msg=kwargs):
+                from_dict(payload)
 
     def test_unknown_convention_and_enums(self) -> None:
         self.assertEqual(csv_cell(None), CSV_UNKNOWN)

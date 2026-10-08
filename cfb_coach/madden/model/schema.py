@@ -135,6 +135,18 @@ class MLStatus(str, Enum):
     UNKNOWN = "unknown"
 
 
+# Statuses rank_plays may put on PlayRanking. Inference-only failures
+# (timeout, exception, worker_busy, circuit_open) stay on CoachingDecision.
+RANKING_STATUSES = frozenset(
+    {
+        MLStatus.OK,
+        MLStatus.LOW_CONFIDENCE,
+        MLStatus.MODEL_MISSING,
+        MLStatus.INVALID_OUTPUT,
+    }
+)
+
+
 class PolicySource(str, Enum):
     """Which policy's sampling distribution produced the shown call.
 
@@ -723,6 +735,11 @@ class OpponentContext:
     snaps. Per-tendency sample sizes live on :class:`TendencyCount`.
     ``sample_size`` and ``shrinkage_weight`` on this object are the optional
     context-level slots; leave them unknown until the Strategist fills them.
+
+    There is no ``stale`` field. A new patch or roster is a new key.
+    ``seeded_from_key`` and ``seed_shrink_weight`` are both unset or both set.
+    The weight is in ``[0, 1]``. The seed key has this row's opponent id and
+    is not this row's own key.
     """
 
     provisional_schema_version: str = PROVISIONAL_SCHEMA_VERSION
@@ -742,6 +759,8 @@ class OpponentContext:
     global_prior_id: str | None = None
     sample_size: int | None = None
     shrinkage_weight: float | None = None
+    seeded_from_key: OpponentContextKey | None = None
+    seed_shrink_weight: float | None = None
 
     def __post_init__(self) -> None:
         if self.provisional_schema_version != PROVISIONAL_SCHEMA_VERSION:
@@ -751,6 +770,22 @@ class OpponentContext:
         _check_nonneg("n_snaps", self.n_snaps)
         _check_nonneg("sample_size", self.sample_size)
         _check_unit("shrinkage_weight", self.shrinkage_weight)
+        self.validate()
+
+    def validate(self) -> None:
+        """Reject a seed key and weight that do not describe one prior row."""
+        seeded = self.seeded_from_key is not None
+        weighted = self.seed_shrink_weight is not None
+        if seeded != weighted:
+            raise ValueError("seeded_from_key and seed_shrink_weight are both set or both unset")
+        seed = self.seeded_from_key
+        if seed is None:
+            return
+        _check_unit("seed_shrink_weight", self.seed_shrink_weight)
+        if seed.opponent_id != self.opponent_id:
+            raise ValueError("seeded_from_key must have the same opponent id as this row")
+        if seed == self.key():
+            raise ValueError("seeded_from_key must not equal this row's key")
 
     def key(self) -> OpponentContextKey:
         return OpponentContextKey(
@@ -907,6 +942,12 @@ class PlayRanking:
     each play's ``sampling_p``. ``shadow_scores`` are model outputs and stay
     off the propensity. ``sample_size`` and ``shrinkage_weight`` are optional
     ranking-level slots for the Strategist.
+
+    ``status`` is the ranker's own :class:`MLStatus`. It may only be ``ok``,
+    ``low_confidence``, ``model_missing``, or ``invalid_output``. Timeouts and
+    other inference failures stay on :class:`CoachingDecision`. This type has
+    no ``fallback_reason``. ``status_detail`` is free text for that status.
+    A legacy payload that omits ``status`` loads as ``ok``.
     """
 
     provisional_schema_version: str = PROVISIONAL_SCHEMA_VERSION
@@ -921,6 +962,8 @@ class PlayRanking:
     shadow_scores: tuple[ShadowScore, ...] | None = None
     sample_size: int | None = None
     shrinkage_weight: float | None = None
+    status: MLStatus = MLStatus.OK
+    status_detail: str | None = None
 
     def __post_init__(self) -> None:
         if self.provisional_schema_version != PROVISIONAL_SCHEMA_VERSION:
@@ -928,6 +971,14 @@ class PlayRanking:
         _check_unit("confidence", self.confidence)
         _check_nonneg("sample_size", self.sample_size)
         _check_unit("shrinkage_weight", self.shrinkage_weight)
+        self.validate()
+
+    def validate(self) -> None:
+        """Reject a ranking status that inference, not rank_plays, would set."""
+        if self.status not in RANKING_STATUSES:
+            raise ValueError(
+                "PlayRanking.status must be ok, low_confidence, model_missing, or invalid_output"
+            )
 
 
 @dataclass(frozen=True)
@@ -1007,6 +1058,11 @@ class CoachingDecision:
     propensity_method: PropensityMethod = PropensityMethod.UNKNOWN
     propensity_override: bool = False
     propensity_override_reason: PropensityOverrideReason | None = None
+    heuristic_sample_p: float | None = None
+    heuristic_dist: tuple[tuple[str, float], ...] | None = None
+    propensity_ms: float | None = None
+    heuristic_trace_hash: str | None = None
+    ml_status_detail: str | None = None
     shadow_scores: tuple[ShadowScore, ...] | None = None
     shadow_pick: CandidatePlay | None = None
     shadow_status: MLStatus | None = None
@@ -1031,6 +1087,16 @@ class CoachingDecision:
         _reject_bool_int("ml_seed", self.ml_seed)
         _check_nonneg("snap_seq", self.snap_seq)
         _check_open_unit("behavior_propensity", self.behavior_propensity)
+        _check_unit("heuristic_sample_p", self.heuristic_sample_p)
+        if self.propensity_ms is not None:
+            _check_finite("propensity_ms", self.propensity_ms)
+            if self.propensity_ms < 0:
+                raise ValueError("propensity_ms must be >= 0 or unknown")
+        if self.heuristic_dist is not None:
+            for key, value in self.heuristic_dist:
+                if not key:
+                    raise ValueError("heuristic_dist keys are candidate keys")
+                _check_unit(f"heuristic_dist[{key}]", value)
         if self.executed_status is ExecutedStatus.IDENTIFIED:
             if self.executed is None or self.executed.verification is not Verification.VERIFIED:
                 raise ValueError("an identified execution requires a verified ExecutedPlay")
@@ -1453,6 +1519,7 @@ __all__ = [
     "ML_LOW_CONFIDENCE",
     "PROVISIONAL_SCHEMA_VERSION",
     "PROVISIONAL_TYPES",
+    "RANKING_STATUSES",
     "SCHEMA_RECORD_TYPES",
     "YARDS_MAX",
     "YARDS_MIN",

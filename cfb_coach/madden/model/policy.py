@@ -11,11 +11,12 @@ from typing import Sequence
 
 from cfb_coach.madden.model.schema import (
     CandidatePlay,
+    CoachingDecision,
     GameState,
     OpponentContext,
     PlayRanking,
-    RecentSnap,
     RosterSnapshot,
+    SnapOutcome,
 )
 
 
@@ -24,14 +25,15 @@ def rank_plays(
     candidate_plays: Sequence[CandidatePlay],
     roster_context: RosterSnapshot | None,
     opponent_context: OpponentContext | None,
-    recent_history: Sequence[RecentSnap],
+    recent_history: Sequence[tuple[CoachingDecision, SnapOutcome | None]],
 ) -> PlayRanking:
     """Rank the legal pool for this snap. Not implemented.
 
     ``recent_history`` is its own argument. It is not a field on
-    ``game_state``. It contains snaps that already ended. The outcome of the
-    snap being ranked must not be included. Pass an empty sequence when no
-    prior snap was supplied. Each kept candidate later gets a ``sampling_p``
+    ``game_state``. Each pair is a decision that already ended and the outcome
+    of that snap, or ``None`` when the outcome is still unknown. The outcome
+    of the snap being ranked must not be included. Pass an empty sequence when
+    no prior snap was supplied. Each kept candidate later gets a ``sampling_p``
     under ``policy_source``. Equal scores need a stable tie break on
     formation, play, then adjustment slot. This stub returns nothing and must
     not be used on the live path.
