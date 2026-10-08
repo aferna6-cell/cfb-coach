@@ -8,6 +8,7 @@ name on it stays the previous-snap context for that call.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable
@@ -202,6 +203,9 @@ class _Undo:
     result: str | None
     concept: str | None
     coverage: str | None
+    ml_snap_id: str | None = None
+    ml_decision_id: int | None = None
+    prev_ml_outcome: dict[str, Any] | None = None
 
 
 @dataclass
@@ -220,9 +224,21 @@ class LastSnapBook:
     coverage: str | None = None
     spot: BallSpot = field(default_factory=BallSpot)
     wrote: bool = False
+    ml_snap_id: str | None = None
+    snap_seq: int | None = None
+    ml_decision_id: int | None = None
+    data_source: str = "live"
     _undos: list[_Undo] = field(default_factory=list)
 
-    def remember_call(self, call: Any, sit: Any) -> None:
+    def remember_call(
+        self,
+        call: Any,
+        sit: Any,
+        *,
+        ml_snap_id: str | None = None,
+        snap_seq: int | None = None,
+        ml_decision_id: int | None = None,
+    ) -> None:
         self.call = call
         self.sit = sit
         self.logged_id = None
@@ -230,6 +246,12 @@ class LastSnapBook:
         self.concept = None
         self.coverage = None
         self.wrote = False
+        if ml_snap_id is not None:
+            self.ml_snap_id = ml_snap_id
+        if snap_seq is not None:
+            self.snap_seq = snap_seq
+        if ml_decision_id is not None:
+            self.ml_decision_id = ml_decision_id
         # The call they just asked for is where the ball is until a result moves it.
         if getattr(sit, "down", None):
             self.spot.down = sit.down
@@ -271,7 +293,16 @@ class LastSnapBook:
         return "  " + self._record(spec, inherit_sit_look=True)
 
     def close_from_form(
-        self, outcome: str, their: str = "", next_raw: str | None = None,
+        self,
+        outcome: str,
+        their: str = "",
+        next_raw: str | None = None,
+        *,
+        executed_status: str = "unknown",
+        executed_formation: str | None = None,
+        executed_play: str | None = None,
+        executed_macro: str | None = None,
+        executed_verification: str = "unknown",
     ) -> dict[str, Any] | None:
         """Browser submit: outcome, optional 'they ran', and the next line's last-play field."""
         if self.call is None or self.sit is None or not (outcome or "").strip():
@@ -281,11 +312,39 @@ class LastSnapBook:
         if next_raw and not cov and not concept:
             cov, concept = _prev_look(self.parse_situation, next_raw, side)
         canon = parse_outcome(outcome).to_result_text()
+        status = (executed_status or "unknown").strip().lower()
+        # Never promote a recommendation to a verified execution without evidence.
+        if status == "used_recommended":
+            status = "identified"
+            executed_formation = getattr(self.call, "formation", None)
+            executed_play = getattr(self.call, "play", None)
+            executed_macro = _macro_of(self.call)
+            executed_verification = "verified"
+        elif status == "used_different":
+            status = "identified"
+            executed_verification = executed_verification or "verified"
+            if not executed_formation or not executed_play:
+                status = "unknown"
+                executed_formation = None
+                executed_play = None
+                executed_macro = None
+                executed_verification = "unknown"
+        else:
+            status = "unknown"
+            executed_formation = None
+            executed_play = None
+            executed_macro = None
+            executed_verification = "unknown"
         spec = {
             "result": outcome.strip() if canon == "unknown" else canon,
             "coverage": cov,
             "concept": concept,
             "raw": outcome,
+            "executed_status": status,
+            "executed_formation": executed_formation,
+            "executed_play": executed_play,
+            "executed_macro": executed_macro,
+            "executed_verification": executed_verification,
         }
         note = self._record(spec, inherit_sit_look=next_raw is None)
         call = self.call
@@ -297,6 +356,10 @@ class LastSnapBook:
             "call_text": call.format(),
             "side": call.side,
             "note": note,
+            "ml_snap_id": self.ml_snap_id,
+            "executed_status": status,
+            "executed_formation": executed_formation,
+            "executed_play": executed_play,
         }
 
     def undo(self) -> str:
@@ -309,8 +372,29 @@ class LastSnapBook:
             )
         if frame.inserted:
             self.db.delete_snap(frame.snap_id)
+            # delete_snap voids the active ml_outcome (audited). Clear local ids
+            # so a subsequent log does not reuse a deleted snap's linkage by mistake.
+            if frame.ml_snap_id and self.ml_snap_id == frame.ml_snap_id:
+                # Keep ml_snap_id on the book for the still-pending call identity;
+                # only the outcome was voided. Decision row remains for audit.
+                pass
         else:
             self.db.update_snap(frame.snap_id, **frame.prev)
+            if frame.ml_snap_id and hasattr(self.db, "void_ml_outcome"):
+                self.db.void_ml_outcome(frame.ml_snap_id, reason="outcome_correction_undone")
+                if frame.prev_ml_outcome and hasattr(self.db, "log_ml_outcome"):
+                    prev = frame.prev_ml_outcome
+                    self.db.log_ml_outcome(
+                        snap_id=frame.ml_snap_id,
+                        game_id=prev.get("game_id"),
+                        decision_id=prev.get("decision_id") or frame.ml_decision_id,
+                        executed_status=prev.get("executed_status") or "unknown",
+                        executed_formation=prev.get("executed_formation"),
+                        executed_play=prev.get("executed_play"),
+                        executed_verification=prev.get("executed_verification") or "unknown",
+                        outcome=prev.get("outcome"),
+                        replace=True,
+                    )
         self.logged_id = frame.logged_id
         self.result = frame.result
         self.concept = frame.concept
@@ -357,8 +441,23 @@ class LastSnapBook:
         if spec.get("coverage") or inherit:
             take("coverage", coverage, prev_coverage)
 
+        executed_status = spec.get("executed_status") or "unknown"
+        executed_formation = spec.get("executed_formation")
+        executed_play = spec.get("executed_play")
+        executed_macro = spec.get("executed_macro")
+        executed_verification = spec.get("executed_verification") or "unknown"
+
         inserted = self.logged_id is None
-        prev_row = {"result": prev_result, "coverage_seen": prev_coverage, "concept_seen": prev_concept}
+        prev_row = {
+            "result": prev_result,
+            "coverage_seen": prev_coverage,
+            "concept_seen": prev_concept,
+            "executed_status": "unknown",
+            "executed_formation": None,
+            "executed_play": None,
+            "executed_macro": None,
+            "executed_verification": "unknown",
+        }
         if inserted:
             quarter = (getattr(sit, "extras", None) or {}).get("quarter")
             self.logged_id = self.db.log_snap(
@@ -378,15 +477,60 @@ class LastSnapBook:
                 concept_seen=concept,
                 notes=snap_notes_for(sit),
                 session_id=self.session_id,
+                ml_snap_id=self.ml_snap_id,
+                snap_seq=self.snap_seq,
+                executed_status=executed_status,
+                executed_formation=executed_formation,
+                executed_play=executed_play,
+                executed_macro=executed_macro,
+                executed_verification=executed_verification,
+                ml_decision_id=self.ml_decision_id,
+                data_source=self.data_source,
             )
         else:
             self.db.update_snap(
-                self.logged_id, result=result, coverage_seen=coverage, concept_seen=concept,
+                self.logged_id,
+                result=result,
+                coverage_seen=coverage,
+                concept_seen=concept,
+                executed_status=executed_status,
+                executed_formation=executed_formation,
+                executed_play=executed_play,
+                executed_macro=executed_macro,
+                executed_verification=executed_verification,
+                ml_decision_id=self.ml_decision_id,
             )
         self.result, self.concept, self.coverage = result, concept, coverage
         note = ""
         if spec.get("result"):
             self.spot, note = advance_ball(sit, spec["result"], side, self.spot)
+        prev_ml_outcome = None
+        if not inserted and self.ml_snap_id:
+            try:
+                row = self.db.conn.execute(
+                    "SELECT * FROM ml_outcomes WHERE snap_id = ?",
+                    (self.ml_snap_id,),
+                ).fetchone()
+                if row is not None:
+                    d = dict(row)
+                    payload = d.get("outcome_json")
+                    outcome = None
+                    if payload:
+                        try:
+                            outcome = json.loads(payload)
+                        except (TypeError, json.JSONDecodeError):
+                            outcome = None
+                    prev_ml_outcome = {
+                        "game_id": d.get("game_id"),
+                        "decision_id": d.get("decision_id"),
+                        "executed_status": d.get("executed_status"),
+                        "executed_formation": d.get("executed_formation"),
+                        "executed_play": d.get("executed_play"),
+                        "executed_verification": d.get("executed_verification"),
+                        "outcome": outcome,
+                    }
+            except Exception:  # noqa: BLE001
+                prev_ml_outcome = None
         self._undos.append(_Undo(
             snap_id=self.logged_id,
             inserted=inserted,
@@ -397,6 +541,9 @@ class LastSnapBook:
             result=prev_result,
             concept=prev_concept,
             coverage=prev_coverage,
+            ml_snap_id=self.ml_snap_id,
+            ml_decision_id=self.ml_decision_id,
+            prev_ml_outcome=prev_ml_outcome,
         ))
         self.wrote = True
         bits = [b for b in (result, concept, coverage) if b]

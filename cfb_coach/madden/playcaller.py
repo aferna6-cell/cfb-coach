@@ -475,6 +475,15 @@ def _pick_offense(
         play = book[form][0]
         rationale += " | remenu: guard pulled call back into locked book"
 
+    # The VOD prior may switch to another in-book play. Reads, the macro, and
+    # the adjustment are built only after that switch, so they belong to the
+    # play that is actually called.
+    staged = MaddenCall("offense", form, play, "No adj", "", rationale)
+    from cfb_coach.vod_model.live import apply_madden_call
+
+    staged = apply_madden_call(staged, sit, oid, db, {"offense": book})
+    form, play, rationale = staged.formation, staged.play, staged.rationale
+
     adj = "Hot ready" if cls == "pressure" and src == "live" else "No adj"
     adjustment = None
     macro = None
@@ -973,8 +982,4 @@ def make_call(
     snote = score_call_note(sit)
     if snote:
         call.rationale += f" | {snote}"
-    # Newest applied book only. A session that started on the previous book
-    # already re-read it above when playbook was omitted.
-    from cfb_coach.vod_model.live import apply_madden_call
-
-    return apply_madden_call(call, sit, opponent_id, db, books)
+    return call
