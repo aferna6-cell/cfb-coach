@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="0" skipped="0" tests="1" time="0.220" timestamp="2026-10-08T13:06:13.789822+00:00" hostname="cursor"><testcase classname="" name="tests.test_vod_success" time="0.000"><error message="collection failure">ImportError while importing test module '/workspace/tests/test_vod_success.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_vod_success.py:10: in &lt;module&gt;
+    from cfb_coach.vod_success.features import feature_map, snap_from_row
+cfb_coach/vod_success/__init__.py:11: in &lt;module&gt;
+    from cfb_coach.vod_success.train import train_and_write
+cfb_coach/vod_success/train.py:25: in &lt;module&gt;
+    from cfb_coach.vod_success.beaters import TENTATIVE_N, build_stratum_beaters
+cfb_coach/vod_success/beaters.py:13: in &lt;module&gt;
+    from cfb_coach.vod_success.glm import LogisticModel, feature_map
+cfb_coach/vod_success/glm.py:11: in &lt;module&gt;
+    import numpy as np
+E   ModuleNotFoundError: No module named 'numpy'</error></testcase></testsuite></testsuites>
