@@ -34,6 +34,33 @@ python -m cfb_coach ml confirm-execution \
   --evidence 'recording at 12:04 — confirmed Mesh'
 ```
 
+### First experimental game execution recovery (Sprint 4.2)
+
+HTML now defaults **What I ran** to `used_recommended` and restores that after
+each submit (never resets to `unknown`). Fully specified `used_different`
+executions verify correctly.
+
+One-time recovery for game `141d4a16b4184ee7` (Lions CPU experimental game).
+Dry-run by default; requires explicit attestation + `--apply`. Backs up via
+the SQLite backup API. Never invents unlinked outcomes; never touches other
+Franchise games.
+
+```bash
+# Preview (no writes):
+python -m cfb_coach ml recover-game-execution \
+  --attest 'I followed the final displayed recommendation on every play in game 141d4a16b4184ee7, including Texas Y-Stutter Wheel on snap 0010'
+
+# Apply on the laptop DB only (after reviewing the preview):
+python -m cfb_coach ml recover-game-execution \
+  --attest 'I followed the final displayed recommendation on every play in game 141d4a16b4184ee7, including Texas Y-Stutter Wheel on snap 0010' \
+  --apply
+
+# Verify + retrain:
+python -m cfb_coach ml postgame-experimental --game-id 141d4a16b4184ee7
+python -m cfb_coach ml inspect
+python -m cfb_coach ml train-experimental --seed 7 --install
+```
+
 ## Laptop preflight (real Franchise DB)
 
 The agent environment has no Franchise history. On the laptop that logged games:

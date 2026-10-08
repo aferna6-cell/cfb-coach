@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, madden-ml/coach, madden-ml/experimental-pilot]
   pull_request:
-    branches: [main, madden-ml/coach]
+    branches: [main, madden-ml/coach, madden-ml/experimental-pilot]
 
 jobs:
   test:

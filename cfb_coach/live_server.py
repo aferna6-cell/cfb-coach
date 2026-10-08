@@ -573,9 +573,12 @@ class LivePlayController:
                     executed_formation=closed.get("executed_formation"),
                     executed_play=closed.get("executed_play"),
                     executed_verification=(
-                        "verified"
-                        if (closed.get("executed_status") or "") == "identified"
-                        else "unknown"
+                        closed.get("executed_verification")
+                        or (
+                            "verified"
+                            if (closed.get("executed_status") or "") == "identified"
+                            else "unknown"
+                        )
                     ),
                     outcome={
                         "result": closed.get("result"),
@@ -941,11 +944,11 @@ def render_live_html(ctrl: LivePlayController) -> str:
       <input class="wide" id="their" placeholder="cover 6 · A-gap blitz · cross wheels · mesh"/>
     </div>
     <div id="exec-verify" hidden>
-      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional)</span></h2>
-      <div class="row">
-        <label><input type="radio" name="exec" value="unknown" checked/> unknown</label>
-        <label><input type="radio" name="exec" value="used_recommended"/> used recommended</label>
+      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(change only when you ran something else)</span></h2>
+      <div class="row" id="exec-radios" style="gap:.75rem;flex-wrap:wrap">
+        <label style="font-weight:600"><input type="radio" name="exec" value="used_recommended" checked/> used recommended</label>
         <label><input type="radio" name="exec" value="used_different"/> used different</label>
+        <label><input type="radio" name="exec" value="unknown"/> unknown</label>
       </div>
       <div class="row" id="exec-diff" hidden>
         <label>formation</label>
@@ -1119,6 +1122,34 @@ function renderState(st) {{
   }}
   const ev = $("exec-verify");
   if (ev) ev.hidden = !st.execution_verify;
+  // Never rewrite an explicit used_different selection on state refresh.
+  syncExecDiffVisibility();
+}}
+
+function currentExecSelection() {{
+  const el = document.querySelector('input[name="exec"]:checked');
+  return el ? el.value : "used_recommended";
+}}
+
+function setExecSelection(value) {{
+  const target = value || "used_recommended";
+  const radio = document.querySelector('input[name="exec"][value="' + target + '"]');
+  if (radio) radio.checked = true;
+  syncExecDiffVisibility();
+}}
+
+function syncExecDiffVisibility() {{
+  const diff = $("exec-diff");
+  if (!diff) return;
+  diff.hidden = currentExecSelection() !== "used_different";
+}}
+
+function restoreExecDefaultAfterSubmit() {{
+  // Default stays used_recommended after each submit so unknown does not reappear.
+  // Clearing formation/play only — do not leave a stale used_different form visible.
+  setExecSelection("used_recommended");
+  if ($("exec-formation")) $("exec-formation").value = "";
+  if ($("exec-play")) $("exec-play").value = "";
 }}
 
 function renderMacro(m) {{
@@ -1333,20 +1364,17 @@ $("btn-submit").addEventListener("click", async () => {{
     $("look").value = "";
     $("live-mark").checked = false;
     document.querySelectorAll("#outcome-btns button.outcome").forEach(b => b.style.outline = "");
-    const unk = document.querySelector('input[name="exec"][value="unknown"]');
-    if (unk) unk.checked = true;
-    $("exec-formation").value = "";
-    $("exec-play").value = "";
-    $("exec-diff").hidden = true;
+    restoreExecDefaultAfterSubmit();
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
 
 document.querySelectorAll('input[name="exec"]').forEach(r => {{
   r.addEventListener("change", () => {{
-    $("exec-diff").hidden = r.value !== "used_different";
+    syncExecDiffVisibility();
   }});
 }});
+syncExecDiffVisibility();
 
 $("btn-undo").addEventListener("click", async () => {{
   setErr("");

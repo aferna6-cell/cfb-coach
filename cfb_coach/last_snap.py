@@ -321,9 +321,17 @@ class LastSnapBook:
             executed_macro = _macro_of(self.call)
             executed_verification = "verified"
         elif status == "used_different":
-            status = "identified"
-            executed_verification = executed_verification or "verified"
-            if not executed_formation or not executed_play:
+            # Fully specified different execution must verify. Do not treat the
+            # default param "unknown" as an intentional verification value
+            # (``"unknown" or "verified"`` is truthy and previously blocked verify).
+            if executed_formation and executed_play:
+                status = "identified"
+                if str(executed_verification or "").strip().lower() not in (
+                    "verified",
+                    "confirmed",
+                ):
+                    executed_verification = "verified"
+            else:
                 status = "unknown"
                 executed_formation = None
                 executed_play = None
@@ -360,6 +368,7 @@ class LastSnapBook:
             "executed_status": status,
             "executed_formation": executed_formation,
             "executed_play": executed_play,
+            "executed_verification": executed_verification,
         }
 
     def undo(self) -> str:
