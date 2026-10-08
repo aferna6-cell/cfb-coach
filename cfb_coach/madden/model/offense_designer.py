@@ -343,6 +343,47 @@ def confirm_installed(db: Any, *, proposal_id: str, attestation: str) -> dict[st
     }
 
 
+def rollback_design(db: Any, *, proposal_id: str, attestation: str) -> dict[str, Any]:
+    """Restore the prior plan only after the user has reinstalled it in Madden."""
+    if len((attestation or "").strip()) < 25:
+        raise ValueError("Explicit Madden in-game restoration attestation required")
+    raw = db.get_meta(META_HISTORY)
+    try:
+        history = json.loads(raw) if raw else []
+    except (TypeError, ValueError):
+        history = []
+    match = next(
+        (item for item in reversed(history)
+         if item.get("proposal_id") == proposal_id and item.get("old_book")),
+        None,
+    )
+    if not match:
+        raise ValueError("Unknown proposal or no previous installed offense to restore")
+    state = playbook._load_state(db)
+    current = state["applied"].get("offense") or {}
+    target = match["new_book"]
+    if (current.get("formations") != target.get("formations")
+            or current.get("rev") != target.get("rev")):
+        raise ValueError("Applied offense changed since this proposal; refuse stale rollback")
+    restored = dict(match["old_book"])
+    restored["rev"] = int(current.get("rev") or 0) + 1
+    restored["locked_ts"] = datetime.now(timezone.utc).isoformat()
+    restored["reason"] = f"Manually restored prior installed offense from {proposal_id}"
+    state["applied"]["offense"] = restored
+    playbook._save_state(db, state)
+    history.append({
+        "rollback_of": proposal_id, "old_book": current, "new_book": restored,
+        "attestation": attestation.strip(), "ts": datetime.now(timezone.utc).isoformat(),
+    })
+    db.set_meta(META_HISTORY, _canonical(history[-30:]))
+    # The associated generated macros are no longer presumed installed or armed.
+    db.set_meta(META_BLUEPRINTS, "")
+    # Per-opponent approval is not blanket-revoked here: runtime independently
+    # checks exact play/form and coverage, and future prep must re-audit loadouts.
+    return {"rolled_back": True, "proposal_id": proposal_id,
+            "revision": restored["rev"], "formations": list(restored["formations"])}
+
+
 def verified_created_macros(db: Any, opponent_id: str) -> list[dict[str, Any]]:
     """Only editor-verified, explicitly armed user-created macros."""
     raw = db.get_meta(META_APPROVED.format(opponent=opponent_id)) if db else None
