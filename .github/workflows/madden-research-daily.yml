@@ -1,0 +1,98 @@
+# Daily Madden 27 knowledge research — candidate updates only.
+# Never silently overwrites the active five formations or armed Custom Adjustments.
+#
+# IMPORTANT: GitHub scheduled workflows only run from the DEFAULT branch.
+# This file on madden-ml/experimental-pilot does NOT enable unattended daily
+# refresh until it (or an equivalent) is merged/copied onto main. See
+# docs/madden_research_deploy.md for the deploy path that does not merge the
+# experimental gameplay PR.
+name: madden-research-daily
+
+on:
+  schedule:
+    # 13:00 UTC daily — only effective once this workflow exists on the default branch
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+    inputs:
+      open_pr:
+        description: "Open a reviewable PR when candidates are meaningful"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run research refresh
+        id: refresh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Standalone script — works on main without the experimental ``ml`` CLI.
+          PYTHONPATH=. python scripts/madden_research_refresh.py | tee /tmp/research_refresh.json
+          python scripts/research_refresh_gha_outputs.py /tmp/research_refresh.json >> "$GITHUB_OUTPUT"
+
+      - name: Validate active research still intact
+        run: |
+          PYTHONPATH=. python scripts/validate_ai_research.py research/madden27.json
+          test -f cfb_coach/data/madden27/research_db.json
+          # Candidate must not have overwritten the active KB
+          test -f research/madden27.json
+
+      - name: Open reviewable PR for candidates
+        if: >-
+          success() &&
+          steps.refresh.outputs.ok == 'True' &&
+          steps.refresh.outputs.candidate != '' &&
+          (github.event_name == 'schedule' || github.event.inputs.open_pr == 'true')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BRANCH="research/madden-candidate-$(date -u +%Y%m%d%H%M)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add research/candidates/ || true
+          if git diff --cached --quiet; then
+            echo "No candidate files to commit"
+            exit 0
+          fi
+          git commit -m "research: Madden 27 daily candidate (review only; no policy overwrite)"
+          git push -u origin "$BRANCH"
+          gh pr create \
+            --base main \
+            --title "research: Madden 27 candidate refresh" \
+            --body "$(cat <<'EOF'
+          ## Madden research candidate (review only)
+
+          This PR adds **candidate** research artifacts under `research/candidates/`.
+
+          - Does **not** overwrite `research/madden27.json` without review
+          - Does **not** change the applied five formations
+          - Does **not** change the eight armed Custom Adjustments
+          - Never fabricates citations or guessed Custom Adjustment settings
+
+          Review the change report, then manually promote cited findings if appropriate.
+          EOF
+          )" || echo "PR may already exist"
