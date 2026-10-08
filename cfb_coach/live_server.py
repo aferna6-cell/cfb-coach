@@ -189,6 +189,7 @@ class LivePlayController:
             "ball": self._book().spot.as_dict(),
             "execution_verify": bool(self.enable_execution_verify),
             "pending_recommendation": self._pending_recommendation(),
+            "pending_offense_action": self._pending_offense_action(),
             "ml_experimental": self._ml_experimental_state(),
         }
 
@@ -202,6 +203,29 @@ class LivePlayController:
             "macro": getattr(call, "macro", None),
             "side": getattr(call, "side", None),
         }
+
+    def _pending_offense_action(self) -> dict[str, Any] | None:
+        """Research-grounded action details are optional and never the main call."""
+        call = self.last_call
+        if call is None or self.ended or str(getattr(call, "side", "")).startswith("d"):
+            return None
+        info = getattr(call, "macro_info", None)
+        if isinstance(info, dict) and getattr(call, "macro", None):
+            return {
+                "kind": "macro", "id": getattr(call, "macro"),
+                "label": info.get("name") or info.get("id"),
+                "buttons": info.get("buttons") or "",
+                "why": info.get("why") or "",
+            }
+        adj = getattr(call, "adjustment", None)
+        if isinstance(adj, dict) and adj.get("id"):
+            return {
+                "kind": "adjustment", "id": adj["id"],
+                "label": adj.get("label") or adj["id"],
+                "buttons": adj.get("buttons") or "",
+                "why": adj.get("why") or "",
+            }
+        return None
 
     def _ml_experimental_state(self) -> dict[str, Any] | None:
         """Heuristic vs ML explanation when experimental mode produced the call."""
@@ -528,6 +552,7 @@ class LivePlayController:
         executed_formation: str | None = None,
         executed_play: str | None = None,
         executed_macro: str | None = None,
+        applied_recommended_action: bool = False,
     ) -> dict[str, Any] | None:
         """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
@@ -543,6 +568,10 @@ class LivePlayController:
             executed_formation=executed_formation,
             executed_play=executed_play,
             executed_macro=executed_macro,
+            applied_recommended_macro=(
+                applied_recommended_action
+                if str(self.brand).lower().startswith("madden") else None
+            ),
         )
         if closed is None:
             return None
@@ -586,6 +615,18 @@ class LivePlayController:
                         "kind": parsed.kind,
                         "coverage_seen": book.coverage,
                         "concept_seen": book.concept,
+                        "executed_macro": closed.get("executed_macro"),
+                        "executed_adjustment_id": (
+                            (getattr(self.last_call, "adjustment", None) or {}).get("id")
+                            if applied_recommended_action
+                            and (closed.get("executed_status") or "") == "identified"
+                            and (closed.get("executed_play") or "") == getattr(self.last_call, "play", None)
+                            else None
+                        ),
+                        "offense_action_explicitly_confirmed": bool(
+                            applied_recommended_action
+                            and (closed.get("executed_status") or "") == "identified"
+                        ),
                     },
                     replace=True,
                 )
@@ -680,6 +721,7 @@ class LivePlayController:
         executed_formation: str | None = None,
         executed_play: str | None = None,
         executed_macro: str | None = None,
+        applied_recommended_action: bool = False,
         request_key: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
@@ -700,6 +742,7 @@ class LivePlayController:
                     executed_formation=executed_formation,
                     executed_play=executed_play,
                     executed_macro=executed_macro,
+                    applied_recommended_action=applied_recommended_action,
                 )
             elif self.last_call is not None and not (outcome or "").strip():
                 # Allow first snap without prior outcome
@@ -1583,6 +1626,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             executed_formation=body.get("executed_formation"),
                             executed_play=body.get("executed_play"),
                             executed_macro=body.get("executed_macro"),
+                            applied_recommended_action=body.get("applied_recommended_action") is True,
                             request_key=body.get("idempotency_key") or body.get("request_key"),
                         ),
                     )
