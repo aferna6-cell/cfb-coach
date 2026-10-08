@@ -2,9 +2,9 @@ name: pytest
 
 on:
   push:
-    branches: [main, madden-ml/coach, madden-ml/experimental-pilot, cursor/execution-default-recovery-38d5]
+    branches: [main, madden-ml/coach, madden-ml/experimental-pilot, madden-ml/offense-control-compact-ui]
   pull_request:
-    branches: [main, madden-ml/coach, madden-ml/experimental-pilot]
+    branches: [main, madden-ml/coach, madden-ml/experimental-pilot, cursor/execution-default-recovery-38d5]
 
 jobs:
   test:
