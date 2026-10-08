@@ -400,6 +400,17 @@ def apply_experimental_offense(
         if not ranked:
             return _fallback(MLStatus.INVALID_OUTPUT, latency)
 
+        # Repeated calls are observable even when the executed play has not
+        # been verified. Keep the model primary, but penalize repeated play /
+        # screen exposure before choosing its next in-book candidate.
+        from cfb_coach.madden.model.offense_selection_policy import select_from_database
+
+        ranked, selection_audit = select_from_database(
+            ranked, db=db, opponent_id=opponent_id
+        )
+        latency = (time.perf_counter() - started) * 1000.0
+        if latency > budget:
+            return _fallback(MLStatus.TIMEOUT, latency)
         top = ranked[0]
         ml_form, ml_play = top["formation"], top["play"]
         # Hard guard: ML pick must be in situational pool (or the heuristic).
@@ -475,7 +486,8 @@ def apply_experimental_offense(
             "rankings": ranked[:8],
             "fell_back": False,
             "n_eligible_candidates": len(pairs),
-            "selection_policy": "model_primary",
+            "selection_policy": "model_primary_repetition_aware.v1",
+            "selection_audit": selection_audit,
             "offense_action": getattr(call, "ml_offense_action", None),
         }
 
