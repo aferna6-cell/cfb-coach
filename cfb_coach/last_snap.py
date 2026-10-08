@@ -303,6 +303,7 @@ class LastSnapBook:
         executed_play: str | None = None,
         executed_macro: str | None = None,
         executed_verification: str = "unknown",
+        applied_recommended_macro: bool | None = None,
     ) -> dict[str, Any] | None:
         """Browser submit: outcome, optional 'they ran', and the next line's last-play field."""
         if self.call is None or self.sit is None or not (outcome or "").strip():
@@ -318,7 +319,13 @@ class LastSnapBook:
             status = "identified"
             executed_formation = getattr(self.call, "formation", None)
             executed_play = getattr(self.call, "play", None)
-            executed_macro = _macro_of(self.call)
+            # Madden tracks optional action execution independently from the
+            # executed play. Preserve legacy CFB behavior (None) until scoped.
+            executed_macro = (
+                _macro_of(self.call)
+                if applied_recommended_macro is None or applied_recommended_macro
+                else None
+            )
             executed_verification = "verified"
         elif status == "used_different":
             # Fully specified different execution must verify. Do not treat the
