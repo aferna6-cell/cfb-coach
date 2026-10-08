@@ -157,12 +157,8 @@ class ModelDesignedOffenseTests(unittest.TestCase):
     def test_refuse_uncatalogued_play_even_when_marked_installed(self) -> None:
         p = self.plan()
         p["book"]["formations"][next(iter(p["book"]["formations"]))].append("Fabricated Hot Route Play")
-        designer.stage_design(self.db, p)
         with self.assertRaises(ValueError):
-            designer.confirm_installed(
-                self.db, proposal_id=p["proposal_id"],
-                attestation="I installed and checked every play in Madden's custom editor",
-            )
+            designer.stage_design(self.db, p)
         self.assertEqual(playbook.load_books(self.db)["offense"], self.old)
 
     def test_model_created_macro_requires_separate_editor_verification(self) -> None:
