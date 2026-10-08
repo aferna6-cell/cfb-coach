@@ -671,7 +671,7 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
         try:
             design = designer.design_offense(
                 db, opponent_id=args.opponent,
-                max_formations=args.max_formations, max_plays=args.max_plays
+                max_formations=args.max_formations
             )
             if args.stage:
                 design = designer.stage_design(db, design)
@@ -1076,7 +1076,6 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_od.add_argument("--opponent", "-o", default="cpu")
     p_od.add_argument("--max-formations", type=int, default=5)
-    p_od.add_argument("--max-plays", type=int, default=10)
     p_od.add_argument("--text", action="store_true",
                       help="Print the original JSON report instead of opening the HTML designer")
     p_od.add_argument("--no-open", action="store_true",
