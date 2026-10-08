@@ -82,7 +82,12 @@ def choose_model_play(
             float(r["probability"]) for r in ranked
             if (r["formation"], r["play"]) != key
         ]
-        if others and float(row["probability"]) - max(others) > 0.18:
+        strong_evidence = (
+            float(row.get("uncertainty", 1.0)) < 0.35
+            and row.get("evidence_quality") not in ("prior_driven", "unknown")
+        )
+        if (others and strong_evidence
+                and float(row["probability"]) - max(others) > 0.18):
             penalty = min(penalty, 0.10)
         # Do not rewrite calibrated model probabilities as penalized forecasts.
         row["selection_penalty"] = round(penalty, 5)
@@ -106,6 +111,17 @@ def choose_model_play(
             and r.get("play_concept") != _play_concept(last[1])
             and float(ranked[0]["probability"]) - float(r["probability"]) <= 0.18
         ]
+        # Low-evidence model estimates are not credible enough to justify
+        # recommending one identical concept indefinitely.
+        low_evidence = (
+            float(choices[0].get("uncertainty", 1.0)) >= 0.35
+            or choices[0].get("evidence_quality") in ("prior_driven", "unknown")
+        )
+        if not different and low_evidence:
+            different = [
+                r for r in choices if (r["formation"], r["play"]) != last
+                and r.get("play_concept") != _play_concept(last[1])
+            ]
         if different:
             pivot = different[0]
             choices.remove(pivot)
