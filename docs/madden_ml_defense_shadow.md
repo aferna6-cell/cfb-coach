@@ -24,6 +24,10 @@ python -m cfb_coach ml defense-shadow-status
 python -m cfb_coach ml defense-shadow-demo
 python -m cfb_coach ml defense-shadow-report
 python -m cfb_coach ml defense-shadow-report --game-id <id>
+python -m cfb_coach ml defense-eval
+python -m cfb_coach ml defense-eval --game-id <id>
+python -m cfb_coach ml defense-readiness
+python -m cfb_coach ml defense-readiness --json
 # Always refuses until readiness criteria below are met:
 python -m cfb_coach ml defense-shadow-activate
 ```
@@ -55,6 +59,9 @@ are verified for that adjustment.
 - Every required Madden defensive editor field must have an explicit researched
   value or Default (`editor_fields.json` inventory). Pool membership alone is
   not enough.
+- **Provenance:** fields named in `defense_macro().settings` are `researched` or
+  `explicit_default`. Fields filled only by `research_db.full_settings()` are
+  `synthesized_default`. Source coverage and uncertain settings are reported.
 - The adjustment must be compatible with the **selected** formation/play
   (researched base, shell, coverage family). Incompatible → recommend the play
   without an adjustment.
@@ -62,12 +69,32 @@ are verified for that adjustment.
 - Experimental / benched macros (e.g. `HEAT`) are **ineligible** unless
   `CFB_COACH_ALLOW_EXPERIMENTAL_D_MACROS` is explicitly authorized.
 - Never invent settings or activate an unarmed macro.
+- Future ML **control** additionally requires `control_eligible` (provenance +
+  compatibility). Observation/shadow may still recommend with synthesized Defaults.
 
 ## Latency budget
 
 The full shadow path (opponent model + ranking + CA validation) must finish
-within **150 ms**. On timeout or exception the live heuristic call is preserved
-and the fallback reason is recorded (`timeout during …` / `exception: …`).
+within **150 ms**. **Any** over-budget defensive recommendation falls back
+**fully** to the heuristic (formation, play, and adjustment) — never keep a
+ranked shadow play while only dropping the CA. Timeout/exception reasons are
+recorded (`timeout during …` / `exception: …`).
+
+## Evaluation & readiness (Sprint 5.2)
+
+- `defense-eval` — opponent/situation breakdown, heuristic↔shadow agree/disagree,
+  coverage-family and CA recommendations, verified executed plays/adjustments,
+  concepts/outcomes, latency/fallback/missing evidence, calibration when data
+  supports it. Never credits unexecuted shadow alternatives.
+- `defense-readiness` — dashboard vs suggested Stage 3 targets (≥40 verified D
+  snaps, ≥3 human games, valid play↔adj, outcome attribution, situation tests,
+  latency/fallback). Experimental readiness only — not competitive proof.
+
+## Control pilot architecture (disabled)
+
+`defense_control` implements authorize → select → instant heuristic rollback.
+`defense-shadow-activate` and `try_activate_pilot` **always refuse** this sprint.
+Flipping meta flags cannot enable live defensive ML control here.
 
 ## Observation readiness (shadow advisor for human opponents)
 

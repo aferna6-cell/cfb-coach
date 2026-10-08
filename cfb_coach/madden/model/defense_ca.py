@@ -63,6 +63,12 @@ def required_editor_fields() -> list[tuple[str, str]]:
     return out
 
 
+# Minimum researched (non-synthesized) fields before a macro may be considered
+# for *future* ML control. Observation/shadow may still recommend with Defaults.
+_MIN_RESEARCHED_FOR_CONTROL = 3
+_UNCERTAIN_CONFIDENCE = frozenset({"conflict", "uncertain", "low", "single-source-conflict"})
+
+
 @dataclass
 class ArmedMacroView:
     mid: str
@@ -81,6 +87,12 @@ class ArmedMacroView:
     experimental: bool = False
     missing_fields: list[str] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
+    # Provenance: researched / explicit_default vs full_settings()-synthesized Defaults.
+    source_coverage: dict[str, Any] = field(default_factory=dict)
+    uncertain_settings: list[str] = field(default_factory=list)
+    setting_kinds: list[dict[str, Any]] = field(default_factory=list)
+    provenance_ok_for_control: bool = False
+    control_eligible: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -99,6 +111,11 @@ class ArmedMacroView:
             "experimental": self.experimental,
             "missing_fields": list(self.missing_fields),
             "reasons": list(self.reasons),
+            "source_coverage": dict(self.source_coverage),
+            "uncertain_settings": list(self.uncertain_settings),
+            "setting_kinds": list(self.setting_kinds[:16]),
+            "provenance_ok_for_control": self.provenance_ok_for_control,
+            "control_eligible": self.control_eligible,
         }
 
 
@@ -118,12 +135,116 @@ def _coverage_hint_from_settings(researched: Mapping[str, str], shell_pair: str,
     return None
 
 
+def _raw_researched_index(mid: str) -> dict[tuple[str, str], dict[str, Any]]:
+    """Index settings that appear on the research macro itself (not synthesized)."""
+    m = rdb.defense_macro(mid) or {}
+    out: dict[tuple[str, str], dict[str, Any]] = {}
+    for r in m.get("settings") or []:
+        sec = str(r.get("section") or "").strip()
+        name = str(r.get("setting") or "").strip()
+        if not name:
+            continue
+        out[(sec.lower(), name.lower())] = dict(r)
+    return out
+
+
+def classify_setting_provenance(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    raw_researched: Mapping[tuple[str, str], Mapping[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, Any], list[str]]:
+    """Classify each full_settings row as researched / explicit_default / synthesized_default.
+
+    ``researched`` — named in ``defense_macro().settings`` with a non-Default value.
+    ``explicit_default`` — named in research DB with value Default (or researched Default).
+    ``synthesized_default`` — filled by ``research_db.full_settings()`` with source=default.
+    """
+    kinds: list[dict[str, Any]] = []
+    uncertain: list[str] = []
+    n_researched = n_explicit = n_synth = 0
+    for r in rows:
+        sec = str(r.get("section") or "").strip()
+        name = str(r.get("setting") or "").strip()
+        if not name:
+            continue
+        key = (sec.lower(), name.lower())
+        val = str(r.get("value") or "").strip()
+        src = str(r.get("source") or "").strip() or None
+        conf = str(r.get("confidence") or "").strip().lower() or None
+        raw = raw_researched.get(key)
+        if raw is not None:
+            raw_val = str(raw.get("value") or "").strip()
+            if raw_val.lower() == "default":
+                kind = "explicit_default"
+                n_explicit += 1
+            else:
+                kind = "researched"
+                n_researched += 1
+            # Prefer the research-DB source id when present.
+            src = str(raw.get("source") or src or "").strip() or src
+        else:
+            # Not named on the macro in the research DB — synthesized by full_settings().
+            kind = "synthesized_default"
+            n_synth += 1
+            src = "default"
+        uncertain_flag = bool(conf and conf in _UNCERTAIN_CONFIDENCE)
+        if uncertain_flag:
+            uncertain.append(f"{sec}/{name} ({conf})")
+        kinds.append(
+            {
+                "section": sec,
+                "setting": name,
+                "value": val,
+                "kind": kind,
+                "source": src,
+                "confidence": conf,
+                "uncertain": uncertain_flag,
+            }
+        )
+    total = n_researched + n_explicit + n_synth
+    coverage = {
+        "researched": n_researched,
+        "explicit_default": n_explicit,
+        "synthesized_default": n_synth,
+        "total": total,
+        "researched_frac": (n_researched / total) if total else 0.0,
+        "named_in_research_db": n_researched + n_explicit,
+        "min_researched_for_control": _MIN_RESEARCHED_FOR_CONTROL,
+    }
+    return kinds, coverage, uncertain
+
+
+def provenance_acceptable_for_control(
+    *,
+    coverage: Mapping[str, Any],
+    uncertain_settings: Sequence[str],
+    valid: bool,
+    experimental: bool,
+) -> bool:
+    """True when setting provenance is good enough for *future* ML control.
+
+    Observation/shadow may still recommend macros that fail this bar.
+    """
+    if not valid or experimental:
+        return False
+    if uncertain_settings:
+        return False
+    researched = int(coverage.get("researched") or 0)
+    if researched < _MIN_RESEARCHED_FOR_CONTROL:
+        return False
+    return True
+
+
 def inspect_armed_macro(mid: str) -> ArmedMacroView:
     """Validate one armed defense macro against the complete editor inventory.
 
     Pool membership alone is not enough. Experimental / benched macros are
     ineligible unless explicitly authorized. Every required editor field must
     have an explicit researched value or Default.
+
+    Distinguishes research-DB-named fields from Defaults synthesized by
+    ``research_db.full_settings()``. Future ML control additionally requires
+    acceptable provenance (``control_eligible``).
     """
     key = (mid or "").strip().upper()
     meta = pool_macro(key) or {}
@@ -131,6 +252,15 @@ def inspect_armed_macro(mid: str) -> ArmedMacroView:
     missing_fields: list[str] = []
     experimental = bool(is_experimental_macro(key) or key in EXPERIMENTAL_MACROS)
 
+    empty_coverage = {
+        "researched": 0,
+        "explicit_default": 0,
+        "synthesized_default": 0,
+        "total": 0,
+        "researched_frac": 0.0,
+        "named_in_research_db": 0,
+        "min_researched_for_control": _MIN_RESEARCHED_FOR_CONTROL,
+    }
     if not meta:
         return ArmedMacroView(
             mid=key,
@@ -145,6 +275,7 @@ def inspect_armed_macro(mid: str) -> ArmedMacroView:
             complete=False,
             experimental=experimental,
             reasons=["not in research macro pool — not usable"],
+            source_coverage=empty_coverage,
         )
 
     if experimental and not experimental_macros_authorized():
@@ -153,6 +284,11 @@ def inspect_armed_macro(mid: str) -> ArmedMacroView:
         )
 
     rows = settings_rows(key)
+    raw_index = _raw_researched_index(key)
+    setting_kinds, source_coverage, uncertain_settings = classify_setting_provenance(
+        rows, raw_researched=raw_index
+    )
+
     # Index settings by (section, setting) lower-case.
     by_key: dict[tuple[str, str], dict[str, Any]] = {}
     for r in rows:
@@ -174,12 +310,14 @@ def inspect_armed_macro(mid: str) -> ArmedMacroView:
             val = str(row.get("value") or "").strip()
             if not val:
                 missing_fields.append(f"{sec}/{name} (empty value)")
-            # Explicit Default is OK; researched non-default is OK.
+            # Explicit researched Default OR synthesized Default fills the inventory
+            # for observation completeness; provenance reports which kind it is.
         if missing_fields:
             reasons.append(
                 f"incomplete editor settings: {len(missing_fields)} required field(s) missing"
             )
 
+    # Non-synthesized researched values (source != default) for compatibility hints.
     researched = {
         str(r.get("setting") or ""): str(r.get("value") or "")
         for r in rows
@@ -201,6 +339,8 @@ def inspect_armed_macro(mid: str) -> ArmedMacroView:
     for setting, vals in by_setting.items():
         if len(vals) > 1:
             reasons.append(f"internal setting conflict on {setting}: {sorted(vals)}")
+    if uncertain_settings:
+        reasons.append(f"uncertain settings: {len(uncertain_settings)}")
 
     base = meta.get("base") or {}
     base_form = str(base.get("formation") or "").strip() or None
@@ -211,7 +351,7 @@ def inspect_armed_macro(mid: str) -> ArmedMacroView:
     cov_hint = _coverage_hint_from_settings(researched, str(shell or ""), base_play)
 
     complete = not missing_fields and bool(required)
-    # valid requires: in pool, not experimental (unless authorized), complete inventory, no conflicts.
+    # valid (observation): in pool, not experimental (unless authorized), complete, no hard conflicts.
     blocking = [
         r
         for r in reasons
@@ -222,6 +362,18 @@ def inspect_armed_macro(mid: str) -> ArmedMacroView:
         or "inventory unavailable" in r.lower()
     ]
     valid = bool(meta) and complete and not blocking
+    prov_ok = provenance_acceptable_for_control(
+        coverage=source_coverage,
+        uncertain_settings=uncertain_settings,
+        valid=valid,
+        experimental=experimental,
+    )
+    if not prov_ok and valid:
+        reasons.append(
+            "provenance insufficient for future ML control "
+            f"(researched={source_coverage.get('researched')}, "
+            f"synthesized_default={source_coverage.get('synthesized_default')})"
+        )
 
     return ArmedMacroView(
         mid=key,
@@ -240,6 +392,11 @@ def inspect_armed_macro(mid: str) -> ArmedMacroView:
         experimental=experimental,
         missing_fields=missing_fields[:12],
         reasons=reasons,
+        source_coverage=source_coverage,
+        uncertain_settings=uncertain_settings[:12],
+        setting_kinds=setting_kinds,
+        provenance_ok_for_control=prov_ok,
+        control_eligible=prov_ok,  # compat checked at recommend time
     )
 
 
@@ -444,20 +601,30 @@ def recommend_adjustment(
             ),
             "candidates": ranked[:5],
         }
+    def _pack(row: Mapping[str, Any], *, reason: str) -> dict[str, Any]:
+        # Future ML control requires provenance + play compatibility (already gated).
+        control_ok = bool(row.get("provenance_ok_for_control")) and bool(row.get("eligible"))
+        return {
+            "macro": row["id"],
+            "xbox_name": row.get("xbox_name"),
+            "reason": reason,
+            "incompatibility": None,
+            "candidates": ranked[:5],
+            "settings_ok": True,
+            "complete": bool(row.get("complete")),
+            "buttons": row.get("buttons"),
+            "source_coverage": dict(row.get("source_coverage") or {}),
+            "uncertain_settings": list(row.get("uncertain_settings") or []),
+            "provenance_ok_for_control": bool(row.get("provenance_ok_for_control")),
+            "control_eligible": control_ok,
+        }
+
     if heuristic_macro:
         for row in eligible:
             if row["id"] == heuristic_macro.upper():
                 if essential_only and float(row.get("score") or 0) < 0.5:
                     break
-                return {
-                    "macro": row["id"],
-                    "xbox_name": row.get("xbox_name"),
-                    "reason": f"keep heuristic {row['id']} ({row.get('why')})",
-                    "incompatibility": None,
-                    "candidates": ranked[:5],
-                    "settings_ok": True,
-                    "complete": bool(row.get("complete")),
-                }
+                return _pack(row, reason=f"keep heuristic {row['id']} ({row.get('why')})")
     top = eligible[0]
     if essential_only and float(top.get("score") or 0) < 0.5 and not preferred:
         return {
@@ -466,13 +633,4 @@ def recommend_adjustment(
             "incompatibility": None,
             "candidates": ranked[:5],
         }
-    return {
-        "macro": top["id"],
-        "xbox_name": top.get("xbox_name"),
-        "reason": top.get("why") or "best armed match",
-        "incompatibility": None,
-        "candidates": ranked[:5],
-        "settings_ok": True,
-        "complete": bool(top.get("complete")),
-        "buttons": top.get("buttons"),
-    }
+    return _pack(top, reason=top.get("why") or "best armed match")
