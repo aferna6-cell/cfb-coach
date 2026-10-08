@@ -17,6 +17,7 @@ Defense is never selected by this mode. CPU remains offense-only.
 
 from __future__ import annotations
 
+import json
 import time
 import traceback
 from dataclasses import replace
@@ -112,6 +113,8 @@ def rebuild_offense_attachments(
     opponent_id: str,
     rationale: str,
     audibles: dict[str, list[str]] | None = None,
+    model_action_policy: bool = False,
+    play_prediction: dict[str, Any] | None = None,
 ) -> Any:
     """Build reads / macro / adjustment for an already-chosen in-book play."""
     from cfb_coach.madden.data import reads_for
@@ -150,6 +153,36 @@ def rebuild_offense_attachments(
     except Exception:  # noqa: BLE001
         weights = {}
         cooled = set()
+
+    if model_action_policy:
+        from cfb_coach.madden.model.offense_action_policy import choose_offense_action
+
+        decision = choose_offense_action(
+            formation=formation, play=play, sit=sit, book=book,
+            active=active, weights=weights, cooled=cooled,
+            score_phase=score_phase, audibles=audibles,
+            prediction=play_prediction,
+            allow_macros=(getattr(sit, "extras", None) or {}).get(
+                "live_macros", True
+            ) is not False,
+            repeated=repeated,
+        )
+        chosen_macro = decision.get("macro")
+        chosen_adj = decision.get("adjustment")
+        call = MaddenCall(
+            "offense", formation, play,
+            chosen_adj["label"] if chosen_adj else "No adj",
+            reads_for(play),
+            rationale + f" | ACTION {decision['kind']}: {decision['reason']}",
+            macro=chosen_macro["id"] if chosen_macro else None,
+            macro_info=chosen_macro,
+            adjustment=chosen_adj,
+        )
+        call.ml_offense_action = {
+            key: value for key, value in decision.items()
+            if key not in ("macro", "adjustment")
+        }
+        return call
 
     adj = "Hot ready" if cls == "pressure" and src == "live" else "No adj"
     adjustment = None
@@ -310,9 +343,7 @@ def apply_experimental_offense(
     pairs, bonuses = situational_offense_candidates(
         sit, book, db=db, opponent_id=opponent_id
     )
-    # Heuristic pick must remain in the eligible set when possible.
-    if heur_form and heur_play and (heur_form, heur_play) not in pairs:
-        pairs = list(pairs) + [(heur_form, heur_play)]
+    # Model-primary: heuristic is only the fallback, never an extra candidate.
     if not pairs:
         return _fallback(MLStatus.INVALID_OUTPUT)
 
@@ -357,8 +388,9 @@ def apply_experimental_offense(
             coverage_source=cov_src,
             opponent_id=opponent_id,
             opponent_type=opp_type,
-            heuristic=(heur_form, heur_play) if heur_form and heur_play else None,
-            heuristic_bonuses=bonuses,
+            heuristic=None,
+            heuristic_bonuses={},
+            near_tie_margin=0.0,
         )
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
@@ -404,21 +436,24 @@ def apply_experimental_offense(
         if cov_src == "last" and cov_hint:
             explanation += " | last-snap coverage used as soft prior only"
 
-        if agree:
-            call = heuristic_call
-            call.rationale = (getattr(call, "rationale", "") or "") + f" | {explanation}"
-        else:
-            call = rebuild_offense_attachments(
-                formation=ml_form,
-                play=ml_play,
-                sit=sit,
-                book=book,
-                active=list(active or []),
-                db=db,
-                opponent_id=opponent_id,
-                rationale=f"{explanation} | sealed rebuild of reads/macros for ML pick",
-                audibles=audibles,
-            )
+        # Always build the model-selected call, even when the play name agrees
+        # with the heuristic. Accessories must never be inherited by accident.
+        call = rebuild_offense_attachments(
+            formation=ml_form,
+            play=ml_play,
+            sit=sit,
+            book=book,
+            active=list(active or []),
+            db=db,
+            opponent_id=opponent_id,
+            rationale=f"{explanation} | model-primary reconstructed call",
+            audibles=audibles,
+            model_action_policy=True,
+            play_prediction=top,
+        )
+        latency = (time.perf_counter() - started) * 1000.0
+        if latency > budget:
+            return _fallback(MLStatus.TIMEOUT, latency)
 
         info = {
             "heuristic_formation": heur_form,
@@ -438,6 +473,8 @@ def apply_experimental_offense(
             "rankings": ranked[:8],
             "fell_back": False,
             "n_eligible_candidates": len(pairs),
+            "selection_policy": "model_primary",
+            "offense_action": getattr(call, "ml_offense_action", None),
         }
 
         dec = CoachingDecision(
@@ -514,6 +551,33 @@ def commit_experimental_decision(
         row_id = db.log_ml_decision(stamped, agree=agree)
     except Exception:  # noqa: BLE001
         return None
+
+    # Preserve the model's decision and action provenance for postgame learning.
+    # The output is research-based for actions, not a causal effect estimate.
+    info = getattr(call, "ml_experimental", None)
+    if isinstance(info, dict):
+        try:
+            raw = db.conn.execute(
+                "SELECT decision_json FROM ml_decisions WHERE id=?", (row_id,)
+            ).fetchone()
+            payload = json.loads(raw["decision_json"] or "{}") if raw else {}
+            payload["experimental_offense"] = {
+                "selection_policy": info.get("selection_policy", "legacy_experimental"),
+                "model_version": info.get("model_version"),
+                "evidence_quality": info.get("evidence_quality"),
+                "probability": info.get("probability"),
+                "uncertainty": info.get("uncertainty"),
+                "knowledge_version": info.get("knowledge_version"),
+                "offense_action": info.get("offense_action"),
+            }
+            db.conn.execute(
+                "UPDATE ml_decisions SET decision_json=? WHERE id=?",
+                (json.dumps(payload, default=str), row_id),
+            )
+            db.conn.commit()
+        except Exception:  # noqa: BLE001
+            # Never jeopardize the original verified sealed decision.
+            pass
     try:
         setattr(call, PENDING_ATTR, stamped)
         info = getattr(call, "ml_experimental", None)
@@ -621,6 +685,40 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
         if outc["executed_status"] == "identified" and outc["executed_verification"] == "verified":
             verified += 1
 
+    # Action usage is measured only from the chosen and recorded snap.
+    # A checked play execution is not proof a proposed hot route or macro ran.
+    action_recommended = 0
+    action_confirmed = 0
+    action_unconfirmed = 0
+    action_by_kind: dict[str, int] = {}
+    for r in identified:
+        try:
+            decision_payload = json.loads(r["decision_json"] or "{}")
+            action = (decision_payload.get("experimental_offense") or {}).get("offense_action") or {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            action = {}
+        kind = str(action.get("kind") or "none")
+        action_id = action.get("id")
+        if not action_id or kind not in ("macro", "adjustment"):
+            continue
+        action_recommended += 1
+        action_by_kind[kind] = action_by_kind.get(kind, 0) + 1
+        outcome_row = outcomes.get(str(r["snap_id"] or ""))
+        confirmed = False
+        if outcome_row is not None and outcome_row["executed_status"] == "identified" and outcome_row["executed_verification"] == "verified":
+            try:
+                outcome_payload = json.loads(outcome_row["outcome_json"] or "{}")
+                confirmed = bool(outcome_payload.get("offense_action_explicitly_confirmed")) and (
+                    (kind == "macro" and outcome_payload.get("executed_macro") == action_id)
+                    or (kind == "adjustment" and outcome_payload.get("executed_adjustment_id") == action_id)
+                )
+            except (ValueError, TypeError, json.JSONDecodeError):
+                pass
+        if confirmed:
+            action_confirmed += 1
+        else:
+            action_unconfirmed += 1
+
     orphan_anonymous = len(rows) - len(identified)
     return {
         "n_experimental_calls": n,
@@ -632,6 +730,13 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
         "disagree_with_heuristic": len(disagree),
         "verified_executions_linked": verified,
         "outcomes_linked": linked_outcomes,
+        "offense_actions": {
+            "recommended": action_recommended,
+            "verified_applied": action_confirmed,
+            "unconfirmed": action_unconfirmed,
+            "by_kind": action_by_kind,
+            "note": "Only explicitly confirmed action execution counted. No counterfactual or causal action lift inferred.",
+        },
         "game_id_filter": game_id,
         "disagreements": [
             {

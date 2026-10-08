@@ -189,6 +189,7 @@ class LivePlayController:
             "ball": self._book().spot.as_dict(),
             "execution_verify": bool(self.enable_execution_verify),
             "pending_recommendation": self._pending_recommendation(),
+            "pending_offense_action": self._pending_offense_action(),
             "ml_experimental": self._ml_experimental_state(),
         }
 
@@ -202,6 +203,29 @@ class LivePlayController:
             "macro": getattr(call, "macro", None),
             "side": getattr(call, "side", None),
         }
+
+    def _pending_offense_action(self) -> dict[str, Any] | None:
+        """Research-grounded action details are optional and never the main call."""
+        call = self.last_call
+        if call is None or self.ended or str(getattr(call, "side", "")).startswith("d"):
+            return None
+        info = getattr(call, "macro_info", None)
+        if isinstance(info, dict) and getattr(call, "macro", None):
+            return {
+                "kind": "macro", "id": getattr(call, "macro"),
+                "label": info.get("name") or info.get("id"),
+                "buttons": info.get("buttons") or "",
+                "why": info.get("why") or "",
+            }
+        adj = getattr(call, "adjustment", None)
+        if isinstance(adj, dict) and adj.get("id"):
+            return {
+                "kind": "adjustment", "id": adj["id"],
+                "label": adj.get("label") or adj["id"],
+                "buttons": adj.get("buttons") or "",
+                "why": adj.get("why") or "",
+            }
+        return None
 
     def _ml_experimental_state(self) -> dict[str, Any] | None:
         """Heuristic vs ML explanation when experimental mode produced the call."""
@@ -528,10 +552,18 @@ class LivePlayController:
         executed_formation: str | None = None,
         executed_play: str | None = None,
         executed_macro: str | None = None,
+        applied_recommended_action: bool = False,
     ) -> dict[str, Any] | None:
         """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
             return None
+        # Only an action actually offered with the final call can be
+        # explicitly confirmed. A stale hidden checkbox must not fabricate it.
+        applied_recommended_action = bool(
+            applied_recommended_action
+            and executed_status == "used_recommended"
+            and self._pending_offense_action()
+        )
         book = self._book()
         if book.call is None:
             book.remember_call(self.last_call, self.last_sit)
@@ -543,6 +575,10 @@ class LivePlayController:
             executed_formation=executed_formation,
             executed_play=executed_play,
             executed_macro=executed_macro,
+            applied_recommended_macro=(
+                applied_recommended_action
+                if str(self.brand).lower().startswith("madden") else None
+            ),
         )
         if closed is None:
             return None
@@ -586,6 +622,18 @@ class LivePlayController:
                         "kind": parsed.kind,
                         "coverage_seen": book.coverage,
                         "concept_seen": book.concept,
+                        "executed_macro": closed.get("executed_macro"),
+                        "executed_adjustment_id": (
+                            (getattr(self.last_call, "adjustment", None) or {}).get("id")
+                            if applied_recommended_action
+                            and (closed.get("executed_status") or "") == "identified"
+                            and (closed.get("executed_play") or "") == getattr(self.last_call, "play", None)
+                            else None
+                        ),
+                        "offense_action_explicitly_confirmed": bool(
+                            applied_recommended_action
+                            and (closed.get("executed_status") or "") == "identified"
+                        ),
                     },
                     replace=True,
                 )
@@ -680,6 +728,7 @@ class LivePlayController:
         executed_formation: str | None = None,
         executed_play: str | None = None,
         executed_macro: str | None = None,
+        applied_recommended_action: bool = False,
         request_key: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
@@ -700,6 +749,7 @@ class LivePlayController:
                     executed_formation=executed_formation,
                     executed_play=executed_play,
                     executed_macro=executed_macro,
+                    applied_recommended_action=applied_recommended_action,
                 )
             elif self.last_call is not None and not (outcome or "").strip():
                 # Allow first snap without prior outcome
@@ -923,6 +973,11 @@ def render_live_html(ctrl: LivePlayController) -> str:
   <div class="heard" id="heard"{' hidden' if compact_madden else ''}>vs {_esc(ctrl.opponent_id)}</div>
   <div class="call" id="call"{' aria-live="polite"' if compact_madden else ''}>{_esc(_call_main(ctrl))}</div>
   {_macro_box_html(None if compact_madden else ctrl.macro_state())}
+  {"""<details id="offense-action-panel" hidden>
+    <summary>Optional hot route / Custom Adjustment</summary>
+    <div id="offense-action-label"></div>
+    <div id="offense-action-buttons"></div>
+  </details>""" if compact_madden else ""}
   <div class="heard" id="ml-experimental" hidden></div>
   <div class="err" id="err"></div>
 
@@ -963,6 +1018,11 @@ def render_live_html(ctrl: LivePlayController) -> str:
         <input class="wide" id="exec-play" placeholder="actual play name"/>
       </div>
     </div>
+
+    {"""<div id="action-confirm-row" hidden>
+      <label><input type="checkbox" id="action-applied"/>
+        I actually applied the optional hot route / Custom Adjustment</label>
+    </div>""" if compact_madden else ""}
 
     <h2 style="margin-top:1rem">Next situation</h2>
     <div class="row">
@@ -1088,6 +1148,19 @@ function renderState(st) {{
       }}
     }}
   }}
+  // Model-selected optional actions remain collapsed; the main call is always
+  // formation + play. Never infer execution from merely showing an action.
+  const act = st.pending_offense_action;
+  const actionPanel = $("offense-action-panel");
+  const actionConfirmRow = $("action-confirm-row");
+  if (actionPanel) {{
+    actionPanel.hidden = !act;
+    if (act) {{
+      $("offense-action-label").textContent = act.label || act.id || "";
+      $("offense-action-buttons").textContent = act.buttons || "";
+    }}
+  }}
+  if (actionConfirmRow) actionConfirmRow.hidden = !act;
   $("heard").textContent = st.heard || ("vs " + (st.opponent_id || ""));
   const log = $("log");
   if (!st.log || !st.log.length) {{
@@ -1374,6 +1447,7 @@ $("btn-submit").addEventListener("click", async () => {{
         executed_status: exec,
         executed_formation: ($("exec-formation").value || "").trim() || null,
         executed_play: ($("exec-play").value || "").trim() || null,
+        applied_recommended_action: !!($("action-applied") && $("action-applied").checked),
       }};
       return await apiAction("/api/result_call", body);
     }});
@@ -1385,6 +1459,7 @@ $("btn-submit").addEventListener("click", async () => {{
     $("live-mark").checked = false;
     document.querySelectorAll("#outcome-btns button.outcome").forEach(b => b.style.outline = "");
     restoreExecDefaultAfterSubmit();
+    if ($("action-applied")) $("action-applied").checked = false;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -1413,6 +1488,7 @@ $("btn-call-only").addEventListener("click", async () => {{
       score_us: $("score-us").value, score_them: $("score-them").value,
     }}));
     if (!data) return;
+    if ($("action-applied")) $("action-applied").checked = false;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -1583,6 +1659,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             executed_formation=body.get("executed_formation"),
                             executed_play=body.get("executed_play"),
                             executed_macro=body.get("executed_macro"),
+                            applied_recommended_action=body.get("applied_recommended_action") is True,
                             request_key=body.get("idempotency_key") or body.get("request_key"),
                         ),
                     )
