@@ -26,35 +26,74 @@ from cfb_coach.opponents import is_cpu_opponent, resolve_opponent
 PROFILE = GAMES[MADDEN27]
 
 
-def _maybe_shadow(db: CoachDB, sit: Any, call: Any, opponent_id: str) -> None:
-    """Opt-in shadow scoring. Never changes the displayed call."""
+def _maybe_shadow(
+    db: CoachDB,
+    sit: Any,
+    call: Any,
+    opponent_id: str,
+    *,
+    game_id: str | None = None,
+    session_id: str | None = None,
+    tracker: Any | None = None,
+) -> int | None:
+    """Opt-in shadow scoring shared by HTML, terminal, and one-shot paths."""
     try:
         from cfb_coach.madden.model import inference as ml_inference
+        from cfb_coach.madden.model.identity import LiveDecisionTracker, next_seq_from_db
         from cfb_coach.madden.model.schema import CoachingMode
-        from cfb_coach.madden.playbook import eligible, load_books
-        from cfb_coach.opponents import is_cpu_opponent
-        from cfb_coach.madden.model.schema import OpponentKind
+        from cfb_coach.session import start_session
 
         if ml_inference.resolve_mode(db) is not CoachingMode.SHADOW:
-            return
-        books = load_books(db)
-        formations = eligible(books).get(call.side) or {}
-        if not formations:
-            return
-        ml_inference.shadow_after_call(
-            situation=sit,
-            heuristic_formation=getattr(call, "formation", None),
-            heuristic_play=getattr(call, "play", None),
-            formations=formations,
-            side=call.side,
-            opponent_id=opponent_id,
-            opponent_type=OpponentKind.CPU if is_cpu_opponent(opponent_id) else OpponentKind.HUMAN,
-            game_id=opponent_id,
-            snap_id=None,
-            db=db,
+            return None
+        # Prefer an explicit game/session; never use opponent_id as game_id.
+        gid = game_id or session_id
+        if not gid:
+            sess = start_session(opponent_id, dynasty=get_session_profile(db), db=db, notes="ml-oneshot")
+            gid = sess.session_id
+        tr = tracker or LiveDecisionTracker.from_session(gid, next_seq=next_seq_from_db(db, gid))
+        snap_id, seq, _key, is_new = tr.seal_call(
+            side=getattr(call, "side", "offense") or "offense",
+            formation=getattr(call, "formation", None),
+            play=getattr(call, "play", None),
+            situation_raw=getattr(sit, "raw", None),
         )
+        _decision, row_id = ml_inference.evaluate_live_shadow(
+            db=db,
+            situation=sit,
+            call=call,
+            opponent_id=opponent_id,
+            game_id=gid,
+            snap_id=snap_id,
+            snap_seq=seq,
+            session_id=gid,
+            run=is_new,
+        )
+        tr.bind_decision_row(row_id)
+        return row_id
     except Exception:  # noqa: BLE001 — shadow must never break live coaching
-        return
+        return None
+
+
+def _html_shadow_hook(db: CoachDB, opponent_id: str):
+    """Closure for LivePlayController.shadow_evaluate."""
+
+    def _hook(sit, call, *, game_id, snap_id, snap_seq, session_id, is_new):
+        from cfb_coach.madden.model import inference as ml_inference
+
+        _decision, row_id = ml_inference.evaluate_live_shadow(
+            db=db,
+            situation=sit,
+            call=call,
+            opponent_id=opponent_id,
+            game_id=game_id,
+            snap_id=snap_id,
+            snap_seq=snap_seq,
+            session_id=session_id,
+            run=is_new,
+        )
+        return row_id
+
+    return _hook
 
 
 def open_db() -> CoachDB:
@@ -525,6 +564,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         heard = format_heard(sit)
         print(heard)
         call = make_call(sit, oid, db, active_macros=_active_now(), live_macros=macros_on)
+        _maybe_shadow(db, sit, call, oid)
         print(call.headline())
         print(call.format())
         if args.why:
@@ -565,6 +605,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             book_apply=lambda rev: live_apply(db, rev),
             live_score=live_ctx.score,
             quarter=live_ctx.quarter,
+            shadow_evaluate=_html_shadow_hook(db, oid),
+            enable_execution_verify=True,
         )
         print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
         try:

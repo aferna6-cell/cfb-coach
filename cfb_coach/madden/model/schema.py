@@ -51,7 +51,7 @@ from cfb_coach.situation import Situation
 
 CONTRACT_VERSION = "madden-ml.schema.1"
 PROVISIONAL_SCHEMA_VERSION = "madden-ml.provisional.1"
-FEATURE_SCHEMA_VERSION = "madden-ml.features.1"
+FEATURE_SCHEMA_VERSION = "madden-ml.features.2"
 DECISION_SCHEMA_VERSION = "madden-ml.decision.1"
 
 # Missing CSV cell. Distinct from the enum value "unknown".

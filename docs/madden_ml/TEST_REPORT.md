@@ -1,37 +1,55 @@
-# Madden ML coach — test report (sprint vertical slice)
+# Madden ML coach — test report (Sprint 3)
 
 Branch: `madden-ml/coach` (PR #20). Environment: Ubuntu, Python 3.12, `pip install -e '.[dev]'`, `PYTHONPATH=.`.
 
 ## Full suite (run twice)
 
 ```bash
-PYTHONPATH=. python -m pytest tests -p no:cacheprovider -q
+PYTHONPATH=. python3 -m pytest tests -p no:cacheprovider -q
 ```
 
 | Run | Result |
 | --- | --- |
-| 1 | **358 passed** in ~39s |
-| 2 | **358 passed** in ~38s |
+| 1 | **373 passed** in ~46s |
+| 2 | **373 passed** (repeat) |
 
 No nondeterministic failures observed across the two full runs.
 
-`tests/madden_ml`: **27 passed** (schema + pipeline) on consecutive runs.
+`tests/madden_ml`: **42 passed** (schema + pipeline + Sprint 3 live/eligibility/identity).
 
-## Baseline vs this branch
+## Sprint 3 coverage added
 
-From `docs/madden_ml/QA_BASELINE.md` (`madden-ml/qa` at `2def811`): collection aborted on missing numpy (320 collected / 1 error). This branch already includes numpy in the `dev` extra and the demo-cwd fix from earlier PR #20 commits. Current suite collects and passes **358** tests (schema + pipeline + prior suite + VOD flag tests from this branch tip).
+- Shared `evaluate_live_shadow` for HTML / terminal / one-shot
+- `LiveDecisionTracker` unique game/snap ids (never opponent_id as game_id)
+- HTML execution verification (used recommended / different / unknown)
+- Outcome linkage via `ml_snap_id` + `ml_outcomes`
+- Training eligibility + supervised-only play-action training
+- Hardened promotion gate (train-only baseline; mins 80/30/4; +0.02 log-loss)
+- Feature schema `madden-ml.features.2` (family one-hots; no numeric hashes)
+- Sealed decision pipeline behind `CFB_COACH_SEALED_PIPELINE` (default off)
+- Local DB find/backup/inspect/export/sanitized + richer `ml report`
 
 ## Integration demonstration type
 
-**Fixture-based software demonstration** (not real-world play-calling effectiveness).
+**Controller-method + temporary-database E2E** (`tests/madden_ml/test_sprint3_live.py`) plus fixture-based software demonstration.
 
-Data used:
+Data used in fixtures:
 
-- `tests/fixtures/madden_ml/labeled_offense_snaps.jsonl` — 20 labeled offense rows across 4 games
-- `tests/fixtures/cpu_19-0_offense_snaps.csv` — 35 historical offense snaps (recommendations only; not verified executions)
+- `tests/fixtures/madden_ml/labeled_offense_snaps.jsonl` — labeled offense rows (execution **unverified** → not supervised-eligible)
+- `tests/fixtures/cpu_19-0_offense_snaps.csv` — historical offense snaps (recommendations only)
 
-Usable labeled rows: **55**. Verified executions: **0** (recommendations are never treated as verified actions).
+Verified executions in fixtures: **0**. Supervised training from fixtures alone yields gate **insufficient** (correct). Hybrid promotion remains blocked.
 
-Training produced `madden-ml.logit.offense.7`. Held-out gate: **insufficient** (holdout group size 5 &lt; 10). Model may be used for shadow analysis; hybrid promotion remains blocked.
+Shadow demo: heuristic pick unchanged; model failures do not interrupt live calls.
 
-Shadow demo: heuristic pick unchanged; model latency ~0.3 ms (budget 150 ms).
+## Real vs fixture counts (this environment)
+
+| Source | Count |
+| --- | --- |
+| Personal Franchise DB on agent VM | **0** (not present; do not invent) |
+| Fixture labeled JSONL | 20 rows / 4 games |
+| Fixture CPU CSV | 35 rows |
+| Verified executions (fixtures) | 0 |
+| E2E temp-DB snaps (acceptance test) | generated per run |
+
+Use `python -m cfb_coach ml find-db` / `ml inspect` on the Franchise laptop to count real games.

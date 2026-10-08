@@ -53,6 +53,8 @@ def rank_live(
     heuristic_pick: CandidatePlay | None = None,
     registry_dir: str | None = None,
     model_artifact: dict[str, Any] | None = None,
+    session_id: str | None = None,
+    snap_seq: int | None = None,
 ) -> CoachingDecision:
     """Score ``candidate_plays`` inside the model budget.
 
@@ -80,6 +82,8 @@ def rank_live(
             effective_mode=CoachingMode.HEURISTIC,
             game_id=game_state.game_id,
             snap_id=game_state.snap_id,
+            session_id=session_id,
+            snap_seq=snap_seq,
             model_version=None,
             policy_source=PolicySource.HEURISTIC,
             candidates=tuple(legal) if legal else (),
@@ -113,6 +117,8 @@ def rank_live(
             mode_downgrade_reason="hybrid_inactive_until_promotion",
             game_id=game_state.game_id,
             snap_id=game_state.snap_id,
+            session_id=session_id,
+            snap_seq=snap_seq,
             model_version=model_version,
             policy_source=PolicySource.HEURISTIC,
             candidates=tuple(legal) if legal else (),
@@ -196,6 +202,8 @@ def rank_live(
         effective_mode=CoachingMode.HEURISTIC,
         game_id=game_state.game_id,
         snap_id=game_state.snap_id,
+        session_id=session_id,
+        snap_seq=snap_seq,
         model_version=model_version,
         registry_id=entry.model_version if entry is not None else None,
         policy_version=policy_mod.POLICY_VERSION,
@@ -212,6 +220,69 @@ def rank_live(
     )
 
 
+def evaluate_live_shadow(
+    *,
+    db: Any,
+    situation: Any,
+    call: Any,
+    opponent_id: str,
+    game_id: str,
+    snap_id: str,
+    snap_seq: int,
+    session_id: str | None = None,
+    formations: dict[str, list[str]] | None = None,
+    run: bool = True,
+) -> tuple[CoachingDecision | None, int | None]:
+    """Shared HTML / terminal / one-shot shadow entry point.
+
+    Never changes the displayed call. Safe no-op when mode is not shadow or
+    ``run`` is False (duplicate seal). Exceptions never propagate.
+    Returns ``(decision, ml_decisions.id)``.
+    """
+    try:
+        from cfb_coach.madden.model.schema import CoachingMode, OpponentKind
+        from cfb_coach.madden.playbook import eligible, load_books
+        from cfb_coach.opponents import is_cpu_opponent
+
+        if not run:
+            return None, None
+        if resolve_mode(db) is not CoachingMode.SHADOW:
+            return None, None
+        if formations is None:
+            books = load_books(db)
+            formations = eligible(books).get(getattr(call, "side", "offense")) or {}
+        if not formations:
+            return None, None
+        decision = shadow_after_call(
+            situation=situation,
+            heuristic_formation=getattr(call, "formation", None),
+            heuristic_play=getattr(call, "play", None),
+            formations=formations,
+            side=getattr(call, "side", "offense"),
+            opponent_id=opponent_id,
+            opponent_type=OpponentKind.CPU if is_cpu_opponent(opponent_id) else OpponentKind.HUMAN,
+            game_id=game_id,
+            snap_id=snap_id,
+            session_id=session_id or game_id,
+            snap_seq=snap_seq,
+            db=db,
+        )
+        row_id = None
+        if decision is not None and db is not None:
+            # row id already written inside shadow_after_call; look up by snap_id
+            try:
+                row = db.conn.execute(
+                    "SELECT id FROM ml_decisions WHERE snap_id = ? ORDER BY id DESC LIMIT 1",
+                    (snap_id,),
+                ).fetchone()
+                row_id = int(row["id"] if hasattr(row, "keys") else row[0]) if row else None
+            except Exception:  # noqa: BLE001
+                row_id = None
+        return decision, row_id
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
 def shadow_after_call(
     *,
     situation: Any,
@@ -224,6 +295,7 @@ def shadow_after_call(
     game_id: str | None = None,
     snap_id: str | None = None,
     session_id: str | None = None,
+    snap_seq: int | None = None,
     registry_dir: str | None = None,
     model_version: str | None = None,
     recent_history: Sequence[tuple[CoachingDecision, SnapOutcome | None]] | None = None,
@@ -283,6 +355,14 @@ def shadow_after_call(
         except ValueError:
             heuristic = None
 
+    from dataclasses import replace as dc_replace
+
+    # Ensure game/snap identity is on the GameState for features/logging.
+    if game_id and state.game_id != game_id:
+        state = dc_replace(state, game_id=game_id)
+    if snap_id and state.snap_id != snap_id:
+        state = dc_replace(state, snap_id=snap_id)
+
     decision = rank_live(
         state,
         obs,
@@ -294,6 +374,8 @@ def shadow_after_call(
         model_version=model_version or resolve_model_version(db),
         registry_dir=registry_dir or resolve_registry_dir(db),
         heuristic_pick=heuristic,
+        session_id=session_id or game_id,
+        snap_seq=snap_seq,
     )
     if db is not None:
         try:

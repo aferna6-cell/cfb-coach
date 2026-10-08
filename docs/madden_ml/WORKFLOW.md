@@ -1,8 +1,8 @@
-# Madden ML coach — Ubuntu workflow
+# Madden ML coach — Ubuntu workflow (Sprint 3)
 
-Opt-in ML commands. Default coaching mode remains **heuristic**. Hybrid stays inactive this sprint.
+Opt-in ML commands. Default coaching mode remains **heuristic**. Hybrid stays inactive.
 
-Provenance: continues PR #20 (`madden-ml/coach`). QA baseline from `madden-ml/qa` is filed at `docs/madden_ml/QA_BASELINE.md`.
+Provenance: PR #20 (`madden-ml/coach`). Do not merge without approval. Do not activate hybrid calling.
 
 ## Setup
 
@@ -13,49 +13,104 @@ source .venv/bin/activate
 python -m pip install -e '.[dev]'
 ```
 
-## Inspect / export training data
+## Local Franchise database (your laptop)
+
+Agents do not have your personal Madden DB. Use these commands on the machine that plays Franchise games. The source database is never modified by inspect/export/train.
 
 ```bash
-# Coverage report (Madden DB + optional extra files)
-python -m cfb_coach ml inspect --path tests/fixtures/madden_ml/labeled_offense_snaps.jsonl
-python -m cfb_coach ml inspect --path tests/fixtures/cpu_19-0_offense_snaps.csv
+# 1. Find the active Madden database (honors $CFB_COACH_MADDEN_DB, else ~/.cfb-coach/madden27.db)
+python -m cfb_coach ml find-db
 
-# Export JSONL
-python -m cfb_coach ml export --out /tmp/madden_ml_rows.jsonl \
-  --path tests/fixtures/madden_ml/labeled_offense_snaps.jsonl \
-  --path tests/fixtures/cpu_19-0_offense_snaps.csv
-```
+# 2. Back it up safely (timestamped copy; source untouched)
+python -m cfb_coach ml backup-db
+# optional: python -m cfb_coach ml backup-db --out ~/madden-backups
 
-Recommendations are never treated as verified executions. Missing labels stay unknown.
+# 3. Inspect without modifying the source
+python -m cfb_coach ml inspect
 
-## Train / evaluate / registry
+# 4. Validate historical game records / data-quality report
+python -m cfb_coach ml inspect
+# report fields: total_snaps, unique_games, verified_executions,
+# supervised_training_rows, outcome_only_examples, cpu_vs_human, eligibility, duplicates
 
-```bash
-python -m cfb_coach ml train --seed 7 \
-  --path tests/fixtures/madden_ml/labeled_offense_snaps.jsonl \
-  --path tests/fixtures/cpu_19-0_offense_snaps.csv \
-  --registry ~/.cfb-coach/madden_ml_registry
+# 5. Export training-ready rows (full history; does not invent data)
+python -m cfb_coach ml export --out /tmp/madden_ml_rows.jsonl
 
-python -m cfb_coach ml evaluate --seed 7 \
-  --path tests/fixtures/madden_ml/labeled_offense_snaps.jsonl \
-  --path tests/fixtures/cpu_19-0_offense_snaps.csv \
-  --registry ~/.cfb-coach/madden_ml_registry
+# Supervised play-specific rows only (verified execution or trusted VOD)
+python -m cfb_coach ml export --out /tmp/madden_ml_supervised.jsonl --supervised-only
 
+# Optional sanitized export for debugging shares (ids hashed; paths dropped)
+python -m cfb_coach ml export --out /tmp/madden_ml_sanitized.jsonl --sanitized
+
+# 6. Train and evaluate from the local dataset
+python -m cfb_coach ml train --seed 7 --registry ~/.cfb-coach/madden_ml_registry
+python -m cfb_coach ml evaluate --seed 7 --registry ~/.cfb-coach/madden_ml_registry
 python -m cfb_coach ml list --registry ~/.cfb-coach/madden_ml_registry
 python -m cfb_coach ml status
 ```
 
-A gate of `insufficient` or `failed` means the model may be used for **shadow** analysis only. Hybrid promotion remains off.
+**Do not commit** `madden27.db`, backups, or personal JSONL exports to GitHub.
 
-## Shadow mode
+When no local database exists, commands report empty counts. They do not fabricate Franchise snaps.
+
+## Live HTML coaching + execution verification
 
 ```bash
+# Optional shadow scoring (heuristic/VOD call still displayed)
 python -m cfb_coach ml shadow --registry ~/.cfb-coach/madden_ml_registry
-# live call still prints the heuristic / VOD recommendation
-python -m cfb_coach call --game madden27 -o <opp> -s "1&10 my 25"
 
-python -m cfb_coach ml report
-python -m cfb_coach ml heuristic    # or: ml shadow --off
+# Default HTML live coach (execution verify enabled for Madden)
+python -m cfb_coach play --game madden27 -o <opponent>
+
+# After each play, optionally confirm:
+#   unknown (default) | used recommended | used different
+# Recommendations are never auto-marked as executed.
+
+python -m cfb_coach ml report          # per-game shadow + data-quality
+python -m cfb_coach ml heuristic       # or: ml shadow --off
+```
+
+Terminal / one-shot paths share the same `evaluate_live_shadow` hook and session/snap identity as HTML.
+
+## Training eligibility
+
+| Class | Supervised play-action training |
+| --- | --- |
+| `verified_execution` | Yes |
+| `trusted_vod` | Yes |
+| `outcome_known_execution_uncertain` | No (kept for tendencies / analysis) |
+| `recommendation_only` | No |
+| `unlabeled` | No |
+| `excluded` | No |
+
+## Promotion gate (conservative)
+
+Pre-chosen thresholds (not tuned after seeing favorable metrics):
+
+- Min supervised labeled rows: **80**
+- Min supervised holdout rows: **30**
+- Min holdout games/groups: **4**
+- Min absolute log-loss improvement vs **train-only** baseline: **0.02**
+- Baseline parameters come from training data only (no holdout leakage)
+- Recommendation-only rows cannot pass the gate
+- A passing offline gate does **not** authorize hybrid; shadow validation + explicit approval are still required
+
+## Sealed decision pipeline
+
+Disabled by default. Enable only for parity experiments:
+
+```bash
+export CFB_COACH_SEALED_PIPELINE=1
+# or meta: ml_sealed_pipeline=1
+```
+
+Heuristic compatibility mode keeps displaying the legacy call and emits a difference report.
+
+## Fixture / CI inspect (no personal DB)
+
+```bash
+python -m cfb_coach ml inspect --path tests/fixtures/madden_ml/labeled_offense_snaps.jsonl
+python -m cfb_coach ml inspect --path tests/fixtures/cpu_19-0_offense_snaps.csv
 ```
 
 ## Tests

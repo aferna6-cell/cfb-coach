@@ -81,12 +81,46 @@ def evaluate(
             holdout_ids = ids[cut:]
 
     holdout = [r for gid in holdout_ids for r in groups.get(gid, [])]
-    if len(holdout) < 10 or len(labeled) < 20:
+    # Thresholds chosen before looking at metrics (conservative Franchise gate).
+    MIN_HOLDOUT = 30
+    MIN_LABELED = 80
+    MIN_GAMES = 4
+    MIN_IMPROVEMENT = 0.02  # absolute log-loss improvement vs train-only baseline
+
+    from cfb_coach.madden.model.dataset import SUPERVISED_ELIGIBLE, classify_eligibility
+
+    holdout = [
+        r for r in holdout
+        if (r.get("eligibility") or classify_eligibility(r)) in SUPERVISED_ELIGIBLE
+        or r.get("supervised_eligible")
+    ]
+    supervised_all = [
+        r for r in labeled
+        if (r.get("eligibility") or classify_eligibility(r)) in SUPERVISED_ELIGIBLE
+        or r.get("supervised_eligible")
+    ]
+    supervised_holdout = [
+        r for r in holdout
+        if (r.get("eligibility") or classify_eligibility(r)) in SUPERVISED_ELIGIBLE
+        or r.get("supervised_eligible")
+    ]
+    eval_rows = supervised_holdout
+
+    if (
+        len(eval_rows) < MIN_HOLDOUT
+        or len(supervised_all) < MIN_LABELED
+        or len(holdout_ids) < MIN_GAMES
+    ):
         report = {
             "n_labeled": len(labeled),
-            "n_holdout": len(holdout),
+            "n_supervised": len(supervised_all),
+            "n_holdout": len(eval_rows),
             "holdout_groups": holdout_ids,
-            "reason": "insufficient held-out labeled rows for meaningful validation",
+            "min_holdout": MIN_HOLDOUT,
+            "min_labeled": MIN_LABELED,
+            "min_games": MIN_GAMES,
+            "baseline_from": "train_artifact.baseline_rate",
+            "reason": "insufficient held-out supervised rows for meaningful validation",
         }
         return _with_gate(
             entry,
@@ -94,14 +128,15 @@ def evaluate(
             False,
             metrics=(
                 MetricRecord(name="n_labeled", value=float(len(labeled)), split="all", n=len(labeled)),
-                MetricRecord(name="n_holdout", value=float(len(holdout)), split="holdout", n=len(holdout)),
+                MetricRecord(name="n_supervised", value=float(len(supervised_all)), split="all", n=len(supervised_all)),
+                MetricRecord(name="n_holdout", value=float(len(eval_rows)), split="holdout", n=len(eval_rows)),
             ),
             report=report,
         )
 
     probs: list[float] = []
     labels: list[bool] = []
-    for row in holdout:
+    for row in eval_rows:
         vec = _row_vector(row)
         probs.append(predict_proba(artifact, vec))
         labels.append(str(row.get(label_key)) == Tri.TRUE.value)
@@ -109,14 +144,17 @@ def evaluate(
     ll = _log_loss(probs, labels)
     br = _brier(probs, labels)
     ece, bins = _reliability(probs, labels)
-    baseline_rate = sum(1.0 for lab in labels if lab) / len(labels)
+    # Baseline from TRAINING data only — never from holdout labels.
+    baseline_rate = float(artifact.get("baseline_rate") or 0.5)
     baseline_probs = [baseline_rate] * len(labels)
     baseline_ll = _log_loss(baseline_probs, labels)
     baseline_br = _brier(baseline_probs, labels)
 
-    improved = ll < baseline_ll - 1e-6 or br < baseline_br - 1e-6
-    # Promotion requires improvement over the constant-rate baseline and enough n.
-    gate = GateResult.PASSED if improved and len(holdout) >= 10 else GateResult.FAILED
+    improved = (baseline_ll - ll) >= MIN_IMPROVEMENT and br <= baseline_br + 1e-9
+    # Conservative gate: never pass on recommendation-only / insufficient evidence.
+    gate = GateResult.PASSED if improved and len(supervised_holdout) >= MIN_HOLDOUT else GateResult.FAILED
+    if not supervised_holdout:
+        gate = GateResult.INSUFFICIENT
     gate_passed = gate is GateResult.PASSED
 
     metrics = (

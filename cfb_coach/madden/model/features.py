@@ -8,7 +8,6 @@ roster, opponent context, and snaps that already ended. Do not read
 
 from __future__ import annotations
 
-import hashlib
 import re
 from typing import Sequence
 
@@ -27,8 +26,8 @@ from cfb_coach.madden.model.schema import (
     Tri,
 )
 
-# Stable column order for madden-ml.features.1. Bump FEATURE_SCHEMA_VERSION
-# in schema.py if this tuple changes meaning.
+# Stable column order for madden-ml.features.2.
+# Categoricals use football family one-hots / unknown flags — not numeric hashes.
 _FEATURE_NAMES: tuple[str, ...] = (
     "is_offense",
     "is_defense",
@@ -50,14 +49,25 @@ _FEATURE_NAMES: tuple[str, ...] = (
     "coverage_prediction_confidence",
     "has_coverage_prediction",
     "has_concept_prediction",
-    "coverage_family_code",
-    "concept_family_code",
-    "cand_formation_code",
-    "cand_play_code",
+    "cov_fam_cover0",
+    "cov_fam_cover1",
+    "cov_fam_cover2",
+    "cov_fam_cover3",
+    "cov_fam_cover4",
+    "cov_fam_cover6",
+    "cov_fam_other",
+    "cov_fam_unknown",
     "cand_play_family_pass",
     "cand_play_family_run",
     "cand_play_family_rpo",
     "cand_play_family_screen",
+    "cand_play_family_unknown",
+    "cand_form_gun",
+    "cand_form_under",
+    "cand_form_singleback",
+    "cand_form_i",
+    "cand_form_other",
+    "cand_form_unknown",
     "cand_cov_family_zone",
     "cand_cov_family_man",
     "cand_cov_family_blitz",
@@ -73,7 +83,6 @@ _FEATURE_NAMES: tuple[str, ...] = (
     "roster_mean_rating",
     "roster_n_features",
     "roster_complete",
-    "game_version_code",
     "source_live",
 )
 
@@ -105,11 +114,62 @@ def _fv(name: str, value: float | None) -> FeatureValue:
     return FeatureValue(name=name, value=float(value), missing=False)
 
 
-def _code(text: str | None) -> float | None:
-    if text is None or not str(text).strip():
-        return None
-    digest = hashlib.sha256(str(text).strip().lower().encode("utf-8")).digest()
-    return int.from_bytes(digest[:8], "big") / float(2**64)
+def _coverage_family_flags(text: str | None) -> dict[str, float]:
+    raw = (text or "").strip().lower()
+    flags = {
+        "cov_fam_cover0": 0.0,
+        "cov_fam_cover1": 0.0,
+        "cov_fam_cover2": 0.0,
+        "cov_fam_cover3": 0.0,
+        "cov_fam_cover4": 0.0,
+        "cov_fam_cover6": 0.0,
+        "cov_fam_other": 0.0,
+        "cov_fam_unknown": 0.0,
+    }
+    if not raw:
+        flags["cov_fam_unknown"] = 1.0
+        return flags
+    if "cover 0" in raw or "cover0" in raw or re.search(r"\bzero\b", raw):
+        flags["cov_fam_cover0"] = 1.0
+    elif "cover 1" in raw or "cover1" in raw or re.search(r"\bman\b", raw):
+        flags["cov_fam_cover1"] = 1.0
+    elif "cover 2" in raw or "cover2" in raw:
+        flags["cov_fam_cover2"] = 1.0
+    elif "cover 3" in raw or "cover3" in raw:
+        flags["cov_fam_cover3"] = 1.0
+    elif "cover 4" in raw or "cover4" in raw or "quarters" in raw:
+        flags["cov_fam_cover4"] = 1.0
+    elif "cover 6" in raw or "cover6" in raw:
+        flags["cov_fam_cover6"] = 1.0
+    else:
+        flags["cov_fam_other"] = 1.0
+    return flags
+
+
+def _formation_family_flags(text: str | None) -> dict[str, float]:
+    raw = (text or "").strip().lower()
+    flags = {
+        "cand_form_gun": 0.0,
+        "cand_form_under": 0.0,
+        "cand_form_singleback": 0.0,
+        "cand_form_i": 0.0,
+        "cand_form_other": 0.0,
+        "cand_form_unknown": 0.0,
+    }
+    if not raw:
+        flags["cand_form_unknown"] = 1.0
+        return flags
+    if "gun" in raw:
+        flags["cand_form_gun"] = 1.0
+    elif "under" in raw or "pistol" in raw:
+        flags["cand_form_under"] = 1.0
+    elif "singleback" in raw or "single back" in raw or "strong" in raw:
+        flags["cand_form_singleback"] = 1.0
+    elif re.search(r"\bi[\s-]?form\b", raw) or raw.startswith("i "):
+        flags["cand_form_i"] = 1.0
+    else:
+        flags["cand_form_other"] = 1.0
+    return flags
 
 
 def _field_zone(yardline: int | None) -> tuple[float | None, float | None, float | None, float | None]:
@@ -256,14 +316,15 @@ def vector_for(
         "coverage_prediction_confidence": observation.coverage_prediction_confidence,
         "has_coverage_prediction": 1.0 if observation.coverage_prediction else 0.0,
         "has_concept_prediction": 1.0 if observation.concept_prediction else 0.0,
-        "coverage_family_code": _code(observation.coverage_prediction),
-        "concept_family_code": _code(observation.concept_prediction),
-        "cand_formation_code": _code(candidate.formation),
-        "cand_play_code": _code(candidate.play),
+        **_coverage_family_flags(observation.coverage_prediction),
+        **_formation_family_flags(candidate.formation),
         "cand_play_family_pass": 1.0 if _PASS_RE.search(blob) else 0.0,
         "cand_play_family_run": 1.0 if _RUN_RE.search(blob) else 0.0,
         "cand_play_family_rpo": 1.0 if _RPO_RE.search(blob) else 0.0,
         "cand_play_family_screen": 1.0 if _SCREEN_RE.search(blob) else 0.0,
+        "cand_play_family_unknown": 0.0
+        if (_PASS_RE.search(blob) or _RUN_RE.search(blob) or _RPO_RE.search(blob) or _SCREEN_RE.search(blob))
+        else (0.0 if play_name else 1.0),
         "cand_cov_family_zone": 1.0 if _ZONE_RE.search(blob) else 0.0,
         "cand_cov_family_man": 1.0 if _MAN_RE.search(blob) else 0.0,
         "cand_cov_family_blitz": 1.0 if _BLITZ_RE.search(blob) else 0.0,
@@ -281,7 +342,6 @@ def vector_for(
         "roster_mean_rating": roster_mean,
         "roster_n_features": roster_n,
         "roster_complete": roster_complete,
-        "game_version_code": _code(game_state.madden_version),
         "source_live": 1.0 if (observation.source or "").startswith("live") else (
             0.0 if observation.source else None
         ),

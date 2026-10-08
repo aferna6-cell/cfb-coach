@@ -339,14 +339,51 @@ class CoachDB:
         concept_seen: str | None = None,
         notes: str | None = None,
         session_id: str | None = None,
+        ml_snap_id: str | None = None,
+        snap_seq: int | None = None,
+        executed_status: str | None = None,
+        executed_formation: str | None = None,
+        executed_play: str | None = None,
+        executed_macro: str | None = None,
+        executed_verification: str | None = None,
+        ml_decision_id: int | None = None,
+        data_source: str | None = None,
     ) -> int:
+        self._migrate_ml_snap_columns()
+        # Idempotent on ml_snap_id: corrections / retries update the same logical snap.
+        if ml_snap_id:
+            existing = self.conn.execute(
+                "SELECT id FROM snaps WHERE ml_snap_id = ?", (ml_snap_id,)
+            ).fetchone()
+            if existing:
+                row_id = int(existing["id"] if hasattr(existing, "keys") else existing[0])
+                self.update_snap(
+                    row_id,
+                    result=result,
+                    coverage_seen=coverage_seen,
+                    concept_seen=concept_seen,
+                    notes=notes,
+                    executed_status=executed_status,
+                    executed_formation=executed_formation,
+                    executed_play=executed_play,
+                    executed_macro=executed_macro,
+                    executed_verification=executed_verification,
+                    ml_decision_id=ml_decision_id,
+                    formation=formation,
+                    play=play,
+                    macro=macro,
+                )
+                return row_id
         cur = self.conn.execute(
             """
             INSERT INTO snaps (
                 ts, opponent_id, side, down, distance, yardline, quarter,
                 situation_raw, our_call, formation, play, macro,
-                result, coverage_seen, concept_seen, notes, session_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                result, coverage_seen, concept_seen, notes, session_id,
+                ml_snap_id, snap_seq, executed_status, executed_formation,
+                executed_play, executed_macro, executed_verification,
+                ml_decision_id, data_source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 datetime.now(timezone.utc).isoformat(),
@@ -366,13 +403,39 @@ class CoachDB:
                 concept_seen,
                 notes,
                 session_id,
+                ml_snap_id,
+                snap_seq,
+                executed_status or "unknown",
+                executed_formation,
+                executed_play,
+                executed_macro,
+                executed_verification or "unknown",
+                ml_decision_id,
+                data_source or "live",
             ),
         )
         self.conn.commit()
         return int(cur.lastrowid)
 
     def update_snap(self, snap_id: int, **fields: Any) -> None:
-        allowed = ("result", "coverage_seen", "concept_seen", "notes")
+        allowed = (
+            "result",
+            "coverage_seen",
+            "concept_seen",
+            "notes",
+            "executed_status",
+            "executed_formation",
+            "executed_play",
+            "executed_macro",
+            "executed_verification",
+            "ml_decision_id",
+            "ml_snap_id",
+            "snap_seq",
+            "formation",
+            "play",
+            "macro",
+            "data_source",
+        )
         cols = [(k, fields[k]) for k in allowed if k in fields]
         if not cols:
             return
@@ -384,7 +447,18 @@ class CoachDB:
         self.conn.commit()
 
     def delete_snap(self, snap_id: int) -> None:
+        row = self.conn.execute(
+            "SELECT ml_snap_id FROM snaps WHERE id = ?", (snap_id,)
+        ).fetchone()
+        ml_snap = None
+        if row is not None:
+            ml_snap = row["ml_snap_id"] if hasattr(row, "keys") else row[0]
         self.conn.execute("DELETE FROM snaps WHERE id = ?", (snap_id,))
+        if ml_snap:
+            try:
+                self.conn.execute("DELETE FROM ml_outcomes WHERE snap_id = ?", (ml_snap,))
+            except sqlite3.Error:
+                pass
         self.conn.commit()
 
     def count_snaps(self, opponent_id: str, *, side: str | None = None) -> int:
@@ -687,9 +761,52 @@ class CoachDB:
             """
         )
         self.conn.commit()
+        for stmt in (
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_ml_decisions_snap_unique "
+            "ON ml_decisions(snap_id) WHERE snap_id IS NOT NULL",
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_ml_outcomes_snap_unique "
+            "ON ml_outcomes(snap_id) WHERE snap_id IS NOT NULL",
+        ):
+            try:
+                self.conn.execute(stmt)
+                self.conn.commit()
+            except sqlite3.Error:
+                pass
+        self._migrate_ml_snap_columns()
+
+    def _migrate_ml_snap_columns(self) -> None:
+        """Additive snap columns for ML identity and execution verification."""
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(snaps)").fetchall()}
+        additions = {
+            "ml_snap_id": "TEXT",
+            "snap_seq": "INTEGER",
+            "executed_status": "TEXT",
+            "executed_formation": "TEXT",
+            "executed_play": "TEXT",
+            "executed_macro": "TEXT",
+            "executed_verification": "TEXT",
+            "ml_decision_id": "INTEGER",
+            "data_source": "TEXT",
+        }
+        for name, typ in additions.items():
+            if name in cols:
+                continue
+            try:
+                self.conn.execute(f"ALTER TABLE snaps ADD COLUMN {name} {typ}")
+                self.conn.commit()
+            except sqlite3.Error:
+                pass
+        try:
+            self.conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_snaps_ml_snap_id "
+                "ON snaps(ml_snap_id) WHERE ml_snap_id IS NOT NULL"
+            )
+            self.conn.commit()
+        except sqlite3.Error:
+            pass
 
     def log_ml_decision(self, decision: Any, *, agree: int | None = None) -> int:
-        """Persist one CoachingDecision. Recommendations are not executions."""
+        """Persist one CoachingDecision. Idempotent on snap_id when set."""
         from cfb_coach.madden.model.schema import to_dict
 
         d = to_dict(decision) if hasattr(decision, "__dataclass_fields__") else dict(decision)
@@ -697,6 +814,49 @@ class CoachDB:
         heuristic = d.get("heuristic_pick") or {}
         final = d.get("final_pick") or {}
         shadow = d.get("shadow_pick") or {}
+        snap_id = d.get("snap_id")
+        if snap_id:
+            existing = self.conn.execute(
+                "SELECT id FROM ml_decisions WHERE snap_id = ?", (snap_id,)
+            ).fetchone()
+            if existing:
+                row_id = int(existing["id"] if hasattr(existing, "keys") else existing[0])
+                self.conn.execute(
+                    """
+                    UPDATE ml_decisions SET
+                        decision_ts=?, game_id=?, session_id=?, snap_seq=?, mode=?,
+                        model_version=?, policy_version=?, policy_source=?,
+                        heuristic_formation=?, heuristic_play=?,
+                        final_formation=?, final_play=?,
+                        shadow_formation=?, shadow_play=?, shadow_status=?, agree=?,
+                        candidates_json=?, decision_json=?, latency_ms_model=?
+                    WHERE id=?
+                    """,
+                    (
+                        d.get("decision_ts") or now,
+                        d.get("game_id"),
+                        d.get("session_id"),
+                        d.get("snap_seq"),
+                        d.get("mode") or "heuristic",
+                        d.get("model_version"),
+                        d.get("policy_version"),
+                        d.get("policy_source"),
+                        heuristic.get("formation") if isinstance(heuristic, dict) else None,
+                        heuristic.get("play") if isinstance(heuristic, dict) else None,
+                        final.get("formation") if isinstance(final, dict) else None,
+                        final.get("play") if isinstance(final, dict) else None,
+                        shadow.get("formation") if isinstance(shadow, dict) else None,
+                        shadow.get("play") if isinstance(shadow, dict) else None,
+                        d.get("shadow_status"),
+                        agree,
+                        json.dumps(d.get("candidates"), default=str) if d.get("candidates") is not None else None,
+                        json.dumps(d, default=str),
+                        d.get("latency_ms_model"),
+                        row_id,
+                    ),
+                )
+                self.conn.commit()
+                return row_id
         cur = self.conn.execute(
             """
             INSERT INTO ml_decisions (
@@ -711,7 +871,7 @@ class CoachDB:
             (
                 d.get("decision_ts") or now,
                 d.get("game_id"),
-                d.get("snap_id"),
+                snap_id,
                 d.get("session_id"),
                 d.get("snap_seq"),
                 d.get("mode") or "heuristic",
@@ -746,10 +906,15 @@ class CoachDB:
         executed_play: str | None = None,
         executed_verification: str = "unknown",
         outcome: Any = None,
+        replace: bool = True,
     ) -> int:
-        """Store a verified (or explicitly unknown) execution separately from the recommendation."""
+        """Store a verified (or explicitly unknown) execution for one snap.
+
+        Corrections update the same ``snap_id`` row when ``replace`` is true.
+        """
         now = datetime.now(timezone.utc).isoformat()
-        if str(executed_status).lower() != "identified":
+        status = str(executed_status or "unknown").lower()
+        if status != "identified":
             executed_formation = None
             executed_play = None
             executed_verification = "unknown"
@@ -761,6 +926,33 @@ class CoachDB:
                 payload = json.dumps(to_dict(outcome), default=str)
             else:
                 payload = json.dumps(outcome, default=str)
+        if replace:
+            existing = self.conn.execute(
+                "SELECT id FROM ml_outcomes WHERE snap_id = ?", (snap_id,)
+            ).fetchone()
+            if existing:
+                row_id = int(existing["id"] if hasattr(existing, "keys") else existing[0])
+                self.conn.execute(
+                    """
+                    UPDATE ml_outcomes SET
+                        game_id=?, decision_id=?, executed_status=?,
+                        executed_formation=?, executed_play=?, executed_verification=?,
+                        outcome_json=?
+                    WHERE id=?
+                    """,
+                    (
+                        game_id,
+                        decision_id,
+                        status,
+                        executed_formation,
+                        executed_play,
+                        executed_verification,
+                        payload,
+                        row_id,
+                    ),
+                )
+                self.conn.commit()
+                return row_id
         cur = self.conn.execute(
             """
             INSERT INTO ml_outcomes (
@@ -773,7 +965,7 @@ class CoachDB:
                 snap_id,
                 game_id,
                 decision_id,
-                executed_status,
+                status,
                 executed_formation,
                 executed_play,
                 executed_verification,

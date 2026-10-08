@@ -50,7 +50,20 @@ def train(
     if not isinstance(seed, int) or isinstance(seed, bool):
         raise TypeError("seed must be an int")
 
-    labeled = [dict(r) for r in rows if r.get("label_available")]
+    from cfb_coach.madden.model.dataset import SUPERVISED_ELIGIBLE, classify_eligibility
+
+    # Default: play-specific supervised training uses verified / trusted rows only.
+    supervised = []
+    for r in rows:
+        row = dict(r)
+        elig = row.get("eligibility") or classify_eligibility(row)
+        row["eligibility"] = elig
+        row["supervised_eligible"] = elig in SUPERVISED_ELIGIBLE
+        if row["supervised_eligible"] and row.get("label_available"):
+            supervised.append(row)
+    # Plumbing fallback: if nothing is verified yet, fit is marked insufficient
+    # rather than silently treating recommendations as executions.
+    labeled = supervised
     offense = [r for r in labeled if str(r.get("side") or "").startswith("o")]
     defense = [r for r in labeled if str(r.get("side") or "").startswith("d")]
 

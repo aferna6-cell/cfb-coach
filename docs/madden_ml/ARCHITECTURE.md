@@ -97,3 +97,18 @@ Phase 1 owns the schema and the stubs. Later work stays inside the module named 
 | Live engineer | `inference.py`, and later the single call site inside `madden/playcaller.py` | heuristic behavior when mode is heuristic or the model fails |
 
 `import cfb_coach.madden.model` exports the schema only. It must not import numpy, scikit-learn, LightGBM, CatBoost, XGBoost, torch, or pandas. Those learners, when they exist, stay inside `train.py`.
+
+## Sprint 3 status (real-game data collection)
+
+Implemented on `madden-ml/coach` without activating hybrid:
+
+- Shared `evaluate_live_shadow` for HTML, terminal, and one-shot (`identity.LiveDecisionTracker` + `game_sessions.session_id` as `game_id`)
+- Optional HTML execution verification: unknown / used recommended / used different (never auto-verify)
+- `ml_decisions` ↔ `ml_outcomes` ↔ `snaps.ml_snap_id` linkage with idempotent corrections
+- Supervised training eligibility (`verified_execution`, `trusted_vod` only by default)
+- Feature schema `madden-ml.features.2` (football family categoricals; no numeric name hashes)
+- Promotion gate: train-only baseline; mins 80 labeled / 30 holdout / 4 games; +0.02 log-loss
+- Sealed pipeline module `decision_pipeline.py` behind `CFB_COACH_SEALED_PIPELINE` (default off; heuristic display unchanged)
+- Local Franchise workflow: `ml find-db`, `backup-db`, `inspect`, `export`, `report`
+
+Hybrid remains off. PR #19 mappings stay an optional boundary (`optional_vod_lookup`).

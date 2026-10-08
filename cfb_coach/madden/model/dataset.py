@@ -39,6 +39,44 @@ _EXECUTION_KEYS = (
 )
 _LABEL_KEYS = ("success", "stop", "yards", "result", "label_available")
 
+# Training-data eligibility. Supervised play-specific training uses VERIFIED_* only.
+ELIGIBILITY_VERIFIED_EXECUTION = "verified_execution"
+ELIGIBILITY_TRUSTED_VOD = "trusted_vod"
+ELIGIBILITY_OUTCOME_UNCERTAIN_EXEC = "outcome_known_execution_uncertain"
+ELIGIBILITY_RECOMMENDATION_ONLY = "recommendation_only"
+ELIGIBILITY_UNLABELED = "unlabeled"
+ELIGIBILITY_EXCLUDED = "excluded"
+
+SUPERVISED_ELIGIBLE = frozenset(
+    {ELIGIBILITY_VERIFIED_EXECUTION, ELIGIBILITY_TRUSTED_VOD}
+)
+
+
+def classify_eligibility(row: Mapping[str, Any]) -> str:
+    """Classify one row for supervised play-specific training eligibility."""
+    if row.get("exclude") or row.get("invalid"):
+        return ELIGIBILITY_EXCLUDED
+    status = str(row.get("executed_status") or "").lower()
+    verified = str(row.get("executed_verification") or "").lower() == "verified"
+    has_exec = bool(row.get("executed_play")) and status == ExecutedStatus.IDENTIFIED.value and verified
+    label_ok = bool(row.get("label_available"))
+    provenance = str(row.get("provenance") or "")
+    if has_exec and label_ok:
+        return ELIGIBILITY_VERIFIED_EXECUTION
+    if provenance.startswith("vod") or provenance.startswith("csv:") or "vod" in provenance:
+        if label_ok and row.get("trusted_vod"):
+            return ELIGIBILITY_TRUSTED_VOD
+    if label_ok and not has_exec:
+        if row.get("recommended_play"):
+            return ELIGIBILITY_OUTCOME_UNCERTAIN_EXEC
+        return ELIGIBILITY_UNLABELED
+    # Verified execution without a usable label stays unlabeled (not recommendation-only).
+    if has_exec and not label_ok:
+        return ELIGIBILITY_UNLABELED
+    if row.get("recommended_play") and not label_ok:
+        return ELIGIBILITY_RECOMMENDATION_ONLY
+    return ELIGIBILITY_UNLABELED
+
 
 def _blank(value: Any) -> bool:
     return value is None or value == "" or value == CSV_UNKNOWN
@@ -166,16 +204,35 @@ def _normalize_row(raw: Mapping[str, Any], *, provenance: str) -> dict[str, Any]
     if _blank(behavior_propensity):
         behavior_propensity = None
 
-    snap_id = row.get("snap_id") or row.get("id")
-    game_id = row.get("game_id") or row.get("opponent_id") or row.get("source_game")
+    # Prefer session / ml snap identity. Never collapse games onto opponent_id.
+    session_id = row.get("session_id") or row.get("game_id")
+    ml_snap = row.get("ml_snap_id") or row.get("snap_id")
+    snap_id = ml_snap or row.get("id")
+    if session_id:
+        game_id = str(session_id)
+    elif ml_snap and "-" in str(ml_snap):
+        game_id = str(ml_snap).rsplit("-", 1)[0]
+    elif row.get("source_game"):
+        game_id = str(row.get("source_game"))
+    elif row.get("source_path") and row.get("id") is not None:
+        game_id = f"file:{Path(str(row['source_path'])).name}"
+    else:
+        game_id = None
+
+    opp = row.get("opponent_id")
+    opp_type = row.get("opponent_type")
+    if _blank(opp_type) and opp:
+        opp_l = str(opp).lower()
+        opp_type = "cpu" if opp_l.startswith("cpu") or "cpu" in opp_l else "human"
 
     out = {
         "schema_version": CONTRACT_VERSION,
         "provenance": provenance,
         "snap_id": None if _blank(snap_id) else str(snap_id),
         "game_id": None if _blank(game_id) else str(game_id),
-        "session_id": None if _blank(row.get("session_id")) else str(row.get("session_id")),
-        "opponent_id": None if _blank(row.get("opponent_id")) else str(row.get("opponent_id")),
+        "session_id": None if _blank(session_id) else str(session_id),
+        "opponent_id": None if _blank(opp) else str(opp),
+        "opponent_type": None if _blank(opp_type) else str(opp_type),
         "side": side,
         "down": row.get("down"),
         "distance": row.get("distance"),
@@ -204,7 +261,18 @@ def _normalize_row(raw: Mapping[str, Any], *, provenance: str) -> dict[str, Any]
         "coverage_seen": row.get("coverage_seen"),  # post-snap; never a pre-snap feature
         "concept_seen": row.get("concept_seen"),
         "source_path": row.get("source_path"),
+        "trusted_vod": bool(row.get("trusted_vod")),
+        "data_source": row.get("data_source") or provenance,
     }
+    out["eligibility"] = classify_eligibility(out)
+    out["supervised_eligible"] = out["eligibility"] in SUPERVISED_ELIGIBLE
+    # Action features for supervised training use verified execution when present.
+    if out["supervised_eligible"] and out.get("executed_play"):
+        out["action_formation"] = out["executed_formation"]
+        out["action_play"] = out["executed_play"]
+    else:
+        out["action_formation"] = out["recommended_formation"]
+        out["action_play"] = out["recommended_play"]
     return out
 
 
@@ -219,6 +287,14 @@ def validate_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     seen: set[tuple[Any, ...]] = set()
     leakage_hits = 0
     provenance: dict[str, int] = {}
+    eligibility: dict[str, int] = {}
+    games: set[str] = set()
+    cpu_n = 0
+    human_n = 0
+    offense_n = 0
+    defense_n = 0
+    supervised_n = 0
+    coverage_labeled = 0
 
     required_presence = (
         "snap_id",
@@ -231,6 +307,23 @@ def validate_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     for row in rows:
         prov = str(row.get("provenance") or "unknown")
         provenance[prov] = provenance.get(prov, 0) + 1
+        elig = str(row.get("eligibility") or classify_eligibility(row))
+        eligibility[elig] = eligibility.get(elig, 0) + 1
+        if row.get("supervised_eligible") or elig in SUPERVISED_ELIGIBLE:
+            supervised_n += 1
+        if row.get("game_id"):
+            games.add(str(row["game_id"]))
+        ot = str(row.get("opponent_type") or "").lower()
+        if ot == "cpu":
+            cpu_n += 1
+        elif ot == "human":
+            human_n += 1
+        if str(row.get("side") or "").startswith("d"):
+            defense_n += 1
+        else:
+            offense_n += 1
+        if row.get("coverage_seen") or row.get("coverage_hint"):
+            coverage_labeled += 1
         for key in required_presence:
             if _blank(row.get(key)):
                 missing_fields[key] = missing_fields.get(key, 0) + 1
@@ -238,7 +331,9 @@ def validate_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             labeled += 1
         else:
             unlabeled += 1
-        if str(row.get("executed_status") or "") == ExecutedStatus.IDENTIFIED.value:
+        if str(row.get("executed_status") or "") == ExecutedStatus.IDENTIFIED.value and (
+            str(row.get("executed_verification") or "") == Verification.VERIFIED.value
+        ):
             verified_exec += 1
         elif not _blank(row.get("recommended_play")):
             recommendation_only += 1
@@ -253,7 +348,6 @@ def validate_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             duplicates += 1
         else:
             seen.add(key)
-        # Pre-snap feature maps must not include leakage keys as feature inputs.
         feature_map = row.get("features")
         if isinstance(feature_map, Mapping):
             leaked = LEAKAGE_FIELDS.intersection(feature_map)
@@ -262,11 +356,19 @@ def validate_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
     return {
         "n_rows": len(rows),
+        "unique_games": len(games),
         "labeled": labeled,
         "unlabeled": unlabeled,
         "verified_executions": verified_exec,
+        "verified_labeled_supervised": supervised_n,
         "recommendation_only": recommendation_only,
         "duplicates": duplicates,
+        "cpu_rows": cpu_n,
+        "human_rows": human_n,
+        "offense_rows": offense_n,
+        "defense_rows": defense_n,
+        "coverage_label_rows": coverage_labeled,
+        "eligibility": eligibility,
         "missing_fields": missing_fields,
         "leakage_feature_rows": leakage_hits,
         "provenance": provenance,
@@ -283,29 +385,85 @@ def build_rows(
 ) -> list[dict[str, Any]]:
     """Build feature rows from a Madden database and optional existing files.
 
-    Does not fabricate rows when ``db`` is empty. Historical recommendations
-    are kept; they are not silently treated as verified executions.
+    Joins ``snaps`` with ``ml_decisions`` / ``ml_outcomes`` on ``ml_snap_id``.
+    Dedupes so one logical snap is not counted twice across tables.
+    Does not fabricate rows when ``db`` is empty.
     """
     rows: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+
+    def _add(mapping: dict[str, Any], provenance: str) -> None:
+        row = _normalize_row(mapping, provenance=provenance)
+        key = str(row.get("snap_id") or "") + "|" + str(row.get("game_id") or "") + "|" + str(
+            row.get("result") or ""
+        ) + "|" + str(row.get("recommended_play") or "")
+        if key in seen_keys and row.get("snap_id"):
+            return
+        if row.get("snap_id"):
+            seen_keys.add(key)
+        rows.append(row)
+
     if db is not None:
+        decisions: dict[str, dict[str, Any]] = {}
+        outcomes: dict[str, dict[str, Any]] = {}
         try:
-            snap_rows = db.conn.execute(
-                "SELECT * FROM snaps ORDER BY id ASC"
-            ).fetchall()
-        except Exception:  # noqa: BLE001 — empty or non-madden DB
+            for d in db.conn.execute("SELECT * FROM ml_decisions").fetchall():
+                dd = dict(d)
+                if dd.get("snap_id"):
+                    decisions[str(dd["snap_id"])] = dd
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            for o in db.conn.execute("SELECT * FROM ml_outcomes").fetchall():
+                oo = dict(o)
+                if oo.get("snap_id"):
+                    outcomes[str(oo["snap_id"])] = oo
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            snap_rows = db.conn.execute("SELECT * FROM snaps ORDER BY id ASC").fetchall()
+        except Exception:  # noqa: BLE001
             snap_rows = []
         for snap in snap_rows:
             mapping = dict(snap)
+            ml_id = mapping.get("ml_snap_id")
+            if ml_id and str(ml_id) in decisions:
+                dec = decisions[str(ml_id)]
+                mapping.setdefault("recommended_formation", dec.get("heuristic_formation") or dec.get("final_formation"))
+                mapping.setdefault("recommended_play", dec.get("heuristic_play") or dec.get("final_play"))
+                mapping.setdefault("game_id", dec.get("game_id") or mapping.get("session_id"))
+            if ml_id and str(ml_id) in outcomes:
+                outc = outcomes[str(ml_id)]
+                mapping["executed_status"] = outc.get("executed_status") or mapping.get("executed_status")
+                mapping["executed_formation"] = outc.get("executed_formation") or mapping.get("executed_formation")
+                mapping["executed_play"] = outc.get("executed_play") or mapping.get("executed_play")
+                mapping["executed_verification"] = outc.get("executed_verification") or mapping.get(
+                    "executed_verification"
+                )
+                if outc.get("outcome_json"):
+                    try:
+                        payload = json.loads(outc["outcome_json"])
+                        mapping.setdefault("result", payload.get("result"))
+                        mapping.setdefault("yards", payload.get("yards"))
+                    except (TypeError, json.JSONDecodeError):
+                        pass
             mapping["source_path"] = str(getattr(db, "path", "coach.db"))
-            rows.append(_normalize_row(mapping, provenance="madden_db.snaps"))
+            mapping["snap_id"] = ml_id or mapping.get("id")
+            mapping["game_id"] = mapping.get("session_id") or mapping.get("game_id")
+            _add(mapping, "madden_db.snaps")
+
+        # play_records only when not already covered by a session snap.
         try:
-            play_rows = db.conn.execute(
-                "SELECT * FROM play_records ORDER BY id ASC"
-            ).fetchall()
+            play_rows = db.conn.execute("SELECT * FROM play_records ORDER BY id ASC").fetchall()
         except Exception:  # noqa: BLE001
             play_rows = []
         for play in play_rows:
             mapping = dict(play)
+            sid = mapping.get("session_id")
+            pid = mapping.get("play_id")
+            dedupe = f"{sid}:{pid}" if sid and pid else None
+            if dedupe and dedupe in seen_keys:
+                continue
             payload = {}
             raw_payload = mapping.get("payload_json")
             if raw_payload:
@@ -318,11 +476,26 @@ def build_rows(
             mapping.setdefault("result", mapping.get("result_type") or payload.get("result"))
             mapping.setdefault("situation_raw", payload.get("situation_raw"))
             mapping["source_path"] = str(getattr(db, "path", "coach.db"))
-            rows.append(_normalize_row(mapping, provenance="madden_db.play_records"))
+            mapping["snap_id"] = mapping.get("play_id") or mapping.get("id")
+            mapping["game_id"] = mapping.get("session_id") or mapping.get("game_id")
+            if dedupe:
+                seen_keys.add(dedupe)
+            _add(mapping, "madden_db.play_records")
 
     for path in extra_paths:
-        rows.extend(import_path(path))
+        for row in import_path(path):
+            key = str(row.get("snap_id") or "") + "|" + str(row.get("game_id") or "")
+            if key in seen_keys and row.get("snap_id"):
+                continue
+            if row.get("snap_id"):
+                seen_keys.add(key)
+            rows.append(row)
     return rows
+
+
+def supervised_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Rows eligible for play-specific supervised training."""
+    return [dict(r) for r in rows if r.get("supervised_eligible") or r.get("eligibility") in SUPERVISED_ELIGIBLE]
 
 
 def export_jsonl(rows: Sequence[Mapping[str, Any]], path: str) -> None:
@@ -333,6 +506,82 @@ def export_jsonl(rows: Sequence[Mapping[str, Any]], path: str) -> None:
         for row in rows:
             fh.write(json.dumps(dict(row), sort_keys=True, default=str))
             fh.write("\n")
+
+
+_SANITIZE_DROP = frozenset(
+    {
+        "source_path",
+        "our_call",
+        "notes",
+        "behavior_propensity",
+    }
+)
+_SANITIZE_REDACT = frozenset({"opponent_id", "session_id", "game_id", "snap_id"})
+
+
+def export_sanitized(rows: Sequence[Mapping[str, Any]], path: str) -> None:
+    """Write a privacy-scrubbed JSONL for debugging (no personal DB paths).
+
+    Opponent / session / snap ids are replaced with stable hashes. Local paths
+    and free-text notes are dropped. Does not invent rows.
+    """
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with out.open("w", encoding="utf-8") as fh:
+        for row in rows:
+            scrubbed: dict[str, Any] = {}
+            for key, value in dict(row).items():
+                if key in _SANITIZE_DROP:
+                    continue
+                if key in _SANITIZE_REDACT and value is not None:
+                    digest = hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
+                    scrubbed[key] = f"anon:{digest}"
+                else:
+                    scrubbed[key] = value
+            scrubbed["sanitized"] = True
+            fh.write(json.dumps(scrubbed, sort_keys=True, default=str))
+            fh.write("\n")
+
+
+def quality_report(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Human-facing data-quality summary for Franchise workflows."""
+    base = validate_rows(rows)
+    supervised = supervised_rows(rows)
+    outcome_only = sum(
+        1
+        for r in rows
+        if str(r.get("eligibility")) == ELIGIBILITY_OUTCOME_UNCERTAIN_EXEC
+    )
+    unknown_exec = sum(
+        1
+        for r in rows
+        if str(r.get("executed_status") or "") != ExecutedStatus.IDENTIFIED.value
+    )
+    return {
+        **base,
+        "total_snaps": base["n_rows"],
+        "unique_games": base["unique_games"],
+        "verified_executions": base["verified_executions"],
+        "verified_labeled_examples": base["verified_labeled_supervised"],
+        "outcome_only_examples": outcome_only,
+        "unknown_executions": unknown_exec,
+        "cpu_vs_human": {"cpu": base["cpu_rows"], "human": base["human_rows"]},
+        "offense_vs_defense": {
+            "offense": base["offense_rows"],
+            "defense": base["defense_rows"],
+        },
+        "coverage_label_quality": {
+            "rows_with_coverage": base["coverage_label_rows"],
+            "pct": round(
+                100.0 * base["coverage_label_rows"] / base["n_rows"], 1
+            )
+            if base["n_rows"]
+            else 0.0,
+        },
+        "duplicates": base["duplicates"],
+        "invalid_or_excluded": base["eligibility"].get(ELIGIBILITY_EXCLUDED, 0),
+        "supervised_training_rows": len(supervised),
+    }
 
 
 def import_path(path: str) -> list[dict[str, Any]]:

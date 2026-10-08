@@ -124,6 +124,11 @@ class LivePlayController:
     # v1.13 (CFB): playbook-of-record hooks — optional so Madden is unaffected
     book_info: Callable[[], dict[str, Any] | None] | None = None
     book_apply: Callable[[int | None], dict[str, Any] | None] | None = None
+    # Madden ML: optional shared shadow scorer. Never mutates the displayed call.
+    # Signature: (sit, call, *, game_id, snap_id, snap_seq, session_id, is_new) -> row_id|None
+    shadow_evaluate: Callable[..., int | None] | None = None
+    enable_execution_verify: bool = False
+    ml_tracker: Any | None = None
 
     def book_state(self) -> dict[str, Any] | None:
         if self.book_info is None:
@@ -180,7 +185,63 @@ class LivePlayController:
             "quarter": self.quarter,
             "benched": self.benched_state(),
             "ball": self._book().spot.as_dict(),
+            "execution_verify": bool(self.enable_execution_verify),
+            "pending_recommendation": self._pending_recommendation(),
         }
+
+    def _pending_recommendation(self) -> dict[str, Any] | None:
+        call = self.last_call
+        if call is None or self.ended:
+            return None
+        return {
+            "formation": getattr(call, "formation", None),
+            "play": getattr(call, "play", None),
+            "macro": getattr(call, "macro", None),
+            "side": getattr(call, "side", None),
+        }
+
+    def _ensure_tracker(self) -> Any:
+        if self.ml_tracker is not None:
+            return self.ml_tracker
+        if not self.enable_execution_verify and self.shadow_evaluate is None:
+            return None
+        from cfb_coach.madden.model.identity import LiveDecisionTracker, next_seq_from_db
+
+        sid = self.session_id or ""
+        if not sid:
+            return None
+        self.ml_tracker = LiveDecisionTracker.from_session(
+            sid, next_seq=next_seq_from_db(self.db, sid)
+        )
+        return self.ml_tracker
+
+    def _seal_and_shadow(self, sit: Any, call: Any) -> tuple[str | None, int | None, int | None]:
+        """Allocate snap identity and optionally run shadow once. Returns snap_id, seq, decision_row."""
+        tracker = self._ensure_tracker()
+        if tracker is None:
+            return None, None, None
+        snap_id, seq, _key, is_new = tracker.seal_call(
+            side=getattr(call, "side", "offense") or "offense",
+            formation=getattr(call, "formation", None),
+            play=getattr(call, "play", None),
+            situation_raw=getattr(sit, "raw", None),
+        )
+        row_id = tracker.pending_ml_decision_row_id
+        if self.shadow_evaluate is not None and is_new:
+            try:
+                row_id = self.shadow_evaluate(
+                    sit,
+                    call,
+                    game_id=tracker.game_id,
+                    snap_id=snap_id,
+                    snap_seq=seq,
+                    session_id=self.session_id,
+                    is_new=is_new,
+                )
+            except Exception:  # noqa: BLE001 — never break live play
+                row_id = None
+            tracker.bind_decision_row(row_id)
+        return snap_id, seq, row_id
 
     def benched_state(self) -> dict[str, list[str]]:
         """Calls benched for the rest of this half, per side."""
@@ -324,14 +385,32 @@ class LivePlayController:
             self._push_score()
             return {"ok": True, "message": msg.strip(), "state": self.state()}
 
-    def _log_pending_result(self, outcome_raw: str, their: str = "", next_raw: str | None = None) -> dict[str, Any] | None:
+    def _log_pending_result(
+        self,
+        outcome_raw: str,
+        their: str = "",
+        next_raw: str | None = None,
+        *,
+        executed_status: str = "unknown",
+        executed_formation: str | None = None,
+        executed_play: str | None = None,
+        executed_macro: str | None = None,
+    ) -> dict[str, Any] | None:
         """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
             return None
         book = self._book()
         if book.call is None:
             book.remember_call(self.last_call, self.last_sit)
-        closed = book.close_from_form(outcome_raw, their=their, next_raw=next_raw)
+        closed = book.close_from_form(
+            outcome_raw,
+            their=their,
+            next_raw=next_raw,
+            executed_status=executed_status,
+            executed_formation=executed_formation,
+            executed_play=executed_play,
+            executed_macro=executed_macro,
+        )
         if closed is None:
             return None
         side = getattr(self.last_call, "side", "") or ""
@@ -340,6 +419,42 @@ class LivePlayController:
         if book.coverage and not side.startswith("d"):
             self.last_coverage = book.coverage
         self._push_score()
+        # Link ML outcome to the sealed decision identity.
+        tracker = self._ensure_tracker()
+        ml_snap_id = book.ml_snap_id
+        decision_id = book.ml_decision_id
+        if tracker is not None:
+            pending_snap, pending_dec = tracker.consume_pending()
+            ml_snap_id = ml_snap_id or pending_snap
+            decision_id = decision_id or pending_dec
+        if ml_snap_id and hasattr(self.db, "log_ml_outcome"):
+            try:
+                from cfb_coach.outcome import parse_outcome
+
+                parsed = parse_outcome(closed.get("result") or outcome_raw)
+                self.db.log_ml_outcome(
+                    snap_id=ml_snap_id,
+                    game_id=self.session_id or None,
+                    decision_id=decision_id,
+                    executed_status=closed.get("executed_status") or "unknown",
+                    executed_formation=closed.get("executed_formation"),
+                    executed_play=closed.get("executed_play"),
+                    executed_verification=(
+                        "verified"
+                        if (closed.get("executed_status") or "") == "identified"
+                        else "unknown"
+                    ),
+                    outcome={
+                        "result": closed.get("result"),
+                        "yards": parsed.yards,
+                        "kind": parsed.kind,
+                        "coverage_seen": book.coverage,
+                        "concept_seen": book.concept,
+                    },
+                    replace=True,
+                )
+            except Exception:  # noqa: BLE001
+                pass
         row = LogRow(
             formation=closed["formation"],
             play=closed["play"],
@@ -349,7 +464,12 @@ class LivePlayController:
             side=closed["side"],
         )
         self.log.append(row)
-        return row.to_dict()
+        out = row.to_dict()
+        out["ml_snap_id"] = ml_snap_id
+        out["executed_status"] = closed.get("executed_status")
+        out["executed_formation"] = closed.get("executed_formation")
+        out["executed_play"] = closed.get("executed_play")
+        return out
 
     def _make(self, sit: Any) -> Any:
         kwargs: dict[str, Any] = {}
@@ -391,7 +511,10 @@ class LivePlayController:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
             self.last_call, self.last_sit = call, sit
-            self._book().remember_call(call, sit)
+            ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
+            self._book().remember_call(
+                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row
+            )
             self.call_text = call.format()
             self.heard = heard
             if getattr(sit, "coverage_hint", None) and sit.side == "offense":
@@ -412,6 +535,10 @@ class LivePlayController:
         score_us: Any = None,
         score_them: Any = None,
         score_set: bool = False,
+        executed_status: str = "unknown",
+        executed_formation: str | None = None,
+        executed_play: str | None = None,
+        executed_macro: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
             if self.ended:
@@ -420,7 +547,15 @@ class LivePlayController:
             logged = None
             closed_sit = self.last_sit
             if self.last_call is not None and (outcome or "").strip():
-                logged = self._log_pending_result(outcome, their=their, next_raw=sit_raw)
+                logged = self._log_pending_result(
+                    outcome,
+                    their=their,
+                    next_raw=sit_raw,
+                    executed_status=executed_status,
+                    executed_formation=executed_formation,
+                    executed_play=executed_play,
+                    executed_macro=executed_macro,
+                )
             elif self.last_call is not None and not (outcome or "").strip():
                 # Allow first snap without prior outcome
                 pass
@@ -452,7 +587,10 @@ class LivePlayController:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
             self.last_call, self.last_sit = call, sit
-            book.remember_call(call, sit)
+            ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
+            book.remember_call(
+                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row
+            )
             self._push_score()
             self.call_text = call.format()
             self.heard = heard
@@ -652,6 +790,20 @@ def render_live_html(ctrl: LivePlayController) -> str:
       <label title="Their call on the snap you just logged: their coverage/blitz when you had the ball, their concept when they had it">they ran</label>
       <input class="wide" id="their" placeholder="cover 6 · A-gap blitz · cross wheels · mesh"/>
     </div>
+    <div id="exec-verify" hidden>
+      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional)</span></h2>
+      <div class="row">
+        <label><input type="radio" name="exec" value="unknown" checked/> unknown</label>
+        <label><input type="radio" name="exec" value="used_recommended"/> used recommended</label>
+        <label><input type="radio" name="exec" value="used_different"/> used different</label>
+      </div>
+      <div class="row" id="exec-diff" hidden>
+        <label>formation</label>
+        <input class="wide" id="exec-formation" placeholder="from applied book or other"/>
+        <label>play</label>
+        <input class="wide" id="exec-play" placeholder="actual play name"/>
+      </div>
+    </div>
 
     <h2 style="margin-top:1rem">Next situation</h2>
     <div class="row">
@@ -801,6 +953,8 @@ function renderState(st) {{
     $("side").style.display = "";
     $("side-label").style.display = "";
   }}
+  const ev = $("exec-verify");
+  if (ev) ev.hidden = !st.execution_verify;
 }}
 
 function renderMacro(m) {{
@@ -901,7 +1055,14 @@ $("btn-submit").addEventListener("click", async () => {{
   try {{
     const out = currentOutcome();
     const sit = buildSit();
-    const body = {{ outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value, their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value }};
+    const exec = (document.querySelector('input[name="exec"]:checked') || {{}}).value || "unknown";
+    const body = {{
+      outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value,
+      their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value,
+      executed_status: exec,
+      executed_formation: ($("exec-formation").value || "").trim() || null,
+      executed_play: ($("exec-play").value || "").trim() || null,
+    }};
     const data = await api("/api/result_call", body);
     outcomeChoice = "";
     $("outcome-text").value = "";
@@ -909,8 +1070,19 @@ $("btn-submit").addEventListener("click", async () => {{
     $("look").value = "";
     $("live-mark").checked = false;
     document.querySelectorAll("#outcome-btns button.outcome").forEach(b => b.style.outline = "");
+    const unk = document.querySelector('input[name="exec"][value="unknown"]');
+    if (unk) unk.checked = true;
+    $("exec-formation").value = "";
+    $("exec-play").value = "";
+    $("exec-diff").hidden = true;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
+}});
+
+document.querySelectorAll('input[name="exec"]').forEach(r => {{
+  r.addEventListener("change", () => {{
+    $("exec-diff").hidden = r.value !== "used_different";
+  }});
 }});
 
 $("btn-undo").addEventListener("click", async () => {{
@@ -1071,6 +1243,10 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             score_us=body.get("score_us"),
                             score_them=body.get("score_them"),
                             score_set=("score_us" in body or "score_them" in body),
+                            executed_status=body.get("executed_status") or "unknown",
+                            executed_formation=body.get("executed_formation"),
+                            executed_play=body.get("executed_play"),
+                            executed_macro=body.get("executed_macro"),
                         ),
                     )
                     return
