@@ -975,6 +975,22 @@ def make_call(
         call = _pick_defense(sit, opp, bl, db, rng, sel["defense"], books["defense"])
     else:
         call = _pick_offense(sit, opp, bl, db, rng, sel["offense"], books["offense"], audibles=audibles)
+        # Opt-in experimental ML: sealed rebuild of reads/macros when ML selects.
+        # Default heuristic path is unchanged when mode is not experimental.
+        try:
+            from cfb_coach.madden.model.experimental_live import maybe_apply_experimental
+
+            call = maybe_apply_experimental(
+                call=call,
+                sit=sit,
+                opponent_id=opponent_id,
+                db=db,
+                book=books.get("offense") or {},
+                active=sel.get("offense") or [],
+                audibles=audibles,
+            )
+        except Exception:  # noqa: BLE001 — never break live coaching
+            pass
     stamp = _sit_stamp(sit)
     call.rationale = note + call.rationale + (f" | {stamp}" if stamp else "")
     from cfb_coach.game_score import score_call_note

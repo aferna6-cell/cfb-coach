@@ -874,6 +874,10 @@ def _render_meta_scout(scout: dict[str, Any] | None) -> str:
     # Patch radar
     patch_bits = []
     for pn in (scout.get("patch_notes") or [])[:4]:
+        if isinstance(pn, str):
+            pn = {"version": "?", "title": pn, "bullets": [], "date": ""}
+        if not isinstance(pn, dict):
+            continue
         bullets = "".join(
             f"<li>{_esc(b)}</li>" for b in (pn.get("bullets") or [])[:4]
         )
