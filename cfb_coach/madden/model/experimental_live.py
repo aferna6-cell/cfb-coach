@@ -577,6 +577,7 @@ def commit_experimental_decision(
             payload = json.loads(raw["decision_json"] or "{}") if raw else {}
             payload["experimental_offense"] = {
                 "selection_policy": info.get("selection_policy", "legacy_experimental"),
+                "selection_audit": info.get("selection_audit"),
                 "model_version": info.get("model_version"),
                 "evidence_quality": info.get("evidence_quality"),
                 "probability": info.get("probability"),
