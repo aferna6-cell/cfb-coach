@@ -135,6 +135,27 @@ class DesignerBrowserTests(unittest.TestCase):
         approved = designer.verified_created_macros(self.db, "cpu")
         self.assertEqual(approved, [])
 
+    def test_removed_macro_becomes_uncallable_for_opponent(self) -> None:
+        staged = designer.stage_design(self.db, self.design())
+        designer.confirm_installed(
+            self.db, proposal_id=staged["proposal_id"],
+            attestation="I installed every formation and play in Madden's custom editor.",
+        )
+        m = staged["macro_blueprints"][0]
+        designer.verify_created_macro(
+            self.db, name=m["name"], opponent_id="cpu",
+            attestation="I built this named macro with the specified settings and armed the slot inside Madden.",
+        )
+        installed = browser.installed_design(self.db, "cpu")
+        markup = browser.render_html(self.db, installed, mode="installed", opponent_id="cpu")
+        self.assertIn("Verified and armed", markup)
+        self.assertIn("--unverify-macro", markup)
+        result = designer.unverify_created_macro(self.db, name=m["name"], opponent_id="cpu")
+        self.assertFalse(result["now_callable"])
+        self.assertEqual(designer.verified_created_macros(self.db, "cpu"), [])
+        markup = browser.render_html(self.db, installed, mode="installed", opponent_id="cpu")
+        self.assertIn("Draft — not callable", markup)
+
     def test_render_escapes_untrusted_names_and_unsafe_source_urls(self) -> None:
         plan = self.design()
         plan["book"]["formations"]["<script>alert(1)</script>"] = ["<img src=x onerror=alert(1)>"]
@@ -165,7 +186,8 @@ class DesignerBrowserTests(unittest.TestCase):
                 with mock.patch.object(browser, "write_and_open", return_value=Path("designer.html")) as written:
                     args = argparse.Namespace(
                         show=False, stage=False, confirm_installed=None,
-                        rollback_design=None, verify_macro=None, retire_existing=None,
+                        rollback_design=None, verify_macro=None, unverify_macro=None,
+                        retire_existing=None,
                         opponent="cpu", max_formations=3, max_plays=3,
                         attest=None, text=False, no_open=True,
                     )
