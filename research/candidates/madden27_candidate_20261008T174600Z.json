@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "kind": "madden_research_candidate",
+  "game": "madden27",
+  "generated_at": "2026-10-08T17:46:00.897975+00:00",
+  "status": "candidate",
+  "active_research_preserved": true,
+  "active_researched_at": "2026-10-01T12:48:00-04:00",
+  "active_patch": {
+    "version": "1.007",
+    "date": "2026-09-30",
+    "url": "https://mp1st.com/title-updates-and-patches/madden-nfl-27-update-1-007-tweaks-salary-cap-management-september-30",
+    "notes": [
+      "Dynamic Salary Cap and CPU roster management fixes in Franchise",
+      "WR catch success tuned on throws out of sack situations",
+      "Improved Run Action block targeting",
+      "Fixed field goal blocking with looping defenders",
+      "Game clock fix after delay of game"
+    ]
+  },
+  "active_validation_errors": [],
+  "sources_attempted": 5,
+  "sources_ok": 5,
+  "sources_failed": [],
+  "fetches": [
+    {
+      "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/news",
+      "ok": true,
+      "status": 200,
+      "retrieved_at": "2026-10-08T17:45:55.479678+00:00",
+      "bytes": 469520,
+      "title_guess": "Get the latest EA SPORTS\u2122 Madden NFL 27 News, Updates and Patch Notes - Electronic Arts",
+      "snippet": "<!DOCTYPE html><html dir=\"ltr\" data-logged-in=\"unknown\" lang=\"en\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/><meta name=\"viewport\" content=\"width=device-width\" data-next-head=\"\"/><link as=\"font\" crossorigin=\"anonymous\" href=\"/fonts/madden-nfl-27/ResolveSansExtraboldNrw.otf\" rel=\"preload\" type=\"font/otf\" data-next-head=\"\"/><meta content=\"https://drop-assets.ea.com/images/1HozNAqTMlv6d1zUsClp95/"
+    },
+    {
+      "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-nfl-27-title-update-september-16",
+      "ok": true,
+      "status": 200,
+      "retrieved_at": "2026-10-08T17:45:55.714956+00:00",
+      "bytes": 435132,
+      "title_guess": "Madden NFL 27 - Title Update September 16, 2026",
+      "snippet": "<!DOCTYPE html><html dir=\"ltr\" data-logged-in=\"unknown\" lang=\"en\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/><meta name=\"viewport\" content=\"width=device-width\" data-next-head=\"\"/><link as=\"font\" crossorigin=\"anonymous\" href=\"/fonts/madden-nfl-27/ResolveSansExtraboldNrw.otf\" rel=\"preload\" type=\"font/otf\" data-next-head=\"\"/><meta content=\"https://drop-assets.ea.com/images/4iXoz026aCOOskEUeIu6T5/"
+    },
+    {
+      "url": "https://mp1st.com/title-updates-and-patches/madden-nfl-27-update-1-007-tweaks-salary-cap-management-september-30",
+      "ok": true,
+      "status": 200,
+      "retrieved_at": "2026-10-08T17:45:56.454845+00:00",
+      "bytes": 273828,
+      "title_guess": "Madden NFL 27 Update 1.007 Patch Notes for September 30",
+      "snippet": "<!DOCTYPE html> <html lang=\"en-US\"> <head> <meta charset=\"UTF-8\"> <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"> <link rel=\"profile\" href=\"https://gmpg.org/xfn/11\"> <link rel=\"alternate\" type=\"application/rss+xml\" title=\"MP1st\" href=\"https://mp1st.com/feed/\" /> <script data-no-optimize=\"1\" data-cfasync=\"false\">!function(){\"use strict\";const t={adt_ei:{identityApiKey:\"plainT"
+    },
+    {
+      "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/tips-and-tricks-hub/m27-how-to-stop-the-run",
+      "ok": true,
+      "status": 200,
+      "retrieved_at": "2026-10-08T17:45:58.433637+00:00",
+      "bytes": 382496,
+      "title_guess": "Madden NFL 27 Tips &amp; Tricks",
+      "snippet": "<!DOCTYPE html><html dir=\"ltr\" data-logged-in=\"unknown\" lang=\"en\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/><meta name=\"viewport\" content=\"width=device-width\" data-next-head=\"\"/><link as=\"font\" crossorigin=\"anonymous\" href=\"/fonts/madden-nfl-27/ResolveSansExtraboldNrw.otf\" rel=\"preload\" type=\"font/otf\" data-next-head=\"\"/><meta content=\"https://drop-assets.ea.com/images/1HozNAqTMlv6d1zUsClp95/"
+    },
+    {
+      "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/tips-and-tricks-hub/m27-best-offensive-playbooks",
+      "ok": true,
+      "status": 200,
+      "retrieved_at": "2026-10-08T17:46:00.890517+00:00",
+      "bytes": 388378,
+      "title_guess": "Madden NFL 27 Tips &amp; Tricks",
+      "snippet": "<!DOCTYPE html><html dir=\"ltr\" data-logged-in=\"unknown\" lang=\"en\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/><meta name=\"viewport\" content=\"width=device-width\" data-next-head=\"\"/><link as=\"font\" crossorigin=\"anonymous\" href=\"/fonts/madden-nfl-27/ResolveSansExtraboldNrw.otf\" rel=\"preload\" type=\"font/otf\" data-next-head=\"\"/><meta content=\"https://drop-assets.ea.com/images/1HozNAqTMlv6d1zUsClp95/"
+    }
+  ],
+  "contradictions_or_changes": [],
+  "patch_aware_discount": {
+    "applied": false
+  },
+  "legal_play_name_count": 25,
+  "policy_guards": {
+    "overwrite_active_five_formations": false,
+    "overwrite_armed_custom_adjustments": false,
+    "requires_user_confirmation_for_policy": true,
+    "fabricated_citations_forbidden": true,
+    "guessed_custom_adjustment_settings_forbidden": true
+  },
+  "change_summary": "Fetched 5/5 sources. 0 possible change(s) flagged for review. Active research/madden27.json and research_db.json were NOT modified.",
+  "next_steps": [
+    "Review candidate report under research/candidates/",
+    "Manually edit research/madden27.json only with cited findings",
+    "Run scripts/validate_ai_research.py before committing",
+    "Do not change the applied five formations or armed macros without confirmation"
+  ],
+  "ok": true
+}
