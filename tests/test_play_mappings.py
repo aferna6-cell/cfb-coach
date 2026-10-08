@@ -13,12 +13,9 @@ from pathlib import Path
 from unittest import mock
 
 from cfb_coach.db import CoachDB
-from cfb_coach.madden.playcaller import MaddenCall
 from cfb_coach.madden.prep import build_prep_plan, format_delta_text
-from cfb_coach.madden.situation import parse_madden_situation
 from cfb_coach.vod_model.book import AUDIT_KEY, read_audit
-from cfb_coach.vod_model.live import apply_madden_call, book_for_next_snap, macro_candidates
-from cfb_coach.vod_model.mappings import load_mappings
+from cfb_coach.vod_model.mappings import load_mappings, lookup
 from tests.test_madden27 import _Isolated
 from tests.test_vod_model import FIXTURE, _calls, _cover3, _forms, _write_model
 
@@ -60,23 +57,25 @@ class TestMappingLoader(_Isolated):
         index = load_mappings(FIXTURE)
         assert index is not None
         self.assertEqual(index.version_label, "play_mappings v1")
-        hit = index.lookup("madden27", "Mtnbunchcrossdig")
+        hit = lookup(index, "madden27", "Mtnbunchcrossdig")
         assert hit is not None
         self.assertEqual(hit.play_name, "Mtn Bunch Cross Dig")
         self.assertEqual(hit.formation, "Gun Tight Flex Wk")
         self.assertEqual(hit.playbook_name, "Raiders")
         self.assertGreaterEqual(len(hit.plays), 2)
         self.assertIn("Mtn Bunch Cross Dig", hit.plays)
-        sailed = index.lookup("madden27", "Sail Dig")
+        sailed = lookup(index, "madden27", "Sail Dig")
         assert sailed is not None
-        self.assertEqual(sailed.formation, index.lookup("madden27", "Saildig").formation)
+        same = lookup(index, "madden27", "Saildig")
+        assert same is not None
+        self.assertEqual(sailed.formation, same.formation)
         self.assertEqual(sailed.play_name, "Sail Dig")
-        verticals = index.lookup("Madden27", "Four Verticals")
+        verticals = lookup(index, "Madden27", "Four Verticals")
         assert verticals is not None
         self.assertEqual(verticals.confidence, "med")
         self.assertEqual(verticals.formation, "Gun Doubles HB Wk")
         for ignored in ("Zone WK", "HB Dive", "HB Power O", "Inside Zone", "Dagger", "Curl Combo"):
-            self.assertIsNone(index.lookup("madden27", ignored), ignored)
+            self.assertIsNone(lookup(index, "madden27", ignored), ignored)
         self.assertEqual(
             hit.display("Mtnbunchcrossdig"),
             "Mtnbunchcrossdig → Raiders / Gun Tight Flex Wk / Mtn Bunch Cross Dig",
@@ -103,7 +102,7 @@ class TestMappingLoader(_Isolated):
         loaded = load_mappings(root)
         assert loaded is not None
         self.assertEqual(loaded.version_label, "play_mappings v1")
-        self.assertIsNotNone(loaded.lookup("madden27", MAPPED))
+        self.assertIsNotNone(lookup(loaded, "madden27", MAPPED))
 
 
 class TestMappingEdits(_Isolated):
@@ -145,7 +144,6 @@ class TestMappingEdits(_Isolated):
                 plan = build_prep_plan("james", db=db, offline=True, persist=True)
                 text = format_delta_text(plan)
                 vod = text[text.find("## VOD beaters"):] if "## VOD beaters" in text else ""
-                fresh = book_for_next_snap(db, "offense", cached={"Not A Formation": ["Nope"]})
                 return {
                     "forms": _forms(db),
                     "calls": _calls(db, "james", ["1&10", "3&8", "1&10 cover 3"]),
@@ -153,14 +151,12 @@ class TestMappingEdits(_Isolated):
                     "vod": vod,
                     "plan": plan,
                     "audit": read_audit(db),
-                    "fresh": fresh,
-                    "macros": macro_candidates(db, "james"),
                     "meta_audit": db.get_meta(AUDIT_KEY),
                 }
             finally:
                 db.close()
 
-    def test_ocr_med_cell_reaches_live_candidates_and_macros(self) -> None:
+    def test_ocr_med_cell_adds_the_mapped_formation(self) -> None:
         root = self.dir / "ocr"
         _model(root, MAPPED)
         _install(root, _records(MAPPED))
@@ -170,19 +166,14 @@ class TestMappingEdits(_Isolated):
         self.assertIn(MAPPED_PLAY, forms[MAPPED_FORM])
         evidence = _records(MAPPED)[0]["formation_plays"][MAPPED_FORM]
         self.assertEqual(forms[MAPPED_FORM], evidence)
-        fresh = snap["fresh"]
-        self.assertNotIn("Not A Formation", fresh)
-        self.assertIn(MAPPED_PLAY, fresh[MAPPED_FORM])
-        self.assertTrue(any(row.get("play") == MAPPED_PLAY for row in snap["macros"]))
-        self.assertTrue(any(row.get("formation") == MAPPED_FORM for row in snap["macros"]))
         change = snap["plan"]["vod_report"]["changes"][0]
         self.assertEqual(change["mapping_version"], "play_mappings v1")
         self.assertEqual(change["mapped"], f"{MAPPED} → Raiders / {MAPPED_FORM} / {MAPPED_PLAY}")
         self.assertEqual(change["tier"], "med")
         self.assertEqual(change["action"], "swap_formation")
         self.assertTrue(change.get("replaced"))
-        self.assertNotIn(change["replaced"], fresh)
-        self.assertEqual(len(fresh), 5)
+        self.assertNotIn(change["replaced"], forms)
+        self.assertEqual(len(forms), 5)
         self.assertIn("play_mappings v1", snap["text"])
         self.assertIn(change["mapped"], snap["text"])
         self.assertEqual(snap["audit"][-1]["mapping_version"], "play_mappings v1")
@@ -334,7 +325,7 @@ class TestMappingEdits(_Isolated):
         self.assertIn("Book frozen", frozen["text"])
         self.assertIn("play_mappings v1", frozen["text"])
 
-    def test_alternate_spelling_switches_the_live_call(self) -> None:
+    def test_alternate_spelling_resolves_without_editing_a_frozen_book(self) -> None:
         root = self.dir / "spell"
         _model(root, "Meshocr")
         _install(root, [{
@@ -349,34 +340,10 @@ class TestMappingEdits(_Isolated):
             "formation_candidates": ["Gun 5WR Tight"],
             "play_name": "Mesh",
         }])
-        td = tempfile.TemporaryDirectory()
-        self.addCleanup(td.cleanup)
-        env = {
-            "HOME": td.name,
-            "CFB_COACH_DB": str(Path(td.name) / "coach.db"),
-            "CFB_COACH_VOD_MODELS": str(root),
-        }
-        with mock.patch.dict(os.environ, env, clear=False):
-            os.environ.pop("CFB_COACH_MADDEN_DB", None)
-            os.environ.pop("CFB_COACH_NO_VOD_PRIOR", None)
-            os.environ["CFB_COACH_VOD_FREEZE_BOOK"] = "1"
-            from cfb_coach.games import madden_db_path
-            from cfb_coach.madden import data as mdata
-
-            db = CoachDB(madden_db_path(), seed=mdata.load_seed())
-            try:
-                _cover3(db, "james")
-                build_prep_plan("james", db=db, offline=True, persist=True)
-                forms = _forms(db)
-                self.assertIn("Mesh", forms.get("Gun 5WR Tight") or [])
-                self.assertEqual(read_audit(db), [])
-                sit = parse_madden_situation("1&10 showing cover 3")
-                call = MaddenCall("offense", "Pistol Trips", "HB Dive", "No adj", "", "base")
-                switched = apply_madden_call(call, sit, "james", db, {"offense": forms})
-                self.assertEqual((switched.formation, switched.play), ("Gun 5WR Tight", "Mesh"))
-                os.environ["CFB_COACH_NO_VOD_PRIOR"] = "1"
-                again = MaddenCall("offense", "Pistol Trips", "HB Dive", "No adj", "", "base")
-                stayed = apply_madden_call(again, sit, "james", db, {"offense": forms})
-                self.assertEqual((stayed.formation, stayed.play), ("Pistol Trips", "HB Dive"))
-            finally:
-                db.close()
+        hit = lookup(load_mappings(root), "madden27", "Meshocr")
+        assert hit is not None
+        self.assertEqual((hit.formation, hit.play_name), ("Gun 5WR Tight", "Mesh"))
+        snap = self._prep(root, freeze=True)
+        self.assertIn("Mesh", snap["forms"].get("Gun 5WR Tight") or [])
+        self.assertEqual(snap["audit"], [])
+        self.assertEqual(snap["plan"]["vod_report"]["changes"], [])

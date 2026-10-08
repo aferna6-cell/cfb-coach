@@ -7,8 +7,16 @@ formation is used. Low-confidence, ambiguous, unresolved, and missing records
 are ignored.
 
 A missing, unreadable, or corrupt file is a no-op and never raises. Nothing
-here hardcodes a machine path. The models directory is ``CFB_COACH_VOD_MODELS``
-or the Madden config, the same one the model loader uses.
+here hardcodes a machine path. When ``models_dir`` is omitted, the directory is
+``CFB_COACH_VOD_MODELS`` or the Madden config, the same one the model loader uses.
+
+``vod_model/live.py`` does not import this module. Prep and book edits do.
+A later decision pipeline should call the two functions below and nothing else.
+
+Public API::
+
+    load_mappings(models_dir: Path | None = None) -> MappingIndex | None
+    lookup(index: MappingIndex | None, game: str, raw_name: str) -> MappedPlay | None
 """
 
 from __future__ import annotations
@@ -19,7 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from cfb_coach.vod_model.loader import models_dir
+from cfb_coach.vod_model.loader import models_dir as configured_models_dir
 
 _NORM = re.compile(r"[^a-z0-9]")
 _CONFIDENCE = {"high": 2, "med": 1, "medium": 1}
@@ -53,10 +61,12 @@ class MappingIndex:
     version_label: str
     by_key: dict[tuple[str, str], MappedPlay]
 
-    def lookup(self, game: str, raw: str) -> MappedPlay | None:
-        if not (raw or "").strip():
-            return None
-        return self.by_key.get((_game_key(game), norm_name(raw)))
+
+def lookup(index: MappingIndex | None, game: str, raw_name: str) -> MappedPlay | None:
+    """Usable mapping for this game and raw call, or None."""
+    if index is None or not (raw_name or "").strip():
+        return None
+    return index.by_key.get((_game_key(game), norm_name(raw_name)))
 
 
 def match_pair(
@@ -92,10 +102,13 @@ def match_pair(
     return _hits("")
 
 
-def load_mappings(root: Path | None = None) -> MappingIndex | None:
-    """Usable mappings from the models directory, or None. Never raises."""
+def load_mappings(models_dir: Path | None = None) -> MappingIndex | None:
+    """Usable mappings from ``models_dir``, or None. Never raises.
+
+    Omit ``models_dir`` to use ``CFB_COACH_VOD_MODELS`` or the Madden config.
+    """
     try:
-        base = root if root is not None else models_dir()
+        base = models_dir if models_dir is not None else configured_models_dir()
         if base is None:
             return None
         return _load_folder(Path(base) / "play_mappings")

@@ -22,14 +22,14 @@ from cfb_coach.vod_model.prior import (
 
 
 def _mapping_bits(game: str) -> tuple[Any, Any]:
-    from cfb_coach.vod_model.mappings import load_mappings
+    from cfb_coach.vod_model.mappings import load_mappings, lookup
 
     index = load_mappings()
 
     def label_of(cell: Any) -> str:
         if index is None:
             return cell.call
-        hit = index.lookup(cell.game or game, cell.call)
+        hit = lookup(index, cell.game or game, cell.call)
         return hit.display(cell.call) if hit else cell.call
 
     return index, label_of
@@ -56,13 +56,13 @@ def _bonus(model: Any, game: str, opponent_type: str, look: str | None, forms: d
     if not look or not forms:
         return {}
     from cfb_coach.madden.catalog import norm
-    from cfb_coach.vod_model.mappings import load_mappings, match_pair
+    from cfb_coach.vod_model.mappings import load_mappings, lookup, match_pair
 
     index = {norm(play): (formation, play) for formation, plays in forms.items() for play in plays}
     mappings = load_mappings()
     bonus: dict[tuple[str, str], float] = {}
     for cell in cells_for_hint(model, game, opponent_type, look):
-        hit = mappings.lookup(game, cell.call) if mappings else None
+        hit = lookup(mappings, game, cell.call)
         if hit is not None:
             pair = match_pair(forms, hit.play_name, hit.formation)
         else:

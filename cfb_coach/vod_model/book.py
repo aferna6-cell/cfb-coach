@@ -336,10 +336,10 @@ def consider_madden(
     chosen = select_cell(actionable, lambda _cell: 0.0, tentative_n=model.tentative_n)
     if chosen is None:
         return []
-    from cfb_coach.vod_model.mappings import load_mappings
+    from cfb_coach.vod_model.mappings import load_mappings, lookup
 
     index = load_mappings()
-    hit = index.lookup(game, chosen.call) if index else None
+    hit = lookup(index, game, chosen.call)
     if hit is not None:
         resolved = _mapping_resolution(hit, forms, side="offense")
     else:
@@ -486,10 +486,10 @@ def consider_cfb(
     )
     if chosen_cell is None:
         return []
-    from cfb_coach.vod_model.mappings import load_mappings
+    from cfb_coach.vod_model.mappings import load_mappings, lookup
 
     index = load_mappings()
-    hit = index.lookup(game, chosen_cell.call) if index else None
+    hit = lookup(index, game, chosen_cell.call)
     if hit is not None:
         placed = _cfb_from_mapping(hit, have)
         if placed is None:

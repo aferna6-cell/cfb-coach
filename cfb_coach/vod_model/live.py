@@ -173,17 +173,10 @@ def apply_madden_call(
     cells = list(cells_for_hint(model, "madden27", opponent_type, hint))
     if not cells:
         return call
-    from cfb_coach.vod_model.mappings import load_mappings, match_pair
-
-    mappings = load_mappings()
     in_book: list[VodCell] = []
     pairs: dict[int, tuple[str, str]] = {}
     for cell in cells:
-        hit = mappings.lookup("madden27", cell.call) if mappings else None
-        if hit is not None:
-            pair = match_pair(forms, hit.play_name, hit.formation)
-        else:
-            pair = _pair_in_book(forms, cell.call)
+        pair = _pair_in_book(forms, cell.call)
         if pair is None:
             continue
         in_book.append(cell)
@@ -230,18 +223,11 @@ def apply_cfb_call(call: Any, sit: Any, opponent_id: str, db: Any, *, dynasty: s
     hint = getattr(sit, "coverage_hint", None) or expected_coverage(db, opponent_id)
     if not hint:
         return call
-    from cfb_coach.vod_model.mappings import load_mappings, match_pair
-
-    mappings = load_mappings()
     cells = list(cells_for_hint(model, "cfb27", opponent_type, hint))
     in_book: list[VodCell] = []
     pairs: dict[int, tuple[str, str]] = {}
     for cell in cells:
-        hit = mappings.lookup("cfb27", cell.call) if mappings else None
-        if hit is not None:
-            pair = match_pair(forms, hit.play_name, hit.formation)
-        else:
-            pair = _pair_in_book(forms, cell.call)
+        pair = _pair_in_book(forms, cell.call)
         if pair is None:
             continue
         in_book.append(cell)
