@@ -870,7 +870,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
     color: var(--muted); margin-bottom: .35rem; }}
   .call-label {{ font-size: .7rem; letter-spacing: .1em; color: var(--accent);
     text-transform: uppercase; font-weight: 700; margin-top: .25rem; }}
-  .call {{ font-size: clamp(1.35rem, 3.2vw, 2.15rem); font-weight: 800; line-height: 1.25;
+  .call {{ font-size: clamp(2rem, 4.8vw, 3rem); font-weight: 800; line-height: 1.25;
     color: var(--call); margin: .2rem 0 .85rem; white-space: pre-wrap; word-break: break-word; }}
   section {{ background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
     padding: .75rem .9rem; margin: .75rem 0; }}
@@ -907,16 +907,21 @@ def render_live_html(ctrl: LivePlayController) -> str:
   #macro-box td {{ padding: .12rem .6rem .12rem 0; color: var(--fg); }}
   #macro-box td.s {{ color: var(--muted); }}
   footer {{ margin-top: 1rem; font-size: .72rem; color: var(--muted); line-height: 1.4; }}
+  .sr-only {{ position: absolute; width: 1px; height: 1px; padding: 0;
+    margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap;
+    border: 0; }}
+  #live-admin {{ margin-top: 1rem; color: var(--muted); }}
+  #live-admin > summary {{ cursor: pointer; font-size: .8rem; padding: .5rem 0; }}
+  #call {{ margin: .65rem 0 1.15rem; }}
 </style>
 </head>
 <body>
 <main>
-  <h1>Live Play <span class="badge" id="badge">{brand}</span> · keep sticks · type less</h1>
-  <div class="dyn" id="dyn">{_dyn_line(ctrl)}</div>
-  <div class="heard" id="heard">vs {_esc(ctrl.opponent_id)}</div>
-  <div class="call-label">PLAY</div>
-  <div class="call" id="call">{_esc(_call_main(ctrl))}</div>
-  {_macro_box_html(ctrl.macro_state())}
+  <h1 class="sr-only">Live Play — {brand}</h1>
+  <div class="dyn" id="dyn" hidden>{_dyn_line(ctrl)}</div>
+  <div class="heard" id="heard" hidden>vs {_esc(ctrl.opponent_id)}</div>
+  <div class="call" id="call" aria-live="polite">{_esc(_call_main(ctrl))}</div>
+  {_macro_box_html(None)}
   <div class="heard" id="ml-experimental" hidden></div>
   <div class="err" id="err"></div>
 
@@ -1001,6 +1006,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
     </div>
   </section>
 
+  <details id="live-admin"><summary>Game settings, log and finish game</summary>
   <section id="bench-panel" hidden>
     <h2>Benched this half (kept failing)</h2>
     <div id="bench-list" style="font-size:.85rem"></div>
@@ -1037,7 +1043,9 @@ def render_live_html(ctrl: LivePlayController) -> str:
     <div id="summary" hidden></div>
   </section>
 
-  <footer>
+  </details>
+
+  <footer hidden>
     Aidan keeps sticks · this window is the live input pad<br/>
     Server: <code>{_esc(ctrl.play_cmd)}</code> · outcomes save to SQLite · Game over runs smarter retrain
   </footer>
@@ -1050,24 +1058,15 @@ function setErr(msg) {{ $("err").textContent = msg || ""; }}
 
 function renderState(st) {{
   if (!st) return;
-  let callTxt = st.call_text || "";
-  if (st.macro) callTxt = callTxt.split("\\n").filter(l => !l.trim().startsWith("MACRO:")).join("\\n");  // shown in #macro-box
-  $("call").textContent = callTxt;
-  renderMacro(st.macro);
+  // The live display is intentionally formation + play only. Full ML context
+  // remains in the API/database, not in the in-game call line.
+  const rec = st.pending_recommendation;
+  $("call").textContent = rec && rec.formation && rec.play
+    ? rec.formation + " — " + rec.play
+    : (st.ended ? "GAME OVER" : "Waiting for next play");
+  renderMacro(null);
   const mlBox = $("ml-experimental");
-  if (mlBox) {{
-    if (st.ml_experimental && st.ml_experimental.explanation) {{
-      mlBox.hidden = false;
-      mlBox.textContent = "ML experimental [" + (st.ml_experimental.evidence_quality || "?") + "] · "
-        + "heuristic " + (st.ml_experimental.heuristic || "") + " · "
-        + "ML " + (st.ml_experimental.ml || "") + " · "
-        + "shown " + (st.ml_experimental.final || "") + " · "
-        + (st.ml_experimental.explanation || "");
-    }} else {{
-      mlBox.hidden = true;
-      mlBox.textContent = "";
-    }}
-  }}
+  if (mlBox) {{ mlBox.hidden = true; mlBox.textContent = ""; }}
   $("heard").textContent = st.heard || ("vs " + (st.opponent_id || ""));
   const log = $("log");
   if (!st.log || !st.log.length) {{
@@ -1446,11 +1445,18 @@ def _dyn_line(ctrl: LivePlayController) -> str:
 
 
 def _call_main(ctrl: LivePlayController) -> str:
-    """Big call text; the MACRO line moves into the #macro-box banner when present."""
-    txt = ctrl.call_text or ""
-    if ctrl.macro_state():
-        txt = "\n".join(ln for ln in txt.split("\n") if not ln.strip().startswith(("MACRO:", "ADJ:")))
-    return txt
+    """Minimal live pad: show only the final selected formation and play.
+
+    The complete call, reads, macros, and ML explanation remain in controller
+    state/database for postgame review; they are not shown on the play pad.
+    """
+    recommendation = ctrl._pending_recommendation()
+    if recommendation:
+        formation = recommendation.get("formation")
+        play = recommendation.get("play")
+        if formation and play:
+            return f"{formation} — {play}"
+    return "GAME OVER" if ctrl.ended else "Waiting for next play"
 
 
 def _macro_box_html(m: dict[str, Any] | None) -> str:
