@@ -375,6 +375,7 @@ class LastSnapBook:
             "executed_status": status,
             "executed_formation": executed_formation,
             "executed_play": executed_play,
+            "executed_macro": executed_macro,
             "executed_verification": executed_verification,
         }
 
