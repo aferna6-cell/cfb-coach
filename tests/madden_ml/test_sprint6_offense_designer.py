@@ -125,6 +125,23 @@ class ModelDesignedOffenseTests(unittest.TestCase):
         history = self.db.get_meta(designer.META_HISTORY)
         self.assertIn(p["proposal_id"], history)
 
+    def test_rollback_requires_game_confirmation_and_restores_old_book(self) -> None:
+        p = designer.stage_design(self.db, self.plan())
+        designer.confirm_installed(
+            self.db, proposal_id=p["proposal_id"],
+            attestation="I installed every listed formation and play inside Madden.",
+        )
+        with self.assertRaises(ValueError):
+            designer.rollback_design(self.db, proposal_id=p["proposal_id"], attestation="yes")
+        result = designer.rollback_design(
+            self.db, proposal_id=p["proposal_id"],
+            attestation="I reinstalled the old Buccaneers custom book and checked every play in Madden.",
+        )
+        self.assertTrue(result["rolled_back"])
+        restored = playbook.load_books(self.db)["offense"]
+        self.assertEqual(restored["formations"], self.old["formations"])
+        self.assertEqual(restored["rev"], p["book"]["rev"] + 1)
+
     def test_refuse_stale_playbook_revision(self) -> None:
         pending = designer.stage_design(self.db, self.plan())
         state = playbook._load_state(self.db)
