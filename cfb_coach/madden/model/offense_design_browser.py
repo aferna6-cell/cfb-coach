@@ -48,6 +48,49 @@ def installed_design(db: Any, opponent_id: str) -> dict[str, Any] | None:
     }
 
 
+def current_macro_html(db: Any, opponent_id: str, applied: Mapping[str, Any]) -> str:
+    """Existing known Custom Adjustments, with user-confirmed rows and gaps.
+
+    Read meta directly: load_selection() can migrate records and must not run
+    while this HTML preview has the database open in read-only mode.
+    """
+    from cfb_coach.madden.offense_macros import offense_detail
+
+    try:
+        rec = json.loads(db.get_meta("active_macros:" + opponent_id) or "{}")
+    except (TypeError, ValueError):
+        rec = {}
+    ids = list(rec.get("offense") or []) if rec.get("schema") == 2 else []
+    cards = []
+    for mid in ids:
+        detail = offense_detail(mid, applied.get("formations") or {})
+        settings = detail.get("settings") or []
+        compatible = bool(detail.get("pairs_with"))
+        rows = [
+            f'<tr><td>{esc(row.get("section"))}</td><td>{esc(row.get("setting"))}</td>'
+            f'<td>{esc(row.get("value"))}</td><td>{esc(row.get("source") or "user notes")}</td></tr>'
+            for row in settings
+        ]
+        status = (
+            "Selected in loadout; editor verification needed"
+            if settings and compatible and not detail.get("gaps")
+            else "Not callable until settings and in-book play are verified"
+        )
+        cards.append(
+            f'<details><summary><b>{esc(detail.get("xbox_name") or mid)}</b>'
+            f'<span class="pill">{esc(status)}</span></summary>'
+            f'<p><b>When to call:</b> {esc(detail.get("fire_when") or "See matchup conditions")}</p>'
+            f'<p><b>Compatible play pairs:</b> {esc(", ".join(detail.get("pairs_with") or []))}</p>'
+            f'<p><b>At the line:</b> {esc(detail.get("in_game"))}</p>'
+            '<div class="scroll"><table><thead><tr><th>Section</th><th>Field</th><th>Value</th>'
+            f'<th>Evidence</th></tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+            f'<p class="muted">{esc(detail.get("settings_source"))}</p>'
+            f'<p class="warning">Unverified fields: {esc(", ".join(detail.get("gaps") or []))}</p>'
+            '</details>'
+        )
+    return "".join(cards) or '<section><p class="muted">No existing offensive macros in the saved loadout.</p></section>'
+
+
 def render_html(
     db: Any, proposal: Mapping[str, Any], *,
     mode: str = "preview", opponent_id: str = "cpu",
@@ -96,6 +139,7 @@ def render_html(
         f'<small>{esc(d.get("source_book") or "")}</small></li>'
         for d in (proposal.get("changes") or [])
     ]
+    current_macros = current_macro_html(db, opponent_id, applied)
     macros = []
     for index, m in enumerate(proposal.get("macro_blueprints") or []):
         name = str(m.get("name") or "UNNAMED")
@@ -205,6 +249,10 @@ play is present in your Madden custom editor. Confirm it in game before marking 
 <p class="muted">Expand each macro for its trigger, compatible plays, settings and linked research.
 Unspecified Madden editor fields remain unverified; generated blueprints are never auto-armed.</p>
 {"".join(macros) or '<section><p>No new macros were proposed.</p></section>'}
+<h2>Existing offensive Custom Adjustments in your saved loadout</h2>
+<p class="muted">Listed macros have research or user-noted settings. Being selected during prep
+does not alone prove they were built and armed in Madden. Review missing settings and compatibility.</p>
+{current_macros}
 <section><h2>How the live model knows what is installed</h2>
 <p>Live ML ranks plays only from the <b>applied, confirmed book</b> recorded in SQLite.
 New macros become eligible only after a separate verified-and-armed confirmation for this
