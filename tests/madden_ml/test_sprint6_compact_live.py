@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from cfb_coach.db import CoachDB
 from cfb_coach.live_server import LivePlayController, _call_main, render_live_html
 from cfb_coach.madden.playcaller import MaddenCall
+from cfb_coach.madden.model import experimental_live, inference
+from cfb_coach.madden.model.schema import CoachingMode
+from cfb_coach.situation import Situation
 from cfb_coach.madden.situation import parse_madden_situation
 
 
@@ -86,6 +90,52 @@ class CompactLiveCoachTests(unittest.TestCase):
         self.assertEqual(_call_main(self.ctrl), "Waiting for next play")
         self.ctrl.ended = True
         self.assertEqual(_call_main(self.ctrl), "GAME OVER")
+
+    def test_human_experimental_control_requires_per_session_opt_in(self) -> None:
+        """CPU behavior unchanged; human experimental must be explicitly opted in."""
+        inference.set_mode(self.db, CoachingMode.EXPERIMENTAL)
+        heuristic = MaddenCall(
+            "offense", "Gun Bunch", "Mesh", "No adj", "r1", "heuristic"
+        )
+        ml = MaddenCall(
+            "offense", "Gun Doubles", "Flood", "No adj", "r2", "experimental"
+        )
+        sit = Situation(raw="2&8", side="offense", down=2, distance=8)
+        book = {"Gun Bunch": ["Mesh"], "Gun Doubles": ["Flood"]}
+        with mock.patch(
+            "cfb_coach.madden.model.experimental_live.apply_experimental_offense",
+            return_value=(ml, object()),
+        ) as apply:
+            no_opt = experimental_live.maybe_apply_experimental(
+                call=heuristic, sit=sit, opponent_id="gavin", db=self.db,
+                book=book,
+            )
+            self.assertIs(no_opt, heuristic)
+            apply.assert_not_called()
+
+            opted_in = experimental_live.maybe_apply_experimental(
+                call=heuristic, sit=sit, opponent_id="gavin", db=self.db,
+                book=book, allow_human_ml=True,
+            )
+            self.assertIs(opted_in, ml)
+            apply.assert_called_once()
+
+            # Session flag is never written to the DB; subsequent no-flag call
+            # must stay heuristic despite global experimental mode.
+            apply.reset_mock()
+            again = experimental_live.maybe_apply_experimental(
+                call=heuristic, sit=sit, opponent_id="gavin", db=self.db,
+                book=book,
+            )
+            self.assertIs(again, heuristic)
+            apply.assert_not_called()
+
+            cpu = experimental_live.maybe_apply_experimental(
+                call=heuristic, sit=sit, opponent_id="cpu", db=self.db,
+                book=book,
+            )
+            self.assertIs(cpu, ml)
+            apply.assert_called_once()
 
 
 if __name__ == "__main__":
