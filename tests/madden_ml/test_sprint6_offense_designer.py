@@ -148,6 +148,79 @@ class ModelDesignedOffenseTests(unittest.TestCase):
             )
         self.assertEqual(playbook.load_books(self.db)["offense"], self.old)
 
+    def test_model_created_macro_requires_separate_editor_verification(self) -> None:
+        from types import SimpleNamespace
+
+        from cfb_coach.madden.model.offense_action_policy import choose_offense_action
+        staged = designer.stage_design(self.db, self.plan())
+        designer.confirm_installed(
+            self.db, proposal_id=staged["proposal_id"],
+            attestation="I installed all the proposed plays and formations inside Madden.",
+        )
+        macro = staged["macro_blueprints"][0]
+        pair = macro["base_pairs"][0]
+        context = SimpleNamespace(
+            coverage_hint="Cover 1" if macro["coverage"] == "man" else "Blitz",
+            coverage_source="live", goal_line=False, red_zone=False, down=2,
+        )
+        book = playbook.load_books(self.db)["offense"]["formations"]
+        base_opts = dict(
+            formation=pair["formation"], play=pair["play"],
+            sit=context, book=book, active=[], opponent_id="cpu",
+            db=self.db, prediction={"probability": 0.6, "uncertainty": 0.25},
+        )
+        self.assertEqual(designer.verified_created_macros(self.db, "cpu"), [])
+        result = choose_offense_action(**base_opts)
+        self.assertNotEqual(result.get("id"), macro["name"])
+
+        with self.assertRaises(ValueError):
+            designer.verify_created_macro(
+                self.db, name=macro["name"], opponent_id="cpu",
+                attestation="not verified",
+            )
+        approved = designer.verify_created_macro(
+            self.db, name=macro["name"], opponent_id="cpu",
+            attestation="I built the generated macro with exact researched settings and armed its custom slot in Madden.",
+        )
+        self.assertTrue(approved["verified_armed"])
+        self.assertEqual(len(designer.verified_created_macros(self.db, "cpu")), 1)
+        self.assertEqual(len(designer.verified_created_macros(self.db, "gavin")), 0)
+        context.coverage_hint = "Cover 1" if macro["coverage"] == "man" else "Blitz"
+        result = choose_offense_action(**base_opts)
+        self.assertIn(macro["name"], [c["id"] for c in result["candidates"]])
+        context.coverage_source = "last"
+        result = choose_offense_action(**base_opts)
+        self.assertNotIn(macro["name"], [c["id"] for c in result["candidates"]])
+
+    def test_macro_slot_cap_requires_explicit_retirement(self) -> None:
+        from cfb_coach.madden import macros
+
+        staged = designer.stage_design(self.db, self.plan())
+        designer.confirm_installed(
+            self.db, proposal_id=staged["proposal_id"],
+            attestation="I installed and checked every play and formation in Madden.",
+        )
+        ids = ["MATCH", "C2", "O-RUN", "C3", "MAN", "RZ", "ZERO", "SHOT"]
+        macros.store_selection(
+            self.db, "cpu", {"offense": ids, "defense": []}
+        )
+        chosen = staged["macro_blueprints"][0]["name"]
+        att = "I installed and armed this macro, replacing one existing slot inside Madden."
+        with self.assertRaises(ValueError):
+            designer.verify_created_macro(
+                self.db, name=chosen, opponent_id="cpu", attestation=att,
+            )
+        applied = designer.verify_created_macro(
+            self.db, name=chosen, opponent_id="cpu", attestation=att,
+            retire_existing="MATCH",
+        )
+        self.assertEqual(applied["retired_existing"], "MATCH")
+        self.assertNotIn("MATCH", macros.load_selection(self.db, "cpu")["offense"])
+        self.assertEqual(
+            len(macros.load_selection(self.db, "cpu")["offense"])
+            + len(designer.verified_created_macros(self.db, "cpu")), 8
+        )
+
     def test_reject_oversized_offense_book(self) -> None:
         with self.assertRaises(ValueError):
             self.plan(max_plays=100)
