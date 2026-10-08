@@ -10,20 +10,21 @@ It asks the installed experimental success model to score Madden 27
 catalogued formation/play pairs over multiple generic pre-snap situations.
 The designer may:
 
-- Replace entire formations (within the five-formation pilot cap).
-- Remove and add individual plays within those formations (up to ten each).
+- Add, replace, or remove whole formations (up to 12 in this pilot).
+- Include EVERY listed play from each chosen stock-book formation; no individual play trims.
 - Select a formation's exact sourced plays from a *different* catalogued
   stock playbook; each formation has `formation_sources` provenance.
 - Propose up to eight newly named offense Custom Adjustment **blueprints**
   derived from source-backed hot-route and protection primitives.
-- Show exact ADD/REMOVE play and formation deltas against your locked book.
+- Show formation-only ADD/REMOVE/REINSTALL_FULL_FORMATION deltas against your locked book.
 
 The ML model's **play-concept** prediction and evidence drive the
 formation's aggregate score; the current experimental artifact does NOT yet
 learn an independent formation-specific effect. This distinction matters
 until we collect verified results for multiple formations. The heuristic
 does not choose the winning play. A slight incumbency preference
-avoids pointless churn; diverse concepts and at least one run are retained.
+avoids pointless churn; diversified model concept scores rank a formation without
+letting one high-scoring screen determine its entire value. At least one run is retained.
 These are offline roster-construction constraints, not a live heuristic selector.
 
 **Evidence limitation:** The experimental model remains low-data. High model
@@ -43,8 +44,8 @@ prominent call-style headings, cards, and single-page layout as the live coach.
 It includes:
 
 - Current applied offense (what live ML is actually allowed to call).
-- New proposed formations and every individual play, source-book pages,
-  named change deltas and local installation checklists.
+- New proposed whole formations and ALL their stock-sourced plays, source-book pages,
+  formation-only deltas and one checkbox per full formation.
 - Expanding macro cards with exactly researched editor settings,
   direct research/source links, trigger conditions, supported formation/play
   pairs, and a clear Draft vs Verified & Armed status.
@@ -62,7 +63,7 @@ python -m cfb_coach ml offense-design -o cpu --no-open    # write HTML, don't la
 python -m cfb_coach ml offense-design -o cpu --text       # original JSON console output
 ```
 
-The page is a **read-only local HTML file**. Checking play-install boxes
+The page is a **read-only local HTML file**. Checking formation-install boxes
 only helps the user prepare the exact verification command; it does not
 claim to have physically installed content or write to SQLite. After
 installing in the Madden editor and running the explicit CLI confirmation,
@@ -92,7 +93,7 @@ python -m cfb_coach ml offense-design -o cpu --stage
 python -m cfb_coach ml offense-design --show
 ```
 
-The JSON includes a short `proposal_id`, new formations/plays and all
+The JSON includes a short `proposal_id`, complete formations with their plays and all
 model-created macro blueprints. Inspect the changes. Build the proposed
 *custom* offense in Madden's editor. You may need to select plays from
 specified stock-book sources. **Do not claim installation until you have
@@ -173,3 +174,24 @@ you mark independently whether the recommended action was actually applied.
 - Future: learn configuration-level action values once enough independently
   verified macros and hot routes have been used, and support automatic
   *proposal generation* following each CPU game with human editor confirmation.
+
+## Sprint 6E — screen-lock fix and full-formation selection
+
+The former model-primary live policy could choose the same HB Slip Screen
+indefinitely because it ignored the computed anti-repeat adjustments.
+The new `offense_selection_policy.model_primary_repetition_aware.v1`
+uses the model's own predicted success scores and recent *recommended* calls
+to reduce repeated exact-play and screen-family exposure when credible
+alternatives exist. It does not treat unverified recommendations as executed
+snap outcomes. The heuristic is still a failure fallback only, not the
+live offensive play selector. Audited ranked candidates retain original
+model probabilities and explicit `selection_score` penalties.
+
+The offline designer now proposes **formations**, not hand-picked plays:
+the coach may add/remove/reinstall entire formations, and the entire
+catalogued play inventory from each selected *stock source* is available to
+the live model. This is a source-specific Madden catalog (not an invented
+cross-stock play union). The HTML install checklist has one checkbox per
+complete formation rather than per individual play. To use new proposals,
+regenerate/stage a fresh design and install/confirm it in the Madden editor.
+Old staged or installed trimmed designs do not silently mutate.
