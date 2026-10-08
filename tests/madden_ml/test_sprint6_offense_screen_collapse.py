@@ -43,6 +43,17 @@ class ModelAntiCollapseTests(unittest.TestCase):
         self.assertEqual(audit["top_selected"][1], "Mesh")
         self.assertTrue(all("selection_penalty" in r for r in ranked))
 
+    def test_prior_driven_model_cannot_repeat_identical_screen_forever(self):
+        rows = candidates()
+        rows[0]["probability"] = .99
+        rows[0]["evidence_quality"] = "prior_driven"
+        rows[0]["uncertainty"] = .9
+        ranked, _ = choose_model_play(
+            rows, recent_calls=[("Gun Doubles", "HB Slip Screen")] * 3
+        )
+        self.assertNotEqual(ranked[0]["play"], "HB Slip Screen")
+        self.assertNotEqual(ranked[0]["play_concept"], "screen")
+
     def test_screen_family_spam_penalty_includes_different_screen_names(self):
         ranked, _ = choose_model_play(
             candidates(), recent_calls=[
@@ -62,6 +73,8 @@ class ModelAntiCollapseTests(unittest.TestCase):
     def test_strong_model_advantage_is_not_automatically_discarded(self):
         rows = candidates()
         rows[0]["probability"] = .97
+        rows[0]["uncertainty"] = 0.1
+        rows[0]["evidence_quality"] = "verified"
         rows[1]["probability"] = .40
         ranked, _ = choose_model_play(rows, recent_calls=[
             ("Gun Doubles", "HB Slip Screen")] * 3)
