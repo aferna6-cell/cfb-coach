@@ -64,10 +64,10 @@ class ModelDesignedOffenseTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def plan(self, **kwargs):
-        return designer.design_offense(
-            self.db, opponent_id="cpu", max_formations=3, max_plays=3,
-            artifact=self.artifact, catalogue=CATALOG, **kwargs
-        )
+        opts = {"opponent_id": "cpu", "max_formations": 3, "max_plays": 3,
+                "artifact": self.artifact, "catalogue": CATALOG}
+        opts.update(kwargs)
+        return designer.design_offense(self.db, **opts)
 
     def test_model_can_change_formations_and_individual_plays(self) -> None:
         plan = self.plan()
