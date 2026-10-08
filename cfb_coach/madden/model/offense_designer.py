@@ -33,6 +33,15 @@ def _digest(value: Any) -> str:
     return hashlib.sha256(_canonical(value).encode("utf-8")).hexdigest()[:16]
 
 
+def _identity(proposal: Mapping[str, Any]) -> str:
+    return _digest({
+        "expected_applied_hash": proposal["expected_applied_hash"],
+        "book": proposal["book"],
+        "macro_blueprints": proposal["macro_blueprints"],
+        "opponent_id": proposal["opponent_id"],
+    })
+
+
 def _load_artifact(db: Any) -> experimental_model.ExperimentalArtifact:
     path = resolve_artifact_path(db)
     if path:
@@ -268,10 +277,7 @@ def design_offense(
             "Predicted success is observational/shrinkage, not proof new plays win more.",
         ],
     }
-    proposal["proposal_id"] = _digest({
-        "expected_applied_hash": expected, "book": proposal["book"],
-        "macro_blueprints": proposal["macro_blueprints"], "opponent_id": opponent_id,
-    })
+    proposal["proposal_id"] = _identity(proposal)
     return proposal
 
 
@@ -285,6 +291,8 @@ def staged_design(db: Any) -> dict[str, Any] | None:
 
 def stage_design(db: Any, proposal: Mapping[str, Any]) -> dict[str, Any]:
     """Only stage a proposal; never modify the active applied book or macro loadout."""
+    if proposal.get("proposal_id") != _identity(proposal):
+        raise ValueError("Proposal contents do not match its signed identifier")
     existing = staged_design(db)
     if existing and existing.get("proposal_id") == proposal.get("proposal_id"):
         return existing
@@ -302,6 +310,8 @@ def confirm_installed(db: Any, *, proposal_id: str, attestation: str) -> dict[st
     pending = staged_design(db)
     if not pending or pending.get("proposal_id") != proposal_id:
         raise ValueError("No staged proposal with this ID")
+    if _identity(pending) != proposal_id:
+        raise ValueError("Staged proposal contents changed; refuse installation")
     if len((attestation or "").strip()) < 18:
         raise ValueError("Explicit Madden in-game installation attestation required")
     state = playbook._load_state(db)
@@ -378,8 +388,16 @@ def rollback_design(db: Any, *, proposal_id: str, attestation: str) -> dict[str,
     db.set_meta(META_HISTORY, _canonical(history[-30:]))
     # The associated generated macros are no longer presumed installed or armed.
     db.set_meta(META_BLUEPRINTS, "")
-    # Per-opponent approval is not blanket-revoked here: runtime independently
-    # checks exact play/form and coverage, and future prep must re-audit loadouts.
+    # Disable generated-macro recommendations after reverting the custom
+    # playbook; require separate re-verification for another installed build.
+    try:
+        keys = db.conn.execute(
+            "SELECT key FROM meta WHERE key LIKE 'ml_offense_verified_macros.v1:%'"
+        ).fetchall()
+        for row in keys:
+            db.set_meta(row[0], "")
+    except Exception:  # noqa: BLE001
+        pass
     return {"rolled_back": True, "proposal_id": proposal_id,
             "revision": restored["rev"], "formations": list(restored["formations"])}
 
@@ -423,6 +441,12 @@ def verify_created_macro(
     ]
     if not pairs or not blueprint.get("settings") or not blueprint.get("source_ids"):
         raise ValueError("Macro not grounded in installed playbook and researched settings")
+    source = next(
+        (a for a in research_db.offense_adjustments()
+         if a.get("id") == blueprint.get("source_action_id")), None
+    )
+    if not source or set(source.get("sources") or []) != set(blueprint.get("source_ids") or []):
+        raise ValueError("Macro's researched source and settings have changed; re-design")
     existing = verified_created_macros(db, opponent_id)
     if any(m["name"] == name for m in existing):
         return {"name": name, "already_verified": True}
