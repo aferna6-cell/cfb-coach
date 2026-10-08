@@ -21,8 +21,7 @@ META_PENDING = "ml_offense_design_pending.v1"
 META_HISTORY = "ml_offense_design_history.v1"
 META_BLUEPRINTS = "ml_offense_created_blueprints.v1"
 META_APPROVED = "ml_offense_verified_macros.v1:{opponent}"
-MAX_FORMATIONS = 5
-MAX_PLAYS_PER_FORMATION = 10
+MAX_FORMATIONS = 12  # user-adjustable formation limit; all plays always included
 
 
 def _canonical(value: Any) -> str:
@@ -107,28 +106,6 @@ def _play_rankings(
     return ranked
 
 
-def _trim_plays(rows: list[dict[str, Any]], cap: int) -> list[str]:
-    """Retain multiple concepts and a run/quick option rather than ten verts."""
-    chosen: list[dict[str, Any]] = []
-    concepts: set[str] = set()
-    for r in rows:
-        if len(chosen) >= cap:
-            break
-        if r["concept"] not in concepts:
-            chosen.append(r)
-            concepts.add(r["concept"])
-    for r in rows:
-        if len(chosen) >= cap:
-            break
-        if r not in chosen:
-            chosen.append(r)
-    if chosen and not any(r["is_run"] for r in chosen):
-        run = next((r for r in rows if r["is_run"]), None)
-        if run and run not in chosen:
-            chosen[-1] = run
-    return [r["play"] for r in chosen]
-
-
 def _macro_drafts(formations: Mapping[str, list[str]], sources: Mapping[str, str]) -> list[dict[str, Any]]:
     """Create reviewable templates from cited Madden 27 actions, not invented inputs."""
     from cfb_coach.madden.catalog import is_run
@@ -180,13 +157,17 @@ def design_offense(
     *,
     opponent_id: str = "cpu",
     max_formations: int = MAX_FORMATIONS,
-    max_plays: int = MAX_PLAYS_PER_FORMATION,
     artifact: Any = None,
     catalogue: Mapping[str, dict[str, list[str]]] | None = None,
 ) -> dict[str, Any]:
-    """Deterministic offline design. No DB or file writes."""
-    if not 1 <= max_formations <= MAX_FORMATIONS or not 2 <= max_plays <= MAX_PLAYS_PER_FORMATION:
-        raise ValueError("max_formations must be 1..5 and max_plays 2..10")
+    """Deterministic formation-level design. Installs ALL catalogued plays per chosen formation.
+
+    No individual play edits. The selected stock source is recorded because
+    Madden's catalogued play list is stock-book-specific, not a guaranteed
+    cross-book union in every version of the Madden custom editor.
+    """
+    if not 1 <= max_formations <= MAX_FORMATIONS:
+        raise ValueError(f"max_formations must be 1..{MAX_FORMATIONS}")
     active = playbook.load_books(db).get("offense") or {}
     all_books = dict(catalogue) if catalogue is not None else {
         b: catalog.book_formations("offense", b) for b in catalog.book_names("offense")
@@ -203,18 +184,27 @@ def design_offense(
             ranking = _play_rankings(art, source, form, ps, opponent_id, active)
             if not ranking:
                 continue
-            picks = _trim_plays(ranking, max_plays)
-            if not picks:
-                continue
-            scores = [r["score"] for r in ranking if r["play"] in picks]
+            # The formation is the indivisible installation unit. Every play
+            # from that stock-book's formation stays eligible to the live model.
+            picks = list(dict.fromkeys(ps))
             is_current = form in (active.get("formations") or {})
             run = any(catalog.is_run(p) for p in picks)
-            # Score comes from the model and coverage of concepts. Continuity
-            # is a small tie-breaker, not a constraint or a heuristic pick.
-            rank = sum(scores) / len(scores)
+            # Score formations using the spread of concepts (not just one
+            # anomalously high-ranked screen). A single screen cannot dictate
+            # the score of an entire formation.
+            best_by_concept: dict[str, float] = {}
+            for row in ranking:
+                concept = row["concept"]
+                if concept not in best_by_concept:
+                    best_by_concept[concept] = row["score"]
+            balanced = sorted(best_by_concept.values(), reverse=True)
+            if len(balanced) > 1:
+                rank = sum(balanced[:min(6, len(balanced))]) / min(6, len(balanced))
+            else:
+                rank = balanced[0]
             rank += 0.014 if is_current else 0.0
             rank += 0.008 if run else 0.0
-            rank += 0.002 * len({r["concept"] for r in ranking if r["play"] in picks})
+            rank += 0.002 * len(best_by_concept)
             entry = {
                 "formation": form, "source_book": source, "plays": picks,
                 "score": round(rank, 6), "has_run": run,
@@ -245,19 +235,25 @@ def design_offense(
     sources = {r["formation"]: r["source_book"] for r in chosen}
     all_pairs = sum(len(p) for p in formations.values())
     old = active.get("formations") or {}
+    old_sources = active.get("formation_sources") or {}
     changes: list[dict[str, Any]] = []
     for f in sorted(set(old) | set(formations)):
-        before = set(old.get(f) or [])
-        after = set(formations.get(f) or [])
         if f not in old:
-            changes.append({"action": "ADD_FORMATION", "formation": f, "source_book": sources[f]})
+            changes.append({
+                "action": "ADD_FORMATION", "formation": f,
+                "source_book": sources[f], "plays_included": len(formations[f]),
+            })
         elif f not in formations:
             changes.append({"action": "REMOVE_FORMATION", "formation": f})
-        for p in sorted(after - before):
-            changes.append({"action": "ADD_PLAY", "formation": f, "play": p,
-                            "source_book": sources[f]})
-        for p in sorted(before - after):
-            changes.append({"action": "REMOVE_PLAY", "formation": f, "play": p})
+        elif (
+            old_sources.get(f) != sources[f]
+            or list(old[f]) != list(formations[f])
+        ):
+            changes.append({
+                "action": "REINSTALL_FULL_FORMATION", "formation": f,
+                "source_book": sources[f], "plays_included": len(formations[f]),
+                "note": "Install the complete formation from this source; no individual play editing",
+            })
 
     expected = _digest(active)
     proposal = {
@@ -274,7 +270,7 @@ def design_offense(
             "formation_sources": sources,
             "audibles": {}, "core": list(formations),
             "rev": int(active.get("rev") or 0) + 1,
-            "reason": "Model-designed individual formations and plays; explicitly installed in Madden",
+            "reason": "Model-designed whole formations with every catalogued play from selected source",
         },
         "changes": changes,
         "candidate_formations": len(ranks), "ranked_formations": ranks[:12],
@@ -283,7 +279,8 @@ def design_offense(
         "editor_requires_confirmation": True,
         "notes": [
             "Proposal only; live offensive book is not changed.",
-            "All pairs originate in the catalogued Madden 27 source book shown.",
+            "Each included formation contains ALL catalogued plays from its selected stock source.",
+            "Madden stock-book play lists differ; cross-book union is not assumed installed.",
             "Custom-editor import and availability must be checked in Madden before confirmation.",
             "Macro blueprints are NOT active. Editor fields and button sequences require validation.",
             "Predicted success is observational/shrinkage, not proof new plays win more.",
