@@ -6,6 +6,7 @@ keeps the classic typed loop.
 
 from __future__ import annotations
 
+import contextvars
 import json
 import re
 import socket
@@ -1094,6 +1095,24 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
+class ContextThreadingHTTPServer(ThreadingHTTPServer):
+    """Request threads see the ContextVars from when this server was created.
+
+    ``threading.Thread`` does not copy contextvars on this runtime. The HTML
+    server handles each request on a worker, so ``--no-vod-prior`` and
+    ``--freeze-vod-book`` set on the command thread never reached ``make_call``.
+    The snapshot is taken at construction, which is the flagged thread in
+    ``run_live_server``, and each worker enters that snapshot before the handler.
+    """
+
+    def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
+        super().__init__(server_address, RequestHandlerClass, bind_and_activate)
+        self._request_context = contextvars.copy_context()
+
+    def process_request_thread(self, request, client_address):
+        self._request_context.run(super().process_request_thread, request, client_address)
+
+
 def pick_port(host: str = "127.0.0.1", preferred: int = 8765) -> int:
     for port in [preferred, *range(preferred + 1, preferred + 20)]:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -1120,7 +1139,7 @@ def run_live_server(
     ctrl.start()
     port = port or pick_port(host)
     handler = make_handler(ctrl)
-    server = ThreadingHTTPServer((host, port), handler)
+    server = ContextThreadingHTTPServer((host, port), handler)
     url = f"http://{host}:{port}/"
     print(f"HTML live play ON → {url}")
     print("  Submit outcome + next situation in the browser. Ctrl+C to stop the server.")
@@ -1137,6 +1156,7 @@ def run_live_server(
 
 
 __all__ = [
+    "ContextThreadingHTTPServer",
     "LivePlayController",
     "LogRow",
     "make_handler",
