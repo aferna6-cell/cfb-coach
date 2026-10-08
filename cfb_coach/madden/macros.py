@@ -286,13 +286,21 @@ def store_selection(
 
     from cfb_coach.madden.offense_macros import clean_ids
 
-    del gameplan  # call sheets stay on the prep plan; they are not the active macros
     if db is None:
         return
+    packages = {"offense": [], "defense": []}
+    if gameplan:
+        for side in ("offense", "defense"):
+            packages[side] = [
+                {"id": m.get("id"), "formation": m.get("formation"), "play": m.get("play"), "label": m.get("label")}
+                for m in (gameplan.get(side) or [])
+                if m.get("formation") and m.get("play")
+            ]
     payload: dict[str, Any] = {
         "schema": 2,
         "offense": clean_ids(selection.get("offense") or []),
         "defense": _clean(selection.get("defense") or [], "defense"),
+        "call_packages": packages,
         "ts": datetime.now(timezone.utc).isoformat(),
     }
     db.set_meta(ACTIVE_META_KEY.format(opp=opponent_id), json.dumps(payload))

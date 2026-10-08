@@ -956,6 +956,12 @@ def make_call(
         from cfb_coach.madden.playbook import NoActivePlaybook
 
         raise NoActivePlaybook(f"No {sit.side} playbook given — run `prep --game madden27` first.")
+    if sit.side == "offense" and sel.get("offense"):
+        # A Custom Adjustment whose pairs all left with a removed formation does not arm.
+        from cfb_coach.madden.offense_macros import pairs_in_book
+
+        offense_book = books.get("offense") or {}
+        sel["offense"] = [mid for mid in sel["offense"] if pairs_in_book(mid, offense_book, cap=1)]
     if sit.side == "defense":
         call = _pick_defense(sit, opp, bl, db, rng, sel["defense"], books["defense"])
     else:
@@ -967,4 +973,8 @@ def make_call(
     snote = score_call_note(sit)
     if snote:
         call.rationale += f" | {snote}"
-    return call
+    # Newest applied book only. A session that started on the previous book
+    # already re-read it above when playbook was omitted.
+    from cfb_coach.vod_model.live import apply_madden_call
+
+    return apply_madden_call(call, sit, opponent_id, db, books)

@@ -243,6 +243,15 @@ def build_prep_plan(
         d_book = d_book if d_book is not None else book_choice("defense", cfg)
     books = plan_books(db, opp=opp, team=pcfg["team"], offense_only=offense_only,
                        o_book=o_book, d_book=d_book, research=research, opponent_id=opponent_id)
+    vod_report = None
+    try:
+        from cfb_coach.vod_model.prep_hook import integrate_madden
+
+        vod_report = integrate_madden(
+            db, opponent_id, books, persist=bool(db is not None and persist), offense_only=offense_only,
+        )
+    except Exception:  # noqa: BLE001 — a bad model file must not break prep
+        vod_report = None
     book_deltas = [d for side in ("offense", "defense") for d in books[side]["deltas"]]
     proposed = propose_deltas(opponent_id, opp, profile=pcfg["id"])
     applied = get_applied_deltas(db, opponent_id)
@@ -373,6 +382,8 @@ def build_prep_plan(
     else:
         d_forms, _d_aud, d_warn = formations_for_gameplan(books["defense"], applied_books.get("defense"))
         playbook_warnings.extend(d_warn)
+    from cfb_coach.vod_model.prep_hook import sheet_bonus_from_report
+
     gameplan = build_gameplan(
         offense_book=o_forms,
         defense_book=d_forms,
@@ -383,6 +394,7 @@ def build_prep_plan(
         n=n_gameplan if n_gameplan is not None else DEFAULT_COUNT,
         offense_only=offense_only,
         baseline=bl,
+        vod_bonus=sheet_bonus_from_report(vod_report),
     )
     playbook_warnings.extend(gameplan.get("warnings") or [])
 
@@ -394,6 +406,8 @@ def build_prep_plan(
         store_selection(db, opponent_id, selection, gameplan=gameplan)
     plan["gameplan"] = gameplan
     plan["playbook_warnings"] = playbook_warnings
+    if vod_report:
+        plan["vod_report"] = vod_report
     return plan
 
 
@@ -546,4 +560,7 @@ def format_delta_text(plan: dict[str, Any]) -> str:
     lines.extend(f"  - {t}" for t in plan["tips"])
     if not scout.get("available"):
         lines.append(f"## Live meta scout\n  {scout.get('message') or 'Scout unavailable'}")
+    from cfb_coach.vod_model.report import format_vod_section
+
+    lines.extend(format_vod_section(plan.get("vod_report")))
     return "\n".join(lines)

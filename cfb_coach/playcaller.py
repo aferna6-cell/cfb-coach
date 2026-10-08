@@ -1242,7 +1242,9 @@ def make_call(
         snote = score_call_note(sit)
         if snote:
             call.rationale = f"{call.rationale} | {snote}" if call.rationale else snote
-        return call
+        from cfb_coach.vod_model.live import apply_cfb_call
+
+        return apply_cfb_call(call, sit, opponent_id, db, dynasty=dynasty)
 
     if is_cpu_opponent(opponent_id):
         # CPU games = offense-only coaching — never emit D calls / D macros

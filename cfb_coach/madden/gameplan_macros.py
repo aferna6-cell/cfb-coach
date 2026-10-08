@@ -333,6 +333,7 @@ def _score_pair(
     used: set[tuple[str, str]],
     lw: Any,
     favor_family: str | None,
+    vod_bonus: dict[tuple[str, str], float] | None = None,
 ) -> tuple[float, list[str]]:
     from cfb_coach.madden.defense_select import call_family
 
@@ -368,6 +369,11 @@ def _score_pair(
                 why.append(f"your logs {norm:+.2f} over {n} snap(s)")
         except Exception:  # noqa: BLE001
             pass
+    if vod_bonus:
+        extra = vod_bonus.get((formation, play))
+        if extra:
+            score += extra
+            why.append(f"VOD success {extra:+.2f} (primary; your logs stay a nudge)")
     return score, why
 
 
@@ -379,10 +385,14 @@ def _pick(
     used: set[tuple[str, str]],
     lw: Any,
     favor_family: str | None,
+    vod_bonus: dict[tuple[str, str], float] | None = None,
 ) -> tuple[str, str, list[str]] | None:
     best: tuple[float, str, str, list[str]] | None = None
     for formation, play in _in_book(book):
-        score, why = _score_pair(formation, play, slot, prefers=prefers, used=used, lw=lw, favor_family=favor_family)
+        score, why = _score_pair(
+            formation, play, slot, prefers=prefers, used=used, lw=lw,
+            favor_family=favor_family, vod_bonus=vod_bonus,
+        )
         if best is None or score > best[0] or (score == best[0] and (formation, play) < (best[1], best[2])):
             best = (score, formation, play, why)
     if best is None:
@@ -440,6 +450,7 @@ def build_gameplan(
     n: int = DEFAULT_COUNT,
     offense_only: bool = False,
     baseline: dict[str, Any] | None = None,
+    vod_bonus: dict[tuple[str, str], float] | None = None,
 ) -> dict[str, Any]:
     """Build ``n`` offense macros and ``n`` defense macros from the given books."""
     baseline = baseline or load_meta_baseline()
@@ -488,6 +499,7 @@ def build_gameplan(
         "offense", offense_book, n=n, baseline=baseline, audibles=audibles, used=used_o,
         lw=_learned(db, opponent_id, "offense"), their_def=their_def, logged=logged,
         patch_bit=patch_bit, team=team if isinstance(team, str) else "",
+        vod_bonus=vod_bonus,
     )
     defense: list[dict[str, Any]] = []
     if not offense_only:
@@ -528,6 +540,7 @@ def _build_side(
     logged: dict[str, Any],
     patch_bit: str,
     team: str,
+    vod_bonus: dict[tuple[str, str], float] | None = None,
 ) -> list[dict[str, Any]]:
     if not book or n <= 0:
         return []
@@ -537,7 +550,7 @@ def _build_side(
         prefers = _offense_prefers(baseline, slot["prefer"]) if side == "offense" else _defense_prefers(baseline, slot["prefer"])
         prefers = [pair for pair in prefers if pair in allowed]
         favor = _favor_family(slot, their_def_families=their_def, logged_families=list(logged.get("families") or []))
-        picked = _pick(book, slot, prefers=prefers, used=used, lw=lw, favor_family=favor)
+        picked = _pick(book, slot, prefers=prefers, used=used, lw=lw, favor_family=favor, vod_bonus=vod_bonus)
         if picked is None:
             break
         formation, play, why = picked

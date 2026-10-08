@@ -37,6 +37,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Experimental macros (O-RPO, HEAT) stay out of the primary list unless one of these is set.
     "experimental_macros": False,
     "experimental_swaps": [],
+    # VOD model prior. Models dir stays empty here — set CFB_COACH_VOD_MODELS or --vod-models.
+    "vod_prior": True,
+    "vod_freeze_book": False,
+    "vod_models_dir": "",
 }
 
 _PROFILE_ALIASES = {
@@ -144,6 +148,9 @@ def save_config(
     experimental_macros: bool | None = None,
     swap_macro: str | None = None,
     unswap_macro: str | None = None,
+    vod_prior: bool | None = None,
+    vod_freeze_book: bool | None = None,
+    vod_models_dir: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Update the on-disk config. Returns (config, warnings)."""
     path = config_path()
@@ -177,6 +184,12 @@ def save_config(
         cfg["live_macros"] = bool(live_macros)
     if experimental_macros is not None:
         cfg["experimental_macros"] = bool(experimental_macros)
+    if vod_prior is not None:
+        cfg["vod_prior"] = bool(vod_prior)
+    if vod_freeze_book is not None:
+        cfg["vod_freeze_book"] = bool(vod_freeze_book)
+    if vod_models_dir is not None:
+        cfg["vod_models_dir"] = str(vod_models_dir).strip()
     swaps = [str(x).upper() for x in (cfg.get("experimental_swaps") or []) if str(x).strip()]
     if swap_macro:
         key = str(swap_macro).upper()

@@ -173,6 +173,12 @@ def _book_pick_line(plan: dict[str, Any], side: str) -> str:
             f"<div class='muted'>{_esc(bp.get('reason') or '')}</div></div>")
 
 
+def _render_vod(plan: dict[str, Any]) -> str:
+    from cfb_coach.vod_model.report import render_vod_html
+
+    return render_vod_html(plan)
+
+
 def _render_gameplan(plan: dict[str, Any]) -> str:
     """Call sheet (plays). Not Custom Adjustments — kept off the prep headline."""
     gp = plan.get("gameplan") or {}
@@ -422,6 +428,7 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
     </section>
 
     {_render_playbook(plan)}
+    {_render_vod(plan)}
     {_render_gameplan(plan)}
 
     {_render_swap_banners(plan.get("swap_banners") or [])}

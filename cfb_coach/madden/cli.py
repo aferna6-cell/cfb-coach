@@ -120,6 +120,10 @@ def cmd_config(args: argparse.Namespace) -> int:
         raise SystemExit("Pass only one of --no-macros or --macros.")
     if getattr(args, "experimental_macros", False) and getattr(args, "no_experimental_macros", False):
         raise SystemExit("Pass only one of --experimental-macros or --no-experimental-macros.")
+    if getattr(args, "no_vod_prior", False) and getattr(args, "vod_prior", False):
+        raise SystemExit("Pass only one of --no-vod-prior or --vod-prior.")
+    if getattr(args, "freeze_vod_book", False) and getattr(args, "unfreeze_vod_book", False):
+        raise SystemExit("Pass only one of --freeze-vod-book or --unfreeze-vod-book.")
     live_macros = None
     if getattr(args, "no_macros", False):
         live_macros = False
@@ -130,11 +134,21 @@ def cmd_config(args: argparse.Namespace) -> int:
         experimental = False
     elif getattr(args, "experimental_macros", False):
         experimental = True
+    vod_prior = None
+    if getattr(args, "no_vod_prior", False):
+        vod_prior = False
+    elif getattr(args, "vod_prior", False):
+        vod_prior = True
+    vod_freeze = None
+    if getattr(args, "freeze_vod_book", False):
+        vod_freeze = True
+    elif getattr(args, "unfreeze_vod_book", False):
+        vod_freeze = False
     changing = any(
         getattr(args, k, None)
         for k in ("primary_team", "lab_team", "clear_primary", "clear_lab", "o_book", "d_book",
-                  "swap_macro", "unswap_macro")
-    ) or live_macros is not None or experimental is not None
+                  "swap_macro", "unswap_macro", "vod_models")
+    ) or live_macros is not None or experimental is not None or vod_prior is not None or vod_freeze is not None
     if changing:
         try:
             _, warnings = save_config(
@@ -148,6 +162,9 @@ def cmd_config(args: argparse.Namespace) -> int:
                 experimental_macros=experimental,
                 swap_macro=getattr(args, "swap_macro", None),
                 unswap_macro=getattr(args, "unswap_macro", None),
+                vod_prior=vod_prior,
+                vod_freeze_book=vod_freeze,
+                vod_models_dir=getattr(args, "vod_models", None),
             )
         except ValueError as exc:
             raise SystemExit(str(exc)) from None
@@ -178,6 +195,14 @@ def cmd_config(args: argparse.Namespace) -> int:
     else:
         exp_line += " — O-RPO and HEAT stay benched (config --swap-macro O-RPO, or --experimental-macros)"
     print(f"  experimental macros: {exp_line}")
+    vod_on = cfg.get("vod_prior", True) is not False
+    frozen = bool(cfg.get("vod_freeze_book"))
+    models = cfg.get("vod_models_dir") or "(CFB_COACH_VOD_MODELS, or unset)"
+    print("  VOD prior: " + ("on" if vod_on else "off")
+          + (" — book frozen" if frozen and vod_on else "")
+          + ("" if vod_on else " — no call-quality prior and no playbook edits"))
+    print(f"  VOD models: {models}")
+    print("  VOD weights: quality 1.0 (CFB_COACH_VOD_QUALITY_WEIGHT), log nudge 0.25 (CFB_COACH_VOD_LOG_NUDGE)")
     if not cfg.get("primary_team"):
         print("  Set: config --game madden27 --primary-team \"Detroit Lions\"")
     return 0
@@ -442,6 +467,13 @@ def cmd_play(args: argparse.Namespace) -> int:
     print("  Score (optional, us-them): --score 21-14, or `score 21-14` / `score clear` mid-game.")
     print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. Close early games stay neutral.")
     macros_on = _session_live_macros(args)
+
+    def _active_now() -> dict:
+        """Re-read the stored macros so a book edit during this session is the next snap's list."""
+        from cfb_coach.madden.macros import load_selection
+
+        return load_selection(db, oid) or active
+
     if macros_on:
         print("  Live macros: on. A stored macro shows when its trigger matches (live look, repeated")
         print("  tendency, red zone, two-minute, protecting a lead). --no-macros turns them off.")
@@ -459,7 +491,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         absorb_and_stamp(sit, live_ctx)
         heard = format_heard(sit)
         print(heard)
-        call = make_call(sit, oid, db, active_macros=active, live_macros=macros_on)
+        call = make_call(sit, oid, db, active_macros=_active_now(), live_macros=macros_on)
         print(call.headline())
         print(call.format())
         if args.why:
@@ -477,7 +509,8 @@ def cmd_play(args: argparse.Namespace) -> int:
 
         def _make(sit, **kwargs):
             kwargs.setdefault("live_macros", macros_on)
-            return make_call(sit, oid, db, active_macros=active, **kwargs)
+            kwargs.setdefault("active_macros", _active_now())
+            return make_call(sit, oid, db, **kwargs)
 
         def _learn():
             from cfb_coach.madden.postgame import summary
@@ -595,7 +628,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             heard = format_heard(sit)
             print(heard)
             call = make_call(
-                sit, oid, db, active_macros=active, live_macros=macros_on,
+                sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )
