@@ -973,6 +973,21 @@ def make_call(
         sel["offense"] = [mid for mid in sel["offense"] if pairs_in_book(mid, offense_book, cap=1)]
     if sit.side == "defense":
         call = _pick_defense(sit, opp, bl, db, rng, sel["defense"], books["defense"])
+        # Stage 3 shadow advisor: annotate + log only. Never changes the shown call.
+        # Does not interact with experimental offensive ML.
+        try:
+            from cfb_coach.madden.model.defense_shadow import maybe_attach_defense_shadow
+
+            call = maybe_attach_defense_shadow(
+                call=call,
+                sit=sit,
+                opponent_id=opponent_id,
+                db=db,
+                book=books.get("defense") or {},
+                armed=sel.get("defense") or [],
+            )
+        except Exception:  # noqa: BLE001 — never break live coaching
+            pass
     else:
         call = _pick_offense(sit, opp, bl, db, rng, sel["offense"], books["offense"], audibles=audibles)
         # Opt-in experimental ML: sealed rebuild of reads/macros when ML selects.

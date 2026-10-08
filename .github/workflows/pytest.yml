@@ -2,9 +2,9 @@ name: pytest
 
 on:
   push:
-    branches: [main, madden-ml/coach, madden-ml/experimental-pilot]
+    branches: [main, madden-ml/coach, madden-ml/experimental-pilot, madden-ml/stage3-defense-shadow]
   pull_request:
-    branches: [main, madden-ml/coach]
+    branches: [main, madden-ml/coach, madden-ml/experimental-pilot]
 
 jobs:
   test:

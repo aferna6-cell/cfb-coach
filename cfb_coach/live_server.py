@@ -190,6 +190,7 @@ class LivePlayController:
             "execution_verify": bool(self.enable_execution_verify),
             "pending_recommendation": self._pending_recommendation(),
             "ml_experimental": self._ml_experimental_state(),
+            "ml_defense_shadow": self._ml_defense_shadow_state(),
         }
 
     def _pending_recommendation(self) -> dict[str, Any] | None:
@@ -224,9 +225,29 @@ class LivePlayController:
             "fell_back": bool(info.get("fell_back")),
         }
 
+    def _ml_defense_shadow_state(self) -> dict[str, Any] | None:
+        """Stage 3 defense shadow advisor (log-only; never controls the live call)."""
+        call = self.last_call
+        if call is None or self.ended:
+            return None
+        info = getattr(call, "ml_defense_shadow", None)
+        if not isinstance(info, dict):
+            return None
+        return {
+            "heuristic": f"{info.get('heuristic_formation')}/{info.get('heuristic_play')}",
+            "shadow": f"{info.get('formation')}/{info.get('play')}",
+            "adjustment": info.get("adjustment"),
+            "reason": info.get("reason"),
+            "confidence": info.get("confidence"),
+            "evidence_quality": info.get("evidence_quality"),
+            "format_line": info.get("format_line"),
+            "controlled": False,
+            "incompatibility": info.get("incompatibility"),
+        }
+
     @staticmethod
     def _format_call_text(call: Any) -> str:
-        """Call text plus experimental ML explanation when present."""
+        """Call text plus experimental ML / defense shadow explanation when present."""
         text = call.format() if hasattr(call, "format") else str(call)
         info = getattr(call, "ml_experimental", None)
         if isinstance(info, dict) and info.get("explanation"):
@@ -236,14 +257,25 @@ class LivePlayController:
                 f"\n  heuristic kept visible: {info.get('heuristic_formation')}/{info.get('heuristic_play')}"
                 f"\n  (opt-in pilot — not a validated competitive model)"
             )
+        dinfo = getattr(call, "ml_defense_shadow", None)
+        if isinstance(dinfo, dict) and dinfo.get("reason"):
+            text += (
+                f"\n  D-shadow [{dinfo.get('evidence_quality') or '?'}]: "
+                f"{dinfo.get('format_line') or (str(dinfo.get('formation')) + ' — ' + str(dinfo.get('play')))}"
+                f"\n  reason: {dinfo.get('reason')}"
+                f"\n  heuristic shown: {dinfo.get('heuristic_formation')}/{dinfo.get('heuristic_play')}"
+                f"\n  (shadow only — does not control the live defensive call)"
+            )
         return text
 
     def _ensure_tracker(self) -> Any:
         if self.ml_tracker is not None:
             return self.ml_tracker
         needs = bool(self.enable_execution_verify or self.shadow_evaluate is not None)
-        # Experimental calls carry a pending decision that must be sealed+committed.
+        # Experimental / defense-shadow calls carry a pending decision that must be sealed.
         if getattr(self.last_call, "_pending_ml_decision", None) is not None:
+            needs = True
+        if getattr(self.last_call, "_pending_defense_shadow", None) is not None:
             needs = True
         if not needs:
             # Still allocate identity when experimental mode is active.
@@ -273,8 +305,10 @@ class LivePlayController:
         Experimental decisions are produced in ``make_call`` without a snap id.
         This is the single identity-aware logging point.
         """
-        # Ensure tracker when this call has a pending experimental decision.
-        if getattr(call, "_pending_ml_decision", None) is not None:
+        # Ensure tracker when this call has a pending experimental or defense-shadow decision.
+        if getattr(call, "_pending_ml_decision", None) is not None or getattr(
+            call, "_pending_defense_shadow", None
+        ) is not None:
             self.enable_execution_verify = True
         tracker = self._ensure_tracker()
         if tracker is None:
@@ -292,6 +326,21 @@ class LivePlayController:
                 from cfb_coach.madden.model.experimental_live import commit_experimental_decision
 
                 row_id = commit_experimental_decision(
+                    self.db,
+                    call,
+                    game_id=tracker.game_id,
+                    snap_id=snap_id,
+                    snap_seq=seq,
+                    session_id=self.session_id,
+                )
+            except Exception:  # noqa: BLE001 — never break live play
+                row_id = None
+            tracker.bind_decision_row(row_id)
+        elif is_new and getattr(call, "_pending_defense_shadow", None) is not None:
+            try:
+                from cfb_coach.madden.model.defense_shadow import commit_defense_shadow
+
+                row_id = commit_defense_shadow(
                     self.db,
                     call,
                     game_id=tracker.game_id,
