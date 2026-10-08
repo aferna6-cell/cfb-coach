@@ -64,25 +64,26 @@ class ModelDesignedOffenseTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def plan(self, **kwargs):
-        opts = {"opponent_id": "cpu", "max_formations": 3, "max_plays": 3,
+        opts = {"opponent_id": "cpu", "max_formations": 3,
                 "artifact": self.artifact, "catalogue": CATALOG}
         opts.update(kwargs)
         return designer.design_offense(self.db, **opts)
 
-    def test_model_can_change_formations_and_individual_plays(self) -> None:
+    def test_model_can_change_formations_and_includes_every_source_play(self) -> None:
         plan = self.plan()
         self.assertLessEqual(len(plan["book"]["formations"]), 3)
         self.assertGreater(sum(map(len, plan["book"]["formations"].values())), 0)
         changes = plan["changes"]
         self.assertTrue(
-            any(r["action"] in ("ADD_PLAY", "REMOVE_PLAY", "ADD_FORMATION", "REMOVE_FORMATION")
+            any(r["action"] in ("ADD_FORMATION", "REMOVE_FORMATION", "REINSTALL_FULL_FORMATION")
                 for r in changes)
         )
         self.assertEqual(plan["book"]["rev"], 4)
         for f, plays in plan["book"]["formations"].items():
             source = plan["book"]["formation_sources"][f]
-            self.assertTrue(set(plays).issubset(CATALOG[source][f]))
-            self.assertLessEqual(len(plays), 3)
+            self.assertEqual(plays, CATALOG[source][f])
+            self.assertGreaterEqual(len(plays), 3)
+        self.assertFalse(any("PLAY" in row["action"] and "FORMATION" not in row["action"] for row in changes))
         self.assertEqual(playbook.load_books(self.db)["offense"], self.old)
         self.assertIsNone(designer.staged_design(self.db))
 
@@ -251,7 +252,7 @@ class ModelDesignedOffenseTests(unittest.TestCase):
 
     def test_reject_oversized_offense_book(self) -> None:
         with self.assertRaises(ValueError):
-            self.plan(max_plays=100)
+            self.plan(max_formations=100)
 
 
 if __name__ == "__main__":
