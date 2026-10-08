@@ -60,6 +60,20 @@ def train(
         row["eligibility"] = elig
         row["supervised_eligible"] = elig in SUPERVISED_ELIGIBLE
         if row["supervised_eligible"] and row.get("label_available"):
+            # Ensure action attribution fields exist (executed / trusted VOD only).
+            if not row.get("action_play") or not row.get("action_formation"):
+                if row.get("executed_play") and row.get("executed_formation"):
+                    row["action_play"] = row["executed_play"]
+                    row["action_formation"] = row["executed_formation"]
+                elif elig == "trusted_vod":
+                    row["action_play"] = row.get("executed_play") or row.get("recommended_play")
+                    row["action_formation"] = (
+                        row.get("executed_formation") or row.get("recommended_formation")
+                    )
+                else:
+                    continue
+            if not row.get("action_play") or not row.get("action_formation"):
+                continue
             supervised.append(row)
     # Plumbing fallback: if nothing is verified yet, fit is marked insufficient
     # rather than silently treating recommendations as executions.
@@ -100,6 +114,9 @@ def train(
             "weights": [],
             "feature_names": list(feature_mod.pre_snap_feature_names()),
             "n_train": len(train_rows),
+            "baseline_rate": 0.5,
+            "train_groups": [],
+            "all_groups": [],
             "seed": seed,
             "note": "insufficient labeled rows for supervised fit",
         }
@@ -255,8 +272,18 @@ def _row_vector(row: Mapping[str, Any]) -> FeatureVector:
         quarter=_int(row.get("quarter")),
         madden_version="madden27",
     )
-    formation = str(row.get("recommended_formation") or row.get("formation") or "Unknown")
-    play = str(row.get("recommended_play") or row.get("play") or "Unknown")
+    # Play-specific supervised features must describe the executed / trusted
+    # observed action — never the displayed recommendation when they differ.
+    formation = row.get("action_formation")
+    play = row.get("action_play")
+    if not formation or not play:
+        raise ValueError(
+            "supervised training rows require action_formation/action_play "
+            "(verified execution or trusted VOD observation); "
+            "recommendations are not a substitute for unknown execution"
+        )
+    formation = str(formation)
+    play = str(play)
     # Training rows may name plays outside a locked book; build a confirmed
     # candidate against a one-play synthetic book so feature code can run.
     book = {formation: [play]}

@@ -1,0 +1,24 @@
+name: pytest
+
+on:
+  push:
+    branches: [main, madden-ml/coach]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Full suite
+        run: PYTHONPATH=. python -m pytest tests -p no:cacheprovider -q
+      - name: Full suite (repeat)
+        run: PYTHONPATH=. python -m pytest tests -p no:cacheprovider -q

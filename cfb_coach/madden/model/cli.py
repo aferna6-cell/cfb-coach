@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -22,8 +21,11 @@ from cfb_coach.madden.model import train as train_mod
 from cfb_coach.madden.model.schema import CoachingMode, MLStatus, to_dict
 
 
-def open_madden_db() -> CoachDB:
-    return CoachDB(madden_db_path(), seed=load_seed())
+def open_madden_db(*, read_only: bool = False) -> CoachDB:
+    path = madden_db_path()
+    if read_only:
+        return CoachDB.open_read_only(path)
+    return CoachDB(path, seed=load_seed())
 
 
 def default_registry() -> Path:
@@ -45,7 +47,7 @@ def cmd_ml_find_db(args: argparse.Namespace) -> int:
 
 
 def cmd_ml_backup(args: argparse.Namespace) -> int:
-    """Copy the active Madden DB to a timestamped backup. Never modifies the source."""
+    """Consistent SQLite backup via the backup API. Never modifies the source."""
     src = madden_db_path()
     if not src.is_file():
         print(f"no database at {src}", file=sys.stderr)
@@ -54,21 +56,36 @@ def cmd_ml_backup(args: argparse.Namespace) -> int:
     dest_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     dest = dest_dir / f"{src.stem}.backup.{stamp}{src.suffix}"
-    shutil.copy2(src, dest)
+    # Prefer read-only source connection so inspect/backup never migrates.
+    db = CoachDB.open_read_only(src)
+    try:
+        db.backup_to(dest)
+    finally:
+        db.close()
     print(f"source: {src}")
     print(f"backup: {dest}")
+    print(f"method: sqlite3.Connection.backup")
     print(f"size_bytes: {dest.stat().st_size}")
     return 0
 
 
 def cmd_ml_inspect(args: argparse.Namespace) -> int:
-    db = open_madden_db()
+    """Read-only inspection — never migrates or writes the gameplay DB."""
+    paths = list(args.path or [])
+    db = None
     try:
-        paths = list(args.path or [])
-        rows = dataset_mod.build_rows(db=db, extra_paths=paths)
+        src = madden_db_path()
+        if src.is_file():
+            db = CoachDB.open_read_only(src)
+            rows = dataset_mod.build_rows(db=db, extra_paths=paths)
+            db_label = str(db.path)
+        else:
+            rows = dataset_mod.build_rows(db=None, extra_paths=paths)
+            db_label = f"(missing) {src}"
         report = dataset_mod.quality_report(rows)
         print(json.dumps(report, indent=2, sort_keys=True))
-        print(f"db: {db.path}")
+        print(f"db: {db_label}")
+        print(f"read_only: True")
         print(
             f"rows: {report['total_snaps']}  games: {report['unique_games']}  "
             f"verified_exec: {report['verified_executions']}  "
@@ -76,15 +93,22 @@ def cmd_ml_inspect(args: argparse.Namespace) -> int:
             f"outcome_only: {report['outcome_only_examples']}"
         )
     finally:
-        db.close()
+        if db is not None:
+            db.close()
     return 0
 
 
 def cmd_ml_export(args: argparse.Namespace) -> int:
-    db = open_madden_db()
+    """Export training rows. Source gameplay DB is opened read-only."""
+    paths = list(args.path or [])
+    db = None
     try:
-        paths = list(args.path or [])
-        rows = dataset_mod.build_rows(db=db, extra_paths=paths)
+        src = madden_db_path()
+        if src.is_file():
+            db = CoachDB.open_read_only(src)
+            rows = dataset_mod.build_rows(db=db, extra_paths=paths)
+        else:
+            rows = dataset_mod.build_rows(db=None, extra_paths=paths)
         if getattr(args, "supervised_only", False):
             rows = dataset_mod.supervised_rows(rows)
         if getattr(args, "sanitized", False):
@@ -93,6 +117,7 @@ def cmd_ml_export(args: argparse.Namespace) -> int:
             dataset_mod.export_jsonl(rows, args.out)
         report = dataset_mod.quality_report(rows)
         print(f"wrote {len(rows)} rows -> {args.out}")
+        print(f"source_read_only: True")
         print(
             json.dumps(
                 {
@@ -104,12 +129,41 @@ def cmd_ml_export(args: argparse.Namespace) -> int:
                         "supervised_training_rows",
                         "outcome_only_examples",
                         "duplicates",
+                        "ambiguous_matches",
                         "eligibility",
                     )
+                    if k in report
                 },
                 indent=2,
             )
         )
+    finally:
+        if db is not None:
+            db.close()
+    return 0
+
+
+def cmd_ml_migrate(args: argparse.Namespace) -> int:
+    """Explicit migration of a Madden DB. Requires a prior verified backup path."""
+    src = madden_db_path()
+    backup = Path(args.backup) if args.backup else None
+    if not src.is_file():
+        print(f"no database at {src}", file=sys.stderr)
+        return 1
+    if backup is None or not backup.is_file():
+        print(
+            "Refusing to migrate without --backup pointing at an existing verified backup.",
+            file=sys.stderr,
+        )
+        print(
+            "Run: python -m cfb_coach ml backup-db && python -m cfb_coach ml migrate-db --backup <path>",
+            file=sys.stderr,
+        )
+        return 2
+    db = CoachDB(src, seed=load_seed(), read_only=False, migrate=True)
+    try:
+        print(f"migrated: {src}")
+        print(f"backup_ref: {backup}")
     finally:
         db.close()
     return 0
@@ -420,12 +474,16 @@ def cmd_ml_report(args: argparse.Namespace) -> int:
 
 
 def _load_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
+    """Load training/eval rows without writing to the gameplay database."""
     paths = list(args.path or [])
     db = None
     try:
         if getattr(args, "db", True):
-            db = open_madden_db()
-            return dataset_mod.build_rows(db=db, extra_paths=paths)
+            src = madden_db_path()
+            if src.is_file():
+                db = CoachDB.open_read_only(src)
+                return dataset_mod.build_rows(db=db, extra_paths=paths)
+            return dataset_mod.build_rows(db=None, extra_paths=paths)
         return dataset_mod.build_rows(db=None, extra_paths=paths)
     finally:
         if db is not None:
@@ -446,7 +504,8 @@ def build_ml_subparser(sub: Any) -> None:
     p_find.set_defaults(func=cmd_ml_find_db)
 
     p_bak = ml_sub.add_parser(
-        "backup-db", help="Copy the Madden DB to a timestamped backup (source untouched)"
+        "backup-db",
+        help="Consistent SQLite backup via backup API (source untouched, WAL-safe)",
     )
     p_bak.add_argument(
         "--out",
@@ -455,8 +514,20 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_bak.set_defaults(func=cmd_ml_backup)
 
+    p_mig = ml_sub.add_parser(
+        "migrate-db",
+        help="Explicit schema migration (requires --backup of a verified copy)",
+    )
+    p_mig.add_argument(
+        "--backup",
+        required=True,
+        help="Path to an existing verified backup created by backup-db",
+    )
+    p_mig.set_defaults(func=cmd_ml_migrate)
+
     p_ins = ml_sub.add_parser(
-        "inspect", help="Inspect training-row coverage, eligibility, and provenance"
+        "inspect",
+        help="Read-only inspect of training-row coverage (no schema migration)",
     )
     p_ins.add_argument("--path", action="append", default=[], help="Extra CSV/JSON/JSONL/SQLite path")
     p_ins.set_defaults(func=cmd_ml_inspect)

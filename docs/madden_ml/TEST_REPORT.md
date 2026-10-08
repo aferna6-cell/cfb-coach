@@ -1,4 +1,4 @@
-# Madden ML coach — test report (Sprint 3)
+# Madden ML coach — test report (Sprint 3.1)
 
 Branch: `madden-ml/coach` (PR #20). Environment: Ubuntu, Python 3.12, `pip install -e '.[dev]'`, `PYTHONPATH=.`.
 
@@ -10,46 +10,25 @@ PYTHONPATH=. python3 -m pytest tests -p no:cacheprovider -q
 
 | Run | Result |
 | --- | --- |
-| 1 | **373 passed** in ~46s |
-| 2 | **373 passed** (repeat) |
+| 1 | **384 passed** in ~48s |
+| 2 | **384 passed** (repeat) |
 
-No nondeterministic failures observed across the two full runs.
+`tests/madden_ml`: **53 passed** (schema + pipeline + Sprint 3 live + Sprint 3.1 integrity).
 
-`tests/madden_ml`: **42 passed** (schema + pipeline + Sprint 3 live/eligibility/identity).
+CI: `.github/workflows/pytest.yml` runs the full suite twice on PRs/pushes.
 
-## Sprint 3 coverage added
+## Sprint 3.1 integrity coverage
 
-- Shared `evaluate_live_shadow` for HTML / terminal / one-shot
-- `LiveDecisionTracker` unique game/snap ids (never opponent_id as game_id)
-- HTML execution verification (used recommended / different / unknown)
-- Outcome linkage via `ml_snap_id` + `ml_outcomes`
-- Training eligibility + supervised-only play-action training
-- Hardened promotion gate (train-only baseline; mins 80/30/4; +0.02 log-loss)
-- Feature schema `madden-ml.features.2` (family one-hots; no numeric hashes)
-- Sealed decision pipeline behind `CFB_COACH_SEALED_PIPELINE` (default off)
-- Local DB find/backup/inspect/export/sanitized + richer `ml report`
+- Training features attribute results to **executed** action (Gun Trips / Inside Zone), not recommendation (Mesh)
+- Unknown execution excluded from supervised `_row_vector`
+- Trusted VOD / outside-book executed plays
+- Canonical dedupe across snaps / play_records / ml_* (one active row; latest outcome)
+- HTTP idempotency on `/api/result_call` (duplicate POST does not double-advance)
+- Undo voids `ml_outcomes` into `ml_outcome_audit` and allows relog
+- SQLite `backup()` API + read-only `mode=ro` inspect (no migration)
+- Eval: zero baseline rate, mixed recommendation-only skipped, corrupted artifact fails, hybrid_activation=false
+- Two-game HTML readiness acceptance (backup → inspect → supervised export → train/eval)
 
-## Integration demonstration type
+## Laptop readiness
 
-**Controller-method + temporary-database E2E** (`tests/madden_ml/test_sprint3_live.py`) plus fixture-based software demonstration.
-
-Data used in fixtures:
-
-- `tests/fixtures/madden_ml/labeled_offense_snaps.jsonl` — labeled offense rows (execution **unverified** → not supervised-eligible)
-- `tests/fixtures/cpu_19-0_offense_snaps.csv` — historical offense snaps (recommendations only)
-
-Verified executions in fixtures: **0**. Supervised training from fixtures alone yields gate **insufficient** (correct). Hybrid promotion remains blocked.
-
-Shadow demo: heuristic pick unchanged; model failures do not interrupt live calls.
-
-## Real vs fixture counts (this environment)
-
-| Source | Count |
-| --- | --- |
-| Personal Franchise DB on agent VM | **0** (not present; do not invent) |
-| Fixture labeled JSONL | 20 rows / 4 games |
-| Fixture CPU CSV | 35 rows |
-| Verified executions (fixtures) | 0 |
-| E2E temp-DB snaps (acceptance test) | generated per run |
-
-Use `python -m cfb_coach ml find-db` / `ml inspect` on the Franchise laptop to count real games.
+See final agent report YES/NO and `docs/madden_ml/WORKFLOW.md` smoke-test steps.

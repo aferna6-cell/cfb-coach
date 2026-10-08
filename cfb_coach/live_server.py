@@ -129,6 +129,8 @@ class LivePlayController:
     shadow_evaluate: Callable[..., int | None] | None = None
     enable_execution_verify: bool = False
     ml_tracker: Any | None = None
+    # Durable HTTP idempotency: request_key -> last response (also persisted in DB).
+    _idempotency_mem: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def book_state(self) -> dict[str, Any] | None:
         if self.book_info is None:
@@ -375,15 +377,73 @@ class LivePlayController:
             book.spot.score_us = self.live_score.us
             book.spot.score_them = self.live_score.them
 
-    def undo_last(self) -> dict[str, Any]:
+    @staticmethod
+    def _parse_snap_seq(snap_id: str | None) -> int | None:
+        try:
+            from cfb_coach.madden.model.identity import parse_snap_seq
+
+            return parse_snap_seq(snap_id)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _idempotency_get(self, request_key: str | None) -> dict[str, Any] | None:
+        if not request_key:
+            return None
+        cached = self._idempotency_mem.get(request_key)
+        if cached is not None:
+            out = dict(cached)
+            out["idempotent_replay"] = True
+            return out
+        if hasattr(self.db, "get_idempotent_response"):
+            return self.db.get_idempotent_response(request_key)
+        return None
+
+    def _idempotency_put(
+        self, request_key: str | None, endpoint: str, response: dict[str, Any]
+    ) -> dict[str, Any]:
+        if not request_key:
+            return response
+        stored = dict(response)
+        stored["idempotency_key"] = request_key
+        self._idempotency_mem[request_key] = stored
+        if hasattr(self.db, "store_idempotent_response"):
+            self.db.store_idempotent_response(
+                request_key,
+                endpoint=endpoint,
+                response=stored,
+                session_id=self.session_id or None,
+            )
+        return stored
+
+    def undo_last(self, *, request_key: str | None = None) -> dict[str, Any]:
         with self.lock:
+            cached = self._idempotency_get(request_key)
+            if cached is not None:
+                return cached
             book = self._book()
             before = len(book._undos)
+            # Capture ml identity before undo so the tracker can restore pending.
+            undone_ml_snap = book.ml_snap_id
+            undone_decision = book.ml_decision_id
             msg = book.undo()
             if len(book._undos) < before and self.log:
                 self.log.pop()
+            # After voiding the outcome, re-bind the pending call identity so a
+            # retry can re-log against the same snap rather than skipping ahead.
+            tracker = self.ml_tracker
+            if tracker is not None and undone_ml_snap and book.call is not None:
+                tracker.pending_snap_id = undone_ml_snap
+                tracker.pending_ml_decision_row_id = undone_decision
+                tracker.pending_decision_key = tracker.decision_key(
+                    side=getattr(book.call, "side", "offense") or "offense",
+                    formation=getattr(book.call, "formation", None),
+                    play=getattr(book.call, "play", None),
+                    situation_raw=getattr(book.sit, "raw", None) if book.sit else None,
+                    seq=self._parse_snap_seq(undone_ml_snap),
+                )
             self._push_score()
-            return {"ok": True, "message": msg.strip(), "state": self.state()}
+            out = {"ok": True, "message": msg.strip(), "state": self.state()}
+            return self._idempotency_put(request_key, "/api/undo", out)
 
     def _log_pending_result(
         self,
@@ -492,8 +552,12 @@ class LivePlayController:
         score_us: Any = None,
         score_them: Any = None,
         score_set: bool = False,
+        request_key: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
+            cached = self._idempotency_get(request_key)
+            if cached is not None:
+                return cached
             if self.ended:
                 return {"ok": False, "error": "game already ended"}
             self._set_quarter(quarter)
@@ -522,7 +586,8 @@ class LivePlayController:
             if getattr(sit, "concept_hint", None) and sit.side == "defense":
                 self.last_concept = sit.concept_hint
             self.default_side = sit.side
-            return {"ok": True, "call_text": self.call_text, "heard": heard, "state": self.state()}
+            out = {"ok": True, "call_text": self.call_text, "heard": heard, "state": self.state()}
+            return self._idempotency_put(request_key, "/api/call", out)
 
     def result_and_call(
         self,
@@ -539,8 +604,12 @@ class LivePlayController:
         executed_formation: str | None = None,
         executed_play: str | None = None,
         executed_macro: str | None = None,
+        request_key: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
+            cached = self._idempotency_get(request_key)
+            if cached is not None:
+                return cached
             if self.ended:
                 return {"ok": False, "error": "game already ended"}
             self._apply_form_score(score_us, score_them, score_set)
@@ -599,16 +668,22 @@ class LivePlayController:
             if getattr(sit, "concept_hint", None) and sit.side == "defense":
                 self.last_concept = sit.concept_hint
             self.default_side = sit.side
-            return {
+            out = {
                 "ok": True,
                 "logged": logged,
                 "call_text": self.call_text,
                 "heard": heard,
                 "state": self.state(),
             }
+            return self._idempotency_put(request_key, "/api/result_call", out)
 
-    def end_game(self, *, result_wl: str, score: str = "") -> dict[str, Any]:
+    def end_game(
+        self, *, result_wl: str, score: str = "", request_key: str | None = None
+    ) -> dict[str, Any]:
         with self.lock:
+            cached = self._idempotency_get(request_key)
+            if cached is not None:
+                return cached
             if self.ended:
                 return {"ok": True, "retrain_summary": self.retrain_summary, "state": self.state()}
             wl = (result_wl or "").lower().strip()
@@ -674,12 +749,13 @@ class LivePlayController:
             self.call_text = f"GAME OVER — {wl.upper()}" + (
                 f"  {self.score}" if self.score else ""
             )
-            return {
+            out = {
                 "ok": True,
                 "retrain_summary": self.retrain_summary,
                 "grades": grades,
                 "state": self.state(),
             }
+            return self._idempotency_put(request_key, "/api/end_game", out)
 
 
 def _esc(s: Any) -> str:
@@ -1222,10 +1298,16 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                         sit, side=body.get("side"), quarter=body.get("quarter"),
                         score_us=body.get("score_us"), score_them=body.get("score_them"),
                         score_set=("score_us" in body or "score_them" in body),
+                        request_key=body.get("idempotency_key") or body.get("request_key"),
                     ))
                     return
                 if path == "/api/undo":
-                    self._json(200, ctrl.undo_last())
+                    self._json(
+                        200,
+                        ctrl.undo_last(
+                            request_key=body.get("idempotency_key") or body.get("request_key"),
+                        ),
+                    )
                     return
                 if path in ("/api/result_call", "/api/result+call"):
                     sit = (body.get("sit") or body.get("situation") or "").strip()
@@ -1247,6 +1329,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             executed_formation=body.get("executed_formation"),
                             executed_play=body.get("executed_play"),
                             executed_macro=body.get("executed_macro"),
+                            request_key=body.get("idempotency_key") or body.get("request_key"),
                         ),
                     )
                     return
@@ -1261,6 +1344,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                         ctrl.end_game(
                             result_wl=body.get("result_wl") or body.get("result") or "",
                             score=body.get("score") or "",
+                            request_key=body.get("idempotency_key") or body.get("request_key"),
                         ),
                     )
                     return

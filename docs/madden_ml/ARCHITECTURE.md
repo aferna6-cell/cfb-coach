@@ -98,17 +98,19 @@ Phase 1 owns the schema and the stubs. Later work stays inside the module named 
 
 `import cfb_coach.madden.model` exports the schema only. It must not import numpy, scikit-learn, LightGBM, CatBoost, XGBoost, torch, or pandas. Those learners, when they exist, stay inside `train.py`.
 
-## Sprint 3 status (real-game data collection)
+## Sprint 3 / 3.1 status (real-game data collection)
 
 Implemented on `madden-ml/coach` without activating hybrid:
 
 - Shared `evaluate_live_shadow` for HTML, terminal, and one-shot (`identity.LiveDecisionTracker` + `game_sessions.session_id` as `game_id`)
 - Optional HTML execution verification: unknown / used recommended / used different (never auto-verify)
-- `ml_decisions` ↔ `ml_outcomes` ↔ `snaps.ml_snap_id` linkage with idempotent corrections
+- `ml_decisions` ↔ `ml_outcomes` ↔ `snaps.ml_snap_id` linkage with undo audit + HTTP `idempotency_key`
 - Supervised training eligibility (`verified_execution`, `trusted_vod` only by default)
+- **Action attribution:** `_row_vector` / `action_*` use executed (or trusted VOD) plays — never the recommendation when execution is unknown
+- Canonical snap dedupe across `snaps` / `play_records` / ML tables
 - Feature schema `madden-ml.features.2` (football family categoricals; no numeric name hashes)
-- Promotion gate: train-only baseline; mins 80 labeled / 30 holdout / 4 games; +0.02 log-loss
-- Sealed pipeline module `decision_pipeline.py` behind `CFB_COACH_SEALED_PIPELINE` (default off; heuristic display unchanged)
-- Local Franchise workflow: `ml find-db`, `backup-db`, `inspect`, `export`, `report`
+- Promotion gate: train-only baseline (incl. rate 0.0); mins 80/30/4; +0.02 log-loss; no hybrid activation
+- Safe laptop DB: SQLite `backup()` API; inspect/export/train/eval open gameplay DB **read-only**; explicit `migrate-db --backup`
+- Sealed pipeline module behind `CFB_COACH_SEALED_PIPELINE` (default off; see `SEALED_PIPELINE.md`)
 
 Hybrid remains off. PR #19 mappings stay an optional boundary (`optional_vod_lookup`).

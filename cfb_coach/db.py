@@ -7,7 +7,7 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from cfb_coach.seed import load_seed
 
@@ -35,18 +35,58 @@ def default_db_path() -> Path:
 
 
 class CoachDB:
-    def __init__(self, path: Path | None = None, *, seed: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        path: Path | None = None,
+        *,
+        seed: dict[str, Any] | None = None,
+        read_only: bool = False,
+        migrate: bool | None = None,
+    ) -> None:
         self.path = path or default_db_path()
         # Optional per-game seed (Madden 27); default = CFB seed.json
         self._seed = seed
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.path), check_same_thread=False)
+        self.read_only = bool(read_only)
+        do_migrate = (not self.read_only) if migrate is None else bool(migrate)
+        if self.read_only:
+            if not self.path.is_file():
+                raise FileNotFoundError(f"read-only open requires an existing database: {self.path}")
+            # URI mode=ro never creates or writes the source file.
+            uri = f"file:{self.path.resolve().as_posix()}?mode=ro"
+            self.conn = sqlite3.connect(uri, uri=True, check_same_thread=False)
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
-        self._migrate()
-        self._seed_if_empty()
+        if do_migrate:
+            if self.read_only:
+                raise ValueError("cannot migrate a read-only database connection")
+            self._migrate()
+            self._seed_if_empty()
 
     def close(self) -> None:
         self.conn.close()
+
+    @classmethod
+    def open_read_only(cls, path: Path | str) -> "CoachDB":
+        """Open an existing DB without migrations or writes."""
+        return cls(Path(path), read_only=True, migrate=False)
+
+    def backup_to(self, dest: Path | str) -> Path:
+        """Consistent SQLite backup via the backup API (safe with WAL / readers).
+
+        Does not use a raw filesystem copy of a live database file.
+        """
+        dest_path = Path(dest)
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        # Backup always opens a writable destination, even when self is read-only.
+        out = sqlite3.connect(str(dest_path))
+        try:
+            self.conn.backup(out)
+            out.commit()
+        finally:
+            out.close()
+        return dest_path
 
     def _migrate(self) -> None:
         self.conn.executescript(
@@ -455,11 +495,109 @@ class CoachDB:
             ml_snap = row["ml_snap_id"] if hasattr(row, "keys") else row[0]
         self.conn.execute("DELETE FROM snaps WHERE id = ?", (snap_id,))
         if ml_snap:
+            self.void_ml_outcome(str(ml_snap), reason="snap_deleted")
+        self.conn.commit()
+
+    def void_ml_outcome(self, snap_id: str, *, reason: str = "voided") -> int:
+        """Archive then remove the active outcome for ``snap_id``.
+
+        Preserves an audit trail so corrections/undos do not leave conflicting
+        active labels while remaining inspectable.
+        """
+        if not snap_id:
+            return 0
+        now = datetime.now(timezone.utc).isoformat()
+        removed = 0
+        try:
+            rows = self.conn.execute(
+                "SELECT * FROM ml_outcomes WHERE snap_id = ?", (snap_id,)
+            ).fetchall()
+        except sqlite3.Error:
+            return 0
+        for row in rows:
+            d = dict(row)
             try:
-                self.conn.execute("DELETE FROM ml_outcomes WHERE snap_id = ?", (ml_snap,))
+                self.conn.execute(
+                    """
+                    INSERT INTO ml_outcome_audit (
+                        snap_id, game_id, decision_id, executed_status,
+                        executed_formation, executed_play, executed_verification,
+                        outcome_json, void_reason, voided_ts, original_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        d.get("snap_id"),
+                        d.get("game_id"),
+                        d.get("decision_id"),
+                        d.get("executed_status"),
+                        d.get("executed_formation"),
+                        d.get("executed_play"),
+                        d.get("executed_verification"),
+                        d.get("outcome_json"),
+                        reason,
+                        now,
+                        d.get("id"),
+                    ),
+                )
             except sqlite3.Error:
                 pass
+            self.conn.execute("DELETE FROM ml_outcomes WHERE id = ?", (d["id"],))
+            removed += 1
         self.conn.commit()
+        return removed
+
+    def get_idempotent_response(self, request_key: str) -> dict[str, Any] | None:
+        if not request_key:
+            return None
+        try:
+            row = self.conn.execute(
+                "SELECT response_json FROM api_idempotency WHERE request_key = ?",
+                (request_key,),
+            ).fetchone()
+        except sqlite3.Error:
+            return None
+        if row is None:
+            return None
+        raw = row["response_json"] if hasattr(row, "keys") else row[0]
+        try:
+            payload = json.loads(raw)
+        except (TypeError, json.JSONDecodeError):
+            return None
+        if isinstance(payload, dict):
+            payload = dict(payload)
+            payload["idempotent_replay"] = True
+            return payload
+        return None
+
+    def store_idempotent_response(
+        self,
+        request_key: str,
+        *,
+        endpoint: str,
+        response: Mapping[str, Any] | dict[str, Any],
+        session_id: str | None = None,
+    ) -> None:
+        if not request_key:
+            return
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            self.conn.execute(
+                """
+                INSERT OR IGNORE INTO api_idempotency
+                    (request_key, session_id, endpoint, response_json, created_ts)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    request_key,
+                    session_id,
+                    endpoint,
+                    json.dumps(dict(response), default=str),
+                    now,
+                ),
+            )
+            self.conn.commit()
+        except sqlite3.Error:
+            pass
 
     def count_snaps(self, opponent_id: str, *, side: str | None = None) -> int:
         if side:
@@ -758,6 +896,27 @@ class CoachDB:
             );
             CREATE INDEX IF NOT EXISTS idx_ml_outcomes_snap
                 ON ml_outcomes(snap_id);
+            CREATE TABLE IF NOT EXISTS ml_outcome_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snap_id TEXT NOT NULL,
+                game_id TEXT,
+                decision_id INTEGER,
+                executed_status TEXT,
+                executed_formation TEXT,
+                executed_play TEXT,
+                executed_verification TEXT,
+                outcome_json TEXT,
+                void_reason TEXT,
+                voided_ts TEXT NOT NULL,
+                original_id INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS api_idempotency (
+                request_key TEXT PRIMARY KEY,
+                session_id TEXT,
+                endpoint TEXT NOT NULL,
+                response_json TEXT NOT NULL,
+                created_ts TEXT NOT NULL
+            );
             """
         )
         self.conn.commit()
@@ -773,6 +932,39 @@ class CoachDB:
             except sqlite3.Error:
                 pass
         self._migrate_ml_snap_columns()
+        # Older DBs may lack audit / idempotency tables added after first migrate.
+        for stmt in (
+            """
+            CREATE TABLE IF NOT EXISTS ml_outcome_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snap_id TEXT NOT NULL,
+                game_id TEXT,
+                decision_id INTEGER,
+                executed_status TEXT,
+                executed_formation TEXT,
+                executed_play TEXT,
+                executed_verification TEXT,
+                outcome_json TEXT,
+                void_reason TEXT,
+                voided_ts TEXT NOT NULL,
+                original_id INTEGER
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS api_idempotency (
+                request_key TEXT PRIMARY KEY,
+                session_id TEXT,
+                endpoint TEXT NOT NULL,
+                response_json TEXT NOT NULL,
+                created_ts TEXT NOT NULL
+            )
+            """,
+        ):
+            try:
+                self.conn.execute(stmt)
+                self.conn.commit()
+            except sqlite3.Error:
+                pass
 
     def _migrate_ml_snap_columns(self) -> None:
         """Additive snap columns for ML identity and execution verification."""

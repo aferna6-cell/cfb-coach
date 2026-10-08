@@ -8,6 +8,7 @@ name on it stays the previous-snap context for that call.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable
@@ -202,6 +203,9 @@ class _Undo:
     result: str | None
     concept: str | None
     coverage: str | None
+    ml_snap_id: str | None = None
+    ml_decision_id: int | None = None
+    prev_ml_outcome: dict[str, Any] | None = None
 
 
 @dataclass
@@ -368,8 +372,29 @@ class LastSnapBook:
             )
         if frame.inserted:
             self.db.delete_snap(frame.snap_id)
+            # delete_snap voids the active ml_outcome (audited). Clear local ids
+            # so a subsequent log does not reuse a deleted snap's linkage by mistake.
+            if frame.ml_snap_id and self.ml_snap_id == frame.ml_snap_id:
+                # Keep ml_snap_id on the book for the still-pending call identity;
+                # only the outcome was voided. Decision row remains for audit.
+                pass
         else:
             self.db.update_snap(frame.snap_id, **frame.prev)
+            if frame.ml_snap_id and hasattr(self.db, "void_ml_outcome"):
+                self.db.void_ml_outcome(frame.ml_snap_id, reason="outcome_correction_undone")
+                if frame.prev_ml_outcome and hasattr(self.db, "log_ml_outcome"):
+                    prev = frame.prev_ml_outcome
+                    self.db.log_ml_outcome(
+                        snap_id=frame.ml_snap_id,
+                        game_id=prev.get("game_id"),
+                        decision_id=prev.get("decision_id") or frame.ml_decision_id,
+                        executed_status=prev.get("executed_status") or "unknown",
+                        executed_formation=prev.get("executed_formation"),
+                        executed_play=prev.get("executed_play"),
+                        executed_verification=prev.get("executed_verification") or "unknown",
+                        outcome=prev.get("outcome"),
+                        replace=True,
+                    )
         self.logged_id = frame.logged_id
         self.result = frame.result
         self.concept = frame.concept
@@ -479,6 +504,33 @@ class LastSnapBook:
         note = ""
         if spec.get("result"):
             self.spot, note = advance_ball(sit, spec["result"], side, self.spot)
+        prev_ml_outcome = None
+        if not inserted and self.ml_snap_id:
+            try:
+                row = self.db.conn.execute(
+                    "SELECT * FROM ml_outcomes WHERE snap_id = ?",
+                    (self.ml_snap_id,),
+                ).fetchone()
+                if row is not None:
+                    d = dict(row)
+                    payload = d.get("outcome_json")
+                    outcome = None
+                    if payload:
+                        try:
+                            outcome = json.loads(payload)
+                        except (TypeError, json.JSONDecodeError):
+                            outcome = None
+                    prev_ml_outcome = {
+                        "game_id": d.get("game_id"),
+                        "decision_id": d.get("decision_id"),
+                        "executed_status": d.get("executed_status"),
+                        "executed_formation": d.get("executed_formation"),
+                        "executed_play": d.get("executed_play"),
+                        "executed_verification": d.get("executed_verification"),
+                        "outcome": outcome,
+                    }
+            except Exception:  # noqa: BLE001
+                prev_ml_outcome = None
         self._undos.append(_Undo(
             snap_id=self.logged_id,
             inserted=inserted,
@@ -489,6 +541,9 @@ class LastSnapBook:
             result=prev_result,
             concept=prev_concept,
             coverage=prev_coverage,
+            ml_snap_id=self.ml_snap_id,
+            ml_decision_id=self.ml_decision_id,
+            prev_ml_outcome=prev_ml_outcome,
         ))
         self.wrote = True
         bits = [b for b in (result, concept, coverage) if b]

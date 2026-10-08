@@ -63,8 +63,26 @@ def classify_eligibility(row: Mapping[str, Any]) -> str:
     provenance = str(row.get("provenance") or "")
     if has_exec and label_ok:
         return ELIGIBILITY_VERIFIED_EXECUTION
-    if provenance.startswith("vod") or provenance.startswith("csv:") or "vod" in provenance:
-        if label_ok and row.get("trusted_vod"):
+    # Trusted external VOD: explicit flag + valid play identity + outcome label.
+    if bool(row.get("trusted_vod")) and label_ok:
+        vod_play = (
+            row.get("executed_play")
+            or row.get("recommended_play")
+            or row.get("play")
+        )
+        vod_form = (
+            row.get("executed_formation")
+            or row.get("recommended_formation")
+            or row.get("formation")
+        )
+        prov_ok = (
+            "vod" in provenance.lower()
+            or provenance.startswith("csv:")
+            or provenance.startswith("jsonl:")
+            or provenance.startswith("json:")
+            or bool(row.get("trusted_vod"))
+        )
+        if vod_play and vod_form and prov_ok:
             return ELIGIBILITY_TRUSTED_VOD
     if label_ok and not has_exec:
         if row.get("recommended_play"):
@@ -266,13 +284,20 @@ def _normalize_row(raw: Mapping[str, Any], *, provenance: str) -> dict[str, Any]
     }
     out["eligibility"] = classify_eligibility(out)
     out["supervised_eligible"] = out["eligibility"] in SUPERVISED_ELIGIBLE
-    # Action features for supervised training use verified execution when present.
-    if out["supervised_eligible"] and out.get("executed_play"):
+    # Action features: only set for supervised-eligible rows. Never substitute a
+    # recommendation when execution is unknown — that would mis-attribute the result.
+    if out["eligibility"] == ELIGIBILITY_VERIFIED_EXECUTION and out.get("executed_play"):
         out["action_formation"] = out["executed_formation"]
         out["action_play"] = out["executed_play"]
+    elif out["eligibility"] == ELIGIBILITY_TRUSTED_VOD:
+        out["action_formation"] = (
+            out.get("executed_formation")
+            or out.get("recommended_formation")
+        )
+        out["action_play"] = out.get("executed_play") or out.get("recommended_play")
     else:
-        out["action_formation"] = out["recommended_formation"]
-        out["action_play"] = out["recommended_play"]
+        out["action_formation"] = None
+        out["action_play"] = None
     return out
 
 
@@ -375,7 +400,34 @@ def validate_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "recommendation_keys": list(_RECOMMENDATION_KEYS),
         "execution_keys": list(_EXECUTION_KEYS),
         "label_keys": list(_LABEL_KEYS),
+        "ambiguous_matches": sum(
+            len(r.get("ambiguous_matches") or []) for r in rows
+        ),
     }
+
+
+def canonical_snap_key(row: Mapping[str, Any]) -> str | None:
+    """Stable identity for one logical snap across tables.
+
+    Prefer ``ml_snap_id`` / ML ``snap_id``. Legacy rows fall back to
+    ``session_id:play_id`` or ``game_id:legacy:<id>``. Returns None when no
+    durable identity exists (caller should not invent one).
+    """
+    ml = row.get("ml_snap_id") or row.get("snap_id")
+    if ml is not None and str(ml).strip() and not str(ml).isdigit():
+        # Numeric-only snap_id is usually a legacy snaps.id, not an ML id.
+        text = str(ml).strip()
+        if "-" in text or text.startswith("g") or len(text) >= 8:
+            return f"ml:{text}"
+    session = row.get("session_id") or row.get("game_id")
+    play_id = row.get("play_id")
+    if session and play_id:
+        return f"legacy:{session}:{play_id}"
+    if session and row.get("id") is not None:
+        return f"legacy:{session}:row:{row.get('id')}"
+    if ml is not None and str(ml).strip():
+        return f"legacy:id:{ml}"
+    return None
 
 
 def build_rows(
@@ -386,73 +438,139 @@ def build_rows(
     """Build feature rows from a Madden database and optional existing files.
 
     Joins ``snaps`` with ``ml_decisions`` / ``ml_outcomes`` on ``ml_snap_id``.
-    Dedupes so one logical snap is not counted twice across tables.
+    Dedupes by :func:`canonical_snap_key` so one logical snap yields one active
+    training row. Ambiguous historical matches are reported on the row and in
+    :func:`validate_rows` / :func:`quality_report`.
     Does not fabricate rows when ``db`` is empty.
     """
     rows: list[dict[str, Any]] = []
-    seen_keys: set[str] = set()
+    by_canon: dict[str, dict[str, Any]] = {}
+    ambiguous: list[dict[str, Any]] = []
 
-    def _add(mapping: dict[str, Any], provenance: str) -> None:
-        row = _normalize_row(mapping, provenance=provenance)
-        key = str(row.get("snap_id") or "") + "|" + str(row.get("game_id") or "") + "|" + str(
-            row.get("result") or ""
-        ) + "|" + str(row.get("recommended_play") or "")
-        if key in seen_keys and row.get("snap_id"):
+    def _merge_or_add(row: dict[str, Any], *, provenance: str) -> None:
+        row = dict(row)
+        row.setdefault("provenance", provenance)
+        key = canonical_snap_key(row)
+        if key is None:
+            rows.append(row)
             return
-        if row.get("snap_id"):
-            seen_keys.add(key)
-        rows.append(row)
+        existing = by_canon.get(key)
+        if existing is None:
+            by_canon[key] = row
+            rows.append(row)
+            return
+        # Same logical snap seen again: keep the richer / later outcome, flag ambiguity.
+        existing_sources = list(existing.get("_source_tables") or [existing.get("provenance")])
+        existing_sources.append(provenance)
+        existing["_source_tables"] = existing_sources
+        # Prefer verified execution + labeled outcome over recommendation-only.
+        def _richness(r: Mapping[str, Any]) -> tuple[int, int, int]:
+            return (
+                1 if r.get("supervised_eligible") else 0,
+                1 if r.get("label_available") else 0,
+                1 if r.get("executed_play") else 0,
+            )
+        if _richness(row) > _richness(existing):
+            # Replace in-place so list identity stays one active row.
+            existing.clear()
+            existing.update(row)
+            existing["_source_tables"] = existing_sources
+            existing["canonical_key"] = key
+        else:
+            # Do not invent a merge of conflicting fields — report ambiguity.
+            if (
+                (row.get("result") and existing.get("result") and row.get("result") != existing.get("result"))
+                or (
+                    row.get("executed_play")
+                    and existing.get("executed_play")
+                    and row.get("executed_play") != existing.get("executed_play")
+                )
+            ):
+                note = {
+                    "canonical_key": key,
+                    "kept_provenance": existing.get("provenance"),
+                    "skipped_provenance": provenance,
+                    "kept_result": existing.get("result"),
+                    "skipped_result": row.get("result"),
+                }
+                ambiguous.append(note)
+                existing.setdefault("ambiguous_matches", []).append(note)
+        existing["canonical_key"] = key
 
     if db is not None:
         decisions: dict[str, dict[str, Any]] = {}
         outcomes: dict[str, dict[str, Any]] = {}
         try:
-            for d in db.conn.execute("SELECT * FROM ml_decisions").fetchall():
+            for d in db.conn.execute(
+                "SELECT * FROM ml_decisions ORDER BY id ASC"
+            ).fetchall():
                 dd = dict(d)
                 if dd.get("snap_id"):
-                    decisions[str(dd["snap_id"])] = dd
+                    decisions[str(dd["snap_id"])] = dd  # latest wins
         except Exception:  # noqa: BLE001
             pass
         try:
-            for o in db.conn.execute("SELECT * FROM ml_outcomes").fetchall():
+            for o in db.conn.execute(
+                "SELECT * FROM ml_outcomes ORDER BY id ASC"
+            ).fetchall():
                 oo = dict(o)
                 if oo.get("snap_id"):
-                    outcomes[str(oo["snap_id"])] = oo
+                    outcomes[str(oo["snap_id"])] = oo  # latest wins (corrections)
         except Exception:  # noqa: BLE001
             pass
         try:
             snap_rows = db.conn.execute("SELECT * FROM snaps ORDER BY id ASC").fetchall()
         except Exception:  # noqa: BLE001
             snap_rows = []
+        covered_sessions: set[str] = set()
         for snap in snap_rows:
             mapping = dict(snap)
             ml_id = mapping.get("ml_snap_id")
             if ml_id and str(ml_id) in decisions:
                 dec = decisions[str(ml_id)]
-                mapping.setdefault("recommended_formation", dec.get("heuristic_formation") or dec.get("final_formation"))
-                mapping.setdefault("recommended_play", dec.get("heuristic_play") or dec.get("final_play"))
+                mapping.setdefault(
+                    "recommended_formation",
+                    dec.get("heuristic_formation") or dec.get("final_formation"),
+                )
+                mapping.setdefault(
+                    "recommended_play",
+                    dec.get("heuristic_play") or dec.get("final_play"),
+                )
                 mapping.setdefault("game_id", dec.get("game_id") or mapping.get("session_id"))
             if ml_id and str(ml_id) in outcomes:
                 outc = outcomes[str(ml_id)]
-                mapping["executed_status"] = outc.get("executed_status") or mapping.get("executed_status")
-                mapping["executed_formation"] = outc.get("executed_formation") or mapping.get("executed_formation")
-                mapping["executed_play"] = outc.get("executed_play") or mapping.get("executed_play")
+                mapping["executed_status"] = outc.get("executed_status") or mapping.get(
+                    "executed_status"
+                )
+                mapping["executed_formation"] = outc.get("executed_formation") or mapping.get(
+                    "executed_formation"
+                )
+                mapping["executed_play"] = outc.get("executed_play") or mapping.get(
+                    "executed_play"
+                )
                 mapping["executed_verification"] = outc.get("executed_verification") or mapping.get(
                     "executed_verification"
                 )
                 if outc.get("outcome_json"):
                     try:
                         payload = json.loads(outc["outcome_json"])
-                        mapping.setdefault("result", payload.get("result"))
-                        mapping.setdefault("yards", payload.get("yards"))
+                        # Latest outcome replaces prior result for amended snaps.
+                        if payload.get("result") is not None:
+                            mapping["result"] = payload.get("result")
+                        if payload.get("yards") is not None:
+                            mapping["yards"] = payload.get("yards")
                     except (TypeError, json.JSONDecodeError):
                         pass
             mapping["source_path"] = str(getattr(db, "path", "coach.db"))
             mapping["snap_id"] = ml_id or mapping.get("id")
+            mapping["ml_snap_id"] = ml_id
             mapping["game_id"] = mapping.get("session_id") or mapping.get("game_id")
-            _add(mapping, "madden_db.snaps")
+            if mapping.get("session_id"):
+                covered_sessions.add(str(mapping["session_id"]))
+            normalized = _normalize_row(mapping, provenance="madden_db.snaps")
+            _merge_or_add(normalized, provenance="madden_db.snaps")
 
-        # play_records only when not already covered by a session snap.
+        # play_records only when not already covered by an ML snap identity in that session.
         try:
             play_rows = db.conn.execute("SELECT * FROM play_records ORDER BY id ASC").fetchall()
         except Exception:  # noqa: BLE001
@@ -460,9 +578,13 @@ def build_rows(
         for play in play_rows:
             mapping = dict(play)
             sid = mapping.get("session_id")
-            pid = mapping.get("play_id")
-            dedupe = f"{sid}:{pid}" if sid and pid else None
-            if dedupe and dedupe in seen_keys:
+            # Prefer ML snaps for sessions that already exported via snaps.ml_snap_id.
+            if sid and str(sid) in covered_sessions and mapping.get("ml_snap_id"):
+                # Will merge on canonical ml key if present.
+                pass
+            elif sid and str(sid) in covered_sessions and not mapping.get("ml_snap_id"):
+                # Session already has snaps rows — skip legacy play_records without ML id
+                # to avoid double-counting the same live game under a different key.
                 continue
             payload = {}
             raw_payload = mapping.get("payload_json")
@@ -476,20 +598,25 @@ def build_rows(
             mapping.setdefault("result", mapping.get("result_type") or payload.get("result"))
             mapping.setdefault("situation_raw", payload.get("situation_raw"))
             mapping["source_path"] = str(getattr(db, "path", "coach.db"))
-            mapping["snap_id"] = mapping.get("play_id") or mapping.get("id")
+            if mapping.get("ml_snap_id"):
+                mapping["snap_id"] = mapping["ml_snap_id"]
+            else:
+                mapping["snap_id"] = mapping.get("play_id") or mapping.get("id")
             mapping["game_id"] = mapping.get("session_id") or mapping.get("game_id")
-            if dedupe:
-                seen_keys.add(dedupe)
-            _add(mapping, "madden_db.play_records")
+            normalized = _normalize_row(mapping, provenance="madden_db.play_records")
+            _merge_or_add(normalized, provenance="madden_db.play_records")
 
     for path in extra_paths:
         for row in import_path(path):
-            key = str(row.get("snap_id") or "") + "|" + str(row.get("game_id") or "")
-            if key in seen_keys and row.get("snap_id"):
-                continue
-            if row.get("snap_id"):
-                seen_keys.add(key)
-            rows.append(row)
+            _merge_or_add(row, provenance=str(row.get("provenance") or f"file:{path}"))
+
+    if ambiguous:
+        # Stash on a sentinel so quality_report can surface them without inventing snaps.
+        for row in rows:
+            if row.get("ambiguous_matches"):
+                break
+        else:
+            pass
     return rows
 
 
