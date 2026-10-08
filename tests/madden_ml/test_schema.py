@@ -295,13 +295,17 @@ class SchemaRoundTripTest(unittest.TestCase):
             params,
             [
                 "game_state",
+                "observation",
                 "candidate_plays",
                 "roster_context",
                 "opponent_context",
                 "recent_history",
+                "model_artifact",
+                "mode",
             ],
         )
         self.assertNotIn("recent_history", {item.name for item in GameState.__dataclass_fields__.values()})
+        self.assertNotIn("observation", {item.name for item in GameState.__dataclass_fields__.values()})
         self.assertNotIn("recent", {item.name for item in GameState.__dataclass_fields__.values()})
         history = get_type_hints(policy.rank_plays)["recent_history"]
         self.assertIn("CoachingDecision", str(history))

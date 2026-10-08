@@ -185,6 +185,7 @@ class CoachDB:
         )
         self.conn.commit()
         self._migrate_m2_columns()
+        self._migrate_ml_tables()
 
     def _seed_if_empty(self) -> None:
         row = self.conn.execute(
@@ -635,6 +636,161 @@ class CoachDB:
                     self.conn.commit()
                 except sqlite3.Error:
                     pass
+
+    def _migrate_ml_tables(self) -> None:
+        """Additive Madden ML decision/outcome tables. Safe to run repeatedly."""
+        self.conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS ml_decisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                decision_ts TEXT NOT NULL,
+                game_id TEXT,
+                snap_id TEXT,
+                session_id TEXT,
+                snap_seq INTEGER,
+                mode TEXT NOT NULL,
+                model_version TEXT,
+                policy_version TEXT,
+                policy_source TEXT,
+                heuristic_formation TEXT,
+                heuristic_play TEXT,
+                final_formation TEXT,
+                final_play TEXT,
+                shadow_formation TEXT,
+                shadow_play TEXT,
+                shadow_status TEXT,
+                agree INTEGER,
+                candidates_json TEXT,
+                decision_json TEXT NOT NULL,
+                latency_ms_model REAL,
+                created_ts TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ml_decisions_snap
+                ON ml_decisions(snap_id);
+            CREATE INDEX IF NOT EXISTS idx_ml_decisions_game
+                ON ml_decisions(game_id);
+            CREATE TABLE IF NOT EXISTS ml_outcomes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snap_id TEXT NOT NULL,
+                game_id TEXT,
+                decision_id INTEGER,
+                executed_status TEXT,
+                executed_formation TEXT,
+                executed_play TEXT,
+                executed_verification TEXT,
+                outcome_json TEXT,
+                created_ts TEXT NOT NULL,
+                FOREIGN KEY (decision_id) REFERENCES ml_decisions(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_ml_outcomes_snap
+                ON ml_outcomes(snap_id);
+            """
+        )
+        self.conn.commit()
+
+    def log_ml_decision(self, decision: Any, *, agree: int | None = None) -> int:
+        """Persist one CoachingDecision. Recommendations are not executions."""
+        from cfb_coach.madden.model.schema import to_dict
+
+        d = to_dict(decision) if hasattr(decision, "__dataclass_fields__") else dict(decision)
+        now = datetime.now(timezone.utc).isoformat()
+        heuristic = d.get("heuristic_pick") or {}
+        final = d.get("final_pick") or {}
+        shadow = d.get("shadow_pick") or {}
+        cur = self.conn.execute(
+            """
+            INSERT INTO ml_decisions (
+                decision_ts, game_id, snap_id, session_id, snap_seq, mode,
+                model_version, policy_version, policy_source,
+                heuristic_formation, heuristic_play,
+                final_formation, final_play,
+                shadow_formation, shadow_play, shadow_status, agree,
+                candidates_json, decision_json, latency_ms_model, created_ts
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                d.get("decision_ts") or now,
+                d.get("game_id"),
+                d.get("snap_id"),
+                d.get("session_id"),
+                d.get("snap_seq"),
+                d.get("mode") or "heuristic",
+                d.get("model_version"),
+                d.get("policy_version"),
+                d.get("policy_source"),
+                heuristic.get("formation") if isinstance(heuristic, dict) else None,
+                heuristic.get("play") if isinstance(heuristic, dict) else None,
+                final.get("formation") if isinstance(final, dict) else None,
+                final.get("play") if isinstance(final, dict) else None,
+                shadow.get("formation") if isinstance(shadow, dict) else None,
+                shadow.get("play") if isinstance(shadow, dict) else None,
+                d.get("shadow_status"),
+                agree,
+                json.dumps(d.get("candidates"), default=str) if d.get("candidates") is not None else None,
+                json.dumps(d, default=str),
+                d.get("latency_ms_model"),
+                now,
+            ),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def log_ml_outcome(
+        self,
+        *,
+        snap_id: str,
+        game_id: str | None = None,
+        decision_id: int | None = None,
+        executed_status: str = "unknown",
+        executed_formation: str | None = None,
+        executed_play: str | None = None,
+        executed_verification: str = "unknown",
+        outcome: Any = None,
+    ) -> int:
+        """Store a verified (or explicitly unknown) execution separately from the recommendation."""
+        now = datetime.now(timezone.utc).isoformat()
+        if str(executed_status).lower() != "identified":
+            executed_formation = None
+            executed_play = None
+            executed_verification = "unknown"
+        payload = None
+        if outcome is not None:
+            if hasattr(outcome, "__dataclass_fields__"):
+                from cfb_coach.madden.model.schema import to_dict
+
+                payload = json.dumps(to_dict(outcome), default=str)
+            else:
+                payload = json.dumps(outcome, default=str)
+        cur = self.conn.execute(
+            """
+            INSERT INTO ml_outcomes (
+                snap_id, game_id, decision_id, executed_status,
+                executed_formation, executed_play, executed_verification,
+                outcome_json, created_ts
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                snap_id,
+                game_id,
+                decision_id,
+                executed_status,
+                executed_formation,
+                executed_play,
+                executed_verification,
+                payload,
+                now,
+            ),
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def list_ml_decisions(self, *, limit: int = 100) -> list[sqlite3.Row]:
+        return list(
+            self.conn.execute(
+                "SELECT * FROM ml_decisions ORDER BY id DESC LIMIT ?",
+                (limit,),
+            )
+        )
 
     def start_game_session(self, sess: Any) -> str:
         d = sess.to_dict() if hasattr(sess, "to_dict") else dict(sess)

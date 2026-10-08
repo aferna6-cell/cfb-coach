@@ -1240,6 +1240,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_watch.set_defaults(func=cmd_watch)
 
+    from cfb_coach.madden.model.cli import build_ml_subparser
+
+    build_ml_subparser(sub)
 
     return p
 

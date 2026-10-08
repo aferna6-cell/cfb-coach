@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 from cfb_coach.db import CoachDB
 from cfb_coach.games import GAMES, MADDEN27, madden_db_path
@@ -23,6 +24,37 @@ from cfb_coach.madden.situation import format_heard, parse_madden_situation
 from cfb_coach.opponents import is_cpu_opponent, resolve_opponent
 
 PROFILE = GAMES[MADDEN27]
+
+
+def _maybe_shadow(db: CoachDB, sit: Any, call: Any, opponent_id: str) -> None:
+    """Opt-in shadow scoring. Never changes the displayed call."""
+    try:
+        from cfb_coach.madden.model import inference as ml_inference
+        from cfb_coach.madden.model.schema import CoachingMode
+        from cfb_coach.madden.playbook import eligible, load_books
+        from cfb_coach.opponents import is_cpu_opponent
+        from cfb_coach.madden.model.schema import OpponentKind
+
+        if ml_inference.resolve_mode(db) is not CoachingMode.SHADOW:
+            return
+        books = load_books(db)
+        formations = eligible(books).get(call.side) or {}
+        if not formations:
+            return
+        ml_inference.shadow_after_call(
+            situation=sit,
+            heuristic_formation=getattr(call, "formation", None),
+            heuristic_play=getattr(call, "play", None),
+            formations=formations,
+            side=call.side,
+            opponent_id=opponent_id,
+            opponent_type=OpponentKind.CPU if is_cpu_opponent(opponent_id) else OpponentKind.HUMAN,
+            game_id=opponent_id,
+            snap_id=None,
+            db=db,
+        )
+    except Exception:  # noqa: BLE001 — shadow must never break live coaching
+        return
 
 
 def open_db() -> CoachDB:
@@ -346,6 +378,7 @@ def cmd_call(args: argparse.Namespace) -> int:
         except NoActivePlaybook as exc:
             print(str(exc).replace("<opp>", oid), file=sys.stderr)
             return 2
+        _maybe_shadow(db, sit, call, oid)
         print(call.format())
         if args.why:
             print(f"  ({call.rationale})")
@@ -632,6 +665,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )
+            _maybe_shadow(db, sit, call, oid)
             print(call.headline())
             print(call.format())
             _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)

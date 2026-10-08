@@ -20,7 +20,7 @@ The live path, when it is wired later, is one sealed `CoachingDecision`:
 2. `adapters.situation_to_state` is the only builder of `GameState` and `PreSnapObservation` from that situation.
 3. Candidates come from the applied book via `candidate_in_book`. Names that are not in the book are not ranked. `legal_candidates` drops anything that is not confirmed in-book.
 4. The deterministic caller still produces `heuristic_pick`, including reads, macro, pivot, and the book guard.
-5. `policy.rank_plays(game_state, candidate_plays, roster_context, opponent_context, recent_history)` scores that pool. `recent_history` is an argument, not a field on `GameState`. Each entry is a `(CoachingDecision, SnapOutcome | None)` pair for a snap that already ended.
+5. `policy.rank_plays(game_state, observation, candidate_plays, roster_context, opponent_context, recent_history)` scores that pool. `observation` is required so feature construction can run without reading post-snap labels (contract revision this sprint). `recent_history` is an argument, not a field on `GameState`. Each entry is a `(CoachingDecision, SnapOutcome | None)` pair for a snap that already ended.
 6. Mode decides what is shown. Guards stay authoritative. A VOD override is an input prior inside this sequence, not a mutation after the call is sealed.
 7. The sealed record stores the shown play, the policy that actually sampled it, and the propensity of that policy. Post-snap labels stay on `SnapOutcome` and `ExecutedPlay`.
 
