@@ -4,7 +4,6 @@ from __future__ import annotations
 import html
 import json
 import re
-import webbrowser
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -298,5 +297,9 @@ def write_and_open(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(render_html(db, proposal, mode=mode, opponent_id=opponent_id), encoding="utf-8")
     if open_browser:
-        webbrowser.open(out.resolve().as_uri())
+        # Reuse the same WSL-aware opening flow as Madden's prep browser:
+        # webbrowser, xdg-open, wslview, explorer.exe, then Windows path hints.
+        from cfb_coach.prep_browser import open_prep_html
+
+        open_prep_html(out, open_browser=True)
     return out
