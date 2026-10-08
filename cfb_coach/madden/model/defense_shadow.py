@@ -256,6 +256,40 @@ def _research_defense_boosts() -> dict[str, float]:
     return boosts
 
 
+def _fallback_rec(
+    *,
+    heur_form: str | None,
+    heur_play: str | None,
+    heur_adj: str | None,
+    reason: str,
+    adjustment_reason: str,
+    evidence_quality: str,
+    missing: list[str],
+    opponent_summary: dict[str, Any] | None,
+    latency_ms: float,
+    incompatibility: str | None = None,
+) -> DefenseShadowRecommendation:
+    return DefenseShadowRecommendation(
+        formation=heur_form,
+        play=heur_play,
+        coverage_family=call_family(heur_play),
+        adjustment=None,
+        adjustment_reason=adjustment_reason,
+        reason=reason,
+        confidence=0.0,
+        evidence_quality=evidence_quality,
+        heuristic_formation=heur_form,
+        heuristic_play=heur_play,
+        heuristic_adjustment=heur_adj,
+        incompatibility=incompatibility,
+        missing=missing,
+        opponent_summary=dict(opponent_summary or {}),
+        rankings=[],
+        latency_ms=latency_ms,
+        controlled=False,
+    )
+
+
 def build_shadow_recommendation(
     *,
     sit: Any,
@@ -266,9 +300,18 @@ def build_shadow_recommendation(
     db: Any = None,
     budget_ms: float | None = None,
 ) -> DefenseShadowRecommendation:
-    """Compute a shadow recommendation. Never mutates the heuristic call display."""
+    """Compute a shadow recommendation. Never mutates the heuristic call display.
+
+    The full path (opponent model + ranking + CA validation) must finish inside
+    ``budget_ms`` (default 150). On timeout or exception the heuristic call is
+    preserved with an accurate fallback reason.
+    """
     started = time.perf_counter()
     budget = float(ML_LATENCY_BUDGET_MS if budget_ms is None else budget_ms)
+
+    def _elapsed() -> float:
+        return (time.perf_counter() - started) * 1000.0
+
     heur_form = getattr(heuristic_call, "formation", None)
     heur_play = getattr(heuristic_call, "play", None)
     heur_adj = getattr(heuristic_call, "macro", None) or getattr(heuristic_call, "adj_or_macro", None)
@@ -278,99 +321,191 @@ def build_shadow_recommendation(
     if not book:
         missing.append("defensive playbook")
     if is_cpu_opponent(opponent_id):
-        return DefenseShadowRecommendation(
-            formation=heur_form,
-            play=heur_play,
-            coverage_family=call_family(heur_play),
-            adjustment=None,
-            adjustment_reason="CPU offense-only — no defense shadow",
+        return _fallback_rec(
+            heur_form=heur_form,
+            heur_play=heur_play,
+            heur_adj=heur_adj,
             reason="CPU opponent: defense calls are not used",
-            confidence=0.0,
+            adjustment_reason="CPU offense-only — no defense shadow",
             evidence_quality="n/a",
-            heuristic_formation=heur_form,
-            heuristic_play=heur_play,
-            heuristic_adjustment=heur_adj,
             missing=["cpu_offense_only"],
+            opponent_summary=None,
+            latency_ms=_elapsed(),
         )
 
-    model = defense_opponent.build_opponent_offense_model(db, opponent_id)
-    concepts = defense_opponent.situation_concept_prior(sit, model)
-    if not concepts:
-        missing.append("opponent concept observations")
+    try:
+        if _elapsed() > budget:
+            return _fallback_rec(
+                heur_form=heur_form,
+                heur_play=heur_play,
+                heur_adj=heur_adj,
+                reason="shadow fallback to heuristic (timeout before opponent model)",
+                adjustment_reason="timeout — keep heuristic",
+                evidence_quality="unknown",
+                missing=missing + ["timeout"],
+                opponent_summary=None,
+                latency_ms=_elapsed(),
+            )
 
-    research = _research_defense_boosts()
-    heur_pair = (heur_form, heur_play) if heur_form and heur_play else None
-    ranked = rank_defense_candidates(
-        book=book,
-        sit=sit,
-        opponent_model=model,
-        concept_weights=concepts,
-        heuristic=heur_pair,
-        research_family_boost=research,
-    )
-    elapsed = (time.perf_counter() - started) * 1000.0
-    if elapsed > budget or not ranked:
+        model = defense_opponent.build_opponent_offense_model(db, opponent_id)
+        if _elapsed() > budget:
+            return _fallback_rec(
+                heur_form=heur_form,
+                heur_play=heur_play,
+                heur_adj=heur_adj,
+                reason="shadow fallback to heuristic (timeout during opponent model)",
+                adjustment_reason="timeout — keep heuristic",
+                evidence_quality=model.evidence_quality,
+                missing=missing + ["timeout"],
+                opponent_summary=model.to_dict(),
+                latency_ms=_elapsed(),
+            )
+
+        concepts = defense_opponent.situation_concept_prior(sit, model)
+        if not concepts:
+            missing.append("opponent concept observations")
+
+        research = _research_defense_boosts()
+        heur_pair = (heur_form, heur_play) if heur_form and heur_play else None
+        ranked = rank_defense_candidates(
+            book=book,
+            sit=sit,
+            opponent_model=model,
+            concept_weights=concepts,
+            heuristic=heur_pair,
+            research_family_boost=research,
+        )
+        if _elapsed() > budget:
+            return _fallback_rec(
+                heur_form=heur_form,
+                heur_play=heur_play,
+                heur_adj=heur_adj,
+                reason="shadow fallback to heuristic (timeout during ranking)",
+                adjustment_reason="timeout — keep heuristic",
+                evidence_quality=model.evidence_quality,
+                missing=missing + ["timeout"],
+                opponent_summary=model.to_dict(),
+                latency_ms=_elapsed(),
+            )
+        if not ranked:
+            return _fallback_rec(
+                heur_form=heur_form,
+                heur_play=heur_play,
+                heur_adj=heur_adj,
+                reason="shadow fallback to heuristic (no candidates)",
+                adjustment_reason="empty candidate pool — keep heuristic",
+                evidence_quality=model.evidence_quality,
+                missing=missing + ["no_candidates"],
+                opponent_summary=model.to_dict(),
+                latency_ms=_elapsed(),
+            )
+
+        top = ranked[0]
+        # Guard: selected play must be in the applied book.
+        top_form, top_play = top["formation"], top["play"]
+        book_plays = list((book or {}).get(top_form) or [])
+        if top_play not in book_plays:
+            return _fallback_rec(
+                heur_form=heur_form,
+                heur_play=heur_play,
+                heur_adj=heur_adj,
+                reason="shadow fallback to heuristic (illegal book play)",
+                adjustment_reason="selected play not in applied book",
+                evidence_quality=model.evidence_quality,
+                missing=missing + ["illegal_book_play"],
+                opponent_summary=model.to_dict(),
+                latency_ms=_elapsed(),
+            )
+
+        repeated = any(
+            defense_opponent.is_repeated_concept(model, c) for c in model.repeated_concepts
+        )
+        strong = any(w >= 0.25 for w in concepts.values())
+        if _elapsed() > budget:
+            # Ranked play OK but no time for CA validation — play without adj.
+            adj: dict[str, Any] = {
+                "macro": None,
+                "reason": "timeout before CA validation — play only",
+                "incompatibility": None,
+            }
+        else:
+            adj = defense_ca.recommend_adjustment(
+                list(armed_macros or []),
+                concept_families=concepts,
+                heuristic_macro=str(heur_adj) if heur_adj else None,
+                essential_only=not (
+                    repeated
+                    or strong
+                    or getattr(sit, "red_zone", False)
+                    or getattr(sit, "two_minute", False)
+                ),
+                formation=top_form,
+                play=top_play,
+                book=book,
+            )
+        # Final budget check after CA validation.
+        if _elapsed() > budget and adj.get("macro"):
+            adj = {
+                "macro": None,
+                "reason": "timeout after CA validation — dropped adjustment",
+                "incompatibility": adj.get("incompatibility"),
+                "candidates": adj.get("candidates") or [],
+            }
+
+        adj_id = (adj or {}).get("macro")
+        margin = 0.0
+        if len(ranked) > 1:
+            margin = float(top["score"] - ranked[1]["score"])
+        conf = max(
+            0.05,
+            min(
+                0.85,
+                0.35
+                + 0.3 * (1.0 if model.evidence_quality != "prior_driven" else 0.0)
+                + 0.2 * margin,
+            ),
+        )
+        reason_bits = [
+            f"answers expected {max(concepts, key=concepts.get) if concepts else 'situational mix'}",
+            f"coverage={top.get('coverage_family')}",
+            f"evidence={model.evidence_quality}",
+        ]
+        if top.get("near_tie_kept_heuristic"):
+            reason_bits.append("near-tie kept heuristic play")
+        if adj_id is None and (adj or {}).get("incompatibility"):
+            reason_bits.append("adj withheld (incompatible/incomplete)")
         return DefenseShadowRecommendation(
-            formation=heur_form,
-            play=heur_play,
-            coverage_family=call_family(heur_play),
-            adjustment=None,
-            adjustment_reason="timeout/empty — keep heuristic",
-            reason=f"shadow fallback to heuristic ({'timeout' if elapsed > budget else 'no candidates'})",
-            confidence=0.0,
+            formation=top_form,
+            play=top_play,
+            coverage_family=top.get("coverage_family"),
+            adjustment=adj_id,
+            adjustment_reason=(adj or {}).get("reason"),
+            reason="; ".join(reason_bits),
+            confidence=conf,
             evidence_quality=model.evidence_quality,
             heuristic_formation=heur_form,
             heuristic_play=heur_play,
             heuristic_adjustment=heur_adj,
+            incompatibility=(adj or {}).get("incompatibility"),
             missing=missing,
             opponent_summary=model.to_dict(),
-            latency_ms=elapsed,
+            rankings=ranked[:8],
+            latency_ms=_elapsed(),
+            controlled=False,
         )
-
-    top = ranked[0]
-    # Adjustment: essential only (repeated tendency or strong concept weight).
-    repeated = any(
-        defense_opponent.is_repeated_concept(model, c) for c in model.repeated_concepts
-    )
-    strong = any(w >= 0.25 for w in concepts.values())
-    adj = defense_ca.recommend_adjustment(
-        list(armed_macros or []),
-        concept_families=concepts,
-        heuristic_macro=str(heur_adj) if heur_adj else None,
-        essential_only=not (repeated or strong or getattr(sit, "red_zone", False) or getattr(sit, "two_minute", False)),
-    )
-    adj_id = (adj or {}).get("macro")
-    # Confidence from model quality + top margin.
-    margin = 0.0
-    if len(ranked) > 1:
-        margin = float(top["score"] - ranked[1]["score"])
-    conf = max(0.05, min(0.85, 0.35 + 0.3 * (1.0 if model.evidence_quality != "prior_driven" else 0.0) + 0.2 * margin))
-    reason_bits = [
-        f"answers expected {max(concepts, key=concepts.get) if concepts else 'situational mix'}",
-        f"coverage={top.get('coverage_family')}",
-        f"evidence={model.evidence_quality}",
-    ]
-    if top.get("near_tie_kept_heuristic"):
-        reason_bits.append("near-tie kept heuristic play")
-    return DefenseShadowRecommendation(
-        formation=top["formation"],
-        play=top["play"],
-        coverage_family=top.get("coverage_family"),
-        adjustment=adj_id,
-        adjustment_reason=(adj or {}).get("reason"),
-        reason="; ".join(reason_bits),
-        confidence=conf,
-        evidence_quality=model.evidence_quality,
-        heuristic_formation=heur_form,
-        heuristic_play=heur_play,
-        heuristic_adjustment=heur_adj,
-        incompatibility=(adj or {}).get("incompatibility"),
-        missing=missing,
-        opponent_summary=model.to_dict(),
-        rankings=ranked[:8],
-        latency_ms=(time.perf_counter() - started) * 1000.0,
-        controlled=False,
-    )
+    except Exception as exc:  # noqa: BLE001
+        return _fallback_rec(
+            heur_form=heur_form,
+            heur_play=heur_play,
+            heur_adj=heur_adj,
+            reason=f"shadow fallback to heuristic (exception: {type(exc).__name__})",
+            adjustment_reason="exception — keep heuristic",
+            evidence_quality="unknown",
+            missing=missing + ["exception"],
+            opponent_summary=None,
+            latency_ms=_elapsed(),
+            incompatibility=str(exc)[:120],
+        )
 
 
 def maybe_attach_defense_shadow(
@@ -542,10 +677,35 @@ def _log_defense_shadow(
     return int(row_id)
 
 
+def _outcome_verified(outc: Any) -> bool:
+    """True only when execution status is identified and verification is verified."""
+    if outc is None:
+        return False
+    status = str(outc["executed_status"] if hasattr(outc, "keys") else "").lower()
+    ver = ""
+    try:
+        ver = str(outc["executed_verification"] or "").lower()
+    except Exception:  # noqa: BLE001
+        ver = ""
+    if not ver:
+        try:
+            raw = outc["outcome_json"] if hasattr(outc, "keys") else None
+            if raw:
+                payload = json.loads(raw) if isinstance(raw, str) else raw
+                ver = str((payload or {}).get("executed_verification") or "").lower()
+        except Exception:  # noqa: BLE001
+            ver = ""
+    return status == "identified" and ver == "verified"
+
+
 def postgame_defense_shadow_report(
     db: Any, *, game_id: str | None = None, limit: int = 500
 ) -> dict[str, Any]:
-    """Compare heuristic vs shadow defense recommendations. No counterfactual credit."""
+    """Compare heuristic vs shadow defense recommendations. No counterfactual credit.
+
+    ``verified_executions_linked`` counts only outcomes with explicit verified
+    execution status — not merely the presence of an outcome row.
+    """
     params: list[Any] = []
     sql = (
         "SELECT * FROM ml_decisions WHERE mode='shadow' "
@@ -559,9 +719,11 @@ def postgame_defense_shadow_report(
     rows = list(db.conn.execute(sql, params))
     n = len(rows)
     agree = 0
-    used_play = 0
-    used_adj = 0
+    used_shown_play = 0
+    verified_adj_usage = 0
     linked_outcomes = 0
+    verified_executions = 0
+    unknown_executions = 0
     by_game: dict[str, int] = {}
     examples: list[dict[str, Any]] = []
     for r in rows:
@@ -582,10 +744,29 @@ def postgame_defense_shadow_report(
             ).fetchone()
         if outc is not None:
             linked_outcomes += 1
-            # Only credit usage when the executed play matches what was shown (heuristic).
-            if (outc["executed_play"] or "") == (r["final_play"] or ""):
-                used_play += 1
-            # Never attribute outcome to unexecuted shadow alternative.
+            if _outcome_verified(outc):
+                verified_executions += 1
+                if (outc["executed_play"] or "") == (r["final_play"] or ""):
+                    used_shown_play += 1
+                suggested_adj = payload.get("adjustment")
+                if suggested_adj:
+                    executed_macro = None
+                    try:
+                        raw = outc["outcome_json"]
+                        if raw:
+                            oj = json.loads(raw) if isinstance(raw, str) else raw
+                            executed_macro = (oj or {}).get("executed_macro")
+                    except Exception:  # noqa: BLE001
+                        executed_macro = None
+                    try:
+                        if not executed_macro:
+                            executed_macro = outc["executed_macro"]
+                    except Exception:  # noqa: BLE001
+                        pass
+                    if executed_macro and str(executed_macro).upper() == str(suggested_adj).upper():
+                        verified_adj_usage += 1
+            else:
+                unknown_executions += 1
         if len(examples) < 8:
             examples.append(
                 {
@@ -597,6 +778,10 @@ def postgame_defense_shadow_report(
                     "reason": payload.get("reason"),
                     "evidence_quality": payload.get("evidence_quality"),
                     "executed": (outc["executed_play"] if outc is not None else None),
+                    "executed_status": (
+                        outc["executed_status"] if outc is not None else None
+                    ),
+                    "execution_verified": _outcome_verified(outc),
                     "outcome_attributed_to_shadow": False,
                 }
             )
@@ -604,13 +789,17 @@ def postgame_defense_shadow_report(
         "n_shadow_defense_calls": n,
         "agree_with_heuristic": agree,
         "agree_rate": (agree / n) if n else None,
-        "verified_executions_linked": linked_outcomes,
-        "user_used_shown_play": used_play,
-        "games_counts": by_game,
+        "linked_outcomes": linked_outcomes,
+        "verified_executions_linked": verified_executions,
+        "unknown_executions": unknown_executions,
+        "user_used_shown_play": used_shown_play,
+        "verified_adjustment_usage": verified_adj_usage,
+        "game_counts": by_game,
         "anonymous_unlinked_rows_ignored": 0,
         "examples": examples,
         "note": (
-            "Outcomes are never credited to an unexecuted shadow alternative. "
-            "Shadow did not control the live call."
+            "verified_executions_linked requires executed_status=identified AND "
+            "executed_verification=verified. Outcomes are never credited to an "
+            "unexecuted shadow alternative. Shadow did not control the live call."
         ),
     }

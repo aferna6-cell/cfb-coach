@@ -52,10 +52,34 @@ are verified for that adjustment.
 ## Custom Adjustment rules
 
 - Only ids in the current eight-macro defensive loadout may be recommended.
-- Full editor settings are checked (`settings_rows` / research DB).
+- Every required Madden defensive editor field must have an explicit researched
+  value or Default (`editor_fields.json` inventory). Pool membership alone is
+  not enough.
+- The adjustment must be compatible with the **selected** formation/play
+  (researched base, shell, coverage family). Incompatible → recommend the play
+  without an adjustment.
 - Conflicting exclusive settings between two macros → do not stack.
-- Experimental macros (e.g. `HEAT`) are not auto-recommended.
+- Experimental / benched macros (e.g. `HEAT`) are **ineligible** unless
+  `CFB_COACH_ALLOW_EXPERIMENTAL_D_MACROS` is explicitly authorized.
 - Never invent settings or activate an unarmed macro.
+
+## Latency budget
+
+The full shadow path (opponent model + ranking + CA validation) must finish
+within **150 ms**. On timeout or exception the live heuristic call is preserved
+and the fallback reason is recorded (`timeout during …` / `exception: …`).
+
+## Observation readiness (shadow advisor for human opponents)
+
+The shadow advisor is ready for **human-opponent observation** (log-only) when:
+
+- Sprint 5.1 acceptance tests are green
+- Suggested plays are always in the applied D book
+- Suggested adjustments are armed, complete, and play-compatible (or withheld)
+- Experimental macros never auto-recommend
+- Verified-execution reporting distinguishes linked / verified / unknown
+- 150 ms budget fallbacks preserve the heuristic
+- Experimental offense + CPU offense-only remain unchanged
 
 ## Stage 3 activation readiness (NOT enabled)
 
@@ -68,12 +92,13 @@ defensive ML to call plays in a future game, all of the following must hold:
    - Laptop `audit-history` confirms which games contribute
 2. **Evaluation**
    - `defense-shadow-report` shows stable agree/disagree patterns
+   - `verified_executions_linked` uses identified+verified only
    - Shadow never credited for unexecuted alternatives
    - Situation suites green: crossers, flood, RPO/run, scramble, short yardage,
      3rd-and-long, red zone, late game
 3. **Safeguards**
-   - 150 ms ranking budget with heuristic fallback
-   - Armed-macro + settings compatibility gate
+   - 150 ms full-path budget with heuristic fallback
+   - Armed-macro + complete editor settings + play↔adj compatibility gate
    - CPU offense-only unchanged
    - Experimental offensive mode unaffected
    - Explicit opt-in CLI (not this sprint’s refuse stub)
