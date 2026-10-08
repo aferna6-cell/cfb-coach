@@ -117,20 +117,27 @@ def render_html(
             f'<a href="{esc(stock_url)}" target="_blank" rel="noopener noreferrer">{esc(source)}</a>'
             if stock_url.startswith(("https://", "http://")) else esc(source)
         )
-        entries = []
-        for p in plays:
-            built = is_installed and p in (applied.get("formations") or {}).get(form, [])
-            if built:
-                mark = '<span class="ok">✓</span>'
-                label = "Installed and callable"
-            else:
-                required += 1
-                mark = f'<input class="build-check" type="checkbox" aria-label="Installed {esc(form)} {esc(p)}">'
-                label = "Verify in Madden editor"
-            entries.append(f'<li class="play">{mark}<b>{esc(p)}</b><small>{label}</small></li>')
+        # Review/install one complete formation, not dozens of individual
+        # plays. All sourced plays are listed for reference, never pruned.
+        built = is_installed and list((applied.get("formations") or {}).get(form) or []) == list(plays)
+        if built:
+            mark = '<span class="ok">✓</span>'
+            label = "Installed & callable"
+        else:
+            required += 1
+            mark = (
+                f'<input class="build-check" type="checkbox" '
+                f'aria-label="I installed all plays in formation {esc(form)}">'
+            )
+            label = "Check full formation in Madden"
+        entries = [
+            f'<li class="play"><b>{esc(p)}</b></li>' for p in plays
+        ]
+        verify_header = f'<div class="play">{mark}<strong>{esc(label)}</strong></div>'
         groups.append(
             f'<section><div class="head"><h3>{esc(form)}</h3><span class="pill">{len(plays)} plays</span></div>'
-            f'<p class="muted">Stock source: {source_link}</p><ul>{"".join(entries)}</ul></section>'
+            f'<p class="muted">Stock source: {source_link} · complete formation, all {len(plays)} catalogued plays</p>'
+            f'{verify_header}<ul>{"".join(entries)}</ul></section>'
         )
     deltas = [
         f'<li class="delta"><span class="pill">{esc(d.get("action"))}</span>'
@@ -205,7 +212,7 @@ def render_html(
         )
     elif mode == "staged":
         workflow = (
-            f'<p>Build each play inside Madden. Check all {required} listed plays after checking the game editor. '
+            f'<p>Install each complete formation inside Madden. Check all {required} formations after verifying their complete play lists. '
             'These checkboxes are local to this browser, not a database confirmation.</p>'
             f'<pre id="confirm-cmd">{esc(confirm_cmd)}</pre>'
             '<button id="confirm-copy" data-copy="confirm-cmd" disabled>Check installed plays first</button>'
@@ -274,8 +281,8 @@ to refresh what the model knows.</p></section>
  const p=document.getElementById('progress');
  function update(){{
   const n=c.filter(x=>x.checked).length;
-  if(b){{b.disabled=c.length>0&&n!==c.length;b.textContent=b.disabled?'Check installed plays first':'Copy install-confirmation command';}}
-  if(p) p.textContent=c.length?(n+' / '+c.length+' plays checked on this page (not saved)'):'';
+  if(b){{b.disabled=c.length>0&&n!==c.length;b.textContent=b.disabled?'Check installed formations first':'Copy install-confirmation command';}}
+  if(p) p.textContent=c.length?(n+' / '+c.length+' formations checked on this page (not saved)'):'';
  }}
  c.forEach(x=>x.addEventListener('change',update));update();
  document.querySelectorAll('button[data-copy]').forEach(x=>x.addEventListener('click',async()=>{{
