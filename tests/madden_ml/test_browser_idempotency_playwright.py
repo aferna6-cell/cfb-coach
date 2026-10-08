@@ -67,6 +67,9 @@ class PlaywrightBrowserIdempotencyTests(unittest.TestCase):
         from http.server import ThreadingHTTPServer
 
         self.server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(self.ctrl))
+        # Wait for in-flight request handlers before closing their shared
+        # SQLite connection. Otherwise teardown can segfault in CI.
+        self.server.daemon_threads = False
         self.port = port
         self.url = f"http://127.0.0.1:{port}/"
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -75,6 +78,7 @@ class PlaywrightBrowserIdempotencyTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.server.shutdown()
         self.server.server_close()
+        self.thread.join(timeout=5)
         self.db.close()
         self._td.cleanup()
 

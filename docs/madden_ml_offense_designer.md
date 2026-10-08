@@ -33,6 +33,43 @@ inside your particular custom editor. All are **pending** until you check
 them in Madden yourself. Macro routes/control availability must also be
 confirmed in the current game version.
 
+## Browser workflow (Sprint 6D)
+
+The default `python -m cfb_coach ml offense-design -o cpu` now writes a local
+Madden-dark HTML dashboard and opens it in your default browser, like live
+Madden and the pregame prep page. The browser uses the same dark palette,
+prominent call-style headings, cards, and single-page layout as the live coach.
+
+It includes:
+
+- Current applied offense (what live ML is actually allowed to call).
+- New proposed formations and every individual play, source-book pages,
+  named change deltas and local installation checklists.
+- Expanding macro cards with exactly researched editor settings,
+  direct research/source links, trigger conditions, supported formation/play
+  pairs, and a clear Draft vs Verified & Armed status.
+- Existing selected offensive macros and their user-confirmed setting rows,
+  unspecified fields and activation controls. A saved prep loadout is not
+  itself proof of installation.
+- Copyable `--stage`, `--confirm-installed`, and `--verify-macro`
+  terminal commands, without unsafe automatic activation.
+
+```bash
+python -m cfb_coach ml offense-design -o cpu              # preview + open HTML
+python -m cfb_coach ml offense-design -o cpu --stage      # stage + open checklist
+python -m cfb_coach ml offense-design -o cpu --show       # staged or installed status
+python -m cfb_coach ml offense-design -o cpu --no-open    # write HTML, don't launch
+python -m cfb_coach ml offense-design -o cpu --text       # original JSON console output
+```
+
+The page is a **read-only local HTML file**. Checking play-install boxes
+only helps the user prepare the exact verification command; it does not
+claim to have physically installed content or write to SQLite. After
+installing in the Madden editor and running the explicit CLI confirmation,
+rerun `ml offense-design --show` to see the true updated state. The
+live model continues to read the **applied** book and the separately
+**verified-and-armed** macro registry only.
+
 ## Command workflow (Ubuntu)
 
 First back up the database and retrain from any newly verified plays:

@@ -582,25 +582,49 @@ def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
 
 
 def cmd_ml_offense_design(args: argparse.Namespace) -> int:
-    """Preview/stage a model-generated custom offensive book and macro blueprints.
+    """Design/inspect the custom offense; open the Madden-style browser by default.
 
-    A proposal never edits the active book until the user explicitly confirms
-    actual Madden in-game installation with its exact proposal ID.
+    The HTML page is read-only. Stage/confirm/macro-verify actions still require
+    explicit local CLI commands and in-game installation confirmation.
     """
     from cfb_coach.madden.model import offense_designer as designer
+    from cfb_coach.madden.model import offense_design_browser as browser
 
-    if args.show and (args.stage or args.confirm_installed or args.verify_macro or args.rollback_design):
+    if args.show and (args.stage or args.confirm_installed or args.verify_macro or args.unverify_macro or args.rollback_design):
         print("--show cannot be combined with mutation flags", file=sys.stderr)
         return 2
-    if sum(bool(x) for x in (args.stage, args.confirm_installed, args.verify_macro, args.rollback_design)) > 1:
-        print("Stage/confirm/verify are separate deliberate actions", file=sys.stderr)
+    if sum(bool(x) for x in (
+        args.stage, args.confirm_installed, args.verify_macro, args.unverify_macro, args.rollback_design
+    )) > 1:
+        print("Stage/confirm/verify/rollback are separate deliberate actions", file=sys.stderr)
         return 2
-    read_only = not bool(args.stage or args.confirm_installed or args.verify_macro or args.rollback_design)
+
+    text_mode = bool(getattr(args, "text", False))
+    open_browser = not (text_mode or getattr(args, "no_open", False))
+    write_browser = not text_mode
+    read_only = not bool(args.stage or args.confirm_installed or args.verify_macro or args.unverify_macro or args.rollback_design)
     db = open_madden_db(read_only=read_only)
+
+    def display(payload: dict[str, Any] | None, mode: str) -> None:
+        if text_mode or payload is None:
+            print(json.dumps(payload or {"status": "no_staged_or_installed_design"}, indent=2))
+            return
+        path = browser.write_and_open(
+            db, payload, mode=mode, opponent_id=args.opponent,
+            open_browser=open_browser,
+        )
+        print(f"Madden ML Offensive Designer → {path}")
+        print(f"design_status: {mode} | proposal_id: {payload.get('proposal_id')}")
+        print("The browser checklist is read-only. Confirm actual editor changes using the displayed CLI command.")
+
     try:
         if args.show:
             data = designer.staged_design(db)
-            print(json.dumps(data or {"status": "no_staged_design"}, indent=2))
+            mode = "staged"
+            if data is None:
+                data = browser.installed_design(db, args.opponent)
+                mode = "installed"
+            display(data, mode)
             return 0
         if args.rollback_design:
             try:
@@ -611,6 +635,14 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
                 print(f"Rollback refused: {exc}", file=sys.stderr)
                 return 2
             print(json.dumps(result, indent=2))
+            display(browser.installed_design(db, args.opponent), "installed")
+            return 0
+        if args.unverify_macro:
+            result = designer.unverify_created_macro(
+                db, name=args.unverify_macro, opponent_id=args.opponent,
+            )
+            print(json.dumps(result, indent=2))
+            display(browser.installed_design(db, args.opponent), "installed")
             return 0
         if args.verify_macro:
             try:
@@ -623,6 +655,7 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
                 print(f"Macro verification refused: {exc}", file=sys.stderr)
                 return 2
             print(json.dumps(result, indent=2))
+            display(browser.installed_design(db, args.opponent), "installed")
             return 0
         if args.confirm_installed:
             try:
@@ -633,6 +666,7 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
                 print(f"Installation refused: {exc}", file=sys.stderr)
                 return 2
             print(json.dumps(result, indent=2))
+            display(browser.installed_design(db, args.opponent), "installed")
             return 0
         try:
             design = designer.design_offense(
@@ -644,12 +678,11 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
         except (ValueError, OSError) as exc:
             print(f"Offense design unavailable: {exc}", file=sys.stderr)
             return 2
-        print(json.dumps(design, indent=2))
-        print(
-            "STAGED ONLY — verify/build all proposed formations, plays and any "
-            "macro blueprints inside Madden. Existing applied book remains locked."
-            if args.stage else "DRY RUN — no database or playbook changes."
-        )
+        display(design, "staged" if args.stage else "preview")
+        if args.stage:
+            print("STAGED ONLY — active book unchanged until built in Madden and confirmed.")
+        else:
+            print("PREVIEW ONLY — no applied playbook or macro changes.")
         return 0
     finally:
         db.close()
@@ -1044,6 +1077,10 @@ def build_ml_subparser(sub: Any) -> None:
     p_od.add_argument("--opponent", "-o", default="cpu")
     p_od.add_argument("--max-formations", type=int, default=5)
     p_od.add_argument("--max-plays", type=int, default=10)
+    p_od.add_argument("--text", action="store_true",
+                      help="Print the original JSON report instead of opening the HTML designer")
+    p_od.add_argument("--no-open", action="store_true",
+                      help="Write HTML locally but do not launch a browser")
     p_od.add_argument("--show", action="store_true", help="Show staged design without modifying DB")
     p_od.add_argument("--stage", action="store_true", help="Store proposal only; live locked book stays untouched")
     p_od.add_argument("--confirm-installed", metavar="PROPOSAL_ID", default=None,
@@ -1051,6 +1088,8 @@ def build_ml_subparser(sub: Any) -> None:
     p_od.add_argument("--attest", default=None, help="Explicit in-game installation/activation evidence")
     p_od.add_argument("--rollback-design", metavar="PROPOSAL_ID", default=None,
                       help="Restore prior offense only after reinstallation in Madden")
+    p_od.add_argument("--unverify-macro", metavar="NAME", default=None,
+                      help="Immediately stop live ML from offering this no-longer-armed macro")
     p_od.add_argument("--verify-macro", metavar="NAME", default=None,
                       help="Verify a generated macro was built and armed in Madden")
     p_od.add_argument("--retire-existing", metavar="ID", default=None,
