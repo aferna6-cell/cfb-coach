@@ -966,6 +966,11 @@ def render_live_html(ctrl: LivePlayController) -> str:
   <div class="heard" id="heard"{' hidden' if compact_madden else ''}>vs {_esc(ctrl.opponent_id)}</div>
   <div class="call" id="call"{' aria-live="polite"' if compact_madden else ''}>{_esc(_call_main(ctrl))}</div>
   {_macro_box_html(None if compact_madden else ctrl.macro_state())}
+  {"""<details id="offense-action-panel" hidden>
+    <summary>Optional hot route / Custom Adjustment</summary>
+    <div id="offense-action-label"></div>
+    <div id="offense-action-buttons"></div>
+  </details>""" if compact_madden else ""}
   <div class="heard" id="ml-experimental" hidden></div>
   <div class="err" id="err"></div>
 
@@ -1006,6 +1011,11 @@ def render_live_html(ctrl: LivePlayController) -> str:
         <input class="wide" id="exec-play" placeholder="actual play name"/>
       </div>
     </div>
+
+    {"""<div id="action-confirm-row" hidden>
+      <label><input type="checkbox" id="action-applied"/>
+        I actually applied the optional hot route / Custom Adjustment</label>
+    </div>""" if compact_madden else ""}
 
     <h2 style="margin-top:1rem">Next situation</h2>
     <div class="row">
@@ -1131,6 +1141,19 @@ function renderState(st) {{
       }}
     }}
   }}
+  // Model-selected optional actions remain collapsed; the main call is always
+  // formation + play. Never infer execution from merely showing an action.
+  const act = st.pending_offense_action;
+  const actionPanel = $("offense-action-panel");
+  const actionConfirmRow = $("action-confirm-row");
+  if (actionPanel) {{
+    actionPanel.hidden = !act;
+    if (act) {{
+      $("offense-action-label").textContent = act.label || act.id || "";
+      $("offense-action-buttons").textContent = act.buttons || "";
+    }}
+  }}
+  if (actionConfirmRow) actionConfirmRow.hidden = !act;
   $("heard").textContent = st.heard || ("vs " + (st.opponent_id || ""));
   const log = $("log");
   if (!st.log || !st.log.length) {{
@@ -1417,6 +1440,7 @@ $("btn-submit").addEventListener("click", async () => {{
         executed_status: exec,
         executed_formation: ($("exec-formation").value || "").trim() || null,
         executed_play: ($("exec-play").value || "").trim() || null,
+        applied_recommended_action: !!($("action-applied") && $("action-applied").checked),
       }};
       return await apiAction("/api/result_call", body);
     }});
@@ -1428,6 +1452,7 @@ $("btn-submit").addEventListener("click", async () => {{
     $("live-mark").checked = false;
     document.querySelectorAll("#outcome-btns button.outcome").forEach(b => b.style.outline = "");
     restoreExecDefaultAfterSubmit();
+    if ($("action-applied")) $("action-applied").checked = false;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -1456,6 +1481,7 @@ $("btn-call-only").addEventListener("click", async () => {{
       score_us: $("score-us").value, score_them: $("score-them").value,
     }}));
     if (!data) return;
+    if ($("action-applied")) $("action-applied").checked = false;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
