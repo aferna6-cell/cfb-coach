@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from cfb_coach.db import CoachDB
@@ -150,9 +151,25 @@ class DesignerBrowserTests(unittest.TestCase):
         markup = browser.render_html(self.db, installed, mode="installed", opponent_id="cpu")
         self.assertIn("Verified and armed", markup)
         self.assertIn("--unverify-macro", markup)
+        from cfb_coach.madden.model.offense_action_policy import choose_offense_action
+        pair = m["base_pairs"][0]
+        context = SimpleNamespace(
+            coverage_hint="Cover 1" if m["coverage"] == "man" else "Blitz",
+            coverage_source="live", goal_line=False, red_zone=False, down=2,
+        )
+        state = dict(
+            formation=pair["formation"], play=pair["play"], sit=context,
+            book=playbook.load_books(self.db)["offense"]["formations"],
+            active=[], db=self.db, opponent_id="cpu",
+            prediction={"probability": 0.6, "uncertainty": 0.2},
+        )
+        before = choose_offense_action(**state)
+        self.assertIn(m["name"], [item["id"] for item in before["candidates"]])
         result = designer.unverify_created_macro(self.db, name=m["name"], opponent_id="cpu")
         self.assertFalse(result["now_callable"])
         self.assertEqual(designer.verified_created_macros(self.db, "cpu"), [])
+        after = choose_offense_action(**state)
+        self.assertNotIn(m["name"], [item["id"] for item in after["candidates"]])
         markup = browser.render_html(self.db, installed, mode="installed", opponent_id="cpu")
         self.assertIn("Draft — not callable", markup)
 
