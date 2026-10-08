@@ -18,8 +18,11 @@ The designer may:
   derived from source-backed hot-route and protection primitives.
 - Show exact ADD/REMOVE play and formation deltas against your locked book.
 
-The ML model's prediction and concept-level evidence drive the ranking; the
-heuristic does not choose the winning play. A slight incumbency preference
+The ML model's **play-concept** prediction and evidence drive the
+formation's aggregate score; the current experimental artifact does NOT yet
+learn an independent formation-specific effect. This distinction matters
+until we collect verified results for multiple formations. The heuristic
+does not choose the winning play. A slight incumbency preference
 avoids pointless churn; diverse concepts and at least one run are retained.
 These are offline roster-construction constraints, not a live heuristic selector.
 
