@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, madden-ml/coach, madden-ml/experimental-pilot, madden-ml/stage3-defense-shadow]
   pull_request:
-    branches: [main, madden-ml/coach, madden-ml/experimental-pilot]
+    branches: [main, madden-ml/coach, madden-ml/experimental-pilot, madden-ml/stage3-defense-shadow]
 
 jobs:
   test:

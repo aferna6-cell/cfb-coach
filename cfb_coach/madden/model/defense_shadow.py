@@ -303,8 +303,9 @@ def build_shadow_recommendation(
     """Compute a shadow recommendation. Never mutates the heuristic call display.
 
     The full path (opponent model + ranking + CA validation) must finish inside
-    ``budget_ms`` (default 150). On timeout or exception the heuristic call is
-    preserved with an accurate fallback reason.
+    ``budget_ms`` (default 150). Any over-budget recommendation falls back
+    **fully** to the heuristic (formation, play, and adjustment) — never keep a
+    ranked shadow play while only dropping the CA.
     """
     started = time.perf_counter()
     budget = float(ML_LATENCY_BUDGET_MS if budget_ms is None else budget_ms)
@@ -421,36 +422,46 @@ def build_shadow_recommendation(
             defense_opponent.is_repeated_concept(model, c) for c in model.repeated_concepts
         )
         strong = any(w >= 0.25 for w in concepts.values())
+        # Any over-budget path falls back fully to the heuristic — never keep a
+        # ranked shadow play while only dropping the adjustment.
         if _elapsed() > budget:
-            # Ranked play OK but no time for CA validation — play without adj.
-            adj: dict[str, Any] = {
-                "macro": None,
-                "reason": "timeout before CA validation — play only",
-                "incompatibility": None,
-            }
-        else:
-            adj = defense_ca.recommend_adjustment(
-                list(armed_macros or []),
-                concept_families=concepts,
-                heuristic_macro=str(heur_adj) if heur_adj else None,
-                essential_only=not (
-                    repeated
-                    or strong
-                    or getattr(sit, "red_zone", False)
-                    or getattr(sit, "two_minute", False)
-                ),
-                formation=top_form,
-                play=top_play,
-                book=book,
+            return _fallback_rec(
+                heur_form=heur_form,
+                heur_play=heur_play,
+                heur_adj=heur_adj,
+                reason="shadow fallback to heuristic (timeout before CA validation)",
+                adjustment_reason="timeout — full heuristic fallback",
+                evidence_quality=model.evidence_quality,
+                missing=missing + ["timeout"],
+                opponent_summary=model.to_dict(),
+                latency_ms=_elapsed(),
             )
-        # Final budget check after CA validation.
-        if _elapsed() > budget and adj.get("macro"):
-            adj = {
-                "macro": None,
-                "reason": "timeout after CA validation — dropped adjustment",
-                "incompatibility": adj.get("incompatibility"),
-                "candidates": adj.get("candidates") or [],
-            }
+        adj = defense_ca.recommend_adjustment(
+            list(armed_macros or []),
+            concept_families=concepts,
+            heuristic_macro=str(heur_adj) if heur_adj else None,
+            essential_only=not (
+                repeated
+                or strong
+                or getattr(sit, "red_zone", False)
+                or getattr(sit, "two_minute", False)
+            ),
+            formation=top_form,
+            play=top_play,
+            book=book,
+        )
+        if _elapsed() > budget:
+            return _fallback_rec(
+                heur_form=heur_form,
+                heur_play=heur_play,
+                heur_adj=heur_adj,
+                reason="shadow fallback to heuristic (timeout after CA validation)",
+                adjustment_reason="timeout — full heuristic fallback",
+                evidence_quality=model.evidence_quality,
+                missing=missing + ["timeout"],
+                opponent_summary=model.to_dict(),
+                latency_ms=_elapsed(),
+            )
 
         adj_id = (adj or {}).get("macro")
         margin = 0.0

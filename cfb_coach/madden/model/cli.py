@@ -593,13 +593,14 @@ def cmd_ml_defense_shadow_report(args: argparse.Namespace) -> int:
 
 def cmd_ml_defense_shadow_activate(args: argparse.Namespace) -> int:
     """Explicit Stage 3 activation path — always refuses until readiness criteria are met."""
-    from cfb_coach.madden.model import defense_shadow as dshadow
+    from cfb_coach.madden.model import defense_control, defense_shadow as dshadow
 
     del args
     db = open_madden_db()
     try:
         result = dshadow.refuse_activation(db)
-        print(json.dumps(result, indent=2, default=str))
+        pilot = defense_control.try_activate_pilot(db)
+        print(json.dumps({"shadow": result, "pilot": pilot}, indent=2, default=str))
         print(
             "Readiness criteria: docs/madden_ml_defense_shadow.md",
             file=sys.stderr,
@@ -607,6 +608,42 @@ def cmd_ml_defense_shadow_activate(args: argparse.Namespace) -> int:
     finally:
         db.close()
     return 2
+
+
+def cmd_ml_defense_eval(args: argparse.Namespace) -> int:
+    """Stage 3 evaluation across verified defensive snaps and games."""
+    from cfb_coach.madden.model import defense_eval
+
+    db = open_madden_db()
+    try:
+        report = defense_eval.stage3_evaluation_report(
+            db, game_id=getattr(args, "game_id", None)
+        )
+        print(json.dumps(report, indent=2, default=str))
+    finally:
+        db.close()
+    return 0
+
+
+def cmd_ml_defense_readiness(args: argparse.Namespace) -> int:
+    """Stage 3 readiness dashboard (experimental targets, not competitive proof)."""
+    from cfb_coach.madden.model import defense_readiness
+
+    db = open_madden_db()
+    try:
+        report = defense_readiness.readiness_dashboard(
+            db, game_id=getattr(args, "game_id", None)
+        )
+        if getattr(args, "json", False):
+            print(json.dumps(report, indent=2, default=str))
+        else:
+            print(defense_readiness.format_readiness_text(report))
+            if getattr(args, "verbose", False):
+                print("--- json ---")
+                print(json.dumps(report, indent=2, default=str))
+    finally:
+        db.close()
+    return 0
 
 
 def cmd_ml_defense_shadow_demo(args: argparse.Namespace) -> int:
@@ -1018,6 +1055,22 @@ def build_ml_subparser(sub: Any) -> None:
         help="Stage 3 activation path (always refuses until readiness criteria are met)",
     )
     p_da.set_defaults(func=cmd_ml_defense_shadow_activate)
+
+    p_de = ml_sub.add_parser(
+        "defense-eval",
+        help="Stage 3 evaluation across verified defensive snaps/games",
+    )
+    p_de.add_argument("--game-id", default=None)
+    p_de.set_defaults(func=cmd_ml_defense_eval)
+
+    p_ready = ml_sub.add_parser(
+        "defense-readiness",
+        help="Stage 3 readiness dashboard (observation/control prep targets)",
+    )
+    p_ready.add_argument("--game-id", default=None)
+    p_ready.add_argument("--json", action="store_true", help="Print full JSON report")
+    p_ready.add_argument("--verbose", action="store_true", help="Text dashboard + JSON")
+    p_ready.set_defaults(func=cmd_ml_defense_readiness)
 
     p_dd = ml_sub.add_parser(
         "defense-shadow-demo",
