@@ -48,7 +48,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          PYTHONPATH=. python -m cfb_coach ml research-refresh | tee /tmp/research_refresh.json
+          # Standalone script — works on main without the experimental ``ml`` CLI.
+          PYTHONPATH=. python scripts/madden_research_refresh.py | tee /tmp/research_refresh.json
           python scripts/research_refresh_gha_outputs.py /tmp/research_refresh.json >> "$GITHUB_OUTPUT"
 
       - name: Validate active research still intact

@@ -67,14 +67,18 @@ python -m cfb_coach ml postgame-experimental
 ## Research refresh (candidate only)
 
 ```bash
+# Standalone (also works once research-only PR lands on main):
+PYTHONPATH=. python scripts/madden_research_refresh.py
+PYTHONPATH=. python scripts/madden_research_refresh.py --dry-run
+# Experimental branch ml CLI:
 python -m cfb_coach ml research-refresh
-python -m cfb_coach ml research-refresh --dry-run
 ```
 
 Scheduled workflow file: `.github/workflows/madden-research-daily.yml`  
 **Not operational for unattended daily runs** until installed on the default
 branch (`main`) and a successful Actions run is confirmed. Deploy path that
-does **not** merge experimental gameplay: `docs/madden_research_deploy.md`.
+does **not** merge experimental gameplay: research-only PR #22 /
+`docs/madden_research_deploy.md`.
 
 Candidates land under `research/candidates/`. Active five formations and armed
 Custom Adjustments are **never** overwritten without user confirmation.

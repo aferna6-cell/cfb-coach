@@ -18,6 +18,7 @@ Open a **research-only** PR to `main` that contains only:
 
 - `.github/workflows/madden-research-daily.yml`
 - `cfb_coach/madden/research_refresh.py`
+- `scripts/madden_research_refresh.py` (standalone entry — main has no `ml` CLI)
 - `scripts/research_refresh_gha_outputs.py`
 - `docs/madden_research_deploy.md` (this file)
 - optional: `research/candidates/.gitkeep`
@@ -30,6 +31,7 @@ git checkout -b cursor/madden-research-workflow-38d5 origin/main
 git checkout origin/madden-ml/experimental-pilot -- \
   .github/workflows/madden-research-daily.yml \
   cfb_coach/madden/research_refresh.py \
+  scripts/madden_research_refresh.py \
   scripts/research_refresh_gha_outputs.py \
   docs/madden_research_deploy.md \
   research/candidates/.gitkeep
@@ -48,9 +50,13 @@ Then on `main`:
 ## On-demand (any branch)
 
 ```bash
-python -m cfb_coach ml research-refresh
-python -m cfb_coach ml research-refresh --dry-run
+# Works on main (no experimental gameplay required):
+PYTHONPATH=. python scripts/madden_research_refresh.py
+PYTHONPATH=. python scripts/madden_research_refresh.py --dry-run
 python scripts/research_refresh_gha_outputs.py /tmp/research_refresh.json
+
+# On experimental-pilot only (ml CLI present):
+python -m cfb_coach ml research-refresh
 ```
 
 Candidate updates never silently replace the active five formations or armed
