@@ -17,6 +17,7 @@ Defense is never selected by this mode. CPU remains offense-only.
 
 from __future__ import annotations
 
+import json
 import time
 import traceback
 from dataclasses import replace
@@ -550,6 +551,33 @@ def commit_experimental_decision(
         row_id = db.log_ml_decision(stamped, agree=agree)
     except Exception:  # noqa: BLE001
         return None
+
+    # Preserve the model's decision and action provenance for postgame learning.
+    # The output is research-based for actions, not a causal effect estimate.
+    info = getattr(call, "ml_experimental", None)
+    if isinstance(info, dict):
+        try:
+            raw = db.conn.execute(
+                "SELECT decision_json FROM ml_decisions WHERE id=?", (row_id,)
+            ).fetchone()
+            payload = json.loads(raw["decision_json"] or "{}") if raw else {}
+            payload["experimental_offense"] = {
+                "selection_policy": info.get("selection_policy", "legacy_experimental"),
+                "model_version": info.get("model_version"),
+                "evidence_quality": info.get("evidence_quality"),
+                "probability": info.get("probability"),
+                "uncertainty": info.get("uncertainty"),
+                "knowledge_version": info.get("knowledge_version"),
+                "offense_action": info.get("offense_action"),
+            }
+            db.conn.execute(
+                "UPDATE ml_decisions SET decision_json=? WHERE id=?",
+                (json.dumps(payload, default=str), row_id),
+            )
+            db.conn.commit()
+        except Exception:  # noqa: BLE001
+            # Never jeopardize the original verified sealed decision.
+            pass
     try:
         setattr(call, PENDING_ATTR, stamped)
         info = getattr(call, "ml_experimental", None)
@@ -657,6 +685,40 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
         if outc["executed_status"] == "identified" and outc["executed_verification"] == "verified":
             verified += 1
 
+    # Action usage is measured only from the chosen and recorded snap.
+    # A checked play execution is not proof a proposed hot route or macro ran.
+    action_recommended = 0
+    action_confirmed = 0
+    action_unconfirmed = 0
+    action_by_kind: dict[str, int] = {}
+    for r in identified:
+        try:
+            decision_payload = json.loads(r["decision_json"] or "{}")
+            action = (decision_payload.get("experimental_offense") or {}).get("offense_action") or {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            action = {}
+        kind = str(action.get("kind") or "none")
+        action_id = action.get("id")
+        if not action_id or kind not in ("macro", "adjustment"):
+            continue
+        action_recommended += 1
+        action_by_kind[kind] = action_by_kind.get(kind, 0) + 1
+        outcome_row = outcomes.get(str(r["snap_id"] or ""))
+        confirmed = False
+        if outcome_row is not None and outcome_row["executed_status"] == "identified" and outcome_row["executed_verification"] == "verified":
+            try:
+                outcome_payload = json.loads(outcome_row["outcome_json"] or "{}")
+                confirmed = bool(outcome_payload.get("offense_action_explicitly_confirmed")) and (
+                    (kind == "macro" and outcome_payload.get("executed_macro") == action_id)
+                    or (kind == "adjustment" and outcome_payload.get("executed_adjustment_id") == action_id)
+                )
+            except (ValueError, TypeError, json.JSONDecodeError):
+                pass
+        if confirmed:
+            action_confirmed += 1
+        else:
+            action_unconfirmed += 1
+
     orphan_anonymous = len(rows) - len(identified)
     return {
         "n_experimental_calls": n,
@@ -668,6 +730,13 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
         "disagree_with_heuristic": len(disagree),
         "verified_executions_linked": verified,
         "outcomes_linked": linked_outcomes,
+        "offense_actions": {
+            "recommended": action_recommended,
+            "verified_applied": action_confirmed,
+            "unconfirmed": action_unconfirmed,
+            "by_kind": action_by_kind,
+            "note": "Only explicitly confirmed action execution counted. No counterfactual or causal action lift inferred.",
+        },
         "game_id_filter": game_id,
         "disagreements": [
             {
