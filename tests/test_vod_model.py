@@ -172,13 +172,15 @@ class TestVodLoaderAndPrior(_Isolated):
         self.assertEqual(cell_tier(high, tentative_n=15), "high")
 
     def test_logs_nudge_a_near_tie_and_do_not_override(self) -> None:
-        strong = _cell(call="A", shrunk_success=0.90, lower_bound=0.7)
-        weak = _cell(call="B", shrunk_success=0.50, lower_bound=0.4)
+        # Both cells clear the high bar. The gap (0.40) is wider than the nudge,
+        # so logs that favor B cannot pull it into the band.
+        strong = _cell(call="A", shrunk_success=0.90, lower_bound=0.70, baseline=0.45)
+        weak = _cell(call="B", shrunk_success=0.50, lower_bound=0.52, baseline=0.45)
         picked = select_cell([strong, weak], lambda c: -1.0 if c.call == "A" else 1.0, tentative_n=15)
         assert picked is not None
         self.assertEqual(picked.call, "A")
-        near_a = _cell(call="A", shrunk_success=0.60, lower_bound=0.5)
-        near_b = _cell(call="B", shrunk_success=0.55, lower_bound=0.45)
+        near_a = _cell(call="A", shrunk_success=0.60, lower_bound=0.55, baseline=0.45)
+        near_b = _cell(call="B", shrunk_success=0.55, lower_bound=0.52, baseline=0.45)
         nudged = select_cell([near_a, near_b], lambda c: -1.0 if c.call == "A" else 1.0, tentative_n=15)
         assert nudged is not None
         self.assertEqual(nudged.call, "B")
@@ -404,7 +406,7 @@ class TestBookChangeGate(_Isolated):
 class TestCfbBook(_Isolated):
     def test_cfb_edit_is_current_and_reverts(self) -> None:
         from cfb_coach.cfb_catalog import book_plays, formations
-        from cfb_coach.cfb_playbook import _insert, callable_book, current_rev, pending_rev
+        from cfb_coach.cfb_playbook import _insert, callable_book, current_rev, ensure_table, pending_rev
         from cfb_coach.vod_model.book import consider_cfb
 
         from cfb_coach.cfb_catalog import formations_with_play
@@ -422,8 +424,9 @@ class TestCfbBook(_Isolated):
             if add_play:
                 break
         self.assertTrue(add_play, "no CFB play is unique to a formation outside the seed")
-        db = CoachDB(os.environ["CFB_COACH_DB"])
+        db = CoachDB(Path(os.environ["CFB_COACH_DB"]))
         try:
+            ensure_table(db.conn)
             _insert(
                 db, "alabama", status="current", kind="seed",
                 book={
@@ -463,7 +466,7 @@ class TestCfbBook(_Isolated):
     def test_cfb_without_a_book_is_noop(self) -> None:
         from cfb_coach.vod_model.book import consider_cfb
 
-        db = CoachDB(os.environ["CFB_COACH_DB"])
+        db = CoachDB(Path(os.environ["CFB_COACH_DB"]))
         try:
             _cover3(db, "james")
             _write_model(self.dir / "cfb-models", game="cfb27", opponent_type="human", look="cover_3", play="Mesh")
