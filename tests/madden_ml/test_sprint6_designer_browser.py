@@ -82,7 +82,7 @@ class DesignerBrowserTests(unittest.TestCase):
 
     def design(self) -> dict:
         return designer.design_offense(
-            self.db, opponent_id="cpu", max_formations=3, max_plays=3,
+            self.db, opponent_id="cpu", max_formations=3,
             artifact=self.artifact, catalogue=BOOK
         )
 
@@ -101,6 +101,10 @@ class DesignerBrowserTests(unittest.TestCase):
         self.assertIn("Custom Adjustments", markup)
         self.assertIn("Draft — not callable", markup)
         self.assertIn("build-check", markup)
+        self.assertIn("complete formation", markup)
+        self.assertIn("all", markup)
+        self.assertNotIn("ADD_PLAY", markup)
+        self.assertNotIn("REMOVE_PLAY", markup)
         self.assertIn("Not callable".lower(), markup.lower())
         self.assertEqual(playbook.load_books(self.db)["offense"], self.old)
 
@@ -205,7 +209,7 @@ class DesignerBrowserTests(unittest.TestCase):
                         show=False, stage=False, confirm_installed=None,
                         rollback_design=None, verify_macro=None, unverify_macro=None,
                         retire_existing=None,
-                        opponent="cpu", max_formations=3, max_plays=3,
+                        opponent="cpu", max_formations=3,
                         attest=None, text=False, no_open=True,
                     )
                     self.assertEqual(ml_cli.cmd_ml_offense_design(args), 0)
