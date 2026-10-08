@@ -294,9 +294,182 @@ def cmd_ml_heuristic(args: argparse.Namespace) -> int:
     try:
         inference_mod.set_mode(db, CoachingMode.HEURISTIC)
         print("mode: heuristic")
+        print("Experimental ML calling is OFF. Live calls use the heuristic coach.")
     finally:
         db.close()
     return 0
+
+
+def cmd_ml_experimental(args: argparse.Namespace) -> int:
+    """Enable opt-in experimental ML offense selection (not competitive hybrid)."""
+    db = open_madden_db()
+    try:
+        if args.off:
+            inference_mod.set_mode(db, CoachingMode.HEURISTIC)
+            print("mode: heuristic")
+            return 0
+        from cfb_coach.madden.model import experimental_live as exp_live
+        from cfb_coach.madden.model import experimental_model as exp_mod
+        from cfb_coach.madden.model import dataset as ds
+
+        # Ensure an artifact exists (prior-driven is fine with empty verified data).
+        art_path = exp_live.resolve_artifact_path(db)
+        if art_path is None or getattr(args, "retrain", False):
+            rows = ds.build_rows(db=db)
+            art = exp_mod.train_experimental(rows, side="offense")
+            from cfb_coach.games import data_dir
+
+            dest = Path(data_dir()) / "madden_ml_experimental" / "offense.json"
+            exp_mod.save_artifact(art, dest)
+            exp_live.set_artifact_path(db, dest)
+            db.set_meta(exp_live.META_KNOWLEDGE, art.knowledge_version)
+            db.set_meta(exp_live.META_DATA_VERSION, art.data_version)
+            print(f"trained: {dest}")
+            print(f"evidence_quality: {art.evidence_quality}")
+            print(f"n_supervised: {art.n_supervised}")
+            print(f"note: {art.note}")
+        inference_mod.set_mode(db, CoachingMode.EXPERIMENTAL)
+        print("mode: experimental")
+        print("EXPERIMENTAL PILOT — not a validated competitive model.")
+        print("Offense-only ML selection within the applied five-formation book.")
+        print("Heuristic choice is shown alongside the ML choice.")
+        print("On timeout/error/illegal → heuristic fallback.")
+        print("Restore heuristic: python -m cfb_coach ml heuristic")
+    finally:
+        db.close()
+    return 0
+
+
+def cmd_ml_audit_history(args: argparse.Namespace) -> int:
+    """Read-only audit of historical Franchise snaps. Never invents games."""
+    from cfb_coach.madden.model import historical as hist
+
+    db = None
+    try:
+        src = madden_db_path()
+        if src.is_file():
+            db = CoachDB.open_read_only(src)
+            report = hist.audit_database(db)
+            report["db"] = str(src)
+            report["read_only"] = True
+        else:
+            report = {
+                "n_rows": 0,
+                "n_games": 0,
+                "db": f"(missing) {src}",
+                "note": "No local madden27.db — cannot invent historical games.",
+            }
+        print(json.dumps(report, indent=2, default=str))
+    finally:
+        if db is not None:
+            db.close()
+    return 0
+
+
+def cmd_ml_confirm_execution(args: argparse.Namespace) -> int:
+    """Retrospectively verify an executed play from user evidence."""
+    from cfb_coach.madden.model import historical as hist
+
+    db = open_madden_db()
+    try:
+        out = hist.confirm_execution(
+            db,
+            ml_snap_id=args.snap_id,
+            executed_formation=args.formation,
+            executed_play=args.play,
+            evidence=args.evidence,
+            executed_macro=args.macro,
+        )
+        print(json.dumps(out, indent=2))
+    except (ValueError, LookupError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        db.close()
+    return 0
+
+
+def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
+    """Train the hierarchical shrinkage experimental model (no promotion gate)."""
+    from cfb_coach.madden.model import experimental_live as exp_live
+    from cfb_coach.madden.model import experimental_model as exp_mod
+
+    rows = _load_rows(args)
+    art = exp_mod.train_experimental(rows, side=str(args.side or "offense"))
+    dest = Path(args.out or (Path(data_dir()) / "madden_ml_experimental" / f"{art.side}.json"))
+    exp_mod.save_artifact(art, dest)
+    # Compare against logistic baseline when enough data exists.
+    comparison: dict[str, Any] = {
+        "experimental": {
+            "kind": art.kind,
+            "evidence_quality": art.evidence_quality,
+            "n_supervised": art.n_supervised,
+            "n_discounted_priors": art.n_discounted_priors,
+            "global_rate": art.global_rate,
+            "note": art.note,
+        }
+    }
+    try:
+        from cfb_coach.madden.model import evaluate as evaluate_mod
+        from cfb_coach.madden.model import train as train_mod
+
+        if art.n_supervised >= 5:
+            log_entry = train_mod.train(rows, seed=int(args.seed or 7), out_dir=str(dest.parent / "_log_scratch"))
+            comparison["logistic_baseline"] = {
+                "model_version": log_entry.model_version,
+                "gate": log_entry.gate.value,
+                "note": "Offline comparison only — does not activate hybrid.",
+            }
+        else:
+            comparison["logistic_baseline"] = {
+                "skipped": True,
+                "reason": "insufficient supervised rows for a meaningful logistic fit",
+            }
+    except Exception as exc:  # noqa: BLE001
+        comparison["logistic_baseline"] = {"error": str(exc)}
+
+    comparison["heuristic_baseline"] = {
+        "note": (
+            "Heuristic remains the live default. Experimental mode must be "
+            "explicitly enabled and shows both picks."
+        )
+    }
+    print(f"artifact: {dest}")
+    print(json.dumps(comparison, indent=2, default=str))
+    if getattr(args, "install", False):
+        db = open_madden_db()
+        try:
+            exp_live.set_artifact_path(db, dest)
+            db.set_meta(exp_live.META_KNOWLEDGE, art.knowledge_version)
+            db.set_meta(exp_live.META_DATA_VERSION, art.data_version)
+            print(f"installed artifact path in meta: {dest}")
+        finally:
+            db.close()
+    return 0
+
+
+def cmd_ml_postgame_experimental(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model import experimental_live as exp_live
+
+    db = open_madden_db()
+    try:
+        report = exp_live.postgame_experimental_compare(db, game_id=args.game_id)
+        print(json.dumps(report, indent=2, default=str))
+    finally:
+        db.close()
+    return 0
+
+
+def cmd_ml_research_refresh(args: argparse.Namespace) -> int:
+    """On-demand Madden research refresh (candidate update; does not auto-overwrite policy)."""
+    from cfb_coach.madden.research_refresh import run_research_refresh
+
+    result = run_research_refresh(
+        dry_run=bool(getattr(args, "dry_run", False)),
+        open_pr=bool(getattr(args, "open_pr", False)),
+    )
+    print(json.dumps(result, indent=2, default=str))
+    return 0 if result.get("ok") else 1
 
 
 def _percentile(values: list[float], pct: float) -> float | None:
@@ -576,6 +749,70 @@ def build_ml_subparser(sub: Any) -> None:
 
     p_he = ml_sub.add_parser("heuristic", help="Return to heuristic mode")
     p_he.set_defaults(func=cmd_ml_heuristic)
+
+    p_ex = ml_sub.add_parser(
+        "experimental",
+        help="Enable EXPERIMENTAL ML offense selection (opt-in pilot; not hybrid)",
+    )
+    p_ex.add_argument("--off", action="store_true", help="Return to heuristic mode")
+    p_ex.add_argument(
+        "--retrain",
+        action="store_true",
+        help="Retrain the experimental artifact before enabling",
+    )
+    p_ex.set_defaults(func=cmd_ml_experimental)
+
+    p_ah = ml_sub.add_parser(
+        "audit-history",
+        help="Read-only audit of historical Franchise games (never invents data)",
+    )
+    p_ah.set_defaults(func=cmd_ml_audit_history)
+
+    p_ce = ml_sub.add_parser(
+        "confirm-execution",
+        help="Retrospectively verify an executed play with explicit user evidence",
+    )
+    p_ce.add_argument("--snap-id", required=True, help="ml_snap_id or snaps.id")
+    p_ce.add_argument("--formation", required=True)
+    p_ce.add_argument("--play", required=True)
+    p_ce.add_argument("--evidence", required=True, help="Recording note / recollection")
+    p_ce.add_argument("--macro", default=None)
+    p_ce.set_defaults(func=cmd_ml_confirm_execution)
+
+    p_te = ml_sub.add_parser(
+        "train-experimental",
+        help="Train hierarchical shrinkage experimental model (no promotion gate)",
+    )
+    p_te.add_argument("--seed", type=int, default=7)
+    p_te.add_argument("--side", default="offense", choices=("offense", "defense"))
+    p_te.add_argument("--path", action="append", default=[], help="Extra training paths")
+    p_te.add_argument("--out", default=None)
+    p_te.add_argument(
+        "--install",
+        action="store_true",
+        help="Write artifact path into DB meta (does not enable experimental mode)",
+    )
+    p_te.add_argument("--no-db", dest="db", action="store_false", default=True)
+    p_te.set_defaults(func=cmd_ml_train_experimental)
+
+    p_pg = ml_sub.add_parser(
+        "postgame-experimental",
+        help="Heuristic vs ML comparison for experimental sessions",
+    )
+    p_pg.add_argument("--game-id", default=None)
+    p_pg.set_defaults(func=cmd_ml_postgame_experimental)
+
+    p_rr = ml_sub.add_parser(
+        "research-refresh",
+        help="On-demand Madden research refresh (candidate PR; never silent policy overwrite)",
+    )
+    p_rr.add_argument("--dry-run", action="store_true")
+    p_rr.add_argument(
+        "--open-pr",
+        action="store_true",
+        help="Attempt to open a reviewable PR when meaningful updates exist",
+    )
+    p_rr.set_defaults(func=cmd_ml_research_refresh)
 
     p_rp = ml_sub.add_parser(
         "report",

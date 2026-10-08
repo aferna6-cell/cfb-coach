@@ -108,11 +108,13 @@ class CoachingMode(str, Enum):
     """How the live coach uses a model. Existing installs stay heuristic.
 
     ``UNKNOWN`` is for a record that does not say. It is not a mode to run.
+    ``EXPERIMENTAL`` is an explicit opt-in pilot (not competitive hybrid).
     """
 
     HEURISTIC = "heuristic"
     SHADOW = "shadow"
     HYBRID = "hybrid"
+    EXPERIMENTAL = "experimental"
     UNKNOWN = "unknown"
 
 
@@ -1120,12 +1122,12 @@ class CoachingDecision:
         if self.fallback_reason is MLStatus.OK:
             raise ValueError("fallback_reason must never be OK")
         if self.fell_back is True:
-            if self.mode is not CoachingMode.HYBRID:
-                raise ValueError("fallback is only allowed in hybrid mode")
+            if self.mode not in (CoachingMode.HYBRID, CoachingMode.EXPERIMENTAL):
+                raise ValueError("fallback is only allowed in hybrid or experimental mode")
             if self.fallback_reason is None:
                 raise ValueError("fallback requires a fallback_reason")
             if self.policy_source is not PolicySource.HEURISTIC:
-                raise ValueError("a hybrid fallback has policy_source heuristic")
+                raise ValueError("a model fallback has policy_source heuristic")
         elif self.fallback_reason is not None:
             raise ValueError("fallback_reason is set only when fallback is true")
 
@@ -1136,8 +1138,12 @@ class CoachingDecision:
                 raise ValueError("heuristic and shadow mode use policy_source heuristic")
         if self.mode is CoachingMode.HEURISTIC and self.shadow_status is not None:
             raise ValueError("shadow_status is None in heuristic mode")
-        if self.mode in (CoachingMode.SHADOW, CoachingMode.HYBRID) and self.shadow_status is None:
-            raise ValueError("shadow_status is required in shadow and hybrid mode")
+        if self.mode in (
+            CoachingMode.SHADOW,
+            CoachingMode.HYBRID,
+            CoachingMode.EXPERIMENTAL,
+        ) and self.shadow_status is None:
+            raise ValueError("shadow_status is required in shadow, hybrid, and experimental mode")
 
 
 @dataclass(frozen=True)

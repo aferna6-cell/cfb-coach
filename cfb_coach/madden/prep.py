@@ -27,6 +27,16 @@ from cfb_coach.madden.macros import LOADOUT_N
 from cfb_coach.opponents import is_cpu_opponent
 
 
+def _research_freshness() -> dict[str, Any]:
+    """Source provenance + freshness for prep (candidate refreshes stay separate)."""
+    try:
+        from cfb_coach.madden.research_refresh import research_freshness_for_prep
+
+        return research_freshness_for_prep()
+    except Exception:  # noqa: BLE001
+        return {"stale": True, "error": "freshness unavailable"}
+
+
 def load_profile(opponent_id: str, db: Any = None) -> dict[str, Any]:
     opp = dict((load_seed().get("opponents") or {}).get(opponent_id) or {})
     if db is not None:
@@ -366,7 +376,8 @@ def build_prep_plan(
         "meta_scout": scout_dict,
         "research": {"mode": research.get("mode") or scout_dict.get("mode") or "",
                      "status": scout_dict.get("research_status") or "",
-                     "books": research.get("books") or {}},
+                     "books": research.get("books") or {},
+                     "freshness": _research_freshness()},
         "missing_settings": missing,
         **_opponent_study(db, opponent_id),
     }

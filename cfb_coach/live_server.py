@@ -189,6 +189,7 @@ class LivePlayController:
             "ball": self._book().spot.as_dict(),
             "execution_verify": bool(self.enable_execution_verify),
             "pending_recommendation": self._pending_recommendation(),
+            "ml_experimental": self._ml_experimental_state(),
         }
 
     def _pending_recommendation(self) -> dict[str, Any] | None:
@@ -201,6 +202,41 @@ class LivePlayController:
             "macro": getattr(call, "macro", None),
             "side": getattr(call, "side", None),
         }
+
+    def _ml_experimental_state(self) -> dict[str, Any] | None:
+        """Heuristic vs ML explanation when experimental mode produced the call."""
+        call = self.last_call
+        if call is None or self.ended:
+            return None
+        info = getattr(call, "ml_experimental", None)
+        if not isinstance(info, dict):
+            return None
+        return {
+            "heuristic": f"{info.get('heuristic_formation')}/{info.get('heuristic_play')}",
+            "ml": f"{info.get('ml_formation')}/{info.get('ml_play')}",
+            "final": f"{info.get('final_formation')}/{info.get('final_play')}",
+            "evidence_quality": info.get("evidence_quality"),
+            "explanation": info.get("explanation"),
+            "model_version": info.get("model_version"),
+            "knowledge_version": info.get("knowledge_version"),
+            "data_version": info.get("data_version"),
+            "probability": info.get("probability"),
+            "fell_back": bool(info.get("fell_back")),
+        }
+
+    @staticmethod
+    def _format_call_text(call: Any) -> str:
+        """Call text plus experimental ML explanation when present."""
+        text = call.format() if hasattr(call, "format") else str(call)
+        info = getattr(call, "ml_experimental", None)
+        if isinstance(info, dict) and info.get("explanation"):
+            eq = info.get("evidence_quality") or "unknown"
+            text += (
+                f"\n  ML experimental [{eq}]: {info['explanation']}"
+                f"\n  heuristic kept visible: {info.get('heuristic_formation')}/{info.get('heuristic_play')}"
+                f"\n  (opt-in pilot — not a validated competitive model)"
+            )
+        return text
 
     def _ensure_tracker(self) -> Any:
         if self.ml_tracker is not None:
@@ -579,7 +615,7 @@ class LivePlayController:
             self._book().remember_call(
                 call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row
             )
-            self.call_text = call.format()
+            self.call_text = self._format_call_text(call)
             self.heard = heard
             if getattr(sit, "coverage_hint", None) and sit.side == "offense":
                 self.last_coverage = sit.coverage_hint
@@ -661,7 +697,7 @@ class LivePlayController:
                 call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row
             )
             self._push_score()
-            self.call_text = call.format()
+            self.call_text = self._format_call_text(call)
             self.heard = heard
             if getattr(sit, "coverage_hint", None) and sit.side == "offense":
                 self.last_coverage = sit.coverage_hint
@@ -841,6 +877,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
   <div class="call-label">PLAY</div>
   <div class="call" id="call">{_esc(_call_main(ctrl))}</div>
   {_macro_box_html(ctrl.macro_state())}
+  <div class="heard" id="ml-experimental" hidden></div>
   <div class="err" id="err"></div>
 
   <section id="snap-panel">
@@ -977,6 +1014,20 @@ function renderState(st) {{
   if (st.macro) callTxt = callTxt.split("\\n").filter(l => !l.trim().startsWith("MACRO:")).join("\\n");  // shown in #macro-box
   $("call").textContent = callTxt;
   renderMacro(st.macro);
+  const mlBox = $("ml-experimental");
+  if (mlBox) {{
+    if (st.ml_experimental && st.ml_experimental.explanation) {{
+      mlBox.hidden = false;
+      mlBox.textContent = "ML experimental [" + (st.ml_experimental.evidence_quality || "?") + "] · "
+        + "heuristic " + (st.ml_experimental.heuristic || "") + " · "
+        + "ML " + (st.ml_experimental.ml || "") + " · "
+        + "shown " + (st.ml_experimental.final || "") + " · "
+        + (st.ml_experimental.explanation || "");
+    }} else {{
+      mlBox.hidden = true;
+      mlBox.textContent = "";
+    }}
+  }}
   $("heard").textContent = st.heard || ("vs " + (st.opponent_id || ""));
   const log = $("log");
   if (!st.log || !st.log.length) {{

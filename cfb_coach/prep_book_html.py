@@ -200,7 +200,19 @@ def research_status_line(scout: dict[str, Any] | None) -> str:
         age = scout.get("fallback_age_hours")
         age_txt = f" ({age:.0f}h old)" if isinstance(age, (int, float)) else ""
         stale = " — STALE, check the daily research automation" if scout.get("research_status") == "ai-stale" else ""
-        return f"Daily AI research {when}{age_txt} · {len(scout.get('headlines') or [])} findings · {n_ok} sources{stale}"
+        patch = ""
+        try:
+            from cfb_coach.madden.research_refresh import research_freshness_for_prep
+
+            fr = research_freshness_for_prep()
+            pv = (fr.get("patch") or {}).get("version")
+            if pv:
+                patch = f" · patch {pv}"
+            if fr.get("origin"):
+                patch += f" · via {fr['origin']}"
+        except Exception:  # noqa: BLE001
+            pass
+        return f"Daily AI research {when}{age_txt} · {len(scout.get('headlines') or [])} findings · {n_ok} sources{patch}{stale}"
     if research_failed(scout):
         age = scout.get("fallback_age_hours")
         age_txt = f", cache {age:.0f}h old" if isinstance(age, (int, float)) else ""

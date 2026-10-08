@@ -279,6 +279,20 @@ class SchemaRoundTripTest(unittest.TestCase):
             ),
             dict(hybrid_ok, fell_back=False, fallback_reason=MLStatus.MODEL_MISSING),
             dict(mode=CoachingMode.UNKNOWN, fell_back=True, fallback_reason=MLStatus.INVALID_OUTPUT),
+            dict(mode=CoachingMode.EXPERIMENTAL, shadow_status=None, fell_back=False),
+            dict(
+                mode=CoachingMode.EXPERIMENTAL,
+                shadow_status=MLStatus.TIMEOUT,
+                fell_back=True,
+                fallback_reason=None,
+            ),
+            dict(
+                mode=CoachingMode.EXPERIMENTAL,
+                shadow_status=MLStatus.TIMEOUT,
+                fell_back=True,
+                fallback_reason=MLStatus.TIMEOUT,
+                policy_source=PolicySource.MODEL,
+            ),
         ]
         for kwargs in invalid:
             with self.assertRaises(ValueError, msg=kwargs):
@@ -556,6 +570,16 @@ def _samples() -> dict[type, list[object]]:
         fallback_reason=MLStatus.TIMEOUT,
         final_pick=book,
     )
+    experimental_ok = CoachingDecision(
+        mode=CoachingMode.EXPERIMENTAL,
+        effective_mode=CoachingMode.EXPERIMENTAL,
+        policy_source=PolicySource.MODEL,
+        shadow_status=MLStatus.OK,
+        fell_back=False,
+        final_pick=book,
+        heuristic_pick=book,
+        shadow_pick=book,
+    )
     context = OpponentContext(
         opponent_id="james",
         patch_id="tu",
@@ -588,7 +612,7 @@ def _samples() -> dict[type, list[object]]:
         ShadowScore: [ShadowScore(), ShadowScore(candidate_key="k", score=0.2, p=0.3)],
         RankedPlay: [RankedPlay(candidate=CandidatePlay(), estimates=OutcomeEstimates()), ranked],
         PlayRanking: [PlayRanking(), PlayRanking(policy_source=PolicySource.HEURISTIC, plays=(ranked,), low_confidence=Tri.FALSE)],
-        CoachingDecision: [CoachingDecision(), decision, hybrid_fallback],
+        CoachingDecision: [CoachingDecision(), decision, hybrid_fallback, experimental_ok],
         FeatureValue: [FeatureValue(name="down"), FeatureValue(name="down", value=1.0, missing=False)],
         FeatureVector: [FeatureVector(), FeatureVector(items=(FeatureValue(name="down", value=1.0, missing=False),))],
         DataHash: [DataHash(label="snaps"), DataHash(label="snaps", sha256="abc", uri="file://snaps")],
