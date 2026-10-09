@@ -327,3 +327,67 @@ Next improvement: log verified *execution of the requested adjustment* and
 its outcome by exact action/formation/play/coverage/situation before training
 an action-value model. Until sufficient clean paired observations exist, no
 action uplift claim or automatic macro creation/activation is justified.
+
+
+## Sprint 10 — Learn WHICH adjustments to call, using verified execution evidence
+
+A completed pre-snap action decision is not an observation that the
+adjustment was applied. The live Madden outcome panel can separately record:
+
+1. **Adjustment offered and explicitly applied**, while the exact
+   recommended formation/play was verified executed and has a labeled outcome.
+2. **No action offered and explicitly confirmed unchanged**, including
+   no manual hot route, protection change or Custom Adjustment, on a verified
+   executed play with a labeled result.
+
+Unchecked boxes, changed plays, missing outcomes and prior-snap coverage
+are **not** upgraded into action-training examples. A successful play does
+not, by itself, prove any adjustment was responsible for that success.
+
+The offline model groups verified examples by *play concept + down/distance
+bucket* and compares each action against confirmed unchanged plays in the
+same group. It reports shrunk observational associations rather than
+inventing counterfactual uplift. The evidence is still subject to
+selection bias (e.g. pressure causes both more protections and worse
+outcomes). Therefore it defaults to **shadow**.
+
+The normal `ml experimental --retrain` command also refreshes the
+**shadow action model** from eligible logged outcomes after each CPU game.
+It never auto-promotes; if a bounded-active action artifact is installed,
+routine retraining preserves it unchanged pending deliberate review.
+
+When coverage is available from a **live pre-snap read**, the action learner
+also groups that credible look with the play concept/down-distance. A
+single last-snap hint and post-snap coverage labels are excluded from
+decision-time action features to prevent look-ahead leakage.
+
+The explicit promotion gate for a particular action/context requires:
+at least 12 verified action applications, 12 explicitly confirmed unchanged
+executions, 3 distinct games represented in **each** group, and a
+sufficiently large shrunk observational association. Promotion is reversible
+and can shift pre-snap research action scores by at most **0.04** in either
+direction; it never permits unverified, incompatible or unarmed actions.
+This is **not** a causal-effect model. No action preference is learned from
+recommendations alone.
+
+Run from the repo venv, outside a live game:
+
+\`\`\`bash
+python -m cfb_coach ml offense-action-learn --train     # recompute SHADOW evidence
+python -m cfb_coach ml offense-action-learn --details   # inspect all counts
+python -m cfb_coach ml offense-action-learn --promote   # refused until gate passes
+python -m cfb_coach ml offense-action-learn --rollback  # immediately disable learned shifts
+\`\`\`
+
+The model can already propose new source-backed macro **blueprints**, but
+these remain uninstalled until the user explicitly builds and verifies the
+Madden Custom Adjustment. The next development increment should combine
+action-model errors and the full-playbook inventory to prioritize **new
+macro drafts**, validate every editor setting/source and legal formation/
+play pair, then compare the proposed macro in CPU play. Unverified macros
+must never enter a live action loadout.
+
+Future agent objective: joint ranked **(formation, play, optional verified
+action)** decisions, game-by-game evidence, audited on/offline evaluation
+and rollback; no claim of an autonomous Xbox editor without an actual
+authorized computer-use/device controller.
