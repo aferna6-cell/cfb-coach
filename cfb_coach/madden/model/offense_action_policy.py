@@ -49,7 +49,9 @@ def _verified_button_sequence(value: Any) -> bool:
     """Never display guessed or editor-unverified controller actions."""
     text = str(value or "").strip()
     blocked = ("VERIFY ON SCREEN", "NO SOURCE", "UNKNOWN", "NOT CONFIRMED")
-    return bool(text) and not any(term in text.upper() for term in blocked)
+    return bool(text) and not text.upper().startswith("VERIFY") and not any(
+        term in text.upper() for term in blocked
+    )
 
 
 
