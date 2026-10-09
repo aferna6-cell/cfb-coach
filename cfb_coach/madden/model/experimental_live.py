@@ -122,6 +122,7 @@ def rebuild_offense_attachments(
     audibles: dict[str, list[str]] | None = None,
     model_action_policy: bool = False,
     play_prediction: dict[str, Any] | None = None,
+    preset_decision: dict[str, Any] | None = None,
 ) -> Any:
     """Build reads / macro / adjustment for an already-chosen in-book play."""
     from cfb_coach.madden.data import reads_for
@@ -164,7 +165,7 @@ def rebuild_offense_attachments(
     if model_action_policy:
         from cfb_coach.madden.model.offense_action_policy import choose_offense_action
 
-        decision = choose_offense_action(
+        decision = preset_decision if preset_decision is not None else choose_offense_action(
             formation=formation, play=play, sit=sit, book=book,
             active=active, weights=weights, cooled=cooled,
             score_phase=score_phase, audibles=audibles,
@@ -447,6 +448,41 @@ def apply_experimental_offense(
         legal_set = set(pairs)
         if (ml_form, ml_play) not in legal_set:
             return _fallback(MLStatus.INVALID_OUTPUT, latency)
+        from cfb_coach.madden.model.offense_game_memory import (
+            pre_snap_context, remember_recommendation,
+        )
+        from cfb_coach.madden.model.offense_joint_decision import choose_joint_action
+
+        memory = None
+        if db is not None:
+            try:
+                memory = pre_snap_context(
+                    db, session_id=session_id or game_id or "",
+                    snap_seq=snap_seq, snap_id=snap_id,
+                )
+            except Exception:  # noqa: BLE001
+                memory = None
+        joint = choose_joint_action(
+            ranked=ranked, anchor=top, sit=sit, book=book,
+            active=list(active or []), db=db, opponent_id=opponent_id,
+            audibles=audibles, memory=memory,
+            allow_macros=(getattr(sit, "extras", None) or {}).get(
+                "live_macros", True
+            ) is not False,
+        )
+        latency = (time.perf_counter() - started) * 1000.0
+        if latency > budget:
+            return _fallback(MLStatus.TIMEOUT, latency)
+        joint_form = str((joint.get("joint") or {}).get("formation") or ml_form)
+        joint_play = str((joint.get("joint") or {}).get("play") or ml_play)
+        if (joint_form, joint_play) not in legal_set:
+            return _fallback(MLStatus.INVALID_OUTPUT, latency)
+        ml_form, ml_play = joint_form, joint_play
+        matched = next(
+            (row for row in ranked if row["formation"] == ml_form and row["play"] == ml_play),
+            top,
+        )
+        top = matched
         try:
             ml_cand = candidate_in_book(
                 book, side=Possession.OFFENSE, formation=ml_form, play=ml_play
@@ -493,6 +529,7 @@ def apply_experimental_offense(
             audibles=audibles,
             model_action_policy=True,
             play_prediction=top,
+            preset_decision=joint,
         )
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
@@ -523,9 +560,36 @@ def apply_experimental_offense(
             "inventory_eligible_count": len(pairs),
             "inventory_situation_excluded": len(all_pairs) - len(pairs),
             "selection_policy": "model_primary_contextual_variety.v2",
+            "joint_policy": "joint_offense_action.v1",
             "selection_audit": selection_audit,
             "offense_action": getattr(call, "ml_offense_action", None),
+            "joint_decision": (getattr(call, "ml_offense_action", None) or {}).get("joint"),
+            # Decision-time signals only. Never use observed post-snap
+            # coverage as a training feature for which action to fire.
+            "pre_snap_action_context": {
+                "down": getattr(sit, "down", None),
+                "distance": getattr(sit, "distance", None),
+                "coverage_hint": getattr(sit, "coverage_hint", None),
+                "coverage_source": getattr(sit, "coverage_source", None),
+                "red_zone": bool(getattr(sit, "red_zone", False)),
+                "goal_line": bool(getattr(sit, "goal_line", False)),
+                "quarter": getattr(sit, "quarter", None),
+            },
         }
+
+        if db is not None and (session_id or game_id):
+            try:
+                action = getattr(call, "ml_offense_action", None) or {}
+                remember_recommendation(
+                    db, session_id=session_id or game_id or "",
+                    snap_id=snap_id, snap_seq=snap_seq,
+                    formation=call.formation, play=call.play,
+                    adjustment_kind=str(action.get("kind") or "none"),
+                    adjustment_id=action.get("id"),
+                    presnap=info.get("pre_snap_action_context"),
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
         dec = CoachingDecision(
             decision_ts=decision_ts,
@@ -626,6 +690,7 @@ def commit_experimental_decision(
                 "uncertainty": info.get("uncertainty"),
                 "knowledge_version": info.get("knowledge_version"),
                 "offense_action": info.get("offense_action"),
+                "pre_snap_action_context": info.get("pre_snap_action_context"),
             }
             db.conn.execute(
                 "UPDATE ml_decisions SET decision_json=? WHERE id=?",

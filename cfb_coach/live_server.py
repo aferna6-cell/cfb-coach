@@ -553,6 +553,7 @@ class LivePlayController:
         executed_play: str | None = None,
         executed_macro: str | None = None,
         applied_recommended_action: bool = False,
+        confirmed_no_adjustment: bool = False,
     ) -> dict[str, Any] | None:
         """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
@@ -563,6 +564,14 @@ class LivePlayController:
             applied_recommended_action
             and executed_status == "used_recommended"
             and self._pending_offense_action()
+        )
+        # A control requires an explicit, separate confirmation that the
+        # recommended play was executed with NO pre-snap adjustment.
+        confirmed_no_adjustment = bool(
+            confirmed_no_adjustment
+            and executed_status == "used_recommended"
+            and self._pending_offense_action() is None
+            and str(getattr(self.last_call, "side", "")).startswith("o")
         )
         book = self._book()
         if book.call is None:
@@ -634,8 +643,39 @@ class LivePlayController:
                             applied_recommended_action
                             and (closed.get("executed_status") or "") == "identified"
                         ),
+                        "no_adjustment_explicitly_confirmed": bool(
+                            confirmed_no_adjustment
+                            and (closed.get("executed_status") or "") == "identified"
+                            and (closed.get("executed_play") or "") ==
+                                getattr(self.last_call, "play", None)
+                            and (closed.get("executed_formation") or "") ==
+                                getattr(self.last_call, "formation", None)
+                        ),
                     },
                     replace=True,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                from cfb_coach.madden.model.offense_game_memory import record_closed_snap
+
+                record_closed_snap(
+                    self.db,
+                    session_id=self.session_id or "",
+                    snap_id=ml_snap_id,
+                    executed_formation=closed.get("executed_formation"),
+                    executed_play=closed.get("executed_play"),
+                    adjustment_applied=bool(
+                        applied_recommended_action
+                        and (closed.get("executed_status") or "") == "identified"
+                    ),
+                    no_adjustment_confirmed=bool(
+                        confirmed_no_adjustment
+                        and (closed.get("executed_status") or "") == "identified"
+                    ),
+                    observed_defense=book.coverage,
+                    outcome=closed.get("result"),
+                    verified=(closed.get("executed_status") or "") == "identified",
                 )
             except Exception:  # noqa: BLE001
                 pass
@@ -729,6 +769,7 @@ class LivePlayController:
         executed_play: str | None = None,
         executed_macro: str | None = None,
         applied_recommended_action: bool = False,
+        confirmed_no_adjustment: bool = False,
         request_key: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
@@ -750,6 +791,7 @@ class LivePlayController:
                     executed_play=executed_play,
                     executed_macro=executed_macro,
                     applied_recommended_action=applied_recommended_action,
+                    confirmed_no_adjustment=confirmed_no_adjustment,
                 )
             elif self.last_call is not None and not (outcome or "").strip():
                 # Allow first snap without prior outcome
@@ -922,7 +964,9 @@ def render_live_html(ctrl: LivePlayController) -> str:
   .call-label {{ font-size: .7rem; letter-spacing: .1em; color: var(--accent);
     text-transform: uppercase; font-weight: 700; margin-top: .25rem; }}
   .call {{ font-size: clamp(2rem, 4.8vw, 3rem); font-weight: 800; line-height: 1.25;
-    color: var(--call); margin: .2rem 0 .85rem; white-space: pre-wrap; word-break: break-word; }}
+    color: var(--call); margin: .2rem 0 .35rem; white-space: pre-wrap; word-break: break-word; }}
+  .action-now {{ font-size: 1.05rem; font-weight: 700; color: var(--fg);
+    margin: 0 0 .85rem; white-space: pre-wrap; }}
   section {{ background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
     padding: .75rem .9rem; margin: .75rem 0; }}
   section h2 {{ margin: 0 0 .55rem; font-size: .75rem; letter-spacing: .06em;
@@ -973,8 +1017,9 @@ def render_live_html(ctrl: LivePlayController) -> str:
   <div class="heard" id="heard"{' hidden' if compact_madden else ''}>vs {_esc(ctrl.opponent_id)}</div>
   <div class="call" id="call"{' aria-live="polite"' if compact_madden else ''}>{_esc(_call_main(ctrl))}</div>
   {_macro_box_html(None if compact_madden else ctrl.macro_state())}
-  {"""<details id="offense-action-panel" hidden>
-    <summary>Optional hot route / Custom Adjustment</summary>
+  {"""<div id="offense-action-now" class="action-now" hidden></div>
+  <details id="offense-action-panel" hidden>
+    <summary>Why this adjustment</summary>
     <div id="offense-action-label"></div>
     <div id="offense-action-buttons"></div>
   </details>""" if compact_madden else ""}
@@ -1022,6 +1067,10 @@ def render_live_html(ctrl: LivePlayController) -> str:
     {"""<div id="action-confirm-row" hidden>
       <label><input type="checkbox" id="action-applied"/>
         I actually applied the optional hot route / Custom Adjustment</label>
+    </div>
+    <div id="no-action-confirm-row" hidden>
+      <label><input type="checkbox" id="no-action-confirmed"/>
+        I ran the recommended play unchanged (no hot route, protection, or macro)</label>
     </div>""" if compact_madden else ""}
 
     <h2 style="margin-top:1rem">Next situation</h2>
@@ -1151,16 +1200,26 @@ function renderState(st) {{
   // Model-selected optional actions remain collapsed; the main call is always
   // formation + play. Never infer execution from merely showing an action.
   const act = st.pending_offense_action;
+  const actionNow = $("offense-action-now");
   const actionPanel = $("offense-action-panel");
   const actionConfirmRow = $("action-confirm-row");
+  if (actionNow) {{
+    actionNow.hidden = !act;
+    actionNow.textContent = act ? (act.buttons || act.label || "") : "";
+  }}
   if (actionPanel) {{
     actionPanel.hidden = !act;
     if (act) {{
       $("offense-action-label").textContent = act.label || act.id || "";
-      $("offense-action-buttons").textContent = act.buttons || "";
+      $("offense-action-buttons").textContent = act.why || act.buttons || "";
     }}
   }}
   if (actionConfirmRow) actionConfirmRow.hidden = !act;
+  const noActionRow = $("no-action-confirm-row");
+  if (noActionRow) {{
+    noActionRow.hidden = !!act || !st.pending_recommendation
+      || !String(st.pending_recommendation.side || "").startsWith("o");
+  }}
   $("heard").textContent = st.heard || ("vs " + (st.opponent_id || ""));
   const log = $("log");
   if (!st.log || !st.log.length) {{
@@ -1448,6 +1507,7 @@ $("btn-submit").addEventListener("click", async () => {{
         executed_formation: ($("exec-formation").value || "").trim() || null,
         executed_play: ($("exec-play").value || "").trim() || null,
         applied_recommended_action: !!($("action-applied") && $("action-applied").checked),
+        confirmed_no_adjustment: !!($("no-action-confirmed") && $("no-action-confirmed").checked),
       }};
       return await apiAction("/api/result_call", body);
     }});
@@ -1460,6 +1520,7 @@ $("btn-submit").addEventListener("click", async () => {{
     document.querySelectorAll("#outcome-btns button.outcome").forEach(b => b.style.outline = "");
     restoreExecDefaultAfterSubmit();
     if ($("action-applied")) $("action-applied").checked = false;
+    if ($("no-action-confirmed")) $("no-action-confirmed").checked = false;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -1489,6 +1550,7 @@ $("btn-call-only").addEventListener("click", async () => {{
     }}));
     if (!data) return;
     if ($("action-applied")) $("action-applied").checked = false;
+    if ($("no-action-confirmed")) $("no-action-confirmed").checked = false;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -1660,6 +1722,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             executed_play=body.get("executed_play"),
                             executed_macro=body.get("executed_macro"),
                             applied_recommended_action=body.get("applied_recommended_action") is True,
+                            confirmed_no_adjustment=body.get("confirmed_no_adjustment") is True,
                             request_key=body.get("idempotency_key") or body.get("request_key"),
                         ),
                     )

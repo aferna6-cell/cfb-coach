@@ -281,6 +281,13 @@ Custom Adjustments until you confirm their actual installation in Madden.</p>
 play is present in your Madden custom editor. Confirm it in game before marking installed.</p>
 {workflow}<p id="progress" class="muted"></p></section>
 <section><h2>Playbook edits</h2><ul>{"".join(deltas) or "<li>No pending edits.</li>"}</ul></section>
+<section><h2>Why these formations</h2>
+<p class="muted">{esc((proposal.get("provenance") or {}).get("uncertainty") or "")}</p>
+<ul>{"".join(
+    f'<li class="delta"><span class="pill">{esc(", ".join(row.get("situations") or []))}</span>'
+    f'<span>{esc(row.get("formation"))}</span><small>{esc(row.get("why"))}</small></li>'
+    for row in (proposal.get("formation_rationales") or [])
+) or "<li>No formation rationale on this proposal.</li>"}</ul></section>
 <h2>Formations and individual plays</h2>{"".join(groups) or "<p>No formations available.</p>"}
 <h2>New Custom Adjustments and researched settings</h2>
 <p class="muted">Expand each macro for its trigger, compatible plays, settings and linked research.

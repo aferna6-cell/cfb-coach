@@ -176,63 +176,32 @@ def design_offense(
     if not all_books:
         raise ValueError("No Madden offensive formation catalog is available")
 
-    best_by_form: dict[str, dict[str, Any]] = {}
-    for source, formations in all_books.items():
-        for form, ps in formations.items():
-            if not ps or "hail mary" in form.lower() or "goal line" in form.lower():
-                continue
-            ranking = _play_rankings(art, source, form, ps, opponent_id, active)
-            if not ranking:
-                continue
-            # The formation is the indivisible installation unit. Every play
-            # from that stock-book's formation stays eligible to the live model.
-            picks = list(dict.fromkeys(ps))
-            is_current = form in (active.get("formations") or {})
-            run = any(catalog.is_run(p) for p in picks)
-            # Score formations using the spread of concepts (not just one
-            # anomalously high-ranked screen). A single screen cannot dictate
-            # the score of an entire formation.
-            best_by_concept: dict[str, float] = {}
-            for row in ranking:
-                concept = row["concept"]
-                if concept not in best_by_concept:
-                    best_by_concept[concept] = row["score"]
-            balanced = sorted(best_by_concept.values(), reverse=True)
-            if len(balanced) > 1:
-                rank = sum(balanced[:min(6, len(balanced))]) / min(6, len(balanced))
-            else:
-                rank = balanced[0]
-            rank += 0.014 if is_current else 0.0
-            rank += 0.008 if run else 0.0
-            rank += 0.002 * len(best_by_concept)
-            entry = {
-                "formation": form, "source_book": source, "plays": picks,
-                "score": round(rank, 6), "has_run": run,
-                "top_play": ranking[0]["play"],
-                "model_top_probability": ranking[0]["score"],
-            }
-            if form not in best_by_form or (
-                entry["score"], source
-            ) > (best_by_form[form]["score"], best_by_form[form]["source_book"]):
-                best_by_form[form] = entry
-    ranks = sorted(best_by_form.values(), key=lambda r: (-r["score"], r["formation"]))
-    chosen = ranks[:max_formations]
-    # Ensure the final custom book can call a run and a pass. This constraint is
-    # football eligibility, not a return to heuristic play selection.
-    if chosen and not any(r["has_run"] for r in chosen):
-        runner = next((r for r in ranks[max_formations:] if r["has_run"]), None)
-        if runner:
-            chosen[-1] = runner
-    if chosen and all(all(catalog.is_run(p) for p in r["plays"]) for r in chosen):
-        passer = next((r for r in ranks[max_formations:]
-                       if any(not catalog.is_run(p) for p in r["plays"])), None)
-        if passer:
-            chosen[-1] = passer
+    # Every catalogued formation is scored across the situation probes.
+    # Goal-line and Hail Mary packages stay in the catalog; a single favorite
+    # list is not used. The helper keeps the run/pass portfolio constraint.
+    from cfb_coach.madden.model.offense_portfolio import select_formation_portfolio
+
+    portfolio = select_formation_portfolio(
+        art=art, all_books=all_books, active=active, opponent_id=opponent_id,
+        max_formations=max_formations, db=db,
+    )
+    chosen = portfolio["chosen"]
+    ranks = portfolio["ranked"]
     if not chosen:
         raise ValueError("No eligible catalogued offensive plays were found")
 
     formations = {r["formation"]: r["plays"] for r in chosen}
     sources = {r["formation"]: r["source_book"] for r in chosen}
+    from cfb_coach.madden.model.offense_macro_lab import compose_drafts
+
+    macro_blueprints = _macro_drafts(formations, sources)
+    seen_names = {row["name"] for row in macro_blueprints}
+    for draft in compose_drafts(formations, sources):
+        if draft["name"] in seen_names:
+            continue
+        macro_blueprints.append(draft)
+        seen_names.add(draft["name"])
+    macro_blueprints = macro_blueprints[:12]
     from cfb_coach.madden.model.offense_inventory import (
         inventory_fingerprint, pairs_in_inventory,
     )
@@ -278,8 +247,35 @@ def design_offense(
             "reason": "Model-designed whole formations with every catalogued play from selected source",
         },
         "changes": changes,
-        "candidate_formations": len(ranks), "ranked_formations": ranks[:12],
-        "macro_blueprints": _macro_drafts(formations, sources),
+        "candidate_formations": len(ranks), "ranked_formations": [
+            {
+                "formation": row["formation"], "source_book": row["source_book"],
+                "score": row["score"], "plays": len(row["plays"]),
+            }
+            for row in ranks[:12]
+        ],
+        "formation_rationales": portfolio["rationales"],
+        "situation_coverage": portfolio["situation_coverage"],
+        "provenance": {
+            "model_version": art.model_version,
+            "evidence_quality": art.evidence_quality,
+            "supervised_examples": art.n_supervised,
+            "knowledge_version": art.knowledge_version,
+            "roster": portfolio["roster"],
+            "opponent_defense": portfolio["opponent_defense"],
+            "uncertainty": portfolio["uncertainty"],
+            "research_sources": len(research_db.sources()),
+            "situation_probes": portfolio["probes"],
+        },
+        "suggested_audibles": [
+            {
+                "formation": row["formation"],
+                "play": row["suggested_audible"],
+                "status": row["audible_status"],
+            }
+            for row in portfolio["rationales"] if row.get("suggested_audible")
+        ],
+        "macro_blueprints": macro_blueprints,
         "n_plays": all_pairs,
         "inventory_id": inv_id,
         "editor_requires_confirmation": True,
@@ -473,11 +469,23 @@ def verify_created_macro(
     ]
     if not pairs or not blueprint.get("settings") or not blueprint.get("source_ids"):
         raise ValueError("Macro not grounded in installed playbook and researched settings")
-    source = next(
-        (a for a in research_db.offense_adjustments()
-         if a.get("id") == blueprint.get("source_action_id")), None
-    )
-    if not source or set(source.get("sources") or []) != set(blueprint.get("source_ids") or []):
+    action_ids = [
+        str(item) for item in (blueprint.get("source_action_ids") or []) if item
+    ]
+    single = blueprint.get("source_action_id")
+    if single and single not in action_ids:
+        action_ids.insert(0, str(single))
+    researched = research_db.offense_adjustments()
+    matched = []
+    for action_id in action_ids:
+        source = next((a for a in researched if a.get("id") == action_id), None)
+        if source is None:
+            raise ValueError("Macro's researched source and settings have changed; re-design")
+        matched.append(source)
+    expected_sources: set[str] = set()
+    for source in matched:
+        expected_sources.update(str(item) for item in (source.get("sources") or []))
+    if not matched or expected_sources != set(blueprint.get("source_ids") or []):
         raise ValueError("Macro's researched source and settings have changed; re-design")
     existing = verified_created_macros(db, opponent_id)
     if any(m["name"] == name for m in existing):

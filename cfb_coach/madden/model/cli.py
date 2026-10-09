@@ -333,6 +333,24 @@ def cmd_ml_experimental(args: argparse.Namespace) -> int:
             print(f"model_version: {art.model_version}")
             print(f"artifact_path: {dest}")
             print(f"note: {art.note}")
+            from cfb_coach.madden.model.offense_action_learning import (
+                load_action_evidence, save_action_evidence, train_action_evidence,
+            )
+            try:
+                existing_action = load_action_evidence(db)
+                if (existing_action or {}).get("mode") == "bounded_active":
+                    print("action_model: existing bounded-active artifact preserved; "
+                          "run offense-action-learn --train to replace it with shadow")
+                else:
+                    shadow_action = train_action_evidence(db)
+                    save_action_evidence(db, shadow_action)
+                    print(
+                        "action_model: shadow | verified_rows: "
+                        f"{shadow_action['n_verified_action_rows']} | "
+                        f"eligible_groups: {shadow_action['ready_groups']}"
+                    )
+            except Exception as action_exc:
+                print(f"action_model: shadow refresh skipped ({action_exc})")
             if art.n_supervised == 0:
                 print(
                     "WARNING: zero supervised rows in this DB — do not claim the "
@@ -342,8 +360,8 @@ def cmd_ml_experimental(args: argparse.Namespace) -> int:
         inference_mod.set_mode(db, CoachingMode.EXPERIMENTAL)
         print("mode: experimental")
         print("EXPERIMENTAL PILOT — not a validated competitive model.")
-        print("Offense-only ML selection within the applied five-formation book.")
-        print("Heuristic choice is shown alongside the ML choice.")
+        print("Offense-only ML selection within the full confirmed offensive playbook.")
+        print("Model selects the offensive play; heuristic is a failure fallback only.")
         print("On timeout/error/illegal → heuristic fallback.")
         print("Restore heuristic: python -m cfb_coach ml heuristic")
     finally:
@@ -579,6 +597,103 @@ def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
         finally:
             db.close()
     return 0
+
+
+def cmd_ml_offense_action_learn(args: argparse.Namespace) -> int:
+    """Train / inspect / gate observational pre-snap action evidence."""
+    from cfb_coach.madden.model.offense_action_learning import (
+        load_action_evidence, promote_action_evidence,
+        rollback_action_evidence, save_action_evidence,
+        train_action_evidence,
+    )
+
+    actions = sum(bool(x) for x in (args.train, args.promote, args.rollback))
+    if actions > 1:
+        print("Choose one of --train, --promote or --rollback", file=sys.stderr)
+        return 2
+    db = open_madden_db(read_only=not actions)
+    try:
+        try:
+            if args.train:
+                art = train_action_evidence(db)
+                save_action_evidence(db, art)
+            elif args.promote:
+                art = promote_action_evidence(db)
+            elif args.rollback:
+                art = rollback_action_evidence(db)
+            else:
+                art = load_action_evidence(db)
+        except ValueError as exc:
+            print(f"Action learning refused: {exc}", file=sys.stderr)
+            return 2
+        if art is None:
+            print("No saved action model. Run ml offense-action-learn --train first.")
+            return 0
+        view = dict(art)
+        if not args.details:
+            view["comparisons"] = {
+                k: v for k, v in (art.get("comparisons") or {}).items()
+                if v.get("ready_for_bounded_adjustment")
+            }
+        print(json.dumps(view, indent=2, default=str))
+        return 0
+    finally:
+        db.close()
+
+
+def cmd_ml_offense_macro_lab(args: argparse.Namespace) -> int:
+    """Stage draft macro ideas. This never arms a slot or edits Madden."""
+    from cfb_coach.madden.model.offense_macro_lab import propose_variants, stage_variants
+
+    mutate = bool(args.stage)
+    db = open_madden_db(read_only=not mutate)
+    try:
+        try:
+            report = stage_variants(db, limit=args.limit) if mutate else propose_variants(db, limit=args.limit)
+        except ValueError as exc:
+            print(f"Macro lab refused: {exc}", file=sys.stderr)
+            return 2
+        report["armed"] = False
+        report["executable"] = False
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    finally:
+        db.close()
+
+
+def cmd_ml_offense_coordinator(args: argparse.Namespace) -> int:
+    """Read-only pregame plan or synthetic policy comparison."""
+    from cfb_coach.madden.model.offense_coordinator_eval import compare_policies
+    from cfb_coach.madden.model.offense_designer import design_offense
+
+    if args.compare:
+        print(json.dumps(compare_policies(seed=args.seed), indent=2, default=str))
+        return 0
+    db = open_madden_db(read_only=True)
+    try:
+        plan = design_offense(db, opponent_id=args.opponent, max_formations=args.max_formations)
+        if args.summary:
+            plan = {
+                "proposal_id": plan["proposal_id"],
+                "inventory_id": plan["inventory_id"],
+                "formations": list(plan["book"]["formations"]),
+                "plays": plan["n_plays"],
+                "situation_coverage": plan.get("situation_coverage"),
+                "provenance": plan.get("provenance"),
+                "changes": plan.get("changes"),
+                "macro_blueprints": [
+                    {"name": m.get("name"), "status": m.get("status"), "kind": m.get("kind")}
+                    for m in plan.get("macro_blueprints") or []
+                ],
+                "note": "Proposal only. Stage and attest before it can become the applied book.",
+            }
+        print(json.dumps(plan, indent=2, default=str))
+        return 0
+    except ValueError as exc:
+        print(f"Coordinator plan refused: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        db.close()
 
 
 def cmd_ml_offense_actions(args: argparse.Namespace) -> int:
@@ -1099,6 +1214,41 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_te.add_argument("--no-db", dest="db", action="store_false", default=True)
     p_te.set_defaults(func=cmd_ml_train_experimental)
+
+    p_learn = ml_sub.add_parser(
+        "offense-action-learn",
+        help="Learn verified pre-snap adjustment outcomes; shadow until evidence-gated promotion",
+    )
+    p_learn.add_argument("--train", action="store_true",
+                         help="Build a SHADOW model from verified, explicitly confirmed action outcomes")
+    p_learn.add_argument("--promote", action="store_true",
+                         help="Activate only adequately compared multi-game contexts (bounded ±0.04)")
+    p_learn.add_argument("--rollback", action="store_true",
+                         help="Immediately disable learned action-score shifts")
+    p_learn.add_argument("--details", action="store_true",
+                         help="Include all sparse action/context comparisons")
+    p_learn.set_defaults(func=cmd_ml_offense_action_learn)
+
+    p_lab = ml_sub.add_parser(
+        "offense-macro-lab",
+        help="Propose or stage DRAFT macro variants. Never arms a slot.",
+    )
+    p_lab.add_argument("--stage", action="store_true",
+                       help="Append drafts to the blueprint registry. Does not verify or arm them.")
+    p_lab.add_argument("--limit", type=int, default=6)
+    p_lab.set_defaults(func=cmd_ml_offense_macro_lab)
+
+    p_coord = ml_sub.add_parser(
+        "offense-coordinator",
+        help="Read-only pregame formation plan, or a synthetic policy comparison",
+    )
+    p_coord.add_argument("-o", "--opponent", default="cpu")
+    p_coord.add_argument("--max-formations", type=int, default=8)
+    p_coord.add_argument("--summary", action="store_true")
+    p_coord.add_argument("--compare", action="store_true",
+                         help="Compare the joint coordinator with model-primary on synthetic scenarios")
+    p_coord.add_argument("--seed", type=int, default=11)
+    p_coord.set_defaults(func=cmd_ml_offense_coordinator)
 
     p_act = ml_sub.add_parser(
         "offense-actions",
