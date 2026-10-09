@@ -362,6 +362,27 @@ def apply_experimental_offense(
     if not pairs:
         return _fallback(MLStatus.INVALID_OUTPUT)
 
+    from cfb_coach.madden.model.offense_inventory import (
+        inventory_fingerprint, pairs_in_inventory,
+    )
+    all_pairs = pairs_in_inventory(book)
+    # The ML's complete source is the confirmed locked playbook, not a
+    # hand-picked core list. Situation may filter some plays this snap.
+    inv_id = inventory_fingerprint(book)
+    inv_verified = False
+    if db is not None:
+        try:
+            from cfb_coach.madden.playbook import load_books
+
+            applied = load_books(db).get("offense") or {}
+            if applied.get("formations") == book:
+                inv_id = inventory_fingerprint(
+                    book, applied.get("formation_sources") or {}
+                )
+                inv_verified = True
+        except Exception:  # noqa: BLE001 — missing DB must not break live call
+            pass
+
     artifact_path = resolve_artifact_path(db)
     started = time.perf_counter()
     try:
@@ -501,6 +522,12 @@ def apply_experimental_offense(
             "rankings": ranked[:8],
             "fell_back": False,
             "n_eligible_candidates": len(pairs),
+            "inventory_id": inv_id,
+            "inventory_play_count": len(all_pairs),
+            "inventory_formation_count": len(book),
+            "inventory_confirmed": inv_verified,
+            "inventory_eligible_count": len(pairs),
+            "inventory_situation_excluded": len(all_pairs) - len(pairs),
             "selection_policy": "model_primary_contextual_variety.v2",
             "selection_audit": selection_audit,
             "offense_action": getattr(call, "ml_offense_action", None),
@@ -593,6 +620,12 @@ def commit_experimental_decision(
             payload["experimental_offense"] = {
                 "selection_policy": info.get("selection_policy", "legacy_experimental"),
                 "selection_audit": info.get("selection_audit"),
+                "inventory_id": info.get("inventory_id"),
+                "inventory_play_count": info.get("inventory_play_count"),
+                "inventory_formation_count": info.get("inventory_formation_count"),
+                "inventory_confirmed": info.get("inventory_confirmed"),
+                "inventory_eligible_count": info.get("inventory_eligible_count"),
+                "inventory_situation_excluded": info.get("inventory_situation_excluded"),
                 "model_version": info.get("model_version"),
                 "evidence_quality": info.get("evidence_quality"),
                 "probability": info.get("probability"),
