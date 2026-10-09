@@ -643,6 +643,26 @@ def cmd_ml_offense_action_learn(args: argparse.Namespace) -> int:
         db.close()
 
 
+def cmd_ml_offense_macro_lab(args: argparse.Namespace) -> int:
+    """Propose or stage source-backed macro drafts; never verify or arm them."""
+    from cfb_coach.madden.model import offense_macro_lab as lab
+
+    db = open_madden_db(read_only=not args.stage)
+    try:
+        try:
+            result = (
+                lab.stage_variants(db, limit=args.limit)
+                if args.stage else lab.propose_variants(db, limit=args.limit)
+            )
+        except ValueError as exc:
+            print(f"Macro lab refused: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+    finally:
+        db.close()
+
+
 def cmd_ml_offense_actions(args: argparse.Namespace) -> int:
     """Show researched, compatible and verified Custom Adjustment readiness."""
     from cfb_coach.madden.model.offense_action_inventory import offense_actions_report
@@ -1175,6 +1195,17 @@ def build_ml_subparser(sub: Any) -> None:
     p_learn.add_argument("--details", action="store_true",
                          help="Include all sparse action/context comparisons")
     p_learn.set_defaults(func=cmd_ml_offense_action_learn)
+
+    p_lab = ml_sub.add_parser(
+        "offense-macro-lab",
+        help="Generate source-backed, unarmed offensive macro blueprint drafts",
+    )
+    p_lab.add_argument("--limit", type=int, default=6)
+    p_lab.add_argument(
+        "--stage", action="store_true",
+        help="Stage drafts in the blueprint registry; never verify or arm them",
+    )
+    p_lab.set_defaults(func=cmd_ml_offense_macro_lab)
 
     p_act = ml_sub.add_parser(
         "offense-actions",
