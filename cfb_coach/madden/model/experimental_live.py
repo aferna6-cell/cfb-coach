@@ -663,6 +663,19 @@ def maybe_apply_experimental(
             book = eligible(raw).get("offense") or {}
         if not book:
             return call
+        # HTML live controller stamps the current session onto the situation,
+        # but ordinary Madden make_call does not pass those fields explicitly.
+        # Recover them here so 20-call memory and exploration are PER GAME,
+        # not cross-game opponent history. No prediction ever uses outcomes.
+        extras = getattr(sit, "extras", None) or {}
+        if session_id is None and isinstance(extras, dict):
+            session_id = extras.get("session_id") or None
+        if game_id is None:
+            game_id = session_id
+        if snap_seq is None and session_id and db is not None:
+            from cfb_coach.madden.model.identity import next_seq_from_db
+
+            snap_seq = next_seq_from_db(db, session_id)
         new_call, _dec = apply_experimental_offense(
             heuristic_call=call,
             sit=sit,
