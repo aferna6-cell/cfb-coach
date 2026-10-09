@@ -42,6 +42,8 @@ class ActionEvidenceTests(unittest.TestCase):
         presnap_coverage: str | None = None,
         presnap_source: str | None = None,
         observed_coverage: str | None = None,
+        red_zone: bool = False,
+        goal_line: bool = False,
     ):
         did = self.db.log_ml_decision({
             "snap_id": key, "game_id": game, "session_id": game,
@@ -57,6 +59,8 @@ class ActionEvidenceTests(unittest.TestCase):
                 "down": 2, "distance": 8,
                 "coverage_hint": presnap_coverage,
                 "coverage_source": presnap_source,
+                "red_zone": red_zone,
+                "goal_line": goal_line,
             },
         }}
         self.db.conn.execute(
@@ -125,6 +129,16 @@ class ActionEvidenceTests(unittest.TestCase):
         self.assertEqual(ctx["last-blitz"], "mesh|2_long")
         self.assertNotIn("single_high", str(ctx))
         self.assertNotIn("pressure", str(ctx))
+
+    def test_red_zone_and_goal_line_are_separate_decision_time_contexts(self):
+        self.snap("open", action="none", confirmed_unchanged=True)
+        self.snap("rz", action="none", confirmed_unchanged=True, red_zone=True)
+        self.snap("gl", action="none", confirmed_unchanged=True, goal_line=True)
+        rows, _ = collect_verified_action_rows(self.db)
+        ctx = {r["snap_id"]: r["context"] for r in rows}
+        self.assertEqual(ctx["open"], "mesh|2_long")
+        self.assertEqual(ctx["rz"], "mesh|2_long|zone:red_zone")
+        self.assertEqual(ctx["gl"], "mesh|2_long|zone:goal_line")
 
     def test_repeat_corrections_not_double_counted(self):
         self.snap("same-snap", confirmed_action=True)
