@@ -27,9 +27,19 @@ PRIOR_STRENGTH = 18.0
 MAX_SCORE_SHIFT = 0.04
 
 
-def context_key(*, play: str, down: Any, distance: Any) -> str:
-    """Pre-snap context only (no opponent post-snap coverage leakage)."""
-    return f"{_play_concept(play)}|{_dd_bucket(down, distance)}"
+def context_key(
+    *, play: str, down: Any, distance: Any,
+    coverage_class: str | None = None, coverage_source: str | None = None,
+) -> str:
+    """Decision-time context; only an explicitly *live* look can distinguish coverage.
+
+    Unknown/last-snap hints do not form new action-effect buckets, and the
+    opponent's actual post-snap coverage must NEVER be substituted here.
+    """
+    base = f"{_play_concept(play)}|{_dd_bucket(down, distance)}"
+    if coverage_source == "live" and coverage_class:
+        return f"{base}|look:{coverage_class}"
+    return base
 
 
 def collect_verified_action_rows(db: Any, game_id: str | None = None) -> tuple[list[dict[str, Any]], dict[str, int]]:
@@ -76,8 +86,10 @@ def collect_verified_action_rows(db: Any, game_id: str | None = None) -> tuple[l
             continue
         stats["verified_labeled_play"] += 1
         try:
-            choice = (json.loads(decision.get("decision_json") or "{}")
-                      .get("experimental_offense") or {}).get("offense_action") or {}
+            record = (json.loads(decision.get("decision_json") or "{}")
+                      .get("experimental_offense") or {})
+            choice = record.get("offense_action") or {}
+            presnap = record.get("pre_snap_action_context") or {}
             result = json.loads(outcome.get("outcome_json") or "{}")
         except (ValueError, TypeError):
             continue
@@ -104,6 +116,13 @@ def collect_verified_action_rows(db: Any, game_id: str | None = None) -> tuple[l
             stats["verified_applied_actions"] += 1
         else:
             stats["verified_unchanged"] += 1
+        from cfb_coach.madden.playcaller import coverage_class as classify_look
+
+        live_class = (
+            classify_look(presnap.get("coverage_hint"))
+            if presnap.get("coverage_source") == "live"
+            else None
+        )
         admitted.append({
             "snap_id": sid,
             "game_id": str(decision.get("game_id") or "unknown"),
@@ -111,8 +130,13 @@ def collect_verified_action_rows(db: Any, game_id: str | None = None) -> tuple[l
             "play": str(decision["final_play"]),
             "context": context_key(
                 play=str(decision["final_play"]),
-                down=row.get("down"), distance=row.get("distance"),
+                down=presnap.get("down", row.get("down")),
+                distance=presnap.get("distance", row.get("distance")),
+                coverage_class=live_class,
+                coverage_source=presnap.get("coverage_source"),
             ),
+            "presnap_look": live_class,
+            "presnap_look_source": presnap.get("coverage_source") or "unknown",
             "action": f"{kind}:{action_id}" if explicitly_applied else "none",
             "kind": kind if explicitly_applied else "none",
             "success": str(row["success"]) == "true",
@@ -249,11 +273,17 @@ def rollback_action_evidence(db: Any) -> dict[str, Any]:
 def score_shift(
     artifact: Mapping[str, Any] | None, *,
     play: str, down: Any, distance: Any, kind: str, action_id: str,
+    coverage_class: str | None = None, coverage_source: str | None = None,
 ) -> tuple[float, dict[str, Any] | None]:
     """Read-only bounded adjustment only for promoted, adequately compared context."""
     if not artifact or artifact.get("mode") != "bounded_active":
         return 0.0, None
-    key = f"{context_key(play=play, down=down, distance=distance)}|{kind}:{action_id}"
+    key = (
+        context_key(
+            play=play, down=down, distance=distance,
+            coverage_class=coverage_class, coverage_source=coverage_source,
+        ) + f"|{kind}:{action_id}"
+    )
     group = (artifact.get("comparisons") or {}).get(key)
     if not group or not group.get("ready_for_bounded_adjustment"):
         return 0.0, None
