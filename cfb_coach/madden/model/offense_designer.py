@@ -239,8 +239,6 @@ def _play_rankings(
     old = (current.get("formations") or {}).get(form) or []
     ranked: list[dict[str, Any]] = []
     for play in dict.fromkeys(plays):
-        if not catalog.zone_fit(play, "open"):
-            continue
         is_run = catalog.is_run(play)
         concept = experimental_model._play_concept(play)
         score = _rate(art, form, play, opponent)

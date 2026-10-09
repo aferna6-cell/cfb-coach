@@ -268,11 +268,27 @@ def score_play_suitability(play: str, state: FootballSituation) -> dict[str, Any
         and state.tendency_sample_size >= 4
     ):
         # Historical tendencies inform a small prior, never a claim about now.
-        add(
-            "historical_tendency_prior",
-            min(0.015, 0.015 * state.tendency_confidence),
-            f"historical {state.tendency_coverage} tendency; current coverage remains unknown",
+        tendency = state.tendency_coverage.lower()
+        strength = min(0.015, 0.015 * state.tendency_confidence)
+        pressure_tendency = any(
+            token in tendency for token in ("pressure", "blitz", "zero")
         )
+        add(
+            "historical_pressure_quick_game",
+            strength if pressure_tendency and quick else 0.0,
+            "repeated pressure tendency modestly favors quick answers; current look unknown",
+        )
+        add(
+            "historical_pressure_development",
+            -strength if pressure_tendency and deep else 0.0,
+            "repeated pressure tendency discounts long development; current look unknown",
+        )
+        if not pressure_tendency:
+            add(
+                "historical_tendency_prior",
+                strength,
+                f"historical {state.tendency_coverage} tendency; current coverage remains unknown",
+            )
 
     total = sum(float(c["value"]) for c in components)
     return {

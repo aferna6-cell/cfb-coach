@@ -810,15 +810,31 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
     action_confirmed = 0
     action_unconfirmed = 0
     action_by_kind: dict[str, int] = {}
+    joint_decisions = 0
+    joint_legal = 0
+    selected_no_adjustment = 0
+    selected_multi_adjustment = 0
+    live_coverage_predictions = 0
+    live_coverage_matches = 0
+    decision_contexts: dict[str, dict[str, Any]] = {}
     for r in identified:
         try:
             decision_payload = json.loads(r["decision_json"] or "{}")
-            action = (decision_payload.get("experimental_offense") or {}).get("offense_action") or {}
+            experimental = decision_payload.get("experimental_offense") or {}
+            action = experimental.get("offense_action") or {}
+            context = experimental.get("pre_snap_action_context") or {}
+            decision_contexts[str(r["snap_id"])] = context
+            joint = (experimental.get("selection_audit") or {}).get("joint_decision") or {}
+            if joint:
+                joint_decisions += 1
+                joint_legal += int(int(joint.get("legal_joint_decision_count") or 0) > 0)
         except (TypeError, ValueError, json.JSONDecodeError):
             action = {}
         kind = str(action.get("kind") or "none")
         action_id = action.get("id")
-        if not action_id or kind not in ("macro", "adjustment"):
+        selected_no_adjustment += int(kind == "none")
+        selected_multi_adjustment += int(kind == "multi_adjustment")
+        if not action_id or kind not in ("macro", "adjustment", "multi_adjustment"):
             continue
         action_recommended += 1
         action_by_kind[kind] = action_by_kind.get(kind, 0) + 1
@@ -829,7 +845,10 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
                 outcome_payload = json.loads(outcome_row["outcome_json"] or "{}")
                 confirmed = bool(outcome_payload.get("offense_action_explicitly_confirmed")) and (
                     (kind == "macro" and outcome_payload.get("executed_macro") == action_id)
-                    or (kind == "adjustment" and outcome_payload.get("executed_adjustment_id") == action_id)
+                    or (
+                        kind in ("adjustment", "multi_adjustment")
+                        and outcome_payload.get("executed_adjustment_id") == action_id
+                    )
                 )
             except (ValueError, TypeError, json.JSONDecodeError):
                 pass
@@ -845,10 +864,12 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
     snap_context: dict[str, dict[str, Any]] = {}
     try:
         for snap in db.conn.execute(
-            "SELECT ml_snap_id, down, distance FROM snaps WHERE ml_snap_id IS NOT NULL"
+            "SELECT ml_snap_id, down, distance, coverage_seen FROM snaps "
+            "WHERE ml_snap_id IS NOT NULL"
         ):
             snap_context[str(snap["ml_snap_id"])] = {
                 "down": snap["down"], "distance": snap["distance"],
+                "coverage_seen": snap["coverage_seen"],
             }
     except Exception:  # noqa: BLE001
         pass
@@ -861,6 +882,23 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
         game: summarize_call_variety(entries, by_snap_situation=snap_context)
         for game, entries in groups.items()
     }
+    from cfb_coach.madden.playcaller import coverage_class
+
+    for snap_id, context in decision_contexts.items():
+        if context.get("coverage_source") != "live" or not context.get("coverage_hint"):
+            continue
+        observed = (snap_context.get(snap_id) or {}).get("coverage_seen")
+        if not observed:
+            continue
+        live_coverage_predictions += 1
+        live_coverage_matches += int(
+            coverage_class(context["coverage_hint"]) == coverage_class(observed)
+        )
+    latencies = sorted(
+        float(row["latency_ms"]) for row in identified
+        if row["latency_ms"] is not None
+    )
+    p95_index = max(0, min(len(latencies) - 1, int(len(latencies) * 0.95) - 1))
 
     orphan_anonymous = len(rows) - len(identified)
     return {
@@ -880,6 +918,23 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
             "unconfirmed": action_unconfirmed,
             "by_kind": action_by_kind,
             "note": "Only explicitly confirmed action execution counted. No counterfactual or causal action lift inferred.",
+        },
+        "joint_coordinator": {
+            "joint_decisions": joint_decisions,
+            "legal_action_rate": round(joint_legal / joint_decisions, 3)
+            if joint_decisions else 0.0,
+            "selected_no_adjustment": selected_no_adjustment,
+            "selected_multi_adjustment": selected_multi_adjustment,
+            "latency_p95_ms": round(latencies[p95_index], 3) if latencies else None,
+            "latency_max_ms": round(max(latencies), 3) if latencies else None,
+            "coverage_calibration": {
+                "verified_live_predictions": live_coverage_predictions,
+                "matching_family": live_coverage_matches,
+                "accuracy": round(
+                    live_coverage_matches / live_coverage_predictions, 3
+                ) if live_coverage_predictions else None,
+                "note": "Last-snap and inferred tendencies are excluded.",
+            },
         },
         "game_id_filter": game_id,
         "disagreements": [

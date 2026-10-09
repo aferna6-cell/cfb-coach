@@ -102,6 +102,11 @@ def render_html(
     applied = (playbook.load_books(db).get("offense") or {})
     is_installed = mode == "installed" and applied.get("formations") == forms
     approved = {m["name"] for m in designer.verified_created_macros(db, opponent_id)}
+    configured = {m["name"] for m in designer.verified_macro_configurations(db)}
+    formation_details = {
+        str(item.get("formation")): item
+        for item in proposal.get("chosen_formation_details") or []
+    }
     from cfb_coach.madden.model.offense_inventory import inventory_report
 
     # Counts are logged recommendations, not confirmed executions. The
@@ -119,6 +124,7 @@ def render_html(
     groups = []
     required = 0
     for form, plays in forms.items():
+        detail = formation_details.get(str(form), {})
         source = sources.get(form) or ""
         stock = (catalog.books("offense").get(source) or {})
         stock_url = str(stock.get("url") or "")
@@ -149,9 +155,18 @@ def render_html(
             for p in plays
         ]
         verify_header = f'<div class="play">{mark}<strong>{esc(label)}</strong></div>'
+        situations = ", ".join(str(item).replace("_", " ")
+                               for item in detail.get("addresses") or [])
+        audibles = ", ".join(
+            f"{item.get('role')}: {item.get('play')}"
+            for item in detail.get("suggested_audibles") or []
+        )
         groups.append(
             f'<section><div class="head"><h3>{esc(form)}</h3><span class="pill">{len(plays)} plays</span></div>'
             f'<p class="muted">Stock source: {source_link} · complete formation, all {len(plays)} catalogued plays</p>'
+            f'<p><b>Why selected:</b> {esc(detail.get("selection_reason") or "installed formation")}</p>'
+            f'<p><b>Strongest situation coverage:</b> {esc(situations or "not recorded")}</p>'
+            f'<p><b>Suggested audibles (not installed automatically):</b> {esc(audibles or "none")}</p>'
             f'{verify_header}<ul>{"".join(entries)}</ul></section>'
         )
     deltas = [
@@ -168,7 +183,12 @@ def render_html(
     for index, m in enumerate(proposal.get("macro_blueprints") or []):
         name = str(m.get("name") or "UNNAMED")
         verified = is_installed and name in approved
-        macro_status = "Verified and armed" if verified else "Draft — not callable"
+        config_verified = is_installed and name in configured
+        macro_status = (
+            "Armed — callable when eligible" if verified
+            else "Verified settings — not armed" if config_verified
+            else "Draft — not callable"
+        )
         setting_rows = []
         for row in m.get("settings") or []:
             cited = [
@@ -188,7 +208,12 @@ def render_html(
             esc(str(p.get("formation")) + " — " + str(p.get("play")))
             for p in m.get("base_pairs") or []
         )
-        cmd = (
+        verify_config_cmd = (
+            f'python -m cfb_coach ml offense-design -o {opponent_id} '
+            f'--verify-macro-config {name} '
+            '--attest "I checked every listed setting and confirmed this configuration is supported in Madden."'
+        )
+        arm_cmd = (
             f'python -m cfb_coach ml offense-design -o {opponent_id} '
             f'--verify-macro {name} '
             '--attest "I built this Custom Adjustment with the sourced settings and armed it in Madden."'
@@ -197,8 +222,16 @@ def render_html(
             f"python -m cfb_coach ml offense-design -o {opponent_id} --unverify-macro {name}"
         )
         cmd_html = (
-            f'<pre id="macro-cmd-{index}">{esc(cmd)}</pre>'
-            f'<button data-copy="macro-cmd-{index}">Copy macro verification command</button>'
+            (
+                f'<pre id="macro-config-{index}">{esc(verify_config_cmd)}</pre>'
+                f'<button data-copy="macro-config-{index}">Copy settings-verification command</button>'
+                if not config_verified else ""
+            )
+            + (
+                f'<pre id="macro-cmd-{index}">{esc(arm_cmd)}</pre>'
+                f'<button data-copy="macro-cmd-{index}">Copy armed-slot command</button>'
+                if config_verified and not verified else ""
+            )
             if is_installed and not verified else (
                 f'<p class="muted">If you remove this macro from Madden, disable it in the coach:</p>'
                 f'<pre id="macro-disable-{index}">{esc(disable_cmd)}</pre>'
@@ -214,7 +247,8 @@ def render_html(
             f'<th>Source</th></tr></thead><tbody>{"".join(setting_rows)}</tbody></table></div>'
             f'<p class="warning">{esc(m.get("other_editor_settings") or "Check unspecified editor fields in Madden.")}</p>'
             f'<p><b>Research:</b> {" · ".join(srcs)}</p>'
-            f'<p class="muted">Until individually verified and armed, this macro is not eligible for live calls.</p>'
+            f'<p class="muted">Draft, verified configuration, and armed slot are separate states. '
+            f'Only armed macros are eligible for live calls.</p>'
             f'{cmd_html}</details>'
         )
     stage_cmd = f"python -m cfb_coach ml offense-design -o {opponent_id} --stage"

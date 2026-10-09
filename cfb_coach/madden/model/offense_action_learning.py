@@ -99,13 +99,15 @@ def collect_verified_action_rows(db: Any, game_id: str | None = None) -> tuple[l
         except (ValueError, TypeError):
             continue
         kind = str(choice.get("kind") or "none")
-        action_id = str(choice.get("id") or "") if kind in ("macro", "adjustment") else ""
+        actionable = kind in ("macro", "adjustment", "multi_adjustment")
+        action_id = str(choice.get("id") or "") if actionable else ""
         explicitly_applied = (
-            kind in ("macro", "adjustment")
+            actionable
             and bool(result.get("offense_action_explicitly_confirmed"))
             and (
                 kind == "macro" and result.get("executed_macro") == action_id
-                or kind == "adjustment" and result.get("executed_adjustment_id") == action_id
+                or kind in ("adjustment", "multi_adjustment")
+                and result.get("executed_adjustment_id") == action_id
             )
         )
         explicitly_unchanged = (
