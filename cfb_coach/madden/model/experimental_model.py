@@ -38,6 +38,7 @@ PRIOR_STRENGTH = 8.0
 OPP_PRIOR_STRENGTH = 12.0
 FAMILY_PRIOR_STRENGTH = 6.0
 CONCEPT_PRIOR_STRENGTH = 5.0
+CONTEXT_INTERACTION_STRENGTH = 10.0  # strong shrinkage; small per-play-context sample sizes
 # Soft prior when coverage_source is "last" (previous snap) — not confirmation.
 LAST_SNAP_COV_WEIGHT = 0.35
 # Cap free-text research influence so we never invent precise matchup odds.
@@ -148,6 +149,8 @@ class ExperimentalArtifact:
     play_vs_cov: dict[str, list[float]] = field(default_factory=dict)
     concept_vs_cov: dict[str, list[float]] = field(default_factory=dict)
     down_distance: dict[str, list[float]] = field(default_factory=dict)
+    concept_down_distance: dict[str, list[float]] = field(default_factory=dict)
+    family_down_distance: dict[str, list[float]] = field(default_factory=dict)
     field_zone: dict[str, list[float]] = field(default_factory=dict)
     cpu_human: dict[str, list[float]] = field(default_factory=dict)
     opponent: dict[str, list[float]] = field(default_factory=dict)
@@ -173,6 +176,8 @@ class ExperimentalArtifact:
             "play_vs_cov": self.play_vs_cov,
             "concept_vs_cov": self.concept_vs_cov,
             "down_distance": self.down_distance,
+            "concept_down_distance": self.concept_down_distance,
+            "family_down_distance": self.family_down_distance,
             "field_zone": self.field_zone,
             "cpu_human": self.cpu_human,
             "opponent": self.opponent,
@@ -205,6 +210,12 @@ class ExperimentalArtifact:
             play_vs_cov={k: list(v) for k, v in (raw.get("play_vs_cov") or {}).items()},
             concept_vs_cov={k: list(v) for k, v in (raw.get("concept_vs_cov") or {}).items()},
             down_distance={k: list(v) for k, v in (raw.get("down_distance") or {}).items()},
+            concept_down_distance={
+                k: list(v) for k, v in (raw.get("concept_down_distance") or {}).items()
+            },
+            family_down_distance={
+                k: list(v) for k, v in (raw.get("family_down_distance") or {}).items()
+            },
             field_zone={
                 k: list(v)
                 for k, v in (raw.get("field_zone") or raw.get("field") or {}).items()
@@ -315,6 +326,8 @@ def train_experimental(
     play_vs: dict[str, RateBucket] = {}
     concept_vs: dict[str, RateBucket] = {}
     dd: dict[str, RateBucket] = {}
+    concept_dd: dict[str, RateBucket] = {}
+    family_dd: dict[str, RateBucket] = {}
     field_z: dict[str, RateBucket] = {}
     ctx: dict[str, RateBucket] = {}
     opp: dict[str, RateBucket] = {}
@@ -330,9 +343,11 @@ def train_experimental(
         play_concept.setdefault(concept, RateBucket()).add(success, weight)
         play_vs.setdefault(f"{fam}|{cov}", RateBucket()).add(success, weight)
         concept_vs.setdefault(f"{concept}|{cov}", RateBucket()).add(success, weight)
-        dd.setdefault(_dd_bucket(row.get("down"), row.get("distance")), RateBucket()).add(
-            success, weight
-        )
+        dd_key = _dd_bucket(row.get("down"), row.get("distance"))
+        dd.setdefault(dd_key, RateBucket()).add(success, weight)
+        if dd_key != "unknown":
+            concept_dd.setdefault(f"{concept}|{dd_key}", RateBucket()).add(success, weight)
+            family_dd.setdefault(f"{fam}|{dd_key}", RateBucket()).add(success, weight)
         yl = row.get("yardline")
         try:
             yl_i = int(yl) if yl is not None else None
@@ -387,6 +402,8 @@ def train_experimental(
         play_vs_cov=_bucket_map(play_vs),
         concept_vs_cov=_bucket_map(concept_vs),
         down_distance=_bucket_map(dd),
+        concept_down_distance=_bucket_map(concept_dd),
+        family_down_distance=_bucket_map(family_dd),
         field_zone=_bucket_map(field_z),
         cpu_human=_bucket_map(ctx),
         opponent=_bucket_map(opp),
@@ -461,7 +478,21 @@ def predict_success(
     )
     # Blend unknown-coverage baseline with soft/full matchup by cov_weight.
     p_match = (1.0 - cov_weight) * p_concept + cov_weight * p_match_full
-    p_dd = _rate_from(art.down_distance.get(_dd_bucket(down, distance)), g, PRIOR_STRENGTH)
+    dd_key = _dd_bucket(down, distance)
+    p_dd = _rate_from(art.down_distance.get(dd_key), g, PRIOR_STRENGTH)
+    # A global down/distance factor is identical for every candidate and
+    # cannot alter play rankings. Learn the *interaction* of play concept
+    # and situation, heavily shrunk to the normal concept prior. Older
+    # artifacts without the new buckets remain backward-compatible.
+    interaction = (
+        art.concept_down_distance.get(f"{concept}|{dd_key}")
+        or art.family_down_distance.get(f"{fam}|{dd_key}")
+    ) if dd_key != "unknown" else None
+    p_situational = (
+        _rate_from(interaction, p_match, CONTEXT_INTERACTION_STRENGTH)
+        if interaction is not None else p_match
+    )
+    p_match = 0.55 * p_match + 0.45 * p_situational
     yl = None
     if isinstance(yardline, int):
         yl = yardline
@@ -510,6 +541,9 @@ def predict_success(
         "components": {
             "concept_matchup": p_match,
             "down_distance": p_dd,
+            "concept_situation": p_situational,
+            "situation_bucket": dd_key,
+            "situation_interaction_trials": float(interaction[1]) if interaction else 0.0,
             "field": p_field,
             "opponent": p_opp,
             "research_boost": boost,

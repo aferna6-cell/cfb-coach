@@ -88,6 +88,19 @@ def situational_offense_candidates(
     if not pool:
         pool = [(f, p) for f, ps in (book or {}).items() for p in (ps or [])]
         bonus = {}
+    # Explicit situational guard: the heuristic's -0.20 run bonus was ignored
+    # by model-primary inference, making 3rd-and-long dives score as normal.
+    # Keep every available PASS play eligible and let ML rank them.
+    from cfb_coach.madden.catalog import is_run
+
+    try:
+        down, distance = int(getattr(sit, "down")), int(getattr(sit, "distance"))
+    except (ValueError, TypeError):
+        down, distance = 0, 0
+    if down in (3, 4) and distance >= 7 and not getattr(sit, "goal_line", False):
+        passes = [(form, play) for form, play in pool if not is_run(play)]
+        if passes:
+            pool = passes
     # Soft anti-repeat: down-weight recently used plays (still eligible).
     if db is not None and opponent_id:
         try:
@@ -406,7 +419,9 @@ def apply_experimental_offense(
         from cfb_coach.madden.model.offense_selection_policy import select_from_database
 
         ranked, selection_audit = select_from_database(
-            ranked, db=db, opponent_id=opponent_id
+            ranked, db=db, opponent_id=opponent_id,
+            sit=sit, opponent_type=opp_type,
+            session_id=session_id or game_id, snap_seq=snap_seq,
         )
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
@@ -486,7 +501,7 @@ def apply_experimental_offense(
             "rankings": ranked[:8],
             "fell_back": False,
             "n_eligible_candidates": len(pairs),
-            "selection_policy": "model_primary_repetition_aware.v1",
+            "selection_policy": "model_primary_contextual_variety.v2",
             "selection_audit": selection_audit,
             "offense_action": getattr(call, "ml_offense_action", None),
         }
@@ -648,6 +663,19 @@ def maybe_apply_experimental(
             book = eligible(raw).get("offense") or {}
         if not book:
             return call
+        # HTML live controller stamps the current session onto the situation,
+        # but ordinary Madden make_call does not pass those fields explicitly.
+        # Recover them here so 20-call memory and exploration are PER GAME,
+        # not cross-game opponent history. No prediction ever uses outcomes.
+        extras = getattr(sit, "extras", None) or {}
+        if session_id is None and isinstance(extras, dict):
+            session_id = extras.get("session_id") or None
+        if game_id is None:
+            game_id = session_id
+        if snap_seq is None and session_id and db is not None:
+            from cfb_coach.madden.model.identity import next_seq_from_db
+
+            snap_seq = next_seq_from_db(db, session_id)
         new_call, _dec = apply_experimental_offense(
             heuristic_call=call,
             sit=sit,
@@ -734,6 +762,30 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
         else:
             action_unconfirmed += 1
 
+    # Evaluate *what the coach displayed*, including unmatched outcomes.
+    # Do not equate a recommended play with a confirmed executed play.
+    from cfb_coach.madden.model.offense_selection_policy import summarize_call_variety
+
+    snap_context: dict[str, dict[str, Any]] = {}
+    try:
+        for snap in db.conn.execute(
+            "SELECT ml_snap_id, down, distance FROM snaps WHERE ml_snap_id IS NOT NULL"
+        ):
+            snap_context[str(snap["ml_snap_id"])] = {
+                "down": snap["down"], "distance": snap["distance"],
+            }
+    except Exception:  # noqa: BLE001
+        pass
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in identified:
+        rec = dict(row)
+        key = str(rec.get("game_id") or rec.get("session_id") or "unknown")
+        groups.setdefault(key, []).append(rec)
+    call_quality = {
+        game: summarize_call_variety(entries, by_snap_situation=snap_context)
+        for game, entries in groups.items()
+    }
+
     orphan_anonymous = len(rows) - len(identified)
     return {
         "n_experimental_calls": n,
@@ -745,6 +797,7 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
         "disagree_with_heuristic": len(disagree),
         "verified_executions_linked": verified,
         "outcomes_linked": linked_outcomes,
+        "call_quality_by_game": call_quality,
         "offense_actions": {
             "recommended": action_recommended,
             "verified_applied": action_confirmed,

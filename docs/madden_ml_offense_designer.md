@@ -195,3 +195,41 @@ cross-stock play union). The HTML install checklist has one checkbox per
 complete formation rather than per individual play. To use new proposals,
 regenerate/stage a fresh design and install/confirm it in the Madden editor.
 Old staged or installed trimmed designs do not silently mutate.
+
+## Sprint 7 — situation-aware, varied offensive model
+
+The 28–7 CPU game exposed runs on third-and-long and repeated use of a small
+set of plays. The earlier model's down/distance factor was COMMON TO ALL
+candidates, so it could not distinguish a run from a pass on a long down.
+
+- Train concept-by-down/distance and family-by-down/distance interactions
+  from observed outcomes, with strong shrinkage for sparse matchups.
+- On third/fourth-and-7+, exclude ground runs if any legal passing play exists.
+  Do not invent plays when the applied book lacks a passing option.
+- Add candidate-specific conversion suitability, short-yardage and two-minute
+  scoring. Model probabilities remain separate from these policy costs.
+- Live sessions forward the actual game ID and next snap sequence into
+  inference; replayable exploration does not accidentally mix old CPU games.
+- Keep up to 20 recommended calls PER SESSION; track recent exact plays,
+  concepts, screen family and formations. A recommendation is not a
+  statement that the user executed it.
+- Explore among a reproducible, model-scored top set. CPU tests use wider
+  exploration and human experiments tighter thresholds.
+- Break repeated low-evidence call patterns, including screens, if credible
+  alternatives are available. Heuristic remains emergency fallback only.
+- Persist candidate counts, selection penalties and conversion-specific
+  rationale in the sealed decision JSON for postgame analysis.
+
+Learning provenance: The user attested to following all 63 final plays in
+the 28–7 game 9f2ebdeb9d8f4e2d. Keep its missing outcomes missing;
+do not fabricate yards, TDs or training labels for those snaps.
+
+Next CPU test: after CI passes, backup DB, retrain the experimental model,
+and play with the already installed book. Evaluate third-down calls,
+concept and formation variety, execution rates, and live latency.
+
+Commands:
+    python -m cfb_coach ml backup-db
+    python -m cfb_coach ml experimental --retrain
+    python -m cfb_coach ml status
+    python -m cfb_coach play --game madden27 -o cpu
