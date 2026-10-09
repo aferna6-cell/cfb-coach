@@ -83,6 +83,21 @@ class SituationEligibilityTests(unittest.TestCase):
         pairs, _ = situational_offense_candidates(situation(3, 11), book)
         self.assertEqual({p for _, p in pairs}, {"HB Dive", "Inside Zone"})
 
+    def test_two_minute_call_respects_lead_instead_of_always_penalizing_run(self):
+        from cfb_coach.madden.model.offense_selection_policy import _situational_adjustment
+
+        lead = situation(2, 6, two_minute=True)
+        lead.score_us, lead.score_them = 28, 7
+        trail = situation(2, 6, two_minute=True)
+        trail.score_us, trail.score_them = 7, 28
+        unknown = situation(2, 6, two_minute=True)
+        up, _ = _situational_adjustment("Inside Zone", lead)
+        down, _ = _situational_adjustment("Inside Zone", trail)
+        unk, _ = _situational_adjustment("Inside Zone", unknown)
+        self.assertGreater(up, 0)
+        self.assertLess(down, 0)
+        self.assertEqual(unk, 0)
+
     def test_situational_score_penalizes_screen_behind_sticks(self):
         opts = [
             {"formation":"Gun Bunch","play":"HB Slip Screen",
