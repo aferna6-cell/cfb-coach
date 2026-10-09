@@ -199,6 +199,43 @@ def _estimate(name: str, context: str, successes: int, n: int) -> dict[str, Any]
     }
 
 
+def scope_training_rows(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    opponent_id: str,
+    game_id: str | None = None,
+) -> dict[str, Any]:
+    """Keep one opponent, and one game when a game id was requested.
+
+    A blank opponent id is not the requested opponent. CPU and human rows
+    are never pooled.
+    """
+    kept: list[Mapping[str, Any]] = []
+    excluded_missing_opponent = 0
+    excluded_other_opponent = 0
+    excluded_other_game = 0
+    for row in rows:
+        opp = row.get("opponent_id")
+        if opp is None or str(opp).strip() == "":
+            excluded_missing_opponent += 1
+            continue
+        if str(opp) != str(opponent_id):
+            excluded_other_opponent += 1
+            continue
+        if game_id is not None:
+            gid = row.get("game_id") or row.get("session_id")
+            if str(gid or "") != str(game_id):
+                excluded_other_game += 1
+                continue
+        kept.append(row)
+    return {
+        "rows": kept,
+        "excluded_missing_opponent": excluded_missing_opponent,
+        "excluded_other_opponent": excluded_other_opponent,
+        "excluded_other_game": excluded_other_game,
+    }
+
+
 def _change(labeled: list[tuple[int, bool]], metric: str) -> dict[str, Any] | None:
     ordered = sorted(labeled, key=lambda item: item[0])
     if len(ordered) < MIN_CHANGE_HALF * 2:
@@ -230,8 +267,53 @@ def _change(labeled: list[tuple[int, bool]], metric: str) -> dict[str, Any] | No
         "shrunk_delta": round(late_s - early_s, 3),
         "hypothesis": True,
         "automatic_conclusion": False,
+        "within_one_game": True,
+        "crossed_game_boundary": False,
         "confidence": round(min(0.8, (len(early) + len(late)) / 40.0), 3),
     }
+
+
+def _changes_respecting_games(
+    triples: Sequence[tuple[int, bool, str | None]],
+    metric: str,
+) -> list[dict[str, Any]]:
+    """Split each game on its own timeline. Never compare across games."""
+    named = {game for _, _, game in triples if game}
+    groups: dict[str | None, list[tuple[int, bool]]] = {}
+    if not named:
+        groups[None] = [(order, value) for order, value, _game in triples]
+    else:
+        for order, value, game in triples:
+            if not game:
+                continue
+            groups.setdefault(str(game), []).append((order, value))
+    found: list[dict[str, Any]] = []
+    for game, pairs in groups.items():
+        change = _change(pairs, metric)
+        if not change:
+            continue
+        tagged = dict(change)
+        tagged["game_id"] = game
+        found.append(tagged)
+    return found
+
+
+def _is_verified_execution(row: Mapping[str, Any]) -> bool:
+    """Missing verification is not verification."""
+    if row.get("recommendation_only"):
+        return False
+    if row.get("source") in ("video", "human_confirmed_film"):
+        return False
+    return row.get("verified_execution") is True
+
+
+def _is_approved_film_observation(row: Mapping[str, Any]) -> bool:
+    return (
+        row.get("defense_observation_approved") is True
+        and row.get("human_verification") == "verified_human"
+        and row.get("source") == "human_confirmed_film"
+        and row.get("verified_execution") is not True
+    )
 
 
 def _concept_row(concept_id: str, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -303,33 +385,44 @@ def fit_opponent_model(memory: Mapping[str, Any] | None = None,
     """Partial-pool tendencies and concept results. Empty evidence stays uncertain."""
     if records is None:
         records = list((memory or {}).get("verified_snap_records") or [])
-    usable = [
-        row for row in records
-        if row.get("verified_execution") is not False and not row.get("recommendation_only")
-        and row.get("source") != "video"
-    ]
-    pressure_all: list[tuple[int, bool]] = []
-    pressure_passing: list[tuple[int, bool]] = []
-    zone_shells: list[tuple[int, bool]] = []
+    verified_rows = [row for row in records if _is_verified_execution(row)]
+    film_rows = [row for row in records if _is_approved_film_observation(row)]
+    usable = verified_rows
+    tendency_rows = verified_rows + film_rows
+    pressure_all: list[tuple[int, bool, str | None]] = []
+    pressure_passing: list[tuple[int, bool, str | None]] = []
+    zone_shells: list[tuple[int, bool, str | None]] = []
     by_formation: dict[str, list[tuple[int, bool]]] = {}
     concepts: dict[str, list[Mapping[str, Any]]] = {}
     seq_fallback = 0
-    for row in usable:
+    unscoped_beside_named_games = 0
+    named_games = {
+        str(row.get("game_id") or row.get("session_id"))
+        for row in tendency_rows
+        if row.get("game_id") or row.get("session_id")
+    }
+    for row in tendency_rows:
         seq_fallback += 1
         seq = row.get("snap_seq")
         order = seq_fallback if seq is None else int(seq)
+        game_key = row.get("game_id") or row.get("session_id")
+        game_key = str(game_key) if game_key else None
+        if game_key is None and named_games:
+            unscoped_beside_named_games += 1
         bit = _pressure_bit(row)
         if bit is not None:
-            pressure_all.append((order, bit))
+            pressure_all.append((order, bit, game_key))
             try:
                 passing = int(row.get("down")) in _PASSING_DOWNS
             except (TypeError, ValueError):
                 passing = False
             if passing:
-                pressure_passing.append((order, bit))
+                pressure_passing.append((order, bit, game_key))
         zone = _zone_shell(row)
         if zone is not None:
-            zone_shells.append((order, zone))
+            zone_shells.append((order, zone, game_key))
+        if not _is_verified_execution(row):
+            continue
         form = row.get("formation")
         if form and bit is not None:
             by_formation.setdefault(str(form), []).append((order, bit))
@@ -338,12 +431,18 @@ def fit_opponent_model(memory: Mapping[str, Any] | None = None,
             concepts.setdefault(str(concept), []).append(row)
 
     estimates = [
-        _estimate("pressure", "all_verified_snaps", sum(1 for _, v in pressure_all if v), len(pressure_all)),
+        _estimate(
+            "pressure", "pressure_observations",
+            sum(1 for _, value, _game in pressure_all if value), len(pressure_all),
+        ),
         _estimate(
             "pressure", "passing_downs",
-            sum(1 for _, v in pressure_passing if v), len(pressure_passing),
+            sum(1 for _, value, _game in pressure_passing if value), len(pressure_passing),
         ),
-        _estimate("zone_shell", "explicit_shells", sum(1 for _, v in zone_shells if v), len(zone_shells)),
+        _estimate(
+            "zone_shell", "explicit_shells",
+            sum(1 for _, value, _game in zone_shells if value), len(zone_shells),
+        ),
     ]
     for form, pairs in sorted(by_formation.items()):
         estimates.append(_estimate(
@@ -351,14 +450,12 @@ def fit_opponent_model(memory: Mapping[str, Any] | None = None,
             sum(1 for _, value in pairs if value), len(pairs),
         ))
     changes = []
-    for metric, pairs in (
+    for metric, triples in (
         ("pressure_on_passing_downs", pressure_passing),
         ("pressure_overall", pressure_all),
         ("zone_shell", zone_shells),
     ):
-        found = _change(pairs, metric)
-        if found:
-            changes.append(found)
+        changes.extend(_changes_respecting_games(triples, metric))
     concept_rows = {
         concept: _concept_row(concept, rows) for concept, rows in sorted(concepts.items())
     }
@@ -405,6 +502,8 @@ def fit_opponent_model(memory: Mapping[str, Any] | None = None,
     missing = []
     if not usable:
         missing.append("verified_executions_with_outcomes")
+    if unscoped_beside_named_games:
+        missing.append("game_id_missing_on_some_snaps_excluded_from_change_detection")
     if not pressure_all:
         missing.append("defensive_labels_that_state_pressure_or_no_pressure")
     if not any(row.get("down") is not None for row in usable):
@@ -419,8 +518,10 @@ def fit_opponent_model(memory: Mapping[str, Any] | None = None,
         "version": LEARNER_VERSION,
         "concept_version": CONCEPT_EVIDENCE_VERSION,
         "usable_verified_snaps": len(usable),
+        "approved_film_observations": len(film_rows),
         "trained_on_recommendations": False,
         "video_observations_included": False,
+        "change_detection": "within_each_game",
         "estimates": estimates,
         "changes": changes,
         "concepts": concept_rows,
@@ -432,8 +533,9 @@ def fit_opponent_model(memory: Mapping[str, Any] | None = None,
         "note": (
             "Rates are shrunk toward 0.5 with a prior strength of 2. "
             "A context is published only at n>=8. A change needs at least "
-            "4 labeled snaps in each half of the game and a shrunk gap of 0.25. "
-            "Two or three snaps stay uncertain."
+            "4 labeled snaps in each half of the same game and a shrunk gap of 0.25. "
+            "Snaps from different games are not compared. Two or three snaps stay uncertain. "
+            "A missing verification flag is not treated as verified."
         ),
     }
 
@@ -521,6 +623,10 @@ def _adjustment(
 def _row_to_record(row: Mapping[str, Any]) -> dict[str, Any] | None:
     if row.get("eligibility") != "verified_execution":
         return None
+    if str(row.get("executed_verification") or "").lower() != "verified":
+        return None
+    if str(row.get("executed_status") or "").lower() != "identified":
+        return None
     if row.get("trusted_vod"):
         return None
     play = row.get("executed_play")
@@ -535,6 +641,7 @@ def _row_to_record(row: Mapping[str, Any]) -> dict[str, Any] | None:
         "snap_seq": row.get("snap_seq") or row.get("id"),
         "snap_id": row.get("snap_id") or row.get("ml_snap_id"),
         "game_id": row.get("game_id") or row.get("session_id"),
+        "opponent_id": row.get("opponent_id"),
         "down": row.get("down"),
         "distance": row.get("distance"),
         "formation": row.get("executed_formation"),
@@ -559,6 +666,8 @@ def opponent_learning_report(
     *,
     opponent_id: str = "cpu",
     game_id: str | None = None,
+    film_store: str | None = None,
+    include_admitted_film: bool = False,
 ) -> dict[str, Any]:
     """Read-only tactical report. Does not write gameplay history."""
     from cfb_coach.madden.model.offense_strategy import current_strategy
@@ -573,16 +682,22 @@ def opponent_learning_report(
         except Exception as exc:  # noqa: BLE001 — report the gap, do not invent rows
             read_error = str(exc)
             rows = []
-    if game_id:
-        rows = [
-            row for row in rows
-            if str(row.get("game_id") or row.get("session_id") or "") == str(game_id)
-        ]
+    scoped = scope_training_rows(rows, opponent_id=opponent_id, game_id=game_id)
+    rows = list(scoped["rows"])
     eligibility: dict[str, int] = {}
     for row in rows:
         key = str(row.get("eligibility") or "unknown")
         eligibility[key] = eligibility.get(key, 0) + 1
     records = [record for record in (_row_to_record(row) for row in rows) if record]
+    admitted_ids: list[str] = []
+    if include_admitted_film and film_store:
+        from cfb_coach.madden.model.film_evidence import load_admitted_records
+
+        admitted = load_admitted_records(
+            film_store, game_id=game_id, opponent_id=opponent_id,
+        )
+        records.extend(admitted)
+        admitted_ids = [str(row.get("evidence_id")) for row in admitted if row.get("evidence_id")]
     model = fit_opponent_model(records=records)
     plan = current_strategy(None, None, learned=model)
     influence = (
@@ -597,10 +712,17 @@ def opponent_learning_report(
         "version": LEARNER_VERSION,
         "opponent_id": opponent_id,
         "game_id": game_id,
+        "opponent_scope": "exact_opponent_id",
+        "game_scope": "requested_game_only" if game_id else "all_games_for_this_opponent",
+        "excluded_missing_opponent": scoped["excluded_missing_opponent"],
+        "excluded_other_opponent": scoped["excluded_other_opponent"],
+        "excluded_other_game": scoped["excluded_other_game"],
         "read_only": True,
         "history_modified": False,
         "learned_from_video": False,
         "usable_verified_snaps": model["usable_verified_snaps"],
+        "approved_film_observations": model.get("approved_film_observations", 0),
+        "admitted_film_evidence_ids": admitted_ids,
         "eligibility_counts": eligibility,
         "recommendation_only": eligibility.get("recommendation_only", 0),
         "trusted_vod_rows_excluded": eligibility.get("trusted_vod", 0),

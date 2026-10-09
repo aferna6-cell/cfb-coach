@@ -160,6 +160,30 @@ The defensive observation stores shell, man or zone, pressure, front, box, safet
 
 With one reported historical CPU game, and that game absent from this workspace, held-out win rate is not established. The Sprint 13 comparison is a synthetic chronological replay: Sprint 12 baseline, opponent learning alone, and opponent learning with adaptive strategy. Snap N sees only earlier snaps.
 
+`ml opponent-learning -o cpu` keeps only rows whose `opponent_id` is exactly `cpu`. A missing opponent id is excluded. A game id keeps that game only. Tendency changes are measured inside one game, not from the end of one game to the start of the next. A snap counts as a verified execution only when verification is explicitly positive.
+
+## Game film
+
+Film import is offline. It does not run inside the live playcaller, does not upload the recording, and does not copy it into Git. `ffmpeg` reads MP4 and MKV locally. Install it with `sudo apt-get install ffmpeg` if `ffprobe` is missing.
+
+Automated today: container duration, frame size, frame rate, source timestamps, a file fingerprint, and coarse motion segments. Ambiguous edges stay unresolved. The same fingerprint imported again is reported as a duplicate and does not reset reviews.
+
+Not automated on real Madden footage: HUD reading, coverage calls, and snap identity. Safety depth is never labeled Cover 2, Cover 3, or Quarters. A two-high look stays `two_high_safety_structure` until a person names a shell. No recognition accuracy is claimed until annotated Madden recordings are tested.
+
+Review writes a separate annotation file. Confirm, correct, reject, and leave-uncertain do not rewrite `madden27.db`. Approving a defensive look can enter the opponent tendency model. It does not create a verified execution. If the log does not already verify the play, the video cannot verify it. `film-approve --rollback` withdraws that export.
+
+```bash
+python3 -m cfb_coach ml film-import /path/to/game.mp4 --game-id GAME_ID --dry-run
+python3 -m cfb_coach ml film-import /path/to/game.mp4 --game-id GAME_ID
+python3 -m cfb_coach ml film-review --game-id GAME_ID --html /tmp/film-review.html
+python3 -m cfb_coach ml film-review --game-id GAME_ID --serve
+python3 -m cfb_coach ml film-report --game-id GAME_ID
+python3 -m cfb_coach ml film-approve --game-id GAME_ID --log /tmp/log-snaps.json -o cpu
+python3 -m cfb_coach ml film-approve --game-id GAME_ID --log /tmp/log-snaps.json --rollback
+```
+
+The store defaults to `~/.cfb-coach/film`. `--dry-run` writes nothing. Manual snap intervals can be passed with `--anchors anchors.json` using `snap_start`, `snap_end`, `formation_interval`, `presnap_interval`, and `postsnap_interval`.
+
 ## Football knowledge
 
 `cfb_coach/madden/model/football_knowledge.py` is a versioned store. General principles, Madden research, verified in-game details, empirical results, and hypotheses stay in separate layers. A play name is a hypothesis about a concept family, not a route diagram. Missing assignments and controller inputs stay unknown. Defensive diagnosis separates observed, inferred, and unknown looks. A two-high shell is not Cover 2 or Quarters, and a previous snap is not the current coverage. Sparse opponent shells use a uniform Bayesian prior and are published only after the sample actually moves that prior.

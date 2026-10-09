@@ -886,12 +886,87 @@ def cmd_ml_opponent_learning(args: argparse.Namespace) -> int:
     try:
         report = opponent_learning_report(
             db, opponent_id=args.opponent, game_id=args.game_id,
+            film_store=getattr(args, "film_store", None),
+            include_admitted_film=bool(getattr(args, "include_admitted_film", False)),
         )
         report["database"] = {"path": str(path), "opened_read_only": True}
         print(json.dumps(report, indent=2, default=str))
         return 0
     finally:
         db.close()
+
+
+def cmd_ml_film_import(args: argparse.Namespace) -> int:
+    """Inspect a local recording. Dry-run writes nothing."""
+    from cfb_coach.madden.model.film_import import import_recording
+    from cfb_coach.madden.model.opponent_learning import readonly_madden_db_path
+
+    anchors = None
+    if getattr(args, "anchors", None):
+        anchors = json.loads(Path(args.anchors).read_text(encoding="utf-8"))
+    report = import_recording(
+        args.path,
+        game_id=args.game_id,
+        store=getattr(args, "store", None),
+        dry_run=bool(args.dry_run),
+        manual_anchors=anchors,
+        db_path=readonly_madden_db_path(),
+    )
+    print(json.dumps(report, indent=2, default=str))
+    return 0 if report.get("ok") else 2
+
+
+def cmd_ml_film_review(args: argparse.Namespace) -> int:
+    """Write or serve the local review page. Does not rewrite gameplay history."""
+    from cfb_coach.madden.model.film_review import load_annotations, render_review_html
+
+    payload = load_annotations(args.store, args.game_id)
+    html = render_review_html(payload)
+    if args.html:
+        Path(args.html).write_text(html, encoding="utf-8")
+    if args.serve:
+        from cfb_coach.madden.model.film_review import serve_review
+
+        serve_review(args.store, args.game_id, host=args.host, port=args.port)
+        return 0
+    if not args.html:
+        print(html)
+    else:
+        print(json.dumps({
+            "html": args.html,
+            "game_id": args.game_id,
+            "history_modified": False,
+            "candidates": len(payload.get("candidates") or []),
+        }, indent=2))
+    return 0
+
+
+def cmd_ml_film_report(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model.film_report import film_report
+
+    report = film_report(args.store, args.game_id)
+    print(json.dumps(report, indent=2, default=str))
+    return 0
+
+
+def cmd_ml_film_approve(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model.film_evidence import approve_admission, propose_admission
+    from cfb_coach.madden.model.film_review import load_annotations
+
+    annotations = load_annotations(args.store, args.game_id)
+    proposal = propose_admission(
+        annotations, json.loads(Path(args.log).read_text(encoding="utf-8")),
+        opponent_id=args.opponent,
+    )
+    if args.rollback:
+        from cfb_coach.madden.model.film_evidence import rollback_admission
+
+        result = rollback_admission(args.store, args.game_id)
+    else:
+        result = approve_admission(args.store, proposal)
+        result["proposal"] = proposal
+    print(json.dumps(result, indent=2, default=str))
+    return 0
 
 
 def cmd_ml_offense_report(args: argparse.Namespace) -> int:
@@ -1410,7 +1485,52 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_ol.add_argument("-o", "--opponent", default="cpu")
     p_ol.add_argument("--game-id", default=None)
+    p_ol.add_argument("--include-admitted-film", action="store_true")
+    p_ol.add_argument("--film-store", default=None)
     p_ol.set_defaults(func=cmd_ml_opponent_learning)
+
+    film_store_default = str(Path.home() / ".cfb-coach" / "film")
+    p_fi = ml_sub.add_parser(
+        "film-import",
+        help="Offline local recording inspection. Does not enter the live playcaller",
+    )
+    p_fi.add_argument("path")
+    p_fi.add_argument("--game-id", default=None)
+    p_fi.add_argument("--dry-run", action="store_true")
+    p_fi.add_argument("--store", default=film_store_default)
+    p_fi.add_argument("--anchors", default=None, help="JSON list of manual snap intervals")
+    p_fi.set_defaults(func=cmd_ml_film_import)
+
+    p_fr = ml_sub.add_parser(
+        "film-review",
+        help="Local HTML review of candidate snaps. Writes annotations, not gameplay history",
+    )
+    p_fr.add_argument("--game-id", required=True)
+    p_fr.add_argument("--store", default=film_store_default)
+    p_fr.add_argument("--html", default=None)
+    p_fr.add_argument("--serve", action="store_true")
+    p_fr.add_argument("--host", default="127.0.0.1")
+    p_fr.add_argument("--port", type=int, default=8765)
+    p_fr.set_defaults(func=cmd_ml_film_review)
+
+    p_rep = ml_sub.add_parser(
+        "film-report",
+        help="Read-only film analysis report",
+    )
+    p_rep.add_argument("--game-id", required=True)
+    p_rep.add_argument("--store", default=film_store_default)
+    p_rep.set_defaults(func=cmd_ml_film_report)
+
+    p_fa = ml_sub.add_parser(
+        "film-approve",
+        help="Admit or withdraw reviewed defensive observations. Does not rewrite snaps",
+    )
+    p_fa.add_argument("--game-id", required=True)
+    p_fa.add_argument("--store", default=film_store_default)
+    p_fa.add_argument("--log", required=True, help="JSON log snaps used only as an identity check")
+    p_fa.add_argument("-o", "--opponent", default="cpu")
+    p_fa.add_argument("--rollback", action="store_true")
+    p_fa.set_defaults(func=cmd_ml_film_approve)
 
     p_pg = ml_sub.add_parser(
         "postgame-experimental",
