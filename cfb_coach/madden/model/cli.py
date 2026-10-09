@@ -333,6 +333,26 @@ def cmd_ml_experimental(args: argparse.Namespace) -> int:
             print(f"model_version: {art.model_version}")
             print(f"artifact_path: {dest}")
             print(f"note: {art.note}")
+            # Keep learning adjustment evidence after every ordinary retrain,
+            # but do NOT replace a deliberately promoted action model without
+            # review. No cold/sparse action data can auto-promote.
+            from cfb_coach.madden.model.offense_action_learning import (
+                load_action_evidence, save_action_evidence,
+                train_action_evidence,
+            )
+            try:
+                existing_action = load_action_evidence(db)
+                if (existing_action or {}).get("mode") == "bounded_active":
+                    print("action_model: existing bounded-active artifact preserved; "
+                          "run offense-action-learn --train to replace it with shadow")
+                else:
+                    shadow_action = train_action_evidence(db)
+                    save_action_evidence(db, shadow_action)
+                    print(f"action_model: shadow | verified_rows: "
+                          f"{shadow_action['n_verified_action_rows']} | "
+                          f"eligible_groups: {shadow_action['ready_groups']}")
+            except Exception as action_exc:
+                print(f"action_model: shadow refresh skipped ({action_exc})")
             if art.n_supervised == 0:
                 print(
                     "WARNING: zero supervised rows in this DB — do not claim the "
@@ -342,8 +362,8 @@ def cmd_ml_experimental(args: argparse.Namespace) -> int:
         inference_mod.set_mode(db, CoachingMode.EXPERIMENTAL)
         print("mode: experimental")
         print("EXPERIMENTAL PILOT — not a validated competitive model.")
-        print("Offense-only ML selection within the applied five-formation book.")
-        print("Heuristic choice is shown alongside the ML choice.")
+        print("Offense-only ML selection within the full confirmed offensive playbook.")
+        print("Model selects the offensive play; heuristic is a failure fallback only.")
         print("On timeout/error/illegal → heuristic fallback.")
         print("Restore heuristic: python -m cfb_coach ml heuristic")
     finally:
