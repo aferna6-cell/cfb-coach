@@ -210,9 +210,29 @@ def choose_offense_action(
                 "why": a.get("why"), "payload": a,
             })
 
+    # Learned action rankings start in SHADOW. Only an explicitly enabled
+    # artifact with enough separate verified applied and reference examples
+    # can add a tiny observational tie-breaker. Never bypass grounded
+    # settings, current look, armed-state or no-action safety checks.
+    if db is not None and rows:
+        from cfb_coach.madden.model.offense_action_learning import action_signal
+
+        for candidate in rows:
+            signal = action_signal(
+                db, kind=candidate["kind"], action_id=str(candidate["id"]),
+                play=play, down=getattr(sit, "down", None),
+                distance=getattr(sit, "distance", None),
+            )
+            candidate["action_model"] = signal
+            candidate["score"] = round(
+                candidate["score"] + float(signal.get("ranking_shift") or 0.0), 5
+            )
+
     rows.sort(key=lambda r: (-r["score"], r["kind"], str(r["id"])))
-    summary = [{"kind": x["kind"], "id": x["id"], "score": x["score"]}
-               for x in rows]
+    summary = [{
+        "kind": x["kind"], "id": x["id"], "score": x["score"],
+        "action_model": x.get("action_model"),
+    } for x in rows]
     summary.append({"kind": "none", "id": "NO_ADJUSTMENT",
                     "score": round(no_action_score, 5)})
     if not rows or rows[0]["score"] <= no_action_score:
@@ -234,10 +254,11 @@ def choose_offense_action(
         "macro": best["payload"] if best["kind"] == "macro" else None,
         "adjustment": best["payload"] if best["kind"] == "adjustment" else None,
         "reason": best["why"] or "",
-        "scores_are": "research_policy_not_learned_action_effect",
+        "scores_are": "research_policy_not_learned_action_effect_plus_observational_tiebreak",
         "candidates": summary[:8],
         "no_action_score": no_action_score,
         "top_action_score": best["score"],
+        "action_model": best.get("action_model"),
         "why_now": (
             "observed or independently confirmed defensive look"
             if credible_look else "verified situational condition"
