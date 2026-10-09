@@ -122,6 +122,7 @@ def rebuild_offense_attachments(
     audibles: dict[str, list[str]] | None = None,
     model_action_policy: bool = False,
     play_prediction: dict[str, Any] | None = None,
+    preselected_action: dict[str, Any] | None = None,
 ) -> Any:
     """Build reads / macro / adjustment for an already-chosen in-book play."""
     from cfb_coach.madden.data import reads_for
@@ -162,20 +163,22 @@ def rebuild_offense_attachments(
         cooled = set()
 
     if model_action_policy:
-        from cfb_coach.madden.model.offense_action_policy import choose_offense_action
+        decision = preselected_action
+        if decision is None:
+            from cfb_coach.madden.model.offense_action_policy import choose_offense_action
 
-        decision = choose_offense_action(
-            formation=formation, play=play, sit=sit, book=book,
-            active=active, weights=weights, cooled=cooled,
-            score_phase=score_phase, audibles=audibles,
-            prediction=play_prediction,
-            allow_macros=(getattr(sit, "extras", None) or {}).get(
-                "live_macros", True
-            ) is not False,
-            repeated=repeated,
-            db=db,
-            opponent_id=opponent_id,
-        )
+            decision = choose_offense_action(
+                formation=formation, play=play, sit=sit, book=book,
+                active=active, weights=weights, cooled=cooled,
+                score_phase=score_phase, audibles=audibles,
+                prediction=play_prediction,
+                allow_macros=(getattr(sit, "extras", None) or {}).get(
+                    "live_macros", True
+                ) is not False,
+                repeated=repeated,
+                db=db,
+                opponent_id=opponent_id,
+            )
         chosen_macro = decision.get("macro")
         chosen_adj = decision.get("adjustment")
         call = MaddenCall(
@@ -441,7 +444,40 @@ def apply_experimental_offense(
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
-        top = ranked[0]
+        # Jointly choose (formation, play, adjustment plan). Every eligible
+        # installed play contributes at least its NO_ADJUSTMENT decision.
+        from cfb_coach.madden.model.offense_coordinator import (
+            choose_joint_offensive_decision,
+        )
+        from cfb_coach.madden.playcaller import _cooled_macros, _learned_macros
+
+        try:
+            live_weights = _learned_macros(db, opponent_id)
+            live_cooled = _cooled_macros(db, sit)
+        except Exception:  # noqa: BLE001
+            live_weights, live_cooled = {}, set()
+        top, action_decision, joint_audit = choose_joint_offensive_decision(
+            ranked,
+            sit=sit,
+            book=book,
+            active=list(active or []),
+            db=db,
+            opponent_id=opponent_id,
+            weights=live_weights,
+            cooled=live_cooled,
+            audibles=audibles,
+            allow_macros=(getattr(sit, "extras", None) or {}).get(
+                "live_macros", True
+            ) is not False,
+            repeated=False,
+            session_id=session_id or game_id,
+            snap_seq=snap_seq,
+        )
+        selection_audit = dict(selection_audit)
+        selection_audit["joint_decision"] = joint_audit
+        latency = (time.perf_counter() - started) * 1000.0
+        if latency > budget:
+            return _fallback(MLStatus.TIMEOUT, latency)
         ml_form, ml_play = top["formation"], top["play"]
         # Hard guard: ML pick must be in situational pool (or the heuristic).
         legal_set = set(pairs)
@@ -493,6 +529,7 @@ def apply_experimental_offense(
             audibles=audibles,
             model_action_policy=True,
             play_prediction=top,
+            preselected_action=action_decision,
         )
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
@@ -522,7 +559,7 @@ def apply_experimental_offense(
             "inventory_confirmed": inv_verified,
             "inventory_eligible_count": len(pairs),
             "inventory_situation_excluded": len(all_pairs) - len(pairs),
-            "selection_policy": "model_primary_contextual_variety.v2",
+            "selection_policy": "adaptive_offensive_coordinator.joint.v1",
             "selection_audit": selection_audit,
             "offense_action": getattr(call, "ml_offense_action", None),
             # Decision-time signals only. Never use observed post-snap

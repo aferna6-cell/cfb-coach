@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 
-POLICY_VERSION = "offense_action_policy.situational_verified.v2"
+POLICY_VERSION = "offense_action_policy.joint_legal.v3"
 
 
 def _risk_threshold(sit: Any, *, credible_look: bool) -> float:
@@ -54,6 +54,71 @@ def _verified_button_sequence(value: Any) -> bool:
     )
 
 
+def _compatible_adjustments(first: Mapping[str, Any], second: Mapping[str, Any]) -> bool:
+    """Two manually executable primitives may compose only without state conflicts."""
+    if first.get("id") == second.get("id"):
+        return False
+    kinds = (first.get("kind"), second.get("kind"))
+    if "audible" in kinds or "motion" in kinds:
+        return False
+    if kinds[0] == kinds[1] == "pass_protection":
+        return False
+    if kinds[0] == kinds[1] == "hot_route":
+        targets = (
+            str(first.get("target") or "").strip().lower(),
+            str(second.get("target") or "").strip().lower(),
+        )
+        if not all(targets) or targets[0] == targets[1]:
+            return False
+    return all(_verified_button_sequence(item.get("buttons")) for item in (first, second))
+
+
+def _compose_adjustment_rows(
+    rows: Sequence[Mapping[str, Any]], *, no_action_score: float,
+) -> list[dict[str, Any]]:
+    """Bounded two-step search over sourced primitives; macros remain atomic."""
+    singles = [r for r in rows if r.get("kind") == "adjustment"]
+    composed: list[dict[str, Any]] = []
+    for index, first in enumerate(singles):
+        for second in singles[index + 1:]:
+            a = first.get("payload") or {}
+            b = second.get("payload") or {}
+            if not _compatible_adjustments(a, b):
+                continue
+            # Conservative prior: the second primitive contributes only half
+            # its margin and composition pays an explicit execution cost.
+            first_margin = max(0.0, float(first["score"]) - no_action_score)
+            second_margin = max(0.0, float(second["score"]) - no_action_score)
+            score = no_action_score + first_margin + 0.5 * second_margin - 0.02
+            steps = [dict(a), dict(b)]
+            identifiers = sorted((str(first["id"]), str(second["id"])))
+            composed.append({
+                "kind": "multi_adjustment",
+                "id": "+".join(identifiers),
+                "score": round(score, 5),
+                "research_score": round(score, 5),
+                "observational_model_shift": 0.0,
+                "observational_model_n": None,
+                "why": "; ".join(str(x.get("why") or "") for x in steps if x.get("why")),
+                "payload": {
+                    "id": "+".join(identifiers),
+                    "kind": "multi_adjustment",
+                    "label": " + ".join(str(x.get("label") or x.get("id")) for x in steps),
+                    "buttons": " ; THEN ".join(str(x["buttons"]) for x in steps),
+                    "steps": steps,
+                    "sources": sorted({
+                        source for item in steps for source in (item.get("sources") or [])
+                    }),
+                    "execution_cost": 0.02,
+                    "verified_primitives": True,
+                },
+                "complexity": 2,
+                "play_clock_feasible": True,
+                "combination_evidence": "researched_primitives_not_verified_combination_effect",
+            })
+    return composed
+
+
 
 def choose_offense_action(
     *,
@@ -71,8 +136,9 @@ def choose_offense_action(
     repeated: bool = False,
     db: Any = None,
     opponent_id: str = "",
+    action_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Choose exactly one eligible researched action, or none.
+    """Choose one legal adjustment plan, including bounded multi-step plans.
 
     Every action must fit the *model-selected* in-book (formation, play).
     Candidate ranking uses uncertainty and evidence quality, not fabricated
@@ -90,6 +156,7 @@ def choose_offense_action(
         "reason": "no eligible supported adjustment",
         "scores_are": "research_policy_not_learned_action_effect",
         "candidates": [],
+        "legal_plans": [],
         "no_action_compared": True,
     }
     if play not in (book or {}).get(formation, []):
@@ -218,7 +285,11 @@ def choose_offense_action(
         load_action_evidence, score_shift,
     )
 
-    learned = load_action_evidence(db) if db is not None else None
+    learned = (
+        dict(action_evidence)
+        if action_evidence is not None
+        else load_action_evidence(db) if db is not None else None
+    )
     learned_mode = (learned or {}).get("mode", "none")
     for row in rows:
         shift, evidence = score_shift(
@@ -237,11 +308,22 @@ def choose_offense_action(
             (evidence["n_action"], evidence["n_unchanged"]) if evidence else None
         )
         row["score"] = round(float(row["score"]) + shift, 5)
+        row.setdefault("complexity", 1)
+        row.setdefault("play_clock_feasible", True)
+        row.setdefault("combination_evidence", "single_researched_or_verified_action")
+    rows.extend(_compose_adjustment_rows(rows, no_action_score=no_action_score))
     rows.sort(key=lambda r: (-r["score"], r["kind"], str(r["id"])))
-    summary = [{"kind": x["kind"], "id": x["id"], "score": x["score"]}
+    summary = [{"kind": x["kind"], "id": x["id"], "score": x["score"],
+                "complexity": x.get("complexity", 1)}
                for x in rows]
     summary.append({"kind": "none", "id": "NO_ADJUSTMENT",
-                    "score": round(no_action_score, 5)})
+                    "score": round(no_action_score, 5), "complexity": 0})
+    legal_plans = [dict(row) for row in rows] + [{
+        "kind": "none", "id": "NO_ADJUSTMENT",
+        "score": round(no_action_score, 5), "payload": None,
+        "why": "run the selected play unchanged", "complexity": 0,
+        "play_clock_feasible": True, "observational_model_shift": 0.0,
+    }]
     if not rows or rows[0]["score"] <= no_action_score:
         return {
             **empty,
@@ -250,6 +332,7 @@ def choose_offense_action(
                 if rows else "no eligible supported adjustment"
             ),
             "candidates": summary,
+            "legal_plans": legal_plans,
             "no_action_score": no_action_score,
             "top_action_score": rows[0]["score"] if rows else None,
             "observational_evidence_mode": learned_mode,
@@ -261,10 +344,13 @@ def choose_offense_action(
         "policy_version": POLICY_VERSION,
         "kind": best["kind"], "id": best["id"],
         "macro": best["payload"] if best["kind"] == "macro" else None,
-        "adjustment": best["payload"] if best["kind"] == "adjustment" else None,
+        "adjustment": best["payload"] if best["kind"] in (
+            "adjustment", "multi_adjustment"
+        ) else None,
         "reason": best["why"] or "",
         "scores_are": "research_policy_not_learned_action_effect",
         "candidates": summary[:8],
+        "legal_plans": legal_plans,
         "no_action_score": no_action_score,
         "top_action_score": best["score"],
         "observational_evidence_mode": learned_mode,

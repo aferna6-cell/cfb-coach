@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, Mapping
 
 from cfb_coach.madden import catalog, playbook, research_db
@@ -20,8 +21,22 @@ from cfb_coach.madden.model.experimental_live import resolve_artifact_path
 META_PENDING = "ml_offense_design_pending.v1"
 META_HISTORY = "ml_offense_design_history.v1"
 META_BLUEPRINTS = "ml_offense_created_blueprints.v1"
+META_CONFIG_VERIFIED = "ml_offense_verified_blueprints.v1"
 META_APPROVED = "ml_offense_verified_macros.v1:{opponent}"
 MAX_FORMATIONS = 12  # user-adjustable formation limit; all plays always included
+
+SITUATION_MATRIX: tuple[dict[str, Any], ...] = (
+    {"id": "normal_down", "down": 1, "distance": 10, "yardline": 35},
+    {"id": "short_yardage", "down": 3, "distance": 2, "yardline": 55},
+    {"id": "third_long", "down": 3, "distance": 10, "yardline": 55},
+    {"id": "red_zone", "down": 2, "distance": 6, "yardline": 85, "red_zone": True},
+    {"id": "goal_line", "down": 2, "distance": 2, "yardline": 98, "red_zone": True, "goal_line": True},
+    {"id": "backed_up", "down": 1, "distance": 10, "yardline": 5},
+    {"id": "two_minute_trailing", "down": 2, "distance": 7, "yardline": 60,
+     "two_minute": True, "score_us": 17, "score_them": 24},
+    {"id": "clock_management_lead", "down": 2, "distance": 6, "yardline": 60,
+     "two_minute": True, "score_us": 24, "score_them": 17},
+)
 
 
 def _canonical(value: Any) -> str:
@@ -81,6 +96,140 @@ def _rate(art: Any, form: str, play: str, opponent: str) -> float:
         for down, distance, yardline in checks
     ]
     return sum(vals) / len(vals)
+
+
+def _verified_roster_fit(roster: Any, *, has_run: bool, has_pass: bool) -> tuple[float, dict[str, Any]]:
+    """Tiny transparent fit term from explicitly present roster features."""
+    if roster is None:
+        return 0.0, {"status": "unavailable", "features_used": []}
+    values: list[tuple[str, float]] = []
+    for feature in getattr(roster, "features", ()) or ():
+        value = getattr(feature, "value_number", None)
+        if getattr(feature, "missing", True) or value is None:
+            continue
+        key = str(getattr(feature, "key", "")).lower()
+        relevant = (
+            has_run and any(x in key for x in ("run_block", "halfback", "running_back"))
+        ) or (
+            has_pass and any(x in key for x in (
+                "pass_block", "quarterback", "receiver", "tight_end", "speed"
+            ))
+        )
+        if relevant:
+            values.append((key, float(value)))
+    if not values:
+        return 0.0, {"status": "no_relevant_verified_features", "features_used": []}
+    # Ratings may be 0..1 or 0..100. Normalize and cap the portfolio influence.
+    normalized = [value / 100.0 if value > 1.0 else value for _, value in values]
+    fit = max(-0.02, min(0.02, (sum(normalized) / len(normalized) - 0.5) * 0.04))
+    return fit, {
+        "status": "verified_features_applied",
+        "features_used": [name for name, _ in values],
+        "bounded_score_term": round(fit, 6),
+    }
+
+
+def _opponent_prior(opponent_context: Any) -> dict[str, Any]:
+    counts: dict[str, int] = {}
+    if opponent_context is not None:
+        for tendency in getattr(opponent_context, "tendencies", ()) or ():
+            key = str(getattr(tendency, "key", None) or getattr(tendency, "bucket", "")).strip()
+            n = int(
+                getattr(tendency, "sample_size", None)
+                if getattr(tendency, "sample_size", None) is not None
+                else getattr(tendency, "count", 0) or 0
+            )
+            if key and n > 0:
+                counts[key] = counts.get(key, 0) + n
+    n = sum(counts.values())
+    dominant = max(counts, key=lambda k: (counts[k], k)) if counts else None
+    return {
+        "sample_size": n,
+        "confidence": round(n / (n + 20.0), 4) if n else 0.0,
+        "distribution": counts,
+        "dominant_tendency": dominant,
+        "source": "verified_opponent_context" if counts else "unknown",
+    }
+
+
+def _formation_situation_scores(
+    art: Any,
+    *,
+    formation: str,
+    plays: list[str],
+    opponent: str,
+    opponent_type: str,
+    opponent_prior: Mapping[str, Any],
+) -> tuple[dict[str, float], dict[str, list[str]]]:
+    """Value the formation in every required game state using concept breadth."""
+    from cfb_coach.madden.model.football_situation import (
+        evaluate_situation, score_play_suitability,
+    )
+
+    situation_scores: dict[str, float] = {}
+    situation_answers: dict[str, list[str]] = {}
+    tendency = opponent_prior.get("dominant_tendency")
+    tendency_conf = float(opponent_prior.get("confidence") or 0.0)
+    for scenario in SITUATION_MATRIX:
+        sit = SimpleNamespace(
+            **scenario,
+            coverage_hint=None,
+            coverage_source="none",
+            extras={"quarter": 4 if scenario.get("two_minute") else 2},
+        )
+        state = evaluate_situation(
+            sit,
+            opponent_evidence={
+                "dominant_coverage": tendency,
+                "confidence": tendency_conf,
+                "sample_size": int(opponent_prior.get("sample_size") or 0),
+            },
+        )
+        by_concept: dict[str, tuple[float, str]] = {}
+        for play in plays:
+            prediction = experimental_model.predict_success(
+                art, formation=formation, play=play,
+                down=scenario["down"], distance=scenario["distance"],
+                yardline=scenario["yardline"], opponent_id=opponent,
+                opponent_type=opponent_type,
+                coverage_hint=None, coverage_source="none",
+                heuristic_bonus=0.0,
+            )
+            football = score_play_suitability(play, state)
+            value = float(prediction["probability"]) + float(football["proxy_score"])
+            concept = experimental_model._play_concept(play)
+            if concept not in by_concept or value > by_concept[concept][0]:
+                by_concept[concept] = (value, play)
+        leaders = sorted(by_concept.values(), reverse=True)
+        top = leaders[:min(3, len(leaders))]
+        situation_scores[scenario["id"]] = round(
+            sum(value for value, _ in top) / len(top), 6
+        ) if top else 0.0
+        situation_answers[scenario["id"]] = [play for _, play in top]
+    return situation_scores, situation_answers
+
+
+def _suggest_audibles(plays: list[str], rankings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Suggest review candidates only; never claim the audible is installed."""
+    ordered = [str(row["play"]) for row in rankings]
+    buckets = (
+        ("run", lambda play: catalog.is_run(play)),
+        ("quick_pass", lambda play: not catalog.is_run(play) and any(
+            token in play.lower() for token in ("slant", "mesh", "stick", "spacing", "flat")
+        )),
+        ("shot", lambda play: not catalog.is_run(play) and any(
+            token in play.lower() for token in ("vert", "post", "fade", "wheel")
+        )),
+    )
+    suggestions = []
+    for role, predicate in buckets:
+        play = next((candidate for candidate in ordered if predicate(candidate)), None)
+        if play:
+            suggestions.append({
+                "role": role, "play": play,
+                "status": "SUGGESTED_NEEDS_IN_GAME_VERIFICATION",
+            })
+    return suggestions
 
 
 def _play_rankings(
@@ -159,6 +308,8 @@ def design_offense(
     max_formations: int = MAX_FORMATIONS,
     artifact: Any = None,
     catalogue: Mapping[str, dict[str, list[str]]] | None = None,
+    roster_snapshot: Any = None,
+    opponent_context: Any = None,
 ) -> dict[str, Any]:
     """Deterministic formation-level design. Installs ALL catalogued plays per chosen formation.
 
@@ -173,13 +324,17 @@ def design_offense(
         b: catalog.book_formations("offense", b) for b in catalog.book_names("offense")
     }
     art = artifact if artifact is not None else _load_artifact(db)
+    from cfb_coach.opponents import is_cpu_opponent
+
+    opponent_type = "cpu" if is_cpu_opponent(opponent_id) else "human"
+    opponent_prior = _opponent_prior(opponent_context)
     if not all_books:
         raise ValueError("No Madden offensive formation catalog is available")
 
     best_by_form: dict[str, dict[str, Any]] = {}
     for source, formations in all_books.items():
         for form, ps in formations.items():
-            if not ps or "hail mary" in form.lower() or "goal line" in form.lower():
+            if not ps:
                 continue
             ranking = _play_rankings(art, source, form, ps, opponent_id, active)
             if not ranking:
@@ -189,6 +344,7 @@ def design_offense(
             picks = list(dict.fromkeys(ps))
             is_current = form in (active.get("formations") or {})
             run = any(catalog.is_run(p) for p in picks)
+            has_pass = any(not catalog.is_run(p) for p in picks)
             # Score formations using the spread of concepts (not just one
             # anomalously high-ranked screen). A single screen cannot dictate
             # the score of an entire formation.
@@ -197,19 +353,48 @@ def design_offense(
                 concept = row["concept"]
                 if concept not in best_by_concept:
                     best_by_concept[concept] = row["score"]
-            balanced = sorted(best_by_concept.values(), reverse=True)
-            if len(balanced) > 1:
-                rank = sum(balanced[:min(6, len(balanced))]) / min(6, len(balanced))
-            else:
-                rank = balanced[0]
+            situation_scores, situation_answers = _formation_situation_scores(
+                art,
+                formation=form,
+                plays=picks,
+                opponent=opponent_id,
+                opponent_type=opponent_type,
+                opponent_prior=opponent_prior,
+            )
+            balanced = sorted(situation_scores.values())
+            # Mean across all required states plus a floor term prevents one
+            # spectacular play/state from carrying an otherwise narrow formation.
+            rank = sum(balanced) / len(balanced)
+            rank += 0.10 * min(balanced)
             rank += 0.014 if is_current else 0.0
             rank += 0.008 if run else 0.0
             rank += 0.002 * len(best_by_concept)
+            roster_term, roster_fit = _verified_roster_fit(
+                roster_snapshot, has_run=run, has_pass=has_pass
+            )
+            rank += roster_term
+            strongest_states = sorted(
+                situation_scores, key=lambda key: (-situation_scores[key], key)
+            )[:3]
             entry = {
                 "formation": form, "source_book": source, "plays": picks,
                 "score": round(rank, 6), "has_run": run,
                 "top_play": ranking[0]["play"],
                 "model_top_probability": ranking[0]["score"],
+                "situation_scores": situation_scores,
+                "situation_answers": situation_answers,
+                "addresses": strongest_states,
+                "selection_reason": (
+                    "multi-situation formation value, concept breadth, portfolio fit, "
+                    "and bounded verified roster/opponent context"
+                ),
+                "roster_fit": roster_fit,
+                "opponent_prior": opponent_prior,
+                "suggested_audibles": _suggest_audibles(picks, ranking),
+                "uncertainty": (
+                    "formation value is a situation-aware proxy; no causal win-rate "
+                    "claim and current-snap coverage is not presumed"
+                ),
             }
             if form not in best_by_form or (
                 entry["score"], source
@@ -259,6 +444,26 @@ def design_offense(
                 "source_book": sources[f], "plays_included": len(formations[f]),
                 "note": "Install the complete formation from this source; no individual play editing",
             })
+    removed = [item["formation"] for item in changes if item["action"] == "REMOVE_FORMATION"]
+    added = [item["formation"] for item in changes if item["action"] == "ADD_FORMATION"]
+    replacements = [
+        {"remove": old_form, "add": new_form}
+        for old_form, new_form in zip(removed, added)
+    ]
+    situation_coverage = {
+        scenario["id"]: [
+            {
+                "formation": row["formation"],
+                "score": row["situation_scores"][scenario["id"]],
+                "answer_plays": row["situation_answers"][scenario["id"]],
+            }
+            for row in sorted(
+                chosen,
+                key=lambda item: -item["situation_scores"][scenario["id"]],
+            )[:3]
+        ]
+        for scenario in SITUATION_MATRIX
+    }
 
     expected = _digest(active)
     proposal = {
@@ -278,10 +483,43 @@ def design_offense(
             "reason": "Model-designed whole formations with every catalogued play from selected source",
         },
         "changes": changes,
-        "candidate_formations": len(ranks), "ranked_formations": ranks[:12],
+        "replacements": replacements,
+        "candidate_formations": len(ranks),
+        "catalog_formations_evaluated": len(ranks),
+        "ranked_formations": ranks[:max_formations],
+        "formation_evaluations": ranks,
+        "chosen_formation_details": chosen,
+        "situation_coverage": situation_coverage,
+        "suggested_audibles": {
+            row["formation"]: row["suggested_audibles"] for row in chosen
+        },
         "macro_blueprints": _macro_drafts(formations, sources),
         "n_plays": all_pairs,
         "inventory_id": inv_id,
+        "complete_inventory_fingerprint": inv_id,
+        "provenance": {
+            "model_version": art.model_version,
+            "knowledge_version": art.knowledge_version,
+            "evidence_quality": art.evidence_quality,
+            "supervised_examples": art.n_supervised,
+            "situation_knowledge": "madden.football_situation.v1",
+            "opponent": opponent_prior,
+            "roster": (
+                "verified_snapshot_fields_only"
+                if roster_snapshot is not None else "unavailable"
+            ),
+            "research_adjustments": "cfb_coach.madden.research_db",
+        },
+        "uncertainty": {
+            "current_defensive_coverage": "unknown before each game snap",
+            "formation_scores": "situation-aware proxy, not causal win probability",
+            "roster_data": (
+                "verified fields applied with bounded influence"
+                if roster_snapshot is not None else "not provided"
+            ),
+            "opponent_sample_size": opponent_prior["sample_size"],
+            "opponent_confidence": opponent_prior["confidence"],
+        },
         "editor_requires_confirmation": True,
         "notes": [
             "Proposal only; live offensive book is not changed.",
@@ -428,6 +666,91 @@ def verified_created_macros(db: Any, opponent_id: str) -> list[dict[str, Any]]:
     return [dict(m) for m in obj.get("macros") or [] if m.get("name") and m.get("verified_armed")]
 
 
+def verified_macro_configurations(db: Any) -> list[dict[str, Any]]:
+    """Editor-verified blueprint configurations that are not necessarily armed."""
+    try:
+        obj = json.loads(db.get_meta(META_CONFIG_VERIFIED) or "{}")
+    except (TypeError, ValueError):
+        return []
+    return [
+        dict(item) for item in obj.get("macros") or []
+        if item.get("name") and item.get("configuration_verified")
+    ]
+
+
+def _blueprint_for_name(db: Any, name: str) -> dict[str, Any]:
+    try:
+        designs = json.loads(db.get_meta(META_BLUEPRINTS) or "{}")
+    except (TypeError, ValueError):
+        designs = {}
+    blueprint = next(
+        (dict(item) for item in designs.get("macro_blueprints") or []
+         if item.get("name") == name),
+        None,
+    )
+    if not blueprint:
+        raise ValueError("Name is not a generated macro blueprint from a confirmed installed design")
+    return blueprint
+
+
+def _validate_blueprint_sources(db: Any, blueprint: Mapping[str, Any]) -> list[dict[str, Any]]:
+    active_book = playbook.load_books(db).get("offense") or {}
+    pairs = [
+        item for item in blueprint.get("base_pairs") or []
+        if item.get("play") in (active_book.get("formations") or {}).get(
+            item.get("formation"), []
+        )
+    ]
+    action_ids = list(blueprint.get("source_action_ids") or [])
+    if not action_ids and blueprint.get("source_action_id"):
+        action_ids = [blueprint["source_action_id"]]
+    sources = {
+        str(item.get("id")): item for item in research_db.offense_adjustments()
+        if item.get("id")
+    }
+    actions = [sources[action_id] for action_id in action_ids if action_id in sources]
+    expected_citations = {
+        source for action in actions for source in (action.get("sources") or [])
+    }
+    if (
+        not pairs
+        or not blueprint.get("settings")
+        or len(actions) != len(action_ids)
+        or expected_citations != set(blueprint.get("source_ids") or [])
+    ):
+        raise ValueError("Macro is not grounded in the installed book and current researched settings")
+    if len(blueprint.get("settings") or []) != len(actions):
+        raise ValueError("Macro setting count no longer matches its researched primitives")
+    return pairs
+
+
+def verify_created_macro_configuration(
+    db: Any, *, name: str, attestation: str,
+) -> dict[str, Any]:
+    """Move a draft to VERIFIED without claiming an occupied in-game slot."""
+    if len((attestation or "").strip()) < 25:
+        raise ValueError("Explicit in-game editor configuration attestation required")
+    blueprint = _blueprint_for_name(db, name)
+    pairs = _validate_blueprint_sources(db, blueprint)
+    existing = verified_macro_configurations(db)
+    if any(item["name"] == name for item in existing):
+        return {"name": name, "configuration_verified": True, "armed": False}
+    verified = dict(blueprint)
+    verified.update({
+        "status": "VERIFIED_NOT_ARMED",
+        "configuration_verified": True,
+        "verified_armed": False,
+        "configuration_verified_ts": datetime.now(timezone.utc).isoformat(),
+        "configuration_evidence": attestation.strip(),
+        "base_pairs": pairs,
+    })
+    db.set_meta(
+        META_CONFIG_VERIFIED,
+        _canonical({"schema": 1, "macros": existing + [verified]}),
+    )
+    return {"name": name, "configuration_verified": True, "armed": False}
+
+
 def unverify_created_macro(db: Any, *, name: str, opponent_id: str) -> dict[str, Any]:
     """Immediately stop live ML from offering a removed/unarmed custom macro."""
     existing = verified_created_macros(db, opponent_id)
@@ -457,28 +780,13 @@ def verify_created_macro(
 
     if len((attestation or "").strip()) < 25:
         raise ValueError("In-game macro creation, settings and armed slot attestation required")
-    raw = db.get_meta(META_BLUEPRINTS)
-    try:
-        designs = json.loads(raw) if raw else {}
-    except (TypeError, ValueError):
-        designs = {}
-    rows = designs.get("macro_blueprints") or []
-    blueprint = next((m for m in rows if m.get("name") == name), None)
-    if not blueprint:
-        raise ValueError("Name is not a generated macro blueprint from a confirmed installed design")
-    active_book = playbook.load_books(db).get("offense") or {}
-    pairs = [
-        item for item in blueprint["base_pairs"]
-        if item.get("play") in (active_book.get("formations") or {}).get(item.get("formation"), [])
-    ]
-    if not pairs or not blueprint.get("settings") or not blueprint.get("source_ids"):
-        raise ValueError("Macro not grounded in installed playbook and researched settings")
-    source = next(
-        (a for a in research_db.offense_adjustments()
-         if a.get("id") == blueprint.get("source_action_id")), None
+    blueprint = _blueprint_for_name(db, name)
+    pairs = _validate_blueprint_sources(db, blueprint)
+    # Preserve a separately inspectable VERIFIED state even when the legacy
+    # one-step command explicitly verifies and arms in the same transaction.
+    verify_created_macro_configuration(
+        db, name=name, attestation=attestation,
     )
-    if not source or set(source.get("sources") or []) != set(blueprint.get("source_ids") or []):
-        raise ValueError("Macro's researched source and settings have changed; re-design")
     existing = verified_created_macros(db, opponent_id)
     if any(m["name"] == name for m in existing):
         return {"name": name, "already_verified": True}
@@ -491,6 +799,7 @@ def verify_created_macro(
         raise ValueError("All eight slots occupied; explicitly retire an existing macro after swapping it in Madden")
     approved = dict(blueprint)
     approved.update({
+        "status": "ARMED", "configuration_verified": True,
         "verified_armed": True, "opponent_id": opponent_id,
         "verified_ts": datetime.now(timezone.utc).isoformat(),
         "evidence": attestation.strip(), "base_pairs": pairs,

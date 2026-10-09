@@ -15,7 +15,7 @@ from cfb_coach.madden.offense_macros import (
     clean_ids, offense_detail, pairs_in_book,
 )
 from cfb_coach.madden.model.offense_designer import (
-    META_BLUEPRINTS, verified_created_macros,
+    META_BLUEPRINTS, verified_created_macros, verified_macro_configurations,
 )
 
 
@@ -59,6 +59,7 @@ def offense_actions_report(db: Any, opponent_id: str) -> dict[str, Any]:
             "trigger": detail.get("fire_when") or "",
         })
     generated = verified_created_macros(db, opponent_id)
+    configurations = verified_macro_configurations(db)
     approved = []
     for item in generated:
         compatible = [
@@ -79,7 +80,9 @@ def offense_actions_report(db: Any, opponent_id: str) -> dict[str, Any]:
     except (TypeError, ValueError):
         blueprints = {}
     drafts = [str(x.get("name")) for x in blueprints.get("macro_blueprints") or []
-              if x.get("name") and x.get("name") not in {p["name"] for p in approved}]
+              if x.get("name")
+              and x.get("name") not in {p["name"] for p in approved}
+              and x.get("name") not in {p["name"] for p in configurations}]
     return {
         "opponent_id": opponent_id,
         "applied_book": installed.get("name") or "none",
@@ -89,9 +92,11 @@ def offense_actions_report(db: Any, opponent_id: str) -> dict[str, Any]:
         "saved_loadout_macros": len(macros),
         "ready_in_saved_loadout": sum(int(m["eligible_if_editor_armed_and_triggered"]) for m in macros),
         "verified_model_created_macros": len(approved),
+        "verified_unarmed_macro_configurations": len(configurations),
         "generated_draft_macros": len(drafts),
         "existing_macros": macros,
         "verified_generated_macros": approved,
+        "verified_unarmed_configurations": configurations,
         "unverified_generated_drafts": drafts,
         "no_action_available": True,
         "readiness_note": (

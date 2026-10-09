@@ -44,52 +44,22 @@ def _recent_calls(
         return []
 
 
-def _situational_adjustment(play: str, sit: Any) -> tuple[float, str]:
-    """Small play-specific suitability signal; not a heuristic play choice."""
+def _situational_adjustment(
+    play: str,
+    sit: Any,
+    opponent_evidence: Mapping[str, Any] | None = None,
+) -> tuple[float, str]:
+    """Explicit football proxy layered on the learned play probability."""
     if sit is None:
         return 0.0, "situation unavailable"
-    down, distance = getattr(sit, "down", None), getattr(sit, "distance", None)
-    two_minute = bool(getattr(sit, "two_minute", False))
-    if down is None or distance is None:
-        return 0.0, "down/distance unknown"
-    try:
-        d, yards = int(down), int(distance)
-    except (TypeError, ValueError):
-        return 0.0, "down/distance unparseable"
-    run, screen = is_run(play), _play_family(play) == "screen"
-    delta = 0.0
-    reasons: list[str] = []
-    if d in (3, 4) and yards >= 7:
-        if run:
-            delta -= 0.45  # eligible only if no legal pass survives
-            reasons.append("third/fourth-and-long ground gain risk")
-        if screen:
-            delta -= 0.09
-            reasons.append("screen behind conversion distance")
-        if not run and not screen and is_deep(play):
-            delta += 0.025
-            reasons.append("route potentially reaches sticks")
-    elif d in (3, 4) and yards <= 2:
-        if run:
-            delta += 0.025
-            reasons.append("short-yardage run option")
-        if is_deep(play):
-            delta -= 0.035
-            reasons.append("long-developing route on short yardage")
-    if two_minute and yards >= 4 and run:
-        score_us, score_them = (
-            getattr(sit, "score_us", None), getattr(sit, "score_them", None)
-        )
-        if score_us is not None and score_them is not None:
-            if score_us < score_them:
-                delta -= 0.07
-                reasons.append("trailing in two-minute drill")
-            elif score_us > score_them:
-                delta += 0.04
-                reasons.append("protecting lead / keeping clock running")
-        # With an unknown score, don't assume we are trailing.
+    from cfb_coach.madden.model.football_situation import (
+        evaluate_situation, score_play_suitability,
+    )
 
-    return delta, "; ".join(reasons) or "normal situation"
+    scored = score_play_suitability(
+        play, evaluate_situation(sit, opponent_evidence=opponent_evidence)
+    )
+    return float(scored["proxy_score"]), "; ".join(scored["reasons"])
 
 
 def _stable_sample(
@@ -114,6 +84,7 @@ def choose_model_play(
     opponent_type: str = "cpu",
     session_id: str | None = None,
     snap_seq: int | None = None,
+    opponent_evidence: Mapping[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Pick from top model-backed choices, with long-horizon exposure costs.
 
@@ -172,7 +143,9 @@ def choose_model_play(
                 penalty += min(0.14, 0.05 + .015 * (screen_exposure - 2))
             if sum(p == key for p in last4) >= 3:
                 penalty += 0.055
-        situation_delta, situation_reason = _situational_adjustment(key[1], sit)
+        situation_delta, situation_reason = _situational_adjustment(
+            key[1], sit, opponent_evidence
+        )
         # Do not discard a high-confidence/high-margin finding for cosmetic
         # variety. In contrast, low-data inflated scores are not sacrosanct.
         strongest_other = runner_prob if key == best_key else best_prob
@@ -317,6 +290,7 @@ def choose_model_play(
         "opponent_type": opponent_type,
         "seed_source": "stable_session_snap",  # do not log a secret/random seed
         "reason": chosen["selection_reason"],
+        "opponent_evidence": dict(opponent_evidence or {}),
     }
     return choices, audit
 
@@ -327,11 +301,17 @@ def select_from_database(
     sit: Any = None, opponent_type: str = "cpu",
     session_id: str | None = None, snap_seq: int | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    from cfb_coach.madden.model.football_situation import game_context_from_database
+
+    opponent_evidence = game_context_from_database(
+        db, session_id=session_id, opponent_id=opponent_id
+    )
     return choose_model_play(
         ranked,
         recent_calls=_recent_calls(db, opponent_id, session_id=session_id),
         sit=sit, opponent_type=opponent_type,
         session_id=session_id, snap_seq=snap_seq,
+        opponent_evidence=opponent_evidence,
     )
 
 

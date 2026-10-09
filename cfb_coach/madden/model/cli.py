@@ -702,11 +702,15 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
     from cfb_coach.madden.model import offense_designer as designer
     from cfb_coach.madden.model import offense_design_browser as browser
 
-    if args.show and (args.stage or args.confirm_installed or args.verify_macro or args.unverify_macro or args.rollback_design):
+    if args.show and (
+        args.stage or args.confirm_installed or args.verify_macro
+        or args.verify_macro_config or args.unverify_macro or args.rollback_design
+    ):
         print("--show cannot be combined with mutation flags", file=sys.stderr)
         return 2
     if sum(bool(x) for x in (
-        args.stage, args.confirm_installed, args.verify_macro, args.unverify_macro, args.rollback_design
+        args.stage, args.confirm_installed, args.verify_macro,
+        args.verify_macro_config, args.unverify_macro, args.rollback_design
     )) > 1:
         print("Stage/confirm/verify/rollback are separate deliberate actions", file=sys.stderr)
         return 2
@@ -714,7 +718,10 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
     text_mode = bool(getattr(args, "text", False))
     open_browser = not (text_mode or getattr(args, "no_open", False))
     write_browser = not text_mode
-    read_only = not bool(args.stage or args.confirm_installed or args.verify_macro or args.unverify_macro or args.rollback_design)
+    read_only = not bool(
+        args.stage or args.confirm_installed or args.verify_macro
+        or args.verify_macro_config or args.unverify_macro or args.rollback_design
+    )
     db = open_madden_db(read_only=read_only)
 
     def display(payload: dict[str, Any] | None, mode: str) -> None:
@@ -753,6 +760,18 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
             result = designer.unverify_created_macro(
                 db, name=args.unverify_macro, opponent_id=args.opponent,
             )
+            print(json.dumps(result, indent=2))
+            display(browser.installed_design(db, args.opponent), "installed")
+            return 0
+        if args.verify_macro_config:
+            try:
+                result = designer.verify_created_macro_configuration(
+                    db, name=args.verify_macro_config,
+                    attestation=args.attest or "",
+                )
+            except ValueError as exc:
+                print(f"Macro configuration verification refused: {exc}", file=sys.stderr)
+                return 2
             print(json.dumps(result, indent=2))
             display(browser.installed_design(db, args.opponent), "installed")
             return 0
@@ -1228,7 +1247,7 @@ def build_ml_subparser(sub: Any) -> None:
         help="Model proposes whole offensive formations with ALL source plays and macro drafts",
     )
     p_od.add_argument("--opponent", "-o", default="cpu")
-    p_od.add_argument("--max-formations", type=int, default=5)
+    p_od.add_argument("--max-formations", type=int, default=12)
     p_od.add_argument("--text", action="store_true",
                       help="Print the original JSON report instead of opening the HTML designer")
     p_od.add_argument("--no-open", action="store_true",
@@ -1244,6 +1263,8 @@ def build_ml_subparser(sub: Any) -> None:
                       help="Immediately stop live ML from offering this no-longer-armed macro")
     p_od.add_argument("--verify-macro", metavar="NAME", default=None,
                       help="Verify a generated macro was built and armed in Madden")
+    p_od.add_argument("--verify-macro-config", metavar="NAME", default=None,
+                      help="Verify editor settings only; macro remains unarmed and uncallable")
     p_od.add_argument("--retire-existing", metavar="ID", default=None,
                       help="Explicitly replace an existing active offense macro in the eight-slot loadout")
     p_od.set_defaults(func=cmd_ml_offense_design)

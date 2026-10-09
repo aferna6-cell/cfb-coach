@@ -71,9 +71,14 @@ def offense_adjustment_candidates(
         else:
             label = f"{a.get('route') or kind.replace('_', ' ').title()}"
             btn = rdb.buttons("offense", _CONTROL.get(kind, kind)).replace("pick the protection", f"pick {a.get('route')}")
-        choices.append({"id": a.get("id"), "side": "offense", "kind": kind, "label": label, "buttons": btn,
-                "why": f"{coverage_source} {coverage_class.replace('_', ' ')} look — {a.get('why')}",
-                "sources": _sources(a.get("sources") or [])})
+        choices.append({
+            "id": a.get("id"), "side": "offense", "kind": kind,
+            "target": a.get("target"), "route": a.get("route"),
+            "label": label, "buttons": btn,
+            "why": f"{coverage_source} {coverage_class.replace('_', ' ')} look — {a.get('why')}",
+            "sources": _sources(a.get("sources") or []),
+            "source_ids": list(a.get("sources") or []),
+        })
     return choices
 
 

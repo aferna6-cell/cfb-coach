@@ -20,6 +20,43 @@ from cfb_coach.madden.model.offense_designer import META_BLUEPRINTS
 VERSION = "madden.offense.macro_lab.v1"
 
 
+def _compatible(first: dict[str, Any], second: dict[str, Any]) -> tuple[bool, list[str]]:
+    kinds = (first.get("type"), second.get("type"))
+    checks = ["distinct researched primitive ids"]
+    if first.get("id") == second.get("id"):
+        return False, checks
+    if "audible" in kinds or "motion" in kinds:
+        return False, checks + ["audible/motion cannot compose in saved blueprint"]
+    if kinds[0] == kinds[1] == "pass_protection":
+        return False, checks + ["only one protection state is legal"]
+    if kinds[0] == kinds[1] == "hot_route":
+        targets = (
+            str(first.get("target") or "").strip().lower(),
+            str(second.get("target") or "").strip().lower(),
+        )
+        if not all(targets) or targets[0] == targets[1]:
+            return False, checks + ["hot routes require distinct known targets"]
+        checks.append("distinct hot-route targets")
+    checks.append("no conflicting protection/audible state")
+    return True, checks
+
+
+def _setting(researched: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "section": (
+            "Route assignments"
+            if researched["type"] == "hot_route" else "Protection"
+        ),
+        "setting": (
+            researched["target"]
+            if researched["type"] == "hot_route" else "Protection"
+        ),
+        "value": researched["route"],
+        "sources": list(researched["sources"]),
+        "verification": "research_only",
+    }
+
+
 def propose_variants(db: Any, *, limit: int = 6) -> dict[str, Any]:
     if limit < 1 or limit > 16:
         raise ValueError("limit must be 1..16")
@@ -45,7 +82,12 @@ def propose_variants(db: Any, *, limit: int = 6) -> dict[str, Any]:
     except (TypeError, ValueError):
         pass
     variants: list[dict[str, Any]] = []
-    for researched in research_db.offense_adjustments():
+    primitives = [
+        item for item in research_db.offense_adjustments()
+        if item.get("type") in ("hot_route", "pass_protection")
+        and item.get("sources") and item.get("target") and item.get("route")
+    ]
+    for researched in primitives:
         if researched.get("type") not in ("hot_route", "pass_protection"):
             continue
         if not researched.get("sources") or not researched.get("target") or not researched.get("route"):
@@ -71,15 +113,8 @@ def propose_variants(db: Any, *, limit: int = 6) -> dict[str, Any]:
                         f"{concept} passing plays"
                     ),
                     "base_pairs": pairs,
-                    "settings": [{
-                        "section": ("Route assignments" if researched["type"] == "hot_route"
-                                    else "Protection"),
-                        "setting": (researched["target"] if researched["type"] == "hot_route"
-                                    else "Protection"),
-                        "value": researched["route"],
-                        "sources": list(researched["sources"]),
-                        "verification": "research_only",
-                    }],
+                    "source_action_ids": [researched["id"]],
+                    "settings": [_setting(researched)],
                     "other_editor_settings": (
                         "ALL unspecified Madden editor fields and exact compatibility "
                         "must be verified in game. This is one researched primitive, "
@@ -88,6 +123,61 @@ def propose_variants(db: Any, *, limit: int = 6) -> dict[str, Any]:
                     "activation": "NOT_ARMED: needs manual editing, slot and user attestation",
                     "evidence_label": "source_grounded_unvalidated_new_variant",
                 })
+    # Original multi-action ideas are compositions of existing sourced
+    # primitives, never invented routes or inputs. They remain drafts because
+    # actual Madden editor support for the interaction is not yet attested.
+    for index, first in enumerate(primitives):
+        for second in primitives[index + 1:]:
+            compatible, checks = _compatible(first, second)
+            if not compatible:
+                continue
+            shared = sorted(set(first.get("vs") or []) & set(second.get("vs") or []))
+            for cover in shared:
+                for concept, pairs in sorted(groups.items(), key=lambda v: (-len(v[1]), v[0])):
+                    signature = (
+                        f"{first['id']}|{second['id']}|{cover}|{concept}|{active.get('rev')}"
+                    )
+                    digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()[:5].upper()
+                    name = "ML-" + digest + "-COMBO"
+                    if name in existing:
+                        continue
+                    source_ids = sorted(set(
+                        list(first.get("sources") or []) + list(second.get("sources") or [])
+                    ))
+                    variants.append({
+                        "name": name,
+                        "kind": "multi_action",
+                        "coverage": cover,
+                        "source_action_id": first["id"],
+                        "source_action_ids": [first["id"], second["id"]],
+                        "source_ids": source_ids,
+                        "source_book_constraint": (
+                            "exact installed formation/play, concept and verified editor support"
+                        ),
+                        "concept": concept,
+                        "status": "DRAFT_NEEDS_IN_GAME_VERIFICATION",
+                        "fire_when": (
+                            f"credible live {cover} look with a listed {concept} play"
+                        ),
+                        "base_pairs": pairs,
+                        "settings": [_setting(first), _setting(second)],
+                        "composition": {
+                            "primitive_ids": [first["id"], second["id"]],
+                            "compatibility_checks": checks,
+                            "maximum_actions": 2,
+                            "editor_support": "UNVERIFIED",
+                        },
+                        "other_editor_settings": (
+                            "Verify both settings coexist in Madden, record exact controller "
+                            "instructions, and attest the occupied Custom Adjustment slot."
+                        ),
+                        "activation": "NOT_ARMED: draft until verification and armed-slot attestation",
+                        "evidence_label": "source_grounded_unvalidated_multi_action_composition",
+                    })
+    variants.sort(key=lambda row: (
+        0 if row.get("kind") == "multi_action" else 1,
+        str(row.get("concept")), str(row.get("name")),
+    ))
     return {
         "schema": VERSION, "installed_book": active.get("name"),
         "installed_revision": active.get("rev"),
