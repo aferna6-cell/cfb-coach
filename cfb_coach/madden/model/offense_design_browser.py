@@ -161,6 +161,9 @@ def render_html(
         for d in (proposal.get("changes") or [])
     ]
     current_macros = current_macro_html(db, opponent_id, applied)
+    from cfb_coach.madden.model.offense_action_inventory import offense_actions_report
+
+    action_readiness = offense_actions_report(db, opponent_id)
     macros = []
     for index, m in enumerate(proposal.get("macro_blueprints") or []):
         name = str(m.get("name") or "UNNAMED")
@@ -266,7 +269,8 @@ Custom Adjustments until you confirm their actual installation in Madden.</p>
 <div class="stat"><small>Model</small><strong>{esc(proposal.get("model_version") or "Prior-only")}</strong></div>
 <div class="stat"><small>Designed formations / plays</small><strong>{len(forms)} / {sum(len(ps) for ps in forms.values())}</strong></div>
 <div class="stat"><small>Installed plays recommended</small><strong>{used_inventory["used_plays"]} / {used_inventory["play_count"]}</strong></div>
-<div class="stat"><small>Macros: drafted / armed</small><strong>{len(macros)} / {len(approved)}</strong></div>
+<div class="stat"><small>Macro designs: drafted / verified</small><strong>{len(macros)} / {len(approved)}</strong></div>
+<div class="stat"><small>Saved loadout macros with eligible book pairs</small><strong>{action_readiness["ready_in_saved_loadout"]} / {action_readiness["saved_loadout_macros"]}</strong></div>
 </div>
 <section><h2>Build and confirm</h2>
 <p><b>Design ID:</b> {esc(proposal_id)}</p>
@@ -283,6 +287,11 @@ play is present in your Madden custom editor. Confirm it in game before marking 
 Unspecified Madden editor fields remain unverified; generated blueprints are never auto-armed.</p>
 {"".join(macros) or '<section><p>No new macros were proposed.</p></section>'}
 <h2>Existing offensive Custom Adjustments in your saved loadout</h2>
+<p class="muted">A compatible saved macro is not assumed to be physically armed.
+Check the full readiness breakdown with
+<code>python -m cfb_coach ml offense-actions -o {esc(opponent_id)}</code>.
+On each snap, the model chooses the best researched eligible action—or
+<b>no adjustment</b> when the trigger is insufficient.</p>
 <p class="muted">Listed macros have research or user-noted settings. Being selected during prep
 does not alone prove they were built and armed in Madden. Review missing settings and compatibility.</p>
 {current_macros}
