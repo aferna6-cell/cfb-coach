@@ -279,3 +279,55 @@ def select_from_database(
         sit=sit, opponent_type=opponent_type,
         session_id=session_id, snap_seq=snap_seq,
     )
+
+
+def summarize_call_variety(
+    decisions: Sequence[Mapping[str, Any]],
+    *,
+    by_snap_situation: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Postgame *recommendation* metrics; never execution or causal claims."""
+    situations = by_snap_situation or {}
+    picks = []
+    third_long_runs = 0
+    third_long_known = 0
+    for d in decisions:
+        form, play = d.get("final_formation"), d.get("final_play")
+        if not form or not play:
+            continue
+        picks.append((str(form), str(play)))
+        snap = situations.get(str(d.get("snap_id") or "")) or {}
+        try:
+            down, distance = int(snap.get("down")), int(snap.get("distance"))
+        except (ValueError, TypeError):
+            continue
+        if down in (3, 4) and distance >= 7:
+            third_long_known += 1
+            if is_run(str(play)):
+                third_long_runs += 1
+
+    longest = 0
+    streak = 0
+    prev = None
+    for key in picks:
+        streak = streak + 1 if key == prev else 1
+        longest = max(longest, streak)
+        prev = key
+    n = len(picks)
+    return {
+        "recommended_calls": n,
+        "distinct_plays": len(set(picks)),
+        "distinct_formations": len({form for form, _ in picks}),
+        "distinct_concepts": len({_play_concept(play) for _, play in picks}),
+        "screen_calls": sum(_play_family(play) == "screen" for _, play in picks),
+        "screen_share": round(
+            sum(_play_family(play) == "screen" for _, play in picks) / n, 3
+        ) if n else 0.0,
+        "max_consecutive_same_play": longest,
+        "known_third_or_fourth_long": third_long_known,
+        "third_or_fourth_long_run_recommendations": third_long_runs,
+        "note": (
+            "These are displayed recommended calls. Without verified execution "
+            "and outcome labels, do not attribute yards or performance to a call."
+        ),
+    }
