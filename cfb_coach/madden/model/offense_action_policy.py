@@ -48,7 +48,8 @@ def _situation_trigger(sit: Any, kind: str) -> bool:
 def _verified_button_sequence(value: Any) -> bool:
     """Never display guessed or editor-unverified controller actions."""
     text = str(value or "").strip()
-    return bool(text) and "VERIFY" not in text.upper() and "UNKNOWN" not in text.upper()
+    blocked = ("VERIFY ON SCREEN", "NO SOURCE", "UNKNOWN", "NOT CONFIRMED")
+    return bool(text) and not any(term in text.upper() for term in blocked)
 
 
 
