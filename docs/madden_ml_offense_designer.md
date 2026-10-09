@@ -327,3 +327,125 @@ Next improvement: log verified *execution of the requested adjustment* and
 its outcome by exact action/formation/play/coverage/situation before training
 an action-value model. Until sufficient clean paired observations exist, no
 action uplift claim or automatic macro creation/activation is justified.
+
+## Sprint 10 — verified action learning + macro lab (consolidated)
+
+Stacked on Sprint 9 situational actions. Sprint 10 had two alternate drafts
+(PR #34 evidence-gated learning, PR #35 macro lab). This tree keeps **#34's**
+learning contract (sealed `pre_snap_action_context`, explicit unchanged-play
+confirmation, `--train` / `--promote` / `--rollback`) and **#35's**
+`offense_macro_lab` draft generator. There is one learning module and one CLI.
+
+```bash
+python -m cfb_coach ml offense-action-learn --train
+python -m cfb_coach ml offense-action-learn --promote   # only with ready groups
+python -m cfb_coach ml offense-action-learn --rollback
+python -m cfb_coach ml offense-macro-lab                # DRAFT preview
+python -m cfb_coach ml offense-macro-lab --compose --stage
+```
+
+Learned action shifts stay shadow until promotion and remain bounded (±0.04).
+Research eligibility, armed-slot checks and NO_ADJUSTMENT always win first.
+
+## Sprint 11 — Adaptive AI Offensive Coordinator
+
+**Status:** experimental, CPU-default; never auto-merges to `main`, never
+mutates a live Franchise SQLite, never silently applies a staged playbook or
+arms an unverified macro.
+
+### Autonomy boundaries
+
+| Actor | May do | Must not do |
+|-------|--------|-------------|
+| Model | Propose formation portfolio, joint play+adjustment, draft macros, update in-game memory from sealed decisions | Edit Madden, invent controller inputs, treat suggestions as executions, fabricate coverage |
+| User | Install formations, attest install, verify/arm macros, confirm applied actions | — |
+| Live path | Choose from **confirmed installed** book under 150 ms; heuristic fallback on timeout | Call draft/unarmed macros; use post-snap outcomes before the snap |
+
+### Pregame → live → postgame walkthrough (CPU)
+
+```bash
+# 0. Optional: locate / backup laptop DB (read-only audit). Never rewrite history.
+python -m cfb_coach ml find-db
+python -m cfb_coach ml backup-db
+
+# 1. Pregame: model designs whole formations (ALL source plays) + rationale
+python -m cfb_coach ml offense-design -o cpu --max-formations 5 --text
+python -m cfb_coach ml offense-design -o cpu --stage
+# User installs in Madden, then:
+# python -m cfb_coach ml offense-design -o cpu --confirm-installed <PROPOSAL_ID> \
+#   --attest "Installed all formations/plays in Madden custom editor"
+
+# 2. Macro drafts (optional compositions still DRAFT)
+python -m cfb_coach ml offense-macro-lab --compose
+python -m cfb_coach ml offense-macro-lab --compose --stage
+# After building + arming a slot in Madden:
+# python -m cfb_coach ml offense-design -o cpu --verify-macro NAME --attest "..."
+
+# 3. Readiness + inventory
+python -m cfb_coach ml offense-actions -o cpu
+python -m cfb_coach ml offense-inventory -o cpu --summary
+
+# 4. Enable experimental ML (CPU offense). Heuristic is emergency fallback only.
+python -m cfb_coach ml experimental
+# Live HTML / play window: compact FORMATION — PLAY; adjustments below.
+# python -m cfb_coach play --opponent cpu --game madden27
+
+# 5. After games: train play model + shadow action evidence
+python -m cfb_coach ml experimental --retrain
+python -m cfb_coach ml offense-action-learn --train
+python -m cfb_coach ml postgame-experimental
+
+# Rollback live ML anytime:
+python -m cfb_coach ml heuristic
+```
+
+### Architecture (model-primary, not a second playcaller)
+
+1. **`football_situation`** — explicit observations vs tendencies vs unknowns;
+   labeled conversion / clock / pressure priors.
+2. **`offense_designer` (v2)** — scores the full catalogued formation set across
+   a situation matrix; retains every source-book play per chosen formation;
+   returns rationale, audibles, deltas, provenance, inventory fingerprint.
+3. **`offense_joint_decision`** — searches legal `(formation, play, adjustment_plan)`
+   including **NO_ADJUSTMENT**, hot routes, protections, armed macros; bounded
+   for the 150 ms budget; never invents settings.
+4. **`offense_macro_lab`** — single-primitive and optional multi-primitive
+   **DRAFT** compositions with conflict checks; VERIFIED/ARMED only via existing
+   attestations.
+5. **`offense_game_memory`** — per-game recommendations, live-look tendencies,
+   verified executions kept separate; tendencies are not current coverage.
+6. **`offense_action_learning`** — observational, evidence-gated; sealed
+   pre-snap context only.
+
+### Blowout-game evidence
+
+Two user-reported CPU blowout wins were cited in earlier sprints. This cloud
+environment has **no** laptop Franchise SQLite (`CFB_COACH_MADDEN_DB` unset;
+no local `.db` with those game IDs). Regression tests therefore use **explicitly
+labeled synthetic fixtures** only. Do not treat synthetic success rates as
+claims about those games. On the laptop, audit read-only with
+`ml find-db` / `ml report` / inventory before importing any sealed snaps.
+
+### Capability matrix
+
+| Capability | Status |
+|------------|--------|
+| Pregame formation portfolio + full plays | **Implemented** (staged; user installs) |
+| Football situation evaluator | **Implemented** |
+| Joint play+adjustment decision | **Implemented** (experimental path) |
+| NO_ADJUSTMENT can win | **Implemented** |
+| Multi-primitive macro drafts | **Implemented** (DRAFT only) |
+| In-game opponent tendency memory | **Implemented** (live looks only) |
+| Evidence-gated action learning | **Implemented** (shadow default) |
+| Human-opponent ML offense | **Opt-in only** (existing flag) |
+| Defense ML control | **Shadow-only** (unchanged) |
+| Causal adjustment uplift | **Unverified** — observational only |
+| Auto-install / auto-arm | **Forbidden** |
+| CFB 27 reuse | **Architecture ready**; game packs unchanged |
+
+### What is still future work
+
+- Richer roster-verified personnel fit when Madden roster exports are available.
+- Offline policy evaluation / holdout games for joint decisions.
+- Broader multi-action editor field inventories once user-verified.
+- Importing laptop blowout logs as sealed regression fixtures (user-mediated).

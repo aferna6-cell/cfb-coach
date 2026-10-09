@@ -263,7 +263,7 @@ def choose_offense_action(
         "macro": best["payload"] if best["kind"] == "macro" else None,
         "adjustment": best["payload"] if best["kind"] == "adjustment" else None,
         "reason": best["why"] or "",
-        "scores_are": "research_policy_plus_observational_not_causal",
+        "scores_are": "research_policy_not_learned_action_effect_plus_observational",
         "candidates": summary[:8],
         "no_action_score": no_action_score,
         "top_action_score": best["score"],

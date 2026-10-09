@@ -159,7 +159,21 @@ def evaluate_situation(
     else:
         cov_cred = "unknown"
 
-    bucket = situation_key(sit) if sit is not None else "early_down"
+    try:
+        bucket = situation_key(sit) if sit is not None else "early_down"
+    except Exception:  # noqa: BLE001 — probes may omit Situation helpers
+        if goal_line:
+            bucket = "goal_line"
+        elif red_zone:
+            bucket = "red_zone"
+        elif two_minute:
+            bucket = "two_minute"
+        elif long_y:
+            bucket = "long_yardage"
+        elif short:
+            bucket = "short_yardage"
+        else:
+            bucket = "early_down"
     rationale = [
         f"bucket={bucket}",
         f"objective={objective}",
@@ -335,13 +349,25 @@ def sit_from_probe(probe: Mapping[str, Any]) -> Any:
     """Minimal Situation-like namespace for portfolio probes."""
     from types import SimpleNamespace
 
+    try:
+        down = int(probe["down"]) if probe.get("down") is not None else None
+    except (TypeError, ValueError):
+        down = None
+    try:
+        distance = int(probe["distance"]) if probe.get("distance") is not None else None
+    except (TypeError, ValueError):
+        distance = None
+    long_yardage = bool(down in (3, 4) and distance is not None and distance >= 7)
+    short_yardage = bool(distance is not None and distance <= 2)
     return SimpleNamespace(
-        down=probe.get("down"),
-        distance=probe.get("distance"),
+        down=down,
+        distance=distance,
         yardline=probe.get("yardline"),
         red_zone=bool(probe.get("red_zone")),
         goal_line=bool(probe.get("goal_line")),
         two_minute=bool(probe.get("two_minute")),
+        long_yardage=long_yardage,
+        short_yardage=short_yardage,
         score_us=probe.get("score_us"),
         score_them=probe.get("score_them"),
         quarter=probe.get("quarter"),

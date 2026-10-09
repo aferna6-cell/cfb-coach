@@ -567,17 +567,17 @@ def apply_experimental_offense(
             call.macro = None
             call.macro_info = None
             call.adjustment = None
-            call.adj = "No adj"
+            call.adj_or_macro = "No adj"
         elif chosen_macro:
             call.macro = chosen_macro.get("id")
             call.macro_info = chosen_macro
             call.adjustment = None
-            call.adj = chosen_macro.get("name") or chosen_macro.get("id") or "Macro"
+            call.adj_or_macro = chosen_macro.get("name") or chosen_macro.get("id") or "Macro"
         elif chosen_adj:
             call.macro = None
             call.macro_info = None
             call.adjustment = chosen_adj
-            call.adj = chosen_adj.get("label") or chosen_adj.get("id") or "Adj"
+            call.adj_or_macro = chosen_adj.get("label") or chosen_adj.get("id") or "Adj"
         call.ml_offense_action = {
             "policy_version": joint.get("policy"),
             "kind": plan.get("kind"),

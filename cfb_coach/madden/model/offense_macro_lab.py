@@ -96,16 +96,16 @@ def propose_variants(
                 signature = f"{action['id']}|{cover}|{concept}|{active.get('rev')}"
                 digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()[:5].upper()
                 name = "ML-" + digest + "-" + concept.upper().replace("_", "-")[:6]
-                if name in existing:
-                    continue
                 variants.append({
                     "name": name,
                     "kind": action["type"], "coverage": cover,
                     "source_action_id": action["id"],
                     "source_ids": list(action["sources"]),
                     "source_book_constraint": "exact installed formation/play and play concept",
-                    "concept": concept, "status": "DRAFT",
-                    "lifecycle": "DRAFT",
+                    "concept": concept,
+                    "status": "DRAFT_NEEDS_IN_GAME_VERIFICATION",
+                    "lifecycle": "DRAFT" if name not in existing else "DRAFT_ALREADY_STAGED",
+                    "already_staged": name in existing,
                     "fire_when": (
                         f"credible live {cover} look, only with one of the listed "
                         f"{concept} passing plays"
@@ -157,7 +157,7 @@ def propose_variants(
                     signature = f"compose|{h['id']}|{p['id']}|{cover}|{concept}|{active.get('rev')}"
                     digest = hashlib.sha256(signature.encode("utf-8")).hexdigest()[:5].upper()
                     name = "ML-CX-" + digest + "-" + concept.upper().replace("_", "-")[:5]
-                    if name in existing or any(v["name"] == name for v in compositions):
+                    if any(v["name"] == name for v in compositions):
                         continue
                     compositions.append({
                         "name": name,
@@ -167,8 +167,9 @@ def propose_variants(
                         "source_ids": list(dict.fromkeys(list(h["sources"]) + list(p["sources"]))),
                         "source_book_constraint": "exact installed formation/play and play concept",
                         "concept": concept,
-                        "status": "DRAFT",
-                        "lifecycle": "DRAFT",
+                        "status": "DRAFT_NEEDS_IN_GAME_VERIFICATION",
+                        "lifecycle": "DRAFT" if name not in existing else "DRAFT_ALREADY_STAGED",
+                        "already_staged": name in existing,
                         "fire_when": (
                             f"credible live {cover} look on {concept} concepts; "
                             f"requires verifying BOTH primitives in one Custom Adjustment"
