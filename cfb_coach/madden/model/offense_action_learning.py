@@ -30,6 +30,7 @@ MAX_SCORE_SHIFT = 0.04
 def context_key(
     *, play: str, down: Any, distance: Any,
     coverage_class: str | None = None, coverage_source: str | None = None,
+    red_zone: bool = False, goal_line: bool = False,
 ) -> str:
     """Decision-time context; only an explicitly *live* look can distinguish coverage.
 
@@ -37,6 +38,10 @@ def context_key(
     opponent's actual post-snap coverage must NEVER be substituted here.
     """
     base = f"{_play_concept(play)}|{_dd_bucket(down, distance)}"
+    if goal_line:
+        base += "|zone:goal_line"
+    elif red_zone:
+        base += "|zone:red_zone"
     if coverage_source == "live" and coverage_class:
         return f"{base}|look:{coverage_class}"
     return base
@@ -134,6 +139,8 @@ def collect_verified_action_rows(db: Any, game_id: str | None = None) -> tuple[l
                 distance=presnap.get("distance", row.get("distance")),
                 coverage_class=live_class,
                 coverage_source=presnap.get("coverage_source"),
+                red_zone=presnap.get("red_zone") is True,
+                goal_line=presnap.get("goal_line") is True,
             ),
             "presnap_look": live_class,
             "presnap_look_source": presnap.get("coverage_source") or "unknown",
@@ -274,6 +281,7 @@ def score_shift(
     artifact: Mapping[str, Any] | None, *,
     play: str, down: Any, distance: Any, kind: str, action_id: str,
     coverage_class: str | None = None, coverage_source: str | None = None,
+    red_zone: bool = False, goal_line: bool = False,
 ) -> tuple[float, dict[str, Any] | None]:
     """Read-only bounded adjustment only for promoted, adequately compared context."""
     if not artifact or artifact.get("mode") != "bounded_active":
@@ -282,6 +290,7 @@ def score_shift(
         context_key(
             play=play, down=down, distance=distance,
             coverage_class=coverage_class, coverage_source=coverage_source,
+            red_zone=red_zone, goal_line=goal_line,
         ) + f"|{kind}:{action_id}"
     )
     group = (artifact.get("comparisons") or {}).get(key)
