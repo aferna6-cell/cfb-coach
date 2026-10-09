@@ -307,6 +307,107 @@ def evaluate_situation(
     }
 
 
+def _audit_row(name: str, status: str, value: Any, note: str) -> dict[str, Any]:
+    return {"name": name, "status": status, "value": value, "note": note}
+
+
+def audit_situation_inputs(
+    sit: Any,
+    *,
+    evaluation: Mapping[str, Any] | None = None,
+    memory: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Label each strategic input known, inferred, or missing.
+
+    A default of false is not a verified red-zone or clock reading. A previous
+    coverage label is not the current shell, and its class is not copied
+    forward as if it had been seen on this snap.
+    """
+    picture = dict(evaluation) if evaluation is not None else evaluate_situation(sit, memory=memory)
+    fields: list[dict[str, Any]] = []
+    for name in ("down", "distance", "yardline", "quarter", "clock_seconds", "timeouts_us"):
+        value = picture.get(name)
+        if value is None:
+            fields.append(_audit_row(name, "missing", None, "not on this snap"))
+        else:
+            fields.append(_audit_row(name, "known", value, "present on this snap"))
+    score_us, score_them = picture.get("score_us"), picture.get("score_them")
+    if score_us is None or score_them is None:
+        fields.append(_audit_row("score", "missing", None, "both scores are required"))
+    else:
+        fields.append(_audit_row(
+            "score", "known",
+            {"us": score_us, "them": score_them, "phase": picture.get("score_phase")},
+            "both scores present",
+        ))
+    yardline = picture.get("yardline")
+    explicit_zone = bool(getattr(sit, "red_zone", False) or getattr(sit, "goal_line", False))
+    if yardline is not None:
+        fields.append(_audit_row("red_zone", "known", bool(picture.get("red_zone")), "derived from the yard line"))
+        fields.append(_audit_row("goal_line", "known", bool(picture.get("goal_line")), "derived from the yard line"))
+    elif explicit_zone:
+        fields.append(_audit_row("red_zone", "known", bool(picture.get("red_zone")), "explicit flag; yard line was not given"))
+        if getattr(sit, "goal_line", False):
+            fields.append(_audit_row("goal_line", "known", True, "explicit goal-line flag"))
+        else:
+            fields.append(_audit_row("goal_line", "missing", None, "red zone was named; goal line was not"))
+    else:
+        fields.append(_audit_row(
+            "red_zone", "missing", None,
+            "no yard line and no explicit red-zone flag; a default of false is not a verified value",
+        ))
+        fields.append(_audit_row(
+            "goal_line", "missing", None,
+            "no yard line and no explicit goal-line flag",
+        ))
+    clock = picture.get("clock_seconds")
+    quarter = picture.get("quarter")
+    if clock is not None and quarter is not None:
+        fields.append(_audit_row(
+            "two_minute", "known", bool(picture.get("two_minute")),
+            "derived from quarter and game clock",
+        ))
+    elif bool(getattr(sit, "two_minute", False)):
+        fields.append(_audit_row(
+            "two_minute", "known", True,
+            "explicit two-minute flag; game-clock seconds were not given",
+        ))
+    else:
+        fields.append(_audit_row(
+            "two_minute", "missing", None,
+            "no game clock and no explicit two-minute flag",
+        ))
+    look = picture.get("coverage") or {}
+    state = look.get("state")
+    if state == "observed":
+        fields.append(_audit_row("coverage", "known", look.get("value"), str(look.get("note") or "pre-snap look")))
+    elif state == "inferred":
+        fields.append(_audit_row(
+            "coverage", "inferred", None,
+            str(look.get("note") or "not the current coverage"),
+        ))
+        fields.append(_audit_row(
+            "prior_coverage_label", "inferred", look.get("label"),
+            "historical or previous-snap label only",
+        ))
+    else:
+        fields.append(_audit_row(
+            "coverage", "missing", None,
+            str(look.get("note") or "current coverage was not observed"),
+        ))
+    return {
+        "known": [row["name"] for row in fields if row["status"] == "known"],
+        "inferred": [row["name"] for row in fields if row["status"] == "inferred"],
+        "missing": [row["name"] for row in fields if row["status"] == "missing"],
+        "fields": fields,
+        "coverage_fabricated": False,
+        "note": (
+            "Unavailable fields stay missing. A previous coverage look is not "
+            "the current coverage."
+        ),
+    }
+
+
 def _selection_parts(play: str, sit: Any) -> list[dict[str, Any]]:
     """Legacy magnitudes used by model-primary sampling."""
     if sit is None:

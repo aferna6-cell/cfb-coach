@@ -183,7 +183,126 @@ class JointDecisionTests(unittest.TestCase):
             ranked=ranked, anchor=ranked[0], sit=sit(), book=self.book, active=[],
         )
         self.assertEqual(decision["kind"], "none")
-        self.assertEqual(decision["joint"]["play"], ranked[0]["play"])
+        legal = [play for plays in self.book.values() for play in plays]
+        self.assertIn(decision["joint"]["play"], legal)
+
+    def test_a_better_unmodified_play_beats_the_sampled_anchor(self):
+        ranked = [
+            {
+                "formation": "Gun Bunch", "play": "Mesh", "probability": 0.40,
+                "selection_score": 0.40, "uncertainty": 0.50,
+                "evidence_quality": "prior_driven", "play_concept": "mesh",
+            },
+            {
+                "formation": "Gun Trips", "play": "Flood", "probability": 0.72,
+                "selection_score": 0.72, "uncertainty": 0.50,
+                "evidence_quality": "prior_driven", "play_concept": "flood",
+            },
+        ]
+        decision = choose_joint_action(
+            ranked=ranked, anchor=ranked[0], sit=sit(), book=self.book, active=[],
+        )
+        self.assertEqual(decision["kind"], "none")
+        self.assertEqual(decision["joint"]["play"], "Flood")
+        self.assertEqual(decision["joint"]["baseline_play"], "Mesh")
+        self.assertTrue(decision["joint"]["displaced_baseline"])
+        self.assertFalse(decision["exploration"]["fixed_rotation"])
+
+    def test_research_prior_does_not_overturn_a_stronger_play(self):
+        ranked = [
+            {
+                "formation": "Gun Bunch", "play": "Mesh", "probability": 0.80,
+                "selection_score": 0.80, "uncertainty": 0.20,
+                "evidence_quality": "empirical", "play_concept": "mesh",
+            },
+            {
+                "formation": "Gun Trips", "play": "Flood", "probability": 0.55,
+                "selection_score": 0.55, "uncertainty": 0.40,
+                "evidence_quality": "prior_driven", "play_concept": "flood",
+            },
+        ]
+        action = {
+            "id": "HOT-MAN", "kind": "hot_route", "sources": ["source"],
+            "buttons": "Y then select receiver", "label": "Hot route", "why": "man",
+        }
+        snap = sit(coverage_hint="Cover 1", coverage_source="live")
+
+        def only_on_the_weaker_play(**kwargs):
+            return [action] if kwargs.get("play") == "Flood" else []
+
+        with mock.patch(
+            "cfb_coach.madden.adjustments.offense_adjustment_candidates",
+            side_effect=only_on_the_weaker_play,
+        ):
+            decision = choose_joint_action(
+                ranked=ranked, anchor=ranked[1], sit=snap, book=self.book, active=[],
+            )
+        self.assertEqual(decision["kind"], "none")
+        self.assertEqual(decision["joint"]["play"], "Mesh")
+
+    def test_near_ties_are_not_a_fixed_rotation(self):
+        ranked = []
+        for form, plays in self.book.items():
+            for play in plays:
+                ranked.append({
+                    "formation": form, "play": play, "probability": 0.55,
+                    "selection_score": 0.55, "uncertainty": 0.50,
+                    "evidence_quality": "prior_driven", "play_concept": play.lower(),
+                })
+        calls = []
+        for seq in range(1, 13):
+            decision = choose_joint_action(
+                ranked=ranked, anchor=ranked[0], sit=sit(), book=self.book,
+                active=[], session_id="rotate", snap_seq=seq, opponent_type="cpu",
+            )
+            calls.append(decision["joint"]["play"])
+            self.assertEqual(decision["kind"], "none")
+        order = [row["play"] for row in ranked]
+        self.assertGreater(len(set(calls)), 1)
+        self.assertNotEqual(calls, [order[i % len(order)] for i in range(len(calls))])
+
+    def test_negative_learned_shift_blocks_a_marginal_hot_route(self):
+        ranked = self._anchor(sit(coverage_hint="Cover 1", coverage_source="live"))
+        action = {
+            "id": "HOT-MAN", "kind": "hot_route", "sources": ["source"],
+            "buttons": "Y then select receiver", "label": "Hot route", "why": "man",
+        }
+        with mock.patch(
+            "cfb_coach.madden.adjustments.offense_adjustment_candidates",
+            return_value=[action],
+        ), mock.patch(
+            "cfb_coach.madden.model.offense_action_learning.score_shift",
+            return_value=(-0.04, {"mode": "bounded_active"}),
+        ):
+            decision = choose_joint_action(
+                ranked=ranked, anchor=ranked[0],
+                sit=sit(coverage_hint="Cover 1", coverage_source="live"),
+                book=self.book, active=[],
+            )
+        self.assertEqual(decision["kind"], "none")
+
+    def test_short_clock_blocks_adjustments(self):
+        ranked = self._anchor(sit(
+            coverage_hint="Cover 1", coverage_source="live",
+            extras={"clock_seconds": 5, "quarter": 2},
+        ))
+        action = {
+            "id": "HOT-MAN", "kind": "hot_route", "sources": ["source"],
+            "buttons": "Y then select receiver", "label": "Hot route", "why": "man",
+        }
+        snap = sit(
+            coverage_hint="Cover 1", coverage_source="live",
+            extras={"clock_seconds": 5, "quarter": 2},
+        )
+        with mock.patch(
+            "cfb_coach.madden.adjustments.offense_adjustment_candidates",
+            return_value=[action],
+        ):
+            decision = choose_joint_action(
+                ranked=ranked, anchor=ranked[0], sit=snap, book=self.book, active=[],
+            )
+        self.assertEqual(decision["kind"], "none")
+        self.assertNotIn("HOT-MAN", [row["id"] for row in decision["candidates"]])
 
     def test_compatible_adjustments_can_be_scored_together_and_conflicts_drop(self):
         self.assertEqual(conflicts([

@@ -23,7 +23,7 @@ import traceback
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from cfb_coach.madden.model import experimental_model as exp_mod
 from cfb_coach.madden.model.schema import (
@@ -107,6 +107,52 @@ def situational_offense_candidates(
     # discarded by rank_candidates(heuristic_bonuses={}) anyway, and become
     # expensive when a full custom formation inventory has hundreds of plays.
     return pool, bonus
+
+
+def _known_audit_value(audit: Mapping[str, Any] | None, name: str) -> Any:
+    """Return a value only when the audit marked that field known."""
+    for row in (audit or {}).get("fields") or []:
+        if row.get("name") == name and row.get("status") == "known":
+            return row.get("value")
+    return None
+
+
+def _pre_snap_context(sit: Any, audit: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Strategic inputs that actually reached the joint evaluator.
+
+    Missing fields stay null. Inferred coverage is not stored as the current
+    shell. ``coverage_hint`` keeps the raw text so a previous look remains
+    distinguishable from a live one.
+    """
+    score = _known_audit_value(audit, "score")
+    score = score if isinstance(score, Mapping) else {}
+    return {
+        "down": _known_audit_value(audit, "down"),
+        "distance": _known_audit_value(audit, "distance"),
+        "yardline": _known_audit_value(audit, "yardline"),
+        "quarter": _known_audit_value(audit, "quarter"),
+        "clock_seconds": _known_audit_value(audit, "clock_seconds"),
+        "timeouts_us": _known_audit_value(audit, "timeouts_us"),
+        "score_us": score.get("us"),
+        "score_them": score.get("them"),
+        "red_zone": _known_audit_value(audit, "red_zone"),
+        "goal_line": _known_audit_value(audit, "goal_line"),
+        "two_minute": _known_audit_value(audit, "two_minute"),
+        "coverage_hint": getattr(sit, "coverage_hint", None),
+        "coverage_source": getattr(sit, "coverage_source", None),
+        "coverage_status": next(
+            (
+                row.get("status") for row in (audit or {}).get("fields") or []
+                if row.get("name") == "coverage"
+            ),
+            "missing",
+        ),
+        "input_audit": {
+            "known": list((audit or {}).get("known") or []),
+            "inferred": list((audit or {}).get("inferred") or []),
+            "missing": list((audit or {}).get("missing") or []),
+        },
+    }
 
 
 def rebuild_offense_attachments(
@@ -451,7 +497,9 @@ def apply_experimental_offense(
         from cfb_coach.madden.model.offense_game_memory import (
             pre_snap_context, remember_recommendation,
         )
-        from cfb_coach.madden.model.offense_joint_decision import choose_joint_action
+        from cfb_coach.madden.model.offense_joint_decision import (
+            JOINT_POLICY, choose_joint_action,
+        )
 
         memory = None
         if db is not None:
@@ -466,6 +514,9 @@ def apply_experimental_offense(
             ranked=ranked, anchor=top, sit=sit, book=book,
             active=list(active or []), db=db, opponent_id=opponent_id,
             audibles=audibles, memory=memory,
+            session_id=session_id or game_id,
+            snap_seq=snap_seq,
+            opponent_type=opp_type,
             allow_macros=(getattr(sit, "extras", None) or {}).get(
                 "live_macros", True
             ) is not False,
@@ -560,21 +611,16 @@ def apply_experimental_offense(
             "inventory_eligible_count": len(pairs),
             "inventory_situation_excluded": len(all_pairs) - len(pairs),
             "selection_policy": "model_primary_contextual_variety.v2",
-            "joint_policy": "joint_offense_action.v1",
+            "joint_policy": JOINT_POLICY,
             "selection_audit": selection_audit,
             "offense_action": getattr(call, "ml_offense_action", None),
             "joint_decision": (getattr(call, "ml_offense_action", None) or {}).get("joint"),
+            "joint_exploration": joint.get("exploration"),
+            "input_audit": joint.get("input_audit"),
             # Decision-time signals only. Never use observed post-snap
             # coverage as a training feature for which action to fire.
-            "pre_snap_action_context": {
-                "down": getattr(sit, "down", None),
-                "distance": getattr(sit, "distance", None),
-                "coverage_hint": getattr(sit, "coverage_hint", None),
-                "coverage_source": getattr(sit, "coverage_source", None),
-                "red_zone": bool(getattr(sit, "red_zone", False)),
-                "goal_line": bool(getattr(sit, "goal_line", False)),
-                "quarter": getattr(sit, "quarter", None),
-            },
+            # Quarter lives on extras, not as a Situation attribute.
+            "pre_snap_action_context": _pre_snap_context(sit, joint.get("input_audit")),
         }
 
         if db is not None and (session_id or game_id):
@@ -689,8 +735,12 @@ def commit_experimental_decision(
                 "probability": info.get("probability"),
                 "uncertainty": info.get("uncertainty"),
                 "knowledge_version": info.get("knowledge_version"),
+                "probability": info.get("probability"),
                 "offense_action": info.get("offense_action"),
                 "pre_snap_action_context": info.get("pre_snap_action_context"),
+                "input_audit": info.get("input_audit"),
+                "joint_exploration": info.get("joint_exploration"),
+                "joint_policy": info.get("joint_policy"),
             }
             db.conn.execute(
                 "UPDATE ml_decisions SET decision_json=? WHERE id=?",

@@ -672,22 +672,15 @@ def cmd_ml_offense_coordinator(args: argparse.Namespace) -> int:
     db = open_madden_db(read_only=True)
     try:
         plan = design_offense(db, opponent_id=args.opponent, max_formations=args.max_formations)
-        if args.summary:
-            plan = {
-                "proposal_id": plan["proposal_id"],
-                "inventory_id": plan["inventory_id"],
-                "formations": list(plan["book"]["formations"]),
-                "plays": plan["n_plays"],
-                "situation_coverage": plan.get("situation_coverage"),
-                "provenance": plan.get("provenance"),
-                "changes": plan.get("changes"),
-                "macro_blueprints": [
-                    {"name": m.get("name"), "status": m.get("status"), "kind": m.get("kind")}
-                    for m in plan.get("macro_blueprints") or []
-                ],
-                "note": "Proposal only. Stage and attest before it can become the applied book.",
-            }
-        print(json.dumps(plan, indent=2, default=str))
+        from cfb_coach.madden.model.offense_designer import plan_inspection
+
+        inspection = plan_inspection(plan)
+        payload: dict[str, Any] = inspection
+        if getattr(args, "full", False):
+            payload = {"inspection": inspection, "plan": plan}
+        elif args.summary:
+            payload = inspection
+        print(json.dumps(payload, indent=2, default=str))
         return 0
     except ValueError as exc:
         print(f"Coordinator plan refused: {exc}", file=sys.stderr)
@@ -823,11 +816,39 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
         except (ValueError, OSError) as exc:
             print(f"Offense design unavailable: {exc}", file=sys.stderr)
             return 2
-        display(design, "staged" if args.stage else "preview")
+        print(json.dumps(designer.plan_inspection(design), indent=2, default=str))
+        if text_mode:
+            print(f"proposal_id: {design.get('proposal_id')}")
+            print(f"inventory_id: {design.get('inventory_id')}")
+            print(f"max_formations: {design.get('max_formations')}")
+        else:
+            display(design, "staged" if args.stage else "preview")
         if args.stage:
             print("STAGED ONLY — active book unchanged until built in Madden and confirmed.")
         else:
             print("PREVIEW ONLY — no applied playbook or macro changes.")
+        return 0
+    finally:
+        db.close()
+
+
+def cmd_ml_offense_report(args: argparse.Namespace) -> int:
+    """Read-only coordinator evaluation of saved games. Never writes history."""
+    from cfb_coach.madden.model.offense_postgame import (
+        evaluate_saved_games, missing_database_report,
+    )
+
+    path = madden_db_path()
+    if not path.is_file():
+        print(json.dumps(missing_database_report(path), indent=2))
+        return 2
+    db = CoachDB.open_read_only(path)
+    try:
+        report = evaluate_saved_games(
+            db, game_id=args.game_id, limit=args.limit,
+        )
+        report.setdefault("database", {})["path"] = str(path)
+        print(json.dumps(report, indent=2, default=str))
         return 0
     finally:
         db.close()
@@ -1243,8 +1264,13 @@ def build_ml_subparser(sub: Any) -> None:
         help="Read-only pregame formation plan, or a synthetic policy comparison",
     )
     p_coord.add_argument("-o", "--opponent", default="cpu")
-    p_coord.add_argument("--max-formations", type=int, default=8)
-    p_coord.add_argument("--summary", action="store_true")
+    from cfb_coach.madden.model.offense_designer import DEFAULT_MAX_FORMATIONS
+
+    p_coord.add_argument("--max-formations", type=int, default=DEFAULT_MAX_FORMATIONS)
+    p_coord.add_argument("--summary", action="store_true",
+                         help="Print the complete inspectable plan (every formation and play)")
+    p_coord.add_argument("--full", action="store_true",
+                         help="Also include the raw proposal payload")
     p_coord.add_argument("--compare", action="store_true",
                          help="Compare the joint coordinator with model-primary on synthetic scenarios")
     p_coord.add_argument("--seed", type=int, default=11)
@@ -1271,9 +1297,9 @@ def build_ml_subparser(sub: Any) -> None:
         help="Model proposes whole offensive formations with ALL source plays and macro drafts",
     )
     p_od.add_argument("--opponent", "-o", default="cpu")
-    p_od.add_argument("--max-formations", type=int, default=5)
+    p_od.add_argument("--max-formations", type=int, default=DEFAULT_MAX_FORMATIONS)
     p_od.add_argument("--text", action="store_true",
-                      help="Print the original JSON report instead of opening the HTML designer")
+                      help="Print the inspectable plan instead of opening the HTML designer")
     p_od.add_argument("--no-open", action="store_true",
                       help="Write HTML locally but do not launch a browser")
     p_od.add_argument("--show", action="store_true", help="Show staged design without modifying DB")
@@ -1290,6 +1316,17 @@ def build_ml_subparser(sub: Any) -> None:
     p_od.add_argument("--retire-existing", metavar="ID", default=None,
                       help="Explicitly replace an existing active offense macro in the eight-slot loadout")
     p_od.set_defaults(func=cmd_ml_offense_design)
+
+    p_or = ml_sub.add_parser(
+        "offense-report",
+        help="Read-only postgame evaluation of saved coordinator games",
+    )
+    p_or.add_argument("--game-id", default=None)
+    p_or.add_argument(
+        "--limit", type=int, default=2,
+        help="Most recent CPU games when --game-id is omitted",
+    )
+    p_or.set_defaults(func=cmd_ml_offense_report)
 
     p_pg = ml_sub.add_parser(
         "postgame-experimental",

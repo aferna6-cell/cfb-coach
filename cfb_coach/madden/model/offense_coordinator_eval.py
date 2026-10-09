@@ -82,6 +82,7 @@ def compare_policies(*, seed: int = 11) -> dict[str, Any]:
         joint = choose_joint_action(
             ranked=baseline, anchor=baseline[0], sit=sit, book=SYNTHETIC_BOOK,
             active=[], db=None, opponent_id="synthetic",
+            session_id="synthetic-compare", snap_seq=index, opponent_type="cpu",
         )
         latencies.append((time.perf_counter() - started) * 1000.0)
         form = joint["joint"]["formation"]

@@ -246,6 +246,8 @@ class LivePlayController:
             "data_version": info.get("data_version"),
             "probability": info.get("probability"),
             "fell_back": bool(info.get("fell_back")),
+            "input_audit": (info.get("pre_snap_action_context") or {}).get("input_audit")
+            or info.get("input_audit"),
         }
 
     @staticmethod
@@ -1191,6 +1193,12 @@ function renderState(st) {{
           + "ML " + (st.ml_experimental.ml || "") + " · "
           + "shown " + (st.ml_experimental.final || "") + " · "
           + (st.ml_experimental.explanation || "");
+        const audit = st.ml_experimental.input_audit;
+        if (audit) {{
+          mlBox.textContent += " · known " + ((audit.known || []).join(", ") || "none")
+            + " · inferred " + ((audit.inferred || []).join(", ") || "none")
+            + " · missing " + ((audit.missing || []).join(", ") || "none");
+        }}
       }} else {{
         mlBox.hidden = true;
         mlBox.textContent = "";

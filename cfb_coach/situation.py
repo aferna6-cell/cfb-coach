@@ -50,6 +50,36 @@ class Situation:
         return " ".join(parts) or self.raw
 
 
+def parse_clock_seconds(text: str) -> int | None:
+    """Labeled game clock only. ``3rd and 8`` and a bare number are not a clock."""
+    if not text:
+        return None
+    match = _CLOCK_LABELED.search(text) or _CLOCK_LEFT.search(text)
+    if match:
+        minutes, seconds = int(match.group(1)), int(match.group(2))
+        if seconds >= 60 or minutes > 15:
+            return None
+        return minutes * 60 + seconds
+    match = _CLOCK_SECONDS.search(text)
+    if not match:
+        return None
+    seconds = int(match.group(1))
+    if seconds > 15 * 60:
+        return None
+    return seconds
+
+
+def parse_timeouts(text: str) -> int | None:
+    """``timeouts 2`` or ``2 timeouts``. A down-and-distance is not a timeout count."""
+    if not text:
+        return None
+    match = _TIMEOUTS_RE.search(text)
+    if not match:
+        return None
+    raw = match.group(1) or match.group(2)
+    return int(raw)
+
+
 _DOWN_RE = re.compile(
     r"\b([1-4])(?:st|nd|rd|th)?\s*[&and]+\s*(\d+|inches|goal|inches?)\b",
     re.I,
@@ -59,6 +89,19 @@ _YL_RE = re.compile(r"\b(?:yl|yardline|on)\s*(\d{1,2})\b", re.I)
 _RZ_RE = re.compile(r"\b(rz|red\s*zone|inside\s*the\s*20)\b", re.I)
 _GL_RE = re.compile(r"\b(gl|goal\s*line|from\s*the\s*[1-3]|&goal)\b", re.I)
 _2MIN_RE = re.compile(r"\b(2\s*min|two\s*minute|hurry|no\s*huddle|tempo)\b", re.I)
+_CLOCK_LABELED = re.compile(
+    r"\b(?:game\s*)?(?:clock|time|clk)\s+(\d{1,2}):(\d{2})\b",
+    re.I,
+)
+_CLOCK_LEFT = re.compile(r"\b(\d{1,2}):(\d{2})\s+left\b", re.I)
+_CLOCK_SECONDS = re.compile(
+    r"\b(?:game\s*)?(?:clock|time|clk)\s+(\d{1,4})(?!:)\b",
+    re.I,
+)
+_TIMEOUTS_RE = re.compile(
+    r"\b(?:timeouts?|tos)\s+([0-3])\b|\b([0-3])\s+timeouts?\b",
+    re.I,
+)
 
 _SIDE_O = re.compile(r"\b(o|off|offense|our\s*ball|we\s*have\s*ball)\b", re.I)
 # Bare "opp" / "their 25" are yardlines — only treat opp/their as defense with "ball"
@@ -162,6 +205,12 @@ def format_heard(sit: Situation) -> str:
     q = (sit.extras or {}).get("quarter")
     if q:
         parts.append("OT" if int(q) >= 5 else f"Q{q}")
+    clock = (sit.extras or {}).get("clock_seconds")
+    if clock is not None:
+        parts.append(f"{int(clock) // 60}:{int(clock) % 60:02d}")
+    timeouts = (sit.extras or {}).get("timeouts_us")
+    if timeouts is not None:
+        parts.append(f"TO{int(timeouts)}")
     if sit.score_us is not None and sit.score_them is not None:
         parts.append(f"{sit.score_us}-{sit.score_them}")
     if sit.coverage_hint:
@@ -258,6 +307,12 @@ def parse_situation(raw: str, default_side: str = "offense") -> Situation:
     inline_q = parse_inline_quarter(text)
     if inline_q is not None:
         sit.extras["quarter"] = inline_q
+    clock = parse_clock_seconds(text)
+    if clock is not None:
+        sit.extras["clock_seconds"] = clock
+    timeouts = parse_timeouts(text)
+    if timeouts is not None:
+        sit.extras["timeouts_us"] = timeouts
 
     if sit.distance is not None:
         if sit.distance <= 3:

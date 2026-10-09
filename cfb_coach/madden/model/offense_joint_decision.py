@@ -1,28 +1,41 @@
 """Joint offensive decision: (formation, play, adjustment plan).
 
-The unmodified play still comes from the model-primary policy, including its
-anti-repeat sampling. Legal adjustments on every eligible play then compete
-with that unmodified call. NO ADJUSTMENT is always in the race.
+Every legal unmodified play, every legal single adjustment, every compatible
+multi-adjustment, and every applicable verified-and-armed macro is scored.
+The model-primary selection score already includes anti-repeat. This layer
+does not replace that penalty with a fixed rotation.
 
-Research priors are not learned causal effects. A promoted action model may
-nudge a score by at most its published bound, and only inside a matching
-pre-snap context.
+A research prior can move a plan by at most ``MAX_RESEARCH_INFLUENCE``.
+That cap cannot overturn a play whose learned selection score is clearly
+higher. Near-ties inside ``INDIFFERENCE_BAND`` are explored with a stable
+hash seed. A promoted action model may add its own bounded shift only inside
+a matching pre-snap context.
 """
 from __future__ import annotations
 
+import hashlib
+import math
+import random
 from typing import Any, Mapping, Sequence
 
-from cfb_coach.madden.model.football_situation import evaluate_situation, explain_play
+from cfb_coach.madden.model.football_situation import (
+    audit_situation_inputs,
+    evaluate_situation,
+    explain_play,
+)
 from cfb_coach.madden.model.offense_action_policy import (
     _risk_threshold,
     _situation_trigger,
     _verified_button_sequence,
 )
 
-JOINT_POLICY = "joint_offense_action.v1"
+JOINT_POLICY = "joint_offense_action.v2"
 # A research prior may move the joint score by at most this many points.
 # Play probability remains the baseline.
 MAX_RESEARCH_INFLUENCE = 0.06
+# Complete scores inside this band are treated as tied. A wider gap is a
+# real football difference, not a coin flip. This is not a play rotation.
+INDIFFERENCE_BAND = 0.012
 
 
 def _clock_blocks(evaluation: Mapping[str, Any], n_actions: int) -> str | None:
@@ -420,6 +433,76 @@ def _decision_from_plan(
     }
 
 
+def _explore_near_ties(
+    options: Sequence[Mapping[str, Any]],
+    *,
+    session_id: str | None,
+    snap_seq: int | None,
+    sit: Any,
+    opponent_type: str,
+) -> tuple[Mapping[str, Any], dict[str, Any]]:
+    """Pick the best complete score. Sample only inside a near-tie band.
+
+    The seed is a hash of the snap, not an index into a rotating menu.
+    Anti-repeat stays in ``selection_score`` and is not applied again here.
+    """
+    from cfb_coach.madden.model.experimental_model import _play_concept
+
+    ordered = sorted(
+        options,
+        key=lambda c: (
+            -float(c["joint_score"]),
+            str(c["plan"].get("plan_id")),
+            str(c["play"]),
+            str(c["formation"]),
+        ),
+    )
+    leader = ordered[0]
+    second = float(ordered[1]["joint_score"]) if len(ordered) > 1 else None
+    margin = None if second is None else float(leader["joint_score"]) - second
+    meta = {
+        "method": "complete_action_value",
+        "indifference_band": INDIFFERENCE_BAND,
+        "research_cap": MAX_RESEARCH_INFLUENCE,
+        "anti_repeat": "applied_inside_selection_score",
+        "fixed_rotation": False,
+        "sampled": False,
+        "margin": None if margin is None else round(margin, 5),
+        "reason": "highest complete football value",
+    }
+    if second is None or (margin is not None and margin > INDIFFERENCE_BAND):
+        return leader, meta
+    near = [
+        c for c in ordered
+        if float(leader["joint_score"]) - float(c["joint_score"]) <= INDIFFERENCE_BAND + 1e-12
+    ]
+    counts: dict[str, int] = {}
+    for item in near:
+        concept = str(item["row"].get("play_concept") or _play_concept(str(item["play"])))
+        counts[concept] = counts.get(concept, 0) + 1
+    ceiling = float(leader["joint_score"])
+    temperature = 0.04
+    weights: list[float] = []
+    for item in near:
+        concept = str(item["row"].get("play_concept") or _play_concept(str(item["play"])))
+        exponent = max(-16.0, (float(item["joint_score"]) - ceiling) / temperature)
+        weights.append(math.exp(exponent) / math.sqrt(counts[concept]))
+    seed = (
+        f"joint:{session_id or 'unscoped'}:"
+        f"{snap_seq if snap_seq is not None else 'na'}:"
+        f"{getattr(sit, 'down', None)}:{getattr(sit, 'distance', None)}:{opponent_type}"
+    )
+    raw = hashlib.sha256(seed.encode("utf-8")).digest()
+    chosen = random.Random(int.from_bytes(raw[:8], "big")).choices(list(near), weights=weights, k=1)[0]
+    meta.update({
+        "sampled": True,
+        "reason": "near-tie exploration inside the indifference band; not a fixed rotation",
+        "band_size": len(near),
+        "seed": seed,
+    })
+    return chosen, meta
+
+
 def choose_joint_action(
     *,
     ranked: Sequence[Mapping[str, Any]],
@@ -436,8 +519,17 @@ def choose_joint_action(
     cooled: set[str] | None = None,
     score_phase: str | None = None,
     allow_macros: bool = True,
+    session_id: str | None = None,
+    snap_seq: int | None = None,
+    opponent_type: str = "cpu",
 ) -> dict[str, Any]:
-    """Pick one legal (formation, play, plan). Unmodified sampling is the anchor."""
+    """Pick one legal (formation, play, plan) from the complete action space.
+
+    Each eligible play contributes its best legal plan: unchanged, one
+    adjustment, a compatible package, or an armed macro. A different
+    unmodified play wins when its complete score is better. The sampled
+    anchor is the baseline recorded on the decision, not a lock.
+    """
     from cfb_coach.madden.model.offense_action_learning import load_action_evidence
 
     evaluation = evaluate_situation(sit, memory=memory)
@@ -467,10 +559,8 @@ def choose_joint_action(
     anchor_form = str(anchor.get("formation"))
     anchor_play = str(anchor.get("play"))
     anchor_score = float(anchor.get("selection_score", anchor.get("probability", 0.0)) or 0.0)
-    best_plan: dict[str, Any] | None = None
-    best_key: tuple[str, str] = (anchor_form, anchor_play)
-    best_joint = anchor_score
     summaries: list[dict[str, Any]] = []
+    representatives: list[dict[str, Any]] = []
     plays_seen = 0
     for row in ranked:
         form, play = str(row.get("formation")), str(row.get("play"))
@@ -487,42 +577,80 @@ def choose_joint_action(
             evaluation=evaluation, weights=weights, cooled=cooled,
             score_phase=score_phase, allow_macros=allow_macros, learned=learned,
         )
+        unchanged = next(plan for plan in plans if plan["plan_id"] == "NO_ADJUSTMENT")
+        unchanged_joint = base + float(unchanged.get("influence") or 0.0)
+        eligible: list[dict[str, Any]] = []
         for plan in plans:
-            # Other plays' unchanged versions do not override anti-repeat sampling.
-            if plan["plan_id"] == "NO_ADJUSTMENT" and (form, play) != (anchor_form, anchor_play):
-                continue
             joint = base + float(plan.get("influence") or 0.0)
             plan["joint_score"] = round(joint, 5)
             summaries.append({
                 "formation": form, "play": play, "kind": plan["kind"],
                 "id": plan["plan_id"], "score": plan["joint_score"],
             })
-            if joint > best_joint + 1e-9:
-                best_joint = joint
-                best_plan = plan
-                best_key = (form, play)
-    if best_plan is None or best_plan["plan_id"] == "NO_ADJUSTMENT":
+            if plan.get("executable") is False:
+                continue
+            # A sourced plan must beat running this same play unchanged.
+            # Every unmodified play stays in the race either way.
+            if plan["plan_id"] != "NO_ADJUSTMENT" and joint <= unchanged_joint + 1e-9:
+                continue
+            eligible.append(plan)
+        if not eligible:
+            continue
+        best = max(
+            eligible,
+            key=lambda plan: (
+                float(plan["joint_score"]),
+                0 if plan["plan_id"] == "NO_ADJUSTMENT" else 1,
+                str(plan["plan_id"]),
+            ),
+        )
+        representatives.append({
+            "joint_score": float(best["joint_score"]),
+            "formation": form,
+            "play": play,
+            "plan": best,
+            "row": row,
+        })
+    exploration: dict[str, Any]
+    if representatives:
+        chosen, exploration = _explore_near_ties(
+            representatives, session_id=session_id, snap_seq=snap_seq,
+            sit=sit, opponent_type=opponent_type,
+        )
+        best_plan = dict(chosen["plan"])
+        best_key = (str(chosen["formation"]), str(chosen["play"]))
+    else:
         best_plan = {
             "plan_id": "NO_ADJUSTMENT", "kind": "none", "parts": [],
-            "reason": "no verified adjustment beat the unchanged play",
-            "scores_are": "baseline_no_adjustment", "joint_score": round(anchor_score, 5),
+            "reason": "no legal play was available",
+            "scores_are": "baseline_no_adjustment",
+            "joint_score": round(anchor_score, 5),
             "influence": 0.0,
         }
         best_key = (anchor_form, anchor_play)
-    summaries.append({
-        "formation": anchor_form, "play": anchor_play, "kind": "none",
-        "id": "NO_ADJUSTMENT", "score": round(anchor_score, 5),
-    })
+        exploration = {
+            "method": "complete_action_value",
+            "sampled": False,
+            "reason": "no legal play was available",
+            "anti_repeat": "applied_inside_selection_score",
+            "fixed_rotation": False,
+            "research_cap": MAX_RESEARCH_INFLUENCE,
+        }
     summaries.sort(key=lambda r: (-float(r["score"]), str(r["id"]), r["play"]))
-    # Keep the audit bounded, but never hide the unchanged option.
     shown = summaries[:12]
-    if not any(row["id"] == "NO_ADJUSTMENT" for row in shown):
-        unchanged = next(row for row in summaries if row["id"] == "NO_ADJUSTMENT")
-        shown.append(unchanged)
+    if summaries and not any(row["id"] == "NO_ADJUSTMENT" for row in shown):
+        unchanged_row = next(row for row in summaries if row["id"] == "NO_ADJUSTMENT")
+        shown.append(unchanged_row)
     decision = _decision_from_plan(
         best_plan, formation=best_key[0], play=best_key[1], anchor=anchor,
         candidates=shown, evaluation=evaluation, learned_mode=learned_mode,
     )
     decision["plays_considered"] = plays_seen
     decision["eligible_play_count"] = plays_seen
+    decision["plans_compared"] = len(summaries)
+    decision["plays_in_final_comparison"] = len(representatives)
+    decision["exploration"] = exploration
+    decision["input_audit"] = audit_situation_inputs(
+        sit, evaluation=evaluation, memory=memory,
+    )
     return decision

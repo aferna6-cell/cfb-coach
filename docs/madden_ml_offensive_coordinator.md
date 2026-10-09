@@ -1,4 +1,4 @@
-# Sprint 11 — Adaptive offensive coordinator
+# Sprint 11.1 — Offensive coordinator hardening
 
 The experimental Madden offense is one coordinator, not a second playcaller.
 It still scores **every situationally eligible play** in the confirmed installed
@@ -34,7 +34,7 @@ arm a macro, or turn on human-opponent control.
 1. Situational pool from the full confirmed book (third-and-long prefers passes when any exist).
 2. Model probabilities for every play in that pool.
 3. Model-primary sampling, including anti-repeat. This is not a fixed rotation.
-4. Joint search: every eligible play is scored. `NO ADJUSTMENT` on the sampled play is the default. A sourced hot route, protection, compatible pair, or armed macro can replace it only when its research margin clears the no-action bar after an execution-cost penalty.
+4. Joint search over the complete legal action space: every unmodified play, every legal single adjustment, every compatible multi-adjustment, and every verified armed macro. Each play keeps its best legal plan. A different unmodified play wins when its complete score is higher. Anti-repeat stays inside the model-primary selection score. Scores inside a 0.012 band are explored with a snap hash, not a fixed rotation. A research prior cannot move a plan by more than 0.06, so it does not overturn a clearly stronger learned play.
 5. If the full path exceeds 150 ms, or the pick is illegal, the call rolls back to the heuristic.
 
 Detailed probabilities stay in the decision record and the expandable "Why this adjustment" section.
@@ -76,13 +76,63 @@ python -m cfb_coach ml offense-coordinator --compare
 
 Replace `PROPOSAL_ID` with the id printed by `--stage`. Do not point these commands at a copy of the franchise database you have not backed up. `ml experimental` writes the coach's own SQLite meta (mode and a shadow action model). It does not edit Madden's franchise file.
 
+## CPU pilot on Ubuntu
+
+`offense-coordinator`, `offense-design`, and `offense-design --stage` share `--max-formations` (default 8). The same opponent, catalog, and limit produce the same `proposal_id` and `inventory_id`. Confirm checks that fingerprint. Do this only after the formations are actually built in Madden.
+
+The compact live window stays `FORMATION — PLAY`, with adjustment steps underneath only when an adjustment won. Known, inferred, and missing situation inputs are on the decision record and in the existing experimental line.
+
+```bash
+cd /path/to/cfb-coach
+python3 -m venv .venv && . .venv/bin/activate
+pip install -e '.[dev]'
+
+# 1. Back up the existing coach database. The source file is not modified.
+python3 -m cfb_coach ml find-db
+python3 -m cfb_coach ml backup-db
+
+# 2. Select and stage the eight-formation offense.
+#    Preview and stage must print the same proposal_id and inventory_id.
+python3 -m cfb_coach ml offense-coordinator -o cpu --max-formations 8
+python3 -m cfb_coach ml offense-design -o cpu --max-formations 8 --text
+python3 -m cfb_coach ml offense-design -o cpu --max-formations 8 --stage --text
+
+# 3. Build that book in Madden, then confirm. Do not confirm before it is installed.
+python3 -m cfb_coach ml offense-design --confirm-installed PROPOSAL_ID \
+  --attest "I installed every listed formation and all of its plays in the Madden editor."
+
+# 4. Retrain from verified executions already in the coach database.
+#    This does not rewrite snap history. Action learning stays in shadow until promote.
+python3 -m cfb_coach ml experimental --retrain
+python3 -m cfb_coach ml offense-action-learn --train
+
+# 5. Run the experimental offensive coordinator.
+python3 -m cfb_coach play --game madden27
+
+# 6. Record the play you actually ran, whether you applied the adjustment, and the outcome.
+#    Check the adjustment box only if you applied it.
+#    Check "ran unchanged" only if you ran the play with no adjustment.
+#    Leaving both unchecked does not count as either.
+#    Optional sit line: 3rd and 7 my 21 clock 1:24 timeouts 2 q4 score 21-14 showing cover 1
+#    A previous snap's clock is not reused. "cover 1" without "showing" is the previous look.
+
+# 7. Read-only postgame report. This does not write the database.
+python3 -m cfb_coach ml offense-report
+python3 -m cfb_coach ml offense-report --game-id SESSION_ID
+
+# 8. Return to the previous heuristic coach.
+python3 -m cfb_coach ml heuristic
+```
+
+Replace `PROPOSAL_ID` with the id printed by `--stage`. Replace `SESSION_ID` with the game id from the report.
+
 ## Evidence that is not in this environment
 
-The two reported CPU blowouts were not found as logs or as a franchise SQLite file in this workspace. Regression checks use fixtures marked `synthetic`. Do not treat those scenarios as the user's games.
+This workspace has `~/.cfb-coach/coach.db` and no `madden27.db`. The coach database has opponents and zero snaps, zero sessions, and zero ML decisions. It is not the Madden game log. The two reported CPU blowout wins are not available here. `ml offense-report` says that explicitly when the Madden database is absent. Regression checks use fixtures marked synthetic. Do not treat those scenarios as the user's games.
 
 ## Tests
 
 ```bash
-PYTHONPATH=. python -m pytest tests -p no:cacheprovider -q
-PYTHONPATH=. python -m pytest tests/madden_ml/test_sprint11_offensive_coordinator.py -q
+PYTHONPATH=. python3 -m pytest tests -p no:cacheprovider -q
+PYTHONPATH=. python3 -m pytest tests/madden_ml/test_sprint11_offensive_coordinator.py tests/madden_ml/test_sprint11_1_hardening.py -q
 ```

@@ -22,6 +22,8 @@ META_HISTORY = "ml_offense_design_history.v1"
 META_BLUEPRINTS = "ml_offense_created_blueprints.v1"
 META_APPROVED = "ml_offense_verified_macros.v1:{opponent}"
 MAX_FORMATIONS = 12  # user-adjustable formation limit; all plays always included
+# Shared by offense-coordinator, offense-design, and offense-design --stage.
+DEFAULT_MAX_FORMATIONS = 8
 
 
 def _canonical(value: Any) -> str:
@@ -289,7 +291,119 @@ def design_offense(
         ],
     }
     proposal["proposal_id"] = _identity(proposal)
+    proposal["max_formations"] = max_formations
+    proposal["pregame_diagnostic"] = pregame_input_diagnostic(proposal.get("provenance"))
     return proposal
+
+
+def pregame_input_diagnostic(provenance: Mapping[str, Any] | None) -> dict[str, Any]:
+    """What the portfolio actually knows before kickoff.
+
+    Live snap fields are missing here on purpose. A historical defensive
+    tendency is not the coverage that will be on the field.
+    """
+    prov = provenance or {}
+    roster = prov.get("roster") or {}
+    defense = prov.get("opponent_defense") or {}
+    roster_state = str(roster.get("state") or "unknown")
+    defense_state = str(defense.get("state") or "unknown")
+    known: list[str] = []
+    inferred: list[str] = []
+    missing: list[str] = []
+    if roster_state == "verified":
+        known.append("roster")
+    else:
+        missing.append("roster")
+    if defense_state == "inferred":
+        inferred.append("opponent_tendency")
+    elif defense_state == "inferred_low_sample":
+        inferred.append("opponent_tendency_low_sample")
+    else:
+        missing.append("opponent_tendency")
+    missing.extend([
+        "quarter", "game_clock", "score", "down", "distance", "yardline",
+        "timeouts", "red_zone", "current_coverage",
+    ])
+    return {
+        "stage": "pregame",
+        "known": known,
+        "inferred": inferred,
+        "missing": missing,
+        "current_coverage": "missing",
+        "roster_state": roster_state,
+        "opponent_defense": {
+            "state": defense_state,
+            "sample_size": defense.get("sample_size"),
+            "inferred_look": defense.get("inferred_look") if defense_state == "inferred" else None,
+            "note": defense.get("note"),
+        },
+        "note": (
+            "Pregame has no live snap. Historical defensive tendency is not "
+            "current coverage, and it is not copied forward as this snap's shell."
+        ),
+    }
+
+
+def plan_inspection(proposal: Mapping[str, Any]) -> dict[str, Any]:
+    """Complete pre-install view. The fingerprint is the confirm-time check."""
+    book = proposal.get("book") or {}
+    formations = book.get("formations") or {}
+    sources = book.get("formation_sources") or {}
+    inventory_id = proposal.get("inventory_id") or book.get("inventory_id")
+    limit = proposal.get("max_formations")
+    opponent = proposal.get("opponent_id") or "cpu"
+    proposal_id = proposal.get("proposal_id")
+    listed = [
+        {
+            "formation": form,
+            "source_book": sources.get(form),
+            "plays": list(plays),
+        }
+        for form, plays in formations.items()
+    ]
+    listed.sort(key=lambda row: row["formation"])
+    n_plays = sum(len(row["plays"]) for row in listed)
+    limit_text = str(limit if limit is not None else DEFAULT_MAX_FORMATIONS)
+    return {
+        "status": "proposal_only_not_installed",
+        "proposal_id": proposal_id,
+        "inventory_id": inventory_id,
+        "inventory_fingerprint": inventory_id,
+        "max_formations": limit,
+        "formations_selected": len(listed),
+        "n_plays": proposal.get("n_plays", n_plays),
+        "formations": listed,
+        "changes": list(proposal.get("changes") or []),
+        "formation_rationales": list(proposal.get("formation_rationales") or []),
+        "situation_coverage": proposal.get("situation_coverage"),
+        "pregame_diagnostic": proposal.get("pregame_diagnostic"),
+        "macro_blueprints": [
+            {
+                "name": macro.get("name"),
+                "status": macro.get("status"),
+                "activation": macro.get("activation"),
+                "kind": macro.get("kind"),
+            }
+            for macro in proposal.get("macro_blueprints") or []
+        ],
+        "confirm_after_physical_install": {
+            "stage": (
+                "python3 -m cfb_coach ml offense-design "
+                f"-o {opponent} --max-formations {limit_text} --stage --text"
+            ),
+            "confirm": (
+                "python3 -m cfb_coach ml offense-design "
+                f"--confirm-installed {proposal_id} --attest "
+                "\"I installed every listed formation and all of its plays in the Madden editor.\""
+            ),
+            "fingerprint_must_match": inventory_id,
+            "physical_installation_required": True,
+            "attestation_required": True,
+        },
+        "notes": list(proposal.get("notes") or [
+            "Proposal only. The live book changes only after physical installation and confirm.",
+        ]),
+    }
 
 
 def staged_design(db: Any) -> dict[str, Any] | None:
