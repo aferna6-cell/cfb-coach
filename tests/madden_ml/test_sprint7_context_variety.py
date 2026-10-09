@@ -14,7 +14,7 @@ from unittest import mock
 from cfb_coach.db import CoachDB
 from cfb_coach.situation import Situation
 from cfb_coach.madden.catalog import is_run
-from cfb_coach.madden.model import experimental_live
+from cfb_coach.madden.model import experimental_live, inference
 from cfb_coach.madden.model.experimental_live import situational_offense_candidates
 from cfb_coach.madden.model.schema import CoachingMode
 from cfb_coach.madden.playcaller import MaddenCall
@@ -135,8 +135,7 @@ class LiveGameIdentityTests(unittest.TestCase):
                 )
                 with (
                     mock.patch.object(
-                        experimental_live.inference_mod if hasattr(experimental_live, "inference_mod")
-                        else __import__("cfb_coach.madden.model.inference", fromlist=["resolve_mode"]),
+                        inference,
                         "resolve_mode", return_value=CoachingMode.EXPERIMENTAL,
                     ),
                     mock.patch.object(
