@@ -199,6 +199,30 @@ def choose_model_play(
     if not diverse:
         diverse = [choices[0]]
 
+    # Avoid treating an inflated prior-only score as a mandate to recommend
+    # the same exact play a third time. Promote a different in-book concept
+    # into the exploratory shortlist when recent recommendations show lock-in.
+    prior_dominates = (
+        choices[0].get("evidence_quality") in ("prior_driven", "unknown", None)
+        or float(choices[0].get("uncertainty", 1.0)) >= 0.75
+    )
+    if (
+        len(diverse) == 1 and len(recent) >= 2
+        and recent[0] == recent[1]
+        and (choices[0]["formation"], choices[0]["play"]) == recent[0]
+        and prior_dominates
+    ):
+        promoted = next(
+            (r for r in choices
+             if _play_concept(r["play"]) != _play_concept(recent[0][1])
+             and not (is_run(r["play"])
+                      and getattr(sit, "down", None) in (3, 4)
+                      and (getattr(sit, "distance", 0) or 0) >= 7)),
+            None,
+        )
+        if promoted:
+            diverse.append(promoted)
+
     # Never offer the same play for a third consecutive low-evidence snap
     # while there are credible different concepts. Protect overwhelming
     # VERIFIED model evidence; otherwise break tactical predictability.
