@@ -9,11 +9,15 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from cfb_coach.db import CoachDB
 from cfb_coach.situation import Situation
 from cfb_coach.madden.catalog import is_run
+from cfb_coach.madden.model import experimental_live
 from cfb_coach.madden.model.experimental_live import situational_offense_candidates
+from cfb_coach.madden.model.schema import CoachingMode
+from cfb_coach.madden.playcaller import MaddenCall
 from cfb_coach.madden.model.experimental_model import (
     ExperimentalArtifact, predict_success, train_experimental,
 )
@@ -114,6 +118,41 @@ class SituationEligibilityTests(unittest.TestCase):
         self.assertGreater(v["situation_adjustment"], 0)
         self.assertGreater(v["selection_score"], s["selection_score"])
         self.assertIn(audit["top_selected"][1], ("Four Verticals", "HB Slip Screen"))
+
+
+class LiveGameIdentityTests(unittest.TestCase):
+    def test_live_model_receives_real_session_and_snap_identity(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = CoachDB(Path(td) / "live.db", seed={"opponents": {
+                "cpu": {"display_name":"CPU","team_now":"DET","skill":"cpu",
+                        "confidence":"low","profile_json":"{}"}
+            }})
+            try:
+                sit = situation(1, 10)
+                sit.extras = {"session_id": "session-model-123"}
+                call = MaddenCall(
+                    "offense", "Gun Bunch", "Mesh", "No adj", "Read", "heuristic"
+                )
+                with (
+                    mock.patch.object(
+                        experimental_live.inference_mod if hasattr(experimental_live, "inference_mod")
+                        else __import__("cfb_coach.madden.model.inference", fromlist=["resolve_mode"]),
+                        "resolve_mode", return_value=CoachingMode.EXPERIMENTAL,
+                    ),
+                    mock.patch.object(
+                        experimental_live, "apply_experimental_offense",
+                        return_value=(call, object()),
+                    ) as apply,
+                ):
+                    experimental_live.maybe_apply_experimental(
+                        call=call, sit=sit, opponent_id="cpu", db=db,
+                        book={"Gun Bunch": ["Mesh"]},
+                    )
+                self.assertEqual(apply.call_args.kwargs["session_id"], "session-model-123")
+                self.assertEqual(apply.call_args.kwargs["game_id"], "session-model-123")
+                self.assertEqual(apply.call_args.kwargs["snap_seq"], 1)
+            finally:
+                db.close()
 
 
 class ModelContextInteractionTests(unittest.TestCase):
