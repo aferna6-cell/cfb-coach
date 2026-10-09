@@ -327,3 +327,75 @@ Next improvement: log verified *execution of the requested adjustment* and
 its outcome by exact action/formation/play/coverage/situation before training
 an action-value model. Until sufficient clean paired observations exist, no
 action uplift claim or automatic macro creation/activation is justified.
+
+## Sprint 10 — verified offensive action learning + model-created macro lab
+
+The offensive coordinator is now split into two linked, auditable decisions:
+the ML first calls a formation/play from the confirmed complete playbook,
+then the action policy chooses one compatible researched/armed pre-snap
+adjustment or **NO ADJUSTMENT**. The learning pipeline preserves a strict
+distinction among: action suggested, action explicitly confirmed applied,
+and what happened after the play.
+
+### Evidence-only learning, shadow by default
+
+`offense_action_learning.collect_action_evidence` joins exact ML snap IDs,
+logged final calls, explicitly confirmed executed actions, verified executed
+plays and labeled results. It **excludes** unconfirmed suggestions, unverified
+or differently executed plays, unknown labels and inconsistent records.
+Comparators are snaps where *no action was recommended or recorded*, explicitly
+described as observational references—not proof that no other route was used.
+
+The action learner groups by play concept and down/distance bucket, uses a
+strong Bayesian prior, and limits any influence to +/-0.035 ranking-score
+points. Eligibility requires **at least 12 verified applied examples, 12
+context-comparable reference examples and three distinct games in each group**.
+Training defaults to SHADOW. Only explicit user opt-in can enable the tiny
+correlational tie-breaker; no macro editor, trigger or installed-book checks
+can be bypassed. Small observational differences are not causal effects.
+
+```bash
+python -m cfb_coach ml offense-action-learn             # dry-run audit/training
+python -m cfb_coach ml offense-action-learn --save      # persist artifact; shadow
+python -m cfb_coach ml offense-action-learn --show      # inspect stored evidence
+python -m cfb_coach ml offense-action-learn --mode shadow
+# ONLY if enough verified comparable examples and user explicitly wants it:
+python -m cfb_coach ml offense-action-learn --mode enabled
+```
+
+The model automatically refuses an early enable if it lacks the independently
+verified samples and game diversity. It does not reclassify 28–7 CPU-game
+attestations as verified *adjustment* executions: play execution and actual
+macro/hot-route execution are separate facts.
+
+### New custom configurations — propose, inspect, install, verify
+
+`offense_macro_lab` designs new play-concept-specific macro templates from
+the **complete confirmed custom offense**, using catalogued passing concepts
+and per-field *sourced* hot-route/protection primitives. Each generated
+candidate has its own name, compatible play pairs, trigger, editor setting
+rows, source IDs and explicit unknown-field warnings.
+
+```bash
+python -m cfb_coach ml offense-macro-lab              # preview new variants
+python -m cfb_coach ml offense-macro-lab --stage      # add DRAFTS only
+python -m cfb_coach ml offense-design -o cpu --show  # browser shows staged drafts
+```
+
+After checking every setting, building a compatible Custom Adjustment
+**inside Madden** and arming a slot, use the separate
+`ml offense-design -o cpu --verify-macro NAME --attest "..."` flow. No
+stage action arms a macro or edits Madden. Concept-specific blueprints can
+be new combinations of the selected play context and one researched
+primitive; they are **not** proven novel multi-route effects. Combining
+multiple potentially conflicting primitives remains a future constrained
+composition/evaluation problem, not an invented capability.
+
+### Next steps before automatic action value selection
+
+Collect more verified applied-vs-reference examples across CPU games, check
+game-level holdouts and opponent differences, and upgrade from correlational
+shrinkage to conservative contextual/offline policy evaluation. Broader
+automatic generation should include hard compatibility constraints,
+documented editor fields, and an in-game installation approval boundary.
+No autonomous manipulation of an Xbox/Madden UI exists in this repo.
