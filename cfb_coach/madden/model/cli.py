@@ -581,6 +581,48 @@ def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ml_offense_action_learn(args: argparse.Namespace) -> int:
+    """Train / inspect / gate observational pre-snap action evidence."""
+    from cfb_coach.madden.model.offense_action_learning import (
+        load_action_evidence, promote_action_evidence,
+        rollback_action_evidence, save_action_evidence,
+        train_action_evidence,
+    )
+
+    actions = sum(bool(x) for x in (args.train, args.promote, args.rollback))
+    if actions > 1:
+        print("Choose one of --train, --promote or --rollback", file=sys.stderr)
+        return 2
+    db = open_madden_db(read_only=not actions)
+    try:
+        try:
+            if args.train:
+                art = train_action_evidence(db)
+                save_action_evidence(db, art)
+            elif args.promote:
+                art = promote_action_evidence(db)
+            elif args.rollback:
+                art = rollback_action_evidence(db)
+            else:
+                art = load_action_evidence(db)
+        except ValueError as exc:
+            print(f"Action learning refused: {exc}", file=sys.stderr)
+            return 2
+        if art is None:
+            print("No saved action model. Run ml offense-action-learn --train first.")
+            return 0
+        view = dict(art)
+        if not args.details:
+            view["comparisons"] = {
+                k: v for k, v in (art.get("comparisons") or {}).items()
+                if v.get("ready_for_bounded_adjustment")
+            }
+        print(json.dumps(view, indent=2, default=str))
+        return 0
+    finally:
+        db.close()
+
+
 def cmd_ml_offense_actions(args: argparse.Namespace) -> int:
     """Show researched, compatible and verified Custom Adjustment readiness."""
     from cfb_coach.madden.model.offense_action_inventory import offense_actions_report
@@ -1099,6 +1141,20 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_te.add_argument("--no-db", dest="db", action="store_false", default=True)
     p_te.set_defaults(func=cmd_ml_train_experimental)
+
+    p_learn = ml_sub.add_parser(
+        "offense-action-learn",
+        help="Learn verified pre-snap adjustment outcomes; shadow until evidence-gated promotion",
+    )
+    p_learn.add_argument("--train", action="store_true",
+                         help="Build a SHADOW model from verified, explicitly confirmed action outcomes")
+    p_learn.add_argument("--promote", action="store_true",
+                         help="Activate only adequately compared multi-game contexts (bounded ±0.04)")
+    p_learn.add_argument("--rollback", action="store_true",
+                         help="Immediately disable learned action-score shifts")
+    p_learn.add_argument("--details", action="store_true",
+                         help="Include all sparse action/context comparisons")
+    p_learn.set_defaults(func=cmd_ml_offense_action_learn)
 
     p_act = ml_sub.add_parser(
         "offense-actions",
