@@ -863,6 +863,37 @@ def cmd_ml_offense_strategy(args: argparse.Namespace) -> int:
             db.close()
 
 
+def cmd_ml_opponent_learning(args: argparse.Namespace) -> int:
+    """Read-only tendency report. Does not rewrite gameplay history."""
+    from cfb_coach.madden.model.offense_postgame import missing_database_report
+    from cfb_coach.madden.model.opponent_learning import (
+        opponent_learning_report, readonly_madden_db_path,
+    )
+
+    path = readonly_madden_db_path()
+    if not path.is_file():
+        report = missing_database_report(path)
+        report["command"] = "opponent-learning"
+        report["history_modified"] = False
+        report["learned_from_video"] = False
+        report["ubuntu_commands"] = [
+            "python3 -m cfb_coach ml opponent-learning -o cpu",
+            "python3 -m cfb_coach ml opponent-learning -o cpu --game-id GAME_ID",
+        ]
+        print(json.dumps(report, indent=2))
+        return 2
+    db = CoachDB.open_read_only(path)
+    try:
+        report = opponent_learning_report(
+            db, opponent_id=args.opponent, game_id=args.game_id,
+        )
+        report["database"] = {"path": str(path), "opened_read_only": True}
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    finally:
+        db.close()
+
+
 def cmd_ml_offense_report(args: argparse.Namespace) -> int:
     """Read-only coordinator evaluation of saved games. Never writes history."""
     from cfb_coach.madden.model.offense_postgame import (
@@ -1372,6 +1403,14 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_st.add_argument("-o", "--opponent", default="cpu")
     p_st.set_defaults(func=cmd_ml_offense_strategy)
+
+    p_ol = ml_sub.add_parser(
+        "opponent-learning",
+        help="Read-only opponent tendencies and concept evidence from verified snaps",
+    )
+    p_ol.add_argument("-o", "--opponent", default="cpu")
+    p_ol.add_argument("--game-id", default=None)
+    p_ol.set_defaults(func=cmd_ml_opponent_learning)
 
     p_pg = ml_sub.add_parser(
         "postgame-experimental",

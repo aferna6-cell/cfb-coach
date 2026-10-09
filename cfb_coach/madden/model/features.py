@@ -378,6 +378,13 @@ def intelligence_features(
         "diagnosis_state": (diagnosis or {}).get("state"),
         "strategy_objective": (strategy or {}).get("objective"),
         "strategy_hypothesis": (strategy or {}).get("hypothesis_id"),
+        "opponent_learning_hypothesis": (
+            (strategy or {}).get("hypothesis_id")
+            if str((strategy or {}).get("hypothesis_id") or "") in (
+                "learned_passing_down_pressure", "revised_away_from_quick_pressure",
+            )
+            else None
+        ),
     }
 
 

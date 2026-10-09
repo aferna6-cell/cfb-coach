@@ -105,6 +105,7 @@ def current_strategy(
     memory: Mapping[str, Any] | None = None,
     diagnosis: Mapping[str, Any] | None = None,
     previous: Mapping[str, Any] | None = None,
+    learned: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Hypothesis for this snap. A missing drive boundary keeps the prior hypothesis."""
     if diagnosis is None:
@@ -137,6 +138,11 @@ def current_strategy(
             "Opponent frequently exposes underneath space while protecting deep zones."
         )
         revised = False
+    elif (learned or {}).get("strategy_hypothesis"):
+        hint = learned["strategy_hypothesis"]
+        hypothesis_id = str(hint.get("id") or "none")
+        hypothesis = str(hint.get("text") or "")
+        revised = bool(hint.get("revised"))
     elif _objective(sit, diagnosis, memory) == "handle_pressure":
         hypothesis_id = "pressure_answers"
         hypothesis = (
@@ -165,6 +171,8 @@ def current_strategy(
             confidence = max(confidence, 0.55)
     elif hypothesis_id == "revised_away_from_underneath":
         confidence = 0.7
+    elif hypothesis_id in ("learned_passing_down_pressure", "revised_away_from_quick_pressure"):
+        confidence = float(((learned or {}).get("strategy_hypothesis") or {}).get("confidence") or 0.0)
     gaps = [
         "route_diagrams_unknown",
         "personnel_attributes_unknown",
@@ -216,6 +224,14 @@ def strategy_adjustment(
             play, concept_id, 0.0,
             [f"verified results revised {concept_id} out of the hypothesis"],
             ["contradicted_concept"],
+        )
+    if strategy.get("hypothesis_id") in (
+        "learned_passing_down_pressure", "revised_away_from_quick_pressure",
+    ):
+        return _adjustment(
+            play, concept_id, 0.0,
+            ["opponent learning carries this hypothesis; strategy does not add a second bonus"],
+            ["not_stacked_with_learning"],
         )
     if float(knowledge_delta) > 0:
         reasons.append(

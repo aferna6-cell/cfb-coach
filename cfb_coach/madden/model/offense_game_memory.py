@@ -188,6 +188,12 @@ def pre_snap_context(
         bucket[concept_id] = bucket.get(concept_id, 0) + 1
         if not bad:
             recent_verified_concept = concept_id
+    try:
+        from cfb_coach.madden.model.opponent_learning import records_from_memory_events
+
+        verified_snap_records = records_from_memory_events(verified)
+    except Exception:  # noqa: BLE001 — memory still returns without the learner
+        verified_snap_records = []
     return {
         "schema": SCHEMA,
         "events_before_snap": len(prior),
@@ -210,6 +216,7 @@ def pre_snap_context(
         "recent_verified_concept": recent_verified_concept,
         "last_verified_outcome": last_verified_outcome,
         "recent_recommendations": _recent_recommendations(prior),
+        "verified_snap_records": verified_snap_records,
     }
 
 

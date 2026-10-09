@@ -1,4 +1,6 @@
-# Sprint 12 — Football intelligence on the offensive coordinator
+# Sprint 13 — Opponent learning on the offensive coordinator
+
+Sprint 12's football knowledge, diagnosis, drive hypothesis, 15-formation cap, and evidence-aware diversity stay in place. Sprint 13 adds a conservative opponent model on verified executions. The trained success model remains the primary score.
 
 The experimental Madden offense is one coordinator, not a second playcaller.
 It still scores **every situationally eligible play** in the confirmed installed
@@ -125,6 +127,12 @@ python3 -m cfb_coach ml offense-report --game-id SESSION_ID
 python3 -m cfb_coach ml football-knowledge --concept mesh
 python3 -m cfb_coach ml offense-strategy -o cpu
 
+# Read-only opponent learning. This does not write the database and does not
+# create madden27.db if it is missing. Run it on the Ubuntu machine that has
+# ~/.cfb-coach/madden27.db.
+python3 -m cfb_coach ml opponent-learning -o cpu
+python3 -m cfb_coach ml opponent-learning -o cpu --game-id GAME_ID
+
 # 8. Return to the previous heuristic coach.
 python3 -m cfb_coach ml heuristic
 ```
@@ -141,6 +149,16 @@ The user reported two earlier games. They are context from an older ML build, no
 - `d2e3214fbb944af9`: 4 recommendations and 2 verified executions. No stored final score. Not a completed win.
 
 Regression checks use fixtures marked synthetic. A synthetic call that looks better is not a win-rate claim.
+
+## Opponent learning
+
+Verified executions update a shrunk opponent model. A context rate is published only with at least eight labeled snaps. A change across the game is published only when each half has at least four labeled snaps and the shrunk rates differ by at least 0.25. Two or three snaps stay uncertain. The joint decision can add at most 0.02 for a quick concept on a passing down when that change is published, the current look is still unknown, and knowledge or strategy did not already score the same idea. A five-yard gain on third-and-12 is not a conversion. Recommendations are not training rows. Hot-route and protection effects are not estimated unless execution was explicitly verified; this sprint does not claim that comparison.
+
+The defensive observation stores shell, man or zone, pressure, front, box, safety depth, press, and leverage as separate fields. "Man" stays an ambiguous legacy label. It is not rewritten as Cover 1.
+
+`vod_success` and `vod_model` remain available for a later film pass. They are not called by the live coordinator. Video rows use `video_observation.v1` and a dry-run importer. Accepted rows stay `video_pending_validation`. No real recording has been validated, so the coach has not learned from video.
+
+With one reported historical CPU game, and that game absent from this workspace, held-out win rate is not established. The Sprint 13 comparison is a synthetic chronological replay: Sprint 12 baseline, opponent learning alone, and opponent learning with adaptive strategy. Snap N sees only earlier snaps.
 
 ## Football knowledge
 

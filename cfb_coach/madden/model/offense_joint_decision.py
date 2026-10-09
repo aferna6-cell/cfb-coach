@@ -566,6 +566,8 @@ def _football_intelligence(
     strategy_state: Mapping[str, Any] | None,
     use_knowledge: bool,
     use_strategy: bool,
+    use_opponent_learning: bool = False,
+    learned_model: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Why the winning complete action beat the closest alternatives."""
     from cfb_coach.madden.model.concept_matchup import KNOWLEDGE_CAP
@@ -576,11 +578,14 @@ def _football_intelligence(
         strategy = row.get("strategy") or {}
         knowledge_text = "; ".join(knowledge.get("reasons") or []) or "no knowledge prior"
         strategy_text = "; ".join(strategy.get("reasons") or []) or "no strategy prior"
+        learning = row.get("learning") or {}
+        learning_text = "; ".join(learning.get("reasons") or []) or "no opponent-learning prior"
         withheld = "; ".join(knowledge.get("withheld") or [])
         text = (
             f"selection {float(row.get('selection_score') or 0):.3f}, "
             f"knowledge {float(knowledge.get('delta') or 0):+.3f} ({knowledge_text}), "
-            f"strategy {float(strategy.get('delta') or 0):+.3f} ({strategy_text})"
+            f"strategy {float(strategy.get('delta') or 0):+.3f} ({strategy_text}), "
+            f"learning {float(learning.get('delta') or 0):+.3f} ({learning_text})"
         )
         if withheld:
             text += f"; withheld: {withheld}"
@@ -595,6 +600,7 @@ def _football_intelligence(
             "concept_id": (chosen.get("knowledge") or {}).get("concept_id"),
             "knowledge_delta": (chosen.get("knowledge") or {}).get("delta"),
             "strategy_delta": (chosen.get("strategy") or {}).get("delta"),
+            "learning_delta": (chosen.get("learning") or {}).get("delta"),
             "why": _why(chosen),
         }
     others = [
@@ -613,6 +619,7 @@ def _football_intelligence(
             "joint_score": row.get("joint_score"),
             "knowledge_delta": (row.get("knowledge") or {}).get("delta"),
             "strategy_delta": (row.get("strategy") or {}).get("delta"),
+            "learning_delta": (row.get("learning") or {}).get("delta"),
             "why_not": (
                 f"complete score {float(row.get('joint_score') or 0):.3f} trails "
                 f"{leader:.3f}. {_why(row)}"
@@ -629,8 +636,15 @@ def _football_intelligence(
     return {
         "use_knowledge": use_knowledge,
         "use_strategy": use_strategy,
+        "use_opponent_learning": use_opponent_learning,
         "knowledge_cap": KNOWLEDGE_CAP,
         "strategy_cap": STRATEGY_CAP,
+        "opponent_learning": {
+            "enabled": use_opponent_learning,
+            "usable_verified_snaps": (learned_model or {}).get("usable_verified_snaps", 0),
+            "hypothesis": (learned_model or {}).get("strategy_hypothesis"),
+            "changes": (learned_model or {}).get("changes") or [],
+        },
         "learned_evidence_remains_primary": True,
         "winner": winner,
         "alternatives": alternatives,
@@ -664,6 +678,7 @@ def choose_joint_action(
     strategy_previous: Mapping[str, Any] | None = None,
     use_diversity: bool = True,
     recent_calls: Sequence[Any] | None = None,
+    use_opponent_learning: bool = True,
 ) -> dict[str, Any]:
     """Pick one legal (formation, play, plan) from the complete action space.
 
@@ -700,16 +715,27 @@ def choose_joint_action(
     learned_mode = (learned or {}).get("mode", "none")
     diagnosis = None
     strategy_state = None
-    if use_knowledge or use_strategy:
+    learned_model = None
+    if use_knowledge or use_strategy or use_opponent_learning:
         from cfb_coach.madden.model.defensive_diagnosis import diagnose_defense
 
         diagnosis = diagnose_defense(sit, memory)
+    if use_opponent_learning:
+        from cfb_coach.madden.model.opponent_learning import fit_opponent_model
+
+        learned_model = fit_opponent_model(memory)
     if use_strategy:
         from cfb_coach.madden.model.offense_strategy import current_strategy
 
         strategy_state = current_strategy(
             sit, memory, diagnosis, previous=strategy_previous,
+            learned=learned_model if use_opponent_learning else None,
         )
+    current_pressure = bool(
+        diagnosis
+        and diagnosis.get("state") == "observed"
+        and (diagnosis.get("observed") or {}).get("pressure")
+    )
     anchor_form = str(anchor.get("formation"))
     anchor_play = str(anchor.get("play"))
     anchor_score = float(anchor.get("selection_score", anchor.get("probability", 0.0)) or 0.0)
@@ -726,6 +752,7 @@ def choose_joint_action(
         base += float(fit["coordinator_delta"])
         knowledge = {"delta": 0.0, "reasons": ["knowledge off"], "withheld": []}
         strategy_adj = {"delta": 0.0, "reasons": ["strategy off"], "withheld": []}
+        learning_adj = {"delta": 0.0, "reasons": ["opponent learning off"], "withheld": []}
         if use_knowledge:
             from cfb_coach.madden.model.concept_matchup import evaluate_concept_matchup
 
@@ -736,8 +763,18 @@ def choose_joint_action(
             strategy_adj = strategy_adjustment(
                 play, strategy_state, knowledge_delta=float(knowledge.get("delta") or 0.0),
             )
+        if use_opponent_learning:
+            from cfb_coach.madden.model.opponent_learning import learning_adjustment
+
+            learning_adj = learning_adjustment(
+                play, sit, learned_model,
+                knowledge_delta=float(knowledge.get("delta") or 0.0),
+                strategy_delta=float(strategy_adj.get("delta") or 0.0),
+                current_pressure_observed=current_pressure,
+            )
         base += float(knowledge.get("delta") or 0.0)
         base += float(strategy_adj.get("delta") or 0.0)
+        base += float(learning_adj.get("delta") or 0.0)
         plans = legal_plans_for_play(
             formation=form, play=play, sit=sit, book=book,
             active=list(active or []), prediction=row, repeated=repeated,
@@ -780,6 +817,7 @@ def choose_joint_action(
             "row": row,
             "knowledge": knowledge,
             "strategy": strategy_adj,
+            "learning": learning_adj,
             "selection_score": float(row.get("selection_score", row.get("probability", 0.0)) or 0.0),
         })
     from cfb_coach.madden.model.offense_diversity import concentration_stats
@@ -861,6 +899,8 @@ def choose_joint_action(
         strategy_state=strategy_state,
         use_knowledge=use_knowledge,
         use_strategy=use_strategy,
+        use_opponent_learning=use_opponent_learning,
+        learned_model=learned_model,
     )
     decision["football_intelligence"] = intelligence
     joint = decision.get("joint") or {}
