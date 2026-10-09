@@ -179,7 +179,8 @@ def choose_model_play(
     best_score = float(choices[0]["selection_score"])
     # Controlled exploration among similarly valued *and situationally valid*
     # plays, not arbitrary random play calls.
-    spread = 0.11 if cpu else 0.065
+    spread = (0.145 if float(choices[0].get("uncertainty", 1.0)) >= 0.55
+              else 0.11) if cpu else 0.065
     shortlist = [
         row for row in choices
         if float(row["selection_score"]) >= best_score - spread
@@ -198,19 +199,35 @@ def choose_model_play(
     if not diverse:
         diverse = [choices[0]]
 
-    # After two repeated play recommendations, prefer a different concept
-    # unless strongly verified performance makes it clearly better.
+    # Never offer the same play for a third consecutive low-evidence snap
+    # while there are credible different concepts. Protect overwhelming
+    # VERIFIED model evidence; otherwise break tactical predictability.
     last = recent[0] if recent else None
-    if (
-        last and len(recent) >= 2 and recent[0] == recent[1]
-        and (choices[0]["formation"], choices[0]["play"]) == last
-    ):
+    identical_twice = bool(last and len(recent) > 1 and recent[0] == recent[1])
+    if identical_twice and len(diverse) > 1:
+        leader = choices[0]
+        confident_dominance = (
+            float(leader.get("uncertainty", 1.0)) < .35
+            and leader.get("evidence_quality") in ("empirical", "verified")
+            and float(leader["probability"]) -
+            max((float(x["probability"]) for x in choices
+                 if (x["formation"], x["play"]) != last), default=0.0) > .18
+        )
         alternatives = [
             row for row in diverse
-            if _play_concept(row["play"]) != _play_concept(last[1])
+            if (row["formation"], row["play"]) != last
+            and _play_concept(row["play"]) != _play_concept(last[1])
         ]
-        if alternatives:
+        if alternatives and not confident_dominance:
             diverse = alternatives
+
+    # Repeated screen *families* are a tell even with different exact plays.
+    # Suppress screens for this selection after 3/4 previous screens, unless
+    # there are no reasonable non-screen candidates.
+    if sum(_play_family(p) == "screen" for _f, p in last4) >= 3:
+        non_screen = [r for r in diverse if _play_family(r["play"]) != "screen"]
+        if non_screen:
+            diverse = non_screen
 
     seed = (
         f"{session_id or 'unscoped'}:{snap_seq if snap_seq is not None else len(recent)}:"
