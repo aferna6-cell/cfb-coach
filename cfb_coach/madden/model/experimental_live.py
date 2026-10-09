@@ -816,6 +816,8 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
     selected_multi_adjustment = 0
     live_coverage_predictions = 0
     live_coverage_matches = 0
+    prior_policy_comparable = 0
+    joint_changed_prior_pick = 0
     decision_contexts: dict[str, dict[str, Any]] = {}
     for r in identified:
         try:
@@ -824,10 +826,18 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
             action = experimental.get("offense_action") or {}
             context = experimental.get("pre_snap_action_context") or {}
             decision_contexts[str(r["snap_id"])] = context
-            joint = (experimental.get("selection_audit") or {}).get("joint_decision") or {}
+            selection = experimental.get("selection_audit") or {}
+            joint = selection.get("joint_decision") or {}
             if joint:
                 joint_decisions += 1
                 joint_legal += int(int(joint.get("legal_joint_decision_count") or 0) > 0)
+                old_pick = selection.get("top_selected") or []
+                new_pick = joint.get("selected") or {}
+                if len(old_pick) == 2 and new_pick.get("formation") and new_pick.get("play"):
+                    prior_policy_comparable += 1
+                    joint_changed_prior_pick += int(
+                        list(old_pick) != [new_pick["formation"], new_pick["play"]]
+                    )
         except (TypeError, ValueError, json.JSONDecodeError):
             action = {}
         kind = str(action.get("kind") or "none")
@@ -895,8 +905,8 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
             coverage_class(context["coverage_hint"]) == coverage_class(observed)
         )
     latencies = sorted(
-        float(row["latency_ms"]) for row in identified
-        if row["latency_ms"] is not None
+        float(row["latency_ms_model"]) for row in identified
+        if row["latency_ms_model"] is not None
     )
     p95_index = max(0, min(len(latencies) - 1, int(len(latencies) * 0.95) - 1))
 
@@ -925,6 +935,11 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
             if joint_decisions else 0.0,
             "selected_no_adjustment": selected_no_adjustment,
             "selected_multi_adjustment": selected_multi_adjustment,
+            "comparison_to_previous_model_primary": {
+                "common_decisions": prior_policy_comparable,
+                "joint_policy_changed_play": joint_changed_prior_pick,
+                "note": "Recommendation comparison only; unchosen outcomes are unknown.",
+            },
             "latency_p95_ms": round(latencies[p95_index], 3) if latencies else None,
             "latency_max_ms": round(max(latencies), 3) if latencies else None,
             "coverage_calibration": {
