@@ -146,6 +146,21 @@ class ModelContextInteractionTests(unittest.TestCase):
             art.concept_down_distance,
         )
 
+    def test_training_populates_context_interactions_from_verified_examples(self):
+        rows = [
+            {"side":"offense", "supervised_eligible":True, "success":"true",
+             "action_play":"Four Verticals", "down":3, "distance":11,
+             "opponent_type":"cpu", "opponent_id":"cpu"},
+            {"side":"offense", "supervised_eligible":True, "success":"false",
+             "action_play":"Inside Zone", "down":3, "distance":11,
+             "opponent_type":"cpu", "opponent_id":"cpu"},
+        ]
+        artifact = train_experimental(rows)
+        self.assertEqual(artifact.n_supervised, 2)
+        self.assertEqual(artifact.concept_down_distance["vert|3_long"], [1.0, 1.0])
+        self.assertEqual(artifact.concept_down_distance["run_concept|3_long"], [0.0, 1.0])
+        self.assertEqual(artifact.family_down_distance["run|3_long"], [0.0, 1.0])
+
     def test_old_artifact_without_new_buckets_still_loads(self):
         old = ExperimentalArtifact.from_dict(
             {"global_rate": .5, "model_version": "old", "play_concept":{"screen":[4,8]}}
