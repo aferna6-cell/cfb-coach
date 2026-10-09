@@ -48,48 +48,36 @@ def _situational_adjustment(play: str, sit: Any) -> tuple[float, str]:
     """Small play-specific suitability signal; not a heuristic play choice."""
     if sit is None:
         return 0.0, "situation unavailable"
-    down, distance = getattr(sit, "down", None), getattr(sit, "distance", None)
-    two_minute = bool(getattr(sit, "two_minute", False))
-    if down is None or distance is None:
-        return 0.0, "down/distance unknown"
-    try:
-        d, yards = int(down), int(distance)
-    except (TypeError, ValueError):
-        return 0.0, "down/distance unparseable"
-    run, screen = is_run(play), _play_family(play) == "screen"
-    delta = 0.0
-    reasons: list[str] = []
-    if d in (3, 4) and yards >= 7:
-        if run:
-            delta -= 0.45  # eligible only if no legal pass survives
-            reasons.append("third/fourth-and-long ground gain risk")
-        if screen:
-            delta -= 0.09
-            reasons.append("screen behind conversion distance")
-        if not run and not screen and is_deep(play):
-            delta += 0.025
-            reasons.append("route potentially reaches sticks")
-    elif d in (3, 4) and yards <= 2:
-        if run:
-            delta += 0.025
-            reasons.append("short-yardage run option")
-        if is_deep(play):
-            delta -= 0.035
-            reasons.append("long-developing route on short yardage")
-    if two_minute and yards >= 4 and run:
-        score_us, score_them = (
-            getattr(sit, "score_us", None), getattr(sit, "score_them", None)
-        )
-        if score_us is not None and score_them is not None:
-            if score_us < score_them:
-                delta -= 0.07
-                reasons.append("trailing in two-minute drill")
-            elif score_us > score_them:
-                delta += 0.04
-                reasons.append("protecting lead / keeping clock running")
-        # With an unknown score, don't assume we are trailing.
+    from cfb_coach.madden.model.football_situation import (
+        evaluate_situation, play_situation_fit,
+    )
 
-    return delta, "; ".join(reasons) or "normal situation"
+    try:
+        fb = evaluate_situation(sit)
+        delta, reasons = play_situation_fit(play, fb)
+        return delta, "; ".join(reasons) or "normal situation"
+    except Exception:  # noqa: BLE001 — never break selection on situation eval
+        down, distance = getattr(sit, "down", None), getattr(sit, "distance", None)
+        if down is None or distance is None:
+            return 0.0, "down/distance unknown"
+        try:
+            d, yards = int(down), int(distance)
+        except (TypeError, ValueError):
+            return 0.0, "down/distance unparseable"
+        run, screen = is_run(play), _play_family(play) == "screen"
+        delta = 0.0
+        reasons: list[str] = []
+        if d in (3, 4) and yards >= 7:
+            if run:
+                delta -= 0.45
+                reasons.append("third/fourth-and-long ground gain risk")
+            if screen:
+                delta -= 0.09
+                reasons.append("screen behind conversion distance")
+            if not run and not screen and is_deep(play):
+                delta += 0.025
+                reasons.append("route potentially reaches sticks")
+        return delta, "; ".join(reasons) or "normal situation"
 
 
 def _stable_sample(

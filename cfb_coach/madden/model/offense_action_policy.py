@@ -210,6 +210,33 @@ def choose_offense_action(
                 "why": a.get("why"), "payload": a,
             })
 
+    # Action outcomes are observational; a verified paired-action/unchanged
+    # evidence model can influence this score ONLY after explicit promotion
+    # and rigorous per-context, multi-game sample gates. The action still
+    # must pass every research, book, look and editor-arming requirement.
+    from cfb_coach.madden.model.offense_action_learning import (
+        load_action_evidence, score_shift,
+    )
+
+    learned = load_action_evidence(db) if db is not None else None
+    learned_mode = (learned or {}).get("mode", "none")
+    for row in rows:
+        shift, evidence = score_shift(
+            learned, play=play,
+            down=getattr(sit, "down", None),
+            distance=getattr(sit, "distance", None),
+            kind=str(row["kind"]), action_id=str(row["id"]),
+            coverage_class=cls if source == "live" else None,
+            coverage_source=source,
+            red_zone=bool(getattr(sit, "red_zone", False)),
+            goal_line=bool(getattr(sit, "goal_line", False)),
+        )
+        row["research_score"] = row["score"]
+        row["observational_model_shift"] = round(shift, 6)
+        row["observational_model_n"] = (
+            (evidence["n_action"], evidence["n_unchanged"]) if evidence else None
+        )
+        row["score"] = round(float(row["score"]) + shift, 5)
     rows.sort(key=lambda r: (-r["score"], r["kind"], str(r["id"])))
     summary = [{"kind": x["kind"], "id": x["id"], "score": x["score"]}
                for x in rows]
@@ -225,6 +252,8 @@ def choose_offense_action(
             "candidates": summary,
             "no_action_score": no_action_score,
             "top_action_score": rows[0]["score"] if rows else None,
+            "observational_evidence_mode": learned_mode,
+            "observation_not_causal": True,
         }
 
     best = rows[0]
@@ -234,10 +263,13 @@ def choose_offense_action(
         "macro": best["payload"] if best["kind"] == "macro" else None,
         "adjustment": best["payload"] if best["kind"] == "adjustment" else None,
         "reason": best["why"] or "",
-        "scores_are": "research_policy_not_learned_action_effect",
+        "scores_are": "research_policy_plus_observational_not_causal",
         "candidates": summary[:8],
         "no_action_score": no_action_score,
         "top_action_score": best["score"],
+        "observational_evidence_mode": learned_mode,
+        "observation_not_causal": True,
+        "observational_model_shift": best.get("observational_model_shift"),
         "why_now": (
             "observed or independently confirmed defensive look"
             if credible_look else "verified situational condition"

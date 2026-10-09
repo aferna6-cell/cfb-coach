@@ -442,7 +442,71 @@ def apply_experimental_offense(
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
         top = ranked[0]
-        ml_form, ml_play = top["formation"], top["play"]
+        # Joint decision: choose (formation, play, adjustment_plan) together
+        # under the remaining latency budget. Falls back to play-then-action
+        # reconstruction if joint search cannot complete.
+        from cfb_coach.madden.model.offense_game_memory import (
+            decision_context, load_game_memory, update_from_decision,
+        )
+        from cfb_coach.madden.model.offense_joint_decision import (
+            choose_joint_offense_action,
+        )
+        from cfb_coach.madden.playcaller import coverage_class as classify_look
+        from cfb_coach.tendency import is_repeated_coverage
+
+        repeated_look = False
+        if cov_hint and cov_src == "live":
+            try:
+                repeated_look = is_repeated_coverage(
+                    db, opponent_id, cov_hint, sit, threshold=2,
+                )
+            except Exception:  # noqa: BLE001
+                repeated_look = False
+
+        game_mem = load_game_memory(db, game_id or "")
+        mem_ctx = decision_context(game_mem)
+        try:
+            from cfb_coach.madden.playcaller import _cooled_macros, _learned_macros
+
+            weights = _learned_macros(db, opponent_id)
+            cooled = _cooled_macros(db, sit)
+        except Exception:  # noqa: BLE001
+            weights = {}
+            cooled = set()
+        score_phase = None
+        try:
+            from cfb_coach.game_score import classify
+
+            ctx = classify(sit)
+            score_phase = ctx.phase if ctx else None
+        except Exception:  # noqa: BLE001
+            score_phase = None
+
+        joint = choose_joint_offense_action(
+            ranked_plays=ranked, sit=sit, book=book,
+            active=list(active or []), db=db, opponent_id=opponent_id,
+            weights=weights, cooled=cooled, score_phase=score_phase,
+            audibles=audibles,
+            allow_macros=(getattr(sit, "extras", None) or {}).get(
+                "live_macros", True
+            ) is not False,
+            repeated=repeated_look,
+            game_memory=mem_ctx,
+            started=started,
+            budget_ms=budget,
+        )
+        latency = (time.perf_counter() - started) * 1000.0
+        if latency > budget:
+            return _fallback(MLStatus.TIMEOUT, latency)
+
+        ml_form = str(joint.get("formation") or top["formation"])
+        ml_play = str(joint.get("play") or top["play"])
+        # Prefer the ranked row matching the joint pick for provenance.
+        top = next(
+            (r for r in ranked
+             if r["formation"] == ml_form and r["play"] == ml_play),
+            top,
+        )
         # Hard guard: ML pick must be in situational pool (or the heuristic).
         legal_set = set(pairs)
         if (ml_form, ml_play) not in legal_set:
@@ -467,10 +531,11 @@ def apply_experimental_offense(
         prior_tag = "prior-driven" if quality == "prior_driven" else quality
         unc = top.get("uncertainty")
         agree = int(ml_form == heur_form and ml_play == heur_play)
+        plan = joint.get("adjustment_plan") or {"kind": "none", "id": "NO_ADJUSTMENT"}
         explanation = (
             f"ML experimental [{prior_tag}] → {ml_form}/{ml_play} "
             f"(p={top['probability']:.3f}, concept={top.get('play_concept')}, "
-            f"unc={unc})"
+            f"unc={unc}, joint={joint.get('joint_score')})"
         )
         if heur_form and heur_play:
             explanation = f"heuristic={heur_form}/{heur_play} | {explanation}"
@@ -478,9 +543,10 @@ def apply_experimental_offense(
             explanation += " | near-tie kept heuristic"
         if cov_src == "last" and cov_hint:
             explanation += " | last-snap coverage used as soft prior only"
+        explanation += f" | joint-action {plan.get('kind')}:{plan.get('id')}"
 
-        # Always build the model-selected call, even when the play name agrees
-        # with the heuristic. Accessories must never be inherited by accident.
+        # Build call from joint decision; still use attachment rebuild for
+        # reads / MaddenCall shape, then overlay the joint action choice.
         call = rebuild_offense_attachments(
             formation=ml_form,
             play=ml_play,
@@ -489,14 +555,59 @@ def apply_experimental_offense(
             active=list(active or []),
             db=db,
             opponent_id=opponent_id,
-            rationale=f"{explanation} | model-primary reconstructed call",
+            rationale=f"{explanation} | joint offensive decision",
             audibles=audibles,
             model_action_policy=True,
             play_prediction=top,
         )
+        # Overlay joint adjustment plan so play+action were scored together.
+        chosen_macro = plan.get("macro") if plan.get("kind") == "macro" else None
+        chosen_adj = plan.get("adjustment") if plan.get("kind") == "adjustment" else None
+        if plan.get("kind") == "none":
+            call.macro = None
+            call.macro_info = None
+            call.adjustment = None
+            call.adj = "No adj"
+        elif chosen_macro:
+            call.macro = chosen_macro.get("id")
+            call.macro_info = chosen_macro
+            call.adjustment = None
+            call.adj = chosen_macro.get("name") or chosen_macro.get("id") or "Macro"
+        elif chosen_adj:
+            call.macro = None
+            call.macro_info = None
+            call.adjustment = chosen_adj
+            call.adj = chosen_adj.get("label") or chosen_adj.get("id") or "Adj"
+        call.ml_offense_action = {
+            "policy_version": joint.get("policy"),
+            "kind": plan.get("kind"),
+            "id": plan.get("id"),
+            "reason": joint.get("reason"),
+            "adjustment_plan": plan,
+            "joint_score": joint.get("joint_score"),
+            "situation_fit": joint.get("situation_fit"),
+            "situation_reasons": joint.get("situation_reasons"),
+            "candidates": joint.get("candidates"),
+            "football_situation": joint.get("football_situation"),
+            "n_plays_considered": joint.get("n_plays_considered"),
+            "n_joint_candidates": joint.get("n_joint_candidates"),
+            "no_adjustment_can_win": True,
+            "scores_are": joint.get("scores_are"),
+        }
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
+
+        try:
+            update_from_decision(
+                db, game_id=game_id or "", snap_id=snap_id,
+                formation=ml_form, play=ml_play, adjustment_plan=plan,
+                sit=sit, football_situation=joint.get("football_situation"),
+                model_version=artifact.model_version,
+                legal_candidates=len(pairs), rationale=explanation,
+            )
+        except Exception:  # noqa: BLE001
+            pass
 
         info = {
             "heuristic_formation": heur_form,
@@ -522,9 +633,28 @@ def apply_experimental_offense(
             "inventory_confirmed": inv_verified,
             "inventory_eligible_count": len(pairs),
             "inventory_situation_excluded": len(all_pairs) - len(pairs),
-            "selection_policy": "model_primary_contextual_variety.v2",
+            "selection_policy": "joint_offensive_action.v1",
             "selection_audit": selection_audit,
+            "joint_decision": {
+                "joint_score": joint.get("joint_score"),
+                "n_plays_considered": joint.get("n_plays_considered"),
+                "n_joint_candidates": joint.get("n_joint_candidates"),
+                "fell_back_play_only": joint.get("fell_back_play_only"),
+                "latency_ms": joint.get("latency_ms"),
+            },
             "offense_action": getattr(call, "ml_offense_action", None),
+            # Decision-time signals only. Never use observed post-snap
+            # coverage as a training feature for which action to fire.
+            "pre_snap_action_context": {
+                "down": getattr(sit, "down", None),
+                "distance": getattr(sit, "distance", None),
+                "coverage_hint": getattr(sit, "coverage_hint", None),
+                "coverage_source": getattr(sit, "coverage_source", None),
+                "red_zone": bool(getattr(sit, "red_zone", False)),
+                "goal_line": bool(getattr(sit, "goal_line", False)),
+                "quarter": getattr(sit, "quarter", None),
+                "coverage_class": classify_look(cov_hint) if cov_hint else None,
+            },
         }
 
         dec = CoachingDecision(
@@ -626,6 +756,7 @@ def commit_experimental_decision(
                 "uncertainty": info.get("uncertainty"),
                 "knowledge_version": info.get("knowledge_version"),
                 "offense_action": info.get("offense_action"),
+                "pre_snap_action_context": info.get("pre_snap_action_context"),
             }
             db.conn.execute(
                 "UPDATE ml_decisions SET decision_json=? WHERE id=?",

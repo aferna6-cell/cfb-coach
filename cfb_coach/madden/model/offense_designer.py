@@ -67,20 +67,67 @@ def _load_artifact(db: Any) -> experimental_model.ExperimentalArtifact:
 def _rate(art: Any, form: str, play: str, opponent: str) -> float:
     """Use model success estimates, not the heuristic's book/play ordering."""
     from cfb_coach.opponents import is_cpu_opponent
+    from cfb_coach.madden.model.football_situation import (
+        evaluate_situation, play_situation_fit, sit_from_probe, synthetic_probe_situations,
+    )
 
-    # Multiple generic pre-snap situations; no post-snap coverage is assumed.
-    checks = ((1, 10, 35), (2, 6, 50), (3, 7, 35))
-    vals = [
-        experimental_model.predict_success(
-            art, formation=form, play=play, down=down, distance=distance,
-            yardline=yardline, opponent_id=opponent,
-            opponent_type="cpu" if is_cpu_opponent(opponent) else "human",
-            coverage_hint=None, coverage_source="none",
+    # Score across the full football-situation matrix, not a single drive script.
+    # Coverage probes use live source only when the probe itself labels a look;
+    # unknown coverage is never fabricated into certainty.
+    opp_type = "cpu" if is_cpu_opponent(opponent) else "human"
+    vals: list[float] = []
+    for probe in synthetic_probe_situations():
+        sit = sit_from_probe(probe)
+        fb = evaluate_situation(sit)
+        pred = experimental_model.predict_success(
+            art, formation=form, play=play,
+            down=probe.get("down"), distance=probe.get("distance"),
+            yardline=probe.get("yardline"), opponent_id=opponent,
+            opponent_type=opp_type,
+            coverage_hint=probe.get("coverage_hint"),
+            coverage_source=probe.get("coverage_source") or "none",
             heuristic_bonus=0.0,
         )["probability"]
-        for down, distance, yardline in checks
+        fit, _ = play_situation_fit(play, fb)
+        vals.append(float(pred) + 0.35 * float(fit))
+    return sum(vals) / len(vals) if vals else 0.0
+
+
+def _formation_situation_coverage(
+    art: Any, form: str, plays: list[str], opponent: str,
+) -> dict[str, Any]:
+    """Explain which football situations a formation portfolio addresses."""
+    from cfb_coach.madden.model.football_situation import (
+        evaluate_situation, play_situation_fit, sit_from_probe, synthetic_probe_situations,
+    )
+
+    coverage: dict[str, dict[str, Any]] = {}
+    for probe in synthetic_probe_situations():
+        sit = sit_from_probe(probe)
+        fb = evaluate_situation(sit)
+        best_play = None
+        best_score = -999.0
+        for play in plays:
+            fit, reasons = play_situation_fit(play, fb)
+            score = fit
+            if score > best_score:
+                best_score = score
+                best_play = {"play": play, "fit": fit, "reasons": reasons}
+        coverage[str(probe["label"])] = {
+            "best_play": (best_play or {}).get("play"),
+            "fit": round(best_score, 5) if best_play else None,
+            "reasons": (best_play or {}).get("reasons") or [],
+        }
+    addressed = [
+        label for label, row in coverage.items()
+        if row.get("fit") is not None and float(row["fit"]) >= -0.05
     ]
-    return sum(vals) / len(vals)
+    return {
+        "situations_probed": list(coverage.keys()),
+        "situations_addressed": addressed,
+        "coverage_detail": coverage,
+        "model_version": getattr(art, "model_version", None),
+    }
 
 
 def _play_rankings(
@@ -205,11 +252,27 @@ def design_offense(
             rank += 0.014 if is_current else 0.0
             rank += 0.008 if run else 0.0
             rank += 0.002 * len(best_by_concept)
+            sit_cov = _formation_situation_coverage(art, form, picks, opponent_id)
+            # Formation score reflects multi-situation value, not one hero play.
+            coverage_bonus = 0.004 * len(sit_cov["situations_addressed"])
             entry = {
                 "formation": form, "source_book": source, "plays": picks,
-                "score": round(rank, 6), "has_run": run,
+                "score": round(rank + coverage_bonus, 6), "has_run": run,
                 "top_play": ranking[0]["play"],
                 "model_top_probability": ranking[0]["score"],
+                "why_selected": (
+                    f"balanced concept spread ({len(best_by_concept)} concepts); "
+                    f"addresses {len(sit_cov['situations_addressed'])}/"
+                    f"{len(sit_cov['situations_probed'])} probed situations"
+                ),
+                "situations_addressed": sit_cov["situations_addressed"],
+                "defensive_tendencies_addressed": [
+                    s for s in sit_cov["situations_addressed"]
+                    if s.endswith("_response")
+                ],
+                "situation_coverage": sit_cov,
+                "n_plays": len(picks),
+                "concepts": sorted(best_by_concept.keys()),
             }
             if form not in best_by_form or (
                 entry["score"], source
@@ -261,28 +324,70 @@ def design_offense(
             })
 
     expected = _digest(active)
+    formation_why = [
+        {
+            "formation": r["formation"],
+            "source_book": r["source_book"],
+            "why": r.get("why_selected"),
+            "situations_addressed": r.get("situations_addressed"),
+            "defensive_tendencies_addressed": r.get("defensive_tendencies_addressed"),
+            "n_plays": r.get("n_plays"),
+            "concepts": r.get("concepts"),
+            "score": r["score"],
+        }
+        for r in chosen
+    ]
+    suggested_audibles = {
+        r["formation"]: [p for p in r["plays"][:4]]
+        for r in chosen
+    }
     proposal = {
-        "schema": "ml_offense_design.v1", "opponent_id": opponent_id,
+        "schema": "ml_offense_design.v2", "opponent_id": opponent_id,
         "expected_applied_revision": int(active.get("rev") or 0),
         "expected_applied_hash": expected,
         "model_version": art.model_version,
         "evidence_quality": art.evidence_quality,
         "supervised_examples": art.n_supervised,
         "knowledge_version": art.knowledge_version,
+        "uncertainty": {
+            "evidence_quality": art.evidence_quality,
+            "note": (
+                "Formation scores are shrinkage/situation proxies, not proven "
+                "win-probability. Roster strengths apply only when verified."
+            ),
+            "roster_data": "unavailable_unless_verified",
+        },
+        "research_provenance": {
+            "model_version": art.model_version,
+            "knowledge_version": art.knowledge_version,
+            "knowledge_origin": getattr(art, "knowledge_origin", None),
+            "catalog_books_evaluated": sorted(all_books.keys()),
+            "situations_probed": list(
+                (chosen[0].get("situation_coverage") or {}).get("situations_probed") or []
+            ) if chosen else [],
+        },
         "book": {
             "side": "offense", "mode": "custom", "name": "ML Designed Offense (custom)",
             "source_book": None, "trimmed": True, "formations": formations,
             "formation_sources": sources, "inventory_id": inv_id,
-            "audibles": {}, "core": list(formations),
+            "audibles": suggested_audibles, "core": list(formations),
             "rev": int(active.get("rev") or 0) + 1,
             "reason": "Model-designed whole formations with every catalogued play from selected source",
         },
         "changes": changes,
+        "additions": [c for c in changes if c["action"] == "ADD_FORMATION"],
+        "removals": [c for c in changes if c["action"] == "REMOVE_FORMATION"],
+        "replacements": [c for c in changes if c["action"] == "REINSTALL_FULL_FORMATION"],
+        "formation_rationale": formation_why,
+        "suggested_audibles": suggested_audibles,
         "candidate_formations": len(ranks), "ranked_formations": ranks[:12],
         "macro_blueprints": _macro_drafts(formations, sources),
         "n_plays": all_pairs,
         "inventory_id": inv_id,
+        "inventory_fingerprint": inv_id,
+        "max_formations": max_formations,
         "editor_requires_confirmation": True,
+        "staged_not_applied": True,
         "notes": [
             "Proposal only; live offensive book is not changed.",
             "Each included formation contains ALL catalogued plays from its selected stock source.",
@@ -290,6 +395,7 @@ def design_offense(
             "Custom-editor import and availability must be checked in Madden before confirmation.",
             "Macro blueprints are NOT active. Editor fields and button sequences require validation.",
             "Predicted success is observational/shrinkage, not proof new plays win more.",
+            "User must physically install formations and confirm; staging never auto-applies.",
         ],
     }
     proposal["proposal_id"] = _identity(proposal)
