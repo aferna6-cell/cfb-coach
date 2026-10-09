@@ -275,3 +275,55 @@ removed when a legal pass is present, short-field-only plays need the
 appropriate situation, and the model still ranks the normal plays.
 An entire inventory being tracked does not mean every play should
 be called in every situation or force equal usage of weak calls.
+
+
+## Sprint 9 — Situation-specific offensive Custom Adjustments
+
+The model has a complete playbook and is already able to choose one researched
+pre-snap action for its selected formation/play. Sprint 9 addresses why action
+recommendations have been sparse, overly generic or hard to troubleshoot.
+
+The model's play selection is unchanged. A second, explicit action decision
+compares **one researched action or verified armed macro** with doing nothing
+before the snap. Action utility scores are *research-based and heuristic
+calibration*, **not learned causal uplift**. The model must not assert that a
+route or macro raises its predicted win probability without action-specific
+outcome evidence.
+
+- Source-backed hot routes and pass protection require a live or independently
+  corroborated current defensive look (not just the last opponent snap).
+- Existing Custom Adjustment macros are only eligible if selected in prep,
+  grounded by editor settings and real researched controls, and compatible
+  with the exact formation/play from the active custom playbook.
+- Situation-only macros require relevant **red zone, goal line, or third/fourth
+  and short** evidence. Being merely installed cannot cause constant firing.
+- Model-created macros are never callable while drafts. Explicit approval
+  after actual Madden editor installation and slot arming is still required.
+- The no-action baseline becomes more conservative with an unknown defensive
+  look and uncertain model evidence. No adjustment is a normal outcome.
+- Macro compatibility checks now cover every play in every installed formation,
+  not just the first 80 results from a large custom book.
+- Live HTML's primary call stays **Formation — Play**. Any adjustment details
+  remain in the collapsed secondary area, with independent applied-action
+  confirmation. Existing postgame action recommended/applied counters remain
+  available; they are not proof of a causal adjustment benefit.
+
+### Before a CPU game
+
+Run this **read-only** action readiness diagnostic (the output distinguishes
+selected user-note macros from individually verified model-created macros):
+
+```bash
+python -m cfb_coach ml offense-actions -o cpu
+python -m cfb_coach ml offense-inventory -o cpu --summary
+```
+
+If the report finds zero active/supported macros, check the active Custom
+Adjustment slots in Madden and your last `prep` settings. The coach cannot
+fire macros that have no installed compatible play or no researched settings.
+A saved prep selection alone is not proof the editor entry is armed.
+
+Next improvement: log verified *execution of the requested adjustment* and
+its outcome by exact action/formation/play/coverage/situation before training
+an action-value model. Until sufficient clean paired observations exist, no
+action uplift claim or automatic macro creation/activation is justified.
