@@ -88,6 +88,19 @@ def situational_offense_candidates(
     if not pool:
         pool = [(f, p) for f, ps in (book or {}).items() for p in (ps or [])]
         bonus = {}
+    # Explicit situational guard: the heuristic's -0.20 run bonus was ignored
+    # by model-primary inference, making 3rd-and-long dives score as normal.
+    # Keep every available PASS play eligible and let ML rank them.
+    from cfb_coach.madden.catalog import is_run
+
+    try:
+        down, distance = int(getattr(sit, "down")), int(getattr(sit, "distance"))
+    except (ValueError, TypeError):
+        down, distance = 0, 0
+    if down in (3, 4) and distance >= 7 and not getattr(sit, "goal_line", False):
+        passes = [(form, play) for form, play in pool if not is_run(play)]
+        if passes:
+            pool = passes
     # Soft anti-repeat: down-weight recently used plays (still eligible).
     if db is not None and opponent_id:
         try:
@@ -406,7 +419,9 @@ def apply_experimental_offense(
         from cfb_coach.madden.model.offense_selection_policy import select_from_database
 
         ranked, selection_audit = select_from_database(
-            ranked, db=db, opponent_id=opponent_id
+            ranked, db=db, opponent_id=opponent_id,
+            sit=sit, opponent_type=opp_type,
+            session_id=session_id or game_id, snap_seq=snap_seq,
         )
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
@@ -486,7 +501,7 @@ def apply_experimental_offense(
             "rankings": ranked[:8],
             "fell_back": False,
             "n_eligible_candidates": len(pairs),
-            "selection_policy": "model_primary_repetition_aware.v1",
+            "selection_policy": "model_primary_contextual_variety.v2",
             "selection_audit": selection_audit,
             "offense_action": getattr(call, "ml_offense_action", None),
         }
