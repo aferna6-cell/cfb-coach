@@ -185,7 +185,7 @@ def render_html(
         verified = is_installed and name in approved
         config_verified = is_installed and name in configured
         macro_status = (
-            "Armed — callable when eligible" if verified
+            "Verified and armed — callable when eligible" if verified
             else "Verified settings — not armed" if config_verified
             else "Draft — not callable"
         )

@@ -701,16 +701,17 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
     """
     from cfb_coach.madden.model import offense_designer as designer
     from cfb_coach.madden.model import offense_design_browser as browser
+    verify_macro_config = getattr(args, "verify_macro_config", None)
 
     if args.show and (
         args.stage or args.confirm_installed or args.verify_macro
-        or args.verify_macro_config or args.unverify_macro or args.rollback_design
+        or verify_macro_config or args.unverify_macro or args.rollback_design
     ):
         print("--show cannot be combined with mutation flags", file=sys.stderr)
         return 2
     if sum(bool(x) for x in (
         args.stage, args.confirm_installed, args.verify_macro,
-        args.verify_macro_config, args.unverify_macro, args.rollback_design
+        verify_macro_config, args.unverify_macro, args.rollback_design
     )) > 1:
         print("Stage/confirm/verify/rollback are separate deliberate actions", file=sys.stderr)
         return 2
@@ -720,7 +721,7 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
     write_browser = not text_mode
     read_only = not bool(
         args.stage or args.confirm_installed or args.verify_macro
-        or args.verify_macro_config or args.unverify_macro or args.rollback_design
+        or verify_macro_config or args.unverify_macro or args.rollback_design
     )
     db = open_madden_db(read_only=read_only)
 
@@ -763,10 +764,10 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
             print(json.dumps(result, indent=2))
             display(browser.installed_design(db, args.opponent), "installed")
             return 0
-        if args.verify_macro_config:
+        if verify_macro_config:
             try:
                 result = designer.verify_created_macro_configuration(
-                    db, name=args.verify_macro_config,
+                    db, name=verify_macro_config,
                     attestation=args.attest or "",
                 )
             except ValueError as exc:
