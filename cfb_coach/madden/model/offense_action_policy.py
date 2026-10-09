@@ -13,7 +13,46 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 
-POLICY_VERSION = "offense_action_policy.research_prior.v1"
+POLICY_VERSION = "offense_action_policy.situational_verified.v2"
+
+
+def _risk_threshold(sit: Any, *, credible_look: bool) -> float:
+    """Score to beat doing nothing; unknown looks require more evidence."""
+    zone = bool(getattr(sit, "red_zone", False) or getattr(sit, "goal_line", False))
+    try:
+        short = (
+            int(getattr(sit, "down", 0) or 0) in (3, 4)
+            and 0 < float(getattr(sit, "distance", 0) or 0) <= 2
+        )
+    except (ValueError, TypeError):
+        short = False
+    if credible_look:
+        return 0.275
+    return 0.30 if zone or short else 0.36
+
+
+def _situation_trigger(sit: Any, kind: str) -> bool:
+    """A situation-only macro needs an actual situational need."""
+    if kind != "situation":
+        return False
+    if getattr(sit, "goal_line", False) or getattr(sit, "red_zone", False):
+        return True
+    try:
+        down = int(getattr(sit, "down", 0) or 0)
+        distance = int(getattr(sit, "distance", 0) or 0)
+        return down in (3, 4) and 0 < distance <= 2
+    except (ValueError, TypeError):
+        return False
+
+
+def _verified_button_sequence(value: Any) -> bool:
+    """Never display guessed or editor-unverified controller actions."""
+    text = str(value or "").strip()
+    blocked = ("VERIFY ON SCREEN", "NO SOURCE", "UNKNOWN", "NOT CONFIRMED")
+    return bool(text) and not text.upper().startswith("VERIFY") and not any(
+        term in text.upper() for term in blocked
+    )
+
 
 
 def choose_offense_action(
@@ -51,6 +90,7 @@ def choose_offense_action(
         "reason": "no eligible supported adjustment",
         "scores_are": "research_policy_not_learned_action_effect",
         "candidates": [],
+        "no_action_compared": True,
     }
     if play not in (book or {}).get(formation, []):
         return {**empty, "reason": "selected play is not in applied book"}
@@ -65,6 +105,7 @@ def choose_offense_action(
     # A last-snap coverage is not a sufficient trigger by itself.
     credible_look = bool(cls) and (source == "live" or repeated)
     rows: list[dict[str, Any]] = []
+    no_action_score = _risk_threshold(sit, credible_look=credible_look)
     macros_armed = clean_ids(list(active)) if allow_macros else []
 
     for mid in macros_armed:
@@ -83,15 +124,24 @@ def choose_offense_action(
             # Existing helper matches the play name only. Enforce the precise
             # model-selected formation as well.
             pair = f"{play} ({formation})"
-            if pair not in pairs_in_book(mid, book, cap=80):
+            full_cap = 1 + sum(len(ps) for ps in book.values())
+            if pair not in pairs_in_book(mid, book, cap=full_cap):
                 continue
             detail = offense_detail(mid, book)
             if detail.get("needs_settings") or detail.get("gaps") or not detail.get("settings"):
                 continue
+            if not _verified_button_sequence(suggestion.get("buttons")):
+                continue
             if suggestion.get("kind") == "look" and not credible_look:
+                continue
+            if suggestion.get("kind") == "situation" and not _situation_trigger(sit, "situation"):
                 continue
             w = max(-0.2, min(0.2, float((weights or {}).get(mid, 0.0) or 0.0)))
             score = 0.24 + 0.12 * confidence + 0.05 * (probability - 0.5) + 0.2 * w
+            if suggestion.get("kind") == "look":
+                score += 0.055 if cls == "pressure" else 0.025
+            else:
+                score += 0.07 if getattr(sit, "goal_line", False) else 0.04
             rows.append({
                 "kind": "macro", "id": mid, "score": round(score, 5),
                 "why": suggestion.get("why"), "payload": suggestion,
@@ -119,6 +169,8 @@ def choose_offense_action(
             buttons = research_db.buttons("offense", "custom_adjustments").replace(
                 "pick the adjustment", name
             )
+            if not _verified_button_sequence(buttons):
+                continue
             payload = {
                 "id": name, "name": name, "side": "offense", "kind": "look",
                 "buttons": buttons, "why": created.get("fire_when") or "",
@@ -128,7 +180,9 @@ def choose_offense_action(
             }
             rows.append({
                 "kind": "macro", "id": name,
-                "score": round(0.255 + 0.12 * confidence + 0.05 * (probability - 0.5), 5),
+                "score": round(0.255 + 0.12 * confidence +
+                               0.05 * (probability - 0.5) +
+                               (0.055 if cls == "pressure" else 0.025), 5),
                 "why": payload["why"], "payload": payload,
             })
 
@@ -144,11 +198,13 @@ def choose_offense_action(
                 continue
             if not a.get("id") or not a.get("sources"):
                 continue
-            if "VERIFY" in str(a.get("buttons") or ""):
+            if not _verified_button_sequence(a.get("buttons")):
                 continue
             score = 0.20 + 0.14 * confidence + 0.03 * (probability - 0.5)
             if a.get("kind") == "pass_protection" and cls == "pressure":
-                score += 0.04
+                score += 0.105
+            if a.get("kind") == "hot_route" and cls in ("man", "cover2", "two_high"):
+                score += 0.05
             rows.append({
                 "kind": "adjustment", "id": a["id"], "score": round(score, 5),
                 "why": a.get("why"), "payload": a,
@@ -157,8 +213,19 @@ def choose_offense_action(
     rows.sort(key=lambda r: (-r["score"], r["kind"], str(r["id"])))
     summary = [{"kind": x["kind"], "id": x["id"], "score": x["score"]}
                for x in rows]
-    if not rows or rows[0]["score"] < 0.20:
-        return {**empty, "candidates": summary}
+    summary.append({"kind": "none", "id": "NO_ADJUSTMENT",
+                    "score": round(no_action_score, 5)})
+    if not rows or rows[0]["score"] <= no_action_score:
+        return {
+            **empty,
+            "reason": (
+                "no verified action improves on running the selected play unchanged"
+                if rows else "no eligible supported adjustment"
+            ),
+            "candidates": summary,
+            "no_action_score": no_action_score,
+            "top_action_score": rows[0]["score"] if rows else None,
+        }
 
     best = rows[0]
     return {
@@ -169,4 +236,10 @@ def choose_offense_action(
         "reason": best["why"] or "",
         "scores_are": "research_policy_not_learned_action_effect",
         "candidates": summary[:8],
+        "no_action_score": no_action_score,
+        "top_action_score": best["score"],
+        "why_now": (
+            "observed or independently confirmed defensive look"
+            if credible_look else "verified situational condition"
+        ),
     }

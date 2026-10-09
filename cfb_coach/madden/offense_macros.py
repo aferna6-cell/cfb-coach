@@ -399,7 +399,7 @@ def situation_macro(
         if not _coverage_hit(fire, cls, cov_ok, have_heat):
             continue
         keys: list[tuple[str, str]] = []
-        for item in pairs_in_book(mid, book, cap=80):
+        for item in pairs_in_book(mid, book, cap=1 + sum(map(len, book.values()))):
             form, play = _pair_key(item)
             if _avoided(fire, cls, play):
                 continue
@@ -469,7 +469,7 @@ def suggest_for_snap(
         w, fire = ready
         if zone not in (fire.get("zones") or ["open", "rz", "gl"]):
             continue
-        pairs = pairs_in_book(mid, book, cap=80)
+        pairs = pairs_in_book(mid, book, cap=1 + sum(map(len, book.values())))
         if not any(play.lower() == item.split(" (", 1)[0].lower() for item in pairs):
             continue
         if fire.get("downs") and down not in fire["downs"]:

@@ -581,6 +581,19 @@ def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ml_offense_actions(args: argparse.Namespace) -> int:
+    """Show researched, compatible and verified Custom Adjustment readiness."""
+    from cfb_coach.madden.model.offense_action_inventory import offense_actions_report
+
+    db = open_madden_db(read_only=True)
+    try:
+        report = offense_actions_report(db, args.opponent)
+        print(json.dumps(report, indent=2, default=str))
+        return 0 if report["playbook_installed"] else 2
+    finally:
+        db.close()
+
+
 def cmd_ml_offense_inventory(args: argparse.Namespace) -> int:
     """Audit every confirmed formation/play and its recommendation usage."""
     from cfb_coach.madden.model.offense_inventory import inventory_report
@@ -1086,6 +1099,13 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_te.add_argument("--no-db", dest="db", action="store_false", default=True)
     p_te.set_defaults(func=cmd_ml_train_experimental)
+
+    p_act = ml_sub.add_parser(
+        "offense-actions",
+        help="Audit current offensive macros, settings, action triggers and readiness (read-only)",
+    )
+    p_act.add_argument("-o", "--opponent", default="cpu")
+    p_act.set_defaults(func=cmd_ml_offense_actions)
 
     p_inv = ml_sub.add_parser(
         "offense-inventory",
