@@ -34,7 +34,7 @@ arm a macro, or turn on human-opponent control.
 1. Situational pool from the full confirmed book (third-and-long prefers passes when any exist).
 2. Model probabilities for every play in that pool.
 3. Model-primary sampling, including anti-repeat. This is not a fixed rotation.
-4. Joint search over the complete legal action space: every unmodified play, every legal single adjustment, every compatible multi-adjustment, and every verified armed macro. Each play keeps its best legal plan. A different unmodified play wins when its complete score is higher. Anti-repeat stays inside the model-primary selection score. Scores inside a 0.012 band are explored with a snap hash, not a fixed rotation. A research prior cannot move a plan by more than 0.06. Football-knowledge priors are capped at 0.025 and drive-strategy priors at 0.015, and neither is added inside the model-primary selection score. A low-confidence prior does not overturn a clearly stronger learned play. The live path uses the compiled knowledge store and does not call a language model.
+4. Joint search over the complete legal action space: every unmodified play, every legal single adjustment, every compatible multi-adjustment, and every verified armed macro. Each play keeps its best legal plan. A different unmodified play wins when its complete score is higher. Anti-repeat stays inside the model-primary selection score. Scores inside a 0.012 band are explored with a snap hash, not a fixed rotation. If recent recommendations are concentrated, that band can widen by at most 0.06 so a close alternative formation, concept, package, or adjustment can be sampled. A play whose learned probability is more than 0.10 ahead is not displaced. There is no play quota and no fixed rotation. A research prior cannot move a plan by more than 0.06. Football-knowledge priors are capped at 0.025 and drive-strategy priors at 0.015, and neither is added inside the model-primary selection score. A low-confidence prior does not overturn a clearly stronger learned play. The live path uses the compiled knowledge store and does not call a language model.
 5. If the full path exceeds 150 ms, or the pick is illegal, the call rolls back to the heuristic.
 
 Detailed probabilities stay in the decision record and the expandable "Why this adjustment" section.
@@ -137,7 +137,7 @@ This workspace has `~/.cfb-coach/coach.db` and no `madden27.db`. The coach datab
 
 The user reported two earlier games. They are context from an older ML build, not Sprint 12 measurements, and they are not stored in this workspace:
 
-- `9f2ebdeb9d8f4e2d`: reported win 28–7, 63 recommendations, 52 verified executions, no recommended adjustments. Not proof of this coordinator.
+- `9f2ebdeb9d8f4e2d`: reported win 28–7, 63 recommendations, 52 verified executions, no recommended adjustments. Three formations, three labeled concept families, and 46 of 63 recommendations from Gun Doubles Clamp Stack. That concentration is a diversity baseline from an earlier coordinator, not a Sprint 12 result and not a measure of decision quality. A more varied synthetic call sheet is not evidence the offense would have scored more than 28.
 - `d2e3214fbb944af9`: 4 recommendations and 2 verified executions. No stored final score. Not a completed win.
 
 Regression checks use fixtures marked synthetic. A synthetic call that looks better is not a win-rate claim.

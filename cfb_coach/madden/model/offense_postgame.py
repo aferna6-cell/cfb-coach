@@ -70,7 +70,15 @@ def _score_pair(text: Any) -> tuple[int, int] | None:
 
 def _diversity(values: list[str]) -> dict[str, Any]:
     counts = Counter(value for value in values if value)
-    return {"distinct": len(counts), "counts": dict(counts)}
+    total = sum(counts.values())
+    top = counts.most_common(1)
+    return {
+        "distinct": len(counts),
+        "counts": dict(counts),
+        "top_value": None if not top else top[0][0],
+        "top_count": 0 if not top else top[0][1],
+        "top_share": None if not top or not total else round(top[0][1] / total, 4),
+    }
 
 
 def _mean(values: list[float]) -> float | None:

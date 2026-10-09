@@ -359,4 +359,11 @@ def strategy_report(db: Any = None, opponent_id: str = "cpu") -> dict[str, Any]:
             "Diagnostic only. Fifteen formations is the maximum, not a quota. "
             "Nothing is installed by this command."
         ),
+        "recorded_diversity_baseline": _recorded_diversity_baseline(),
     }
+
+
+def _recorded_diversity_baseline() -> dict[str, Any]:
+    from cfb_coach.madden.model.offense_diversity import RECORDED_BASELINE
+
+    return dict(RECORDED_BASELINE)

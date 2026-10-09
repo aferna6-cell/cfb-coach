@@ -209,4 +209,23 @@ def pre_snap_context(
         },
         "recent_verified_concept": recent_verified_concept,
         "last_verified_outcome": last_verified_outcome,
+        "recent_recommendations": _recent_recommendations(prior),
     }
+
+
+def _recent_recommendations(prior: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Shown calls before this snap. A recommendation is not an execution."""
+    shown: list[dict[str, Any]] = []
+    for row in reversed(prior):
+        play = row.get("recommended_play")
+        if not play:
+            continue
+        shown.append({
+            "formation": row.get("recommended_formation"),
+            "play": play,
+            "adjustment_kind": row.get("recommended_adjustment_kind") or "none",
+            "status": "recommended_not_verified_execution",
+        })
+        if len(shown) >= 20:
+            break
+    return shown

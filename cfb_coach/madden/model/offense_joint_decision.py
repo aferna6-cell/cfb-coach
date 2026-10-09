@@ -443,13 +443,22 @@ def _explore_near_ties(
     snap_seq: int | None,
     sit: Any,
     opponent_type: str,
+    concentration: Mapping[str, Any] | None = None,
 ) -> tuple[Mapping[str, Any], dict[str, Any]]:
     """Pick the best complete score. Sample only inside a near-tie band.
 
     The seed is a hash of the snap, not an index into a rotating menu.
     Anti-repeat stays in ``selection_score`` and is not applied again here.
+    Concentrated recent calls can widen that band. A play whose learned
+    probability is clearly higher is not pulled into the sample.
     """
     from cfb_coach.madden.model.experimental_model import _play_concept
+    from cfb_coach.madden.model.football_knowledge import profile_for_play
+    from cfb_coach.madden.model.offense_diversity import (
+        CLEAR_SUPERIORITY,
+        extra_band_width,
+        sampling_weight,
+    )
 
     ordered = sorted(
         options,
@@ -463,22 +472,52 @@ def _explore_near_ties(
     leader = ordered[0]
     second = float(ordered[1]["joint_score"]) if len(ordered) > 1 else None
     margin = None if second is None else float(leader["joint_score"]) - second
+    extra = extra_band_width(concentration, leader.get("row") or {})
+    band = INDIFFERENCE_BAND + extra
     meta = {
         "method": "complete_action_value",
         "indifference_band": INDIFFERENCE_BAND,
+        "extra_band": extra,
+        "sampling_band": round(band, 5),
+        "clear_superiority": CLEAR_SUPERIORITY,
         "research_cap": MAX_RESEARCH_INFLUENCE,
         "anti_repeat": "applied_inside_selection_score",
         "fixed_rotation": False,
+        "minimum_quota": False,
         "sampled": False,
         "margin": None if margin is None else round(margin, 5),
         "reason": "highest complete football value",
     }
-    if second is None or (margin is not None and margin > INDIFFERENCE_BAND):
+    if second is None or (margin is not None and margin > band):
+        if extra > 0 and margin is not None and margin > band:
+            meta["reason"] = (
+                "highest complete football value; concentration did not "
+                "override a clearer play"
+            )
         return leader, meta
     near = [
         c for c in ordered
-        if float(leader["joint_score"]) - float(c["joint_score"]) <= INDIFFERENCE_BAND + 1e-12
+        if float(leader["joint_score"]) - float(c["joint_score"]) <= band + 1e-12
     ]
+    leader_probability = float(
+        (leader.get("row") or {}).get("probability")
+        or (leader.get("row") or {}).get("selection_score")
+        or 0.0
+    )
+    kept: list[Mapping[str, Any]] = []
+    for item in near:
+        row = item.get("row") or {}
+        probability = float(row.get("probability") or row.get("selection_score") or 0.0)
+        if item is not leader and leader_probability - probability > CLEAR_SUPERIORITY:
+            continue
+        kept.append(item)
+    near = kept or [leader]
+    if len(near) == 1:
+        meta["reason"] = (
+            "highest complete football value; close alternatives were "
+            "clearly weaker on learned probability"
+        )
+        return near[0], meta
     counts: dict[str, int] = {}
     for item in near:
         concept = str(item["row"].get("play_concept") or _play_concept(str(item["play"])))
@@ -488,8 +527,16 @@ def _explore_near_ties(
     weights: list[float] = []
     for item in near:
         concept = str(item["row"].get("play_concept") or _play_concept(str(item["play"])))
+        concept_id = profile_for_play(str(item["play"])).get("concept_id") or concept
         exponent = max(-16.0, (float(item["joint_score"]) - ceiling) / temperature)
-        weights.append(math.exp(exponent) / math.sqrt(counts[concept]))
+        base_weight = math.exp(exponent) / math.sqrt(counts[concept])
+        weights.append(sampling_weight(
+            base_weight=base_weight,
+            formation=str(item["formation"]),
+            concept_id=str(concept_id) if concept_id else None,
+            stats=concentration,
+            apply_concentration=extra > 0,
+        ))
     seed = (
         f"joint:{session_id or 'unscoped'}:"
         f"{snap_seq if snap_seq is not None else 'na'}:"
@@ -499,7 +546,12 @@ def _explore_near_ties(
     chosen = random.Random(int.from_bytes(raw[:8], "big")).choices(list(near), weights=weights, k=1)[0]
     meta.update({
         "sampled": True,
-        "reason": "near-tie exploration inside the indifference band; not a fixed rotation",
+        "reason": (
+            "concentrated recent calls; sampled inside an evidence-aware band, "
+            "not a rotation or a quota"
+            if extra > 0 else
+            "near-tie exploration inside the indifference band; not a fixed rotation"
+        ),
         "band_size": len(near),
         "seed": seed,
     })
@@ -610,6 +662,8 @@ def choose_joint_action(
     use_knowledge: bool = True,
     use_strategy: bool = True,
     strategy_previous: Mapping[str, Any] | None = None,
+    use_diversity: bool = True,
+    recent_calls: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     """Pick one legal (formation, play, plan) from the complete action space.
 
@@ -728,11 +782,17 @@ def choose_joint_action(
             "strategy": strategy_adj,
             "selection_score": float(row.get("selection_score", row.get("probability", 0.0)) or 0.0),
         })
+    from cfb_coach.madden.model.offense_diversity import concentration_stats
+
+    recent = list(recent_calls) if recent_calls is not None else list(
+        (memory or {}).get("recent_recommendations") or []
+    )
+    concentration = concentration_stats(recent) if use_diversity else None
     exploration: dict[str, Any]
     if representatives:
         chosen, exploration = _explore_near_ties(
             representatives, session_id=session_id, snap_seq=snap_seq,
-            sit=sit, opponent_type=opponent_type,
+            sit=sit, opponent_type=opponent_type, concentration=concentration,
         )
         best_plan = dict(chosen["plan"])
         best_key = (str(chosen["formation"]), str(chosen["play"]))
@@ -751,6 +811,8 @@ def choose_joint_action(
             "reason": "no legal play was available",
             "anti_repeat": "applied_inside_selection_score",
             "fixed_rotation": False,
+            "minimum_quota": False,
+            "extra_band": 0.0,
             "research_cap": MAX_RESEARCH_INFLUENCE,
         }
     summaries.sort(key=lambda r: (-float(r["score"]), str(r["id"]), r["play"]))
@@ -767,6 +829,23 @@ def choose_joint_action(
     decision["plans_compared"] = len(summaries)
     decision["plays_in_final_comparison"] = len(representatives)
     decision["exploration"] = exploration
+    decision["diversity"] = {
+        "eligible_installed_plays": plays_seen,
+        "plays_considered": plays_seen,
+        "consideration_rate": 1.0 if plays_seen else 0.0,
+        "fixed_rotation": False,
+        "minimum_quota": False,
+        "extra_band": exploration.get("extra_band", 0.0),
+        "clear_superiority": exploration.get("clear_superiority"),
+        "recent_calls": (concentration or {}).get("calls", 0),
+        "top_formation_share": (concentration or {}).get("top_formation_share"),
+        "top_concept_share": (concentration or {}).get("top_concept_share"),
+        "top_play_share": (concentration or {}).get("top_play_share"),
+        "note": (
+            "Every eligible installed play was scored. Variety is sampled only "
+            "inside a close band, and a clearly stronger learned play is kept."
+        ),
+    }
     decision["input_audit"] = audit_situation_inputs(
         sit, evaluation=evaluation, memory=memory,
     )
