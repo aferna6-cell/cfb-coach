@@ -120,12 +120,12 @@ class ActionEvidenceTests(unittest.TestCase):
             game = f"game-{n % 3}"
             rows.append({
                 "snap_id": f"a-{n}", "game_id": game,
-                "action": "adjustment:SLIDE", "context": "mesh|2_medium",
+                "action": "adjustment:SLIDE", "context": "mesh|2_long",
                 "success": True,
             })
             rows.append({
                 "snap_id": f"b-{n}", "game_id": game,
-                "action": "none", "context": "mesh|2_medium",
+                "action": "none", "context": "mesh|2_long",
                 "success": False,
             })
         art = fit_action_evidence(rows)
@@ -156,7 +156,7 @@ class ActionEvidenceTests(unittest.TestCase):
         for n in range(80):
             rows.append({
                 "snap_id": f"s-{n}", "game_id": "one-game",
-                "context": "mesh|2_medium",
+                "context": "mesh|2_long",
                 "action": "adjustment:SLIDE" if n%2 else "none",
                 "success": bool(n%2),
             })
@@ -165,7 +165,7 @@ class ActionEvidenceTests(unittest.TestCase):
     def test_missing_unchanged_controls_cannot_pass(self):
         rows = [
             {"snap_id": f"s-{n}", "game_id": f"game-{n%4}",
-             "context": "mesh|2_medium", "action": "adjustment:SLIDE",
+             "context": "mesh|2_long", "action": "adjustment:SLIDE",
              "success": True}
             for n in range(200)
         ]
@@ -173,11 +173,11 @@ class ActionEvidenceTests(unittest.TestCase):
 
     def test_live_eligibility_still_required_even_if_artifact_promoted(self):
         art = fit_action_evidence([
-            {"snap_id":f"a-{n}", "game_id":f"g{n%3}", "context":"mesh|2_medium",
+            {"snap_id":f"a-{n}", "game_id":f"g{n%3}", "context":"mesh|2_long",
              "action":"adjustment:SLIDE", "success":True}
             for n in range(15)
         ] + [
-            {"snap_id":f"b-{n}", "game_id":f"g{n%3}", "context":"mesh|2_medium",
+            {"snap_id":f"b-{n}", "game_id":f"g{n%3}", "context":"mesh|2_long",
              "action":"none", "success":False}
             for n in range(15)
         ])
