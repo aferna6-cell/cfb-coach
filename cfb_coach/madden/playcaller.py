@@ -107,7 +107,7 @@ def coverage_class(cov: str | None) -> str | None:
     c = (cov or "").lower()
     if not c:
         return None
-    if "pressure" in c or "cover 0" in c or "zero" in c:
+    if "pressure" in c or "blitz" in c or "cover 0" in c or "zero" in c:
         return "pressure"
     if "man" in c or "cover 1" in c:
         return "man"
