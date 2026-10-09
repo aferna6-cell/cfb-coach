@@ -19,11 +19,13 @@ POLICY_VERSION = "offense_action_policy.situational_verified.v2"
 def _risk_threshold(sit: Any, *, credible_look: bool) -> float:
     """Score to beat doing nothing; unknown looks require more evidence."""
     zone = bool(getattr(sit, "red_zone", False) or getattr(sit, "goal_line", False))
-    short = (
-        getattr(sit, "down", None) in (3, 4)
-        and getattr(sit, "distance", None) is not None
-        and 0 < float(getattr(sit, "distance")) <= 2
-    )
+    try:
+        short = (
+            int(getattr(sit, "down", 0) or 0) in (3, 4)
+            and 0 < float(getattr(sit, "distance", 0) or 0) <= 2
+        )
+    except (ValueError, TypeError):
+        short = False
     if credible_look:
         return 0.275
     return 0.30 if zone or short else 0.36
