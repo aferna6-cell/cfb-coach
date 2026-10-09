@@ -84,6 +84,9 @@ class CompactLiveCoachTests(unittest.TestCase):
         self.assertIn('id="btn-call-only"', html)
         self.assertIn('value="used_recommended" checked', html)
         self.assertIn('id="exec-diff"', html)
+        self.assertIn('id="no-action-confirmed"', html)
+        self.assertIn('id="no-action-confirm-row" hidden', html)
+        self.assertIn("confirmed_no_adjustment:", html)
         self.assertIn('id="btn-end"', html)
 
     def test_no_pending_and_ended_states(self) -> None:

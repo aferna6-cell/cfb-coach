@@ -525,6 +525,17 @@ def apply_experimental_offense(
             "selection_policy": "model_primary_contextual_variety.v2",
             "selection_audit": selection_audit,
             "offense_action": getattr(call, "ml_offense_action", None),
+            # Decision-time signals only. Never use observed post-snap
+            # coverage as a training feature for which action to fire.
+            "pre_snap_action_context": {
+                "down": getattr(sit, "down", None),
+                "distance": getattr(sit, "distance", None),
+                "coverage_hint": getattr(sit, "coverage_hint", None),
+                "coverage_source": getattr(sit, "coverage_source", None),
+                "red_zone": bool(getattr(sit, "red_zone", False)),
+                "goal_line": bool(getattr(sit, "goal_line", False)),
+                "quarter": getattr(sit, "quarter", None),
+            },
         }
 
         dec = CoachingDecision(
@@ -626,6 +637,7 @@ def commit_experimental_decision(
                 "uncertainty": info.get("uncertainty"),
                 "knowledge_version": info.get("knowledge_version"),
                 "offense_action": info.get("offense_action"),
+                "pre_snap_action_context": info.get("pre_snap_action_context"),
             }
             db.conn.execute(
                 "UPDATE ml_decisions SET decision_json=? WHERE id=?",
