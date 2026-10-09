@@ -226,6 +226,8 @@ def choose_offense_action(
             down=getattr(sit, "down", None),
             distance=getattr(sit, "distance", None),
             kind=str(row["kind"]), action_id=str(row["id"]),
+            coverage_class=cls if source == "live" else None,
+            coverage_source=source,
         )
         row["research_score"] = row["score"]
         row["observational_model_shift"] = round(shift, 6)
