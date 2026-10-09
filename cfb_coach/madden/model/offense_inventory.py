@@ -49,6 +49,7 @@ def installed_inventory(db: Any) -> dict[str, Any]:
         "installed": bool(rec),
         "name": rec.get("name") or "No confirmed offensive playbook",
         "revision": rec.get("rev"),
+        "tracking_since": rec.get("locked_ts"),
         "formation_sources": dict(sources),
         "formations": {f: list(dict.fromkeys(ps)) for f, ps in formations.items()},
         "formation_count": len(formations),
@@ -81,6 +82,13 @@ def inventory_report(
     elif opponent_id:
         clauses.append("opponent_id = ?")
         params.append(opponent_id)
+    # Count only recommendations made after this installed revision was
+    # locked. A play with the same name in a previous custom book does not
+    # count as having been tested with the new design.
+    since = str(inventory.get("tracking_since") or "")
+    if len(since) >= 20 and since[:4].isdigit() and "T" in since:
+        clauses.append("ts >= ?")
+        params.append(since)
     if inventory["installed"]:
         query = (
             "SELECT formation, play, COUNT(*) AS n FROM snaps WHERE "
@@ -116,7 +124,8 @@ def inventory_report(
         "coverage_pct": round(100 * used_count / len(details), 1) if details else 0.0,
         "play_usage": details,
         "counting_note": (
-            "Recommended calls from snap logs. These are not proof of execution. "
-            "Zero recommendations does not imply a play was unavailable to the model."
+            "Recommended calls from snap logs for this installed revision, not "
+            "proof of execution. Zero recommendations does not imply a play "
+            "was unavailable to the model."
         ),
     }
