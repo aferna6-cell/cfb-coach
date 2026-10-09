@@ -128,6 +128,19 @@ def choose_model_play(
         for concept in {_play_concept(p) for _f, p in recent}
     }
     form_count = {f: sum(prev == f for prev, _p in recent) for f, _p in recent}
+    # O(N log N), not the earlier O(N²) strongest-alternative scan. The
+    # formation designer may expose hundreds of legal plays, and the live
+    # call must remain under its 150-ms clock budget.
+    prob_order = sorted(
+        ranked, key=lambda r: -float(r["probability"])
+    )
+    best_key = (str(prob_order[0]["formation"]), str(prob_order[0]["play"]))
+    best_prob = float(prob_order[0]["probability"])
+    runner_prob = next(
+        (float(r["probability"]) for r in prob_order
+         if (str(r["formation"]), str(r["play"])) != best_key),
+        best_prob,
+    )
 
     for item in ranked:
         row = dict(item)
@@ -152,11 +165,7 @@ def choose_model_play(
         situation_delta, situation_reason = _situational_adjustment(key[1], sit)
         # Do not discard a high-confidence/high-margin finding for cosmetic
         # variety. In contrast, low-data inflated scores are not sacrosanct.
-        strongest_other = max(
-            (float(p["probability"]) for p in ranked
-             if (str(p["formation"]), str(p["play"])) != key),
-            default=float(row["probability"]),
-        )
+        strongest_other = runner_prob if key == best_key else best_prob
         confident = (
             float(row.get("uncertainty", 1.0)) < 0.35
             and row.get("evidence_quality") in ("empirical", "verified")
