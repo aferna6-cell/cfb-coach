@@ -228,6 +228,8 @@ def choose_offense_action(
             kind=str(row["kind"]), action_id=str(row["id"]),
             coverage_class=cls if source == "live" else None,
             coverage_source=source,
+            red_zone=bool(getattr(sit, "red_zone", False)),
+            goal_line=bool(getattr(sit, "goal_line", False)),
         )
         row["research_score"] = row["score"]
         row["observational_model_shift"] = round(shift, 6)
