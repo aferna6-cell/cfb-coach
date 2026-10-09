@@ -64,46 +64,163 @@ def _load_artifact(db: Any) -> experimental_model.ExperimentalArtifact:
     )
 
 
-def _rate(art: Any, form: str, play: str, opponent: str) -> float:
-    """Use model success estimates, not the heuristic's book/play ordering."""
+def _pregame_grid() -> list[dict[str, Any]]:
+    """Grid cells with precomputed structured assessments (computed once)."""
+    from cfb_coach.madden.model.football_situations import (
+        PREGAME_SITUATION_GRID, grid_cell_assessment,
+    )
+
+    return [
+        {"cell": dict(cell), "assessment": grid_cell_assessment(cell)}
+        for cell in PREGAME_SITUATION_GRID
+    ]
+
+
+def _cell_scores(
+    art: Any, form: str, play: str, opponent: str, grid: list[dict[str, Any]],
+) -> dict[str, float]:
+    """Model success per pregame situation, adjusted by named football priors.
+
+    Uses multiple generic pre-snap situations; no post-snap coverage is ever
+    assumed. A play contributes only to cells whose field zone it fits.
+    """
+    from cfb_coach.madden.model.football_situations import (
+        play_fits_grid_zone, play_situation_fit,
+    )
     from cfb_coach.opponents import is_cpu_opponent
 
-    # Multiple generic pre-snap situations; no post-snap coverage is assumed.
-    checks = ((1, 10, 35), (2, 6, 50), (3, 7, 35))
-    vals = [
-        experimental_model.predict_success(
-            art, formation=form, play=play, down=down, distance=distance,
-            yardline=yardline, opponent_id=opponent,
-            opponent_type="cpu" if is_cpu_opponent(opponent) else "human",
+    opponent_type = "cpu" if is_cpu_opponent(opponent) else "human"
+    out: dict[str, float] = {}
+    for item in grid:
+        cell = item["cell"]
+        if not play_fits_grid_zone(play, cell):
+            continue
+        prob = experimental_model.predict_success(
+            art, formation=form, play=play,
+            down=cell["down"], distance=cell["distance"],
+            yardline=cell["yardline"], opponent_id=opponent,
+            opponent_type=opponent_type,
             coverage_hint=None, coverage_source="none",
             heuristic_bonus=0.0,
         )["probability"]
-        for down, distance, yardline in checks
-    ]
-    return sum(vals) / len(vals)
+        fit, _reasons = play_situation_fit(play, item["assessment"])
+        out[str(cell["name"])] = round(float(prob) + fit, 6)
+    return out
 
 
 def _play_rankings(
     art: Any, book: str, form: str, plays: list[str],
     opponent: str, current: Mapping[str, Any],
+    grid: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     old = (current.get("formations") or {}).get(form) or []
+    grid = grid if grid is not None else _pregame_grid()
+    weights = {str(g["cell"]["name"]): float(g["cell"]["weight"]) for g in grid}
     ranked: list[dict[str, Any]] = []
     for play in dict.fromkeys(plays):
-        if not catalog.zone_fit(play, "open"):
+        if not catalog.zone_fit(play, "open") and not catalog.zone_fit(play, "gl"):
             continue
-        is_run = catalog.is_run(play)
-        concept = experimental_model._play_concept(play)
-        score = _rate(art, form, play, opponent)
+        cells = _cell_scores(art, form, play, opponent, grid)
+        if not cells:
+            continue
+        total_w = sum(weights[name] for name in cells)
+        score = sum(cells[name] * weights[name] for name in cells) / total_w
         # A small continuity preference, never a hard lock; the model may swap.
         if play in old:
             score += 0.012
         ranked.append({
             "formation": form, "play": play, "score": round(score, 6),
-            "concept": concept, "is_run": is_run, "catalog_book": book,
+            "concept": experimental_model._play_concept(play),
+            "is_run": catalog.is_run(play), "catalog_book": book,
+            "cell_scores": cells,
         })
     ranked.sort(key=lambda x: (-x["score"], x["play"]))
     return ranked
+
+
+# Concept families that are standard, explicitly labeled football counters to
+# a credibly observed defensive tendency. These are priors (basis documented),
+# not learned effects, and only apply with enough live observations.
+TENDENCY_COUNTER_FAMILIES: dict[str, frozenset[str]] = {
+    "pressure": frozenset({"cross", "screen", "rpo"}),
+    "man": frozenset({"cross", "stack"}),
+    "cover2": frozenset({"flood", "vert"}),
+    "two_high": frozenset({"run", "cross"}),
+    "single_high": frozenset({"vert", "flood"}),
+}
+TENDENCY_MIN_OBSERVATIONS = 5
+TENDENCY_FORMATION_BONUS = 0.012
+
+
+def _play_counter_family(play: str) -> str | None:
+    from cfb_coach.madden.model.experimental_model import _play_concept, _play_family
+    from cfb_coach.madden.situation import concept_family
+
+    fam = _play_family(play)
+    if fam in ("screen", "run", "rpo"):
+        return fam
+    return concept_family(_play_concept(play))
+
+
+def _tendency_evidence(db: Any, opponent_id: str) -> dict[str, Any]:
+    """Observed opponent coverage tendencies with sample sizes and confidence."""
+    from cfb_coach.madden.playcaller import coverage_class
+
+    counts: dict[str, int] = {}
+    total = 0
+    try:
+        for row in db.get_tendencies(opponent_id, "their_coverage"):
+            key = str(row["key"])
+            if key.endswith("_seed"):
+                continue
+            cls = coverage_class(key)
+            if not cls:
+                continue
+            n = int(row["count"] or 0)
+            counts[cls] = counts.get(cls, 0) + n
+            total += n
+    except Exception:  # noqa: BLE001 — tendency store is optional
+        counts, total = {}, 0
+    dominant = None
+    if total >= TENDENCY_MIN_OBSERVATIONS and counts:
+        top_class, top_n = max(counts.items(), key=lambda kv: kv[1])
+        if top_n >= TENDENCY_MIN_OBSERVATIONS and top_n / total >= 0.4:
+            dominant = top_class
+    confidence = (
+        "none" if total == 0 else
+        "low" if total < TENDENCY_MIN_OBSERVATIONS else
+        "medium" if total < 12 else "high"
+    )
+    return {
+        "observed_coverage_classes": counts,
+        "total_live_observations": total,
+        "confidence": confidence,
+        "dominant_class": dominant,
+        "counter_families": sorted(TENDENCY_COUNTER_FAMILIES.get(dominant, ()))
+        if dominant else [],
+        "basis": "live in-game tendency counts; seed priors excluded",
+        "note": (
+            "Tendencies are inferred from past observed snaps, never proof of "
+            "a future coverage. Bonus applies only with sufficient samples."
+        ),
+    }
+
+
+def _suggested_audibles(ranking: list[dict[str, Any]]) -> list[str]:
+    """Up to four in-formation plays spanning distinct families by model score."""
+    from cfb_coach.madden.model.experimental_model import _play_family
+
+    picks: list[str] = []
+    seen_fams: set[str] = set()
+    for row in ranking:
+        fam = _play_family(row["play"])
+        if fam in seen_fams:
+            continue
+        seen_fams.add(fam)
+        picks.append(row["play"])
+        if len(picks) >= 4:
+            break
+    return picks
 
 
 def _macro_drafts(formations: Mapping[str, list[str]], sources: Mapping[str, str]) -> list[dict[str, Any]]:
@@ -176,12 +293,28 @@ def design_offense(
     if not all_books:
         raise ValueError("No Madden offensive formation catalog is available")
 
+    grid = _pregame_grid()
+    weights = {str(g["cell"]["name"]): float(g["cell"]["weight"]) for g in grid}
+    total_weight = sum(weights.values())
+    tendencies = _tendency_evidence(db, opponent_id)
+    counter_fams = set(tendencies.get("counter_families") or [])
+    excluded_formations: list[dict[str, str]] = []
     best_by_form: dict[str, dict[str, Any]] = {}
     for source, formations in all_books.items():
         for form, ps in formations.items():
-            if not ps or "hail mary" in form.lower() or "goal line" in form.lower():
+            if not ps:
                 continue
-            ranking = _play_rankings(art, source, form, ps, opponent_id, active)
+            # The whole supported catalog is evaluated; only formation types
+            # the custom editor cannot sensibly install stay out, visibly.
+            if "hail mary" in form.lower() or "goal line" in form.lower():
+                excluded_formations.append({
+                    "formation": form, "source_book": source,
+                    "reason": "special-teams/jumbo package not supported as a designed formation unit",
+                })
+                continue
+            ranking = _play_rankings(
+                art, source, form, ps, opponent_id, active, grid=grid
+            )
             if not ranking:
                 continue
             # The formation is the indivisible installation unit. Every play
@@ -189,27 +322,70 @@ def design_offense(
             picks = list(dict.fromkeys(ps))
             is_current = form in (active.get("formations") or {})
             run = any(catalog.is_run(p) for p in picks)
-            # Score formations using the spread of concepts (not just one
-            # anomalously high-ranked screen). A single screen cannot dictate
-            # the score of an entire formation.
-            best_by_concept: dict[str, float] = {}
-            for row in ranking:
-                concept = row["concept"]
-                if concept not in best_by_concept:
-                    best_by_concept[concept] = row["score"]
-            balanced = sorted(best_by_concept.values(), reverse=True)
-            if len(balanced) > 1:
-                rank = sum(balanced[:min(6, len(balanced))]) / min(6, len(balanced))
-            else:
-                rank = balanced[0]
+            # Score the formation by its value ACROSS the pregame situation
+            # grid: each cell's value is the mean of the top-2 play scores
+            # there, so one anomalously high-rated play cannot dictate the
+            # score of an entire formation, and a formation that only works
+            # in one situation ranks below a versatile one.
+            cell_values: dict[str, float] = {}
+            cell_best: dict[str, dict[str, Any]] = {}
+            for g in grid:
+                name = str(g["cell"]["name"])
+                scored = sorted(
+                    ((r["cell_scores"][name], r) for r in ranking
+                     if name in r["cell_scores"]),
+                    key=lambda t: -t[0],
+                )
+                if not scored:
+                    continue
+                top = [s for s, _r in scored[:2]]
+                cell_values[name] = sum(top) / len(top)
+                cell_best[name] = {
+                    "play": scored[0][1]["play"],
+                    "score": round(float(scored[0][0]), 6),
+                }
+            if not cell_values:
+                continue
+            covered_w = sum(weights[n] for n in cell_values)
+            rank = sum(cell_values[n] * weights[n] for n in cell_values) / covered_w
+            # Situations the formation cannot address at all cost coverage.
+            rank -= 0.05 * (1.0 - covered_w / total_weight)
+            concepts = {r["concept"] for r in ranking}
             rank += 0.014 if is_current else 0.0
             rank += 0.008 if run else 0.0
-            rank += 0.002 * len(best_by_concept)
+            rank += 0.002 * len(concepts)
+            counter_plays = [
+                r["play"] for r in ranking
+                if _play_counter_family(r["play"]) in counter_fams
+            ]
+            tendency_bonus = (
+                TENDENCY_FORMATION_BONUS if len(counter_plays) >= 2 else 0.0
+            )
+            rank += tendency_bonus
             entry = {
                 "formation": form, "source_book": source, "plays": picks,
                 "score": round(rank, 6), "has_run": run,
                 "top_play": ranking[0]["play"],
                 "model_top_probability": ranking[0]["score"],
+                "concept_count": len(concepts),
+                "situations_addressed": [
+                    {"situation": n, "weight": weights[n],
+                     "best_play": cell_best[n]["play"],
+                     "score": cell_best[n]["score"]}
+                    for n in sorted(cell_best, key=lambda n: -weights[n])
+                ],
+                "cell_best": cell_best,
+                "tendency_counter_plays": counter_plays[:4],
+                "tendency_bonus": tendency_bonus,
+                "suggested_audibles": _suggested_audibles(ranking),
+                "why_selected": (
+                    f"weighted value across {len(cell_values)}/{len(grid)} pregame situations; "
+                    f"{len(concepts)} concepts; "
+                    + ("includes run game; " if run else "")
+                    + ("addresses observed "
+                       f"{tendencies.get('dominant_class')} tendency; " if tendency_bonus else "")
+                    + ("continuity with installed book" if is_current else "new installation")
+                ),
             }
             if form not in best_by_form or (
                 entry["score"], source
@@ -230,6 +406,39 @@ def design_offense(
             chosen[-1] = passer
     if not chosen:
         raise ValueError("No eligible catalogued offensive plays were found")
+
+    # Portfolio coverage repair: a plan must address every important game
+    # state (weight >= 0.5) that ANY candidate formation can address. Swap in
+    # the best-covering alternative for the weakest safely removable choice.
+    def _covered(entries: list[dict[str, Any]]) -> set[str]:
+        return {n for e in entries for n in e["cell_best"]}
+
+    important = [str(g["cell"]["name"]) for g in grid
+                 if float(g["cell"]["weight"]) >= 0.5]
+    for cell_name in important:
+        if cell_name in _covered(chosen):
+            continue
+        fixer = next(
+            (r for r in ranks if r not in chosen and cell_name in r["cell_best"]),
+            None,
+        )
+        if fixer is None:
+            continue  # no catalogued formation addresses it; reported below
+        for victim in reversed(chosen):
+            without = [e for e in chosen if e is not victim]
+            trial = without + [fixer]
+            if not any(e["has_run"] for e in trial):
+                continue
+            if all(all(catalog.is_run(p) for p in e["plays"]) for e in trial):
+                continue
+            lost = {
+                n for n in important
+                if n in _covered(chosen) and n not in _covered(trial)
+            }
+            if lost:
+                continue
+            chosen = trial
+            break
 
     formations = {r["formation"]: r["plays"] for r in chosen}
     sources = {r["formation"]: r["source_book"] for r in chosen}
@@ -260,6 +469,27 @@ def design_offense(
                 "note": "Install the complete formation from this source; no individual play editing",
             })
 
+    # Plan-level situation coverage over the chosen portfolio.
+    situation_coverage: dict[str, Any] = {}
+    for g in grid:
+        name = str(g["cell"]["name"])
+        best = max(
+            ((e["cell_best"][name]["score"], e["formation"],
+              e["cell_best"][name]["play"])
+             for e in chosen if name in e["cell_best"]),
+            default=None,
+        )
+        situation_coverage[name] = {
+            "weight": weights[name],
+            "covered": best is not None,
+            "best_formation": best[1] if best else None,
+            "best_play": best[2] if best else None,
+            "score": best[0] if best else None,
+        }
+
+    def _public(entry: Mapping[str, Any]) -> dict[str, Any]:
+        return {k: v for k, v in entry.items() if k != "cell_best"}
+
     expected = _digest(active)
     proposal = {
         "schema": "ml_offense_design.v1", "opponent_id": opponent_id,
@@ -278,11 +508,39 @@ def design_offense(
             "reason": "Model-designed whole formations with every catalogued play from selected source",
         },
         "changes": changes,
-        "candidate_formations": len(ranks), "ranked_formations": ranks[:12],
+        "candidate_formations": len(ranks),
+        "ranked_formations": [_public(r) for r in ranks[:12]],
+        "chosen_formations": [_public(r) for r in chosen],
+        "situation_grid": [
+            {"name": str(g["cell"]["name"]), "weight": float(g["cell"]["weight"]),
+             "down": g["cell"].get("down"), "distance": g["cell"].get("distance"),
+             "yardline": g["cell"].get("yardline")}
+            for g in grid
+        ],
+        "situation_coverage": situation_coverage,
+        "tendency_evidence": tendencies,
+        "suggested_audibles": {
+            e["formation"]: e.get("suggested_audibles") or [] for e in chosen
+        },
+        "excluded_unsupported_formations": excluded_formations[:20],
         "macro_blueprints": _macro_drafts(formations, sources),
         "n_plays": all_pairs,
         "inventory_id": inv_id,
         "editor_requires_confirmation": True,
+        "provenance": {
+            "model_version": art.model_version,
+            "evidence_quality": art.evidence_quality,
+            "supervised_examples": art.n_supervised,
+            "scoring_basis": (
+                "verified-data model probabilities across the pregame situation "
+                "grid, adjusted by named football priors "
+                "(football_situations.SITUATION_PRIORS)"
+            ),
+            "uncertainty": (
+                "prior-driven and sparse-data formations carry high uncertainty; "
+                "scores are situation-aware proxies, not win-probability estimates"
+            ),
+        },
         "notes": [
             "Proposal only; live offensive book is not changed.",
             "Each included formation contains ALL catalogued plays from its selected stock source.",
@@ -290,6 +548,7 @@ def design_offense(
             "Custom-editor import and availability must be checked in Madden before confirmation.",
             "Macro blueprints are NOT active. Editor fields and button sequences require validation.",
             "Predicted success is observational/shrinkage, not proof new plays win more.",
+            "Suggested audibles are in-book plays; configuring them in Madden is manual.",
         ],
     }
     proposal["proposal_id"] = _identity(proposal)

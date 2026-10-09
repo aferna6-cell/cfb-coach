@@ -15,7 +15,7 @@ import math
 import random
 from typing import Any, Mapping, Sequence
 
-from cfb_coach.madden.catalog import is_deep, is_run
+from cfb_coach.madden.catalog import is_run
 from cfb_coach.madden.model.experimental_model import _play_concept, _play_family
 
 POLICY = "model_primary_contextual_variety.v2"
@@ -44,52 +44,25 @@ def _recent_calls(
         return []
 
 
-def _situational_adjustment(play: str, sit: Any) -> tuple[float, str]:
-    """Small play-specific suitability signal; not a heuristic play choice."""
-    if sit is None:
-        return 0.0, "situation unavailable"
-    down, distance = getattr(sit, "down", None), getattr(sit, "distance", None)
-    two_minute = bool(getattr(sit, "two_minute", False))
-    if down is None or distance is None:
-        return 0.0, "down/distance unknown"
-    try:
-        d, yards = int(down), int(distance)
-    except (TypeError, ValueError):
-        return 0.0, "down/distance unparseable"
-    run, screen = is_run(play), _play_family(play) == "screen"
-    delta = 0.0
-    reasons: list[str] = []
-    if d in (3, 4) and yards >= 7:
-        if run:
-            delta -= 0.45  # eligible only if no legal pass survives
-            reasons.append("third/fourth-and-long ground gain risk")
-        if screen:
-            delta -= 0.09
-            reasons.append("screen behind conversion distance")
-        if not run and not screen and is_deep(play):
-            delta += 0.025
-            reasons.append("route potentially reaches sticks")
-    elif d in (3, 4) and yards <= 2:
-        if run:
-            delta += 0.025
-            reasons.append("short-yardage run option")
-        if is_deep(play):
-            delta -= 0.035
-            reasons.append("long-developing route on short yardage")
-    if two_minute and yards >= 4 and run:
-        score_us, score_them = (
-            getattr(sit, "score_us", None), getattr(sit, "score_them", None)
-        )
-        if score_us is not None and score_them is not None:
-            if score_us < score_them:
-                delta -= 0.07
-                reasons.append("trailing in two-minute drill")
-            elif score_us > score_them:
-                delta += 0.04
-                reasons.append("protecting lead / keeping clock running")
-        # With an unknown score, don't assume we are trailing.
+def _situational_adjustment(
+    play: str, sit: Any, assessment: Mapping[str, Any] | None = None,
+) -> tuple[float, str]:
+    """Play-fit from the shared football situation evaluator.
 
-    return delta, "; ".join(reasons) or "normal situation"
+    Every contribution is a named, testable prior in
+    :data:`~cfb_coach.madden.model.football_situations.SITUATION_PRIORS`,
+    not a hidden bonus. Not a heuristic play choice.
+    """
+    from cfb_coach.madden.model.football_situations import (
+        assess_situation, play_situation_fit,
+    )
+
+    if sit is None and assessment is None:
+        return 0.0, "situation unavailable"
+    if assessment is None:
+        assessment = assess_situation(sit)
+    delta, reasons = play_situation_fit(play, assessment)
+    return delta, "; ".join(reasons)
 
 
 def _stable_sample(
@@ -138,6 +111,11 @@ def choose_model_play(
         for concept in {_play_concept(p) for _f, p in recent}
     }
     form_count = {f: sum(prev == f for prev, _p in recent) for f, _p in recent}
+    # One structured assessment per snap (not per candidate play) keeps the
+    # football evaluator off the per-play hot loop within the latency budget.
+    from cfb_coach.madden.model.football_situations import assess_situation
+
+    assessment = assess_situation(sit) if sit is not None else None
     # O(N log N), not the earlier O(N²) strongest-alternative scan. The
     # formation designer may expose hundreds of legal plays, and the live
     # call must remain under its 150-ms clock budget.
@@ -172,7 +150,9 @@ def choose_model_play(
                 penalty += min(0.14, 0.05 + .015 * (screen_exposure - 2))
             if sum(p == key for p in last4) >= 3:
                 penalty += 0.055
-        situation_delta, situation_reason = _situational_adjustment(key[1], sit)
+        situation_delta, situation_reason = _situational_adjustment(
+            key[1], sit, assessment
+        )
         # Do not discard a high-confidence/high-margin finding for cosmetic
         # variety. In contrast, low-data inflated scores are not sacrosanct.
         strongest_other = runner_prob if key == best_key else best_prob
