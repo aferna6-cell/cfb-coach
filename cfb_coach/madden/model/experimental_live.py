@@ -502,6 +502,7 @@ def apply_experimental_offense(
         )
 
         memory = None
+        strategy_previous = None
         if db is not None:
             try:
                 memory = pre_snap_context(
@@ -510,6 +511,12 @@ def apply_experimental_offense(
                 )
             except Exception:  # noqa: BLE001
                 memory = None
+            try:
+                from cfb_coach.madden.model.offense_strategy import load_strategy
+
+                strategy_previous = load_strategy(db, session_id or game_id or "")
+            except Exception:  # noqa: BLE001
+                strategy_previous = None
         joint = choose_joint_action(
             ranked=ranked, anchor=top, sit=sit, book=book,
             active=list(active or []), db=db, opponent_id=opponent_id,
@@ -520,10 +527,20 @@ def apply_experimental_offense(
             allow_macros=(getattr(sit, "extras", None) or {}).get(
                 "live_macros", True
             ) is not False,
+            strategy_previous=strategy_previous,
         )
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
+        if db is not None:
+            try:
+                from cfb_coach.madden.model.offense_strategy import save_strategy
+
+                block = (joint.get("football_intelligence") or {}).get("strategy")
+                if block:
+                    save_strategy(db, session_id or game_id or "", block)
+            except Exception:  # noqa: BLE001
+                pass
         joint_form = str((joint.get("joint") or {}).get("formation") or ml_form)
         joint_play = str((joint.get("joint") or {}).get("play") or ml_play)
         if (joint_form, joint_play) not in legal_set:
@@ -617,6 +634,8 @@ def apply_experimental_offense(
             "joint_decision": (getattr(call, "ml_offense_action", None) or {}).get("joint"),
             "joint_exploration": joint.get("exploration"),
             "input_audit": joint.get("input_audit"),
+            "football_intelligence": joint.get("football_intelligence"),
+            "football_reason": (joint.get("football_intelligence") or {}).get("summary"),
             # Decision-time signals only. Never use observed post-snap
             # coverage as a training feature for which action to fire.
             # Quarter lives on extras, not as a Situation attribute.
@@ -741,6 +760,7 @@ def commit_experimental_decision(
                 "input_audit": info.get("input_audit"),
                 "joint_exploration": info.get("joint_exploration"),
                 "joint_policy": info.get("joint_policy"),
+                "football_reason": info.get("football_reason"),
             }
             db.conn.execute(
                 "UPDATE ml_decisions SET decision_json=? WHERE id=?",

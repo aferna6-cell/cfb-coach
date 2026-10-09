@@ -832,6 +832,37 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
         db.close()
 
 
+def cmd_ml_football_knowledge(args: argparse.Namespace) -> int:
+    """Read-only concept report. Does not call a model or write a database."""
+    from cfb_coach.madden.model.football_knowledge import knowledge_report
+
+    report = knowledge_report(getattr(args, "concept", None))
+    print(json.dumps(report, indent=2, default=str))
+    return 0 if report.get("found") else 2
+
+
+def cmd_ml_offense_strategy(args: argparse.Namespace) -> int:
+    """Read-only strategic plan. Does not install a book or rewrite history."""
+    from cfb_coach.madden.model.offense_postgame import missing_database_report
+    from cfb_coach.madden.model.offense_strategy import strategy_report
+
+    path = madden_db_path()
+    db = None
+    if path.is_file():
+        db = CoachDB.open_read_only(path)
+    try:
+        report = strategy_report(db, opponent_id=args.opponent)
+        if not path.is_file():
+            report["database"] = missing_database_report(path)
+        else:
+            report["database"] = {"path": str(path), "opened_read_only": True}
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    finally:
+        if db is not None:
+            db.close()
+
+
 def cmd_ml_offense_report(args: argparse.Namespace) -> int:
     """Read-only coordinator evaluation of saved games. Never writes history."""
     from cfb_coach.madden.model.offense_postgame import (
@@ -1327,6 +1358,20 @@ def build_ml_subparser(sub: Any) -> None:
         help="Most recent CPU games when --game-id is omitted",
     )
     p_or.set_defaults(func=cmd_ml_offense_report)
+
+    p_fk = ml_sub.add_parser(
+        "football-knowledge",
+        help="Read-only football concept knowledge, sources, and uncertainty",
+    )
+    p_fk.add_argument("--concept", default=None, help="Concept id, for example mesh")
+    p_fk.set_defaults(func=cmd_ml_football_knowledge)
+
+    p_st = ml_sub.add_parser(
+        "offense-strategy",
+        help="Read-only strategic game plan, formation coverage, and information gaps",
+    )
+    p_st.add_argument("-o", "--opponent", default="cpu")
+    p_st.set_defaults(func=cmd_ml_offense_strategy)
 
     p_pg = ml_sub.add_parser(
         "postgame-experimental",

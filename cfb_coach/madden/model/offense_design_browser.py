@@ -288,6 +288,11 @@ play is present in your Madden custom editor. Confirm it in game before marking 
     f'<span>{esc(row.get("formation"))}</span><small>{esc(row.get("why"))}</small></li>'
     for row in (proposal.get("formation_rationales") or [])
 ) or "<li>No formation rationale on this proposal.</li>"}</ul></section>
+<details><summary>Football knowledge</summary>
+<p class="muted">{esc((proposal.get("football_plan") or {}).get("note") or "Concept coverage is attached when the portfolio records it.")}</p>
+<p class="muted">Concepts covered: {esc(", ".join((proposal.get("football_plan") or {}).get("concepts_covered") or []) or "none recorded")}.
+Route diagrams are not invented. The formation cap is a maximum, not a quota.</p>
+</details>
 <h2>Formations and individual plays</h2>{"".join(groups) or "<p>No formations available.</p>"}
 <h2>New Custom Adjustments and researched settings</h2>
 <p class="muted">Expand each macro for its trigger, compatible plays, settings and linked research.

@@ -162,6 +162,32 @@ def pre_snap_context(
         play for play, n in failures.items()
         if n >= 4 and successes.get(play, 0) == 0
     ]
+    observed_labels = [
+        str(row.get("observed_defense"))
+        for row in prior
+        if row.get("outcome") is not None and row.get("observed_defense")
+    ]
+    concept_success: dict[str, int] = {}
+    concept_failure: dict[str, int] = {}
+    recent_verified_concept = None
+    try:
+        from cfb_coach.madden.model.football_knowledge import profile_for_play
+    except Exception:  # noqa: BLE001
+        profile_for_play = None  # type: ignore[assignment]
+    last_verified_outcome = None
+    for row in verified:
+        last_verified_outcome = row.get("outcome")
+        if profile_for_play is None:
+            continue
+        concept_id = profile_for_play(row.get("executed_play")).get("concept_id")
+        if not concept_id:
+            continue
+        text = str(row.get("outcome") or "").lower()
+        bad = any(tok in text for tok in ("int", "fumble", "sack", "incomplete"))
+        bucket = concept_failure if bad else concept_success
+        bucket[concept_id] = bucket.get(concept_id, 0) + 1
+        if not bad:
+            recent_verified_concept = concept_id
     return {
         "schema": SCHEMA,
         "events_before_snap": len(prior),
@@ -176,4 +202,11 @@ def pre_snap_context(
         "verified_executions": len(verified),
         "discouraged_plays": discouraged,
         "discouraged_rule": "four verified failures and zero verified successes; one snap is not enough",
+        "observed_labels": observed_labels,
+        "verified_concepts": {
+            "success": concept_success,
+            "failure": concept_failure,
+        },
+        "recent_verified_concept": recent_verified_concept,
+        "last_verified_outcome": last_verified_outcome,
     }

@@ -18,6 +18,11 @@ from cfb_coach.madden.model.football_situation import (
     roster_evidence,
 )
 
+# A newly covered concept family is worth this much marginal coverage.
+# It is small next to a real situation-score gain, so redundant formations
+# still stop, while a distinct concept can justify another formation.
+CONCEPT_FAMILY_WEIGHT = 0.004
+
 # Probes are generic pre-snap states. None of them invent a defensive shell.
 PORTFOLIO_PROBES: dict[str, SimpleNamespace] = {
     "normal": SimpleNamespace(
@@ -242,6 +247,9 @@ def select_formation_portfolio(
             roster_delta, roster_why = _roster_bonus(unique, roster)
             continuity = 0.01 if form in current else 0.0
             spread = len({experimental_model._play_concept(p) for p in unique})
+            from cfb_coach.madden.model.football_knowledge import concepts_in_plays
+
+            concept_ids = sorted(concepts_in_plays(unique))
             ranked.append({
                 "formation": form,
                 "source_book": source,
@@ -255,6 +263,7 @@ def select_formation_portfolio(
                 "roster_reason": roster_why,
                 "continuity": continuity,
                 "concept_count": spread,
+                "concept_ids": concept_ids,
                 "top_play": max(unique, key=lambda p: by_situation["normal"]),
                 "model_top_probability": round(max(by_situation.values()), 6),
             })
@@ -272,6 +281,7 @@ def select_formation_portfolio(
             best[row["formation"]] = row
     pool = sorted(best.values(), key=lambda r: (-r["score"], r["formation"]))
     coverage = {name: 0.0 for name in SITUATION_NAMES}
+    covered_concepts: set[str] = set()
     chosen: list[dict[str, Any]] = []
     remaining = list(pool)
     while remaining and len(chosen) < max_formations:
@@ -280,12 +290,17 @@ def select_formation_portfolio(
             for name in SITUATION_NAMES:
                 gain += max(0.0, float(row["situation_scores"][name]) - coverage[name])
             gain += row["tendency_bonus"] + row["roster_bonus"] + row["continuity"]
+            new_concepts = set(row.get("concept_ids") or []) - covered_concepts
+            gain += CONCEPT_FAMILY_WEIGHT * len(new_concepts)
             return (gain, row["score"], row["formation"])
 
         pick = max(remaining, key=marginal)
         remaining.remove(pick)
         if marginal(pick)[0] <= 0 and chosen:
             break
+        added = sorted(set(pick.get("concept_ids") or []) - covered_concepts)
+        pick["concepts_added"] = added
+        covered_concepts.update(added)
         chosen.append(pick)
         for name in SITUATION_NAMES:
             coverage[name] = max(coverage[name], float(pick["situation_scores"][name]))
@@ -297,6 +312,11 @@ def select_formation_portfolio(
         passer = next((r for r in remaining if r["has_pass"]), None)
         if passer:
             chosen[-1] = passer
+    covered_concepts = set()
+    for row in chosen:
+        added = sorted(set(row.get("concept_ids") or []) - covered_concepts)
+        row["concepts_added"] = added
+        covered_concepts.update(added)
     rationales = []
     addressed = {name: [] for name in SITUATION_NAMES}
     for row in chosen:
@@ -312,7 +332,13 @@ def select_formation_portfolio(
             "why": (
                 f"Covers {', '.join(best_situations)} better than the formations already chosen. "
                 f"{row['tendency_reason']}. {row['roster_reason']}."
+                + (
+                    f" Adds concept families: {', '.join(row.get('concepts_added') or [])}."
+                    if row.get("concepts_added")
+                    else " Does not add a new concept family; kept for situational coverage."
+                )
             ),
+            "concepts_added": list(row.get("concepts_added") or []),
             "situations": best_situations,
             "situation_scores": row["situation_scores"],
             "defensive_tendency": profile.get("inferred_look"),
@@ -340,4 +366,22 @@ def select_formation_portfolio(
             "situation proxies. They are not verified win rates. A tendency is "
             "historical. Roster data counts only when a verified snapshot exists."
         ),
+        "football_plan": {
+            "formations_selected": len(chosen),
+            "max_formations": max_formations,
+            "cap_is_not_a_quota": True,
+            "plays_not_trimmed": True,
+            "concepts_covered": sorted(covered_concepts),
+            "why_each_formation": [
+                {
+                    "formation": row["formation"],
+                    "concepts_added": list(row.get("concepts_added") or []),
+                }
+                for row in chosen
+            ],
+            "note": (
+                "The next formation must add situation coverage or a concept "
+                "family. High independent scores do not fill the cap by themselves."
+            ),
+        },
     }

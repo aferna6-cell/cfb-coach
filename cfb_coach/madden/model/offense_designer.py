@@ -21,9 +21,10 @@ META_PENDING = "ml_offense_design_pending.v1"
 META_HISTORY = "ml_offense_design_history.v1"
 META_BLUEPRINTS = "ml_offense_created_blueprints.v1"
 META_APPROVED = "ml_offense_verified_macros.v1:{opponent}"
-MAX_FORMATIONS = 12  # user-adjustable formation limit; all plays always included
+MAX_FORMATIONS = 15  # maximum custom-book formations; fewer is allowed
 # Shared by offense-coordinator, offense-design, and offense-design --stage.
-DEFAULT_MAX_FORMATIONS = 8
+# 15 is the cap, not a quota.
+DEFAULT_MAX_FORMATIONS = 15
 
 
 def _canonical(value: Any) -> str:
@@ -263,6 +264,7 @@ def design_offense(
             "evidence_quality": art.evidence_quality,
             "supervised_examples": art.n_supervised,
             "knowledge_version": art.knowledge_version,
+            "football_knowledge": portfolio.get("football_plan"),
             "roster": portfolio["roster"],
             "opponent_defense": portfolio["opponent_defense"],
             "uncertainty": portfolio["uncertainty"],
@@ -293,6 +295,7 @@ def design_offense(
     proposal["proposal_id"] = _identity(proposal)
     proposal["max_formations"] = max_formations
     proposal["pregame_diagnostic"] = pregame_input_diagnostic(proposal.get("provenance"))
+    proposal["football_plan"] = portfolio.get("football_plan")
     return proposal
 
 
@@ -376,6 +379,7 @@ def plan_inspection(proposal: Mapping[str, Any]) -> dict[str, Any]:
         "changes": list(proposal.get("changes") or []),
         "formation_rationales": list(proposal.get("formation_rationales") or []),
         "situation_coverage": proposal.get("situation_coverage"),
+        "football_plan": proposal.get("football_plan"),
         "pregame_diagnostic": proposal.get("pregame_diagnostic"),
         "macro_blueprints": [
             {

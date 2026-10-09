@@ -44,14 +44,15 @@ class PregameWorkflowTests(unittest.TestCase):
         self.db.close()
         self.tmp.cleanup()
 
-    def test_commands_share_the_eight_formation_default(self):
+    def test_commands_share_the_formation_cap(self):
         from cfb_coach.cli import build_parser
 
         parser = build_parser()
         coordinator = parser.parse_args(["ml", "offense-coordinator", "-o", "cpu"])
         design = parser.parse_args(["ml", "offense-design", "-o", "cpu", "--stage", "--text"])
-        self.assertEqual(designer.DEFAULT_MAX_FORMATIONS, 8)
-        self.assertEqual(coordinator.max_formations, 8)
+        self.assertEqual(designer.MAX_FORMATIONS, 15)
+        self.assertEqual(designer.DEFAULT_MAX_FORMATIONS, 15)
+        self.assertEqual(coordinator.max_formations, 15)
         self.assertEqual(design.max_formations, coordinator.max_formations)
 
     def test_preview_and_stage_share_one_fingerprint(self):

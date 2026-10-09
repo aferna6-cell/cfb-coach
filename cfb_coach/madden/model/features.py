@@ -352,6 +352,35 @@ def vector_for(
     return FeatureVector(feature_schema_version=FEATURE_SCHEMA_VERSION, items=items)
 
 
+def intelligence_features(
+    play: str,
+    diagnosis: dict | None = None,
+    strategy: dict | None = None,
+) -> dict:
+    """Coordinator context that is not part of the training vector.
+
+    ``madden-ml.features.2`` stays unchanged. Missing route details stay null.
+    """
+    from cfb_coach.madden.model.football_knowledge import KNOWLEDGE_VERSION, profile_for_play
+
+    profile = profile_for_play(play)
+    observed = (diagnosis or {}).get("observed") or {}
+    return {
+        "feature_schema": "madden.football_intelligence.v1",
+        "training_vector": FEATURE_SCHEMA_VERSION,
+        "knowledge_version": KNOWLEDGE_VERSION,
+        "concept_id": profile.get("concept_id"),
+        "concept_confidence": profile.get("confidence"),
+        "route_diagram": None,
+        "player_assignments": None,
+        "controller_inputs": None,
+        "observed_shell": observed.get("shell"),
+        "diagnosis_state": (diagnosis or {}).get("state"),
+        "strategy_objective": (strategy or {}).get("objective"),
+        "strategy_hypothesis": (strategy or {}).get("hypothesis_id"),
+    }
+
+
 def dense_pair(vector: FeatureVector) -> list[float]:
     """Expand each feature into ``(value_or_0, missing_bit)`` for trainers."""
     out: list[float] = []

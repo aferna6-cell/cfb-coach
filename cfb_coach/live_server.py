@@ -248,6 +248,7 @@ class LivePlayController:
             "fell_back": bool(info.get("fell_back")),
             "input_audit": (info.get("pre_snap_action_context") or {}).get("input_audit")
             or info.get("input_audit"),
+            "football_reason": info.get("football_reason"),
         }
 
     @staticmethod
@@ -1025,6 +1026,10 @@ def render_live_html(ctrl: LivePlayController) -> str:
     <div id="offense-action-label"></div>
     <div id="offense-action-buttons"></div>
   </details>""" if compact_madden else ""}
+  <details id="football-reason" hidden>
+    <summary>Football reasoning</summary>
+    <div id="football-reason-body"></div>
+  </details>
   <div class="heard" id="ml-experimental" hidden></div>
   <div class="err" id="err"></div>
 
@@ -1223,6 +1228,13 @@ function renderState(st) {{
     }}
   }}
   if (actionConfirmRow) actionConfirmRow.hidden = !act;
+  const football = $("football-reason");
+  const footballBody = $("football-reason-body");
+  if (football && footballBody) {{
+    const reason = st.ml_experimental && st.ml_experimental.football_reason;
+    football.hidden = !reason;
+    footballBody.textContent = reason || "";
+  }}
   const noActionRow = $("no-action-confirm-row");
   if (noActionRow) {{
     noActionRow.hidden = !!act || !st.pending_recommendation

@@ -7,6 +7,10 @@ top-set sampling. The heuristic never picks a normal offensive call.
 Sampling is exploration among plausible plays, NOT evidence that an unchosen
 play would have performed better. The original model probabilities remain
 unmodified and are logged separately from selection scores.
+
+Football-knowledge and drive-strategy priors are not added inside
+``selection_score``. The joint coordinator applies those capped deltas later,
+so the locked situation magnitudes in this policy stay put.
 """
 from __future__ import annotations
 

@@ -6,7 +6,9 @@ The model-primary selection score already includes anti-repeat. This layer
 does not replace that penalty with a fixed rotation.
 
 A research prior can move a plan by at most ``MAX_RESEARCH_INFLUENCE``.
-That cap cannot overturn a play whose learned selection score is clearly
+Football-knowledge and drive-strategy priors are smaller still, and they
+are applied here rather than inside the model-primary selection score.
+Neither cap can overturn a play whose learned selection score is clearly
 higher. Near-ties inside ``INDIFFERENCE_BAND`` are explored with a stable
 hash seed. A promoted action model may add its own bounded shift only inside
 a matching pre-snap context.
@@ -29,7 +31,8 @@ from cfb_coach.madden.model.offense_action_policy import (
     _verified_button_sequence,
 )
 
-JOINT_POLICY = "joint_offense_action.v2"
+JOINT_POLICY = "joint_offense_action.v3"
+BASELINE_JOINT_POLICY = "joint_offense_action.v2"
 # A research prior may move the joint score by at most this many points.
 # Play probability remains the baseline.
 MAX_RESEARCH_INFLUENCE = 0.06
@@ -503,6 +506,88 @@ def _explore_near_ties(
     return chosen, meta
 
 
+def _football_intelligence(
+    *,
+    chosen: Mapping[str, Any] | None,
+    representatives: Sequence[Mapping[str, Any]],
+    diagnosis: Mapping[str, Any] | None,
+    strategy_state: Mapping[str, Any] | None,
+    use_knowledge: bool,
+    use_strategy: bool,
+) -> dict[str, Any]:
+    """Why the winning complete action beat the closest alternatives."""
+    from cfb_coach.madden.model.concept_matchup import KNOWLEDGE_CAP
+    from cfb_coach.madden.model.offense_strategy import STRATEGY_CAP
+
+    def _why(row: Mapping[str, Any]) -> str:
+        knowledge = row.get("knowledge") or {}
+        strategy = row.get("strategy") or {}
+        knowledge_text = "; ".join(knowledge.get("reasons") or []) or "no knowledge prior"
+        strategy_text = "; ".join(strategy.get("reasons") or []) or "no strategy prior"
+        withheld = "; ".join(knowledge.get("withheld") or [])
+        text = (
+            f"selection {float(row.get('selection_score') or 0):.3f}, "
+            f"knowledge {float(knowledge.get('delta') or 0):+.3f} ({knowledge_text}), "
+            f"strategy {float(strategy.get('delta') or 0):+.3f} ({strategy_text})"
+        )
+        if withheld:
+            text += f"; withheld: {withheld}"
+        return text
+
+    winner = None
+    if chosen is not None:
+        winner = {
+            "formation": chosen.get("formation"),
+            "play": chosen.get("play"),
+            "joint_score": chosen.get("joint_score"),
+            "concept_id": (chosen.get("knowledge") or {}).get("concept_id"),
+            "knowledge_delta": (chosen.get("knowledge") or {}).get("delta"),
+            "strategy_delta": (chosen.get("strategy") or {}).get("delta"),
+            "why": _why(chosen),
+        }
+    others = [
+        row for row in representatives
+        if chosen is None or (row.get("formation"), row.get("play")) != (
+            chosen.get("formation"), chosen.get("play"),
+        )
+    ]
+    others = sorted(others, key=lambda row: -float(row.get("joint_score") or 0))
+    alternatives = []
+    leader = float(chosen.get("joint_score") or 0) if chosen is not None else 0.0
+    for row in others[:4]:
+        alternatives.append({
+            "formation": row.get("formation"),
+            "play": row.get("play"),
+            "joint_score": row.get("joint_score"),
+            "knowledge_delta": (row.get("knowledge") or {}).get("delta"),
+            "strategy_delta": (row.get("strategy") or {}).get("delta"),
+            "why_not": (
+                f"complete score {float(row.get('joint_score') or 0):.3f} trails "
+                f"{leader:.3f}. {_why(row)}"
+            ),
+        })
+    summary = "No legal play was available."
+    if winner is not None:
+        summary = (
+            f"{winner['formation']} — {winner['play']}: {winner['why']}. "
+            "Learned selection remains the base score."
+        )
+        if alternatives:
+            summary += " " + alternatives[0]["why_not"]
+    return {
+        "use_knowledge": use_knowledge,
+        "use_strategy": use_strategy,
+        "knowledge_cap": KNOWLEDGE_CAP,
+        "strategy_cap": STRATEGY_CAP,
+        "learned_evidence_remains_primary": True,
+        "winner": winner,
+        "alternatives": alternatives,
+        "diagnosis": diagnosis,
+        "strategy": strategy_state,
+        "summary": summary,
+    }
+
+
 def choose_joint_action(
     *,
     ranked: Sequence[Mapping[str, Any]],
@@ -522,6 +607,9 @@ def choose_joint_action(
     session_id: str | None = None,
     snap_seq: int | None = None,
     opponent_type: str = "cpu",
+    use_knowledge: bool = True,
+    use_strategy: bool = True,
+    strategy_previous: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Pick one legal (formation, play, plan) from the complete action space.
 
@@ -556,6 +644,18 @@ def choose_joint_action(
     except Exception:  # noqa: BLE001 — a missing meta table must not block the call
         learned = None
     learned_mode = (learned or {}).get("mode", "none")
+    diagnosis = None
+    strategy_state = None
+    if use_knowledge or use_strategy:
+        from cfb_coach.madden.model.defensive_diagnosis import diagnose_defense
+
+        diagnosis = diagnose_defense(sit, memory)
+    if use_strategy:
+        from cfb_coach.madden.model.offense_strategy import current_strategy
+
+        strategy_state = current_strategy(
+            sit, memory, diagnosis, previous=strategy_previous,
+        )
     anchor_form = str(anchor.get("formation"))
     anchor_play = str(anchor.get("play"))
     anchor_score = float(anchor.get("selection_score", anchor.get("probability", 0.0)) or 0.0)
@@ -570,6 +670,20 @@ def choose_joint_action(
         fit = explain_play(play, sit, memory=memory)
         base = float(row.get("selection_score", row.get("probability", 0.0)) or 0.0)
         base += float(fit["coordinator_delta"])
+        knowledge = {"delta": 0.0, "reasons": ["knowledge off"], "withheld": []}
+        strategy_adj = {"delta": 0.0, "reasons": ["strategy off"], "withheld": []}
+        if use_knowledge:
+            from cfb_coach.madden.model.concept_matchup import evaluate_concept_matchup
+
+            knowledge = evaluate_concept_matchup(play, sit, diagnosis)
+        if use_strategy:
+            from cfb_coach.madden.model.offense_strategy import strategy_adjustment
+
+            strategy_adj = strategy_adjustment(
+                play, strategy_state, knowledge_delta=float(knowledge.get("delta") or 0.0),
+            )
+        base += float(knowledge.get("delta") or 0.0)
+        base += float(strategy_adj.get("delta") or 0.0)
         plans = legal_plans_for_play(
             formation=form, play=play, sit=sit, book=book,
             active=list(active or []), prediction=row, repeated=repeated,
@@ -610,6 +724,9 @@ def choose_joint_action(
             "play": play,
             "plan": best,
             "row": row,
+            "knowledge": knowledge,
+            "strategy": strategy_adj,
+            "selection_score": float(row.get("selection_score", row.get("probability", 0.0)) or 0.0),
         })
     exploration: dict[str, Any]
     if representatives:
@@ -653,4 +770,27 @@ def choose_joint_action(
     decision["input_audit"] = audit_situation_inputs(
         sit, evaluation=evaluation, memory=memory,
     )
+    if not use_knowledge and not use_strategy:
+        decision["policy_version"] = BASELINE_JOINT_POLICY
+    intelligence = _football_intelligence(
+        chosen=next(
+            (row for row in representatives if row["formation"] == best_key[0] and row["play"] == best_key[1]),
+            None,
+        ),
+        representatives=representatives,
+        diagnosis=diagnosis,
+        strategy_state=strategy_state,
+        use_knowledge=use_knowledge,
+        use_strategy=use_strategy,
+    )
+    decision["football_intelligence"] = intelligence
+    joint = decision.get("joint") or {}
+    football = dict(joint.get("football") or {})
+    football["intelligence"] = {
+        "summary": intelligence.get("summary"),
+        "diagnosis_state": (intelligence.get("diagnosis") or {}).get("state"),
+        "objective": (intelligence.get("strategy") or {}).get("objective"),
+    }
+    joint["football"] = football
+    decision["joint"] = joint
     return decision
