@@ -17,7 +17,9 @@ from cfb_coach.madden.model.experimental_live import situational_offense_candida
 from cfb_coach.madden.model.experimental_model import (
     ExperimentalArtifact, predict_success, train_experimental,
 )
-from cfb_coach.madden.model.offense_selection_policy import choose_model_play
+from cfb_coach.madden.model.offense_selection_policy import (
+    choose_model_play, summarize_call_variety,
+)
 
 
 def situation(down=3, distance=11, two_minute=False):
@@ -170,6 +172,27 @@ class ModelVarietyTests(unittest.TestCase):
             recent = recent[:20]
         self.assertGreaterEqual(len(set(calls)), 9)
         self.assertGreaterEqual(len({f for f, _ in calls}), 4)
+
+    def test_postgame_reports_third_long_and_model_variety_without_execution_claim(self):
+        observed = [
+            {"snap_id":"g-01","final_formation":"Gun Bunch","final_play":"HB Dive"},
+            {"snap_id":"g-02","final_formation":"Gun Bunch","final_play":"Mesh"},
+            {"snap_id":"g-03","final_formation":"Gun Doubles","final_play":"HB Slip Screen"},
+            {"snap_id":"g-04","final_formation":"Gun Bunch","final_play":"Mesh"},
+        ]
+        context = {
+            "g-01":{"down":3,"distance":11},
+            "g-02":{"down":3,"distance":11},
+            "g-03":{"down":1,"distance":10},
+        }
+        quality = summarize_call_variety(observed, by_snap_situation=context)
+        self.assertEqual(quality["recommended_calls"], 4)
+        self.assertEqual(quality["distinct_plays"], 3)
+        self.assertEqual(quality["distinct_formations"], 2)
+        self.assertEqual(quality["known_third_or_fourth_long"], 2)
+        self.assertEqual(quality["third_or_fourth_long_run_recommendations"], 1)
+        self.assertEqual(quality["max_consecutive_same_play"], 1)
+        self.assertIn("recommended", quality["note"])
 
     def test_recent_calls_are_session_scoped_when_available(self):
         with tempfile.TemporaryDirectory() as td:
