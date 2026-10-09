@@ -77,8 +77,18 @@ def _situational_adjustment(play: str, sit: Any) -> tuple[float, str]:
             delta -= 0.035
             reasons.append("long-developing route on short yardage")
     if two_minute and yards >= 4 and run:
-        delta -= 0.07
-        reasons.append("two-minute tempo")
+        score_us, score_them = (
+            getattr(sit, "score_us", None), getattr(sit, "score_them", None)
+        )
+        if score_us is not None and score_them is not None:
+            if score_us < score_them:
+                delta -= 0.07
+                reasons.append("trailing in two-minute drill")
+            elif score_us > score_them:
+                delta += 0.04
+                reasons.append("protecting lead / keeping clock running")
+        # With an unknown score, don't assume we are trailing.
+
     return delta, "; ".join(reasons) or "normal situation"
 
 
