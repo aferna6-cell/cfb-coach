@@ -39,6 +39,9 @@ class ActionEvidenceTests(unittest.TestCase):
         confirmed_unchanged: bool = False,
         game: str = "game-a", executed_play: str = "Mesh",
         verified: bool = True, result: str = "+12",
+        presnap_coverage: str | None = None,
+        presnap_source: str | None = None,
+        observed_coverage: str | None = None,
     ):
         did = self.db.log_ml_decision({
             "snap_id": key, "game_id": game, "session_id": game,
@@ -46,9 +49,16 @@ class ActionEvidenceTests(unittest.TestCase):
             "final_pick": {"formation": "Gun Bunch", "play": "Mesh"},
         })
         kind, _, action_id = action.partition(":")
-        decision_json = {"experimental_offense": {"offense_action": {
-            "kind": kind, "id": action_id if kind != "none" else None,
-        }}}
+        decision_json = {"experimental_offense": {
+            "offense_action": {
+                "kind": kind, "id": action_id if kind != "none" else None,
+            },
+            "pre_snap_action_context": {
+                "down": 2, "distance": 8,
+                "coverage_hint": presnap_coverage,
+                "coverage_source": presnap_source,
+            },
+        }}
         self.db.conn.execute(
             "UPDATE ml_decisions SET decision_json=? WHERE id=?",
             (json.dumps(decision_json), did),
@@ -59,6 +69,7 @@ class ActionEvidenceTests(unittest.TestCase):
             situation_raw="2&8", down=2, distance=8,
             our_call="Gun Bunch — Mesh",
             formation="Gun Bunch", play="Mesh", result=result,
+            coverage_seen=observed_coverage,
             executed_status="identified" if verified else "unknown",
             executed_formation=executed_play if verified else None,
             executed_play=executed_play if verified else None,
@@ -96,6 +107,24 @@ class ActionEvidenceTests(unittest.TestCase):
         self.assertEqual(audit["excluded_play_mismatch"], 1)
         self.assertGreater(audit["excluded_action_confirmation"], 0)
         self.assertGreater(audit["excluded_no_action_confirmation"], 0)
+
+    def test_only_live_presnap_look_forms_action_context(self):
+        self.snap(
+            "live-man", action="none", confirmed_unchanged=True,
+            presnap_coverage="Cover 1", presnap_source="live",
+            observed_coverage="Cover 3",
+        )
+        self.snap(
+            "last-blitz", action="none", confirmed_unchanged=True,
+            presnap_coverage="Blitz", presnap_source="last",
+            observed_coverage="Cover 1",
+        )
+        rows, _ = collect_verified_action_rows(self.db)
+        ctx = {r["snap_id"]: r["context"] for r in rows}
+        self.assertEqual(ctx["live-man"], "mesh|2_long|look:man")
+        self.assertEqual(ctx["last-blitz"], "mesh|2_long")
+        self.assertNotIn("single_high", str(ctx))
+        self.assertNotIn("pressure", str(ctx))
 
     def test_repeat_corrections_not_double_counted(self):
         self.snap("same-snap", confirmed_action=True)
