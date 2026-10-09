@@ -55,7 +55,7 @@ def collect_verified_action_rows(db: Any, game_id: str | None = None) -> tuple[l
     for row in records:
         if row.get("side") != "offense":
             continue
-        sid = str(row.get("ml_snap_id") or "")
+        sid = str(row.get("snap_id") or "")
         if not sid or sid in seen:
             continue
         seen.add(sid)
