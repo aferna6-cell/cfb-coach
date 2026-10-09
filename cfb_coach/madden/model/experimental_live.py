@@ -749,6 +749,30 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
         else:
             action_unconfirmed += 1
 
+    # Evaluate *what the coach displayed*, including unmatched outcomes.
+    # Do not equate a recommended play with a confirmed executed play.
+    from cfb_coach.madden.model.offense_selection_policy import summarize_call_variety
+
+    snap_context: dict[str, dict[str, Any]] = {}
+    try:
+        for snap in db.conn.execute(
+            "SELECT ml_snap_id, down, distance FROM snaps WHERE ml_snap_id IS NOT NULL"
+        ):
+            snap_context[str(snap["ml_snap_id"])] = {
+                "down": snap["down"], "distance": snap["distance"],
+            }
+    except Exception:  # noqa: BLE001
+        pass
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for row in identified:
+        rec = dict(row)
+        key = str(rec.get("game_id") or rec.get("session_id") or "unknown")
+        groups.setdefault(key, []).append(rec)
+    call_quality = {
+        game: summarize_call_variety(entries, by_snap_situation=snap_context)
+        for game, entries in groups.items()
+    }
+
     orphan_anonymous = len(rows) - len(identified)
     return {
         "n_experimental_calls": n,
@@ -760,6 +784,7 @@ def postgame_experimental_compare(db: Any, *, game_id: str | None = None) -> dic
         "disagree_with_heuristic": len(disagree),
         "verified_executions_linked": verified,
         "outcomes_linked": linked_outcomes,
+        "call_quality_by_game": call_quality,
         "offense_actions": {
             "recommended": action_recommended,
             "verified_applied": action_confirmed,
