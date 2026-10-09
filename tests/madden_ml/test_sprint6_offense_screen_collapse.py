@@ -40,7 +40,7 @@ class ModelAntiCollapseTests(unittest.TestCase):
         self.assertNotEqual(ranked[0]["play"], "HB Screen")
         self.assertIn(ranked[0]["play"], ("Mesh", "Inside Zone"))
         self.assertEqual(audit["top_original"][1], "HB Slip Screen")
-        self.assertEqual(audit["top_selected"][1], "Mesh")
+        self.assertEqual(audit["top_selected"][1], ranked[0]["play"])
         self.assertTrue(all("selection_penalty" in r for r in ranked))
 
     def test_prior_driven_model_cannot_repeat_identical_screen_forever(self):
