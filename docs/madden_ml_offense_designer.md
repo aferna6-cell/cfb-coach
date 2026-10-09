@@ -233,3 +233,45 @@ Commands:
     python -m cfb_coach ml experimental --retrain
     python -m cfb_coach ml status
     python -m cfb_coach play --game madden27 -o cpu
+
+## Sprint 8 — complete installed playbook tracking and live ML coverage
+
+The approved/offense locked book is the authoritative inventory, **not**
+the handful of plays in older heuristic gameplans or a capped candidate menu.
+Each model-designed formation includes ALL catalogued plays from its named
+stock source. The model considers every play that remains situationally
+eligible; first it ranks them, and then a modest CPU exploration allowance
+can sample from the **complete eligible playbook**, not merely 24 plays or
+two plays per concept. Human-opponent exploration is more conservative.
+
+The designer and confirmation step now record a stable `inventory_id` hash
+for the exact (formation, source book, plays) state. A partial or drifted
+source formation cannot be marked installed; staged drafts never become
+live inventory until the user actually rebuilds the playbook in Madden.
+
+Each sealed ML decision records the book fingerprint, all-play count,
+formation count, eligible-play count and count excluded by situation,
+plus its contextual sampling audit. Those counts do not invent outcomes.
+
+The designer browser lists every play and, once installed, how often
+it was **recommended** to the selected opponent. Unused inventory remains
+listed at zero. A count is not confirmation of execution or causal success.
+
+Read-only inspection:
+
+```bash
+python -m cfb_coach ml offense-inventory -o cpu
+python -m cfb_coach ml offense-inventory -o cpu --summary
+python -m cfb_coach ml offense-inventory --game-id YOUR_GAME_ID
+python -m cfb_coach ml offense-design -o cpu --show
+```
+
+To use a newly suggested formation inventory, stage the complete design,
+build the whole formations in Madden, and run the explicit installation
+attestation. Simply viewing a proposal never makes it callable.
+
+Situation protections remain: third/fourth-and-long ground runs are
+removed when a legal pass is present, short-field-only plays need the
+appropriate situation, and the model still ranks the normal plays.
+An entire inventory being tracked does not mean every play should
+be called in every situation or force equal usage of weak calls.

@@ -1,6 +1,6 @@
 """Offline ML offensive playbook and Custom Adjustment designer.
 
-The model may replace formations and individual plays from catalogued Madden
+The model may replace complete formations (containing all their plays) from catalogued Madden
 books, and invent *draft configurations* from sourced adjustment primitives.
 No recommendation is ever callable until the user builds/validates the custom
 playbook and explicitly confirms its proposal ID. All macros remain drafts.
@@ -233,7 +233,12 @@ def design_offense(
 
     formations = {r["formation"]: r["plays"] for r in chosen}
     sources = {r["formation"]: r["source_book"] for r in chosen}
-    all_pairs = sum(len(p) for p in formations.values())
+    from cfb_coach.madden.model.offense_inventory import (
+        inventory_fingerprint, pairs_in_inventory,
+    )
+
+    all_pairs = len(pairs_in_inventory(formations))
+    inv_id = inventory_fingerprint(formations, sources)
     old = active.get("formations") or {}
     old_sources = active.get("formation_sources") or {}
     changes: list[dict[str, Any]] = []
@@ -267,7 +272,7 @@ def design_offense(
         "book": {
             "side": "offense", "mode": "custom", "name": "ML Designed Offense (custom)",
             "source_book": None, "trimmed": True, "formations": formations,
-            "formation_sources": sources,
+            "formation_sources": sources, "inventory_id": inv_id,
             "audibles": {}, "core": list(formations),
             "rev": int(active.get("rev") or 0) + 1,
             "reason": "Model-designed whole formations with every catalogued play from selected source",
@@ -276,6 +281,7 @@ def design_offense(
         "candidate_formations": len(ranks), "ranked_formations": ranks[:12],
         "macro_blueprints": _macro_drafts(formations, sources),
         "n_plays": all_pairs,
+        "inventory_id": inv_id,
         "editor_requires_confirmation": True,
         "notes": [
             "Proposal only; live offensive book is not changed.",
@@ -332,8 +338,17 @@ def confirm_installed(db: Any, *, proposal_id: str, attestation: str) -> dict[st
     for form, ps in new["formations"].items():
         src = new["formation_sources"].get(form)
         available = set(catalog.book_formations("offense", src or "").get(form) or [])
-        if any(p not in available for p in ps):
-            raise ValueError(f"Catalog provenance invalid for {form}; refuse installation")
+        if len(ps) != len(set(ps)) or set(ps) != available or len(ps) != len(available):
+            raise ValueError(
+                f"Formation {form} is incomplete or diverged from sourced stock-book plays; "
+                "cannot confirm partial formation installation"
+            )
+    from cfb_coach.madden.model.offense_inventory import inventory_fingerprint
+    expected_inventory = inventory_fingerprint(
+        new["formations"], new["formation_sources"]
+    )
+    if new.get("inventory_id") != expected_inventory:
+        raise ValueError("Inventory changed since staged design; refuse installation")
     history_raw = db.get_meta(META_HISTORY)
     try:
         history = json.loads(history_raw) if history_raw else []
@@ -359,7 +374,7 @@ def confirm_installed(db: Any, *, proposal_id: str, attestation: str) -> dict[st
     return {
         "confirmed": True, "proposal_id": proposal_id, "revision": new["rev"],
         "formations": list(new["formations"]), "plays": sum(len(p) for p in new["formations"].values()),
-        "macro_blueprints_activated": 0,
+        "inventory_id": new["inventory_id"], "macro_blueprints_activated": 0,
     }
 
 

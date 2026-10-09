@@ -196,96 +196,102 @@ def choose_model_play(
                        r.get("uncertainty", 1.0), r["formation"], r["play"])
     )
     best_score = float(choices[0]["selection_score"])
-    # Controlled exploration among similarly valued *and situationally valid*
-    # plays, not arbitrary random play calls.
     spread = (0.145 if float(choices[0].get("uncertainty", 1.0)) >= 0.55
               else 0.11) if cpu else 0.065
-    shortlist = [
+    # Never cap the model to 24/12 plays or two plays per concept. Every
+    # situationally eligible play in the *entire applied playbook* stays in
+    # the evaluated pool. Exploitation favors competitive options, while a
+    # small separate exploration budget can sample the full eligible set.
+    competitive = [
         row for row in choices
         if float(row["selection_score"]) >= best_score - spread
-    ][:24 if cpu else 12]
+    ]
+    if not competitive:
+        competitive = [choices[0]]
 
-    # Avoid filling a candidate set with twelve near-identical plays. Retain
-    # the best two plays from any concept, increasing tactical unpredictability.
-    diverse: list[dict[str, Any]] = []
-    per_concept: dict[str, int] = {}
-    for row in shortlist:
-        concept = str(row.get("play_concept") or _play_concept(row["play"]))
-        if per_concept.get(concept, 0) >= 2:
-            continue
-        per_concept[concept] = per_concept.get(concept, 0) + 1
-        diverse.append(row)
-    if not diverse:
-        diverse = [choices[0]]
-
-    # Avoid treating an inflated prior-only score as a mandate to recommend
-    # the same exact play a third time. Promote a different in-book concept
-    # into the exploratory shortlist when recent recommendations show lock-in.
-    prior_dominates = (
-        choices[0].get("evidence_quality") in ("prior_driven", "unknown", None)
-        or float(choices[0].get("uncertainty", 1.0)) >= 0.75
-    )
-    if (
-        len(diverse) == 1 and len(recent) >= 2
-        and recent[0] == recent[1]
-        and (choices[0]["formation"], choices[0]["play"]) == recent[0]
-        and prior_dominates
-    ):
-        promoted = next(
-            (r for r in choices
-             if _play_concept(r["play"]) != _play_concept(recent[0][1])
-             and not (is_run(r["play"])
-                      and getattr(sit, "down", None) in (3, 4)
-                      and (getattr(sit, "distance", 0) or 0) >= 7)),
-            None,
-        )
-        if promoted:
-            diverse.append(promoted)
-
-    # Never offer the same play for a third consecutive low-evidence snap
-    # while there are credible different concepts. Protect overwhelming
-    # VERIFIED model evidence; otherwise break tactical predictability.
     last = recent[0] if recent else None
     identical_twice = bool(last and len(recent) > 1 and recent[0] == recent[1])
-    if identical_twice and len(diverse) > 1:
-        leader = choices[0]
-        confident_dominance = (
-            float(leader.get("uncertainty", 1.0)) < .35
-            and leader.get("evidence_quality") in ("empirical", "verified")
-            and float(leader["probability"]) -
-            max((float(x["probability"]) for x in choices
-                 if (x["formation"], x["play"]) != last), default=0.0) > .18
-        )
-        alternatives = [
-            row for row in diverse
-            if (row["formation"], row["play"]) != last
-            and _play_concept(row["play"]) != _play_concept(last[1])
-        ]
-        if alternatives and not confident_dominance:
-            diverse = alternatives
-
-    # Repeated screen *families* are a tell even with different exact plays.
-    # Suppress screens for this selection after 3/4 previous screens, unless
-    # there are no reasonable non-screen candidates.
-    if sum(_play_family(p) == "screen" for _f, p in last4) >= 3:
-        non_screen = [r for r in diverse if _play_family(r["play"]) != "screen"]
-        if non_screen:
-            diverse = non_screen
-
+    leader = choices[0]
+    confident_dominance = (
+        float(leader.get("uncertainty", 1.0)) < 0.35
+        and leader.get("evidence_quality") in ("empirical", "verified")
+        and float(leader["probability"]) -
+        max((float(x["probability"]) for x in choices
+             if (x["formation"], x["play"]) !=
+             (leader["formation"], leader["play"])), default=0.0) > 0.18
+    )
     seed = (
         f"{session_id or 'unscoped'}:{snap_seq if snap_seq is not None else len(recent)}:"
         f"{getattr(sit, 'down', None)}:{getattr(sit, 'distance', None)}:"
         f"{opponent_type}:{recent[0] if recent else '-'}"
     )
-    chosen = _stable_sample(
-        diverse, seed=seed,
-        temperature=0.072 if cpu else 0.040,
+    random_bits = hashlib.sha256(seed.encode("utf-8")).digest()
+    rng = random.Random(int.from_bytes(random_bits[:8], "big"))
+
+    # Test games spend a modest fraction of choices learning the broader
+    # installed playbook. Human-user games explore much more cautiously.
+    # Even very low-ranked but football-eligible plays remain represented,
+    # without claiming their unknown counterfactual outcomes are favorable.
+    exploration_rate = 0.12 if cpu else 0.025
+    broad_exploration = not confident_dominance and rng.random() < exploration_rate
+    population = list(choices if broad_exploration else competitive)
+
+    # Never call a third consecutive identical play or a fourth screen out
+    # of five just because the current learned model has sparse data.
+    if identical_twice and not confident_dominance:
+        alternatives = [
+            r for r in population
+            if (r["formation"], r["play"]) != last
+            and _play_concept(r["play"]) != _play_concept(last[1])
+        ]
+        if not alternatives:
+            alternatives = [
+                r for r in choices
+                if (r["formation"], r["play"]) != last
+                and _play_concept(r["play"]) != _play_concept(last[1])
+            ]
+        if alternatives:
+            population = alternatives
+
+    screen_streak = sum(_play_family(p) == "screen" for _f, p in last4)
+    if screen_streak >= 3 and not confident_dominance:
+        non_screen = [r for r in population if _play_family(r["play"]) != "screen"]
+        if not non_screen:
+            non_screen = [
+                r for r in choices if _play_family(r["play"]) != "screen"
+            ]
+        if non_screen:
+            population = non_screen
+    if not population:
+        population = [leader]
+
+    # Concept-normalized sampling: one concept with 30 named variations
+    # should not crowd out another with only three. No cap per concept.
+    counts: dict[str, int] = {}
+    for row in population:
+        concept = str(row.get("play_concept") or _play_concept(row["play"]))
+        counts[concept] = counts.get(concept, 0) + 1
+    temperature = (0.19 if cpu else 0.13) if broad_exploration else (
+        0.072 if cpu else 0.040
     )
+    ceiling = max(float(r["selection_score"]) for r in population)
+    weights = []
+    for row in population:
+        concept = str(row.get("play_concept") or _play_concept(row["play"]))
+        # No zero-weight plays. Small novelty/uncertainty-aware exploration
+        # is allowed only after situational filtering of the legal inventory.
+        exponent = max(-16.0, (float(row["selection_score"]) - ceiling) / temperature)
+        weights.append(math.exp(exponent) / math.sqrt(counts[concept]))
+    chosen = rng.choices(population, weights=weights, k=1)[0]
+
     choices.remove(chosen)
     choices.insert(0, chosen)
     chosen["selection_reason"] = (
-        "model-controlled exploration among credible situational candidates"
-        if len(diverse) > 1 else "best model-supported eligible choice"
+        "model-scored full-inventory exploration"
+        if broad_exploration else (
+            "model-scored eligible alternatives"
+            if len(population) > 1 else "best model-supported eligible choice"
+        )
     )
     for i, row in enumerate(choices, start=1):
         row["rank"] = i
@@ -301,8 +307,13 @@ def choose_model_play(
         "situation_adjustment": chosen["situation_adjustment"],
         "situation_reason": chosen["situation_reason"],
         "candidate_count": len(ranked),
-        "shortlist_count": len(shortlist),
-        "diversified_shortlist_count": len(diverse),
+        "shortlist_count": len(competitive),
+        "diversified_shortlist_count": len(population),
+        "full_eligible_population_count": len(choices),
+        "sampling_population_count": len(population),
+        "broad_exploration": broad_exploration,
+        "exploration_rate": exploration_rate,
+        "concepts_in_sampling_population": len(counts),
         "opponent_type": opponent_type,
         "seed_source": "stable_session_snap",  # do not log a secret/random seed
         "reason": chosen["selection_reason"],

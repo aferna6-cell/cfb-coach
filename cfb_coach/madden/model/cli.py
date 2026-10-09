@@ -581,6 +581,23 @@ def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ml_offense_inventory(args: argparse.Namespace) -> int:
+    """Audit every confirmed formation/play and its recommendation usage."""
+    from cfb_coach.madden.model.offense_inventory import inventory_report
+
+    db = open_madden_db(read_only=True)
+    try:
+        report = inventory_report(
+            db, opponent_id=args.opponent, game_id=args.game_id
+        )
+        if args.summary:
+            report.pop("play_usage", None)
+        print(json.dumps(report, indent=2, default=str))
+        return 0 if report["installed"] else 2
+    finally:
+        db.close()
+
+
 def cmd_ml_offense_design(args: argparse.Namespace) -> int:
     """Design/inspect the custom offense; open the Madden-style browser by default.
 
@@ -1070,9 +1087,18 @@ def build_ml_subparser(sub: Any) -> None:
     p_te.add_argument("--no-db", dest="db", action="store_false", default=True)
     p_te.set_defaults(func=cmd_ml_train_experimental)
 
+    p_inv = ml_sub.add_parser(
+        "offense-inventory",
+        help="Audit ALL installed offensive formations/plays and call coverage; no DB changes",
+    )
+    p_inv.add_argument("-o", "--opponent", default="cpu")
+    p_inv.add_argument("--game-id", default=None, help="Count recommendations in one game only")
+    p_inv.add_argument("--summary", action="store_true", help="Totals only; omit per-play rows")
+    p_inv.set_defaults(func=cmd_ml_offense_inventory)
+
     p_od = ml_sub.add_parser(
         "offense-design",
-        help="Model proposes custom offense formations, individual plays and new macro drafts (dry-run default)",
+        help="Model proposes whole offensive formations with ALL source plays and macro drafts",
     )
     p_od.add_argument("--opponent", "-o", default="cpu")
     p_od.add_argument("--max-formations", type=int, default=5)

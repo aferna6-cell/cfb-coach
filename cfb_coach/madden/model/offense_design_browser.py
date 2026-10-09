@@ -102,6 +102,15 @@ def render_html(
     applied = (playbook.load_books(db).get("offense") or {})
     is_installed = mode == "installed" and applied.get("formations") == forms
     approved = {m["name"] for m in designer.verified_created_macros(db, opponent_id)}
+    from cfb_coach.madden.model.offense_inventory import inventory_report
+
+    # Counts are logged recommendations, not confirmed executions. The
+    # inventory includes never-called plays so the browser can reveal gaps.
+    used_inventory = inventory_report(db, opponent_id=opponent_id)
+    used_pairs = {
+        (p["formation"], p["play"]): p["recommended_calls"]
+        for p in used_inventory["play_usage"]
+    }
     source_docs = research_db.sources()
     proposal_id = str(proposal.get("proposal_id") or "")
     status = "INSTALLED — CALLABLE" if is_installed else (
@@ -131,7 +140,13 @@ def render_html(
             )
             label = "Check full formation in Madden"
         entries = [
-            f'<li class="play"><b>{esc(p)}</b></li>' for p in plays
+            f'<li class="play"><b>{esc(p)}</b>'
+            + (
+                f'<small>{used_pairs.get((form, p), 0)} calls recommended</small>'
+                if is_installed else '<small>Available after installation</small>'
+            )
+            + '</li>'
+            for p in plays
         ]
         verify_header = f'<div class="play">{mark}<strong>{esc(label)}</strong></div>'
         groups.append(
@@ -249,11 +264,15 @@ Custom Adjustments until you confirm their actual installation in Madden.</p>
 <div class="grid">
 <div class="stat"><small>Active offense</small><strong>{esc(applied.get("name") or "None locked")}</strong></div>
 <div class="stat"><small>Model</small><strong>{esc(proposal.get("model_version") or "Prior-only")}</strong></div>
-<div class="stat"><small>Formations</small><strong>{len(forms)}</strong></div>
+<div class="stat"><small>Designed formations / plays</small><strong>{len(forms)} / {sum(len(ps) for ps in forms.values())}</strong></div>
+<div class="stat"><small>Installed plays recommended</small><strong>{used_inventory["used_plays"]} / {used_inventory["play_count"]}</strong></div>
 <div class="stat"><small>Macros: drafted / armed</small><strong>{len(macros)} / {len(approved)}</strong></div>
 </div>
 <section><h2>Build and confirm</h2>
 <p><b>Design ID:</b> {esc(proposal_id)}</p>
+<p class="muted">Applied inventory ID: <code>{esc(used_inventory["inventory_id"])}</code>
+ · {used_inventory["unused_plays"]} installed plays have not yet been recommended
+ for {esc(opponent_id)}. These usage counts are recommendations, not verified executions.</p>
 <p class="note">Source-book links identify catalogued plays; they do not guarantee a particular
 play is present in your Madden custom editor. Confirm it in game before marking installed.</p>
 {workflow}<p id="progress" class="muted"></p></section>
@@ -268,7 +287,10 @@ Unspecified Madden editor fields remain unverified; generated blueprints are nev
 does not alone prove they were built and armed in Madden. Review missing settings and compatibility.</p>
 {current_macros}
 <section><h2>How the live model knows what is installed</h2>
-<p>Live ML ranks plays only from the <b>applied, confirmed book</b> recorded in SQLite.
+<p>Live ML scores <b>every situationally eligible play</b> from the full confirmed
+formation inventory recorded in SQLite—not just five favorite plays or two plays
+per concept. Normal decisions favor model-rated plays; controlled experimentation
+can sample the entire situationally eligible installed inventory.
 New macros become eligible only after a separate verified-and-armed confirmation for this
 opponent and when the exact formation, play, and observed pre-snap coverage match.</p>
 <p class="muted">This is a read-only HTML file. Checkmarks do not change the database.
