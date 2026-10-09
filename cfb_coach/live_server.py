@@ -553,6 +553,7 @@ class LivePlayController:
         executed_play: str | None = None,
         executed_macro: str | None = None,
         applied_recommended_action: bool = False,
+        confirmed_no_adjustment: bool = False,
     ) -> dict[str, Any] | None:
         """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
@@ -563,6 +564,14 @@ class LivePlayController:
             applied_recommended_action
             and executed_status == "used_recommended"
             and self._pending_offense_action()
+        )
+        # A control requires an explicit, separate confirmation that the
+        # recommended play was executed with NO pre-snap adjustment.
+        confirmed_no_adjustment = bool(
+            confirmed_no_adjustment
+            and executed_status == "used_recommended"
+            and self._pending_offense_action() is None
+            and str(getattr(self.last_call, "side", "")).startswith("o")
         )
         book = self._book()
         if book.call is None:
@@ -633,6 +642,14 @@ class LivePlayController:
                         "offense_action_explicitly_confirmed": bool(
                             applied_recommended_action
                             and (closed.get("executed_status") or "") == "identified"
+                        ),
+                        "no_adjustment_explicitly_confirmed": bool(
+                            confirmed_no_adjustment
+                            and (closed.get("executed_status") or "") == "identified"
+                            and (closed.get("executed_play") or "") ==
+                                getattr(self.last_call, "play", None)
+                            and (closed.get("executed_formation") or "") ==
+                                getattr(self.last_call, "formation", None)
                         ),
                     },
                     replace=True,
@@ -729,6 +746,7 @@ class LivePlayController:
         executed_play: str | None = None,
         executed_macro: str | None = None,
         applied_recommended_action: bool = False,
+        confirmed_no_adjustment: bool = False,
         request_key: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
@@ -750,6 +768,7 @@ class LivePlayController:
                     executed_play=executed_play,
                     executed_macro=executed_macro,
                     applied_recommended_action=applied_recommended_action,
+                    confirmed_no_adjustment=confirmed_no_adjustment,
                 )
             elif self.last_call is not None and not (outcome or "").strip():
                 # Allow first snap without prior outcome
@@ -1022,6 +1041,10 @@ def render_live_html(ctrl: LivePlayController) -> str:
     {"""<div id="action-confirm-row" hidden>
       <label><input type="checkbox" id="action-applied"/>
         I actually applied the optional hot route / Custom Adjustment</label>
+    </div>
+    <div id="no-action-confirm-row" hidden>
+      <label><input type="checkbox" id="no-action-confirmed"/>
+        I ran the recommended play unchanged (no hot route, protection, or macro)</label>
     </div>""" if compact_madden else ""}
 
     <h2 style="margin-top:1rem">Next situation</h2>
@@ -1161,6 +1184,11 @@ function renderState(st) {{
     }}
   }}
   if (actionConfirmRow) actionConfirmRow.hidden = !act;
+  const noActionRow = $("no-action-confirm-row");
+  if (noActionRow) {
+    noActionRow.hidden = !!act || !st.pending_recommendation
+      || !String(st.pending_recommendation.side || "").startsWith("o");
+  }
   $("heard").textContent = st.heard || ("vs " + (st.opponent_id || ""));
   const log = $("log");
   if (!st.log || !st.log.length) {{
@@ -1448,6 +1476,7 @@ $("btn-submit").addEventListener("click", async () => {{
         executed_formation: ($("exec-formation").value || "").trim() || null,
         executed_play: ($("exec-play").value || "").trim() || null,
         applied_recommended_action: !!($("action-applied") && $("action-applied").checked),
+        confirmed_no_adjustment: !!($("no-action-confirmed") && $("no-action-confirmed").checked),
       }};
       return await apiAction("/api/result_call", body);
     }});
@@ -1460,6 +1489,7 @@ $("btn-submit").addEventListener("click", async () => {{
     document.querySelectorAll("#outcome-btns button.outcome").forEach(b => b.style.outline = "");
     restoreExecDefaultAfterSubmit();
     if ($("action-applied")) $("action-applied").checked = false;
+    if ($("no-action-confirmed")) $("no-action-confirmed").checked = false;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -1489,6 +1519,7 @@ $("btn-call-only").addEventListener("click", async () => {{
     }}));
     if (!data) return;
     if ($("action-applied")) $("action-applied").checked = false;
+    if ($("no-action-confirmed")) $("no-action-confirmed").checked = false;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -1660,6 +1691,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             executed_play=body.get("executed_play"),
                             executed_macro=body.get("executed_macro"),
                             applied_recommended_action=body.get("applied_recommended_action") is True,
+                            confirmed_no_adjustment=body.get("confirmed_no_adjustment") is True,
                             request_key=body.get("idempotency_key") or body.get("request_key"),
                         ),
                     )

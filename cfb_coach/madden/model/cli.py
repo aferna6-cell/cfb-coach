@@ -333,6 +333,23 @@ def cmd_ml_experimental(args: argparse.Namespace) -> int:
             print(f"model_version: {art.model_version}")
             print(f"artifact_path: {dest}")
             print(f"note: {art.note}")
+            from cfb_coach.madden.model.offense_action_learning import (
+                load_action_evidence, save_action_evidence,
+                train_action_evidence,
+            )
+            try:
+                existing_action = load_action_evidence(db)
+                if (existing_action or {}).get("mode") == "bounded_active":
+                    print("action_model: existing bounded-active artifact preserved; "
+                          "run action-evidence train to replace it with shadow")
+                else:
+                    shadow_action = train_action_evidence(db)
+                    save_action_evidence(db, shadow_action)
+                    print(f"action_model: shadow | verified_rows: "
+                          f"{shadow_action['n_verified_action_rows']} | "
+                          f"eligible_groups: {shadow_action['ready_groups']}")
+            except Exception as action_exc:
+                print(f"action_model: shadow refresh skipped ({action_exc})")
             if art.n_supervised == 0:
                 print(
                     "WARNING: zero supervised rows in this DB — do not claim the "
@@ -714,6 +731,74 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
         else:
             print("PREVIEW ONLY — no applied playbook or macro changes.")
         return 0
+    finally:
+        db.close()
+
+
+def cmd_ml_action_evidence(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model import offense_action_learning as oal
+
+    db = open_madden_db()
+    try:
+        sub = args.action_subcommand
+        if sub == "train":
+            art = oal.train_action_evidence(db, game_id=args.game_id)
+            oal.save_action_evidence(db, art)
+            if getattr(args, "promote", False):
+                try:
+                    art = oal.promote_action_evidence(db, force=getattr(args, "force", False))
+                    print("PROMOTED TO BOUNDED-ACTIVE")
+                except ValueError as e:
+                    print(f"Promotion refused: {e}", file=sys.stderr)
+            print(json.dumps(art, indent=2))
+            return 0
+        elif sub == "promote":
+            try:
+                res = oal.promote_action_evidence(db, force=getattr(args, "force", False))
+                print(json.dumps(res, indent=2))
+                return 0
+            except ValueError as e:
+                print(f"Promotion refused: {e}", file=sys.stderr)
+                return 2
+        elif sub == "rollback":
+            try:
+                res = oal.rollback_action_evidence(db)
+                print(json.dumps(res, indent=2))
+                return 0
+            except ValueError as e:
+                print(f"Rollback refused: {e}", file=sys.stderr)
+                return 2
+        elif sub == "show":
+            art = oal.load_action_evidence(db)
+            if not art:
+                print("No action evidence artifact found.")
+                return 1
+            print(json.dumps(art, indent=2))
+            return 0
+        else:
+            print("Unknown action-evidence subcommand. Use train, show, promote, rollback.", file=sys.stderr)
+            return 1
+    finally:
+        db.close()
+
+
+def cmd_ml_macro_lab(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model import offense_macro_lab as oml
+
+    db = open_madden_db()
+    try:
+        sub = args.lab_subcommand
+        if sub == "propose":
+            res = oml.propose_variants(db, limit=args.limit)
+            print(json.dumps(res, indent=2))
+            return 0
+        elif sub == "stage":
+            res = oml.stage_variants(db, limit=args.limit)
+            print(json.dumps(res, indent=2))
+            return 0
+        else:
+            print("Unknown macro-lab subcommand. Use propose, stage.", file=sys.stderr)
+            return 1
     finally:
         db.close()
 
@@ -1159,6 +1244,35 @@ def build_ml_subparser(sub: Any) -> None:
         help="Attempt to open a reviewable PR when meaningful updates exist",
     )
     p_rr.set_defaults(func=cmd_ml_research_refresh)
+
+    p_ae = ml_sub.add_parser(
+        "action-evidence",
+        help="Train, show, promote, or rollback verified action learning",
+    )
+    ae_sub = p_ae.add_subparsers(dest="action_subcommand")
+    p_ae_tr = ae_sub.add_parser("train", help="Train action evidence artifact")
+    p_ae_tr.add_argument("--game-id", default=None)
+    p_ae_tr.add_argument("--promote", action="store_true", help="Promote to bounded-active if eligible")
+    p_ae_tr.add_argument("--force", action="store_true", help="Force promote even if below sample threshold")
+
+    p_ae_pr = ae_sub.add_parser("promote", help="Promote shadow action evidence to bounded-active")
+    p_ae_pr.add_argument("--force", action="store_true", help="Force promote")
+
+    ae_sub.add_parser("rollback", help="Roll back active action evidence to shadow")
+    ae_sub.add_parser("show", help="Show current action evidence model")
+    p_ae.set_defaults(func=cmd_ml_action_evidence)
+
+    p_mlab = ml_sub.add_parser(
+        "macro-lab",
+        help="Propose and stage novel concept-specific Custom Adjustment blueprints",
+    )
+    mlab_sub = p_mlab.add_subparsers(dest="lab_subcommand")
+    p_mlab_prop = mlab_sub.add_parser("propose", help="Propose new concept-specific macro draft variants")
+    p_mlab_prop.add_argument("--limit", type=int, default=6)
+
+    p_mlab_stg = mlab_sub.add_parser("stage", help="Stage new macro draft variants into registry")
+    p_mlab_stg.add_argument("--limit", type=int, default=6)
+    p_mlab.set_defaults(func=cmd_ml_macro_lab)
 
     p_rp = ml_sub.add_parser(
         "report",
