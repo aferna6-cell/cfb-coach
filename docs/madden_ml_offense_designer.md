@@ -351,6 +351,16 @@ inventing counterfactual uplift. The evidence is still subject to
 selection bias (e.g. pressure causes both more protections and worse
 outcomes). Therefore it defaults to **shadow**.
 
+The normal `ml experimental --retrain` command also refreshes the
+**shadow action model** from eligible logged outcomes after each CPU game.
+It never auto-promotes; if a bounded-active action artifact is installed,
+routine retraining preserves it unchanged pending deliberate review.
+
+When coverage is available from a **live pre-snap read**, the action learner
+also groups that credible look with the play concept/down-distance. A
+single last-snap hint and post-snap coverage labels are excluded from
+decision-time action features to prevent look-ahead leakage.
+
 The explicit promotion gate for a particular action/context requires:
 at least 12 verified action applications, 12 explicitly confirmed unchanged
 executions, 3 distinct games represented in **each** group, and a
