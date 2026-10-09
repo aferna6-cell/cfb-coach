@@ -162,6 +162,24 @@ class FullInventoryTests(unittest.TestCase):
         )
         self.assertGreaterEqual(len(set(selections)), 20)
 
+    def test_same_named_play_from_previous_book_does_not_count_as_new_usage(self):
+        draft = designer.stage_design(self.db, self.plan())
+        form, play = next(
+            (f, p) for f, ps in draft["book"]["formations"].items() for p in ps
+        )
+        self.db.log_snap(
+            opponent_id="cpu", side="offense", situation_raw="1&10",
+            our_call=f"{form} — {play}", formation=form, play=play,
+            session_id="previous-custom-book", result="+5",
+        )
+        designer.confirm_installed(
+            self.db, proposal_id=draft["proposal_id"],
+            attestation="I installed all the full formations and checked all their plays.",
+        )
+        report = inventory.inventory_report(self.db, opponent_id="cpu")
+        self.assertEqual(report["used_plays"], 0)
+        self.assertEqual(report["unused_plays"], report["play_count"])
+
     def test_coverage_report_counts_recommendations_but_not_executions(self):
         self.install()
         forms = inventory.installed_inventory(self.db)["formations"]
