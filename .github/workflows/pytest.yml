@@ -2,9 +2,9 @@ name: pytest
 
 on:
   push:
-    branches: [main, madden-ml/coach, madden-ml/experimental-pilot, madden-ml/offense-control-compact-ui, madden-ml/offense-model-primary-actions, madden-ml/offense-self-design, madden-ml/offense-designer-browser, madden-ml/formations-all-plays-screen-fix]
+    branches: [main, madden-ml/coach, madden-ml/experimental-pilot, madden-ml/offense-control-compact-ui, madden-ml/offense-model-primary-actions, madden-ml/offense-self-design, madden-ml/offense-designer-browser, madden-ml/formations-all-plays-screen-fix, madden-ml/offense-situation-variety]
   pull_request:
-    branches: [main, madden-ml/coach, madden-ml/experimental-pilot, cursor/execution-default-recovery-38d5, madden-ml/offense-control-compact-ui, madden-ml/offense-self-design, madden-ml/offense-designer-browser, madden-ml/formations-all-plays-screen-fix]
+    branches: [main, madden-ml/coach, madden-ml/experimental-pilot, cursor/execution-default-recovery-38d5, madden-ml/offense-control-compact-ui, madden-ml/offense-self-design, madden-ml/offense-designer-browser, madden-ml/formations-all-plays-screen-fix, madden-ml/offense-situation-variety]
 
 jobs:
   test:
