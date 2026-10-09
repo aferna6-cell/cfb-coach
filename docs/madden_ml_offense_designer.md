@@ -208,6 +208,8 @@ candidates, so it could not distinguish a run from a pass on a long down.
   Do not invent plays when the applied book lacks a passing option.
 - Add candidate-specific conversion suitability, short-yardage and two-minute
   scoring. Model probabilities remain separate from these policy costs.
+- Live sessions forward the actual game ID and next snap sequence into
+  inference; replayable exploration does not accidentally mix old CPU games.
 - Keep up to 20 recommended calls PER SESSION; track recent exact plays,
   concepts, screen family and formations. A recommendation is not a
   statement that the user executed it.
