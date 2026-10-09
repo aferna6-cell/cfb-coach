@@ -193,7 +193,7 @@ class ActionEvidenceTests(unittest.TestCase):
             opponent_id="cpu",
         )
         self.assertEqual(call["kind"], "none")
-        self.assertEqual(call["candidates"], [])
+        self.assertEqual([r["id"] for r in call["candidates"]], ["NO_ADJUSTMENT"])
         # No learned signal can invent a live coverage read or arm a macro.
 
 
