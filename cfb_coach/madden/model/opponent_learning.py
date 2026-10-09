@@ -308,12 +308,18 @@ def _is_verified_execution(row: Mapping[str, Any]) -> bool:
 
 
 def _is_approved_film_observation(row: Mapping[str, Any]) -> bool:
-    return (
-        row.get("defense_observation_approved") is True
-        and row.get("human_verification") == "verified_human"
-        and row.get("source") == "human_confirmed_film"
-        and row.get("verified_execution") is not True
-    )
+    """Pre-snap human film notes only. A post-snap fact cannot enter the prior."""
+    if row.get("defense_observation_approved") is not True:
+        return False
+    if row.get("human_verification") != "verified_human":
+        return False
+    if row.get("source") != "human_confirmed_film":
+        return False
+    if row.get("verified_execution") is True:
+        return False
+    if row.get("observation_time") not in ("pre_snap", "at_snap"):
+        return False
+    return row.get("available_before_snap") is True
 
 
 def _concept_row(concept_id: str, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -690,14 +696,32 @@ def opponent_learning_report(
         eligibility[key] = eligibility.get(key, 0) + 1
     records = [record for record in (_row_to_record(row) for row in rows) if record]
     admitted_ids: list[str] = []
+    film_contributing: list[Any] = []
+    film_withheld: list[dict[str, Any]] = []
     if include_admitted_film and film_store:
         from cfb_coach.madden.model.film_evidence import load_admitted_records
 
         admitted = load_admitted_records(
             film_store, game_id=game_id, opponent_id=opponent_id,
         )
-        records.extend(admitted)
-        admitted_ids = [str(row.get("evidence_id")) for row in admitted if row.get("evidence_id")]
+        contributing: list[str] = []
+        withheld: list[dict[str, Any]] = []
+        for row in admitted:
+            evidence_id = row.get("evidence_id")
+            if evidence_id:
+                admitted_ids.append(str(evidence_id))
+            if _is_approved_film_observation(row):
+                records.append(row)
+                contributing.append(evidence_id)
+            else:
+                withheld.append({
+                    "evidence_id": evidence_id,
+                    "observation_time": row.get("observation_time"),
+                    "available_before_snap": row.get("available_before_snap"),
+                    "reason": "not_a_pre_snap_learning_observation",
+                })
+        film_contributing = contributing
+        film_withheld = withheld
     model = fit_opponent_model(records=records)
     plan = current_strategy(None, None, learned=model)
     influence = (
@@ -723,6 +747,8 @@ def opponent_learning_report(
         "usable_verified_snaps": model["usable_verified_snaps"],
         "approved_film_observations": model.get("approved_film_observations", 0),
         "admitted_film_evidence_ids": admitted_ids,
+        "film_observations_contributing": film_contributing,
+        "film_observations_withheld": film_withheld,
         "eligibility_counts": eligibility,
         "recommendation_only": eligibility.get("recommendation_only", 0),
         "trusted_vod_rows_excluded": eligibility.get("trusted_vod", 0),

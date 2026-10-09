@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -132,32 +133,45 @@ def packet_timestamps(path: Path, limit: int = 4000) -> dict[str, Any]:
     }
 
 
+_PTS_TIME = re.compile(r"pts_time:([0-9]+(?:\.[0-9]+)?)")
+
+
 def sample_frames(path: Path) -> dict[str, Any]:
-    """Small RGB samples for segmentation. Times follow the decoder clock."""
+    """Small RGB samples. Times come from decoder pts, including variable frame rate."""
+    interval = 1.0 / _SAMPLE_FPS
     command = [
-        "ffmpeg", "-v", "error", "-i", str(path),
-        "-vf", f"fps={_SAMPLE_FPS},scale={_SAMPLE_WIDTH}:{_SAMPLE_HEIGHT}",
+        "ffmpeg", "-v", "info", "-i", str(path),
+        "-vf", (
+            f"select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,{interval})',"
+            f"scale={_SAMPLE_WIDTH}:{_SAMPLE_HEIGHT},showinfo"
+        ),
+        "-fps_mode", "vfr",
         "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
     ]
     proc = subprocess.run(command, capture_output=True, check=False)
     frame_bytes = _SAMPLE_WIDTH * _SAMPLE_HEIGHT * 3
     if proc.returncode != 0 or len(proc.stdout) < frame_bytes:
-        return {
-            "ok": False,
-            "error": "decode_failed",
-            "detail": (proc.stderr or b"")[:300].decode("utf-8", "replace"),
-        }
+        detail = proc.stderr.decode("utf-8", "replace") if isinstance(proc.stderr, bytes) else (proc.stderr or "")
+        return {"ok": False, "error": "decode_failed", "detail": detail[:300]}
     count = len(proc.stdout) // frame_bytes
+    stderr = proc.stderr.decode("utf-8", "replace") if isinstance(proc.stderr, bytes) else (proc.stderr or "")
+    pts = [float(match) for match in _PTS_TIME.findall(stderr)]
+    use_pts = len(pts) == count
     frames = []
     for index in range(count):
         start = index * frame_bytes
         frames.append({
-            "time_s": round(index / _SAMPLE_FPS, 3),
+            "time_s": round(pts[index] if use_pts else index / _SAMPLE_FPS, 3),
             "rgb": proc.stdout[start:start + frame_bytes],
             "width": _SAMPLE_WIDTH,
             "height": _SAMPLE_HEIGHT,
         })
-    return {"ok": True, "frames": frames, "sample_fps": _SAMPLE_FPS}
+    return {
+        "ok": True,
+        "frames": frames,
+        "sample_fps": _SAMPLE_FPS,
+        "timestamp_source": "decoder_pts_time" if use_pts else "sample_index_fallback",
+    }
 
 
 def _mean_abs_diff(left: bytes, right: bytes) -> float:
@@ -216,9 +230,29 @@ def _auto_segments(frames: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     for index, (left, right) in enumerate(zip(bounds, bounds[1:])):
         strength = max((value for time_s, value in diffs if left <= time_s <= right), default=0.0)
         confidence = round(min(0.85, strength / 80.0), 3)
-        status = "candidate" if confidence >= 0.45 and (right - left) >= 0.45 else "unresolved"
-        reason = "motion_change" if status == "candidate" else "ambiguous_boundary"
-        segments.append(_segment(left, right, confidence, status, reason, "auto", index))
+        duration = right - left
+        if duration < 0.35:
+            status = "unresolved"
+            reason = "camera_or_menu_cut_not_a_snap"
+            role = "possible_camera_cut"
+        elif confidence >= 0.45 and duration >= 0.45:
+            status = "candidate"
+            reason = "visual_change_not_yet_a_snap"
+            role = "visual_change"
+        else:
+            status = "unresolved"
+            reason = "ambiguous_boundary"
+            role = "visual_change"
+        segment = _segment(left, right, confidence, status, reason, "auto", index)
+        segment["role"] = role
+        segment["snap_claim"] = False
+        segment["association_status"] = "provisional" if status == "candidate" else "unresolved"
+        segments.append(segment)
+    seq = 1
+    for segment in segments:
+        if segment["role"] == "visual_change" and segment["boundary_status"] == "candidate":
+            segment["suggested_seq"] = seq
+            seq += 1
     return segments or [_segment(start, end, 0.2, "unresolved", "ambiguous_boundary", "auto")]
 
 
@@ -238,6 +272,8 @@ def _anchor_segment(anchor: Mapping[str, Any], index: int) -> dict[str, Any]:
     segment["presnap_interval"] = list(anchor.get("presnap_interval") or [])
     segment["postsnap_interval"] = list(anchor.get("postsnap_interval") or [])
     segment["role"] = anchor.get("role") or "snap"
+    segment["snap_claim"] = segment["role"] == "snap" and complete
+    segment["association_status"] = "unresolved"
     return segment
 
 
@@ -363,6 +399,7 @@ def import_recording(
         "identification_claim": False,
         "recognition_accuracy_claim": False,
         "note": located["note"],
+        "timestamp_source": sampled.get("timestamp_source"),
     })
     if store is not None and recording_id:
         root = Path(store)
@@ -390,6 +427,7 @@ def import_recording(
                     "basis": stamps.get("basis"),
                 },
                 "segments": located["segments"],
+                "timestamp_source": sampled.get("timestamp_source"),
                 "duplicate_of": previous,
             }
             (paths["recordings"] / f"{recording_id}.json").write_text(

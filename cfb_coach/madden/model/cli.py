@@ -916,18 +916,59 @@ def cmd_ml_film_import(args: argparse.Namespace) -> int:
     return 0 if report.get("ok") else 2
 
 
+def _film_log_snaps(args: argparse.Namespace) -> tuple[list[dict[str, Any]], str | None, dict[str, Any]]:
+    """Load a snap log from a file or the read-only Madden database."""
+    from cfb_coach.madden.model.film_log import export_coach_log, log_snaps_from_payload
+    from cfb_coach.madden.model.opponent_learning import readonly_madden_db_path
+
+    if getattr(args, "log", None):
+        payload = json.loads(Path(args.log).read_text(encoding="utf-8"))
+        snaps = [dict(row) for row in log_snaps_from_payload(payload)]
+        opponent = getattr(args, "opponent", None)
+        if not opponent:
+            stored = {row.get("opponent_id") for row in snaps if row.get("opponent_id")}
+            if len(stored) == 1:
+                opponent = next(iter(stored))
+        return snaps, opponent, {"ok": True, "source": "file"}
+    report = export_coach_log(
+        readonly_madden_db_path(), args.game_id, opponent_id=getattr(args, "opponent", None),
+    )
+    opponent = getattr(args, "opponent", None) or report.get("opponent_id")
+    return list(report.get("snaps") or []), opponent, report
+
+
+def cmd_ml_film_export_log(args: argparse.Namespace) -> int:
+    """Write stored snap identities. Does not create snap ids or executed plays."""
+    from cfb_coach.madden.model.film_log import export_coach_log
+    from cfb_coach.madden.model.opponent_learning import readonly_madden_db_path
+
+    report = export_coach_log(
+        readonly_madden_db_path(), args.game_id, opponent_id=getattr(args, "opponent", None),
+    )
+    if args.out and report.get("ok"):
+        destination = Path(args.out)
+        destination.write_text(json.dumps(report.get("snaps") or [], indent=2), encoding="utf-8")
+        report["out"] = str(destination)
+    print(json.dumps(report, indent=2, default=str))
+    return 0 if report.get("ok") else 2
+
+
 def cmd_ml_film_review(args: argparse.Namespace) -> int:
     """Write or serve the local review page. Does not rewrite gameplay history."""
     from cfb_coach.madden.model.film_review import load_annotations, render_review_html
 
     payload = load_annotations(args.store, args.game_id)
-    html = render_review_html(payload)
+    snaps, opponent, log_report = _film_log_snaps(args)
+    html = render_review_html(payload, log_snaps=snaps)
     if args.html:
         Path(args.html).write_text(html, encoding="utf-8")
     if args.serve:
         from cfb_coach.madden.model.film_review import serve_review
 
-        serve_review(args.store, args.game_id, host=args.host, port=args.port)
+        serve_review(
+            args.store, args.game_id, host=args.host, port=args.port,
+            log_snaps=snaps, opponent_id=opponent,
+        )
         return 0
     if not args.html:
         print(html)
@@ -937,6 +978,8 @@ def cmd_ml_film_review(args: argparse.Namespace) -> int:
             "game_id": args.game_id,
             "history_modified": False,
             "candidates": len(payload.get("candidates") or []),
+            "log_snaps": len(snaps),
+            "log_ok": bool(log_report.get("ok")),
         }, indent=2))
     return 0
 
@@ -950,21 +993,26 @@ def cmd_ml_film_report(args: argparse.Namespace) -> int:
 
 
 def cmd_ml_film_approve(args: argparse.Namespace) -> int:
-    from cfb_coach.madden.model.film_evidence import approve_admission, propose_admission
-    from cfb_coach.madden.model.film_review import load_annotations
-
-    annotations = load_annotations(args.store, args.game_id)
-    proposal = propose_admission(
-        annotations, json.loads(Path(args.log).read_text(encoding="utf-8")),
-        opponent_id=args.opponent,
-    )
     if args.rollback:
         from cfb_coach.madden.model.film_evidence import rollback_admission
 
         result = rollback_admission(args.store, args.game_id)
-    else:
-        result = approve_admission(args.store, proposal)
-        result["proposal"] = proposal
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+    from cfb_coach.madden.model.film_evidence import approve_admission, propose_admission
+    from cfb_coach.madden.model.film_review import load_annotations
+
+    snaps, opponent, log_report = _film_log_snaps(args)
+    if not getattr(args, "log", None) and not log_report.get("ok"):
+        print(json.dumps(log_report, indent=2, default=str))
+        return 2
+    annotations = load_annotations(args.store, args.game_id)
+    proposal = propose_admission(
+        annotations, snaps, opponent_id=opponent or args.opponent,
+    )
+    result = approve_admission(args.store, proposal)
+    result["proposal"] = proposal
+    result["log_source"] = "file" if getattr(args, "log", None) else "database"
     print(json.dumps(result, indent=2, default=str))
     return 0
 
@@ -1511,7 +1559,18 @@ def build_ml_subparser(sub: Any) -> None:
     p_fr.add_argument("--serve", action="store_true")
     p_fr.add_argument("--host", default="127.0.0.1")
     p_fr.add_argument("--port", type=int, default=8765)
+    p_fr.add_argument("--log", default=None, help="Optional JSON snap log. Otherwise the Madden database is read")
+    p_fr.add_argument("-o", "--opponent", default=None)
     p_fr.set_defaults(func=cmd_ml_film_review)
+
+    p_fx = ml_sub.add_parser(
+        "film-export-log",
+        help="Read stored snap identities for one game. Does not invent snap ids",
+    )
+    p_fx.add_argument("--game-id", required=True)
+    p_fx.add_argument("--out", default=None, help="Write the snap array JSON here")
+    p_fx.add_argument("-o", "--opponent", default=None)
+    p_fx.set_defaults(func=cmd_ml_film_export_log)
 
     p_rep = ml_sub.add_parser(
         "film-report",
@@ -1527,7 +1586,7 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_fa.add_argument("--game-id", required=True)
     p_fa.add_argument("--store", default=film_store_default)
-    p_fa.add_argument("--log", required=True, help="JSON log snaps used only as an identity check")
+    p_fa.add_argument("--log", default=None, help="Optional JSON snap log. Otherwise the Madden database is read")
     p_fa.add_argument("-o", "--opponent", default="cpu")
     p_fa.add_argument("--rollback", action="store_true")
     p_fa.set_defaults(func=cmd_ml_film_approve)

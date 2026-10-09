@@ -316,10 +316,21 @@ class FilmPipelineTests(unittest.TestCase):
             save_annotations(store, payload)
             apply_review_action(store, "game-a", "c1", "confirm", {
                 "snap_id": "s1",
+                "formation": "Gun Bunch",
+                "play": "Mesh",
+                "observation_time": "pre_snap",
+                "game_state": {"down": 3, "distance": 8, "quarter": 1, "clock_seconds": 700},
                 "defense_review": "confirmed",
                 "execution_review": "confirmed",
-                "play": "Mesh",
-                "defensive_observation": {"pressure": True, "safety_depth": "two_high"},
+                "defensive_observation": {
+                    "pressure": True,
+                    "safety_depth": "two_high",
+                    "coverage_shell": "unknown",
+                    "box_count": 7,
+                    "front": "unknown",
+                    "leverage": "unknown",
+                },
+                "unknown_fields": ["coverage_shell", "front", "leverage"],
             })
             annotations = json.loads((store / "annotations" / "game-a.json").read_text(encoding="utf-8"))
             logs = [{
@@ -331,6 +342,8 @@ class FilmPipelineTests(unittest.TestCase):
             kinds = {row["kind"]: row for row in proposal["proposals"]}
             self.assertTrue(kinds["defensive_observation"]["admit"])
             self.assertFalse(kinds["defensive_observation"]["verified_execution"])
+            self.assertEqual(kinds["defensive_observation"]["observation_time"], "pre_snap")
+            self.assertTrue(kinds["defensive_observation"]["available_before_snap"])
             self.assertEqual(kinds["execution"]["reason"], "video_cannot_create_verified_execution")
             self.assertEqual(proposal["verified_executions_created"], 0)
             approved = approve_admission(store, proposal)

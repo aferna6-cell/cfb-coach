@@ -37,6 +37,9 @@ def align_segments(
         if segment.get("role") in ("menu", "replay", "menu_or_replay"):
             rows.append(_row(candidate_id, None, "unresolved", "menu_or_replay_not_a_snap", 0.0))
             continue
+        if segment.get("role") == "possible_camera_cut":
+            rows.append(_row(candidate_id, None, "unresolved", "camera_or_menu_cut_not_a_snap", 0.0))
+            continue
         if segment.get("boundary_status") == "unresolved":
             rows.append(_row(candidate_id, None, "unresolved", "ambiguous_boundary", float(segment.get("confidence") or 0)))
             continue
@@ -107,6 +110,15 @@ def _score(segment: Mapping[str, Any], snap: Mapping[str, Any]) -> tuple[float, 
     if _same(segment.get("suggested_seq"), snap.get("snap_seq")):
         score += 0.2
         reasons.append("sequence_order")
+    video_time = segment.get("start_s")
+    logged_time = snap.get("video_timestamp_s")
+    if video_time is not None and logged_time is not None:
+        try:
+            if abs(float(video_time) - float(logged_time)) <= 1.0:
+                score += 0.1
+                reasons.append("video_timestamp")
+        except (TypeError, ValueError):
+            pass
     return round(score, 3), reasons
 
 

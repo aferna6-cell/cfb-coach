@@ -170,19 +170,24 @@ Automated today: container duration, frame size, frame rate, source timestamps, 
 
 Not automated on real Madden footage: HUD reading, coverage calls, and snap identity. Safety depth is never labeled Cover 2, Cover 3, or Quarters. A two-high look stays `two_high_safety_structure` until a person names a shell. No recognition accuracy is claimed until annotated Madden recordings are tested.
 
-Review writes a separate annotation file. Confirm, correct, reject, and leave-uncertain do not rewrite `madden27.db`. Approving a defensive look can enter the opponent tendency model. It does not create a verified execution. If the log does not already verify the play, the video cannot verify it. `film-approve --rollback` withdraws that export.
+Review writes a separate annotation file. `film-review --serve` binds to localhost and plays the imported recording from that recording's stored path. Seek, loop, and pre-snap or post-snap frame controls use the snap boundaries on the page. Confirm, Correct, Reject, and Leave uncertain do not rewrite `madden27.db`. Correct posts the edited fields. Confirm is refused when the snap association, observation time, or a required field is missing; an explicit `unknown` is stored as unknown and is not treated as a certified value. A failed request shows the server error and is not marked saved.
+
+`film-export-log` reads snap identifiers, down and distance, the logged formation and play, and the stored execution-verification status from the Madden database. A snap without `ml_snap_id` is omitted. A recommended play is not written into `executed_play`. `film-approve` uses that export when `--log` is omitted, and it admits a snap only when the stored game and opponent match the request. Rollback withdraws the film export and does not need a log file. A confirmed defensive look can enter opponent tendencies only when its timing is pre-snap or at the snap. It does not create a verified execution. Post-snap notes stay in the audit file and out of the pre-snap prior.
+
+No recognition accuracy is claimed for real Madden footage. `film-report` lists the evaluation procedure and leaves those measurements empty until a person labels a recording. Short color clips used in tests are not that measurement.
 
 ```bash
 python3 -m cfb_coach ml film-import /path/to/game.mp4 --game-id GAME_ID --dry-run
 python3 -m cfb_coach ml film-import /path/to/game.mp4 --game-id GAME_ID
+python3 -m cfb_coach ml film-export-log --game-id GAME_ID --out log-snaps.json
 python3 -m cfb_coach ml film-review --game-id GAME_ID --html /tmp/film-review.html
 python3 -m cfb_coach ml film-review --game-id GAME_ID --serve
 python3 -m cfb_coach ml film-report --game-id GAME_ID
-python3 -m cfb_coach ml film-approve --game-id GAME_ID --log /tmp/log-snaps.json -o cpu
-python3 -m cfb_coach ml film-approve --game-id GAME_ID --log /tmp/log-snaps.json --rollback
+python3 -m cfb_coach ml film-approve --game-id GAME_ID -o cpu
+python3 -m cfb_coach ml film-approve --game-id GAME_ID --rollback
 ```
 
-The store defaults to `~/.cfb-coach/film`. `--dry-run` writes nothing. Manual snap intervals can be passed with `--anchors anchors.json` using `snap_start`, `snap_end`, `formation_interval`, `presnap_interval`, and `postsnap_interval`.
+The store defaults to `~/.cfb-coach/film`. `--dry-run` writes nothing. Manual snap intervals can be passed with `--anchors anchors.json` using `snap_start`, `snap_end`, `formation_interval`, `presnap_interval`, and `postsnap_interval`. A menu, replay, or very short camera cut is not proposed as a snap. Automatic log suggestions stay provisional until a person confirms them.
 
 ## Football knowledge
 

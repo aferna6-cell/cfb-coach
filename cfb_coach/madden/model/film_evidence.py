@@ -19,6 +19,26 @@ def _path(store: str | Path, game_id: str) -> Path:
     return Path(store) / "admitted" / f"{game_id}.json"
 
 
+def snap_belongs(
+    snap: Mapping[str, Any],
+    *,
+    game_id: str,
+    opponent_id: str | None,
+) -> tuple[bool, str]:
+    """A proposed snap must already belong to this game and opponent."""
+    snap_game = snap.get("game_id") or snap.get("session_id")
+    if str(snap_game or "") != str(game_id):
+        return False, "snap_not_in_requested_game"
+    snap_opponent = snap.get("opponent_id")
+    if snap_opponent is None or str(snap_opponent).strip() == "":
+        return False, "opponent_missing_on_log_snap"
+    if opponent_id is None or str(opponent_id).strip() == "":
+        return False, "opponent_not_requested"
+    if str(snap_opponent) != str(opponent_id):
+        return False, "opponent_mismatch"
+    return True, "matched"
+
+
 def propose_admission(
     annotations: Mapping[str, Any],
     log_snaps: Sequence[Mapping[str, Any]],
@@ -40,6 +60,17 @@ def propose_admission(
             })
             continue
         log = logs[str(snap_id)]
+        belongs, reason = snap_belongs(
+            log, game_id=str(annotations.get("game_id") or ""), opponent_id=opponent_id,
+        )
+        if not belongs:
+            proposals.append({
+                "candidate_id": row.get("candidate_id"),
+                "admit": False,
+                "reason": reason,
+                "verified_execution": False,
+            })
+            continue
         if row.get("defense_review") == "confirmed" and row.get("defensive_observation"):
             proposals.append(_defense_proposal(
                 row, log, opponent_id, game_id=str(annotations.get("game_id") or ""),
@@ -59,12 +90,19 @@ def propose_admission(
 def _defense_proposal(
     row: Mapping[str, Any], log: Mapping[str, Any], opponent_id: str, *, game_id: str,
 ) -> dict[str, Any]:
+    observation_time = _observation_time(row)
+    available = observation_time in ("pre_snap", "at_snap")
+    confidence = row.get("confidence")
+    try:
+        confidence_value = None if confidence is None else float(confidence)
+    except (TypeError, ValueError):
+        confidence_value = None
     observed = structure_observation(
         None,
-        timing="pre_snap",
+        timing=observation_time,
         source="video",
-        confidence=float(row.get("confidence") or 0.5),
-        fields=row.get("defensive_observation") or {},
+        confidence=confidence_value,
+        fields=_defense_fields(row),
     )
     if observed.get("safety_depth") == "two_high":
         observed["coverage_shell"] = None
@@ -81,6 +119,10 @@ def _defense_proposal(
         "opponent_id": opponent_id,
         "down": log.get("down"),
         "distance": log.get("distance"),
+        "observation_time": observation_time,
+        "available_before_snap": available,
+        "confidence": confidence_value,
+        "provenance": "human_confirmed_film",
         "observation": observed,
         "verified_execution": False,
         "defense_observation_approved": True,
@@ -88,6 +130,32 @@ def _defense_proposal(
         "source": "human_confirmed_film",
         "reason": "human_confirmed_alignment_on_an_existing_snap",
     }
+
+
+def _observation_time(row: Mapping[str, Any]) -> str:
+    raw = row.get("observation_time")
+    if raw is None:
+        defense = row.get("defensive_observation") or {}
+        if isinstance(defense, Mapping):
+            raw = defense.get("observation_time") or defense.get("timing")
+    if raw in ("pre_snap", "at_snap", "post_snap"):
+        return str(raw)
+    return "unknown"
+
+
+def _defense_fields(row: Mapping[str, Any]) -> dict[str, Any]:
+    unknown = {str(item) for item in row.get("unknown_fields") or []}
+    fields = dict(row.get("defensive_observation") or {})
+    cleaned = {}
+    for key, value in fields.items():
+        if key in ("timing", "observation_time") or key in unknown:
+            continue
+        if isinstance(value, str) and value.strip().lower() in ("", "unknown"):
+            continue
+        if value is None:
+            continue
+        cleaned[key] = value
+    return cleaned
 
 
 def _execution_proposal(row: Mapping[str, Any], log: Mapping[str, Any]) -> dict[str, Any]:
@@ -115,6 +183,7 @@ def _execution_proposal(row: Mapping[str, Any], log: Mapping[str, Any]) -> dict[
 def approve_admission(store: str | Path, proposal: Mapping[str, Any]) -> dict[str, Any]:
     game_id = str(proposal.get("game_id") or "unscoped")
     admitted = [row for row in proposal.get("proposals") or [] if row.get("admit") is True]
+    contributed, withheld = _learning_split(admitted)
     payload = {
         "schema": ADMISSION_SCHEMA,
         "game_id": game_id,
@@ -122,6 +191,8 @@ def approve_admission(store: str | Path, proposal: Mapping[str, Any]) -> dict[st
         "status": "approved",
         "records": admitted,
         "evidence_ids": [row.get("evidence_id") for row in admitted],
+        "contributed_to_learning": contributed,
+        "withheld_from_learning": withheld,
         "withdrawn": False,
         "history_modified": False,
         "verified_executions_created": 0,
@@ -129,7 +200,33 @@ def approve_admission(store: str | Path, proposal: Mapping[str, Any]) -> dict[st
     path = _path(store, game_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return {"ok": True, "path": str(path), "admitted": len(admitted), "history_modified": False}
+    return {
+        "ok": True,
+        "path": str(path),
+        "admitted": len(admitted),
+        "contributed_to_learning": contributed,
+        "withheld_from_learning": withheld,
+        "history_modified": False,
+        "verified_executions_created": 0,
+    }
+
+
+def _learning_split(records: Sequence[Mapping[str, Any]]) -> tuple[list[Any], list[dict[str, Any]]]:
+    from cfb_coach.madden.model.opponent_learning import _is_approved_film_observation
+
+    contributed = []
+    withheld = []
+    for row in records:
+        if _is_approved_film_observation(row):
+            contributed.append(row.get("evidence_id"))
+            continue
+        withheld.append({
+            "evidence_id": row.get("evidence_id"),
+            "observation_time": row.get("observation_time"),
+            "available_before_snap": row.get("available_before_snap"),
+            "reason": "not_a_pre_snap_learning_observation",
+        })
+    return contributed, withheld
 
 
 def rollback_admission(store: str | Path, game_id: str) -> dict[str, Any]:

@@ -11,7 +11,7 @@ import re
 from typing import Any, Mapping
 
 OBSERVATION_VERSION = "defensive_observation.v1"
-TIMINGS = frozenset({"pre_snap", "post_snap", "historical", "unknown"})
+TIMINGS = frozenset({"pre_snap", "at_snap", "post_snap", "historical", "unknown"})
 SOURCES = frozenset({
     "live", "historical", "legacy_label", "video", "manual", "unknown",
 })

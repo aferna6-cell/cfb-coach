@@ -7,6 +7,7 @@ from typing import Any
 
 from cfb_coach.madden.model.film_evidence import load_admitted_records
 from cfb_coach.madden.model.film_review import load_annotations
+from cfb_coach.madden.model.opponent_learning import _is_approved_film_observation
 
 
 def film_report(store: str | Path, game_id: str) -> dict[str, Any]:
@@ -32,7 +33,7 @@ def film_report(store: str | Path, game_id: str) -> dict[str, Any]:
     conflicts = []
     for row in accepted:
         defense = row.get("defensive_observation") or {}
-        if row.get("defense_review") == "confirmed":
+        if row.get("defense_review") == "confirmed" and row.get("observation_time") in ("pre_snap", "at_snap"):
             presnap.append({
                 "candidate_id": row.get("candidate_id"),
                 "snap_id": row.get("snap_id"),
@@ -49,6 +50,18 @@ def film_report(store: str | Path, game_id: str) -> dict[str, Any]:
                 "logged_play": row.get("logged_play"),
             })
     admitted = load_admitted_records(root, game_id=game_id)
+    contributed = []
+    withheld = []
+    for row in admitted:
+        if _is_approved_film_observation(row):
+            contributed.append(row.get("evidence_id"))
+        else:
+            withheld.append({
+                "evidence_id": row.get("evidence_id"),
+                "observation_time": row.get("observation_time"),
+                "available_before_snap": row.get("available_before_snap"),
+                "reason": "not_a_pre_snap_learning_observation",
+            })
     duration = None
     if recordings:
         duration = (recordings[0].get("probe") or {}).get("duration_s")
@@ -80,6 +93,8 @@ def film_report(store: str | Path, game_id: str) -> dict[str, Any]:
         "presnap_defensive_information": presnap,
         "conflicts_with_manual_log": conflicts,
         "admitted_learning_evidence": [row.get("evidence_id") for row in admitted],
+        "contributed_to_learning": contributed,
+        "withheld_from_learning": withheld,
         "admitted_are_verified_executions": False,
         "visual_observation_coverage": {
             "candidates": len(candidates),
@@ -91,4 +106,33 @@ def film_report(store: str | Path, game_id: str) -> dict[str, Any]:
         },
         "information_gaps": gaps,
         "identification_claim": False,
+        "real_recording_evaluation": real_recording_evaluation(),
+    }
+
+
+def real_recording_evaluation() -> dict[str, Any]:
+    """Procedure for labeled Madden footage. Results stay empty until that footage exists."""
+    return {
+        "procedure": [
+            "python3 -m cfb_coach ml film-import /path/to/madden-recording.mp4 --game-id GAME_ID",
+            "python3 -m cfb_coach ml film-export-log --game-id GAME_ID --out log-snaps.json",
+            "python3 -m cfb_coach ml film-review --game-id GAME_ID --serve",
+            "Watch each candidate, correct its boundaries and labels, then confirm or reject it.",
+            "python3 -m cfb_coach ml film-approve --game-id GAME_ID -o OPPONENT",
+            "python3 -m cfb_coach ml film-report --game-id GAME_ID",
+        ],
+        "metrics_to_record": [
+            "correct_candidate_snap_detections",
+            "missed_snaps",
+            "false_positives_from_menus_and_replays",
+            "human_correction_time",
+            "successful_log_associations",
+            "verified_presnap_observations",
+            "incorrect_or_unsupported_defensive_labels",
+            "import_and_review_performance",
+        ],
+        "results": None,
+        "labeled_madden_footage_available": False,
+        "recognition_accuracy_claim": False,
+        "note": "Synthetic clips do not measure Madden HUD recognition.",
     }
