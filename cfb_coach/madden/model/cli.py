@@ -581,6 +581,56 @@ def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ml_offense_action_learn(args: argparse.Namespace) -> int:
+    """Build verified action-evidence model; no live effect unless gated + enabled."""
+    from cfb_coach.madden.model import offense_action_learning as learner
+
+    write = bool(args.save or args.mode)
+    db = open_madden_db(read_only=not write)
+    try:
+        if args.mode:
+            try:
+                result = learner.set_mode(db, args.mode)
+            except ValueError as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
+        elif args.show:
+            result = learner._parse(db.get_meta(learner.META_MODEL))
+            result["active_mode"] = db.get_meta(learner.META_MODE) or "shadow"
+            if not result.get("schema"):
+                result = {"status": "no_action_model_trained", "active_mode": result["active_mode"]}
+        else:
+            result = learner.train_from_db(db)
+            result["active_mode"] = db.get_meta(learner.META_MODE) or "shadow"
+            if args.save:
+                learner.save_artifact(db, result)
+                result["saved"] = True
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+    finally:
+        db.close()
+
+
+def cmd_ml_offense_macro_lab(args: argparse.Namespace) -> int:
+    """Generate original source-backed, unarmed macro variants for installed book."""
+    from cfb_coach.madden.model import offense_macro_lab as lab
+
+    db = open_madden_db(read_only=not args.stage)
+    try:
+        try:
+            result = (
+                lab.stage_variants(db, limit=args.limit)
+                if args.stage else lab.propose_variants(db, limit=args.limit)
+            )
+        except ValueError as exc:
+            print(f"Macro lab refused: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+    finally:
+        db.close()
+
+
 def cmd_ml_offense_actions(args: argparse.Namespace) -> int:
     """Show researched, compatible and verified Custom Adjustment readiness."""
     from cfb_coach.madden.model.offense_action_inventory import offense_actions_report
@@ -1099,6 +1149,27 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_te.add_argument("--no-db", dest="db", action="store_false", default=True)
     p_te.set_defaults(func=cmd_ml_train_experimental)
+
+    p_al = ml_sub.add_parser(
+        "offense-action-learn",
+        help="Build verified offensive action evidence; shadow default and gated opt-in influence",
+    )
+    p_al.add_argument("--save", action="store_true",
+                      help="Save trained evidence artifact in Madden DB (does not enable)")
+    p_al.add_argument("--show", action="store_true",
+                      help="Show saved action evidence and active mode")
+    p_al.add_argument("--mode", choices=("shadow", "enabled"), default=None,
+                      help="Change action model mode; enable requires qualified evidence")
+    p_al.set_defaults(func=cmd_ml_offense_action_learn)
+
+    p_lab = ml_sub.add_parser(
+        "offense-macro-lab",
+        help="Generate novel concept-targeted, source-backed offensive macro drafts",
+    )
+    p_lab.add_argument("--limit", type=int, default=6)
+    p_lab.add_argument("--stage", action="store_true",
+                       help="Add drafts to existing confirmed-book macro blueprint registry; no arming")
+    p_lab.set_defaults(func=cmd_ml_offense_macro_lab)
 
     p_act = ml_sub.add_parser(
         "offense-actions",
