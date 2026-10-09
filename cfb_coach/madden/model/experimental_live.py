@@ -101,17 +101,11 @@ def situational_offense_candidates(
         passes = [(form, play) for form, play in pool if not is_run(play)]
         if passes:
             pool = passes
-    # Soft anti-repeat: down-weight recently used plays (still eligible).
-    if db is not None and opponent_id:
-        try:
-            from cfb_coach.gameplan import anti_repeat_penalty
-
-            for form, play in list(pool):
-                pen = float(anti_repeat_penalty(db, opponent_id, form, play, side="offense") or 0.0)
-                if pen:
-                    bonus[(form, play)] = round(bonus.get((form, play), 0.0) - 0.05 * pen, 3)
-        except Exception:  # noqa: BLE001
-            pass
+    # Do not issue a separate SQLite lookup per play. The ML selection
+    # policy already reads the recent 20 in-session calls once and applies
+    # play/concept/formation exposure penalties. These legacy bonuses were
+    # discarded by rank_candidates(heuristic_bonuses={}) anyway, and become
+    # expensive when a full custom formation inventory has hundreds of plays.
     return pool, bonus
 
 
