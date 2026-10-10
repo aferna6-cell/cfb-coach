@@ -181,7 +181,7 @@ def design_defense(*, max_formations: int = MAX_FORMATIONS,
     """Propose whole formations from source stock books (no automatic installation)."""
     if not 1 <= max_formations <= MAX_FORMATIONS:
         raise ValueError("max_formations must be 1..15")
-    books = catalogue or {
+    books = catalogue if catalogue is not None else {
         book: catalog.book_formations("defense", book)
         for book in catalog.book_names("defense")
     }
