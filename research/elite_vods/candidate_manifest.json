@@ -1,0 +1,370 @@
+{
+  "schema": "madden.expert.vod_candidates.v1",
+  "compatible_with": "madden.expert.film_manifest.v1",
+  "created_at": "2026-10-10T03:00:00Z",
+  "research_status": "sources_identified_rights_pending",
+  "game_version": "madden27",
+  "raw_video_automatically_understood": false,
+  "local_authorized_copy_available": false,
+  "unauthorized_download_performed": false,
+  "drm_bypass_performed": false,
+  "scrape_or_third_party_downloader_used": false,
+  "rights_summary": {
+    "viewing": {
+      "status": "publicly_viewable",
+      "platforms": ["youtube", "twitch"],
+      "note": "Official EA uploads and Twitch archives can be watched in-browser."
+    },
+    "download": {
+      "status": "not_authorized",
+      "note": "Public streaming access does not grant a download license. YouTube/Twitch ToS prohibit unauthorized downloaders. No authorized local file is available in this workspace."
+    },
+    "local_analysis_and_model_training": {
+      "status": "rights_unclear_pending_written_permission",
+      "rights_holder": "Electronic Arts Inc.",
+      "contact": "PermissionRequests@ea.com",
+      "permission_form": "https://eaassets-a.akamaihd.net/eahelp/images/articles/documents/EA_Content_Usage_Permission_Request_Form_011316.pdf",
+      "mcs_rules": "https://media.contentapi.ea.com/content/dam/ea/madden-nfl/madden-nfl-27/docs/mcs-27-official-rules.pdf",
+      "note": "MCS commercial/media rights are reserved for EA. Do not invent a license. Use draft permission request in research/elite_vods/PERMISSION_REQUEST_DRAFT.md."
+    }
+  },
+  "official_event_pages": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/event/mcs27-compete",
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/mcs-pro-league-game-time",
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/mcs-27-announcement"
+  ],
+  "target_players": [
+    {"handle": "Drini", "legal_name": "Drini Gjoka"},
+    {"handle": "Henry", "legal_name": "Henry Leverette", "twitch": "https://www.twitch.tv/henry_773"},
+    {"handle": "JonBeast", "legal_name": "Jonathan Marquez"},
+    {"handle": "Wesley", "legal_name": "Wesley Gittens", "aliases": ["Wes"]},
+    {"handle": "Sebatron", "legal_name": "Robert Brustein"},
+    {"handle": "Astro", "legal_name": "Jalen Morrow-Reynolds"},
+    {"handle": "Noah", "legal_name": "Noah Snipes"},
+    {"handle": "Chosen", "legal_name": "Jeremy Murphy"}
+  ],
+  "candidates": [
+    {
+      "rank": 1,
+      "match_id": "mcs27-gametimen-noah-vs-sebatron",
+      "title": "Madden 27 | MCS Pro League Game Time | Noah vs. Sebatron",
+      "tournament": "MCS Pro League: Game Time",
+      "date": "2026-09-15",
+      "players": ["Noah", "Sebatron"],
+      "result": "Sebatron 43-42 Noah",
+      "madden_version": "madden27",
+      "game_mode": "MCS Pro League MUT competitive",
+      "opponent_type": "human",
+      "competitive_mode": "ultimate_team",
+      "preferred_over_highlights": true,
+      "complete_match": true,
+      "footage_kind": "official_single_match_upload",
+      "view_links": {
+        "youtube": "https://www.youtube.com/watch?v=F8Hm324SMtg"
+      },
+      "publisher": "EA SPORTS MADDEN NFL",
+      "resolution_available": "up_to_1080p_typical_youtube_official",
+      "annotation_quality": {
+        "formation_visible": "likely_partial",
+        "play_selection_screen_visible": "uncertain_broadcast_camera",
+        "defensive_alignment_visible": "likely",
+        "result_visible": "yes",
+        "notes": "Best first annotation target: one complete elite match, official channel, no multi-match scrubbing."
+      },
+      "estimated_usable_offensive_snaps": {"low": 18, "high": 36, "basis": "single competitive MUT game; broadcast may crop play-dial"},
+      "relevance_score": 97,
+      "viewing_access": "public",
+      "download_authorized": false,
+      "training_authorized": false,
+      "permission_status": "unknown",
+      "recommended_first_match": true
+    },
+    {
+      "rank": 2,
+      "match_id": "mcs27-gametimen-main-broadcast",
+      "title": "MCS Pro League: Game Time",
+      "tournament": "MCS Pro League: Game Time",
+      "date": "2026-09-15",
+      "players": ["Henry", "JonBeast", "Drini", "Wesley", "Noah", "Sebatron", "Astro"],
+      "featured_matches": [
+        {"slot": "18:00 ET", "players": ["Henry", "JonBeast"], "result": "Henry 33-29 JonBeast", "stream": "main"},
+        {"slot": "19:00 ET", "players": ["Drini", "Wesley"], "result": "Wesley 35-30 Drini", "stream": "main"},
+        {"slot": "20:00 ET", "players": ["Noah", "Sebatron"], "result": "Sebatron 43-42 Noah", "stream": "main"},
+        {"slot": "21:00 ET", "players": ["Drini", "Astro"], "result": "Astro 31-27 Drini", "stream": "main"}
+      ],
+      "madden_version": "madden27",
+      "game_mode": "MCS Pro League MUT competitive",
+      "opponent_type": "human",
+      "competitive_mode": "ultimate_team",
+      "preferred_over_highlights": true,
+      "complete_match": true,
+      "footage_kind": "official_multi_match_broadcast",
+      "view_links": {
+        "youtube": "https://www.youtube.com/watch?v=iNiG0_ib9Kc",
+        "twitch": "https://www.twitch.tv/videos/2875171708"
+      },
+      "publisher": "EAMaddenNFL / EA SPORTS MADDEN NFL",
+      "duration": {"twitch_seconds": 17731, "twitch_approx": "4h55m"},
+      "resolution_available": "twitch_archive_typically_up_to_1080p_source",
+      "annotation_quality": {
+        "formation_visible": "likely_partial",
+        "play_selection_screen_visible": "uncertain_broadcast_camera",
+        "defensive_alignment_visible": "likely",
+        "result_visible": "yes",
+        "notes": "User-supplied starting YouTube URL. Contains four featured elite matches in one archive."
+      },
+      "estimated_usable_offensive_snaps": {"low": 70, "high": 140, "basis": "4 featured matches x ~18-35 usable OC snaps"},
+      "relevance_score": 95,
+      "viewing_access": "public",
+      "download_authorized": false,
+      "training_authorized": false,
+      "permission_status": "unknown"
+    },
+    {
+      "rank": 3,
+      "match_id": "mcs27-breakouts-main-broadcast",
+      "title": "MCS Pro League: Breakouts",
+      "tournament": "MCS Pro League: Breakouts",
+      "date": "2026-10-06",
+      "players": ["Drini", "Henry", "JonBeast", "Wesley", "Sebatron", "Astro", "Noah", "Chosen"],
+      "featured_matches": "seven_pro_league_matches_per_ea_season_format_exact_pairings_not_fully_published_in_text_sources",
+      "madden_version": "madden27",
+      "game_mode": "MCS Pro League MUT competitive",
+      "opponent_type": "human",
+      "competitive_mode": "ultimate_team",
+      "preferred_over_highlights": true,
+      "complete_match": true,
+      "footage_kind": "official_multi_match_broadcast",
+      "view_links": {
+        "youtube": "https://www.youtube.com/watch?v=B50_glA4it4",
+        "twitch": "https://www.twitch.tv/videos/2893769780"
+      },
+      "publisher": "EAMaddenNFL / EA SPORTS MADDEN NFL",
+      "duration": {"twitch_seconds": 17516, "twitch_approx": "4h52m"},
+      "resolution_available": "twitch_archive_typically_up_to_1080p_source",
+      "annotation_quality": {
+        "formation_visible": "likely_partial",
+        "play_selection_screen_visible": "uncertain_broadcast_camera",
+        "defensive_alignment_visible": "likely",
+        "result_visible": "yes",
+        "notes": "Second official Pro League day; strongest recency for current meta/patch."
+      },
+      "estimated_usable_offensive_snaps": {"low": 90, "high": 180, "basis": "approx 5-7 Pro League matches on main broadcast"},
+      "relevance_score": 94,
+      "viewing_access": "public",
+      "download_authorized": false,
+      "training_authorized": false,
+      "permission_status": "unknown"
+    },
+    {
+      "rank": 4,
+      "match_id": "mcs27-gametimen-bonus-stream",
+      "title": "MCS Pro League: Game Time - Bonus Stream",
+      "tournament": "MCS Pro League: Game Time",
+      "date": "2026-09-15",
+      "players": ["Chosen", "Noah", "Astro", "Sebatron", "JonBeast"],
+      "featured_matches": [
+        {"slot": "18:00 ET", "players": ["Chosen", "Noah"], "result": "Noah 47-35 Chosen", "stream": "bonus"},
+        {"slot": "19:00 ET", "players": ["Astro", "Sebatron"], "result": "Sebatron 34-28 Astro", "stream": "bonus"},
+        {"slot": "20:00 ET", "players": ["JonBeast", "Chosen"], "result": "Chosen 50-37 JonBeast", "stream": "bonus"}
+      ],
+      "madden_version": "madden27",
+      "game_mode": "MCS Pro League MUT competitive",
+      "opponent_type": "human",
+      "competitive_mode": "ultimate_team",
+      "preferred_over_highlights": true,
+      "complete_match": true,
+      "footage_kind": "official_multi_match_bonus_broadcast",
+      "view_links": {
+        "youtube": "https://www.youtube.com/watch?v=iB3O8H_p5MU"
+      },
+      "publisher": "EA SPORTS MADDEN NFL",
+      "resolution_available": "up_to_1080p_typical_youtube_official",
+      "annotation_quality": {
+        "formation_visible": "likely_partial",
+        "play_selection_screen_visible": "uncertain_broadcast_camera",
+        "defensive_alignment_visible": "likely",
+        "result_visible": "yes",
+        "notes": "Captures secondary matches missing from the main Game Time camera."
+      },
+      "estimated_usable_offensive_snaps": {"low": 50, "high": 100, "basis": "3 bonus matches"},
+      "relevance_score": 90,
+      "viewing_access": "public",
+      "download_authorized": false,
+      "training_authorized": false,
+      "permission_status": "unknown"
+    },
+    {
+      "rank": 5,
+      "match_id": "mcs27-breakouts-bonus-stream",
+      "title": "Bonus Stream - MCS Pro League: Breakouts",
+      "tournament": "MCS Pro League: Breakouts",
+      "date": "2026-10-06",
+      "players": ["Drini", "Henry", "JonBeast", "Wesley", "Sebatron", "Astro", "Noah", "Chosen"],
+      "madden_version": "madden27",
+      "game_mode": "MCS Pro League MUT competitive",
+      "opponent_type": "human",
+      "competitive_mode": "ultimate_team",
+      "preferred_over_highlights": true,
+      "complete_match": true,
+      "footage_kind": "official_multi_match_bonus_broadcast",
+      "view_links": {
+        "youtube": "https://www.youtube.com/watch?v=Y9DZ6fhD5_0"
+      },
+      "publisher": "EA SPORTS MADDEN NFL",
+      "resolution_available": "up_to_1080p_typical_youtube_official",
+      "annotation_quality": {
+        "formation_visible": "likely_partial",
+        "play_selection_screen_visible": "uncertain_broadcast_camera",
+        "defensive_alignment_visible": "likely",
+        "result_visible": "yes",
+        "notes": "Companion to Breakouts main; needed for complete day coverage without duplicate counting of overlapping clips."
+      },
+      "estimated_usable_offensive_snaps": {"low": 40, "high": 90, "basis": "secondary Breakouts matches"},
+      "relevance_score": 88,
+      "viewing_access": "public",
+      "download_authorized": false,
+      "training_authorized": false,
+      "permission_status": "unknown"
+    },
+    {
+      "rank": 6,
+      "match_id": "mcs27-oq-breakouts-final-chosen-vs-millz",
+      "title": "Madden 27 | MCS Open Qualifier: Breakouts Final | Chosen vs Millz",
+      "tournament": "MCS Open Qualifier: Breakouts Final",
+      "date": "2026-10-06",
+      "players": ["Chosen", "Millz"],
+      "madden_version": "madden27",
+      "game_mode": "MCS Open Qualifier MUT competitive",
+      "opponent_type": "human",
+      "competitive_mode": "ultimate_team",
+      "preferred_over_highlights": true,
+      "complete_match": true,
+      "footage_kind": "official_single_match_or_final_upload",
+      "view_links": {
+        "youtube": "https://www.youtube.com/watch?v=xGH8SOUrTT0"
+      },
+      "publisher": "EA SPORTS MADDEN NFL",
+      "resolution_available": "up_to_1080p_typical_youtube_official",
+      "annotation_quality": {
+        "formation_visible": "likely_partial",
+        "play_selection_screen_visible": "uncertain_broadcast_camera",
+        "defensive_alignment_visible": "likely",
+        "result_visible": "yes",
+        "notes": "Chosen is a target player; opponent Millz is outside the original eight but still elite competitive context."
+      },
+      "estimated_usable_offensive_snaps": {"low": 18, "high": 40, "basis": "qualifier final"},
+      "relevance_score": 82,
+      "viewing_access": "public",
+      "download_authorized": false,
+      "training_authorized": false,
+      "permission_status": "unknown"
+    },
+    {
+      "rank": 7,
+      "match_id": "madden27-henry-vs-jonbeast-early-official",
+      "title": "Madden 27 Gameplay | Henry vs JonBeast",
+      "tournament": "Official EA exhibition / early Madden 27 gameplay (pre Game Time)",
+      "date": "2026-08-08",
+      "players": ["Henry", "JonBeast"],
+      "madden_version": "madden27",
+      "game_mode": "human_vs_human_gameplay",
+      "opponent_type": "human",
+      "competitive_mode": "unknown",
+      "preferred_over_highlights": true,
+      "complete_match": true,
+      "footage_kind": "official_single_match_upload",
+      "view_links": {
+        "youtube": "https://www.youtube.com/watch?v=aoIYILGdvOE"
+      },
+      "publisher": "EA SPORTS MADDEN NFL",
+      "resolution_available": "up_to_1080p_typical_youtube_official",
+      "annotation_quality": {
+        "formation_visible": "likely_partial",
+        "play_selection_screen_visible": "uncertain",
+        "defensive_alignment_visible": "likely",
+        "result_visible": "yes",
+        "notes": "Useful early meta sample; lower priority than MCS Pro League Game Time/Breakouts because not the Sept 15/Oct 6 league days."
+      },
+      "estimated_usable_offensive_snaps": {"low": 18, "high": 36, "basis": "single full gameplay upload"},
+      "relevance_score": 78,
+      "viewing_access": "public",
+      "download_authorized": false,
+      "training_authorized": false,
+      "permission_status": "unknown"
+    },
+    {
+      "rank": 8,
+      "match_id": "henry773-mcs-ladders-pov",
+      "title": "Henry_773 Twitch MCS ladder / elim archives (POV)",
+      "tournament": "MCS Open Qualifier ladders / elims (player stream)",
+      "date_range": ["2026-09-19", "2026-09-27"],
+      "players": ["Henry"],
+      "madden_version": "madden27",
+      "game_mode": "MCS qualifier plus ranked / practice context",
+      "opponent_type": "human",
+      "competitive_mode": "ultimate_team",
+      "preferred_over_highlights": true,
+      "complete_match": "mixed_multi_game_archives",
+      "footage_kind": "creator_twitch_archive",
+      "view_links": {
+        "twitch_examples": [
+          "https://www.twitch.tv/videos/2879450850",
+          "https://www.twitch.tv/videos/2885636295"
+        ],
+        "channel": "https://www.twitch.tv/henry_773"
+      },
+      "publisher": "Henry_773 (creator) — game IP still EA; MCS marks still EA",
+      "resolution_available": "creator_dependent_often_720p_or_1080p",
+      "annotation_quality": {
+        "formation_visible": "higher_if_pov_shows_menus",
+        "play_selection_screen_visible": "higher_than_broadcast",
+        "defensive_alignment_visible": "variable",
+        "result_visible": "yes",
+        "notes": "Best practical annotation UI, but separate creator permission AND EA game-footage permission required. Not a substitute for official MCS day broadcasts."
+      },
+      "estimated_usable_offensive_snaps": {"low": 40, "high": 200, "basis": "multi-hour archives; many snaps but mixed contexts"},
+      "relevance_score": 74,
+      "viewing_access": "public_if_vod_not_expired",
+      "download_authorized": false,
+      "training_authorized": false,
+      "permission_status": "unknown",
+      "additional_rights_holders": ["Henry_773", "Electronic Arts Inc."]
+    }
+  ],
+  "deprioritized": [
+    {
+      "title": "Watch Every TD from MCS Game Time | Madden 27",
+      "youtube": "https://www.youtube.com/watch?v=GbwHuUPUNGc",
+      "reason": "highlights_not_complete_matches"
+    },
+    {
+      "title": "Noah put on a SHOW at #MCS27 Breakouts (short)",
+      "youtube": "https://www.youtube.com/watch?v=IMWdP1Cqd-4",
+      "reason": "short_clip_not_full_match"
+    }
+  ],
+  "duplicate_prevention": {
+    "note": "Noah vs Sebatron appears both as a standalone upload and inside Game Time main. Count as one independent match for training after permission. Bonus vs main streams are complementary, not duplicates.",
+    "fingerprint_rule": "dedupe by tournament+date+players; not by overlapping highlight clips"
+  },
+  "acquisition_blockers": [
+    {
+      "blocker": "no_authorized_local_copy",
+      "detail": "Workspace has viewing URLs only. No EA-authorized download endpoint or press-kit full-match package was found."
+    },
+    {
+      "blocker": "training_rights_not_granted_by_public_stream",
+      "detail": "YouTube/Twitch public viewing != download or ML training license. EA PermissionRequests@ea.com is the documented rights path."
+    },
+    {
+      "blocker": "broadcast_camera_may_hide_play_dial",
+      "detail": "Annotation quality for formation/play-call screens is uncertain until a human reviews; do not claim auto-understanding."
+    }
+  ],
+  "next_actions_after_user_approval": [
+    "Send PermissionRequests@ea.com using PERMISSION_REQUEST_DRAFT.md",
+    "If EA grants local-analysis/training rights, place authorized files under ~/.cfb-coach/film/expert/raw/ (gitignored)",
+    "Import with: python3 -m cfb_coach ml expert-film-import <authorized.mp4> --expert-id <player> --match-id <match_id> --permission-status user_authorized_local --competitive-mode ultimate_team --opponent-type human"
+  ]
+}
