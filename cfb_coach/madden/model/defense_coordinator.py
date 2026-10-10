@@ -194,6 +194,167 @@ def _stable_choice(rows: list[dict[str, Any]], session_id: str, snap_seq: int) -
     return rng.choices(near, weights=weights, k=1)[0]
 
 
+DECISION_ATTR = "_pending_ml_decision"
+# Same near-tie window and temperature as ``_stable_choice``. Logging reads
+# this after the draw; it does not draw again.
+_NEAR_WINDOW = 0.035
+_NEAR_TEMPERATURE = 0.025
+
+
+def _sampling_facts(
+    rows: Sequence[Mapping[str, Any]], chosen: Mapping[str, Any],
+) -> tuple[Any, float | None, Any]:
+    """Propensity of ``chosen`` under the draw ``_stable_choice`` already made.
+
+    A one-row window is deterministic with probability 1. A wider window is
+    the exact softmax weight of the shown formation and play. The function
+    does not construct a ``random.Random`` and does not change the pick.
+    """
+    from cfb_coach.madden.model.schema import PropensityMethod, PropensityOverrideReason
+
+    top = rows[0]["score"]
+    near = [r for r in rows if top - r["score"] <= _NEAR_WINDOW][:10]
+    if len(near) <= 1:
+        return PropensityMethod.DETERMINISTIC, 1.0, None
+    weights = [math.exp((r["score"] - top) / _NEAR_TEMPERATURE) for r in near]
+    total = sum(weights)
+    matched = [
+        weight for row, weight in zip(near, weights)
+        if row["formation"] == chosen["formation"] and row["play"] == chosen["play"]
+    ]
+    if not matched or total <= 0:
+        return PropensityMethod.OVERRIDE, None, PropensityOverrideReason.UNEXPRESSIBLE
+    return PropensityMethod.EXACT, sum(matched) / total, None
+
+
+def _book_candidate(book: Mapping[str, Sequence[str]], formation: Any, play: Any) -> Any:
+    from cfb_coach.madden.model.schema import Possession, candidate_in_book
+
+    try:
+        return candidate_in_book(
+            book, side=Possession.DEFENSE, formation=str(formation), play=str(play),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _stamp_decision(call: Any, decision: Any, db: Any, extras: Mapping[str, Any] | None) -> None:
+    """Attach a decision. A logging failure must not replace the call."""
+    try:
+        setattr(call, DECISION_ATTR, decision)
+    except Exception:
+        return
+    snap_id = None if not isinstance(extras, Mapping) else extras.get("snap_id")
+    if db is None or not snap_id or decision is None:
+        return
+    try:
+        db.log_ml_decision(decision, agree=None)
+    except Exception:
+        return
+
+
+def _model_decision(
+    *,
+    book: Mapping[str, Sequence[str]],
+    formation: str,
+    play: str,
+    method: Any,
+    propensity: float | None,
+    reason: Any,
+    session_id: str,
+    snap_seq: int,
+    elapsed_ms: float | None,
+    heuristic: Any = None,
+    macro_name: str | None = None,
+    snap_id: str | None = None,
+    game_id: str | None = None,
+) -> Any:
+    from cfb_coach.madden.model.schema import (
+        AdjustmentRef,
+        CoachingDecision,
+        CoachingMode,
+        MLStatus,
+        ML_LATENCY_BUDGET_MS,
+        PolicySource,
+        Possession,
+        PropensityMethod,
+    )
+
+    final = _book_candidate(book, formation, play)
+    override = method is PropensityMethod.OVERRIDE
+    macro = None
+    if macro_name:
+        macro = AdjustmentRef(side=Possession.DEFENSE, macro_id=macro_name)
+    return CoachingDecision(
+        latency_ms=elapsed_ms,
+        latency_ms_model=elapsed_ms,
+        inference_budget_ms=ML_LATENCY_BUDGET_MS,
+        mode=CoachingMode.EXPERIMENTAL,
+        effective_mode=CoachingMode.EXPERIMENTAL,
+        game_id=game_id,
+        snap_id=snap_id,
+        session_id=session_id or None,
+        snap_seq=snap_seq,
+        policy_version=SCHEMA,
+        policy_source=PolicySource.MODEL,
+        heuristic_pick=heuristic,
+        final_pick=final,
+        shadow_pick=final,
+        macro=macro,
+        behavior_propensity=propensity,
+        propensity_method=method,
+        propensity_override=override,
+        propensity_override_reason=reason if override else None,
+        shadow_status=MLStatus.OK,
+        fell_back=False,
+        ml_status_detail="defense experimental pick; sampling seed is sha256(session:snap:defense-v1)",
+    )
+
+
+def _fallback_decision(
+    *,
+    book: Mapping[str, Sequence[str]],
+    call: Any,
+    status: Any,
+    elapsed_ms: float | None,
+    session_id: str | None,
+    snap_seq: int | None,
+    snap_id: str | None,
+    game_id: str | None,
+    detail: str,
+) -> Any:
+    from cfb_coach.madden.model.schema import (
+        CoachingDecision,
+        CoachingMode,
+        ML_LATENCY_BUDGET_MS,
+        PolicySource,
+        PropensityMethod,
+    )
+
+    heur = _book_candidate(book, getattr(call, "formation", None), getattr(call, "play", None))
+    return CoachingDecision(
+        latency_ms=elapsed_ms,
+        latency_ms_model=elapsed_ms,
+        inference_budget_ms=ML_LATENCY_BUDGET_MS,
+        mode=CoachingMode.EXPERIMENTAL,
+        effective_mode=CoachingMode.HEURISTIC,
+        mode_downgrade_reason=detail,
+        game_id=game_id,
+        snap_id=snap_id,
+        session_id=session_id or None,
+        snap_seq=snap_seq,
+        policy_version=SCHEMA,
+        policy_source=PolicySource.HEURISTIC,
+        heuristic_pick=heur,
+        final_pick=heur,
+        propensity_method=PropensityMethod.UNKNOWN,
+        shadow_status=status,
+        fell_back=True,
+        fallback_reason=status,
+        ml_status_detail=detail,
+    )
+
+
 def design_defense(*, max_formations: int = MAX_FORMATIONS,
                    catalogue: Mapping[str, Mapping[str, Sequence[str]]] | None = None,
                    model: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -301,6 +462,16 @@ def live_pick(
     chosen = _stable_choice(ranks, session_id, snap_seq)
     if (time.perf_counter() - started) * 1000.0 > LATENCY_MS:
         raise TimeoutError("Defensive decision exceeded 150 ms budget")
+    elapsed = round((time.perf_counter() - started) * 1000, 3)
+    method, propensity, reason = _sampling_facts(ranks, chosen)
+    try:
+        decision = _model_decision(
+            book=book, formation=chosen["formation"], play=chosen["play"],
+            method=method, propensity=propensity, reason=reason,
+            session_id=session_id, snap_seq=snap_seq, elapsed_ms=elapsed,
+        )
+    except Exception:
+        decision = None
     return {
         "selected": chosen, "top": ranks[:8],
         "tendencies": (model or {}).get("opponent_tendencies") or {},
@@ -308,7 +479,8 @@ def live_pick(
         "model_quality": (model or {}).get("evidence_quality", "prior_driven"),
         "mode": "experimental", "model_primary": True,
         "confidence_note": "Prior-driven unless sufficient verified defensive outcomes exist",
-        "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+        "elapsed_ms": elapsed,
+        "decision": decision,
     }
 
 
@@ -319,18 +491,33 @@ def maybe_apply_defense(
     """Opt-in for human-user defense only; timeout/error falls back to old caller."""
     if db is None or mode(db) != "experimental" or is_cpu_opponent(opponent_id):
         return call
+    try:
+        extras = getattr(sit, "extras", None) or {}
+        session = str(extras.get("session_id") or "defense-pilot")
+        seq = int(extras.get("snap_seq") or 0)
+        snap_id = extras.get("snap_id")
+        game_id = extras.get("game_id")
+    except Exception:
+        return call
     # Existing researched active macro/adjustment triggers are not yet jointly
     # calibrated against this new defensive model. Keep the established
     # caller's already-armed action instead of silently discarding it.
     if getattr(call, "macro", None) or getattr(call, "adjustment", None):
+        from cfb_coach.madden.model.schema import MLStatus
+        try:
+            _stamp_decision(call, _fallback_decision(
+                book=book, call=call, status=MLStatus.CIRCUIT_OPEN, elapsed_ms=None,
+                session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                detail="kept existing armed macro or adjustment",
+            ), db, extras)
+        except Exception:
+            pass
         return call
+    started = time.perf_counter()
     try:
-        started = time.perf_counter()
         from cfb_coach.madden.playcaller import MaddenCall
         from cfb_coach.madden.data import user_job_for
-        extras = getattr(sit, "extras", None) or {}
-        session = str(extras.get("session_id") or "defense-pilot")
-        seq = int(extras.get("snap_seq") or 0)
+        from cfb_coach.madden.model.schema import MLStatus, PropensityMethod
         ranked = live_pick(sit, db, opponent_id, book, session_id=session, snap_seq=seq)
         from cfb_coach.madden.model.defense_action_policy import select_defensive_action
         # Evaluate the whole playbook for calls and a bounded top set for
@@ -346,8 +533,16 @@ def maybe_apply_defense(
             )
             options.append((candidate["score"] + plan["influence"], candidate, plan))
         if not options:
+            _stamp_decision(call, _fallback_decision(
+                book=book, call=call, status=MLStatus.INVALID_OUTPUT,
+                elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                detail="defense experimental produced no call",
+            ), db, extras)
             return call
         # Near-tie defense sampling stays available without forcing a rotation.
+        # The shown call is this deterministic joint sort, not the near-tie draw
+        # stored on live_pick["selected"].
         options.sort(key=lambda item: (-item[0], item[1]["formation"], item[1]["play"]))
         best_total, winner, plan = options[0]
         macro_name = plan["id"] if plan["kind"] == "macro" else None
@@ -370,6 +565,12 @@ def maybe_apply_defense(
                 "why": plan["why"], "sources": plan.get("research_sources") or [],
             }
         if (time.perf_counter() - started) * 1000.0 > LATENCY_MS:
+            _stamp_decision(call, _fallback_decision(
+                book=book, call=call, status=MLStatus.TIMEOUT,
+                elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                detail="defense experimental exceeded 150 ms",
+            ), db, extras)
             return call
         intelligence = winner.get("football_intelligence") or {}
         observation = intelligence.get("live_concept")
@@ -381,13 +582,48 @@ def maybe_apply_defense(
             f"trend={tendency_state.get('family') if tendency_state.get('ready') else 'uncertain'}); "
             f"knowledge={intelligence.get('principle') or 'unknown'}"
         )
-        return MaddenCall(
+        result = MaddenCall(
             "defense", winner["formation"], winner["play"],
             macro_name or (adjustment["label"] if adjustment else "No adj"),
             user_job_for(winner["play"]) or FAMILY_USER_JOB.get(winner["family"], "User hook"),
             note, macro=macro_name, macro_info=macro_info, adjustment=adjustment,
         )
+        heur = _book_candidate(book, getattr(call, "formation", None), getattr(call, "play", None))
+        try:
+            decision = _model_decision(
+                book=book, formation=winner["formation"], play=winner["play"],
+                method=PropensityMethod.DETERMINISTIC, propensity=1.0, reason=None,
+                session_id=session, snap_seq=seq,
+                elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                heuristic=heur, macro_name=macro_name, snap_id=snap_id, game_id=game_id,
+            )
+            _stamp_decision(result, decision, db, extras)
+        except Exception:
+            pass
+        return result
+    except TimeoutError:
+        try:
+            from cfb_coach.madden.model.schema import MLStatus
+            _stamp_decision(call, _fallback_decision(
+                book=book, call=call, status=MLStatus.TIMEOUT,
+                elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                detail="defense experimental exceeded 150 ms",
+            ), db, extras)
+        except Exception:
+            pass
+        return call
     except Exception:  # fail closed: legacy safe caller stays unchanged
+        try:
+            from cfb_coach.madden.model.schema import MLStatus
+            _stamp_decision(call, _fallback_decision(
+                book=book, call=call, status=MLStatus.EXCEPTION,
+                elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                detail="defense experimental raised",
+            ), db, extras)
+        except Exception:
+            pass
         return call
 
 

@@ -3,7 +3,9 @@
 Stable records use ``madden-ml.schema.1``. :class:`PlayRanking` and
 :class:`OpponentContext` are provisional (``madden-ml.provisional.1``) because
 the Strategist will add fields. Additive changes to those two types bump only
-the provisional version.
+the provisional version. :class:`MacroCandidate` and the records nested in it
+use ``madden-ml.macro.1``. The Gameplan Coach produces candidates; this module
+defines the contract and its validation only.
 
 Unknown values are ``None`` in Python, JSON ``null``, SQLite ``NULL``, and the
 literal ``__UNKNOWN__`` in CSV (:data:`CSV_UNKNOWN`). Every enum has an
@@ -38,9 +40,11 @@ a caller sets them.
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import MISSING, dataclass, field, fields, is_dataclass
 from enum import Enum
+from pathlib import Path
 from types import UnionType
 from typing import Any, Mapping, Sequence, Union, get_args, get_origin, get_type_hints
 
@@ -53,6 +57,7 @@ CONTRACT_VERSION = "madden-ml.schema.1"
 PROVISIONAL_SCHEMA_VERSION = "madden-ml.provisional.1"
 FEATURE_SCHEMA_VERSION = "madden-ml.features.2"
 DECISION_SCHEMA_VERSION = "madden-ml.decision.1"
+MACRO_SCHEMA_VERSION = "madden-ml.macro.1"
 
 # Missing CSV cell. Distinct from the enum value "unknown".
 CSV_UNKNOWN = "__UNKNOWN__"
@@ -277,6 +282,158 @@ class DecisionStage(str, Enum):
     POLICY = "policy"
     FINAL = "final"
     UNKNOWN = "unknown"
+
+
+class MacroState(str, Enum):
+    """Lifecycle of one Custom Adjustment candidate.
+
+    Wire values are the lowercase tokens. The macro labs still store the older
+    labels ``draft``, ``verified``, and ``armed``; :func:`adapt_macro_state`
+    reads those. ``verified`` is editor verification, not live arming, so it
+    maps to ``EDITOR_VERIFIED`` rather than to a member named verified.
+    """
+
+    DRAFT = "draft"
+    EDITOR_VERIFIED = "editor_verified"
+    INSTALLED = "installed"
+    ARMED = "armed"
+    ELIGIBLE = "eligible"
+    EVALUATED = "evaluated"
+    RETIRED = "retired"
+    UNKNOWN = "unknown"
+
+
+class MacroSide(str, Enum):
+    """Which side a macro candidate is for. ``OFF`` and ``DEF`` are the wire values."""
+
+    OFF = "off"
+    DEF = "def"
+    UNKNOWN = "unknown"
+
+
+class EditorFieldSource(str, Enum):
+    """Where an editor-sheet value came from.
+
+    ``RESEARCHED`` is a value named by a source. ``DEFAULT`` is the explicit
+    editor Default, which still counts as filled. ``UNKNOWN`` means the record
+    does not say. It is not a stand-in for Default.
+    """
+
+    RESEARCHED = "researched"
+    DEFAULT = "default"
+    UNKNOWN = "unknown"
+
+
+# Older lab labels that are not themselves :class:`MacroState` values.
+# ``draft`` and ``armed`` match the new wire values; ``verified`` does not.
+_LEGACY_MACRO_STATE = {
+    "draft": MacroState.DRAFT,
+    "verified": MacroState.EDITOR_VERIFIED,
+    "armed": MacroState.ARMED,
+    "draft_needs_in_game_verification": MacroState.DRAFT,
+}
+
+
+def adapt_macro_state(value: MacroState | str | None) -> MacroState:
+    """Read a macro state, including the labels the labs already store.
+
+    ``draft`` stays :attr:`MacroState.DRAFT`. ``verified`` becomes
+    :attr:`MacroState.EDITOR_VERIFIED`. ``armed`` stays
+    :attr:`MacroState.ARMED`. The labs' status
+    ``DRAFT_NEEDS_IN_GAME_VERIFICATION`` reads as draft. ``None`` and
+    ``unknown`` are :attr:`MacroState.UNKNOWN`. Any other string raises,
+    so a typo is not stored as unknown.
+    """
+    if value is None:
+        return MacroState.UNKNOWN
+    if isinstance(value, MacroState):
+        return value
+    if not isinstance(value, str):
+        raise TypeError("macro state must be a MacroState, a string, or unknown")
+    key = value.strip().casefold().replace("-", "_").replace(" ", "_")
+    if not key:
+        return MacroState.UNKNOWN
+    if key in _LEGACY_MACRO_STATE:
+        return _LEGACY_MACRO_STATE[key]
+    try:
+        return MacroState(key)
+    except ValueError as exc:
+        raise ValueError(f"unreadable macro state {value!r}") from exc
+
+
+def adapt_macro_side(value: MacroSide | str | None) -> MacroSide:
+    """Read ``off`` / ``def`` and the longer ``offense`` / ``defense`` words."""
+    if value is None:
+        return MacroSide.UNKNOWN
+    if isinstance(value, MacroSide):
+        return value
+    if not isinstance(value, str):
+        raise TypeError("macro side must be a MacroSide, a string, or unknown")
+    key = value.strip().casefold()
+    if key in ("off", "offense"):
+        return MacroSide.OFF
+    if key in ("def", "defense"):
+        return MacroSide.DEF
+    if key in ("", "unknown"):
+        return MacroSide.UNKNOWN
+    raise ValueError(f"unreadable macro side {value!r}")
+
+
+def adapt_editor_field_source(value: EditorFieldSource | str | None) -> EditorFieldSource:
+    """Read ``researched``, ``default``, or ``unknown``."""
+    if value is None:
+        return EditorFieldSource.UNKNOWN
+    if isinstance(value, EditorFieldSource):
+        return value
+    if not isinstance(value, str):
+        raise TypeError("editor field source must be a source, a string, or unknown")
+    key = value.strip().casefold()
+    if not key or key == "unknown":
+        return EditorFieldSource.UNKNOWN
+    try:
+        return EditorFieldSource(key)
+    except ValueError as exc:
+        raise ValueError(f"unreadable editor field source {value!r}") from exc
+
+
+_LIVE_MACRO_STATES = frozenset(
+    {
+        MacroState.ARMED,
+        MacroState.ELIGIBLE,
+        MacroState.EVALUATED,
+    }
+)
+
+
+def is_live_selectable(state: MacroState | str | None) -> bool:
+    """True only for armed, eligible, and evaluated macros.
+
+    Draft, editor-verified, installed, retired, and unknown states are not
+    selectable on the live path. The older label ``verified`` is
+    editor-verified, so it is not selectable. ``armed`` is.
+    """
+    return adapt_macro_state(state) in _LIVE_MACRO_STATES
+
+
+_DEFENSIVE_EDITOR_FIELDS: tuple[str, ...] | None = None
+
+
+def defensive_editor_field_names() -> tuple[str, ...]:
+    """Canonical defense editor fields from ``editor_fields.json``, in file order.
+
+    Keys are the field names, not the section names and not the aliases.
+    """
+    global _DEFENSIVE_EDITOR_FIELDS
+    if _DEFENSIVE_EDITOR_FIELDS is None:
+        path = Path(__file__).resolve().parents[2] / "data" / "madden27" / "editor_fields.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        names: list[str] = []
+        for fields_in_section in (payload.get("defense") or {}).values():
+            names.extend(str(name) for name in fields_in_section)
+        if len(names) != len(set(names)):
+            raise ValueError("defensive editor field names must be unique")
+        _DEFENSIVE_EDITOR_FIELDS = tuple(names)
+    return _DEFENSIVE_EDITOR_FIELDS
 
 
 def _reject_bool_int(name: str, value: int | None) -> None:
@@ -1263,6 +1420,249 @@ class MLConfig:
         _reject_bool_int("ml.seed", self.seed)
 
 
+@dataclass(frozen=True)
+class EditorFieldAssignment:
+    """One Custom Adjustment editor field.
+
+    ``value`` ``None`` is unknown, not Default. Default is the string
+    ``Default`` with :attr:`EditorFieldSource.DEFAULT`. ``provenance`` is the
+    source id when the value was researched, and ``confidence`` is in
+    ``[0, 1]`` when known.
+    """
+
+    value: str | None = None
+    source: EditorFieldSource = EditorFieldSource.UNKNOWN
+    provenance: str | None = None
+    confidence: float | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "source", adapt_editor_field_source(self.source))
+        _check_unit("editor field confidence", self.confidence)
+        if self.value is not None and not isinstance(self.value, str):
+            raise TypeError("editor field value must be a string or unknown")
+
+
+@dataclass(frozen=True)
+class AdjustmentPrimitive:
+    """One adjustment step a macro was composed from. Unknown stays ``None``."""
+
+    name: str | None = None
+    value: str | None = None
+    source: EditorFieldSource = EditorFieldSource.UNKNOWN
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "source", adapt_editor_field_source(self.source))
+        for label, item in (("primitive name", self.name), ("primitive value", self.value)):
+            if item is not None and not isinstance(item, str):
+                raise TypeError(f"{label} must be a string or unknown")
+
+
+@dataclass(frozen=True)
+class MacroConflict:
+    """A detected clash between two editor fields or primitives.
+
+    A conflict with unknown field names is still a conflict. It blocks a
+    live-selectable state on :class:`MacroCandidate`.
+    """
+
+    field: str | None = None
+    other: str | None = None
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        for label, item in (("conflict field", self.field), ("conflict other", self.other), ("conflict reason", self.reason)):
+            if item is not None and not isinstance(item, str):
+                raise TypeError(f"{label} must be a string or unknown")
+
+
+@dataclass(frozen=True)
+class MacroJointFeatures:
+    """Features used when a full call and a macro are ranked together.
+
+    Every value stays ``None`` until a producer computes it. ``uncertainty``
+    is a unit interval when set. The other scores are finite numbers, not
+    probabilities, until a later contract pins their scale. ``action_count``
+    is a nonnegative count of user actions.
+    """
+
+    compatibility: float | None = None
+    situation: float | None = None
+    action_count: int | None = None
+    control_reliability: float | None = None
+    empirical_results: float | None = None
+    uncertainty: float | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("compatibility", "situation", "control_reliability", "empirical_results"):
+            _check_finite(name, getattr(self, name))
+        _check_nonneg("action_count", self.action_count)
+        _check_unit("uncertainty", self.uncertainty)
+
+
+def _coerce_editor_fields(
+    value: Mapping[str, EditorFieldAssignment | Mapping[str, Any]] | None,
+) -> dict[str, EditorFieldAssignment] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise TypeError("editor_fields must be a map or unknown")
+    coerced: dict[str, EditorFieldAssignment] = {}
+    for key, item in value.items():
+        name = str(key)
+        if isinstance(item, EditorFieldAssignment):
+            coerced[name] = item
+            continue
+        if not isinstance(item, Mapping):
+            raise TypeError(f"editor field {name!r} must be an assignment")
+        coerced[name] = EditorFieldAssignment(
+            value=item.get("value"),
+            source=item.get("source", EditorFieldSource.UNKNOWN),
+            provenance=item.get("provenance"),
+            confidence=item.get("confidence"),
+        )
+    return coerced
+
+
+def _coerce_primitives(value: Sequence[AdjustmentPrimitive | Mapping[str, Any]] | None) -> tuple[AdjustmentPrimitive, ...] | None:
+    if value is None:
+        return None
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise TypeError("adjustment primitives must be a sequence or unknown")
+    rows: list[AdjustmentPrimitive] = []
+    for item in value:
+        if isinstance(item, AdjustmentPrimitive):
+            rows.append(item)
+            continue
+        if not isinstance(item, Mapping):
+            raise TypeError("an adjustment primitive must be a record")
+        rows.append(
+            AdjustmentPrimitive(
+                name=item.get("name"),
+                value=item.get("value"),
+                source=item.get("source", EditorFieldSource.UNKNOWN),
+            )
+        )
+    return tuple(rows)
+
+
+def _coerce_conflicts(value: Sequence[MacroConflict | Mapping[str, Any]] | None) -> tuple[MacroConflict, ...] | None:
+    if value is None:
+        return None
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise TypeError("conflicts must be a sequence or unknown")
+    rows: list[MacroConflict] = []
+    for item in value:
+        if isinstance(item, MacroConflict):
+            rows.append(item)
+            continue
+        if not isinstance(item, Mapping):
+            raise TypeError("a conflict must be a record")
+        rows.append(MacroConflict(field=item.get("field"), other=item.get("other"), reason=item.get("reason")))
+    return tuple(rows)
+
+
+def _coerce_joint(value: MacroJointFeatures | Mapping[str, Any] | None) -> MacroJointFeatures:
+    if value is None:
+        return MacroJointFeatures()
+    if isinstance(value, MacroJointFeatures):
+        return value
+    if not isinstance(value, Mapping):
+        raise TypeError("joint ranking features must be a record or unknown")
+    return MacroJointFeatures(
+        compatibility=value.get("compatibility"),
+        situation=value.get("situation"),
+        action_count=value.get("action_count"),
+        control_reliability=value.get("control_reliability"),
+        empirical_results=value.get("empirical_results"),
+        uncertainty=value.get("uncertainty"),
+    )
+
+
+@dataclass(frozen=True)
+class MacroCandidate:
+    """One versioned Custom Adjustment candidate. Wire version ``madden-ml.macro.1``.
+
+    ``version`` is the candidate's own revision. ``None`` means it has not
+    been assigned. The wire version is :data:`MACRO_SCHEMA_VERSION`, not this
+    field. ``state`` accepts the labs' ``draft``, ``verified``, and ``armed``
+    labels through :func:`adapt_macro_state`.
+
+    A defense candidate that is not the no-adjustment option must name every
+    field in :func:`defensive_editor_field_names`. Each of those fields has a
+    value and a source of researched or default. Missing, extra, and unknown
+    sources are rejected. ``is_no_adjustment`` carries no editor sheet.
+
+    ``conflicts`` ``None`` means the conflict check was not recorded. An empty
+    tuple means the check found none. A non-empty tuple cannot sit on a
+    live-selectable state.
+    """
+
+    macro_id: str | None = None
+    version: str | None = None
+    side: MacroSide = MacroSide.UNKNOWN
+    state: MacroState = MacroState.UNKNOWN
+    formation: str | None = None
+    play: str | None = None
+    adjustment_primitives: tuple[AdjustmentPrimitive, ...] | None = None
+    editor_fields: dict[str, EditorFieldAssignment] | None = None
+    tactical_purpose: str | None = None
+    situations: tuple[str, ...] | None = None
+    conflicts: tuple[MacroConflict, ...] | None = None
+    is_no_adjustment: bool = False
+    joint: MacroJointFeatures = field(default_factory=MacroJointFeatures)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "side", adapt_macro_side(self.side))
+        object.__setattr__(self, "state", adapt_macro_state(self.state))
+        object.__setattr__(self, "adjustment_primitives", _coerce_primitives(self.adjustment_primitives))
+        object.__setattr__(self, "editor_fields", _coerce_editor_fields(self.editor_fields))
+        object.__setattr__(self, "conflicts", _coerce_conflicts(self.conflicts))
+        object.__setattr__(self, "joint", _coerce_joint(self.joint))
+        if self.situations is not None:
+            if isinstance(self.situations, str) or not isinstance(self.situations, Sequence):
+                raise TypeError("situations must be a sequence of strings or unknown")
+            object.__setattr__(self, "situations", tuple(str(item) for item in self.situations))
+        for label, item in (
+            ("macro_id", self.macro_id),
+            ("version", self.version),
+            ("formation", self.formation),
+            ("play", self.play),
+            ("tactical_purpose", self.tactical_purpose),
+        ):
+            if item is not None and not isinstance(item, str):
+                raise TypeError(f"{label} must be a string or unknown")
+        if not isinstance(self.is_no_adjustment, bool):
+            raise TypeError("is_no_adjustment must be a bool")
+        self.validate()
+
+    def validate(self) -> None:
+        """Reject a defense sheet or a live state this contract cannot mean."""
+        if self.is_no_adjustment:
+            if self.editor_fields:
+                raise ValueError("a no-adjustment candidate has no editor sheet")
+            if self.conflicts:
+                raise ValueError("a no-adjustment candidate has no conflicts")
+            return
+        if self.conflicts and is_live_selectable(self.state):
+            raise ValueError("a live-selectable macro cannot include conflicts")
+        if self.side is not MacroSide.DEF:
+            return
+        required = defensive_editor_field_names()
+        present = () if self.editor_fields is None else tuple(self.editor_fields)
+        missing = [name for name in required if name not in (self.editor_fields or {})]
+        extra = [name for name in present if name not in set(required)]
+        if missing or extra or self.editor_fields is None:
+            raise ValueError(
+                "a defense macro must set every editor field "
+                f"(missing {missing}, extra {extra})"
+            )
+        for name, assignment in self.editor_fields.items():
+            if assignment.source not in (EditorFieldSource.RESEARCHED, EditorFieldSource.DEFAULT):
+                raise ValueError(f"defense editor field {name!r} source must be researched or default")
+            if not assignment.value:
+                raise ValueError(f"defense editor field {name!r} needs a value")
+
+
 SCHEMA_RECORD_TYPES: tuple[type, ...] = (
     AppliedPlaybookRef,
     AdjustmentRef,
@@ -1292,6 +1692,11 @@ SCHEMA_RECORD_TYPES: tuple[type, ...] = (
     MetricRecord,
     ModelRegistryEntry,
     MLConfig,
+    EditorFieldAssignment,
+    AdjustmentPrimitive,
+    MacroConflict,
+    MacroJointFeatures,
+    MacroCandidate,
     Situation,
     GameScore,
     ParsedOutcome,
@@ -1303,13 +1708,24 @@ PROVISIONAL_TYPES: tuple[type, ...] = (
     OpponentContext,
 )
 
+# Gameplan Coach contract. Their wire version is MACRO_SCHEMA_VERSION.
+MACRO_TYPES: tuple[type, ...] = (
+    EditorFieldAssignment,
+    AdjustmentPrimitive,
+    MacroConflict,
+    MacroJointFeatures,
+    MacroCandidate,
+)
+
 _TYPE_BY_NAME: dict[str, type] = {cls.__name__: cls for cls in SCHEMA_RECORD_TYPES}
 
 
 def schema_version_for(cls: type) -> str:
-    """Wire version for ``cls``. Provisional types do not use the stable version."""
+    """Wire version for ``cls``. Provisional and macro types do not use the stable version."""
     if cls in PROVISIONAL_TYPES:
         return PROVISIONAL_SCHEMA_VERSION
+    if cls in MACRO_TYPES:
+        return MACRO_SCHEMA_VERSION
     return CONTRACT_VERSION
 
 
@@ -1357,7 +1773,7 @@ def from_dict(payload: Any) -> Any:
     if not isinstance(payload, dict) or "__type__" not in payload:
         raise TypeError("serialized record is missing __type__")
     loaded = _load_typed(payload)
-    if isinstance(loaded, CoachingDecision):
+    if isinstance(loaded, (CoachingDecision, MacroCandidate)):
         loaded.validate()
     return loaded
 
@@ -1471,6 +1887,12 @@ def _decode(hint: Any, data: Any) -> Any:
         return [_decode(item_type, item) for item in data]
 
     if isinstance(hint, type) and issubclass(hint, Enum):
+        if hint is MacroState:
+            return adapt_macro_state(data)
+        if hint is MacroSide:
+            return adapt_macro_side(data)
+        if hint is EditorFieldSource:
+            return adapt_editor_field_source(data)
         return hint(data)
 
     if hint is float:
@@ -1520,6 +1942,8 @@ __all__ = [
     "DECISION_SCHEMA_VERSION",
     "FEATURE_SCHEMA_VERSION",
     "LEAKAGE_FIELDS",
+    "MACRO_SCHEMA_VERSION",
+    "MACRO_TYPES",
     "LOADOUT_N",
     "ML_LATENCY_BUDGET_MS",
     "ML_LOW_CONFIDENCE",
@@ -1529,6 +1953,7 @@ __all__ = [
     "SCHEMA_RECORD_TYPES",
     "YARDS_MAX",
     "YARDS_MIN",
+    "AdjustmentPrimitive",
     "AdjustmentRef",
     "AppliedPlaybookRef",
     "CandidatePlay",
@@ -1538,6 +1963,8 @@ __all__ = [
     "MLStatus",
     "DataHash",
     "DecisionStage",
+    "EditorFieldAssignment",
+    "EditorFieldSource",
     "ExecutedPlay",
     "ExecutedStatus",
     "FeatureValue",
@@ -1547,6 +1974,11 @@ __all__ = [
     "GateResult",
     "HintSource",
     "MLConfig",
+    "MacroCandidate",
+    "MacroConflict",
+    "MacroJointFeatures",
+    "MacroSide",
+    "MacroState",
     "MetricRecord",
     "ModelRegistryEntry",
     "ObservedLook",
@@ -1574,9 +2006,14 @@ __all__ = [
     "TendencyCount",
     "Tri",
     "Verification",
+    "adapt_editor_field_source",
+    "adapt_macro_side",
+    "adapt_macro_state",
     "candidate_in_book",
     "csv_cell",
+    "defensive_editor_field_names",
     "from_dict",
+    "is_live_selectable",
     "legal_candidates",
     "parse_csv_cell",
     "pre_snap_field_names",
