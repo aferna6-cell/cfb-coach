@@ -99,7 +99,8 @@ def compose_defensive_macros(
             added = {key: value for key, value in right.items() if key not in left}
             if not added:
                 continue
-            merged = dict(left, **added)
+            merged = dict(left)
+            merged.update(added)
             name_seed = "|".join([
                 str(lead.get("id")), str(donor.get("id")),
                 ",".join(f"{key}:{x['value']}" for key, x in sorted(merged.items())),
