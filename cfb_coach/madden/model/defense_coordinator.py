@@ -158,7 +158,7 @@ def rank_defense(
     eligible = set(eligible_formations(sit, dict(book)))
     ranks = [
         _score(form, play, sit, model, recent=recent, eligible=eligible)
-        for form, plays in book.items() for play in plays if call_family(play)
+        for form, plays in book.items() for play in plays
     ]
     ranks.sort(key=lambda r: (-r["score"], r["formation"], r["play"]))
     return ranks
