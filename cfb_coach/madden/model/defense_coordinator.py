@@ -320,3 +320,96 @@ def maybe_apply_defense(
         )
     except Exception:  # fail closed: legacy safe caller stays unchanged
         return call
+
+
+# Defensive custom-playbook proposals use the same explicit installed/confirmed
+# boundary as the offensive designer. Nothing is installed on "stage".
+PENDING_KEY = "ml_defense_design_pending.v1"
+HISTORY_KEY = "ml_defense_design_history.v1"
+
+
+def _identity(value: Mapping[str, Any]) -> str:
+    return hashlib.sha256(json.dumps(dict(value), sort_keys=True).encode()).hexdigest()
+
+
+def stage_design(db: Any, *, max_formations: int = MAX_FORMATIONS) -> dict[str, Any]:
+    proposal = design_defense(max_formations=max_formations)
+    applied = playbook.load_books(db).get("defense") or {}
+    proposal["expected_applied_hash"] = _identity(applied)
+    proposal["expected_applied_revision"] = int(applied.get("rev") or 0)
+    proposal["proposal_id"] = _identity(proposal)
+    db.set_meta(PENDING_KEY, json.dumps(proposal, sort_keys=True))
+    return {
+        "proposal_id": proposal["proposal_id"],
+        "n_formations": proposal["n_formations"], "n_plays": proposal["n_plays"],
+        "status": "staged_only",
+        "requires_physical_editor_installation": True,
+    }
+
+
+def pending_design(db: Any) -> dict[str, Any] | None:
+    try:
+        return json.loads(db.get_meta(PENDING_KEY) or "") or None
+    except (TypeError, ValueError):
+        return None
+
+
+def confirm_design(db: Any, proposal_id: str, attestation: str) -> dict[str, Any]:
+    if len((attestation or "").strip()) < 30:
+        raise ValueError("Explicit actual Madden playbook installation attestation required")
+    staged = pending_design(db)
+    if staged is None or staged.get("proposal_id") != proposal_id:
+        raise ValueError("No staged defensive design with that ID")
+    unsigned = {k: v for k, v in staged.items() if k != "proposal_id"}
+    if _identity(unsigned) != proposal_id:
+        raise ValueError("Defensive proposal has been modified since staging")
+    state = playbook._load_state(db)
+    current = (state.get("applied") or {}).get("defense") or {}
+    if _identity(current) != staged["expected_applied_hash"]:
+        raise ValueError("Installed defensive book changed; re-design")
+    for formation, plays in staged["formations"].items():
+        source = staged["formation_sources"].get(formation)
+        available = catalog.book_formations("defense", source or "").get(formation) or []
+        if len(set(plays)) != len(plays) or set(plays) != set(available):
+            raise ValueError(f"Unverified source-book play list for formation: {formation}")
+    old_history = []
+    try:
+        old_history = json.loads(db.get_meta(HISTORY_KEY) or "[]")
+    except (TypeError, ValueError):
+        pass
+    new_book = {
+        "side": "defense", "mode": "custom",
+        "name": "ML Designed Defense (custom)", "source_book": None,
+        "trimmed": True, "formations": staged["formations"],
+        "formation_sources": staged["formation_sources"],
+        "audibles": {}, "core": list(staged["formations"]),
+        "rev": int(current.get("rev") or 0) + 1,
+        "reason": "User installed complete model-ranked defensive formations",
+        "locked_ts": datetime_now_iso(),
+    }
+    old_history.append({"id": proposal_id, "book": current, "new_book": new_book})
+    state["applied"]["defense"] = new_book
+    state["pending"].pop("defense", None)
+    playbook._save_state(db, state)
+    db.set_meta(HISTORY_KEY, json.dumps(old_history[-15:], sort_keys=True))
+    db.set_meta(PENDING_KEY, "")
+    # Changing a book requires physically rearming and re-verifying custom macros.
+    try:
+        keys = db.conn.execute(
+            "SELECT key FROM meta WHERE key LIKE 'ml_defense_approved_macros.v1:%'"
+        ).fetchall()
+        for item in keys:
+            db.set_meta(str(item[0]), "")
+    except Exception:
+        pass
+    return {
+        "confirmed": True, "proposal_id": proposal_id,
+        "installed_formations": len(new_book["formations"]),
+        "installed_plays": sum(map(len, new_book["formations"].values())),
+        "generated_macros_armed": 0,
+    }
+
+
+def datetime_now_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat()
