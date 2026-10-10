@@ -38,6 +38,10 @@ def select_recent_human_games(
     chosen = [row for game in games for row in game["rows"]]
     verified = verified_human_rows(chosen)
     by_game: dict[str, dict[str, int]] = {}
+    observed_defense_results = [
+        r for r in chosen if str(r.get("side") or "") == "defense"
+        and r.get("yards") is not None and bool(r.get("label_available"))
+    ]
     for game in games:
         relevant = [row for row in verified if row["game_id"] == game["game_id"]]
         by_game[game["game_id"]] = {
@@ -47,6 +51,15 @@ def select_recent_human_games(
             "unverified_or_unlabeled": len(game["rows"]) - len(relevant),
             "observed_opponent_concepts": sum(
                 bool(r.get("concept_seen")) and r["side"] == "defense" for r in relevant
+            ),
+            "defensive_outcome_only_rows": sum(
+                r.get("game_id") == game["game_id"] for r in observed_defense_results
+            ),
+            "unverified_post_snap_concepts": sum(
+                r.get("side") == "defense" and bool(r.get("concept_seen"))
+                and not (r.get("supervised_eligible") and
+                         r.get("executed_verification") == "verified")
+                for r in game["rows"]
             ),
         }
     return {
@@ -58,7 +71,9 @@ def select_recent_human_games(
         "verified_labeled_human_executions": len(verified),
         "verified_offense": sum(r["side"] == "offense" for r in verified),
         "verified_defense": sum(r["side"] == "defense" for r in verified),
+        "opponent_outcome_only_rows": len(observed_defense_results),
         "games": by_game,
+        "all_selected_rows": chosen,
         "training_rows": verified,
         "notes": [
             "Game order uses the local database snap insertion order, not alphabetical IDs.",
@@ -74,7 +89,8 @@ def model_diagnostics(report: Mapping[str, Any]) -> dict[str, Any]:
     defense = int(report.get("verified_defense") or 0)
     offense = int(report.get("verified_offense") or 0)
     return {
-        k: v for k, v in report.items() if k != "training_rows"
+        k: v for k, v in report.items()
+        if k not in ("training_rows", "all_selected_rows")
     } | {
         "model_readiness": {
             "offense": "verified_rows_available" if offense else "no_verified_offense_rows",
@@ -94,10 +110,10 @@ def train_shadow_models(
     from cfb_coach.madden.model import defense_coordinator
     from cfb_coach.madden.model import experimental_model
     report = select_recent_human_games(rows, max_games=max_games)
-    if not report["training_rows"]:
+    if not report["training_rows"] and not report["opponent_outcome_only_rows"]:
         return {
             **model_diagnostics(report), "trained": False,
-            "reason": "no eligible verified human-game executions",
+            "reason": "no verified human executions or observed opponent defensive-side outcomes",
             "installed": False, "live_mode_changed": False,
         }
     folder = Path(out_dir)
@@ -110,14 +126,24 @@ def train_shadow_models(
         paths["offense"] = str(experimental_model.save_artifact(
             offense_art, folder / "offense_four_human_games_shadow.json"
         ))
-    if report["verified_defense"]:
-        defense_rows = [r for r in report["training_rows"] if r["side"] == "defense"]
-        def_art = defense_coordinator.train_defense(defense_rows)
+    if report["verified_defense"] or report["opponent_outcome_only_rows"]:
+        # Outcomes identify opponent-level risk without claiming the called
+        # defense was actually executed. Defense stop rates still use only
+        # properly verified executed plays.
+        def_art = defense_coordinator.train_defense(report["all_selected_rows"])
         paths["defense"] = str(defense_coordinator.save_model(
             def_art, folder / "defense_four_human_games_shadow.json"
         ))
         result["opponent_concepts_observed"] = (
             def_art["opponent_tendencies"]["observed_post_snap_concepts"]
+        )
+        result["opponent_outcome_rows_learned"] = (
+            def_art["opponent_outcome_risks"]["observed_outcomes"]
+        )
+        result["defense_training_basis"] = (
+            "verified_play_outcomes_and_observed_opponent_risks"
+            if report["verified_defense"] else
+            "observed_opponent_risks_only_no_defensive_play_attribution"
         )
     result.update({
         "trained": True, "artifacts": paths,
