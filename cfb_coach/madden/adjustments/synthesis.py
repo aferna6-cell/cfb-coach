@@ -1,8 +1,10 @@
 """Original Custom Adjustment drafts for the installed Madden book.
 
 Offense drafts are researched hot routes, protections, and audibles on plays
-in the applied book, plus a route combo when two primitives pass the existing
-conflict check. Motion is omitted: its control is a source conflict.
+in the applied book. Two-action drafts are emitted only for pairs Meta
+Researcher marked legal, plus HB Chip and Release with max protect as the
+sanctioned alternative to the conditional HB-flat pair. Those drafts stay
+DRAFT. Motion stays off: no Xbox control is verified yet.
 
 Defense drafts fill every defense editor field with a researched value or the
 literal ``Default``. Two-recipe sheets come from ``defense_macro_lab``. A
@@ -25,7 +27,6 @@ import json
 import shutil
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from itertools import combinations
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -43,14 +44,16 @@ from cfb_coach.madden.adjustments.candidates import (
     is_live_selectable,
 )
 from cfb_coach.madden.adjustments.primitives import (
+    CHIP_AND_RELEASE_ID,
+    CHIP_AND_RELEASE_WHY,
     PrimitiveKind,
     RegisteredPrimitive,
     canonical_field,
-    lab_dict,
     require_primitive,
     usable_offense,
     value_id,
 )
+from cfb_coach.madden.macros import LOADOUT_N
 from cfb_coach.madden.model.schema import defensive_editor_field_names
 from cfb_coach.madden.model.defense_macro_lab import compose_defensive_macros
 from cfb_coach.madden.model.offense_macro_lab import conflicts as _offense_conflicts
@@ -89,6 +92,13 @@ class NotLiveSelectable(ValueError):
     """The macro's state is not ARMED, ELIGIBLE, or EVALUATED."""
 
 
+class ArmCapExceeded(ValueError):
+    """A side already has LOADOUT_N armed or active custom macros."""
+
+
+_ACTIVE_STATES = (MacroState.ARMED, MacroState.ELIGIBLE, MacroState.EVALUATED)
+
+
 @dataclass(frozen=True)
 class CatalogComparison:
     catalog_id: str
@@ -100,11 +110,11 @@ class CatalogComparison:
 
 @dataclass(frozen=True)
 class DesignRecord:
-    """Designer-owned record. Only ``candidate`` is the wire object.
+    """Designer-owned record. ``candidate`` is the wire object.
 
-    ``design_record_id`` is copied onto the JSON object by the shim. It is not
-    a ``MacroCandidate`` field until the Lead adds it to the contract.
-    Downside, catalog comparison, and install steps stay here.
+    ``design_record_id`` is the contract field ``DSN-<macro_id>`` on
+    ``MacroCandidate``. Downside, catalog comparison, and install steps stay
+    here.
     """
 
     design_record_id: str
@@ -119,6 +129,8 @@ class DesignRecord:
     def __post_init__(self) -> None:
         if self.xbox_created:
             raise ValueError("this program does not create macros on Xbox")
+        if self.design_record_id != self.candidate.design_record_id:
+            raise ValueError("design_record_id must match DSN-<macro_id> on the candidate")
 
 
 def trimmed_formations() -> dict[str, dict[str, list[str]]]:
@@ -173,8 +185,153 @@ def require_installed(
         raise ValueError(f"{formation!r} / {play!r} is not in the installed book")
 
 
+@dataclass(frozen=True)
+class OffensePairVerdict:
+    """One evaluated pair of researched offense primitives."""
+
+    left_id: str
+    right_id: str
+    emit: bool
+    conflict: str | None
+    label: str
+    confidence: str
+    sources: tuple[str, ...]
+    situational_tags: tuple[str, ...] = ()
+    note: str = ""
+
+
+_EA_GAMEPLAY = "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+_EA_PREPLAY = "https://www.ea.com/games/madden-nfl/madden-nfl-27/controls-hub/m27-xb-preplay-offense"
+_AUDIBLE_CONFLICT = "audible replaces the play"
+
+
+def offense_pair_verdicts() -> tuple[OffensePairVerdict, ...]:
+    """The six researched offense pairs, in evaluation order.
+
+    Labels come from the 2026-10-10 Meta Researcher verification. A pair with
+    ``emit`` false is not generated.
+    """
+    return (
+        OffensePairVerdict(
+            "hot_slant_vs_man",
+            "hot_hb_flat_vs_pressure",
+            emit=True,
+            conflict=None,
+            label="VERIFIED-M27",
+            confidence="high",
+            sources=(_EA_GAMEPLAY,),
+            situational_tags=("man_blitz",),
+            note=(
+                "Hot routes on different players stack. Same defensive look is a "
+                "tactics note, not a game rule. Both fit a man blitz."
+            ),
+        ),
+        OffensePairVerdict(
+            "hot_slant_vs_man",
+            "audible_run_vs_two_high",
+            emit=False,
+            conflict=_AUDIBLE_CONFLICT,
+            label="HYPOTHESIS",
+            confidence="medium",
+            sources=(_EA_GAMEPLAY,),
+            note="Audible replaces the play. No M27 source documents that an audible clears the slant.",
+        ),
+        OffensePairVerdict(
+            "hot_slant_vs_man",
+            "max_protect_vs_pressure",
+            emit=True,
+            conflict=None,
+            label="VERIFIED-M27",
+            confidence="high",
+            sources=(_EA_PREPLAY, _EA_GAMEPLAY),
+            note=(
+                "Protection (LT) and hot routes (Y) are separate menus. "
+                "EA says both can be saved in one Custom Adjustment."
+            ),
+        ),
+        OffensePairVerdict(
+            "hot_hb_flat_vs_pressure",
+            "audible_run_vs_two_high",
+            emit=False,
+            conflict=_AUDIBLE_CONFLICT,
+            label="HYPOTHESIS",
+            confidence="medium",
+            sources=(_EA_GAMEPLAY,),
+            note="Audible replaces the play. The HB would be the ball carrier on the run check.",
+        ),
+        OffensePairVerdict(
+            "hot_hb_flat_vs_pressure",
+            "max_protect_vs_pressure",
+            emit=False,
+            conflict="conditional: unknown precedence; max protect and an HB flat are not emitted together",
+            label="CONDITIONAL",
+            confidence="low to medium",
+            sources=(
+                "https://fenixbazaar.com/2025/08/10/madden-26-leverage-system/",
+                "https://madden.tools/playbooks/book/madden-franchise-offense-maxprotect",
+                "https://www.818madden.com/tools/position-adjustments",
+                _EA_GAMEPLAY,
+            ),
+            note=(
+                "CARRIED-FORWARD/HYPOTHESIS. Which assignment the HB obeys is not sourced. "
+                "The sanctioned alternative is HB Chip and Release (VERIFIED-M27)."
+            ),
+        ),
+        OffensePairVerdict(
+            "audible_run_vs_two_high",
+            "max_protect_vs_pressure",
+            emit=False,
+            conflict=_AUDIBLE_CONFLICT,
+            label="HYPOTHESIS",
+            confidence="medium",
+            sources=(_EA_GAMEPLAY,),
+            note=(
+                "Audible replaces the play. Max protect is pass-only. "
+                "ID Mike is the run-side equivalent (VERIFIED-M27)."
+            ),
+        ),
+    )
+
+
+def sanctioned_offense_pairs() -> tuple[OffensePairVerdict, ...]:
+    """HB Chip and Release with max protect, instead of the conditional flat pair."""
+    return (
+        OffensePairVerdict(
+            "max_protect_vs_pressure",
+            CHIP_AND_RELEASE_ID,
+            emit=True,
+            conflict=None,
+            label="VERIFIED-M27",
+            confidence="high",
+            sources=(
+                _EA_GAMEPLAY,
+                "https://www.818madden.com/tools/position-adjustments",
+            ),
+            note=(
+                "Sanctioned alternative to HB flat plus max protect. "
+                "The primitive is the HB hot-route menu item Chip and Release. "
+                "No other chip details are claimed."
+            ),
+        ),
+    )
+
+
+def _pair_index() -> dict[frozenset[str], OffensePairVerdict]:
+    rows = (*offense_pair_verdicts(), *sanctioned_offense_pairs())
+    return {frozenset((row.left_id, row.right_id)): row for row in rows}
+
+
 def offense_conflict(parts: Sequence[Mapping[str, Any]]) -> str | None:
-    """Existing offense conflict rules. A reason means the combo is rejected."""
+    """Reason when a combo must not be emitted. None means it may be drafted.
+
+    Researched pairs use the Meta Researcher verdicts. Other shapes still use
+    ``offense_macro_lab.conflicts``.
+    """
+    ids = [str(part.get("id") or "") for part in parts]
+    if len(ids) == 2 and all(ids):
+        verdict = _pair_index().get(frozenset(ids))
+        if verdict is not None:
+            return verdict.conflict
     return _offense_conflicts([dict(part) for part in parts])
 
 
@@ -192,12 +349,11 @@ def defense_value_conflict(sheets: Sequence[Mapping[tuple[str, str], str]]) -> s
 
 
 def rejected_offense_pairs() -> list[tuple[str, str, str]]:
-    rows = [row for row in usable_offense() if row.kind is not PrimitiveKind.MOTION]
+    """Researched pairs that are not emitted, with the verdict's conflict text."""
     rejected: list[tuple[str, str, str]] = []
-    for left, right in combinations(rows, 2):
-        reason = offense_conflict([lab_dict(left), lab_dict(right)])
-        if reason:
-            rejected.append((left.primitive_id, right.primitive_id, reason))
+    for verdict in offense_pair_verdicts():
+        if verdict.conflict:
+            rejected.append((verdict.left_id, verdict.right_id, verdict.conflict))
     return rejected
 
 
@@ -248,20 +404,49 @@ def stage_drafts(db: Any, *, backup: bool = True) -> dict[str, Any]:
     payload = {
         "__schema__": WIRE_VERSION,
         "xbox_created": False,
-        "candidates": [
-            candidate_to_json(row.candidate, design_record_id=row.design_record_id)
-            for row in records
-        ],
+        "candidates": [candidate_to_json(row.candidate) for row in records],
     }
     db.set_meta(DRAFT_META_KEY, json.dumps(payload))
     return {"stored": len(records), "meta_key": DRAFT_META_KEY, "xbox_created": False}
 
 
-def transition(record: DesignRecord, to_state: MacroState, evidence: str) -> DesignRecord:
+def active_custom_macros(
+    records: Sequence[DesignRecord],
+    side: MacroSide,
+) -> list[DesignRecord]:
+    """Armed, eligible, or evaluated custom macros on one side. Baselines are omitted."""
+    rows = [
+        row for row in records
+        if row.candidate.side is side
+        and row.candidate.is_no_adjustment is False
+        and row.candidate.state in _ACTIVE_STATES
+    ]
+    rows.sort(key=lambda row: row.candidate.macro_id or "")
+    return rows
+
+
+def require_arm_cap(records: Sequence[DesignRecord], side: MacroSide) -> None:
+    """EA's screen allows 10. This coach arms at most LOADOUT_N per side."""
+    active = active_custom_macros(records, side)
+    if len(active) > LOADOUT_N:
+        raise ArmCapExceeded(
+            f"{side.value} has {len(active)} armed or active macros; the cap is {LOADOUT_N}"
+        )
+
+
+def transition(
+    record: DesignRecord,
+    to_state: MacroState,
+    evidence: str,
+    *,
+    roster: Sequence[DesignRecord] = (),
+) -> DesignRecord:
     """Move one step. Evidence is required for every state past DRAFT.
 
     The stored note says the user attested. It is not an Xbox creation claim.
-    New drafts are not moved by ``generate``.
+    New drafts are not moved by ``generate``. Entering ARMED, ELIGIBLE, or
+    EVALUATED fails when that side already has ``LOADOUT_N`` active macros.
+    Drafts are not capped.
     """
     if record.candidate.is_no_adjustment:
         raise ValueError("the no-adjustment baseline is not a custom adjustment")
@@ -273,6 +458,15 @@ def transition(record: DesignRecord, to_state: MacroState, evidence: str) -> Des
     if XBOX_DISCLAIMER not in text:
         text = f"{text} {XBOX_DISCLAIMER}"
     current = record.candidate.state
+    if to_state in _ACTIVE_STATES and current not in _ACTIVE_STATES:
+        others = [
+            row for row in roster
+            if row.candidate.macro_id != record.candidate.macro_id
+        ]
+        if len(active_custom_macros(others, record.candidate.side)) >= LOADOUT_N:
+            raise ArmCapExceeded(
+                f"{record.candidate.side.value} already has {LOADOUT_N} armed or active macros"
+            )
     if to_state is MacroState.RETIRED:
         if current is MacroState.RETIRED:
             raise ValueError("the macro is already retired")
@@ -363,8 +557,11 @@ def select_live(
     Drafts, editor-verified sheets, and installed-but-unarmed sheets are refused.
     The baseline is accepted by :func:`is_baseline_live_legal` for any lifecycle
     state, including a state other than ELIGIBLE. This is a legality gate.
-    The Madden ML Lead owns ranking.
+    The Madden ML Lead owns ranking. A side with more than ``LOADOUT_N``
+    armed or active custom macros is refused.
     """
+    for side in (MacroSide.OFF, MacroSide.DEF):
+        require_arm_cap(records, side)
     pool = [
         row.candidate
         for row in records
@@ -399,6 +596,7 @@ def _baselines(formations: Mapping[str, Mapping[str, Sequence[str]]]) -> list[De
                 macro_id = _digest("BASE", side, formation, play, ())
                 candidate = MacroCandidate(
                     macro_id=macro_id,
+                    design_record_id=design_record_id_for(macro_id),
                     version=DESIGN_VERSION,
                     side=side,
                     # Stored label only. is_baseline_live_legal does not read it.
@@ -436,7 +634,11 @@ def _offense(formations: Mapping[str, Sequence[str]]) -> list[DesignRecord]:
         row for row in usable_offense()
         if row.kind in (PrimitiveKind.HOT_ROUTE, PrimitiveKind.PROTECTION, PrimitiveKind.AUDIBLE)
     ]
-    composable = [row for row in primitives if row.kind is not PrimitiveKind.AUDIBLE]
+    by_id = {row.primitive_id: row for row in primitives}
+    legal_pairs = [
+        verdict for verdict in (*offense_pair_verdicts(), *sanctioned_offense_pairs())
+        if verdict.emit
+    ]
     records: list[DesignRecord] = []
     for formation, plays in formations.items():
         play_list = list(plays)
@@ -451,11 +653,17 @@ def _offense(formations: Mapping[str, Sequence[str]]) -> list[DesignRecord]:
                 if audible_to:
                     require_installed(formations, formation, audible_to)
                 records.append(_offense_record(formation, play, (primitive,), audible_to=audible_to))
-            for left, right in combinations(composable, 2):
-                reason = offense_conflict([lab_dict(left), lab_dict(right)])
-                if reason:
+            for verdict in legal_pairs:
+                left = by_id.get(verdict.left_id)
+                right = by_id.get(verdict.right_id)
+                if left is None or right is None:
                     continue
-                records.append(_offense_record(formation, play, (left, right)))
+                records.append(_offense_record(
+                    formation,
+                    play,
+                    (left, right),
+                    extra_situations=verdict.situational_tags,
+                ))
     return records
 
 
@@ -514,6 +722,7 @@ def _offense_record(
     primitives: tuple[RegisteredPrimitive, ...],
     *,
     audible_to: str | None = None,
+    extra_situations: tuple[str, ...] = (),
 ) -> DesignRecord:
     for primitive in primitives:
         require_primitive(primitive.primitive_id)
@@ -521,12 +730,16 @@ def _offense_record(
         _wire_offense(primitive, audible_to=audible_to if primitive.kind is PrimitiveKind.AUDIBLE else None)
         for primitive in primitives
     )
-    situations = tuple(dict.fromkeys(look for primitive in primitives for look in primitive.vs))
+    situations = tuple(dict.fromkeys(
+        (* (look for primitive in primitives for look in primitive.vs), *extra_situations)
+    ))
     confidences = [primitive.confidence for primitive in primitives]
     composed = len(primitives) > 1
     purpose = " ".join(_offense_why(primitive.primitive_id) for primitive in primitives).strip()
+    macro_id = _digest("ADJ", MacroSide.OFF, formation, play, [f"{item.name}={item.value}" for item in wire])
     candidate = MacroCandidate(
-        macro_id=_digest("ADJ", MacroSide.OFF, formation, play, [f"{item.name}={item.value}" for item in wire]),
+        macro_id=macro_id,
+        design_record_id=design_record_id_for(macro_id),
         version=DESIGN_VERSION,
         side=MacroSide.OFF,
         state=MacroState.DRAFT,
@@ -551,7 +764,7 @@ def _offense_record(
         else "This is one researched adjustment. It has no verified outcome until you confirm it in the editor."
     )
     return DesignRecord(
-        design_record_id=design_record_id_for(candidate.macro_id or ""),
+        design_record_id=candidate.design_record_id or "",
         candidate=candidate,
         downside=downside,
         uncertainty_note="Researched primitive only. The custom adjustment has not been editor-verified.",
@@ -575,8 +788,10 @@ def _defense_record(
     _assert_complete(sheet)
     wire = _prims_from_sheet(sheet)
     match = _formation_compatibility(source_formation, formation)
+    macro_id = _digest("ADJ", MacroSide.DEF, formation, play, [f"{item.name}={item.value}" for item in wire])
     candidate = MacroCandidate(
-        macro_id=_digest("ADJ", MacroSide.DEF, formation, play, [f"{item.name}={item.value}" for item in wire]),
+        macro_id=macro_id,
+        design_record_id=design_record_id_for(macro_id),
         version=DESIGN_VERSION,
         side=MacroSide.DEF,
         state=MacroState.DRAFT,
@@ -610,7 +825,7 @@ def _defense_record(
     if "No verified outcome" not in note:
         note = f"{note.rstrip('.')}. No verified outcome is on file."
     return DesignRecord(
-        design_record_id=design_record_id_for(candidate.macro_id or ""),
+        design_record_id=candidate.design_record_id or "",
         candidate=candidate,
         downside=downside,
         uncertainty_note=note.strip(),
@@ -775,6 +990,8 @@ def _is_pass(play: str) -> bool:
 
 
 def _offense_why(primitive_id: str) -> str:
+    if primitive_id == CHIP_AND_RELEASE_ID:
+        return CHIP_AND_RELEASE_WHY
     for row in rdb.offense_adjustments():
         if row.get("id") == primitive_id:
             return str(row.get("why") or "")
@@ -929,10 +1146,16 @@ __all__ = [
     "OFFENSE_FORMATIONS",
     "XBOX_DISCLAIMER",
     "CatalogComparison",
+    "ArmCapExceeded",
     "DesignRecord",
     "NotLiveSelectable",
+    "OffensePairVerdict",
+    "active_custom_macros",
     "design_record_id_for",
     "is_baseline_live_legal",
+    "offense_pair_verdicts",
+    "require_arm_cap",
+    "sanctioned_offense_pairs",
     "backup_database",
     "defense_value_conflict",
     "generate",

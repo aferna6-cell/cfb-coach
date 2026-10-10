@@ -49,6 +49,18 @@ _OFFENSE_KINDS = {
 
 _FIELD_KIND: dict[tuple[str, str], PrimitiveKind] = {}
 
+# Sourced from the 2026-10-10 pre-snap verification, not from research_db.
+# EA: "Any route can be assigned a chip."
+# 818 Madden: the HB hot-route menu includes Chip and Release.
+CHIP_AND_RELEASE_ID = "hot_hb_chip_and_release"
+CHIP_AND_RELEASE_SOURCES = (
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay",
+    "https://www.818madden.com/tools/position-adjustments",
+)
+CHIP_AND_RELEASE_WHY = (
+    "HB hot-route menu includes Chip and Release. Any route can be assigned a chip."
+)
+
 
 def _kind_for_field(section: str, setting: str) -> PrimitiveKind:
     if setting == "Coverage Shading":
@@ -151,7 +163,13 @@ def _index() -> dict[str, RegisteredPrimitive]:
         block_reason=(
             None
             if motion_confidence == "confirmed" and motion_sources
-            else "motion control confidence is conflict; the cited button sequences disagree"
+            else (
+                "motion stays off: no Xbox control is verified yet. "
+                "EA's official preplay page has no motion entry. "
+                "Realsport101, Civil.GG, and ClutchPoints conflict. "
+                "Best estimate is select the player, then left stick left/right, "
+                "medium confidence, pending a Practice-mode test."
+            )
         ),
         source_ids=motion_sources,
         confidence=str(motion_confidence) if motion_confidence else None,
@@ -192,6 +210,23 @@ def _index() -> dict[str, RegisteredPrimitive]:
             control=control,
             origin="offense_adjustments",
         )
+
+    # Meta Researcher 2026-10-10. Not a research_db row. Only the details
+    # the write-up sources: HB hot-route menu item, and EA's chip sentence.
+    out[CHIP_AND_RELEASE_ID] = RegisteredPrimitive(
+        primitive_id=CHIP_AND_RELEASE_ID,
+        side=MacroSide.OFF,
+        kind=PrimitiveKind.HOT_ROUTE,
+        label="HB Chip and Release",
+        usable=True,
+        source_ids=CHIP_AND_RELEASE_SOURCES,
+        confidence="verified-m27",
+        target="HB",
+        route="Chip and Release",
+        vs=(),
+        control="hot_route",
+        origin="writeup",
+    )
 
     for row in rdb.defense_adjustments():
         pid = str(row.get("id") or "")
@@ -264,7 +299,7 @@ def require_primitive(primitive_id: str) -> RegisteredPrimitive:
 def offense_primitives() -> list[RegisteredPrimitive]:
     return [
         row for row in registry().values()
-        if row.origin == "offense_adjustments"
+        if row.origin in ("offense_adjustments", "writeup")
     ]
 
 
@@ -332,6 +367,9 @@ def lab_dict(primitive: RegisteredPrimitive) -> dict[str, object]:
 
 
 __all__ = [
+    "CHIP_AND_RELEASE_ID",
+    "CHIP_AND_RELEASE_SOURCES",
+    "CHIP_AND_RELEASE_WHY",
     "PrimitiveKind",
     "RegisteredPrimitive",
     "canonical_field",

@@ -17,6 +17,7 @@ and checks that snap history and the active macro loadout are unchanged.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -39,7 +40,9 @@ from cfb_coach.madden.adjustments.synthesis import (
     generate_from_db,
     install_trimmed_book,
     installed_formations,
+    offense_pair_verdicts,
     rejected_offense_pairs,
+    sanctioned_offense_pairs,
     require_live,
     select_live,
     stage_drafts,
@@ -53,8 +56,17 @@ _EVIDENCE = (
 )
 
 
-def _fixture() -> tuple[tempfile.TemporaryDirectory[str], CoachDB]:
+def _fixture() -> tuple[tempfile.TemporaryDirectory[str], CoachDB, str | None]:
+    """Build a temp book. Research cache follows ``CFB_COACH_DB``, not ``HOME``.
+
+    ``research_db.load`` reads ``data_dir()``, which is the parent of
+    ``CFB_COACH_DB`` or else ``~/.cfb-coach`` (and that fallback creates the
+    directory). Pointing the env var at this fixture keeps the demo off
+    Aidan's real research cache.
+    """
     folder = tempfile.TemporaryDirectory(prefix="madden-demo-c-")
+    previous_db = os.environ.get("CFB_COACH_DB")
+    os.environ["CFB_COACH_DB"] = str(Path(folder.name) / "coach.db")
     path = Path(folder.name) / "madden27.db"
     db = CoachDB(path, seed=mdata.load_seed())
     install_trimmed_book(db)
@@ -72,7 +84,7 @@ def _fixture() -> tuple[tempfile.TemporaryDirectory[str], CoachDB]:
 
     store_selection(db, "gavin", {"offense": ["MAN", "C2"], "defense": ["TAMPA MABLE", "SKY CONTAIN"]})
     db.conn.commit()
-    return folder, db
+    return folder, db, previous_db
 
 
 def _snapshot(db: CoachDB) -> dict[str, Any]:
@@ -134,6 +146,11 @@ def cmd_generate(records: list[DesignRecord]) -> None:
     _print_record(offense)
     print("Defense draft:")
     _print_record(defense)
+    print("Offense pairs Meta Researcher marked legal:")
+    for verdict in (*offense_pair_verdicts(), *sanctioned_offense_pairs()):
+        if verdict.emit:
+            tags = ", ".join(verdict.situational_tags) or "(none)"
+            print(f"  {verdict.left_id} + {verdict.right_id}: {verdict.label} {verdict.confidence}; tag {tags}")
     print("Rejected offense combinations:")
     for left, right, reason in rejected_offense_pairs():
         print(f"  {left} + {right}: {reason}")
@@ -209,7 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Demo C custom-adjustment designer")
     parser.add_argument("command", choices=("generate", "refuse", "select", "all"))
     args = parser.parse_args(argv)
-    folder, db = _fixture()
+    folder, db, previous_db = _fixture()
     try:
         before = _snapshot(db)
         records = generate_from_db(db)
@@ -234,6 +251,10 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         db.close()
         folder.cleanup()
+        if previous_db is None:
+            os.environ.pop("CFB_COACH_DB", None)
+        else:
+            os.environ["CFB_COACH_DB"] = previous_db
 
 
 if __name__ == "__main__":
