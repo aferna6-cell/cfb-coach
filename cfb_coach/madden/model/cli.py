@@ -678,7 +678,10 @@ def cmd_ml_defense_design(args: argparse.Namespace) -> int:
             elif args.show:
                 result = defense.pending_design(db) or {"status": "no_staged_defense"}
             else:
-                result = defense.design_defense(max_formations=args.max_formations)
+                result = defense.design_defense(
+                    max_formations=args.max_formations,
+                    model=defense.load_model(db.get_meta(defense.MODEL_META) or None),
+                )
         except ValueError as exc:
             print(f"Defense design refused: {exc}", file=sys.stderr)
             return 2
