@@ -298,18 +298,28 @@ def composed_macro_report(db: Any, *, limit: int = 10) -> dict[str, Any]:
     formations = book.get("formations") or {}
     if not formations or not book.get("locked_ts"):
         raise ValueError("A confirmed installed offensive playbook is required")
-    drafts = compose_drafts(
+    composed = compose_drafts(
         formations, book.get("formation_sources") or {},
     )
+    # Some patched research catalogs offer only conflicting combinations
+    # (e.g. HB flat and Max Protect). Do not invent a compatible package.
+    # Still create ORIGINAL concept/coverage/formation-targeted one-action
+    # blueprints when no sourced compatible pair exists.
+    variants = propose_variants(db, limit=limit)["proposals"] if not composed else []
+    drafts = composed or variants
     return {
         "schema": "madden.offense.macro_composition.v2",
         "status": "DRAFT_ONLY",
         "total_candidates": len(drafts),
+        "two_action_compositions": len(composed),
+        "single_action_variants": len(variants),
         "proposals": drafts[:limit],
         "installed": False,
         "note": (
-            "Original researched two-action compositions; editor support and "
-            "action effects unverified. Do not activate before physical testing."
+            "Two-action packages require conflict-free researched primitives. "
+            "When those are unavailable, new contextual one-action macro "
+            "variants are proposed instead. All require Madden editor testing; "
+            "nothing here is armed or claimed effective."
         ),
     }
 
