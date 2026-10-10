@@ -57,12 +57,15 @@ def _bucket(down: Any, distance: Any, *, red_zone: bool = False, goal_line: bool
 
 def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Fit shrinkage stop rates, exclusively from verified defensive executions."""
-    from cfb_coach.madden.model.dataset import supervised_rows
+    from cfb_coach.madden.model.defense_intelligence import (
+        verified_human_rows, fit_opponent_offense,
+    )
     stats: dict[str, list[int]] = {}
     context: dict[str, list[int]] = {}
     plays: dict[str, list[int]] = {}
     n = 0
-    for row in supervised_rows(rows):
+    verified = [r for r in verified_human_rows(rows) if str(r.get("side") or "") == "defense"]
+    for row in verified:
         if str(row.get("side") or "").lower() != "defense":
             continue
         play = str(row.get("executed_play") or row.get("action_play") or "")
@@ -82,6 +85,8 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "supervised_defensive_snaps": n,
         "evidence_quality": "empirical" if n >= 40 else ("limited" if n >= 10 else "prior_driven"),
         "families": stats, "contexts": context, "plays": plays,
+        "opponent_tendencies": fit_opponent_offense(verified),
+        "verified_human_games": len({str(r["game_id"]) for r in verified}),
         "observational_only": True,
         "note": "Stop outcomes are observations, not proven counterfactual effects.",
     }
@@ -114,6 +119,7 @@ def _score(
     *,
     recent: Sequence[tuple[str, str]] = (),
     eligible: set[str] | None = None,
+    opponent_id: str = "",
 ) -> dict[str, Any]:
     family = call_family(play)
     ctx = mix_key(sit)
@@ -139,29 +145,31 @@ def _score(
     score -= 0.035 * sum(form == formation for form, _ in recent_four)
     if recent_four and call_family(recent_four[-1][1]) == family:
         score -= 0.04
-    # A previous snap is NOT a current offensive concept. Only use a current
-    # pre-snap live, explicitly observed concept (rare for defensive player).
-    concept = concept_family(getattr(sit, "concept_hint", None))
-    current = getattr(sit, "concept_source", None) == "live"
-    if current and concept in COUNTERS and family:
-        score += 0.25 * COUNTERS[concept].get(family, 0.0)
+    from cfb_coach.madden.model.defense_intelligence import score_defensive_knowledge
+    intel = score_defensive_knowledge(
+        family=family, sit=sit, opponent_id=opponent_id,
+        tendencies=(model or {}).get("opponent_tendencies"),
+    )
+    score += intel["delta"]
     return {
         "formation": formation, "play": play, "family": family or "unknown",
         "score": round(score, 6),
         "prior_share": baseline, "verified_family_n": n_family,
         "verified_context_n": n_ctx, "verified_play_n": n_play,
-        "current_offensive_concept_used": concept if current else None,
+        "current_offensive_concept_used": intel["live_concept"],
+        "football_intelligence": intel,
     }
 
 
 def rank_defense(
     sit: Situation, book: Mapping[str, Sequence[str]], model: Mapping[str, Any] | None = None,
-    *, recent: Sequence[tuple[str, str]] = (),
+    *, recent: Sequence[tuple[str, str]] = (), opponent_id: str = "",
 ) -> list[dict[str, Any]]:
     """Score the ENTIRE confirmed menu, not a small fixed set."""
     eligible = set(eligible_formations(sit, dict(book)))
     ranks = [
-        _score(form, play, sit, model, recent=recent, eligible=eligible)
+        _score(form, play, sit, model, recent=recent, eligible=eligible,
+               opponent_id=opponent_id)
         for form, plays in book.items() for play in plays
     ]
     ranks.sort(key=lambda r: (-r["score"], r["formation"], r["play"]))
@@ -279,7 +287,8 @@ def live_pick(
     from cfb_coach import ingame
     records = ingame.session_records(db, session_id, "defense") if db is not None and session_id else []
     recent = [(r.formation, r.play) for r in records[-20:]]
-    ranks = rank_defense(sit, book, model, recent=recent)
+    ranks = rank_defense(sit, book, model, recent=recent,
+                         opponent_id=opponent_id)
     if not ranks:
         raise ValueError("No recognizable legal defensive calls")
     chosen = _stable_choice(ranks, session_id, snap_seq)
@@ -287,6 +296,7 @@ def live_pick(
         raise TimeoutError("Defensive decision exceeded 150 ms budget")
     return {
         "selected": chosen, "top": ranks[:8],
+        "tendencies": (model or {}).get("opponent_tendencies") or {},
         "n_candidates": len(ranks),
         "model_quality": (model or {}).get("evidence_quality", "prior_driven"),
         "mode": "experimental", "model_primary": True,
