@@ -28,3 +28,18 @@ jobs:
         run: PYTHONPATH=. python -m pytest tests -p no:cacheprovider -q
       - name: Full suite (repeat)
         run: PYTHONPATH=. python -m pytest tests -p no:cacheprovider -q
+
+      - name: Elite VOD pipeline smoke test (synthetic, shadow only)
+        run: |
+          export FILM="$RUNNER_TEMP/elite-film" LEARN="$RUNNER_TEMP/elite-learning"
+          mkdir -p "$FILM/annotations"
+          python -m cfb_coach ml expert-film-import tests/fixtures/expert_film/pilot_match_a.json --expert-id fixture-elite-1 --match-id expert-pilot-a --store "$FILM" --permission-status fixture_synthetic --skip-decode
+          python -m cfb_coach ml expert-film-import tests/fixtures/expert_film/pilot_match_b.json --expert-id fixture-elite-2 --match-id expert-pilot-b --store "$FILM" --permission-status fixture_synthetic --skip-decode
+          cp tests/fixtures/expert_film/pilot_match_a.json "$FILM/annotations/expert-pilot-a.json"
+          cp tests/fixtures/expert_film/pilot_match_b.json "$FILM/annotations/expert-pilot-b.json"
+          python -m cfb_coach ml expert-export-evidence --store "$FILM" --learning-store "$LEARN"
+          python -m cfb_coach ml prepare-expert-dataset --learning-store "$LEARN" --out "$RUNNER_TEMP/expert-dataset.json"
+          python -m cfb_coach ml train-expert-policy --learning-store "$LEARN" --no-register
+          python -m cfb_coach ml expert-learning --summary --learning-store "$LEARN" --store "$FILM"
+          python -m cfb_coach ml learning-eval --learning-store "$LEARN" > "$RUNNER_TEMP/shadow-evaluation.json"
+          python -c 'import json,os; d=json.load(open(os.environ["RUNNER_TEMP"]+"/shadow-evaluation.json")); assert d["mode"]=="shadow" and d["gate"]["insufficient_data"] and not d["gate"]["real_expert_footage_verified"] and not d["live_influence"]; print("Synthetic elite VOD pipeline executed; promotion correctly blocked")'
