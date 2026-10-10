@@ -82,6 +82,7 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         n += 1
     return {
         "schema": SCHEMA, "type": "defense_stop_model",
+        "verification_policy": "strict_human_verified_execution.v1",
         "supervised_defensive_snaps": n,
         "evidence_quality": "empirical" if n >= 40 else ("limited" if n >= 10 else "prior_driven"),
         "families": stats, "contexts": context, "plays": plays,
@@ -104,7 +105,11 @@ def load_model(path: str | Path | None = None) -> dict[str, Any] | None:
     if not dest.is_file():
         return None
     raw = json.loads(dest.read_text(encoding="utf-8"))
-    return raw if raw.get("schema") == SCHEMA and raw.get("type") == "defense_stop_model" else None
+    return raw if (
+        raw.get("schema") == SCHEMA
+        and raw.get("type") == "defense_stop_model"
+        and raw.get("verification_policy") == "strict_human_verified_execution.v1"
+    ) else None
 
 
 def _rate(count: Sequence[int] | None) -> tuple[float, int]:
