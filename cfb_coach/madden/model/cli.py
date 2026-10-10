@@ -1046,6 +1046,18 @@ def cmd_ml_expert_film_import(args: argparse.Namespace) -> int:
     return 0 if report.get("ok") else 2
 
 
+def cmd_ml_expert_vod_catalog(args: argparse.Namespace) -> int:
+    """Register researched remote VOD candidates. Does not download media."""
+    from cfb_coach.madden.model.expert_film import catalog_remote_candidates
+
+    report = catalog_remote_candidates(
+        args.manifest,
+        store=_expert_film_store(args),
+    )
+    print(json.dumps(report, indent=2, default=str))
+    return 0 if report.get("ok") else 2
+
+
 def cmd_ml_expert_annotate(args: argparse.Namespace) -> int:
     """Apply one human-reviewed expert snap annotation from a JSON labels file."""
     from cfb_coach.madden.model.expert_film import annotate_expert_snap
@@ -1823,6 +1835,18 @@ def build_ml_subparser(sub: Any) -> None:
         choices=["user_authorized_local", "fixture_synthetic", "denied", "unknown"],
     )
     p_efi.set_defaults(func=cmd_ml_expert_film_import)
+
+    p_evc = ml_sub.add_parser(
+        "expert-vod-catalog",
+        help="Register researched remote expert VOD candidates without downloading",
+    )
+    p_evc.add_argument(
+        "--manifest",
+        default="research/elite_vods/candidate_manifest.json",
+        help="Path to elite VOD candidate manifest JSON",
+    )
+    p_evc.add_argument("--store", default=expert_store_default)
+    p_evc.set_defaults(func=cmd_ml_expert_vod_catalog)
 
     p_ea = ml_sub.add_parser(
         "expert-annotate",

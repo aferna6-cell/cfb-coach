@@ -526,3 +526,77 @@ def expert_film_summary(store: str | Path) -> dict[str, Any]:
             "invisible play names stay unknown."
         ),
     }
+
+
+def catalog_remote_candidates(
+    manifest_path: str | Path,
+    *,
+    store: str | Path | None = None,
+) -> dict[str, Any]:
+    """Register researched remote VOD candidates without downloading media.
+
+    Writes provenance stubs into the expert film store. Local media paths stay
+    empty until the user supplies an authorized recording.
+    """
+    path = Path(manifest_path)
+    payload = _read_json(path)
+    if not payload:
+        return {"ok": False, "error": "manifest_unreadable", "path": str(path)}
+    root = default_expert_store(store)
+    catalog_dir = root / "remote_candidates"
+    catalog_dir.mkdir(parents=True, exist_ok=True)
+    written = []
+    for row in payload.get("candidates") or []:
+        match_id = str(row.get("match_id") or "")
+        if not match_id:
+            continue
+        stub = {
+            "schema": EXPERT_MANIFEST_SCHEMA,
+            "source_catalog": str(path),
+            "match_id": match_id,
+            "rank": row.get("rank"),
+            "title": row.get("title"),
+            "expert_ids": list(row.get("players") or []),
+            "tournament": row.get("tournament"),
+            "date": row.get("date") or row.get("date_range"),
+            "game_version": row.get("madden_version") or "madden27",
+            "competitive_mode": row.get("competitive_mode") or "unknown",
+            "opponent_type": row.get("opponent_type") or "human",
+            "view_links": row.get("view_links") or {},
+            "permission_status": row.get("permission_status") or "unknown",
+            "download_authorized": bool(row.get("download_authorized")),
+            "training_authorized": bool(row.get("training_authorized")),
+            "local_recording_path": None,
+            "local_authorized_copy_available": False,
+            "raw_video_automatically_understood": False,
+            "estimated_usable_offensive_snaps": row.get("estimated_usable_offensive_snaps"),
+            "annotation_quality": row.get("annotation_quality"),
+            "recommended_first_match": bool(row.get("recommended_first_match")),
+            "rights_holder": "Electronic Arts Inc.",
+            "created_at": utc_now(),
+            "note": (
+                "Remote candidate only. Import an authorized local file before "
+                "annotation or training."
+            ),
+        }
+        out = catalog_dir / f"{match_id}.json"
+        _write_json(out, stub)
+        written.append({"match_id": match_id, "path": str(out), "rank": row.get("rank")})
+    index_path = root / "remote_candidate_index.json"
+    _write_json(index_path, {
+        "schema": "madden.expert.remote_candidates.v1",
+        "source_manifest": str(path),
+        "updated_at": utc_now(),
+        "candidates": written,
+        "downloaded": False,
+        "training_authorized": False,
+    })
+    return {
+        "ok": True,
+        "store": str(root),
+        "registered": len(written),
+        "candidates": written,
+        "downloaded": False,
+        "local_authorized_copy_available": False,
+        "permission_status": "unknown",
+    }
