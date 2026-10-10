@@ -8,6 +8,9 @@ does not replace that penalty with a fixed rotation.
 A research prior can move a plan by at most ``MAX_RESEARCH_INFLUENCE``.
 Football-knowledge and drive-strategy priors are smaller still, and they
 are applied here rather than inside the model-primary selection score.
+Expert/personal learning enters only through the capped ``expert_signal``
+path (shadow by default). The older ``vod_model`` late call swap is not
+invoked here, so VOD beaters cannot double-count or override joint scoring.
 Neither cap can overturn a play whose learned selection score is clearly
 higher. Near-ties inside ``INDIFFERENCE_BAND`` are explored with a stable
 hash seed. A promoted action model may add its own bounded shift only inside
@@ -580,12 +583,16 @@ def _football_intelligence(
         strategy_text = "; ".join(strategy.get("reasons") or []) or "no strategy prior"
         learning = row.get("learning") or {}
         learning_text = "; ".join(learning.get("reasons") or []) or "no opponent-learning prior"
+        expert = row.get("expert_learning") or {}
+        expert_text = "; ".join(expert.get("reasons") or []) or "no expert-learning prior"
         withheld = "; ".join(knowledge.get("withheld") or [])
         text = (
             f"selection {float(row.get('selection_score') or 0):.3f}, "
             f"knowledge {float(knowledge.get('delta') or 0):+.3f} ({knowledge_text}), "
             f"strategy {float(strategy.get('delta') or 0):+.3f} ({strategy_text}), "
-            f"learning {float(learning.get('delta') or 0):+.3f} ({learning_text})"
+            f"learning {float(learning.get('delta') or 0):+.3f} ({learning_text}), "
+            f"expert {float(expert.get('delta') or 0):+.3f} "
+            f"(shadow {float(expert.get('shadow_delta') or 0):+.3f}; {expert_text})"
         )
         if withheld:
             text += f"; withheld: {withheld}"
@@ -601,6 +608,8 @@ def _football_intelligence(
             "knowledge_delta": (chosen.get("knowledge") or {}).get("delta"),
             "strategy_delta": (chosen.get("strategy") or {}).get("delta"),
             "learning_delta": (chosen.get("learning") or {}).get("delta"),
+            "expert_delta": (chosen.get("expert_learning") or {}).get("delta"),
+            "expert_shadow_delta": (chosen.get("expert_learning") or {}).get("shadow_delta"),
             "why": _why(chosen),
         }
     others = [
@@ -620,6 +629,8 @@ def _football_intelligence(
             "knowledge_delta": (row.get("knowledge") or {}).get("delta"),
             "strategy_delta": (row.get("strategy") or {}).get("delta"),
             "learning_delta": (row.get("learning") or {}).get("delta"),
+            "expert_delta": (row.get("expert_learning") or {}).get("delta"),
+            "expert_shadow_delta": (row.get("expert_learning") or {}).get("shadow_delta"),
             "why_not": (
                 f"complete score {float(row.get('joint_score') or 0):.3f} trails "
                 f"{leader:.3f}. {_why(row)}"
@@ -633,6 +644,10 @@ def _football_intelligence(
         )
         if alternatives:
             summary += " " + alternatives[0]["why_not"]
+    expert_modes = {
+        str((row.get("expert_learning") or {}).get("mode") or "off")
+        for row in ([chosen] if chosen is not None else [])
+    }
     return {
         "use_knowledge": use_knowledge,
         "use_strategy": use_strategy,
@@ -644,6 +659,20 @@ def _football_intelligence(
             "usable_verified_snaps": (learned_model or {}).get("usable_verified_snaps", 0),
             "hypothesis": (learned_model or {}).get("strategy_hypothesis"),
             "changes": (learned_model or {}).get("changes") or [],
+        },
+        "expert_learning": {
+            "enabled": any(
+                (row.get("expert_learning") or {}).get("mode") not in (None, "off")
+                for row in (representatives or [])
+            ),
+            "modes": sorted(expert_modes),
+            "cap": (
+                (chosen or {}).get("expert_learning") or {}
+            ).get("cap"),
+            "live_influence": bool(
+                ((chosen or {}).get("expert_learning") or {}).get("live_influence")
+            ),
+            "vod_model_not_on_joint_path": True,
         },
         "learned_evidence_remains_primary": True,
         "winner": winner,
@@ -679,6 +708,7 @@ def choose_joint_action(
     use_diversity: bool = True,
     recent_calls: Sequence[Any] | None = None,
     use_opponent_learning: bool = True,
+    use_expert_learning: bool = True,
 ) -> dict[str, Any]:
     """Pick one legal (formation, play, plan) from the complete action space.
 
@@ -753,6 +783,14 @@ def choose_joint_action(
         knowledge = {"delta": 0.0, "reasons": ["knowledge off"], "withheld": []}
         strategy_adj = {"delta": 0.0, "reasons": ["strategy off"], "withheld": []}
         learning_adj = {"delta": 0.0, "reasons": ["opponent learning off"], "withheld": []}
+        expert_adj = {
+            "delta": 0.0,
+            "shadow_delta": 0.0,
+            "reasons": ["expert learning off"],
+            "withheld": [],
+            "mode": "off",
+            "live_influence": False,
+        }
         if use_knowledge:
             from cfb_coach.madden.model.concept_matchup import evaluate_concept_matchup
 
@@ -772,9 +810,17 @@ def choose_joint_action(
                 strategy_delta=float(strategy_adj.get("delta") or 0.0),
                 current_pressure_observed=current_pressure,
             )
+        if use_expert_learning:
+            from cfb_coach.madden.model.expert_signal import expert_learning_adjustment
+
+            expert_adj = expert_learning_adjustment(
+                play, sit, db=db, opponent_type=opponent_type,
+                book=book, formation=form,
+            )
         base += float(knowledge.get("delta") or 0.0)
         base += float(strategy_adj.get("delta") or 0.0)
         base += float(learning_adj.get("delta") or 0.0)
+        base += float(expert_adj.get("delta") or 0.0)
         plans = legal_plans_for_play(
             formation=form, play=play, sit=sit, book=book,
             active=list(active or []), prediction=row, repeated=repeated,
@@ -818,6 +864,7 @@ def choose_joint_action(
             "knowledge": knowledge,
             "strategy": strategy_adj,
             "learning": learning_adj,
+            "expert_learning": expert_adj,
             "selection_score": float(row.get("selection_score", row.get("probability", 0.0)) or 0.0),
         })
     from cfb_coach.madden.model.offense_diversity import concentration_stats
@@ -903,6 +950,19 @@ def choose_joint_action(
         learned_model=learned_model,
     )
     decision["football_intelligence"] = intelligence
+    chosen_rep = next(
+        (row for row in representatives if row["formation"] == best_key[0] and row["play"] == best_key[1]),
+        None,
+    )
+    decision["expert_learning"] = {
+        "mode": ((chosen_rep or {}).get("expert_learning") or {}).get("mode", "off"),
+        "live_influence": bool(((chosen_rep or {}).get("expert_learning") or {}).get("live_influence")),
+        "applied_delta": ((chosen_rep or {}).get("expert_learning") or {}).get("delta", 0.0),
+        "shadow_delta": ((chosen_rep or {}).get("expert_learning") or {}).get("shadow_delta", 0.0),
+        "cap": ((chosen_rep or {}).get("expert_learning") or {}).get("cap"),
+        "vod_prior_on_joint_path": False,
+        "model_primary_retained": True,
+    }
     joint = decision.get("joint") or {}
     football = dict(joint.get("football") or {})
     football["intelligence"] = {
