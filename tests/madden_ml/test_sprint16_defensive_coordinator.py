@@ -53,11 +53,10 @@ class DefensivePolicyTests(unittest.TestCase):
     def test_all_installed_calls_compete_not_fixed_six(self):
         book = CATALOG["49ers"]
         rows = defense.rank_defense(sit(down=3, distance=8), book)
-        n = sum(bool(defense.call_family(p)) for ps in book.values() for p in ps)
+        n = sum(len(ps) for ps in book.values())
         self.assertEqual(len(rows), n)
         self.assertEqual({(r["formation"], r["play"]) for r in rows},
-                         {(f, p) for f, ps in book.items() for p in ps
-                          if defense.call_family(p)})
+                         {(f, p) for f, ps in book.items() for p in ps})
 
     def test_current_live_concept_not_last_snap_tell(self):
         book = CATALOG["49ers"]
