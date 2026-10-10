@@ -287,3 +287,58 @@ def stage_variants(db: Any, *, limit: int = 6) -> dict[str, Any]:
     registry["macro_lab_staged_ts"] = datetime.now(timezone.utc).isoformat()
     db.set_meta(META_BLUEPRINTS, json.dumps(registry, sort_keys=True))
     return {**plan, "added": len(additions), "already_staged": len(current)}
+
+
+
+def composed_macro_report(db: Any, *, limit: int = 10) -> dict[str, Any]:
+    """Propose NEW sourced two-primitive offensive custom macro combinations."""
+    if not 1 <= limit <= 30:
+        raise ValueError("limit must be 1..30")
+    book = playbook.load_books(db).get("offense") or {}
+    formations = book.get("formations") or {}
+    if not formations or not book.get("locked_ts"):
+        raise ValueError("A confirmed installed offensive playbook is required")
+    composed = compose_drafts(
+        formations, book.get("formation_sources") or {},
+    )
+    # Some patched research catalogs offer only conflicting combinations
+    # (e.g. HB flat and Max Protect). Do not invent a compatible package.
+    # Still create ORIGINAL concept/coverage/formation-targeted one-action
+    # blueprints when no sourced compatible pair exists.
+    variants = propose_variants(db, limit=limit)["proposals"] if not composed else []
+    drafts = composed or variants
+    return {
+        "schema": "madden.offense.macro_composition.v2",
+        "status": "DRAFT_ONLY",
+        "total_candidates": len(drafts),
+        "two_action_compositions": len(composed),
+        "single_action_variants": len(variants),
+        "proposals": drafts[:limit],
+        "installed": False,
+        "note": (
+            "Two-action packages require conflict-free researched primitives. "
+            "When those are unavailable, new contextual one-action macro "
+            "variants are proposed instead. All require Madden editor testing; "
+            "nothing here is armed or claimed effective."
+        ),
+    }
+
+
+def stage_compositions(db: Any, *, limit: int = 10) -> dict[str, Any]:
+    """Save drafts without altering current loadout or verified approvals."""
+    report = composed_macro_report(db, limit=limit)
+    try:
+        state = json.loads(db.get_meta(META_BLUEPRINTS) or "{}")
+    except (TypeError, ValueError):
+        state = {}
+    existing = list(state.get("macro_blueprints") or [])
+    names = {m.get("name") for m in existing}
+    additions = [m for m in report["proposals"] if m["name"] not in names]
+    if additions:
+        state["macro_blueprints"] = existing + additions
+        state["macro_composition_schema"] = report["schema"]
+        db.set_meta(META_BLUEPRINTS, json.dumps(state, sort_keys=True))
+    return {
+        **report, "added": len(additions), "already_staged": len(existing),
+        "live_activation": False,
+    }

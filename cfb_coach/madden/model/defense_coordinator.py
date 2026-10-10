@@ -57,12 +57,15 @@ def _bucket(down: Any, distance: Any, *, red_zone: bool = False, goal_line: bool
 
 def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Fit shrinkage stop rates, exclusively from verified defensive executions."""
-    from cfb_coach.madden.model.dataset import supervised_rows
+    from cfb_coach.madden.model.defense_intelligence import (
+        verified_human_rows, fit_opponent_offense, fit_opponent_outcome_risks,
+    )
     stats: dict[str, list[int]] = {}
     context: dict[str, list[int]] = {}
     plays: dict[str, list[int]] = {}
     n = 0
-    for row in supervised_rows(rows):
+    verified = [r for r in verified_human_rows(rows) if str(r.get("side") or "") == "defense"]
+    for row in verified:
         if str(row.get("side") or "").lower() != "defense":
             continue
         play = str(row.get("executed_play") or row.get("action_play") or "")
@@ -79,9 +82,13 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         n += 1
     return {
         "schema": SCHEMA, "type": "defense_stop_model",
+        "verification_policy": "strict_human_verified_execution.v1",
         "supervised_defensive_snaps": n,
         "evidence_quality": "empirical" if n >= 40 else ("limited" if n >= 10 else "prior_driven"),
         "families": stats, "contexts": context, "plays": plays,
+        "opponent_tendencies": fit_opponent_offense(verified),
+        "opponent_outcome_risks": fit_opponent_outcome_risks(rows),
+        "verified_human_games": len({str(r["game_id"]) for r in verified}),
         "observational_only": True,
         "note": "Stop outcomes are observations, not proven counterfactual effects.",
     }
@@ -99,7 +106,11 @@ def load_model(path: str | Path | None = None) -> dict[str, Any] | None:
     if not dest.is_file():
         return None
     raw = json.loads(dest.read_text(encoding="utf-8"))
-    return raw if raw.get("schema") == SCHEMA and raw.get("type") == "defense_stop_model" else None
+    return raw if (
+        raw.get("schema") == SCHEMA
+        and raw.get("type") == "defense_stop_model"
+        and raw.get("verification_policy") == "strict_human_verified_execution.v1"
+    ) else None
 
 
 def _rate(count: Sequence[int] | None) -> tuple[float, int]:
@@ -114,6 +125,7 @@ def _score(
     *,
     recent: Sequence[tuple[str, str]] = (),
     eligible: set[str] | None = None,
+    opponent_id: str = "",
 ) -> dict[str, Any]:
     family = call_family(play)
     ctx = mix_key(sit)
@@ -139,29 +151,32 @@ def _score(
     score -= 0.035 * sum(form == formation for form, _ in recent_four)
     if recent_four and call_family(recent_four[-1][1]) == family:
         score -= 0.04
-    # A previous snap is NOT a current offensive concept. Only use a current
-    # pre-snap live, explicitly observed concept (rare for defensive player).
-    concept = concept_family(getattr(sit, "concept_hint", None))
-    current = getattr(sit, "concept_source", None) == "live"
-    if current and concept in COUNTERS and family:
-        score += 0.25 * COUNTERS[concept].get(family, 0.0)
+    from cfb_coach.madden.model.defense_intelligence import score_defensive_knowledge
+    intel = score_defensive_knowledge(
+        family=family, sit=sit, opponent_id=opponent_id,
+        tendencies=(model or {}).get("opponent_tendencies"),
+        risks=(model or {}).get("opponent_outcome_risks"),
+    )
+    score += intel["delta"]
     return {
         "formation": formation, "play": play, "family": family or "unknown",
         "score": round(score, 6),
         "prior_share": baseline, "verified_family_n": n_family,
         "verified_context_n": n_ctx, "verified_play_n": n_play,
-        "current_offensive_concept_used": concept if current else None,
+        "current_offensive_concept_used": intel["live_concept"],
+        "football_intelligence": intel,
     }
 
 
 def rank_defense(
     sit: Situation, book: Mapping[str, Sequence[str]], model: Mapping[str, Any] | None = None,
-    *, recent: Sequence[tuple[str, str]] = (),
+    *, recent: Sequence[tuple[str, str]] = (), opponent_id: str = "",
 ) -> list[dict[str, Any]]:
     """Score the ENTIRE confirmed menu, not a small fixed set."""
     eligible = set(eligible_formations(sit, dict(book)))
     ranks = [
-        _score(form, play, sit, model, recent=recent, eligible=eligible)
+        _score(form, play, sit, model, recent=recent, eligible=eligible,
+               opponent_id=opponent_id)
         for form, plays in book.items() for play in plays
     ]
     ranks.sort(key=lambda r: (-r["score"], r["formation"], r["play"]))
@@ -279,7 +294,8 @@ def live_pick(
     from cfb_coach import ingame
     records = ingame.session_records(db, session_id, "defense") if db is not None and session_id else []
     recent = [(r.formation, r.play) for r in records[-20:]]
-    ranks = rank_defense(sit, book, model, recent=recent)
+    ranks = rank_defense(sit, book, model, recent=recent,
+                         opponent_id=opponent_id)
     if not ranks:
         raise ValueError("No recognizable legal defensive calls")
     chosen = _stable_choice(ranks, session_id, snap_seq)
@@ -287,6 +303,7 @@ def live_pick(
         raise TimeoutError("Defensive decision exceeded 150 ms budget")
     return {
         "selected": chosen, "top": ranks[:8],
+        "tendencies": (model or {}).get("opponent_tendencies") or {},
         "n_candidates": len(ranks),
         "model_quality": (model or {}).get("evidence_quality", "prior_driven"),
         "mode": "experimental", "model_primary": True,
@@ -308,38 +325,67 @@ def maybe_apply_defense(
     if getattr(call, "macro", None) or getattr(call, "adjustment", None):
         return call
     try:
+        started = time.perf_counter()
         from cfb_coach.madden.playcaller import MaddenCall
         from cfb_coach.madden.data import user_job_for
-        from cfb_coach.madden.model.defense_macro_lab import compatible_verified_macros
         extras = getattr(sit, "extras", None) or {}
         session = str(extras.get("session_id") or "defense-pilot")
         seq = int(extras.get("snap_seq") or 0)
         ranked = live_pick(sit, db, opponent_id, book, session_id=session, snap_seq=seq)
-        winner = ranked["selected"]
+        from cfb_coach.madden.model.defense_action_policy import select_defensive_action
+        # Evaluate the whole playbook for calls and a bounded top set for
+        # executable changes, comparing every action with doing nothing.
+        options = []
+        for candidate in ranked["top"]:
+            plan = select_defensive_action(
+                sit, db, opponent_id,
+                candidate["formation"], candidate["play"],
+                tendencies=ranked.get("tendencies"),
+                allowed_macros=extras.get("live_macros", True) is not False,
+                installed_book=book,
+            )
+            options.append((candidate["score"] + plan["influence"], candidate, plan))
+        if not options:
+            return call
+        # Near-tie defense sampling stays available without forcing a rotation.
+        options.sort(key=lambda item: (-item[0], item[1]["formation"], item[1]["play"]))
+        best_total, winner, plan = options[0]
+        macro_name = plan["id"] if plan["kind"] == "macro" else None
         macro_info = None
-        macro_name = None
-        if extras.get("live_macros", True) is not False:
-            # Generated macros are callable only with explicit attestation,
-            # matching installed play and a genuinely observed live concept.
-            concept = concept_family(getattr(sit, "concept_hint", None))
-            if getattr(sit, "concept_source", None) == "live" and concept:
-                for macro in compatible_verified_macros(db, opponent_id, winner["formation"], winner["play"], concept):
-                    macro_name = macro["name"]
-                    macro_info = {
-                        "name": macro_name, "buttons": f"LB → {macro_name}",
-                        "key": " · ".join(f'{s["setting"]}: {s["value"]}' for s in macro["settings"] if s["value"] != "Default")[:135],
-                        "why": f"Verified custom defense macro vs currently observed {concept}",
-                    }
-                    break
-        rationale = (
+        if macro_name:
+            macro = plan["macro"]
+            macro_info = {
+                "name": macro_name, "buttons": f"LB → {macro_name}",
+                "key": " · ".join(
+                    f'{row["setting"]}: {row["value"]}'
+                    for row in macro["settings"] if row["value"] != "Default"
+                )[:135],
+                "why": plan["why"],
+            }
+        adjustment = None
+        if plan["kind"] == "adjustment":
+            adjustment = {
+                "id": plan["id"], "side": "defense", "kind": "adjustment",
+                "label": plan["label"], "buttons": plan["buttons"],
+                "why": plan["why"], "sources": plan.get("research_sources") or [],
+            }
+        if (time.perf_counter() - started) * 1000.0 > LATENCY_MS:
+            return call
+        intelligence = winner.get("football_intelligence") or {}
+        observation = intelligence.get("live_concept")
+        tendency_state = intelligence.get("opponent_tendency") or {}
+        note = (
             f"DEFENSE ML [{ranked['model_quality']}] {winner['family']} "
-            f"({ranked['n_candidates']} legal calls, {ranked['elapsed_ms']} ms); "
-            "context, formation fit, verified stop rates and recent exposure"
+            f"({ranked['n_candidates']} installed plays; action {plan['id']}; "
+            f"concept={observation or 'unknown'}; "
+            f"trend={tendency_state.get('family') if tendency_state.get('ready') else 'uncertain'}); "
+            f"knowledge={intelligence.get('principle') or 'unknown'}"
         )
         return MaddenCall(
             "defense", winner["formation"], winner["play"],
-            macro_name or "No adj", user_job_for(winner["play"]) or FAMILY_USER_JOB.get(winner["family"], "User hook"),
-            rationale, macro=macro_name, macro_info=macro_info,
+            macro_name or (adjustment["label"] if adjustment else "No adj"),
+            user_job_for(winner["play"]) or FAMILY_USER_JOB.get(winner["family"], "User hook"),
+            note, macro=macro_name, macro_info=macro_info, adjustment=adjustment,
         )
     except Exception:  # fail closed: legacy safe caller stays unchanged
         return call

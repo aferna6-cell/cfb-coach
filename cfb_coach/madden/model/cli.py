@@ -662,6 +662,71 @@ def cmd_ml_offense_macro_lab(args: argparse.Namespace) -> int:
 
 
 
+def cmd_ml_four_user_games(args: argparse.Namespace) -> int:
+    """Read local Madden history; fit isolated four-user-game shadow artifacts."""
+    from cfb_coach.madden.model import dataset
+    from cfb_coach.madden.model import user_game_learning as history
+    db = open_madden_db(read_only=True)
+    try:
+        rows = dataset.build_rows(db=db)
+        if args.train:
+            target = Path(
+                args.out or (Path(data_dir()) / "madden_ml_experimental" / "user_games_shadow")
+            )
+            report = history.train_shadow_models(
+                rows, out_dir=target, max_games=args.games,
+            )
+        else:
+            report = history.model_diagnostics(
+                history.select_recent_human_games(rows, max_games=args.games)
+            )
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+    finally:
+        db.close()
+
+
+def cmd_ml_macro_create(args: argparse.Namespace) -> int:
+    """One preview/stage entry point for independently generated O and D macro drafts."""
+    from cfb_coach.madden.model import offense_macro_lab
+    from cfb_coach.madden.model import defense_macro_lab
+    from cfb_coach.madden import playbook
+    db = open_madden_db(read_only=not args.stage)
+    try:
+        result: dict[str, Any] = {"status": "DRAFT_ONLY", "live_activated": False}
+        if args.side in ("offense", "both"):
+            try:
+                result["offense"] = (
+                    offense_macro_lab.stage_compositions(db, limit=args.limit)
+                    if args.stage else
+                    offense_macro_lab.composed_macro_report(db, limit=args.limit)
+                )
+            except ValueError as exc:
+                result["offense"] = {"error": str(exc), "staged": False}
+        if args.side in ("defense", "both"):
+            try:
+                if args.stage:
+                    result["defense"] = defense_macro_lab.stage_drafts(
+                        db, max_drafts=args.limit,
+                    )
+                else:
+                    book = (playbook.load_books(db).get("defense") or {}).get("formations") or {}
+                    result["defense"] = {
+                        "drafts": defense_macro_lab.compose_defensive_macros(
+                            book, max_drafts=args.limit
+                        ), "staged": False,
+                    }
+            except ValueError as exc:
+                result["defense"] = {"error": str(exc), "staged": False}
+        print(json.dumps(result, indent=2, default=str))
+        return 2 if any(
+            isinstance(result.get(side), dict) and "error" in result[side]
+            for side in ("offense", "defense")
+        ) else 0
+    finally:
+        db.close()
+
+
 def cmd_ml_defense_design(args: argparse.Namespace) -> int:
     """Preview, stage or confirm a source-book constrained defensive portfolio."""
     from cfb_coach.madden.model import defense_coordinator as defense
@@ -1758,6 +1823,18 @@ def build_ml_subparser(sub: Any) -> None:
                        help="Append drafts to the blueprint registry. Does not verify or arm them.")
     p_lab.add_argument("--limit", type=int, default=6)
     p_lab.set_defaults(func=cmd_ml_offense_macro_lab)
+
+    p_four = ml_sub.add_parser("four-user-games", help="Audit/train SHADOW models from latest four locally logged human Madden games")
+    p_four.add_argument("--games", type=int, default=4)
+    p_four.add_argument("--train", action="store_true", help="Write isolated offline shadow artifacts (does not activate)")
+    p_four.add_argument("--out", default=None)
+    p_four.set_defaults(func=cmd_ml_four_user_games)
+
+    p_create = ml_sub.add_parser("macro-create", help="Generate original offense/defense macro compositions (draft only)")
+    p_create.add_argument("--side", choices=("offense", "defense", "both"), default="both")
+    p_create.add_argument("--limit", type=int, default=10)
+    p_create.add_argument("--stage", action="store_true", help="Persist proposals; NEVER arm macros")
+    p_create.set_defaults(func=cmd_ml_macro_create)
 
     p_dd = ml_sub.add_parser("defense-design", help="Propose/stage/confirm whole defensive formations")
     p_dd.add_argument("--max-formations", type=int, default=15)
