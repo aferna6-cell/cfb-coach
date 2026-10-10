@@ -77,6 +77,9 @@ class DefensivePolicyTests(unittest.TestCase):
         good = {
             "supervised_eligible": True, "side": "defense",
             "executed_play": "Cover 3 Sky", "success": "true",
+            "executed_verification": "verified", "executed_status": "identified",
+            "label_available": True, "opponent_type": "human",
+            "opponent_id": "gavin", "game_id": "user-match-1",
         }
         fake = dict(good, supervised_eligible=False, eligibility="unverified", success="false")
         m = defense.train_defense([good, fake])
