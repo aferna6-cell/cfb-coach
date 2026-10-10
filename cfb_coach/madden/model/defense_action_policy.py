@@ -93,11 +93,13 @@ def select_defensive_action(
     formation: str, play: str, *,
     tendencies: Mapping[str, Any] | None = None,
     allowed_macros: bool = True,
+    installed_book: Mapping[str, Sequence[str]] | None = None,
 ) -> dict[str, Any]:
     """Select one legal action (or none) for a chosen installed play."""
     from cfb_coach.madden.model.defense_macro_lab import compatible_verified_macros
     from cfb_coach.madden import playbook
-    installed = (playbook.load_books(db).get("defense") or {}).get("formations") or {}
+    installed = (installed_book if installed_book is not None else
+                 (playbook.load_books(db).get("defense") or {}).get("formations") or {})
     if play not in installed.get(formation, []):
         return {"kind": "none", "id": "NO_ADJUSTMENT",
                 "why": "chosen call is not in confirmed installed book",
