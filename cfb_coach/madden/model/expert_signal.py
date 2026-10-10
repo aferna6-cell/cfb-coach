@@ -88,7 +88,20 @@ def evaluation_gates_passed(evaluation: Mapping[str, Any] | None) -> tuple[bool,
         failures.append("expert_holdout_required")
     if evaluation.get("insufficient_data"):
         failures.append("insufficient_data")
-    # Require non-degradation vs baseline when enough data exists.
+    # An expert-action imitation score is NOT the baseline coordinator's win
+    # probability. Never promote on placeholders or synthetic fixture evidence.
+    for required, reason in (
+        ("coordinator_baseline_measured", "coordinator_baseline_required"),
+        ("personalized_outcome_eval_measured", "held_out_personal_outcome_eval_required"),
+        ("real_expert_footage_verified", "real_reviewed_expert_footage_required"),
+    ):
+        if evaluation.get(required) is not True:
+            failures.append(reason)
+    if evaluation.get("expert_minus_baseline") is None:
+        failures.append("missing_expert_vs_coordinator_delta")
+    if evaluation.get("personalized_minus_expert") is None:
+        failures.append("missing_personalized_vs_expert_delta")
+    # Require non-degradation vs a REAL measured baseline when enough data exists.
     delta = evaluation.get("personalized_minus_expert")
     if delta is not None:
         try:
