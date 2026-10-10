@@ -38,6 +38,7 @@ from cfb_coach.madden.adjustments.synthesis import (
     XBOX_DISCLAIMER,
     generate_from_db,
     install_trimmed_book,
+    installed_formations,
     rejected_offense_pairs,
     require_live,
     select_live,
@@ -104,6 +105,7 @@ def _samples(records: list[DesignRecord]) -> tuple[DesignRecord, DesignRecord]:
 def _print_record(row: DesignRecord) -> None:
     cand = row.candidate
     print(f"  {cand.macro_id} version {cand.version} state {cand.state.value}")
+    print(f"  design_record_id: {row.design_record_id}")
     print(f"  play: {cand.play} ({cand.formation})")
     print(f"  purpose: {cand.tactical_purpose}")
     print(f"  situations: {', '.join(cand.situations) or '(none)'}")
@@ -160,7 +162,7 @@ def cmd_refuse(records: list[DesignRecord]) -> None:
     raise SystemExit("unverified draft was selectable")
 
 
-def cmd_select(records: list[DesignRecord]) -> MacroCandidate:
+def cmd_select(records: list[DesignRecord], installed: dict[str, dict[str, list[str]]]) -> MacroCandidate:
     draft = next(
         row for row in records
         if row.candidate.side.value == "def"
@@ -183,7 +185,9 @@ def cmd_select(records: list[DesignRecord]) -> MacroCandidate:
         armed if row.candidate.macro_id == armed.candidate.macro_id else row
         for row in records
     ]
-    chosen = select_live(updated, formation="Dime 3-2 Odd", play="DB Fire 2")
+    chosen = select_live(
+        updated, formation="Dime 3-2 Odd", play="DB Fire 2", installed=installed,
+    )
     print(
         f"Demo C select  {chosen.macro_id} version {chosen.version} "
         f"state {chosen.state.value}  {chosen.play} ({chosen.formation})"
@@ -191,7 +195,9 @@ def cmd_select(records: list[DesignRecord]) -> MacroCandidate:
     print(f"live_selectable: {is_live_selectable(chosen.state)}")
     print(f"evidence steps: {len(armed.confirmation_evidence)}")
     print(XBOX_DISCLAIMER)
-    other = select_live(records, formation="Pistol Trips", play="HB Dive")
+    other = select_live(
+        records, formation="Pistol Trips", play="HB Dive", installed=installed,
+    )
     print(
         f"unarmed play falls back to baseline {other.macro_id} "
         f"is_no_adjustment={other.is_no_adjustment}"
@@ -207,12 +213,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         before = _snapshot(db)
         records = generate_from_db(db)
+        installed = installed_formations(db)
         if args.command in ("generate", "all"):
             cmd_generate(records)
         if args.command in ("refuse", "all"):
             cmd_refuse(records)
         if args.command in ("select", "all"):
-            cmd_select(records)
+            cmd_select(records, installed)
         if args.command == "all":
             staged = stage_drafts(db, backup=True)
             after = _snapshot(db)

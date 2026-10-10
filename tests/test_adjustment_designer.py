@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import ast
+import inspect
 import json
-from dataclasses import fields
+import textwrap
+from dataclasses import fields, replace
+from pathlib import Path
 
 from cfb_coach.madden import research_db as rdb
 from cfb_coach.madden.adjustments import defense_adjustment, offense_adjustment
@@ -13,6 +17,8 @@ from cfb_coach.madden.adjustments.candidates import (
     MacroState,
     candidate_from_json,
     candidate_to_json,
+    contract_has_design_record_id,
+    design_record_id_from_json,
     is_live_selectable,
 )
 from cfb_coach.madden.adjustments.primitives import require_primitive, unverified
@@ -20,6 +26,7 @@ from cfb_coach.madden.model.schema import defensive_editor_field_names
 from cfb_coach.madden.adjustments.synthesis import (
     NotLiveSelectable,
     backup_database,
+    is_baseline_live_legal,
     defense_value_conflict,
     generate,
     generate_from_db,
@@ -148,10 +155,13 @@ class TestDesigner(_Isolated):
         with self.assertRaises(ValueError):
             transition(draft, MacroState.EDITOR_VERIFIED, "  ")
         baseline = select_live(
-            self.records, formation=draft.candidate.formation, play=draft.candidate.play,
+            self.records,
+            formation=draft.candidate.formation,
+            play=draft.candidate.play,
+            installed=self.formations,
         )
         self.assertTrue(baseline.is_no_adjustment)
-        self.assertTrue(is_live_selectable(baseline.state))
+        self.assertTrue(is_baseline_live_legal(baseline, self.formations))
         self.assertEqual(baseline.joint.action_count, 0)
         self.assertEqual(baseline.conflicts, ())
         armed = draft
@@ -169,14 +179,67 @@ class TestDesigner(_Isolated):
             armed if row.candidate.macro_id == armed.candidate.macro_id else row
             for row in self.records
         ]
-        chosen = select_live(updated, formation=draft.candidate.formation, play=draft.candidate.play)
+        chosen = select_live(
+            updated,
+            formation=draft.candidate.formation,
+            play=draft.candidate.play,
+            installed=self.formations,
+        )
         self.assertEqual(chosen.macro_id, armed.candidate.macro_id)
         retired = transition(armed, MacroState.RETIRED, "FIXTURE: retire this sheet")
         self.assertFalse(is_live_selectable(retired.candidate.state))
 
+    def test_baseline_is_live_legal_without_lifecycle(self) -> None:
+        row = next(item for item in self.records if item.candidate.is_no_adjustment)
+        tree = ast.parse(textwrap.dedent(inspect.getsource(is_baseline_live_legal)))
+        function = tree.body[0]
+        if (
+            function.body
+            and isinstance(function.body[0], ast.Expr)
+            and isinstance(function.body[0].value, ast.Constant)
+        ):
+            function.body = function.body[1:]
+        source = ast.unparse(function)
+        self.assertNotIn("is_live_selectable", source)
+        self.assertNotIn("state", source)
+        self.assertIn("is_no_adjustment", source)
+        for state in (
+            MacroState.DRAFT,
+            MacroState.EDITOR_VERIFIED,
+            MacroState.INSTALLED,
+            MacroState.RETIRED,
+            MacroState.UNKNOWN,
+        ):
+            shifted = replace(row.candidate, state=state)
+            self.assertNotEqual(state, MacroState.ELIGIBLE)
+            self.assertFalse(is_live_selectable(shifted.state))
+            self.assertTrue(is_baseline_live_legal(shifted, self.formations))
+            require_live(shifted, installed=self.formations)
+            chosen = select_live(
+                [replace(row, candidate=shifted)],
+                formation=shifted.formation,
+                play=shifted.play,
+                installed=self.formations,
+            )
+            self.assertEqual(chosen.state, state)
+            self.assertTrue(chosen.is_no_adjustment)
+            self.assertEqual(chosen.macro_id, row.candidate.macro_id)
+        foreign = replace(
+            row.candidate,
+            formation="Gun Bunch",
+            play="Mesh",
+            state=MacroState.ELIGIBLE,
+        )
+        self.assertFalse(is_baseline_live_legal(foreign, self.formations))
+        with self.assertRaises(NotLiveSelectable):
+            require_live(foreign, installed=self.formations)
+        with self.assertRaises(ValueError):
+            transition(row, MacroState.EDITOR_VERIFIED, "FIXTURE: baselines do not transition")
+
     def test_json_adapter_uses_null_for_unknown(self) -> None:
-        cand = next(row.candidate for row in self.records if row.candidate.is_no_adjustment)
-        payload = candidate_to_json(cand)
+        record = next(row for row in self.records if row.candidate.is_no_adjustment)
+        cand = record.candidate
+        payload = candidate_to_json(cand, design_record_id=record.design_record_id)
         self.assertEqual(payload["__schema__"], WIRE_VERSION)
         self.assertEqual(payload["__type__"], "MacroCandidate")
         raw = json.dumps(payload)
@@ -185,13 +248,48 @@ class TestDesigner(_Isolated):
         self.assertIsNone(payload["joint"]["empirical_results"])
         self.assertIsNone(payload["joint"]["uncertainty"])
         self.assertIsNone(payload["joint"]["situation"])
+        self.assertFalse(contract_has_design_record_id())
+        self.assertFalse(any(item.name == "design_record_id" for item in fields(MacroCandidate)))
+        self.assertEqual(payload["design_record_id"], record.design_record_id)
+        self.assertEqual(design_record_id_from_json(payload), record.design_record_id)
+        self.assertNotIn("downside", payload)
+        self.assertNotIn("catalog_comparison", payload)
+        self.assertNotIn("install_instructions", payload)
+        self.assertNotIn("uncertainty_note", payload)
         restored = candidate_from_json(json.loads(raw))
         self.assertEqual(restored, cand)
-        defense = next(
-            row.candidate for row in self.records
+        self.assertFalse(hasattr(restored, "design_record_id"))
+        defense_row = next(
+            row for row in self.records
             if row.candidate.side.value == "def" and not row.candidate.is_no_adjustment
         )
-        self.assertEqual(candidate_from_json(candidate_to_json(defense)), defense)
+        defense_payload = candidate_to_json(
+            defense_row.candidate, design_record_id=defense_row.design_record_id,
+        )
+        self.assertEqual(defense_payload["design_record_id"], defense_row.design_record_id)
+        self.assertNotIn("downside", defense_payload)
+        self.assertNotIn("install_instructions", defense_payload)
+        self.assertEqual(
+            candidate_from_json(defense_payload),
+            defense_row.candidate,
+        )
+
+    def test_offense_pair_notes_list_every_evaluated_conflict(self) -> None:
+        path = Path("cfb_coach/data/madden27/notes/offense_primitive_pair_conflicts.md")
+        text = path.read_text(encoding="utf-8")
+        sections = text.split("\n## ")[1:]
+        pair_sections = [section for section in sections if not section.startswith("Not paired")]
+        pairs = rejected_offense_pairs()
+        self.assertEqual(len(pair_sections), len(pairs))
+        self.assertGreaterEqual(len(pairs), 1)
+        for (left, right, reason), section in zip(pairs, pair_sections):
+            self.assertTrue(section.startswith(f"{left} + {right}"))
+            self.assertIn(reason, section)
+            self.assertIn("INFERRED — not sourced", section)
+            self.assertIn(left, section)
+            self.assertIn(right, section)
+        self.assertIn("## Not paired", text)
+        self.assertIn("control:offense:motion", text)
 
     def test_existing_fallbacks_still_work(self) -> None:
         kw = dict(

@@ -13,7 +13,9 @@ stay ``Default``.
 
 Every generated adjustment starts at DRAFT. Moving it requires user-confirmation
 evidence at each step. Nothing here creates a macro on Xbox. The no-adjustment
-baseline is the unmodified installed play and is always in the set.
+baseline is the unmodified installed play and is always in the set. Its live
+legality is ``is_baseline_live_legal``: ``is_no_adjustment`` on a legal installed
+play, with no read of lifecycle state and no call to ``is_live_selectable``.
 """
 
 from __future__ import annotations
@@ -98,6 +100,14 @@ class CatalogComparison:
 
 @dataclass(frozen=True)
 class DesignRecord:
+    """Designer-owned record. Only ``candidate`` is the wire object.
+
+    ``design_record_id`` is copied onto the JSON object by the shim. It is not
+    a ``MacroCandidate`` field until the Lead adds it to the contract.
+    Downside, catalog comparison, and install steps stay here.
+    """
+
+    design_record_id: str
     candidate: MacroCandidate
     downside: str | None
     uncertainty_note: str | None
@@ -238,7 +248,10 @@ def stage_drafts(db: Any, *, backup: bool = True) -> dict[str, Any]:
     payload = {
         "__schema__": WIRE_VERSION,
         "xbox_created": False,
-        "candidates": [candidate_to_json(row.candidate) for row in records],
+        "candidates": [
+            candidate_to_json(row.candidate, design_record_id=row.design_record_id)
+            for row in records
+        ],
     }
     db.set_meta(DRAFT_META_KEY, json.dumps(payload))
     return {"stored": len(records), "meta_key": DRAFT_META_KEY, "xbox_created": False}
@@ -280,7 +293,56 @@ def transition(record: DesignRecord, to_state: MacroState, evidence: str) -> Des
     )
 
 
-def require_live(candidate: MacroCandidate) -> None:
+def is_baseline_live_legal(
+    candidate: MacroCandidate,
+    installed: Mapping[str, Mapping[str, Sequence[str]]],
+) -> bool:
+    """True when this is the unmodified play in the installed book.
+
+    ``is_no_adjustment=True`` on a legal installed play is always live-legal.
+    This function does not call ``is_live_selectable`` and does not read
+    ``candidate.state``. DRAFT, RETIRED, UNKNOWN, and ELIGIBLE are the same
+    result. The baseline must not go through the custom-adjustment lifecycle.
+    """
+    if candidate.is_no_adjustment is not True:
+        return False
+    if candidate.conflicts or candidate.editor_fields or candidate.adjustment_primitives:
+        return False
+    if candidate.side is MacroSide.OFF:
+        book_side = "offense"
+    elif candidate.side is MacroSide.DEF:
+        book_side = "defense"
+    else:
+        return False
+    formation = candidate.formation
+    play = candidate.play
+    if not formation or not play:
+        return False
+    plays = (installed.get(book_side) or {}).get(formation)
+    return plays is not None and play in list(plays)
+
+
+def require_live(
+    candidate: MacroCandidate,
+    *,
+    installed: Mapping[str, Mapping[str, Sequence[str]]] | None = None,
+) -> None:
+    """Refuse a custom adjustment that is not armed-or-later.
+
+    A no-adjustment baseline does not use that rule. It is live-legal only
+    through :func:`is_baseline_live_legal`.
+    """
+    if candidate.is_no_adjustment:
+        if installed is not None and is_baseline_live_legal(candidate, installed):
+            return
+        if installed is None:
+            raise NotLiveSelectable(
+                f"{candidate.macro_id} is a no-adjustment baseline; "
+                "live legality needs the installed book and does not use lifecycle state"
+            )
+        raise NotLiveSelectable(
+            f"{candidate.macro_id} is not a legal no-adjustment play in the installed book"
+        )
     if candidate.conflicts:
         raise NotLiveSelectable(f"{candidate.macro_id} has conflicting adjustments")
     if not is_live_selectable(candidate.state):
@@ -294,11 +356,14 @@ def select_live(
     *,
     formation: str,
     play: str,
+    installed: Mapping[str, Mapping[str, Sequence[str]]],
 ) -> MacroCandidate:
     """Return an armed-or-later macro for this play, or the no-adjustment baseline.
 
     Drafts, editor-verified sheets, and installed-but-unarmed sheets are refused.
-    This is a legality gate. The Madden ML Lead owns ranking.
+    The baseline is accepted by :func:`is_baseline_live_legal` for any lifecycle
+    state, including a state other than ELIGIBLE. This is a legality gate.
+    The Madden ML Lead owns ranking.
     """
     pool = [
         row.candidate
@@ -309,7 +374,7 @@ def select_live(
         raise ValueError(f"{formation!r} / {play!r} is not in this candidate set")
     armed = [
         row for row in pool
-        if not row.is_no_adjustment and not row.conflicts and is_live_selectable(row.state)
+        if row.is_no_adjustment is False and not row.conflicts and is_live_selectable(row.state)
     ]
     if armed:
         order = {MacroState.EVALUATED: 0, MacroState.ELIGIBLE: 1, MacroState.ARMED: 2}
@@ -319,10 +384,7 @@ def select_live(
             row.macro_id,
         ))
         return armed[0]
-    baselines = [
-        row for row in pool
-        if row.is_no_adjustment and not row.conflicts and is_live_selectable(row.state)
-    ]
+    baselines = [row for row in pool if is_baseline_live_legal(row, installed)]
     if baselines:
         return baselines[0]
     raise NotLiveSelectable(f"no live-selectable candidate for {formation} / {play}")
@@ -334,10 +396,12 @@ def _baselines(formations: Mapping[str, Mapping[str, Sequence[str]]]) -> list[De
         for formation, plays in (formations.get(side_name) or {}).items():
             for play in plays:
                 require_installed(formations[side_name], formation, play)
+                macro_id = _digest("BASE", side, formation, play, ())
                 candidate = MacroCandidate(
-                    macro_id=_digest("BASE", side, formation, play, ()),
+                    macro_id=macro_id,
                     version=DESIGN_VERSION,
                     side=side,
+                    # Stored label only. is_baseline_live_legal does not read it.
                     state=MacroState.ELIGIBLE,
                     formation=formation,
                     play=play,
@@ -357,6 +421,7 @@ def _baselines(formations: Mapping[str, Mapping[str, Sequence[str]]]) -> list[De
                     is_no_adjustment=True,
                 )
                 records.append(DesignRecord(
+                    design_record_id=design_record_id_for(macro_id),
                     candidate=candidate,
                     downside="Calling the play unchanged leaves the researched adjustment unused.",
                     uncertainty_note="No adjustment is added, so there is no macro outcome to verify.",
@@ -486,6 +551,7 @@ def _offense_record(
         else "This is one researched adjustment. It has no verified outcome until you confirm it in the editor."
     )
     return DesignRecord(
+        design_record_id=design_record_id_for(candidate.macro_id or ""),
         candidate=candidate,
         downside=downside,
         uncertainty_note="Researched primitive only. The custom adjustment has not been editor-verified.",
@@ -544,6 +610,7 @@ def _defense_record(
     if "No verified outcome" not in note:
         note = f"{note.rstrip('.')}. No verified outcome is on file."
     return DesignRecord(
+        design_record_id=design_record_id_for(candidate.macro_id or ""),
         candidate=candidate,
         downside=downside,
         uncertainty_note=note.strip(),
@@ -628,6 +695,13 @@ def _wire_offense(primitive: RegisteredPrimitive, *, audible_to: str | None) -> 
     )
 
 
+def design_record_id_for(macro_id: str) -> str:
+    """Stable link from a wire object to its DesignRecord. Not a contract field."""
+    if not macro_id:
+        raise ValueError("a design record needs a macro id to link")
+    return f"DSN-{macro_id}"
+
+
 def _joint(
     *,
     compatibility: float | None,
@@ -635,7 +709,11 @@ def _joint(
     reliability: float | None,
     uncertainty: float | None,
 ) -> MacroJointFeatures:
-    """Ranking inputs. ``situation`` stays unknown: its scale is not defined yet."""
+    """Ranking inputs.
+
+    ``situation`` stays null. The Lead will define it later as a situation
+    fit on [0, 1] and version that change. This designer does not invent the scale.
+    """
     return MacroJointFeatures(
         compatibility=compatibility,
         situation=None,
@@ -853,6 +931,8 @@ __all__ = [
     "CatalogComparison",
     "DesignRecord",
     "NotLiveSelectable",
+    "design_record_id_for",
+    "is_baseline_live_legal",
     "backup_database",
     "defense_value_conflict",
     "generate",
