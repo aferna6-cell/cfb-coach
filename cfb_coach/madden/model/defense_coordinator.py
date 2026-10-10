@@ -117,7 +117,11 @@ def _score(
 ) -> dict[str, Any]:
     family = call_family(play)
     ctx = mix_key(sit)
-    baseline = MIX[ctx].get(family or "", 0.025)
+    from cfb_coach.game_score import shift_defense_mix
+    # Score/clock-aware mix adjusts risk, while the defensive trained model
+    # still provides the primary empirical stop-rate evidence.
+    mix = shift_defense_mix(dict(MIX[ctx]), sit)
+    baseline = mix.get(family or "", 0.025)
     learned, n_family = _rate((model or {}).get("families", {}).get(family or ""))
     specific, n_ctx = _rate((model or {}).get("contexts", {}).get(ctx + "|" + str(family)))
     play_rate, n_play = _rate((model or {}).get("plays", {}).get(play))
@@ -195,14 +199,27 @@ def design_defense(*, max_formations: int = MAX_FORMATIONS,
                 continue
             # Estimate coverage across short / normal / passing situations.
             # Call source and legality are checked again on confirmation.
-            score = sum(
-                max(MIX[context].get(f, 0.0) for f in families) * weight
-                for context, weight in (
-                    ("early", 1.0), ("short", 0.7), ("long", 1.0),
-                    ("red_zone", 0.65), ("goal_line", 0.55),
-                    ("two_minute", 0.65),
+            score = 0.0
+            for context, weight in (
+                ("early", 1.0), ("short", 0.7), ("long", 1.0),
+                ("red_zone", 0.65), ("goal_line", 0.55),
+                ("two_minute", 0.65),
+            ):
+                best_family = max(
+                    families,
+                    key=lambda f: (
+                        MIX[context].get(f, 0.0) +
+                        0.50 * (_rate((model or {}).get("contexts", {}).get(context + "|" + f))[0] - 0.5)
+                    ),
                 )
-            )
+                evidence, n = _rate(
+                    (model or {}).get("contexts", {}).get(context + "|" + best_family)
+                )
+                weight_conf = n / (n + PRIOR_STRENGTH)
+                score += weight * (
+                    MIX[context].get(best_family, 0.0)
+                    + 0.30 * weight_conf * (evidence - 0.5)
+                )
             candidates.append({
                 "formation": formation, "source_book": source,
                 "plays": calls, "families": sorted(families), "base_score": round(score, 5),
@@ -234,6 +251,7 @@ def design_defense(*, max_formations: int = MAX_FORMATIONS,
         "n_formations": len(forms), "n_plays": sum(map(len, forms.values())),
         "family_coverage": covered,
         "choices": [{k:v for k,v in r.items() if k != "plays"} for r in chosen],
+        "model_evidence_quality": (model or {}).get("evidence_quality", "prior_driven"),
         "requires_physical_editor_installation": True,
         "note": "No installed defensive book was modified. Verify all source-book plays in Madden.",
     }
@@ -333,7 +351,8 @@ def _identity(value: Mapping[str, Any]) -> str:
 
 
 def stage_design(db: Any, *, max_formations: int = MAX_FORMATIONS) -> dict[str, Any]:
-    proposal = design_defense(max_formations=max_formations)
+    artifact = load_model(db.get_meta(MODEL_META) or None)
+    proposal = design_defense(max_formations=max_formations, model=artifact)
     applied = playbook.load_books(db).get("defense") or {}
     proposal["expected_applied_hash"] = _identity(applied)
     proposal["expected_applied_revision"] = int(applied.get("rev") or 0)
