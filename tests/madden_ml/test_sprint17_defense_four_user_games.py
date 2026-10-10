@@ -190,6 +190,31 @@ class FourGameLearningTests(unittest.TestCase):
         self.assertEqual({r["play"] for r in ranked},
                          {play for plays in book.values() for play in plays})
 
+    def test_offense_macro_drafts_fall_back_if_all_safe_compositions_conflict(self):
+        fake_book = {
+            "offense": {
+                "locked_ts": "installed", "formations": {"Gun Bunch": ["Mesh"]},
+                "formation_sources": {"Gun Bunch": "Buccaneers"},
+            }
+        }
+        draft = {
+            "name": "ML-MAN-HR", "status": "DRAFT_NEEDS_IN_GAME_VERIFICATION",
+            "source_ids": ["prodigy-beat-man"], "source_action_id": "hot_slant_vs_man",
+            "base_pairs": [{"formation": "Gun Bunch", "play": "Mesh"}],
+            "settings": [{"section": "Route assignments", "setting": "WR1", "value": "Slant"}],
+        }
+        with mock.patch.object(offense_macro_lab.playbook, "load_books", return_value=fake_book):
+            with mock.patch.object(offense_macro_lab, "compose_drafts", return_value=[]):
+                with mock.patch.object(
+                    offense_macro_lab, "propose_variants",
+                    return_value={"proposals": [draft]},
+                ):
+                    report = offense_macro_lab.composed_macro_report(object())
+        self.assertEqual(report["two_action_compositions"], 0)
+        self.assertEqual(report["single_action_variants"], 1)
+        self.assertEqual(report["proposals"][0]["name"], "ML-MAN-HR")
+        self.assertEqual(report["status"], "DRAFT_ONLY")
+
     def test_original_offense_macro_combinations_conflicts_and_drafts(self):
         fields = [
             {"id": "hr", "type": "hot_route", "target": "WR1",
