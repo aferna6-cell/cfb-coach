@@ -354,17 +354,23 @@ def chronological_personal_split(
     ordered = sorted(
         snaps,
         key=lambda row: (
-            str(row.get("game_id") or row.get("session_id") or ""),
-            int(row.get("snap_seq") or row.get("id") or 0),
+            str((row.get("provenance") or {}).get("game_started_at") or
+                row.get("game_started_at") or
+                row.get("match_id") or row.get("game_id") or row.get("session_id") or ""),
+            int((row.get("provenance") or {}).get("snap_seq") or
+                row.get("snap_seq") or row.get("id") or 0),
         ),
     )
     history: list[Mapping[str, Any]] = []
     views = []
     for row in ordered:
         views.append({
-            "snap_id": row.get("snap_id") or row.get("ml_snap_id"),
+            "snap_id": row.get("snap_id") or row.get("ml_snap_id") or
+                (row.get("provenance") or {}).get("snap_id"),
+            "row": dict(row),
             "eligible_history": list(history),
             "eligible_n": len(history),
+            "verified_game_order": bool((row.get("provenance") or {}).get("game_started_at")),
         })
         history.append(row)
     return views
