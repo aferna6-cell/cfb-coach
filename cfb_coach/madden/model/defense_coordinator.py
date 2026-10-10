@@ -302,6 +302,11 @@ def maybe_apply_defense(
     """Opt-in for human-user defense only; timeout/error falls back to old caller."""
     if db is None or mode(db) != "experimental" or is_cpu_opponent(opponent_id):
         return call
+    # Existing researched active macro/adjustment triggers are not yet jointly
+    # calibrated against this new defensive model. Keep the established
+    # caller's already-armed action instead of silently discarding it.
+    if getattr(call, "macro", None) or getattr(call, "adjustment", None):
+        return call
     try:
         from cfb_coach.madden.playcaller import MaddenCall
         from cfb_coach.madden.data import user_job_for
