@@ -313,6 +313,9 @@ class ExpertSignalJointDecisionTests(unittest.TestCase):
             "match_holdout": True,
             "expert_holdout": True,
             "insufficient_data": False,
+            "coordinator_baseline_measured": True,
+            "personalized_outcome_eval_measured": True,
+            "real_expert_footage_verified": True,
             "expert_minus_baseline": 0.1,
             "personalized_minus_expert": 0.0,
         })
@@ -322,6 +325,9 @@ class ExpertSignalJointDecisionTests(unittest.TestCase):
             "match_holdout": True,
             "expert_holdout": True,
             "insufficient_data": False,
+            "coordinator_baseline_measured": True,
+            "personalized_outcome_eval_measured": True,
+            "real_expert_footage_verified": True,
             "expert_minus_baseline": 0.05,
             "personalized_minus_expert": 0.01,
         })
@@ -416,6 +422,73 @@ class ReportCliContractTests(unittest.TestCase):
             "learning-eval",
         ):
             self.assertIn(name, help_text)
+
+
+class EliteVodValidationTests(unittest.TestCase):
+    def test_eval_does_not_replace_active_model_artifacts(self):
+        from cfb_coach.madden.model.learning_eval import shadow_evaluation
+        from cfb_coach.madden.model.expert_policy import train_expert_policy
+
+        with tempfile.TemporaryDirectory() as tmp:
+            film = Path(tmp) / "film"
+            learn = Path(tmp) / "learning"
+            _seed_expert_store(film, learn)
+            ingest_personal_from_snaps(
+                learn, json.loads((FIXTURES / "personal_snaps.json").read_text())
+            )
+            policy = train_expert_policy(learn)
+            personal = fit_personalization(learn, expert_policy=policy)
+            fingerprints = {
+                policy["path"]: Path(policy["path"]).read_bytes(),
+                personal["path"]: Path(personal["path"]).read_bytes(),
+            }
+            report = shadow_evaluation(str(learn))
+            self.assertTrue(report["ok"])
+            self.assertTrue(report["gate"]["insufficient_data"])
+            self.assertFalse(report["gate"]["coordinator_baseline_measured"])
+            self.assertFalse(report["personal_eval"]["future_personal_rows_used"])
+            for path, before in fingerprints.items():
+                self.assertEqual(Path(path).read_bytes(), before)
+
+    def test_no_train_test_overlap_when_experts_share_match(self):
+        from cfb_coach.madden.model.learning_eval import _match_expert_holdout
+
+        mixed = [
+            {"evidence_id": "a", "expert_id": "pro1", "match_id": "same"},
+            {"evidence_id": "b", "expert_id": "pro2", "match_id": "same"},
+        ]
+        train, test, split = _match_expert_holdout(mixed)
+        self.assertEqual(train, [])
+        self.assertEqual(test, [])
+        self.assertFalse(split["disjoint"])
+
+    def test_real_footage_and_measured_baseline_are_required(self):
+        ok, failures = evaluation_gates_passed({
+            "match_holdout": True, "expert_holdout": True,
+            "insufficient_data": False,
+            "expert_minus_baseline": 0.2,
+            "personalized_minus_expert": 0.05,
+        })
+        self.assertFalse(ok)
+        self.assertIn("coordinator_baseline_required", failures)
+        self.assertIn("real_reviewed_expert_footage_required", failures)
+
+    def test_only_verified_permitted_expert_footage_is_exported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            film = Path(tmp) / "film"
+            learn = Path(tmp) / "learn"
+            _seed_expert_store(film, learn)
+            # Revoke processing status in the manifest for a previously
+            # reviewed synthetic fixture. No new training rows may be exported.
+            manifest = film / "expert_manifests" / "expert-pilot-a.json"
+            payload = json.loads(manifest.read_text())
+            payload["permission_status"] = "denied"
+            manifest.write_text(json.dumps(payload))
+            count = len(list_evidence(learn, category="expert_evidence"))
+            result = export_expert_evidence(film, learn, match_id="expert-pilot-a")
+            self.assertEqual(result["exported"], 0)
+            self.assertGreater(result["excluded_unverified_or_unpermitted"], 0)
+            self.assertEqual(len(list_evidence(learn, category="expert_evidence")), count)
 
 
 if __name__ == "__main__":

@@ -440,7 +440,16 @@ def export_expert_evidence(
     snaps = reviewed_expert_snaps(film_store, match_id=match_id)
     saved = 0
     duplicates = 0
+    excluded = 0
     for snap in snaps:
+        manifest = load_expert_manifest(film_store, str(snap.get("match_id") or ""))
+        permission = manifest.get("permission_status")
+        # Requiring the manifest prevents unlabeled, denied, or untracked clips
+        # from silently becoming expert training data. Fixtures stay fixtures.
+        if (permission not in ("user_authorized_local", "fixture_synthetic")
+                or snap.get("human_verification_status") != "verified_human"):
+            excluded += 1
+            continue
         observed = {
             "formation": snap.get("formation"),
             "play": snap.get("play"),
@@ -481,6 +490,13 @@ def export_expert_evidence(
                 "source": "human_reviewed_expert_film",
                 "candidate_id": snap.get("candidate_id"),
                 "permission_store": str(film_store),
+                "permission_status": permission,
+                "recording_fingerprint": manifest.get("fingerprint"),
+                "recording_id": manifest.get("recording_id"),
+                "competitive_mode": manifest.get("competitive_mode"),
+                "source_provenance": manifest.get("source_provenance") or {},
+                "video_start_s": snap.get("start_s"),
+                "video_end_s": snap.get("end_s"),
             },
             confidence=snap.get("observation_confidence", snap.get("confidence")),
             human_verification=str(snap.get("human_verification_status") or "confirmed"),
@@ -496,6 +512,7 @@ def export_expert_evidence(
         "ok": True,
         "exported": saved,
         "duplicates_rejected": duplicates,
+        "excluded_unverified_or_unpermitted": excluded,
         "reviewed_snaps": len(snaps),
         "category": "expert_evidence",
         "observed_separated_from_outcomes": True,

@@ -2,7 +2,7 @@ name: pytest
 
 on:
   push:
-    branches: [main, madden-ml/coach, madden-ml/experimental-pilot, madden-ml/offense-control-compact-ui, madden-ml/offense-model-primary-actions, madden-ml/offense-self-design, madden-ml/offense-designer-browser, madden-ml/formations-all-plays-screen-fix, madden-ml/offense-situation-variety, madden-ml/offense-situation-variety, madden-ml/full-book-inventory, madden-ml/offense-situational-actions, madden-ml/offense-situational-actions, cursor/sprint11-adaptive-coordinator-5f33, cursor/sprint12-football-intelligence-5f33, cursor/sprint13-opponent-learning-5f33, cursor/sprint14-film-learning-5f33, cursor/sprint14-1-film-review-5f33]
+    branches: [main, madden-ml/coach, madden-ml/experimental-pilot, madden-ml/offense-control-compact-ui, madden-ml/offense-model-primary-actions, madden-ml/offense-self-design, madden-ml/offense-designer-browser, madden-ml/formations-all-plays-screen-fix, madden-ml/offense-situation-variety, madden-ml/offense-situation-variety, madden-ml/full-book-inventory, madden-ml/offense-situational-actions, madden-ml/offense-situational-actions, cursor/sprint11-adaptive-coordinator-5f33, cursor/sprint12-football-intelligence-5f33, cursor/sprint13-opponent-learning-5f33, cursor/sprint14-film-learning-5f33, cursor/sprint14-1-film-review-5f33, cursor/sprint15a-elite-vod-validation-5f33]
   pull_request:
     branches: [main, madden-ml/coach, madden-ml/experimental-pilot, cursor/execution-default-recovery-38d5, madden-ml/offense-control-compact-ui, madden-ml/offense-self-design, madden-ml/offense-designer-browser, madden-ml/formations-all-plays-screen-fix, madden-ml/offense-situation-variety, madden-ml/offense-situation-variety, madden-ml/full-book-inventory, madden-ml/offense-situational-actions, madden-ml/offense-situational-actions]
 
@@ -14,6 +14,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install FFmpeg for real video fixture tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
       - name: Install
         run: |
           python -m pip install --upgrade pip
@@ -24,3 +28,18 @@ jobs:
         run: PYTHONPATH=. python -m pytest tests -p no:cacheprovider -q
       - name: Full suite (repeat)
         run: PYTHONPATH=. python -m pytest tests -p no:cacheprovider -q
+
+      - name: Elite VOD pipeline smoke test (synthetic, shadow only)
+        run: |
+          export FILM="$RUNNER_TEMP/elite-film" LEARN="$RUNNER_TEMP/elite-learning"
+          mkdir -p "$FILM/annotations"
+          python -m cfb_coach ml expert-film-import tests/fixtures/expert_film/pilot_match_a.json --expert-id fixture-elite-1 --match-id expert-pilot-a --store "$FILM" --permission-status fixture_synthetic --skip-decode
+          python -m cfb_coach ml expert-film-import tests/fixtures/expert_film/pilot_match_b.json --expert-id fixture-elite-2 --match-id expert-pilot-b --store "$FILM" --permission-status fixture_synthetic --skip-decode
+          cp tests/fixtures/expert_film/pilot_match_a.json "$FILM/annotations/expert-pilot-a.json"
+          cp tests/fixtures/expert_film/pilot_match_b.json "$FILM/annotations/expert-pilot-b.json"
+          python -m cfb_coach ml expert-export-evidence --store "$FILM" --learning-store "$LEARN"
+          python -m cfb_coach ml prepare-expert-dataset --learning-store "$LEARN" --out "$RUNNER_TEMP/expert-dataset.json"
+          python -m cfb_coach ml train-expert-policy --learning-store "$LEARN" --no-register
+          python -m cfb_coach ml expert-learning --summary --learning-store "$LEARN" --store "$FILM"
+          python -m cfb_coach ml learning-eval --learning-store "$LEARN" > "$RUNNER_TEMP/shadow-evaluation.json"
+          python -c 'import json,os; d=json.load(open(os.environ["RUNNER_TEMP"]+"/shadow-evaluation.json")); assert d["mode"]=="shadow" and d["gate"]["insufficient_data"] and not d["gate"]["real_expert_footage_verified"] and not d["live_influence"]; print("Synthetic elite VOD pipeline executed; promotion correctly blocked")'

@@ -93,10 +93,13 @@ def fit_personalization(
     *,
     expert_policy: Mapping[str, Any] | None = None,
     artifact_dir: str | Path | None = None,
+    personal_rows: Sequence[Mapping[str, Any]] | None = None,
+    expert_rows: Sequence[Mapping[str, Any]] | None = None,
+    persist: bool = True,
 ) -> dict[str, Any]:
     """Estimate per-context personalization weights without a fixed transition schedule."""
-    personal = list_evidence(learning_store, category="personal_evidence")
-    expert = list_evidence(learning_store, category="expert_evidence")
+    personal = list(personal_rows) if personal_rows is not None else list_evidence(learning_store, category="personal_evidence")
+    expert = list(expert_rows) if expert_rows is not None else list_evidence(learning_store, category="expert_evidence")
     policy = expert_policy or load_expert_policy(store=learning_store) or {}
 
     cell_n: dict[str, float] = defaultdict(float)
@@ -104,9 +107,10 @@ def fit_personalization(
     cell_games: dict[str, set[str]] = defaultdict(set)
     for row in personal:
         key = _context_key(row)
-        cell_n[key] += 1.0
         value = _success_value(row.get("verified_outcome"))
+        # Unknown outcomes are not failures and are excluded from personal rates.
         if value is not None:
+            cell_n[key] += 1.0
             cell_success[key] += value
         if row.get("match_id"):
             cell_games[key].add(str(row["match_id"]))
@@ -212,12 +216,13 @@ def fit_personalization(
     artifact["fingerprint"] = fingerprint_payload({
         k: artifact[k] for k in ("schema", "version", "contexts", "personal_rows", "expert_rows")
     })
-    paths = ensure_store(learning_store)
-    out_dir = Path(artifact_dir) if artifact_dir else paths["artifacts"] / "personalization"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / "personalization.json"
-    path.write_text(json.dumps(artifact, indent=2, sort_keys=True), encoding="utf-8")
-    artifact["path"] = str(path)
+    if persist:
+        paths = ensure_store(learning_store)
+        out_dir = Path(artifact_dir) if artifact_dir else paths["artifacts"] / "personalization"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / "personalization.json"
+        path.write_text(json.dumps(artifact, indent=2, sort_keys=True), encoding="utf-8")
+        artifact["path"] = str(path)
     return artifact
 
 
@@ -349,17 +354,23 @@ def chronological_personal_split(
     ordered = sorted(
         snaps,
         key=lambda row: (
-            str(row.get("game_id") or row.get("session_id") or ""),
-            int(row.get("snap_seq") or row.get("id") or 0),
+            str((row.get("provenance") or {}).get("game_started_at") or
+                row.get("game_started_at") or
+                row.get("match_id") or row.get("game_id") or row.get("session_id") or ""),
+            int((row.get("provenance") or {}).get("snap_seq") or
+                row.get("snap_seq") or row.get("id") or 0),
         ),
     )
     history: list[Mapping[str, Any]] = []
     views = []
     for row in ordered:
         views.append({
-            "snap_id": row.get("snap_id") or row.get("ml_snap_id"),
+            "snap_id": row.get("snap_id") or row.get("ml_snap_id") or
+                (row.get("provenance") or {}).get("snap_id"),
+            "row": dict(row),
             "eligible_history": list(history),
             "eligible_n": len(history),
+            "verified_game_order": bool((row.get("provenance") or {}).get("game_started_at")),
         })
         history.append(row)
     return views
