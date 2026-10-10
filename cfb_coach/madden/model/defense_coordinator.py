@@ -58,7 +58,7 @@ def _bucket(down: Any, distance: Any, *, red_zone: bool = False, goal_line: bool
 def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Fit shrinkage stop rates, exclusively from verified defensive executions."""
     from cfb_coach.madden.model.defense_intelligence import (
-        verified_human_rows, fit_opponent_offense,
+        verified_human_rows, fit_opponent_offense, fit_opponent_outcome_risks,
     )
     stats: dict[str, list[int]] = {}
     context: dict[str, list[int]] = {}
@@ -87,6 +87,7 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "evidence_quality": "empirical" if n >= 40 else ("limited" if n >= 10 else "prior_driven"),
         "families": stats, "contexts": context, "plays": plays,
         "opponent_tendencies": fit_opponent_offense(verified),
+        "opponent_outcome_risks": fit_opponent_outcome_risks(rows),
         "verified_human_games": len({str(r["game_id"]) for r in verified}),
         "observational_only": True,
         "note": "Stop outcomes are observations, not proven counterfactual effects.",
@@ -154,6 +155,7 @@ def _score(
     intel = score_defensive_knowledge(
         family=family, sit=sit, opponent_id=opponent_id,
         tendencies=(model or {}).get("opponent_tendencies"),
+        risks=(model or {}).get("opponent_outcome_risks"),
     )
     score += intel["delta"]
     return {
