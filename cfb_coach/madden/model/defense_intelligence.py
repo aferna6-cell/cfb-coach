@@ -124,6 +124,7 @@ def score_defensive_knowledge(
     *,
     family: str | None, sit: Any, opponent_id: str,
     tendencies: Mapping[str, Any] | None = None,
+    risks: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     from cfb_coach.madden.defense_select import mix_key
     ctx = mix_key(sit)
@@ -150,8 +151,10 @@ def score_defensive_knowledge(
     mobile_adjustment = 0.0
     if qb_mobile is True and family == "pressure":
         mobile_adjustment = -0.025  # pressure without contain may lose the edge
+    risk = defensive_risk_delta(risks, opponent_id, ctx, family)
     return {
-        "delta": round(live_delta + learned_delta + mobile_adjustment, 6),
+        "delta": round(live_delta + learned_delta + mobile_adjustment + risk["delta"], 6),
+        "opponent_outcome_risk": risk,
         "live_concept": observed,
         "opponent_tendency": opponent,
         "principle": PRINCIPLES.get(observed or opponent.get("family"), "Maintain assignment integrity."),
@@ -161,4 +164,87 @@ def score_defensive_knowledge(
             "counterfactual_success_claim": False,
             "exact_route_assignments_verified": False,
         },
+    }
+
+
+
+def fit_opponent_outcome_risks(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Opponent-level outcomes need NOT claim which defensive play was executed.
+
+    These are actual historical snap RESULTS (yards/downs) separated from the
+    possibly unverified defensive call. Recommendations contribute no actions.
+    Unknown yards or unknown opponent identity are excluded.
+    """
+    contexts: dict[str, dict[str, dict[str, int]]] = defaultdict(
+        lambda: defaultdict(lambda: {"n": 0, "explosives": 0, "conversions": 0,
+                                     "conversion_opportunities": 0})
+    )
+    game_ids: dict[str, set[str]] = defaultdict(set)
+    for row in rows:
+        if str(row.get("opponent_type") or "").lower() != "human":
+            continue
+        if str(row.get("side") or "") != "defense":
+            continue
+        gid, opponent = str(row.get("game_id") or ""), str(row.get("opponent_id") or "")
+        if not gid or not opponent or not row.get("label_available"):
+            continue
+        try:
+            yards = int(row["yards"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        context = context_key(row)
+        game_ids[opponent].add(gid)
+        for scope in ("all", context):
+            stats = contexts[opponent][scope]
+            stats["n"] += 1
+            stats["explosives"] += int(yards >= 20)
+            try:
+                distance = int(row["distance"])
+            except (KeyError, ValueError, TypeError):
+                distance = None
+            if distance is not None and distance > 0:
+                stats["conversion_opportunities"] += 1
+                stats["conversions"] += int(yards >= distance)
+    return {
+        "schema": VERSION,
+        "basis": "historical_opponent_outcome_only",
+        "opponents": {
+            opponent: {"games": len(game_ids[opponent]), "contexts": dict(scopes)}
+            for opponent, scopes in contexts.items()
+        },
+        "observed_outcomes": sum(
+            scopes["all"]["n"] for scopes in contexts.values()
+        ),
+        "defensive_play_attribution": False,
+        "requires_verified_own_execution": False,
+        "live_effect_bound": 0.025,
+    }
+
+
+def defensive_risk_delta(
+    artifact: Mapping[str, Any] | None, opponent_id: str, context: str,
+    coverage_family: str | None,
+) -> dict[str, Any]:
+    """Tiny opponent risk prior; no particular coverage credited for stops."""
+    opp = ((artifact or {}).get("opponents") or {}).get(opponent_id) or {}
+    contexts = opp.get("contexts") or {}
+    data = contexts.get(context) or contexts.get("all") or {}
+    n = int(data.get("n") or 0)
+    if n < 8:
+        return {"delta": 0.0, "n": n, "ready": False}
+    rate = (int(data.get("explosives") or 0) + 2.0) / (n + 12.0)
+    uncertainty = n / (n + 12.0)
+    # High observed opponent explosives suggest protecting deep space.
+    # This is a bounded coaching hypothesis, NOT proof about any coverage.
+    risk = max(0.0, rate - 0.12) * uncertainty
+    delta = 0.0
+    if coverage_family in ("two_high", "cover2"):
+        delta = min(0.025, 0.15 * risk)
+    elif coverage_family == "pressure":
+        delta = -min(0.025, 0.15 * risk)
+    return {
+        "delta": round(delta, 6), "n": n, "ready": True,
+        "explosive_rate_shrunk": round(rate, 5),
+        "no_play_success_attribution": True,
+        "historical_only": True,
     }
