@@ -318,38 +318,67 @@ def maybe_apply_defense(
     if getattr(call, "macro", None) or getattr(call, "adjustment", None):
         return call
     try:
+        started = time.perf_counter()
         from cfb_coach.madden.playcaller import MaddenCall
         from cfb_coach.madden.data import user_job_for
-        from cfb_coach.madden.model.defense_macro_lab import compatible_verified_macros
         extras = getattr(sit, "extras", None) or {}
         session = str(extras.get("session_id") or "defense-pilot")
         seq = int(extras.get("snap_seq") or 0)
         ranked = live_pick(sit, db, opponent_id, book, session_id=session, snap_seq=seq)
-        winner = ranked["selected"]
+        from cfb_coach.madden.model.defense_action_policy import select_defensive_action
+        # Evaluate the whole playbook for calls and a bounded top set for
+        # executable changes, comparing every action with doing nothing.
+        options = []
+        for candidate in ranked["top"]:
+            plan = select_defensive_action(
+                sit, db, opponent_id,
+                candidate["formation"], candidate["play"],
+                tendencies=ranked.get("tendencies"),
+                allowed_macros=extras.get("live_macros", True) is not False,
+                installed_book=book,
+            )
+            options.append((candidate["score"] + plan["influence"], candidate, plan))
+        if not options:
+            return call
+        # Near-tie defense sampling stays available without forcing a rotation.
+        options.sort(key=lambda item: (-item[0], item[1]["formation"], item[1]["play"]))
+        best_total, winner, plan = options[0]
+        macro_name = plan["id"] if plan["kind"] == "macro" else None
         macro_info = None
-        macro_name = None
-        if extras.get("live_macros", True) is not False:
-            # Generated macros are callable only with explicit attestation,
-            # matching installed play and a genuinely observed live concept.
-            concept = concept_family(getattr(sit, "concept_hint", None))
-            if getattr(sit, "concept_source", None) == "live" and concept:
-                for macro in compatible_verified_macros(db, opponent_id, winner["formation"], winner["play"], concept):
-                    macro_name = macro["name"]
-                    macro_info = {
-                        "name": macro_name, "buttons": f"LB → {macro_name}",
-                        "key": " · ".join(f'{s["setting"]}: {s["value"]}' for s in macro["settings"] if s["value"] != "Default")[:135],
-                        "why": f"Verified custom defense macro vs currently observed {concept}",
-                    }
-                    break
-        rationale = (
+        if macro_name:
+            macro = plan["macro"]
+            macro_info = {
+                "name": macro_name, "buttons": f"LB → {macro_name}",
+                "key": " · ".join(
+                    f'{row["setting"]}: {row["value"]}'
+                    for row in macro["settings"] if row["value"] != "Default"
+                )[:135],
+                "why": plan["why"],
+            }
+        adjustment = None
+        if plan["kind"] == "adjustment":
+            adjustment = {
+                "id": plan["id"], "side": "defense", "kind": "adjustment",
+                "label": plan["label"], "buttons": plan["buttons"],
+                "why": plan["why"], "sources": plan.get("research_sources") or [],
+            }
+        if (time.perf_counter() - started) * 1000.0 > LATENCY_MS:
+            return call
+        intelligence = winner.get("football_intelligence") or {}
+        observation = intelligence.get("live_concept")
+        tendency_state = intelligence.get("opponent_tendency") or {}
+        note = (
             f"DEFENSE ML [{ranked['model_quality']}] {winner['family']} "
-            f"({ranked['n_candidates']} legal calls, {ranked['elapsed_ms']} ms); "
-            "context, formation fit, verified stop rates and recent exposure"
+            f"({ranked['n_candidates']} installed plays; action {plan['id']}; "
+            f"concept={observation or 'unknown'}; "
+            f"trend={tendency_state.get('family') if tendency_state.get('ready') else 'uncertain'}); "
+            f"knowledge={intelligence.get('principle') or 'unknown'}"
         )
         return MaddenCall(
             "defense", winner["formation"], winner["play"],
-            macro_name or "No adj", user_job_for(winner["play"]) or FAMILY_USER_JOB.get(winner["family"], "User hook"),
-            rationale, macro=macro_name, macro_info=macro_info,
+            macro_name or (adjustment["label"] if adjustment else "No adj"),
+            user_job_for(winner["play"]) or FAMILY_USER_JOB.get(winner["family"], "User hook"),
+            note, macro=macro_name, macro_info=macro_info, adjustment=adjustment,
         )
     except Exception:  # fail closed: legacy safe caller stays unchanged
         return call
