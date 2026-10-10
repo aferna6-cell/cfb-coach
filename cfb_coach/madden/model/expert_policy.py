@@ -153,6 +153,7 @@ def train_expert_policy(
     *,
     artifact_dir: str | Path | None = None,
     dataset: Mapping[str, Any] | None = None,
+    persist: bool = True,
 ) -> dict[str, Any]:
     """Train a confidence-aware contextual expert policy at several label levels."""
     prepared = dataset or prepare_expert_dataset(learning_store)
@@ -242,12 +243,13 @@ def train_expert_policy(
             "schema", "version", "n_examples", "levels", "drive_concept_transitions",
         )
     })
-    paths = ensure_store(learning_store)
-    out_dir = Path(artifact_dir) if artifact_dir else paths["artifacts"] / "expert_policy"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / "policy.json"
-    path.write_text(json.dumps(artifact, indent=2, sort_keys=True), encoding="utf-8")
-    artifact["path"] = str(path)
+    if persist:
+        paths = ensure_store(learning_store)
+        out_dir = Path(artifact_dir) if artifact_dir else paths["artifacts"] / "expert_policy"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / "policy.json"
+        path.write_text(json.dumps(artifact, indent=2, sort_keys=True), encoding="utf-8")
+        artifact["path"] = str(path)
     return artifact
 
 
