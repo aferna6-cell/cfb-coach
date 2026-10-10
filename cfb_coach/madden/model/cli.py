@@ -661,6 +661,113 @@ def cmd_ml_offense_macro_lab(args: argparse.Namespace) -> int:
         db.close()
 
 
+
+def cmd_ml_defense_design(args: argparse.Namespace) -> int:
+    """Preview, stage or confirm a source-book constrained defensive portfolio."""
+    from cfb_coach.madden.model import defense_coordinator as defense
+    mutate = bool(args.stage or args.confirm_installed)
+    db = open_madden_db(read_only=not mutate)
+    try:
+        try:
+            if args.confirm_installed:
+                result = defense.confirm_design(
+                    db, args.confirm_installed, args.attest or ""
+                )
+            elif args.stage:
+                result = defense.stage_design(db, max_formations=args.max_formations)
+            elif args.show:
+                result = defense.pending_design(db) or {"status": "no_staged_defense"}
+            else:
+                result = defense.design_defense(
+                    max_formations=args.max_formations,
+                    model=defense.load_model(db.get_meta(defense.MODEL_META) or None),
+                )
+        except ValueError as exc:
+            print(f"Defense design refused: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+    finally:
+        db.close()
+
+
+def cmd_ml_defense_macro_lab(args: argparse.Namespace) -> int:
+    """Create original source-grounded defensive macro drafts, never silently arm."""
+    from cfb_coach.madden.model import defense_macro_lab as lab
+    mutate = bool(args.stage or args.verify or args.unverify)
+    db = open_madden_db(read_only=not mutate)
+    try:
+        try:
+            if args.verify:
+                result = lab.verify_macro(
+                    db, args.opponent, args.verify, args.attest or "",
+                    retire_existing=args.retire_existing,
+                )
+            elif args.unverify:
+                result = lab.unverify_macro(db, args.opponent, args.unverify)
+            elif args.stage:
+                result = lab.stage_drafts(db, max_drafts=args.limit)
+            elif args.show:
+                result = lab.draft_report(db)
+            else:
+                from cfb_coach.madden import playbook
+                book = (playbook.load_books(db).get("defense") or {}).get("formations") or {}
+                result = {
+                    "drafts": lab.compose_defensive_macros(book, max_drafts=args.limit),
+                    "status": "preview_only", "live_activation": False,
+                }
+        except ValueError as exc:
+            print(f"Defense macro lab refused: {exc}", file=sys.stderr)
+            return 2
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+    finally:
+        db.close()
+
+
+def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
+    """Independent opt-in defensive ML, no effect on offense or CPU offense-only."""
+    from cfb_coach.madden.model import defense_coordinator as defense
+    from cfb_coach.madden import playbook
+    mutate = bool(args.enable or args.disable or args.retrain)
+    db = open_madden_db(read_only=not mutate)
+    try:
+        if args.disable:
+            defense.set_mode(db, "off")
+        if args.retrain:
+            from cfb_coach.madden.model.dataset import build_rows
+            art = defense.train_defense(build_rows(db=db))
+            dest = defense.save_model(art, defense._data_path())
+            db.set_meta(defense.MODEL_META, str(dest))
+        if args.enable:
+            installed = (playbook.load_books(db).get("defense") or {}).get("formations") or {}
+            if not installed:
+                print("Cannot enable: no physically confirmed defensive playbook", file=sys.stderr)
+                return 2
+            if not defense.load_model(db.get_meta(defense.MODEL_META) or None):
+                from cfb_coach.madden.model.dataset import build_rows
+                art = defense.train_defense(build_rows(db=db))
+                dest = defense.save_model(art, defense._data_path())
+                db.set_meta(defense.MODEL_META, str(dest))
+            defense.set_mode(db, "experimental")
+        model = defense.load_model(db.get_meta(defense.MODEL_META) or None)
+        result = {
+            "defense_mode": defense.mode(db),
+            "offense_mode_unchanged": True,
+            "cpu_offense_only_unchanged": True,
+            "model": {
+                "quality": (model or {}).get("evidence_quality", "not_trained"),
+                "verified_defensive_snaps": (model or {}).get("supervised_defensive_snaps", 0),
+            },
+            "actual_xbox_controls": "user_operated_only",
+            "note": "Opt-in human defense pilot. No verified data means prior-driven, not empirical.",
+        }
+        print(json.dumps(result, indent=2))
+        return 0
+    finally:
+        db.close()
+
+
 def cmd_ml_offense_coordinator(args: argparse.Namespace) -> int:
     """Read-only pregame plan or synthetic policy comparison."""
     from cfb_coach.madden.model.offense_coordinator_eval import compare_policies
@@ -1651,6 +1758,31 @@ def build_ml_subparser(sub: Any) -> None:
                        help="Append drafts to the blueprint registry. Does not verify or arm them.")
     p_lab.add_argument("--limit", type=int, default=6)
     p_lab.set_defaults(func=cmd_ml_offense_macro_lab)
+
+    p_dd = ml_sub.add_parser("defense-design", help="Propose/stage/confirm whole defensive formations")
+    p_dd.add_argument("--max-formations", type=int, default=15)
+    p_dd.add_argument("--stage", action="store_true")
+    p_dd.add_argument("--show", action="store_true")
+    p_dd.add_argument("--confirm-installed", metavar="PROPOSAL_ID", default=None)
+    p_dd.add_argument("--attest", default=None)
+    p_dd.set_defaults(func=cmd_ml_defense_design)
+
+    p_dm = ml_sub.add_parser("defense-macro-lab", help="Compose original draft defensive Custom Adjustments")
+    p_dm.add_argument("-o", "--opponent", default="cpu")
+    p_dm.add_argument("--limit", type=int, default=12)
+    p_dm.add_argument("--show", action="store_true")
+    p_dm.add_argument("--stage", action="store_true")
+    p_dm.add_argument("--verify", metavar="NAME", default=None)
+    p_dm.add_argument("--unverify", metavar="NAME", default=None)
+    p_dm.add_argument("--retire-existing", default=None)
+    p_dm.add_argument("--attest", default=None)
+    p_dm.set_defaults(func=cmd_ml_defense_macro_lab)
+
+    p_dx = ml_sub.add_parser("defense-experimental", help="Opt in to defense model-primary calling in human games")
+    p_dx.add_argument("--enable", action="store_true")
+    p_dx.add_argument("--disable", action="store_true")
+    p_dx.add_argument("--retrain", action="store_true")
+    p_dx.set_defaults(func=cmd_ml_defense_experimental)
 
     p_coord = ml_sub.add_parser(
         "offense-coordinator",
