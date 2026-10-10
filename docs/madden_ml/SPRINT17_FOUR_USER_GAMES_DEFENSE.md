@@ -1,8 +1,8 @@
 # Sprint 17 — Defensive football intelligence, adaptive tendencies, macro invention and four user games
 
 This builds on draft PR #39 / Sprint 16. Changes are contained in
-\`cursor/sprint17-defensive-intelligence-four-user-games\`.
-Nothing is merged into \`main\` and no game is secretly modified.
+`cursor/sprint17-defensive-intelligence-four-user-games`.
+Nothing is merged into `main` and no game is secretly modified.
 
 ## What is implemented
 
@@ -10,7 +10,7 @@ Nothing is merged into \`main\` and no game is secretly modified.
   floods, crossers, bunch/stack, runs, RPOs and QB scrambling; conservative
   adjustments to defensive-family fit. These are general football priors, **not
   confirmed in-game route diagrams**.
-- **Opponent adaptation:** reads \`concept_seen\` only from *verified executed*
+- **Opponent adaptation:** reads `concept_seen` only from *verified executed*
   human-game defensive snaps, groups by specific opponent and down/distance
   context, shrinks sparse samples, and treats tendencies as historical priors,
   NEVER live knowledge of the next play.
@@ -33,68 +33,74 @@ Nothing is merged into \`main\` and no game is secretly modified.
 - **Original defensive macros:** existing Sprint 16 lab combines compatible
   researched settings, supplies a complete sheet including defaults and
   requires explicit in-game verification and an available defensive slot.
-- **Four-human-game learning:** a read-only audit of the last four distinct
-  human games in the local Madden DB (chronology from snap insertion order),
-  which reports verified/unverified offense/defense coverage separately.
-  Offline fitting writes isolated offensive and defensive **SHADOW** artifacts
-  from the eligible rows. It does NOT change live active model versions.
+- **Four-human-game learning:** audit the last four human games with separate verified
+  offense/defense counts. Verified actions support play-specific success. Even
+  without verified actions, observed opponent yardage, conversions and explosive
+  results can build conservative, opponent-level risk profiles WITHOUT blaming
+  or crediting any unverified coverage or macro. All artifacts remain SHADOW.
 
 ## Ubuntu steps: inspect your four user games
 
-\`\`\`bash
+```bash
 cd ~/cfb-coach
 git fetch origin
 git switch cursor/sprint17-defensive-intelligence-four-user-games
 git pull --ff-only
 python3 -m cfb_coach ml find-db
 python3 -m cfb_coach ml four-user-games --games 4
-\`\`\`
+```
 
-The DB is usually \`/home/aidan/.cfb-coach/madden27.db\`. Four historical
+The DB is usually `/home/aidan/.cfb-coach/madden27.db`. Four historical
 human games were reported in that local DB, but **the GitHub agent has no
 direct copy**. The audit must run on the user's own Ubuntu laptop.
 
 ### Train on the verified evidence only (offline, never activates)
 
-\`\`\`bash
+```bash
 python3 -m cfb_coach ml four-user-games --games 4 --train
-\`\`\`
+```
 
-Check \`verified_offense\`, \`verified_defense\`,
-\`observed_opponent_concepts\`, and the produced artifact paths.
+Check `verified_offense`, `verified_defense`,
+`observed_opponent_concepts`, and the produced artifact paths.
 No observed data must ever be reconstructed from a final score.
 The existing separately confirmed offensive experimental model remains
 unchanged unless you explicitly decide to install/test a new version.
 
-If \`verified_defense=0\`, the real four games cannot currently train a
-defensive stop model. Recover actual executed plays and results through
-the existing \`ml confirm-execution\` command with trustworthy game evidence,
-then rerun the audit. Do not mark all called plays as executed or fabricate
-results. Small samples are labeled prior-driven.
+**Known October 8 audit:** Gavin (65 snaps), James (71), Jaxon (54) and
+Tiano (55) accounted for 245 logged human-game snaps, but **zero had verified
+executions** at that time. The local DB may have changed since the audit.
+
+When verified_defense=0, no coverage, play or macro-specific outcome model can
+be learned. The opponent-level learner can still use independent observed
+yardage, conversion and explosive results without attributing the outcome
+to your selected defensive play. Inspect opponent_outcome_rows_learned; if
+that count is also zero there is no usable outcome evidence.
+Use ml confirm-execution with actual game evidence before claiming a
+play was executed. Never bulk-certify recommendations.
 
 ## Generate YOUR OWN macro candidates on both sides
 
-\`\`\`bash
+```bash
 python3 -m cfb_coach ml macro-create --side both
 python3 -m cfb_coach ml macro-create --side both --stage
-\`\`\`
+```
 
 This produces distinct, new blueprints from separately researched adjustment
 primitives, not only a recommendation to use an existing preset macro.
 
 For offense, build/test the listed Custom Adjustments in Madden and use
-the existing \`ml offense-design --verify-macro NAME\` workflow to verify
+the existing `ml offense-design --verify-macro NAME` workflow to verify
 and arm an exact draft (including explicit attestation).
 
 For defense, build every editor setting and test the specified installed
 base play, then use:
 
-\`\`\`bash
+```bash
 python3 -m cfb_coach ml defense-macro-lab -o gavin --show
 python3 -m cfb_coach ml defense-macro-lab -o gavin \
   --verify ML-D-XXXXXXX \
   --attest "I created all listed defensive settings in Madden, tested the listed base play and physically armed a defense Custom Adjustment slot."
-\`\`\`
+```
 
 Neither preview nor staging changes the in-game controller. The generated
 combination remains unverified until actual testing. Both sides are limited
@@ -102,15 +108,15 @@ by the game's active macro slot count.
 
 ## Defensive test — opt-in human game
 
-\`\`\`bash
+```bash
 python3 -m cfb_coach ml defense-experimental --retrain
 python3 -m cfb_coach ml defense-experimental --enable
 python3 -m cfb_coach play --game madden27 --opponent gavin --franchise lab
-\`\`\`
+```
 
-Important: \`ml defense-experimental --retrain\` fits **all** verified human
+Important: `ml defense-experimental --retrain` fits **all** verified human
 defensive training rows that exist in the Madden DB, while
-\`ml four-user-games --train\` explicitly fits only the last four and leaves
+`ml four-user-games --train` explicitly fits only the last four and leaves
 those artifacts in shadow. The full training flow never fabricates missing
 defensive data and rejects old mixed-verification policy files.
 
@@ -121,9 +127,9 @@ opponent trends with bounded confidence when no live concept is visible.
 
 To restore the legacy defensive caller immediately:
 
-\`\`\`bash
+```bash
 python3 -m cfb_coach ml defense-experimental --disable
-\`\`\`
+```
 
 ## Evaluation required before trusting live competitive decisions
 
