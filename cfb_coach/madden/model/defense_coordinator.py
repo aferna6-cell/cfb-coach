@@ -60,6 +60,7 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     from cfb_coach.madden.model.defense_intelligence import (
         verified_human_rows, fit_opponent_offense, fit_opponent_outcome_risks,
     )
+    from cfb_coach.madden.model.defense_knowledge import fit_opponent_profiles
     stats: dict[str, list[int]] = {}
     context: dict[str, list[int]] = {}
     plays: dict[str, list[int]] = {}
@@ -88,6 +89,7 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "families": stats, "contexts": context, "plays": plays,
         "opponent_tendencies": fit_opponent_offense(verified),
         "opponent_outcome_risks": fit_opponent_outcome_risks(rows),
+        "opponent_profiles": fit_opponent_profiles(verified),
         "verified_human_games": len({str(r["game_id"]) for r in verified}),
         "observational_only": True,
         "note": "Stop outcomes are observations, not proven counterfactual effects.",
@@ -152,12 +154,18 @@ def _score(
     if recent_four and call_family(recent_four[-1][1]) == family:
         score -= 0.04
     from cfb_coach.madden.model.defense_intelligence import score_defensive_knowledge
+    from cfb_coach.madden.model.defense_knowledge import explain_call, live_verified_adjustment
     intel = score_defensive_knowledge(
         family=family, sit=sit, opponent_id=opponent_id,
         tendencies=(model or {}).get("opponent_tendencies"),
         risks=(model or {}).get("opponent_outcome_risks"),
     )
-    score += intel["delta"]
+    verified = live_verified_adjustment(sit, play)
+    score += intel["delta"] + float(verified["delta"])
+    profiles = ((model or {}).get("opponent_profiles") or {}).get("opponents") or {}
+    profile = profiles.get(opponent_id) or {
+        "ready": False, "current_snap_known": False, "live_score_delta": 0.0,
+    }
     return {
         "formation": formation, "play": play, "family": family or "unknown",
         "score": round(score, 6),
@@ -165,6 +173,9 @@ def _score(
         "verified_context_n": n_ctx, "verified_play_n": n_play,
         "current_offensive_concept_used": intel["live_concept"],
         "football_intelligence": intel,
+        "verified_knowledge": verified,
+        "opponent_profile": profile,
+        "why": explain_call(sit, formation, play, family, verified),
     }
 
 
@@ -419,6 +430,7 @@ def design_defense(*, max_formations: int = MAX_FORMATIONS,
             covered[fam] = covered.get(fam, 0) + 1
     if not chosen:
         raise ValueError("No catalogued defensive formations with recognized calls")
+    from cfb_coach.madden.model.defense_knowledge import formation_packages, verified_tags
     forms = {r["formation"]: r["plays"] for r in chosen}
     sources = {r["formation"]: r["source_book"] for r in chosen}
     return {
@@ -429,6 +441,15 @@ def design_defense(*, max_formations: int = MAX_FORMATIONS,
         "choices": [{k:v for k,v in r.items() if k != "plays"} for r in chosen],
         "model_evidence_quality": (model or {}).get("evidence_quality", "prior_driven"),
         "requires_physical_editor_installation": True,
+        "situation_packages": formation_packages(chosen),
+        "knowledge_tags": [
+            {
+                "id": tag["id"], "label": tag["label"], "confidence": tag["confidence"],
+                "sources": list(tag["sources"]),
+            }
+            for tag in verified_tags()
+        ],
+        "hypothesis_tags_scored": [],
         "note": "No installed defensive book was modified. Verify all source-book plays in Madden.",
     }
 
@@ -575,12 +596,17 @@ def maybe_apply_defense(
         intelligence = winner.get("football_intelligence") or {}
         observation = intelligence.get("live_concept")
         tendency_state = intelligence.get("opponent_tendency") or {}
+        verified = winner.get("verified_knowledge") or {}
+        verified_note = ""
+        if verified.get("scored_ids"):
+            verified_note = " " + str(verified.get("why") or "")
         note = (
             f"DEFENSE ML [{ranked['model_quality']}] {winner['family']} "
             f"({ranked['n_candidates']} installed plays; action {plan['id']}; "
             f"concept={observation or 'unknown'}; "
             f"trend={tendency_state.get('family') if tendency_state.get('ready') else 'uncertain'}); "
             f"knowledge={intelligence.get('principle') or 'unknown'}"
+            f"{verified_note}"
         )
         result = MaddenCall(
             "defense", winner["formation"], winner["play"],
