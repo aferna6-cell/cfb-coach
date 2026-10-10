@@ -89,6 +89,46 @@ class FourGameLearningTests(unittest.TestCase):
                 self.assertIn(name, ("offense", "defense"))
                 self.assertTrue(Path(path).is_file())
 
+    def test_outcome_only_four_user_games_learn_risks_not_play_success(self):
+        rows = []
+        for i in range(4):
+            for _ in range(12):
+                row = dict(snap(f"user-game-{i}", f"player{i}",
+                                "defense", "Cover 3 Sky", concept=None))
+                row.update({
+                    "supervised_eligible": False,
+                    "executed_status": "unknown",
+                    "executed_verification": "unknown",
+                    "executed_play": None,
+                    "action_play": None,
+                    "yards": 25,
+                    "success": "false",
+                })
+                rows.append(row)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = history.train_shadow_models(rows, out_dir=tmp)
+            self.assertTrue(out["trained"])
+            self.assertEqual(out["verified_defense"], 0)
+            self.assertEqual(out["verified_offense"], 0)
+            self.assertEqual(out["opponent_outcome_rows_learned"], 48)
+            self.assertEqual(
+                out["defense_training_basis"],
+                "observed_opponent_risks_only_no_defensive_play_attribution",
+            )
+            m = defense.load_model(out["artifacts"]["defense"])
+            self.assertEqual(m["supervised_defensive_snaps"], 0)
+            self.assertEqual(m["opponent_outcome_risks"]["observed_outcomes"], 48)
+            risks = m["opponent_outcome_risks"]
+            self.assertGreater(
+                intelligence.defensive_risk_delta(risks, "player0", "long", "two_high")["delta"], 0
+            )
+            self.assertLess(
+                intelligence.defensive_risk_delta(risks, "player0", "long", "pressure")["delta"], 0
+            )
+            self.assertEqual(
+                intelligence.defensive_risk_delta(risks, "different-user", "long", "pressure")["delta"], 0
+            )
+
     def test_defense_is_not_trained_on_cpu_or_trusted_unverified_video(self):
         good = snap("g1", "tiano", "defense", "Cover 3 Sky", concept="Mesh")
         unverified = dict(good, executed_verification="unknown")
