@@ -197,6 +197,27 @@ class SchemaRoundTripTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             MacroCandidate(is_no_adjustment=True, editor_fields=sheet)
 
+    def test_design_record_id_round_trip_and_legacy_payload(self) -> None:
+        linked = MacroCandidate(macro_id="ML-D-1", design_record_id="DSN-ML-D-1")
+        self.assertEqual(linked.design_record_id, "DSN-ML-D-1")
+        raw = json.dumps(to_dict(linked))
+        again = from_dict(json.loads(raw))
+        self.assertEqual(again, linked)
+        self.assertEqual(again.design_record_id, "DSN-ML-D-1")
+        self.assertEqual(to_dict(again)["__schema__"], "madden-ml.macro.1")
+
+        legacy = json.loads(raw)
+        legacy.pop("design_record_id")
+        self.assertNotIn("design_record_id", legacy)
+        loaded = from_dict(legacy)
+        self.assertIsNone(loaded.design_record_id)
+        self.assertEqual(loaded.macro_id, "ML-D-1")
+        self.assertEqual(loaded, MacroCandidate(macro_id="ML-D-1"))
+        self.assertEqual(to_dict(loaded)["__schema__"], MACRO_SCHEMA_VERSION)
+        self.assertIsNone(MacroCandidate().design_record_id)
+        with self.assertRaises(ValueError):
+            MacroCandidate(macro_id="ML-D-1", design_record_id="ML-D-1")
+
     def test_provisional_types_use_their_own_version(self) -> None:
         self.assertEqual(PROVISIONAL_TYPES, (PlayRanking, OpponentContext))
         for cls in PROVISIONAL_TYPES:
@@ -732,6 +753,7 @@ def _samples() -> dict[type, list[object]]:
             MacroCandidate(is_no_adjustment=True),
             MacroCandidate(
                 macro_id="ML-D-1",
+                design_record_id="DSN-ML-D-1",
                 version="1",
                 side=MacroSide.DEF,
                 state=MacroState.DRAFT,

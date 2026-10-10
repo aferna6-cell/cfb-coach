@@ -1587,6 +1587,10 @@ class MacroCandidate:
     field. ``state`` accepts the labs' ``draft``, ``verified``, and ``armed``
     labels through :func:`adapt_macro_state`.
 
+    ``design_record_id`` is optional. ``None`` means no design record is
+    linked. When set, the value is ``DSN-<macro_id>``. Payloads on wire
+    version ``madden-ml.macro.1`` that omit the field load as ``None``.
+
     A defense candidate that is not the no-adjustment option must name every
     field in :func:`defensive_editor_field_names`. Each of those fields has a
     value and a source of researched or default. Missing, extra, and unknown
@@ -1598,6 +1602,7 @@ class MacroCandidate:
     """
 
     macro_id: str | None = None
+    design_record_id: str | None = None
     version: str | None = None
     side: MacroSide = MacroSide.UNKNOWN
     state: MacroState = MacroState.UNKNOWN
@@ -1624,6 +1629,7 @@ class MacroCandidate:
             object.__setattr__(self, "situations", tuple(str(item) for item in self.situations))
         for label, item in (
             ("macro_id", self.macro_id),
+            ("design_record_id", self.design_record_id),
             ("version", self.version),
             ("formation", self.formation),
             ("play", self.play),
@@ -1637,6 +1643,14 @@ class MacroCandidate:
 
     def validate(self) -> None:
         """Reject a defense sheet or a live state this contract cannot mean."""
+        if self.design_record_id is not None:
+            expected = f"DSN-{self.macro_id}" if self.macro_id else None
+            if self.design_record_id != expected:
+                raise ValueError(
+                    "design_record_id must be DSN-<macro_id>"
+                    if expected is None
+                    else f"design_record_id must be {expected!r}"
+                )
         if self.is_no_adjustment:
             if self.editor_fields:
                 raise ValueError("a no-adjustment candidate has no editor sheet")
