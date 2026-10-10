@@ -114,3 +114,7 @@ Implemented on `madden-ml/coach` without activating hybrid:
 - Sealed pipeline module behind `CFB_COACH_SEALED_PIPELINE` (default off; see `SEALED_PIPELINE.md`)
 
 Hybrid remains off. PR #19 mappings stay an optional boundary (`optional_vod_lookup`).
+
+## Sprint 15A — expert / personal learning
+
+See `SPRINT15A_EXPERT_LEARNING.md`. Expert VODs and personal verified gameplay are retained as separate evidence stores. They enter `choose_joint_action` only through the capped `expert_signal` path (shadow by default). `vod_model.apply_madden_call` remains off the experimental joint path so older VOD priors cannot double-count or override model-primary scoring.

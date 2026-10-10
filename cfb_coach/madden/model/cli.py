@@ -1017,6 +1017,214 @@ def cmd_ml_film_approve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _learning_store(args: argparse.Namespace) -> str:
+    return str(getattr(args, "learning_store", None) or (Path.home() / ".cfb-coach" / "learning"))
+
+
+def _expert_film_store(args: argparse.Namespace) -> str:
+    return str(getattr(args, "store", None) or (Path.home() / ".cfb-coach" / "film" / "expert"))
+
+
+def cmd_ml_expert_film_import(args: argparse.Namespace) -> int:
+    """Import an authorized local expert recording. Never downloads broadcasts."""
+    from cfb_coach.madden.model.expert_film import import_expert_recording
+
+    report = import_expert_recording(
+        args.path,
+        expert_id=args.expert_id,
+        match_id=args.match_id,
+        store=_expert_film_store(args),
+        dry_run=bool(args.dry_run),
+        game_version=args.game_version,
+        patch=args.patch,
+        competitive_mode=args.competitive_mode,
+        opponent_type=args.opponent_type,
+        permission_status=args.permission_status,
+        skip_decode=bool(getattr(args, "skip_decode", False)),
+    )
+    print(json.dumps(report, indent=2, default=str))
+    return 0 if report.get("ok") else 2
+
+
+def cmd_ml_expert_annotate(args: argparse.Namespace) -> int:
+    """Apply one human-reviewed expert snap annotation from a JSON labels file."""
+    from cfb_coach.madden.model.expert_film import annotate_expert_snap
+
+    labels = json.loads(Path(args.labels).read_text(encoding="utf-8"))
+    result = annotate_expert_snap(
+        _expert_film_store(args), args.match_id, args.candidate_id, labels,
+    )
+    print(json.dumps(result, indent=2, default=str))
+    return 0 if result.get("ok") else 2
+
+
+def cmd_ml_expert_export_evidence(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model.expert_film import export_expert_evidence
+
+    result = export_expert_evidence(
+        _expert_film_store(args),
+        _learning_store(args),
+        match_id=getattr(args, "match_id", None),
+    )
+    print(json.dumps(result, indent=2, default=str))
+    return 0 if result.get("ok") else 2
+
+
+def cmd_ml_prepare_expert_dataset(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model.expert_policy import prepare_expert_dataset
+
+    dataset = prepare_expert_dataset(_learning_store(args), out=args.out)
+    print(json.dumps({
+        k: dataset[k]
+        for k in ("schema", "n_examples", "n_matches", "n_experts", "path", "split_note")
+        if k in dataset
+    }, indent=2))
+    return 0
+
+
+def cmd_ml_train_expert_policy(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model.expert_policy import (
+        train_expert_outcome_model, train_expert_policy,
+    )
+    from cfb_coach.madden.model.expert_signal import register_shadow_artifacts
+    from cfb_coach.madden.model.personalization import fit_personalization
+
+    store = _learning_store(args)
+    policy = train_expert_policy(store, artifact_dir=args.out)
+    outcome = train_expert_outcome_model(store)
+    personal = fit_personalization(store, expert_policy=policy)
+    db = None
+    try:
+        src = madden_db_path()
+        if src.is_file() and not getattr(args, "no_register", False):
+            db = open_madden_db()
+            register_shadow_artifacts(
+                db, expert_policy=policy, personalization=personal,
+            )
+    finally:
+        if db is not None:
+            db.close()
+    print(json.dumps({
+        "policy_path": policy.get("path"),
+        "policy_fingerprint": policy.get("fingerprint"),
+        "outcome_path": outcome.get("path"),
+        "personalization_path": personal.get("path"),
+        "mode": "shadow",
+        "n_examples": policy.get("n_examples"),
+    }, indent=2))
+    return 0
+
+
+def cmd_ml_expert_learning(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model.learning_reports import expert_learning_summary
+
+    db = None
+    try:
+        src = madden_db_path()
+        if src.is_file():
+            db = CoachDB.open_read_only(src)
+        report = expert_learning_summary(
+            learning_store=_learning_store(args),
+            film_store=_expert_film_store(args),
+            db=db,
+        )
+        print(json.dumps(report, indent=2, default=str))
+    finally:
+        if db is not None:
+            db.close()
+    return 0
+
+
+def cmd_ml_personal_learning(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model.learning_reports import personal_learning_report
+    from cfb_coach.madden.model.learning_sources import ingest_general_from_football_knowledge
+    from cfb_coach.madden.model.personalization import ingest_personal_from_snaps
+
+    store = _learning_store(args)
+    if getattr(args, "ingest_general", False):
+        ingest_general_from_football_knowledge(store)
+    if getattr(args, "ingest_db", False):
+        from cfb_coach.madden.model.dataset import build_rows
+
+        db = open_madden_db(read_only=True)
+        try:
+            rows = build_rows(db=db)
+            ingest_personal_from_snaps(store, rows)
+        finally:
+            db.close()
+    db = None
+    try:
+        src = madden_db_path()
+        if src.is_file():
+            db = CoachDB.open_read_only(src)
+        report = personal_learning_report(
+            learning_store=store,
+            opponent=args.opponent,
+            db=db,
+        )
+        print(json.dumps(report, indent=2, default=str))
+    finally:
+        if db is not None:
+            db.close()
+    return 0
+
+
+def cmd_ml_learning_compare(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model.learning_reports import learning_compare_report
+
+    db = None
+    try:
+        src = madden_db_path()
+        if src.is_file():
+            db = CoachDB.open_read_only(src)
+        report = learning_compare_report(
+            learning_store=_learning_store(args),
+            concept=args.concept,
+            db=db,
+        )
+        print(json.dumps(report, indent=2, default=str))
+    finally:
+        if db is not None:
+            db.close()
+    return 0
+
+
+def cmd_ml_learning_eval(args: argparse.Namespace) -> int:
+    from cfb_coach.madden.model.learning_eval import shadow_evaluation
+    from cfb_coach.madden.model.expert_signal import (
+        promote_expert_signal, register_shadow_artifacts, rollback_expert_signal,
+    )
+
+    store = _learning_store(args)
+    if getattr(args, "rollback", False):
+        db = open_madden_db()
+        try:
+            result = rollback_expert_signal(db)
+            print(json.dumps(result, indent=2, default=str))
+            return 0
+        finally:
+            db.close()
+    report = shadow_evaluation(store)
+    if getattr(args, "promote", False):
+        db = open_madden_db()
+        try:
+            from cfb_coach.madden.model.expert_policy import load_expert_policy
+            from cfb_coach.madden.model.personalization import load_personalization
+
+            register_shadow_artifacts(
+                db,
+                expert_policy=load_expert_policy(store=store),
+                personalization=load_personalization(store=store),
+                evaluation=report.get("gate"),
+            )
+            result = promote_expert_signal(db, evaluation=report.get("gate"))
+            report["promotion"] = result
+        finally:
+            db.close()
+    print(json.dumps(report, indent=2, default=str))
+    return 0
+
+
 def cmd_ml_offense_report(args: argparse.Namespace) -> int:
     """Read-only coordinator evaluation of saved games. Never writes history."""
     from cfb_coach.madden.model.offense_postgame import (
@@ -1590,6 +1798,107 @@ def build_ml_subparser(sub: Any) -> None:
     p_fa.add_argument("-o", "--opponent", default="cpu")
     p_fa.add_argument("--rollback", action="store_true")
     p_fa.set_defaults(func=cmd_ml_film_approve)
+
+    learning_store_default = str(Path.home() / ".cfb-coach" / "learning")
+    expert_store_default = str(Path.home() / ".cfb-coach" / "film" / "expert")
+
+    p_efi = ml_sub.add_parser(
+        "expert-film-import",
+        help="Import an authorized local expert recording (no download/scrape)",
+    )
+    p_efi.add_argument("path")
+    p_efi.add_argument("--expert-id", required=True)
+    p_efi.add_argument("--match-id", required=True)
+    p_efi.add_argument("--store", default=expert_store_default)
+    p_efi.add_argument("--dry-run", action="store_true")
+    p_efi.add_argument("--skip-decode", action="store_true",
+                       help="Write provenance manifest only (fixtures / no ffmpeg decode)")
+    p_efi.add_argument("--game-version", default="madden27")
+    p_efi.add_argument("--patch", default=None)
+    p_efi.add_argument("--competitive-mode", default="unknown")
+    p_efi.add_argument("--opponent-type", default="unknown")
+    p_efi.add_argument(
+        "--permission-status",
+        default="user_authorized_local",
+        choices=["user_authorized_local", "fixture_synthetic", "denied", "unknown"],
+    )
+    p_efi.set_defaults(func=cmd_ml_expert_film_import)
+
+    p_ea = ml_sub.add_parser(
+        "expert-annotate",
+        help="Apply a human-reviewed expert snap label JSON; invisible fields stay unknown",
+    )
+    p_ea.add_argument("--match-id", required=True)
+    p_ea.add_argument("--candidate-id", required=True)
+    p_ea.add_argument("--labels", required=True, help="JSON object of reviewed labels")
+    p_ea.add_argument("--store", default=expert_store_default)
+    p_ea.set_defaults(func=cmd_ml_expert_annotate)
+
+    p_ee = ml_sub.add_parser(
+        "expert-export-evidence",
+        help="Export reviewed expert snaps into the independent expert evidence store",
+    )
+    p_ee.add_argument("--match-id", default=None)
+    p_ee.add_argument("--store", default=expert_store_default)
+    p_ee.add_argument("--learning-store", default=learning_store_default)
+    p_ee.set_defaults(func=cmd_ml_expert_export_evidence)
+
+    p_ped = ml_sub.add_parser(
+        "prepare-expert-dataset",
+        help="Materialize confidence-aware expert training examples",
+    )
+    p_ped.add_argument("--learning-store", default=learning_store_default)
+    p_ped.add_argument("--out", default=None)
+    p_ped.set_defaults(func=cmd_ml_prepare_expert_dataset)
+
+    p_tep = ml_sub.add_parser(
+        "train-expert-policy",
+        help="Train expert policy + outcome models; register artifacts in shadow mode",
+    )
+    p_tep.add_argument("--learning-store", default=learning_store_default)
+    p_tep.add_argument("--out", default=None)
+    p_tep.add_argument("--no-register", action="store_true")
+    p_tep.set_defaults(func=cmd_ml_train_expert_policy)
+
+    p_el = ml_sub.add_parser(
+        "expert-learning",
+        help="Read-only expert VOD learning summary",
+    )
+    p_el.add_argument("--summary", action="store_true", default=True)
+    p_el.add_argument("--learning-store", default=learning_store_default)
+    p_el.add_argument("--store", default=expert_store_default)
+    p_el.set_defaults(func=cmd_ml_expert_learning)
+
+    p_pl = ml_sub.add_parser(
+        "personal-learning",
+        help="Read-only personal learning report for an opponent category",
+    )
+    p_pl.add_argument("-o", "--opponent", default="cpu")
+    p_pl.add_argument("--learning-store", default=learning_store_default)
+    p_pl.add_argument("--ingest-db", action="store_true",
+                      help="Ingest verified personal executions from the Madden DB")
+    p_pl.add_argument("--ingest-general", action="store_true",
+                      help="Mirror compiled football knowledge into general evidence")
+    p_pl.set_defaults(func=cmd_ml_personal_learning)
+
+    p_lc = ml_sub.add_parser(
+        "learning-compare",
+        help="Compare expert vs personal evidence for one concept",
+    )
+    p_lc.add_argument("--concept", required=True)
+    p_lc.add_argument("--learning-store", default=learning_store_default)
+    p_lc.set_defaults(func=cmd_ml_learning_compare)
+
+    p_le = ml_sub.add_parser(
+        "learning-eval",
+        help="Shadow evaluation of baseline vs expert vs personalized learning",
+    )
+    p_le.add_argument("--learning-store", default=learning_store_default)
+    p_le.add_argument("--promote", action="store_true",
+                      help="Explicitly promote gated artifacts to bounded live influence")
+    p_le.add_argument("--rollback", action="store_true",
+                      help="Roll promoted expert signal back to shadow")
+    p_le.set_defaults(func=cmd_ml_learning_eval)
 
     p_pg = ml_sub.add_parser(
         "postgame-experimental",
