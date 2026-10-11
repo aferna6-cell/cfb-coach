@@ -11,11 +11,18 @@ during collection, so module-level code runs before any session fixture.
 pytest 9, which means a session fixture *does* run before ``setUpClass``, but
 it is still too late for module-level code.
 
-``HOME`` and ``CFB_COACH_DB`` are therefore installed in ``pytest_configure``,
-which runs before collection. The session fixture re-applies the same paths
-and restores both variables afterwards. The real-home guard is separate: it
-records ``<real HOME>/.cfb-coach`` before that redirect and fails the session
-if the tree was created or modified, including when the redirect is turned off.
+``HOME``, ``CFB_COACH_DB``, and ``CFB_COACH_MADDEN_DB`` are therefore installed
+in ``pytest_configure``, which runs before collection. The session fixture
+re-applies the same paths and restores all three afterwards. The real-home
+guard is separate: it records ``<real HOME>/.cfb-coach`` before that redirect
+and fails the session if the tree was created or modified, including when the
+redirect is turned off.
+
+Playwright stores browsers in ``<real HOME>/.cache/ms-playwright``. Before
+``HOME`` moves, ``pytest_configure`` points ``PLAYWRIGHT_BROWSERS_PATH`` at
+that absolute path when the variable is unset and the directory already
+exists. An already-set ``PLAYWRIGHT_BROWSERS_PATH`` is never overwritten, and
+nothing is created under the real home.
 """
 
 from __future__ import annotations
@@ -39,6 +46,8 @@ _home_was_set = False
 _orig_home: str | None = None
 _db_was_set = False
 _orig_db: str | None = None
+_madden_db_was_set = False
+_orig_madden_db: str | None = None
 _root: Path | None = None
 _tmp: tempfile.TemporaryDirectory[str] | None = None
 _before: _Snapshot | None = None
@@ -104,12 +113,15 @@ def _guard_diff(before: _Snapshot, after: _Snapshot, real_home: Path) -> str | N
 def _remember_real_home() -> None:
     """Record the process home and ``.cfb-coach`` before any redirect."""
     global _real_home, _home_was_set, _orig_home, _db_was_set, _orig_db, _before
+    global _madden_db_was_set, _orig_madden_db
     if _before is not None:
         return
     _home_was_set = "HOME" in os.environ
     _orig_home = os.environ.get("HOME")
     _db_was_set = "CFB_COACH_DB" in os.environ
     _orig_db = os.environ.get("CFB_COACH_DB")
+    _madden_db_was_set = "CFB_COACH_MADDEN_DB" in os.environ
+    _orig_madden_db = os.environ.get("CFB_COACH_MADDEN_DB")
     if _home_was_set:
         real = Path(_orig_home or "")
     else:
@@ -134,29 +146,57 @@ def _hermetic_tmp(real: Path) -> tempfile.TemporaryDirectory[str]:
     return tmp
 
 
+def _madden_db_file(root: Path) -> str:
+    """Madden log inside the tmp home, distinct from ``CFB_COACH_DB``."""
+    return str(root / ".cfb-coach" / "madden27.db")
+
+
+def _apply_session_paths(root: Path) -> None:
+    assert _real_home is not None
+    os.environ["HOME"] = str(root)
+    os.environ["CFB_COACH_DB"] = str(root / "coach.db")
+    os.environ["CFB_COACH_MADDEN_DB"] = _madden_db_file(root)
+    os.environ["CFB_COACH_HERMETIC_ROOT"] = str(root)
+    os.environ["CFB_COACH_REAL_HOME"] = str(_real_home)
+
+
+def _pin_playwright_browsers(real_home: Path) -> None:
+    """Point Playwright at an existing real-home browser cache.
+
+    A non-empty ``PLAYWRIGHT_BROWSERS_PATH`` is never overwritten. When the
+    variable is unset and ``<real HOME>/.cache/ms-playwright`` already exists,
+    set it to that absolute path. This does not create the cache or anything
+    else under the real home.
+    """
+    if os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
+        return
+    cache = real_home / ".cache" / "ms-playwright"
+    try:
+        exists = cache.is_dir()
+    except OSError:
+        return
+    if not exists:
+        return
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(cache.resolve())
+
+
 def _redirect_home() -> None:
-    """Point ``HOME`` and ``CFB_COACH_DB`` at one session tmp dir."""
+    """Point ``HOME``, ``CFB_COACH_DB``, and ``CFB_COACH_MADDEN_DB`` at one session tmp dir."""
     global _root, _tmp, _redirected
     _remember_real_home()
     assert _real_home is not None
     if _redirected:
         assert _root is not None
-        os.environ["HOME"] = str(_root)
-        os.environ["CFB_COACH_DB"] = str(_root / "coach.db")
-        os.environ["CFB_COACH_HERMETIC_ROOT"] = str(_root)
-        os.environ["CFB_COACH_REAL_HOME"] = str(_real_home)
+        _apply_session_paths(_root)
         return
     _tmp = _hermetic_tmp(_real_home)
     _root = Path(_tmp.name)
-    os.environ["HOME"] = str(_root)
-    os.environ["CFB_COACH_DB"] = str(_root / "coach.db")
-    os.environ["CFB_COACH_HERMETIC_ROOT"] = str(_root)
-    os.environ["CFB_COACH_REAL_HOME"] = str(_real_home)
+    _apply_session_paths(_root)
     _redirected = True
 
 
 def _restore_home() -> None:
-    """Put ``HOME`` and ``CFB_COACH_DB`` back to the values captured before the redirect."""
+    """Restore ``HOME``, ``CFB_COACH_DB``, and ``CFB_COACH_MADDEN_DB`` from before the redirect."""
     global _redirected, _tmp
     if not _redirected:
         return
@@ -170,6 +210,11 @@ def _restore_home() -> None:
         os.environ["CFB_COACH_DB"] = _orig_db
     else:
         os.environ.pop("CFB_COACH_DB", None)
+    if _madden_db_was_set:
+        assert _orig_madden_db is not None
+        os.environ["CFB_COACH_MADDEN_DB"] = _orig_madden_db
+    else:
+        os.environ.pop("CFB_COACH_MADDEN_DB", None)
     os.environ.pop("CFB_COACH_HERMETIC_ROOT", None)
     os.environ.pop("CFB_COACH_REAL_HOME", None)
     _redirected = False
@@ -180,13 +225,16 @@ def _restore_home() -> None:
 
 def pytest_configure(config: pytest.Config) -> None:
     # Before collection, so module-level code and setUpClass cannot see the real home.
+    # Pin Playwright before HOME moves; the browser cache lives under the real home.
     _remember_real_home()
+    assert _real_home is not None
+    _pin_playwright_browsers(_real_home)
     _redirect_home()
 
 
 @pytest.fixture(scope="session", autouse=True)
 def hermetic_coach_home() -> Iterator[None]:
-    """Keep ``HOME`` and ``CFB_COACH_DB`` inside a session tmp dir, then restore both.
+    """Keep ``HOME``, ``CFB_COACH_DB``, and ``CFB_COACH_MADDEN_DB`` inside a session tmp dir.
 
     Installed early from ``pytest_configure`` because this fixture runs after
     test modules are imported. Re-applied here so unittest cases, which cannot
