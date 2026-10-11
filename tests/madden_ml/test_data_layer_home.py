@@ -119,6 +119,36 @@ def _assert_explicit(path: Path, fixture: Path) -> None:
     assert ".cfb-coach" not in path.parts
 
 
+def _home_coach_snapshot(root: Path, *, stat, scandir) -> dict | None:
+    """Names, sizes, and mtimes under ``root``, or None if the directory is absent.
+
+    ``stat`` and ``scandir`` are the unwrapped os functions so the assertion
+    can inspect a pre-existing home directory after the access guard is on.
+    """
+    try:
+        dir_stat = stat(root)
+    except FileNotFoundError:
+        return None
+    files: dict[str, tuple[int, int]] = {}
+
+    def walk(directory: Path) -> None:
+        with scandir(directory) as entries:
+            for entry in entries:
+                path = Path(entry.path)
+                if entry.is_dir(follow_symlinks=False):
+                    walk(path)
+                    continue
+                if entry.is_file(follow_symlinks=False):
+                    file_stat = stat(path)
+                    files[str(path.relative_to(root))] = (
+                        file_stat.st_size,
+                        file_stat.st_mtime_ns,
+                    )
+
+    walk(root)
+    return {"mtime_ns": dir_stat.st_mtime_ns, "files": files}
+
+
 def test_migration_backup_and_shadow_export_use_only_explicit_paths(tmp_path, monkeypatch):
     real_home = Path(os.environ["HOME"])
     home = tmp_path / "empty-home"
@@ -128,6 +158,13 @@ def test_migration_backup_and_shadow_export_use_only_explicit_paths(tmp_path, mo
     backup_dir = fixture / "backups"
     shadow_dir = fixture / "shadow"
     source = fixture / "madden27.db"
+    # Other tests in this process may already have created the real home
+    # directory. Snapshot it before the guard so this test fails only if the
+    # data operations create or change it.
+    real_cfb = real_home / ".cfb-coach"
+    real_stat = os.stat
+    real_scandir = os.scandir
+    before_real = _home_coach_snapshot(real_cfb, stat=real_stat, scandir=real_scandir)
 
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
@@ -187,7 +224,10 @@ def test_migration_backup_and_shadow_export_use_only_explicit_paths(tmp_path, mo
     assert cli_export == 0
 
     assert os.listdir(home) == []
-    assert ".cfb-coach" not in os.listdir(real_home)
+    assert (
+        _home_coach_snapshot(real_cfb, stat=real_stat, scandir=real_scandir)
+        == before_real
+    )
     written = [path for path in fixture.rglob("*") if path.is_file()]
     assert written
     for path in written:
