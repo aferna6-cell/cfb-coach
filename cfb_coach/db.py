@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -16,11 +17,82 @@ def resolve_db_path_from_env() -> Path | None:
     raw = os.environ.get("CFB_COACH_DB")
     return Path(raw) if raw else None
 
+
+def _madden_db_filename() -> str:
+    from cfb_coach.games import GAMES, MADDEN27
+
+    return GAMES[MADDEN27].db_filename
+
+
+def _nonempty_env(name: str) -> str | None:
+    raw = os.environ.get(name)
+    return raw if raw else None
+
+
+def madden_db_path() -> Path:
+    """Resolve the Madden database path.
+
+    A non-empty ``CFB_COACH_MADDEN_DB`` wins. Otherwise a non-empty
+    ``CFB_COACH_DB`` selects ``<its parent>/madden27.db`` and does not call
+    ``Path.home()`` or create ``~/.cfb-coach``. Otherwise the path is
+    ``~/.cfb-coach/madden27.db``. Empty strings count as unset. Whenever
+    ``CFB_COACH_DB`` is set, a ``UserWarning`` names both variables if the
+    resolved Madden path is that same file. The warning also fires when
+    ``CFB_COACH_MADDEN_DB`` names the sibling ``madden27.db``.
+    """
+    filename = _madden_db_filename()
+    madden_raw = _nonempty_env("CFB_COACH_MADDEN_DB")
+    cfb_raw = _nonempty_env("CFB_COACH_DB")
+    sibling = Path(cfb_raw).parent / filename if cfb_raw else None
+
+    def _warn_if_same_file(chosen: Path) -> None:
+        if not cfb_raw:
+            return
+        resolved = chosen.resolve()
+        same = resolved == Path(cfb_raw).resolve()
+        if madden_raw and sibling is not None and resolved == sibling.resolve():
+            same = True
+        if same:
+            warnings.warn(
+                "CFB_COACH_MADDEN_DB and CFB_COACH_DB resolve to the same file "
+                f"({chosen})",
+                UserWarning,
+                stacklevel=3,
+            )
+
+    if madden_raw:
+        chosen = Path(madden_raw)
+        _warn_if_same_file(chosen)
+        parent = chosen.parent
+        if not parent.exists():
+            parent.mkdir()
+        return chosen
+    if sibling is not None:
+        _warn_if_same_file(sibling)
+        return sibling
+    try:
+        home = Path.home() / ".cfb-coach" / filename
+        home.parent.mkdir(parents=True, exist_ok=True)
+        return home
+    except OSError:
+        fallback = Path("/workspace/cfb-coach/data") / filename
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
 def default_db_path() -> Path:
-    """Prefer CFB_COACH_DB, then ~/.cfb-coach/coach.db, then package data/."""
+    """Prefer CFB_COACH_DB, then ~/.cfb-coach/coach.db, then package data/.
+
+    A non-empty ``CFB_COACH_DB`` is returned as given. This branch does not
+    call ``Path.home()`` and does not create ``~/.cfb-coach``. Only the parent
+    of the given path is created, and only when that parent is missing. An
+    empty value is treated as unset.
+    """
     env = resolve_db_path_from_env()
     if env is not None:
-        env.parent.mkdir(parents=True, exist_ok=True)
+        parent = env.parent
+        if not parent.exists():
+            parent.mkdir()
         return env
     home = Path.home() / ".cfb-coach" / "coach.db"
     try:
