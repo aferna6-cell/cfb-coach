@@ -421,18 +421,20 @@ def set_model_version(db: Any, version: str | None) -> None:
 
 
 def resolve_live_db_path(explicit: str | Path | None = None) -> Path:
-    """Database file for the live server, the CLI, and opponent context.
+    """Madden database for live rows.
 
-    An explicit ``--db`` path wins. Otherwise the path is
-    :func:`cfb_coach.db.default_db_path`.
+    Decisions, outcomes, snap logs, opponent context, and the postgame
+    report use this file. An explicit ``--db`` path wins. Otherwise the
+    path is :func:`cfb_coach.games.madden_db_path` (``CFB_COACH_MADDEN_DB``,
+    else ``madden27.db``). It is not ``coach.db``.
     """
     if explicit is not None and str(explicit).strip():
         path = Path(explicit).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
-    from cfb_coach.db import default_db_path
+    from cfb_coach.games import madden_db_path
 
-    return default_db_path()
+    return madden_db_path()
 
 
 _OPPONENT_CONTEXT_META = "ml_opponent_context.v1"

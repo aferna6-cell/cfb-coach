@@ -121,25 +121,13 @@ def _html_shadow_hook(db: CoachDB, opponent_id: str):
 def open_db(explicit: str | None = None) -> CoachDB:
     """Open the Madden database for the CLI and the live server.
 
-    ``--db`` names the file. Otherwise the directory is the parent of
-    ``default_db_path()`` and the gameplay file is ``madden27.db``, unless
-    ``CFB_COACH_MADDEN_DB`` names a file.
+    ``--db`` names the file. Otherwise the path is ``madden_db_path()``
+    (``CFB_COACH_MADDEN_DB``, else ``madden27.db``). Madden rows are not
+    written to ``coach.db``.
     """
-    if explicit:
-        from cfb_coach.madden.model.inference import resolve_live_db_path
+    from cfb_coach.madden.model.inference import resolve_live_db_path
 
-        path = resolve_live_db_path(explicit)
-    else:
-        import os
-
-        from cfb_coach.db import default_db_path
-
-        raw = os.environ.get("CFB_COACH_MADDEN_DB")
-        if raw:
-            path = Path(raw).expanduser()
-            path.parent.mkdir(parents=True, exist_ok=True)
-        else:
-            path = default_db_path().parent / "madden27.db"
+    path = resolve_live_db_path(explicit)
     db = CoachDB(path, seed=load_seed())
     try:  # stored Active 8 selections migrate in place; the live loadout is 8 offense + 8 defense
         from cfb_coach.madden.macros import migrate_all_selections

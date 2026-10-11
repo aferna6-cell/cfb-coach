@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import pwd
@@ -164,20 +165,22 @@ class TestEmptyHome(unittest.TestCase):
                 os.path.abspath(str(empty_home)),
             )
             coach_db = workspace / "coach.db"
+            madden_db = workspace / "madden27.db"
             env = {
                 "HOME": str(empty_home),
                 "CFB_COACH_DB": str(coach_db),
+                "CFB_COACH_MADDEN_DB": str(madden_db),
             }
             previous_madden = os.environ.pop("CFB_COACH_MADDEN_DB", None)
             try:
-                self._run_isolated(roots, empty_home, workspace, coach_db, env)
+                self._run_isolated(roots, empty_home, workspace, coach_db, madden_db, env)
             finally:
                 if previous_madden is not None:
                     os.environ["CFB_COACH_MADDEN_DB"] = previous_madden
             self.assertEqual(list(empty_home.rglob("*")), [])
         self.assertEqual(_snapshot(real_data), before)
 
-    def _run_isolated(self, roots, empty_home, workspace, coach_db, env) -> None:
+    def _run_isolated(self, roots, empty_home, workspace, coach_db, madden_db, env) -> None:
         from cfb_coach.cli import main
         from cfb_coach.live_server import (
             ContextThreadingHTTPServer,
@@ -286,13 +289,183 @@ class TestEmptyHome(unittest.TestCase):
                         f"cli_play_no_overlay_ms={bare_ms:.2f} "
                         f"http_state_ms={state_ms:.2f} http_call_ms={http_call_ms:.2f}"
                     )
-                    self.assertEqual(resolve_live_db_path(), coach_db)
+                    self.assertEqual(resolve_live_db_path(), madden_db)
+                    self.assertNotEqual(resolve_live_db_path(), coach_db)
                     explicit = workspace / "explicit.db"
                     self.assertEqual(resolve_live_db_path(str(explicit)), explicit)
                     saved = save_opponent_context(OpponentContext(opponent_id="gavin"))
-                    self.assertEqual(saved, coach_db)
+                    self.assertEqual(saved, madden_db)
+                    self.assertNotEqual(saved, coach_db)
                     loaded = load_opponent_context("gavin")
                     self.assertIsNotNone(loaded)
                     self.assertEqual(loaded.opponent_id, "gavin")
                     self.assertTrue(str(saved).startswith(str(workspace)))
                     self.assertEqual(hits, [])
+
+
+def _table_counts(path: Path) -> dict[str, int]:
+    uri = f"file:{path.resolve().as_posix()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    try:
+        counts = {}
+        for table in ("ml_decisions", "ml_outcomes", "snaps"):
+            counts[table] = int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        counts["opponent_context"] = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM meta WHERE key LIKE 'ml_opponent_context.v1:%'"
+            ).fetchone()[0]
+        )
+        return counts
+    finally:
+        conn.close()
+
+
+class TestMaddenDbSeparateFromCoach(unittest.TestCase):
+    def test_live_server_and_cli_write_madden_rows_not_coach_db(self) -> None:
+        from cfb_coach.cli import main
+        from cfb_coach.live_server import (
+            ContextThreadingHTTPServer,
+            LivePlayController,
+            make_handler,
+            pick_port,
+        )
+        from cfb_coach.madden.cli import _html_shadow_hook, open_db
+        from cfb_coach.madden.model.inference import (
+            load_opponent_context,
+            resolve_live_db_path,
+            save_opponent_context,
+            set_mode,
+        )
+        from cfb_coach.madden.model.offense_postgame import evaluate_saved_games
+        from cfb_coach.madden.model.schema import CoachingMode, OpponentContext
+        from cfb_coach.madden.playcaller import make_call
+        from cfb_coach.madden.prep import build_prep_plan
+        from cfb_coach.madden.situation import parse_madden_situation
+        from cfb_coach.db import CoachDB
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            empty_home = root / "empty-home"
+            empty_home.mkdir()
+            coach_db = root / "coach.db"
+            madden_db = root / "separate" / "madden27.db"
+            coach_db.write_bytes(b"coach-sentinel-not-a-madden-database")
+            coach_hash = hashlib.sha256(coach_db.read_bytes()).hexdigest()
+            env = {
+                "HOME": str(empty_home),
+                "CFB_COACH_DB": str(coach_db),
+                "CFB_COACH_MADDEN_DB": str(madden_db),
+            }
+            with mock.patch.dict(os.environ, env, clear=False):
+                self.assertEqual(resolve_live_db_path(), madden_db)
+                self.assertNotEqual(resolve_live_db_path(), coach_db)
+                db = open_db()
+                try:
+                    self.assertEqual(Path(db.path), madden_db)
+                    build_prep_plan("cpu", db=db, offline=True, apply_books=True)
+                    build_prep_plan("gavin", db=db, offline=True, apply_books=True)
+                    set_mode(db, CoachingMode.SHADOW)
+                finally:
+                    db.close()
+
+                def run_cli(argv: list[str], lines: list[str] | None = None) -> tuple[int, str]:
+                    feed = iter(lines or [])
+
+                    def _input(*_args, **_kwargs):
+                        try:
+                            return next(feed)
+                        except StopIteration:
+                            raise EOFError
+
+                    out = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(out), redirect_stderr(err), mock.patch("builtins.input", _input):
+                        code = main(argv)
+                    return code, out.getvalue() + err.getvalue()
+
+                call_code, call_out = run_cli(
+                    ["call", "--game", "madden27", "--opponent", "cpu", "--situation", "1&10"]
+                )
+                self.assertEqual(call_code, 0, call_out)
+                play_code, play_out = run_cli(
+                    ["play", "--game", "madden27", "--opponent", "gavin", "--terminal", "--no-overlay"],
+                    ["1&10", "+7", "quit"],
+                )
+                self.assertEqual(play_code, 0, play_out)
+                self.assertIn(str(madden_db), play_out)
+                self.assertNotIn(str(coach_db), play_out)
+
+                live_db = open_db()
+                server = None
+                try:
+                    def _make(sit, **kwargs):
+                        return make_call(sit, "gavin", live_db, **kwargs)
+
+                    ctrl = LivePlayController(
+                        db=live_db,
+                        opponent_id="gavin",
+                        make_call=_make,
+                        parse_situation=parse_madden_situation,
+                        learn_summary=lambda: "",
+                        brand="Madden 27 Franchise",
+                        play_cmd="cfb-coach play --game madden27",
+                        cpu_only=False,
+                        shadow_evaluate=_html_shadow_hook(live_db, "gavin"),
+                        enable_execution_verify=True,
+                    )
+                    ctrl.start()
+                    port = pick_port()
+                    server = ContextThreadingHTTPServer(("127.0.0.1", port), make_handler(ctrl))
+                    thread = threading.Thread(target=server.serve_forever, daemon=True)
+                    thread.start()
+
+                    def post(path: str, body: bytes) -> tuple[int, str]:
+                        conn = HTTPConnection("127.0.0.1", port, timeout=15)
+                        conn.request("POST", path, body=body, headers={"Content-Type": "application/json"})
+                        resp = conn.getresponse()
+                        payload = resp.read().decode()
+                        status = resp.status
+                        conn.close()
+                        return status, payload
+
+                    call_status, call_body = post("/api/call", b'{"sit":"1&10"}')
+                    result_status, result_body = post(
+                        "/api/result_call",
+                        b'{"outcome":"+4","sit":"2&6"}',
+                    )
+                finally:
+                    if server is not None:
+                        server.shutdown()
+                        server.server_close()
+                    live_db.close()
+                self.assertEqual(call_status, 200, call_body)
+                self.assertEqual(result_status, 200, result_body)
+
+                saved = save_opponent_context(OpponentContext(opponent_id="gavin"))
+                self.assertEqual(saved, madden_db)
+                loaded = load_opponent_context("gavin")
+                self.assertIsNotNone(loaded)
+                self.assertEqual(loaded.opponent_id, "gavin")
+
+                post_code, post_out = run_cli(
+                    ["postgame", "--game", "madden27", "--opponent", "gavin"]
+                )
+                self.assertEqual(post_code, 0, post_out)
+                self.assertIn("New snaps learned:", post_out)
+                self.assertNotIn("New snaps learned: 0", post_out)
+
+                madden_counts = _table_counts(madden_db)
+                self.assertGreaterEqual(madden_counts["ml_decisions"], 1)
+                self.assertGreaterEqual(madden_counts["snaps"], 1)
+                self.assertGreaterEqual(madden_counts["opponent_context"], 1)
+                report_db = CoachDB.open_read_only(madden_db)
+                try:
+                    report = evaluate_saved_games(report_db)
+                finally:
+                    report_db.close()
+                self.assertEqual(Path(report_db.path), madden_db)
+                self.assertIsInstance(report["games"], list)
+
+                self.assertEqual(hashlib.sha256(coach_db.read_bytes()).hexdigest(), coach_hash)
+                self.assertEqual(coach_db.read_bytes(), b"coach-sentinel-not-a-madden-database")
+                self.assertEqual(list(empty_home.rglob("*")), [])
