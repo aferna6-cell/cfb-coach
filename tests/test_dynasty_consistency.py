@@ -48,6 +48,8 @@ class _PreppedOSU(_DBCase):
         self.db.set_meta("dynasty_mode", "alabama")  # e.g. a later prep for another opponent
 
     def _play(self, argv, lines=("2&7 yl40 showing cover 1", "q")):
+        if "--db" not in argv:
+            argv = [*argv, "--db", str(self.path)]
         buf = io.StringIO()
         seen = []
         real = playcaller.make_call
@@ -103,7 +105,7 @@ class TestPlayFollowsPrep(_PreppedOSU):
 
         with mock.patch("cfb_coach.live_server.run_live_server", fake_server), \
                 contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(cli.main(["play", "-o", "cpu"]), 0)
+            self.assertEqual(cli.main(["play", "-o", "cpu", "--db", str(self.path)]), 0)
         self.assertEqual(box["dyn"], "ohio_state")
         self.assertEqual(box["state"]["dynasty"], "ohio_state")
         self.assertIn("latest prep vs cpu", box["state"]["dynasty_source"])

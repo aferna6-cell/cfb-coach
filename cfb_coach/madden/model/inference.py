@@ -932,25 +932,21 @@ def display_or_fallback(candidate: str, fallback: str, side: str) -> str:
     return fallback
 
 
-def finish_live_snap(sit: Any, call: Any, db: Any = None) -> Any:
-    """Single live call-site hook. Heuristic calls are returned unchanged.
+def finish_live_snap(sit: Any, db: Any) -> None:
+    """Clear the opponent look after one snap.
 
-    When a snap carried an opponent look, that look is cleared so the next
-    snap does not reuse it. This hook does not call VOD.
+    Returns nothing and does not touch the call. It does not load a model
+    or call VOD, so it adds no model-path time. ``db`` is accepted so the
+    call site can pass the open database; the look lives on ``sit``.
     """
     del db
     extras = getattr(sit, "extras", None)
-    if isinstance(extras, dict):
-        session = extras.get("opp_look_session")
-        if not isinstance(session, OppLookSession):
-            session = OppLookSession()
-        if "opp_look" in extras:
-            session.note(extras.get("opp_look"))
-            session.finish_snap()
-            extras["opp_look"] = None
-            if isinstance(extras.get("opp_look_session"), OppLookSession):
-                extras["opp_look_session"].current = None
-    return call
+    if not isinstance(extras, dict):
+        return
+    session = extras.get("opp_look_session")
+    if isinstance(session, OppLookSession):
+        session.finish_snap()
+    extras["opp_look"] = None
 
 
 def cached_defense_model(
