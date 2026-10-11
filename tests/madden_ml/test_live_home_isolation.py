@@ -469,3 +469,48 @@ class TestMaddenDbSeparateFromCoach(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(coach_db.read_bytes()).hexdigest(), coach_hash)
                 self.assertEqual(coach_db.read_bytes(), b"coach-sentinel-not-a-madden-database")
                 self.assertEqual(list(empty_home.rglob("*")), [])
+
+
+class TestCallPlayDefaultDb(unittest.TestCase):
+    def test_call_and_play_without_db_write_madden_db_not_coach_db(self) -> None:
+        from cfb_coach.cli import main
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            empty_home = root / "empty-home"
+            empty_home.mkdir()
+            coach_db = root / "coach.db"
+            madden_db = root / "separate" / "madden27.db"
+            sentinel = b"coach-sentinel-not-a-madden-database"
+            coach_db.write_bytes(sentinel)
+            env = {
+                "HOME": str(empty_home),
+                "CFB_COACH_DB": str(coach_db),
+                "CFB_COACH_MADDEN_DB": str(madden_db),
+            }
+            with mock.patch.dict(os.environ, env, clear=False):
+                def run_cli(argv: list[str]) -> tuple[int, str]:
+                    out = io.StringIO()
+                    err = io.StringIO()
+                    with redirect_stdout(out), redirect_stderr(err):
+                        code = main(argv)
+                    return code, out.getvalue() + err.getvalue()
+
+                self.assertFalse(madden_db.exists())
+                call_code, call_out = run_cli(
+                    ["call", "--opponent", "cpu", "--situation", "1&10"]
+                )
+                self.assertEqual(call_code, 0, call_out)
+                self.assertTrue(madden_db.is_file(), call_out)
+                self.assertTrue(madden_db.read_bytes().startswith(b"SQLite format 3"))
+                self.assertEqual(coach_db.read_bytes(), sentinel)
+
+                play_code, play_out = run_cli(
+                    ["play", "--opponent", "cpu", "--once", "1&10", "--no-overlay"]
+                )
+                self.assertEqual(play_code, 0, play_out)
+                self.assertIn(str(madden_db), play_out)
+                self.assertNotIn(str(coach_db), play_out)
+                self.assertTrue(madden_db.is_file())
+                self.assertEqual(coach_db.read_bytes(), sentinel)
+                self.assertEqual(list(empty_home.rglob("*")), [])

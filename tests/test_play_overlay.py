@@ -145,12 +145,15 @@ class TestPlayOverlay(unittest.TestCase):
         # Isolate HOME so the default directory is not the real ~/.cfb-coach.
         with tempfile.TemporaryDirectory() as td:
             previous_db = os.environ.pop("CFB_COACH_DB", None)
+            previous_madden = os.environ.pop("CFB_COACH_MADDEN_DB", None)
             try:
                 with mock.patch.dict(os.environ, {"HOME": td}, clear=False):
                     p = default_overlay_path()
             finally:
                 if previous_db is not None:
                     os.environ["CFB_COACH_DB"] = previous_db
+                if previous_madden is not None:
+                    os.environ["CFB_COACH_MADDEN_DB"] = previous_madden
         self.assertTrue(str(p).endswith("copilot_overlay.html"))
         self.assertIn(".cfb-coach", str(p))
         self.assertTrue(str(p).startswith(td))

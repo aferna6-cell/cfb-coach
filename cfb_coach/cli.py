@@ -34,6 +34,18 @@ def _db(explicit: str | None = None) -> CoachDB:
     return CoachDB(default_db_path())
 
 
+def _call_db(explicit: str | None = None) -> CoachDB:
+    """Open the database for ``call`` and ``play``.
+
+    ``--db`` names the file. Otherwise the path is ``madden_db_path()``.
+    """
+    if explicit:
+        return CoachDB(Path(explicit).expanduser())
+    from cfb_coach.games import madden_db_path
+
+    return CoachDB(madden_db_path())
+
+
 def _local_ts(ts: str) -> str:
     from cfb_coach.meta_scout import local_ts
 
@@ -385,7 +397,7 @@ def cmd_call(args: argparse.Namespace) -> int:
     if handler:
         return handler(args)
     oid = _require_opponent(args.opponent)
-    db = _db(getattr(args, "db", None))
+    db = _call_db(getattr(args, "db", None))
     try:
         sit = parse_situation(args.situation, default_side=args.side or "offense")
         if args.side:
@@ -409,7 +421,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     if handler:
         return handler(args)
     oid = _require_opponent(args.opponent)
-    db = _db(getattr(args, "db", None))
+    db = _call_db(getattr(args, "db", None))
     _ensure_rules(db)
     from cfb_coach.dynasty import resolve_dynasty
 
@@ -461,7 +473,7 @@ def cmd_play(args: argparse.Namespace) -> int:
 
         overlay_path = _P(overlay_arg)
     else:
-        overlay_path = default_overlay_path()  # ~/.cfb-coach/copilot_overlay.html
+        overlay_path = default_overlay_path()
 
     if getattr(args, "once", None):
         # Non-interactive: still refresh overlay file if enabled, but do not auto-open
@@ -951,7 +963,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_play.add_argument(
         "--db",
         default=None,
-        help="Database file for this session. Default is default_db_path().",
+        help="Database file for this session. Default is madden_db_path().",
     )
     p_play.add_argument(
         "--html-port",
@@ -1002,7 +1014,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_call.add_argument(
         "--db",
         default=None,
-        help="Database file for this call. Default is default_db_path().",
+        help="Database file for this call. Default is madden_db_path().",
     )
     p_call.add_argument("--side", choices=("offense", "defense"), default=None)
     p_call.add_argument("--why", action="store_true")
