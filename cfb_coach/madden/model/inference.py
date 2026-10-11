@@ -45,6 +45,35 @@ from cfb_coach.madden.model.train import load_artifact
 _SITUATION_ADAPTER = adapters.situation_to_state
 
 
+def read_scored_on(model: Any) -> str:
+    """Read the training-report tag ``scored_on``.
+
+    ``reviewed`` and ``unreviewed`` are the only stored values. A missing
+    tag, a missing report, or any other text counts as ``unknown``.
+    """
+    report = None
+    if isinstance(model, dict):
+        report = model.get("training_report")
+        if report is None:
+            report = model.get("training-report")
+    else:
+        report = getattr(model, "training_report", None)
+        if report is None:
+            report = getattr(model, "training-report", None)
+    if not isinstance(report, dict):
+        return "unknown"
+    tags = report.get("tags")
+    source = tags if isinstance(tags, dict) else report
+    value = source.get("scored_on")
+    if value in ("reviewed", "unreviewed"):
+        return value
+    return "unknown"
+
+
+def _hybrid_refused(scored: str) -> str:
+    return f"hybrid refused: scored_on is {scored}"
+
+
 def rank_live(
     game_state: GameState,
     observation: PreSnapObservation,
@@ -102,25 +131,39 @@ def rank_live(
         )
 
     if mode is CoachingMode.HYBRID:
-        # Hybrid is built but inactive until promotion_allowed. Always fall back.
+        # Hybrid may use a model only when its training report says reviewed.
+        # Anything else falls back to the heuristic with a clear message.
+        # A reviewed model stays inactive until promotion_allowed.
+        scored = read_scored_on(model_artifact)
         status = MLStatus.CIRCUIT_OPEN
+        refused = scored != "reviewed"
         try:
             entry = _load_entry(registry_dir, model_version)
-            if entry is None:
+            if model_artifact is None and entry is not None and entry.artifact_path:
+                scored = read_scored_on(load_artifact(entry.artifact_path))
+                refused = scored != "reviewed"
+            if refused:
+                status = MLStatus.CIRCUIT_OPEN
+            elif entry is None and model_artifact is None:
                 status = MLStatus.MODEL_MISSING
-            elif not registry_mod.promotion_allowed(entry):
+            elif entry is not None and not registry_mod.promotion_allowed(entry):
                 status = MLStatus.CIRCUIT_OPEN
             else:
                 status = MLStatus.CIRCUIT_OPEN  # still force fallback this sprint
         except Exception:  # noqa: BLE001
-            status = MLStatus.EXCEPTION
+            if model_artifact is None:
+                scored = "unknown"
+                refused = True
+            status = MLStatus.EXCEPTION if not refused else MLStatus.CIRCUIT_OPEN
         return CoachingDecision(
             decision_ts=decision_ts,
             latency_ms_model=None,
             inference_budget_ms=ML_LATENCY_BUDGET_MS,
             mode=CoachingMode.HYBRID,
             effective_mode=CoachingMode.HEURISTIC,
-            mode_downgrade_reason="hybrid_inactive_until_promotion",
+            mode_downgrade_reason=(
+                _hybrid_refused(scored) if refused else "hybrid_inactive_until_promotion"
+            ),
             game_id=game_state.game_id,
             snap_id=game_state.snap_id,
             session_id=session_id,

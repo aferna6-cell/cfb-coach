@@ -248,6 +248,7 @@ class LivePlayController:
             "data_version": info.get("data_version"),
             "probability": info.get("probability"),
             "fell_back": bool(info.get("fell_back")),
+            "scored_on": info.get("scored_on") or "unknown",
             "input_audit": (info.get("pre_snap_action_context") or {}).get("input_audit")
             or info.get("input_audit"),
             "football_reason": info.get("football_reason"),
@@ -260,8 +261,10 @@ class LivePlayController:
         info = getattr(call, "ml_experimental", None)
         if isinstance(info, dict) and info.get("explanation"):
             eq = info.get("evidence_quality") or "unknown"
+            scored = info.get("scored_on") or "unknown"
             text += (
                 f"\n  ML experimental [{eq}]: {info['explanation']}"
+                f"\n  model scored_on {scored}"
                 f"\n  heuristic kept visible: {info.get('heuristic_formation')}/{info.get('heuristic_play')}"
                 f"\n  (opt-in pilot — not a validated competitive model)"
             )
@@ -1215,6 +1218,7 @@ function renderState(st) {{
           + "heuristic " + (st.ml_experimental.heuristic || "") + " · "
           + "ML " + (st.ml_experimental.ml || "") + " · "
           + "shown " + (st.ml_experimental.final || "") + " · "
+          + "scored_on " + (st.ml_experimental.scored_on || "unknown") + " · "
           + (st.ml_experimental.explanation || "");
         const audit = st.ml_experimental.input_audit;
         if (audit) {{

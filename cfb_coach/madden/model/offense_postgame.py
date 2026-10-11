@@ -17,6 +17,24 @@ BLOWOUT_MARGIN = 17
 _SCORE_RE = re.compile(r"(\d+)\s*[-–]\s*(\d+)")
 
 
+def _model_scored_on(db: Any) -> str:
+    """Training-report tag for the installed model. Missing is unknown."""
+    from cfb_coach.madden.model.experimental_live import resolve_artifact_path
+    from cfb_coach.madden.model.inference import read_scored_on
+
+    try:
+        path = resolve_artifact_path(db)
+    except Exception:  # noqa: BLE001
+        return "unknown"
+    if path is None or not path.is_file():
+        return "unknown"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return "unknown"
+    return read_scored_on(payload)
+
+
 def missing_database_report(path: Any) -> dict[str, Any]:
     location = str(path)
     return {
@@ -201,6 +219,7 @@ def evaluate_saved_games(
         )
     return {
         "database": {"exists": True, "access": "read_only"},
+        "scored_on": _model_scored_on(db),
         "games_evaluated": len(games),
         "last_two_cpu_games": [game["game_id"] for game in games],
         "cpu_blowout_wins": blowouts,
