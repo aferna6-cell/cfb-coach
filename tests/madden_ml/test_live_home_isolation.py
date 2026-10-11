@@ -21,10 +21,13 @@ def _real_home() -> Path:
     return Path(pwd.getpwuid(os.getuid()).pw_dir)
 
 
-def _forbidden_roots(empty_home: Path) -> tuple[str, str]:
-    real = os.path.abspath(str(_real_home() / ".cfb-coach"))
-    empty = os.path.abspath(str(empty_home / ".cfb-coach"))
-    return real, empty
+def _snapshot(path: Path) -> tuple:
+    if not path.exists():
+        return ()
+    return tuple(sorted(
+        (item.relative_to(path).as_posix(), item.stat().st_mtime_ns, item.stat().st_size)
+        for item in path.rglob("*")
+    ))
 
 
 def _is_forbidden(path, roots: tuple[str, ...]) -> str | None:
@@ -136,26 +139,65 @@ class TestEmptyHome(unittest.TestCase):
             pick_port,
         )
         from cfb_coach.madden.cli import open_db
+        from cfb_coach.madden.model.inference import (
+            load_opponent_context,
+            resolve_live_db_path,
+            save_opponent_context,
+        )
+        from cfb_coach.madden.model.schema import OpponentContext
         from cfb_coach.madden.playcaller import make_call
         from cfb_coach.madden.prep import build_prep_plan
         from cfb_coach.madden.research_db import _STATE
         from cfb_coach.madden.situation import parse_madden_situation
 
         real_home = _real_home()
-        self.assertFalse((real_home / ".cfb-coach").exists())
+        real_data = real_home / ".cfb-coach"
+        before = _snapshot(real_data)
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             empty_home = root / "empty-home"
             workspace = root / "workspace"
             empty_home.mkdir()
             workspace.mkdir()
-            roots = _forbidden_roots(empty_home)
+            roots = (
+                os.path.abspath(str(_real_home() / ".cfb-coach")),
+                os.path.abspath(str(empty_home)),
+            )
+            coach_db = workspace / "coach.db"
             env = {
                 "HOME": str(empty_home),
-                "CFB_COACH_DB": str(workspace / "coach.db"),
-                "CFB_COACH_MADDEN_DB": str(workspace / "madden27.db"),
+                "CFB_COACH_DB": str(coach_db),
             }
-            with mock.patch.dict(os.environ, env, clear=False):
+            previous_madden = os.environ.pop("CFB_COACH_MADDEN_DB", None)
+            try:
+                self._run_isolated(roots, empty_home, workspace, coach_db, env)
+            finally:
+                if previous_madden is not None:
+                    os.environ["CFB_COACH_MADDEN_DB"] = previous_madden
+            self.assertEqual(list(empty_home.rglob("*")), [])
+        self.assertEqual(_snapshot(real_data), before)
+
+    def _run_isolated(self, roots, empty_home, workspace, coach_db, env) -> None:
+        from cfb_coach.cli import main
+        from cfb_coach.live_server import (
+            ContextThreadingHTTPServer,
+            LivePlayController,
+            make_handler,
+            pick_port,
+        )
+        from cfb_coach.madden.cli import open_db
+        from cfb_coach.madden.model.inference import (
+            load_opponent_context,
+            resolve_live_db_path,
+            save_opponent_context,
+        )
+        from cfb_coach.madden.model.schema import OpponentContext
+        from cfb_coach.madden.playcaller import make_call
+        from cfb_coach.madden.prep import build_prep_plan
+        from cfb_coach.madden.research_db import _STATE
+        from cfb_coach.madden.situation import parse_madden_situation
+
+        with mock.patch.dict(os.environ, env, clear=False):
                 _STATE.clear()
                 with _audit(roots) as hits:
                     db = open_db()
@@ -244,6 +286,13 @@ class TestEmptyHome(unittest.TestCase):
                         f"cli_play_no_overlay_ms={bare_ms:.2f} "
                         f"http_state_ms={state_ms:.2f} http_call_ms={http_call_ms:.2f}"
                     )
+                    self.assertEqual(resolve_live_db_path(), coach_db)
+                    explicit = workspace / "explicit.db"
+                    self.assertEqual(resolve_live_db_path(str(explicit)), explicit)
+                    saved = save_opponent_context(OpponentContext(opponent_id="gavin"))
+                    self.assertEqual(saved, coach_db)
+                    loaded = load_opponent_context("gavin")
+                    self.assertIsNotNone(loaded)
+                    self.assertEqual(loaded.opponent_id, "gavin")
+                    self.assertTrue(str(saved).startswith(str(workspace)))
                     self.assertEqual(hits, [])
-            self.assertFalse((empty_home / ".cfb-coach").exists())
-        self.assertFalse((real_home / ".cfb-coach").exists())

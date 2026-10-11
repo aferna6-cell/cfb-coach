@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from cfb_coach.db import CoachDB
-from cfb_coach.games import GAMES, MADDEN27, madden_db_path
+from cfb_coach.games import GAMES, MADDEN27
 from cfb_coach.madden.data import load_seed
 from cfb_coach.madden.franchise import (
     doctrine_line,
@@ -118,8 +118,29 @@ def _html_shadow_hook(db: CoachDB, opponent_id: str):
     return _hook
 
 
-def open_db() -> CoachDB:
-    db = CoachDB(madden_db_path(), seed=load_seed())
+def open_db(explicit: str | None = None) -> CoachDB:
+    """Open the Madden database for the CLI and the live server.
+
+    ``--db`` names the file. Otherwise the directory is the parent of
+    ``default_db_path()`` and the gameplay file is ``madden27.db``, unless
+    ``CFB_COACH_MADDEN_DB`` names a file.
+    """
+    if explicit:
+        from cfb_coach.madden.model.inference import resolve_live_db_path
+
+        path = resolve_live_db_path(explicit)
+    else:
+        import os
+
+        from cfb_coach.db import default_db_path
+
+        raw = os.environ.get("CFB_COACH_MADDEN_DB")
+        if raw:
+            path = Path(raw).expanduser()
+            path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            path = default_db_path().parent / "madden27.db"
+    db = CoachDB(path, seed=load_seed())
     try:  # stored Active 8 selections migrate in place; the live loadout is 8 offense + 8 defense
         from cfb_coach.madden.macros import migrate_all_selections
 
@@ -420,7 +441,7 @@ def cmd_prep(args: argparse.Namespace) -> int:
 
 def cmd_call(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
-    db = open_db()
+    db = open_db(getattr(args, "db", None))
     try:
         pid = get_session_profile(db)
         sit = parse_madden_situation(args.situation, default_side=args.side or "offense")
@@ -525,7 +546,7 @@ def _write_overlay(path: Path | None, text: str, short: str) -> None:
 
 def cmd_play(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
-    db = open_db()
+    db = open_db(getattr(args, "db", None))
     pid = _profile_arg(args, db)
     active = _active_after_prep(db, oid, pid)
     cpu = is_cpu_opponent(oid)
