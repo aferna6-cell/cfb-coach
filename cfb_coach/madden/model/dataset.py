@@ -686,8 +686,9 @@ def vod_training_eligible(
 
     Off (default): reviewed and ``trainable is True`` only, and only when
     ``permitted_use`` is ``training``. On: ``review_status`` of exactly
-    ``unreviewed`` or ``auto`` with that same permission is added. Any other
-    status stays out. ``F8Hm324SMtg`` and any unpermitted row stay out.
+    ``unreviewed`` or ``auto`` with that same permission is added. The match
+    is case-sensitive and is not normalized. ``Auto``, ``None``, and any other
+    status stay out. ``F8Hm324SMtg`` and any unpermitted row stay out.
     Does not rewrite ``review_status`` or ``trainable``.
     """
     if vod_source_excluded(row) or not vod_permitted_for_training(row):

@@ -194,13 +194,24 @@ def test_rejected_and_unknown_status_excluded_when_flag_on(tmp_path):
         _row(snap_id="reviewed"),
         _row(snap_id="rejected", review_status="rejected", trainable=True),
         _row(snap_id="typo", review_status="reviewd_typo", trainable=True),
+        _row(snap_id="null-status", review_status=None, trainable=True),
+        _row(snap_id="auto-capital", review_status="Auto", trainable=True),
+        _row(snap_id="auto", review_status="auto", trainable=False),
+        _row(snap_id="unreviewed", review_status="unreviewed", trainable=False),
     ]
-    report = export_vod_training_dataset(
+    on = export_vod_training_dataset(
         rows, tmp_path / "on", include_unreviewed_permitted=True
     )
-    assert _ids(report["rows"]) == ["reviewed"]
-    assert vod_training_eligible(rows[1], include_unreviewed_permitted=True) is False
-    assert vod_training_eligible(rows[2], include_unreviewed_permitted=True) is False
+    off = export_vod_training_dataset(rows, tmp_path / "off")
+    assert _ids(on["rows"]) == ["reviewed", "auto", "unreviewed"]
+    assert _ids(off["rows"]) == ["reviewed"]
+    excluded_on = {"rejected", "typo", "null-status", "auto-capital"}
+    for row in rows:
+        if row["snap_id"] == "reviewed":
+            continue
+        assert vod_training_eligible(row, include_unreviewed_permitted=False) is False
+        if row["snap_id"] in excluded_on:
+            assert vod_training_eligible(row, include_unreviewed_permitted=True) is False
 
 
 def test_review_status_and_trainable_pass_through_unchanged(tmp_path):
