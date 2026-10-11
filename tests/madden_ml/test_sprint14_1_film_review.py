@@ -337,17 +337,17 @@ class CoachLogTests(unittest.TestCase):
             self.assertEqual(mismatch["snaps"], [])
             self.assertEqual(hashlib.sha256(db.read_bytes()).hexdigest(), before)
             out = Path(tmp) / "log-snaps.json"
-            old = os.environ.get("CFB_COACH_MADDEN_DB")
-            os.environ["CFB_COACH_MADDEN_DB"] = str(db)
+            old = os.environ.get("CFB_COACH_DB")
+            os.environ["CFB_COACH_DB"] = str(db)
             try:
                 buffer = io.StringIO()
                 with redirect_stdout(buffer):
                     code = main(["ml", "film-export-log", "--game-id", "game-a", "--out", str(out)])
             finally:
                 if old is None:
-                    os.environ.pop("CFB_COACH_MADDEN_DB", None)
+                    os.environ.pop("CFB_COACH_DB", None)
                 else:
-                    os.environ["CFB_COACH_MADDEN_DB"] = old
+                    os.environ["CFB_COACH_DB"] = old
             self.assertEqual(code, 0)
             written = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual({row["snap_id"] for row in written}, {"snap-1", "snap-decision"})
@@ -368,19 +368,19 @@ class CoachLogTests(unittest.TestCase):
             self.assertEqual(report["snaps"], [])
             self.assertEqual(hashlib.sha256(db.read_bytes()).hexdigest(), before)
             missing = Path(tmp) / "absent" / "madden.db"
-            old = os.environ.get("CFB_COACH_MADDEN_DB")
-            os.environ["CFB_COACH_MADDEN_DB"] = str(missing)
+            old = os.environ.get("CFB_COACH_DB")
+            os.environ["CFB_COACH_DB"] = str(missing)
             try:
                 buffer = io.StringIO()
                 with redirect_stdout(buffer):
                     code = main(["ml", "film-export-log", "--game-id", "game-a", "--out", str(Path(tmp) / "nope.json")])
             finally:
                 if old is None:
-                    os.environ.pop("CFB_COACH_MADDEN_DB", None)
+                    os.environ.pop("CFB_COACH_DB", None)
                 else:
-                    os.environ["CFB_COACH_MADDEN_DB"] = old
+                    os.environ["CFB_COACH_DB"] = old
             self.assertEqual(code, 2)
-            self.assertFalse(missing.parent.exists())
+            self.assertFalse(missing.is_file())
             self.assertFalse((Path(tmp) / "nope.json").exists())
 
 

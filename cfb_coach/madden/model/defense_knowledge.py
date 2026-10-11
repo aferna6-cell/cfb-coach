@@ -160,6 +160,47 @@ def explain_call(
     )
 
 
+CONTEXT_COVERAGE = (
+    ("early downs", "early_downs"),
+    ("passing downs", "passing_downs"),
+    ("goal line", "goal_line"),
+    ("two-minute", "two_minute"),
+    ("spread", "spread"),
+    ("heavy", "heavy"),
+    ("mobile QB", "mobile_qb"),
+)
+
+
+def context_coverage(
+    packages: Mapping[str, Mapping[str, Any]],
+    *,
+    proposal_formations: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Name the at-most-15 portfolio situations. This is a proposal, not a call.
+
+    Every listed formation is already in the proposal. ``playable`` stays false.
+    """
+    allowed = None if proposal_formations is None else {str(name) for name in proposal_formations}
+    situations: dict[str, dict[str, Any]] = {}
+    for label, key in CONTEXT_COVERAGE:
+        pack = packages.get(key) or {}
+        formations = [str(name) for name in (pack.get("formations") or ()) if str(name)]
+        if allowed is not None:
+            formations = [name for name in formations if name in allowed]
+        situations[label] = {
+            "formations": formations,
+            "playable": False,
+            "status": "proposal",
+            "package": key,
+        }
+    return {
+        "status": "proposal",
+        "playable": False,
+        "max_formations": 15,
+        "situations": situations,
+    }
+
+
 def formation_packages(chosen: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
     """Situation packages drawn only from formations already in the proposal.
 

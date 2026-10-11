@@ -350,7 +350,7 @@ class ReportTests(unittest.TestCase):
     def test_missing_database_is_read_only(self):
         from cfb_coach.madden.model.cli import cmd_ml_opponent_learning
 
-        missing = readonly_madden_db_path().with_name("definitely-missing-madden.db")
+        missing = readonly_madden_db_path("/tmp/definitely-missing-madden.db")
         args = SimpleNamespace(opponent="cpu", game_id=None)
         with mock.patch(
             "cfb_coach.madden.model.opponent_learning.readonly_madden_db_path",
