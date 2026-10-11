@@ -53,16 +53,16 @@ def cmd_ml_find_db(args: argparse.Namespace) -> int:
 def cmd_ml_backup(args: argparse.Namespace) -> int:
     """Consistent SQLite backup via the backup API. Never modifies the source.
 
-    ``--db`` and ``--out`` are used as given. The home-directory default is
-    consulted only when ``--db`` is omitted.
+    ``--db`` and ``--out`` are required. This command does not consult
+    ``madden_db_path()`` or any other default path.
     """
     explicit = getattr(args, "db", None)
-    if explicit:
-        src = Path(explicit)
-        dest_dir = Path(args.out) if getattr(args, "out", None) else src.parent / "backups"
-    else:
-        src = madden_db_path()
-        dest_dir = Path(args.out) if getattr(args, "out", None) else (src.parent / "backups")
+    out = getattr(args, "out", None)
+    if not explicit or not out:
+        print("ml backup-db requires --db and --out.", file=sys.stderr)
+        return 2
+    src = Path(explicit)
+    dest_dir = Path(out)
     try:
         dest = backup_database(src, dest_dir)
     except (OSError, ValueError) as exc:
@@ -150,21 +150,24 @@ def cmd_ml_export(args: argparse.Namespace) -> int:
 
 
 def cmd_ml_migrate(args: argparse.Namespace) -> int:
-    """Explicit migration of a Madden DB. Requires a prior verified backup path.
+    """Explicit migration of a Madden DB. Requires ``--db`` and ``--backup``.
 
-    ``--db`` is used as given. The home-directory default is consulted only
-    when ``--db`` is omitted.
+    This command does not consult ``madden_db_path()`` or any other default path.
     """
     explicit = getattr(args, "db", None)
-    src = Path(explicit) if explicit else madden_db_path()
-    backup = Path(args.backup) if args.backup else None
+    if not explicit:
+        print("ml migrate-db requires --db.", file=sys.stderr)
+        return 2
+    src = Path(explicit)
+    backup = Path(args.backup) if getattr(args, "backup", None) else None
     if backup is None:
         print(
             "Refusing to migrate without --backup pointing at an existing verified backup.",
             file=sys.stderr,
         )
         print(
-            "Run: python -m cfb_coach ml backup-db && python -m cfb_coach ml migrate-db --backup <path>",
+            "Run: python -m cfb_coach ml backup-db --db <db> --out <dir> "
+            "&& python -m cfb_coach ml migrate-db --db <db> --backup <path>",
             file=sys.stderr,
         )
         return 2
@@ -176,7 +179,8 @@ def cmd_ml_migrate(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         print(
-            "Run: python -m cfb_coach ml backup-db && python -m cfb_coach ml migrate-db --backup <path>",
+            "Run: python -m cfb_coach ml backup-db --db <db> --out <dir> "
+            "&& python -m cfb_coach ml migrate-db --db <db> --backup <path>",
             file=sys.stderr,
         )
         return 2
@@ -1716,24 +1720,24 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_bak.add_argument(
         "--db",
-        default=None,
-        help="Absolute source database path. Omit only to use the configured Madden DB.",
+        required=True,
+        help="Absolute source database path. Required; no home-directory default.",
     )
     p_bak.add_argument(
         "--out",
-        default=None,
-        help="Backup directory (default: <source>/backups; never inferred from ~/.cfb-coach when --db is set)",
+        required=True,
+        help="Backup directory. Required; no default path.",
     )
     p_bak.set_defaults(func=cmd_ml_backup)
 
     p_mig = ml_sub.add_parser(
         "migrate-db",
-        help="Explicit schema migration (requires --backup of a verified copy)",
+        help="Explicit schema migration (requires --db and --backup)",
     )
     p_mig.add_argument(
         "--db",
-        default=None,
-        help="Absolute database path to migrate. Omit only to use the configured Madden DB.",
+        required=True,
+        help="Absolute database path to migrate. Required; no home-directory default.",
     )
     p_mig.add_argument(
         "--backup",

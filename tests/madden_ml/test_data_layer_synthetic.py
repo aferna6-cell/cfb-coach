@@ -357,9 +357,6 @@ def test_opponent_look_check_constraints_accept_empty_and_null(tmp_path):
     }
     assert "empty" in stored.values()
     assert None in stored.values()
-    assert conn.execute(
-        "SELECT COUNT(*) FROM snaps WHERE opp_set IS NULL AND opp_set = 'empty'"
-    ).fetchone()[0] == 0
 
     for column, bad in (
         ("opp_personnel", "not-a-personnel"),
