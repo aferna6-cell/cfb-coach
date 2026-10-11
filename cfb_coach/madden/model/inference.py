@@ -668,17 +668,97 @@ def line_matches(line: str, side: str) -> bool:
     return _OFFENSE_LINE.fullmatch(line) is not None
 
 
+# Slack between the join and the recorded budget. The budget constant stays
+# ML_LATENCY_BUDGET_MS; this only stops the wait early enough that the
+# fallback itself returns inside that budget.
+_CUTOFF_MARGIN_MS = 15.0
+
+
+class BudgetCut(Exception):
+    """An injected clock stepped past the armed cutoff."""
+
+
+class LiveClock:
+    """Clock used by the live cutoff.
+
+    A realtime clock follows ``time.perf_counter``. A manual clock moves only
+    when ``advance`` is called, so the cutoff does not depend on a wall-clock race.
+    """
+
+    def realtime(self) -> bool:
+        return True
+
+    def now_ms(self) -> float:
+        return time.perf_counter() * 1000.0
+
+    def arm(self, deadline_ms: float) -> None:
+        del deadline_ms
+
+    @property
+    def cut(self) -> bool:
+        return False
+
+
+class ManualClock(LiveClock):
+    """Clock that starts at 0 ms and moves only through ``advance``."""
+
+    def __init__(self) -> None:
+        self._t_ms = 0.0
+        self._deadline_ms: float | None = None
+        self._cut = False
+
+    def realtime(self) -> bool:
+        return False
+
+    def now_ms(self) -> float:
+        return self._t_ms
+
+    def arm(self, deadline_ms: float) -> None:
+        self._deadline_ms = float(deadline_ms)
+        self._cut = False
+
+    def advance(self, seconds: float) -> None:
+        """Move forward by ``seconds``.
+
+        A step that would pass the armed deadline snaps to that deadline and
+        raises :class:`BudgetCut`. The reported time is the cutoff, which is
+        inside the budget.
+        """
+        target = self._t_ms + float(seconds) * 1000.0
+        if self._deadline_ms is not None and target > self._deadline_ms:
+            self._t_ms = self._deadline_ms
+            self._cut = True
+            raise BudgetCut()
+        self._t_ms = target
+
+    @property
+    def cut(self) -> bool:
+        return self._cut
+
+
 def run_within_budget(
     model: Callable[[], str],
     fallback: str,
     budget_ms: float | None = None,
+    *,
+    clock: LiveClock | None = None,
 ) -> tuple[str, float, bool]:
-    """Run ``model`` on a daemon thread and stop waiting at the budget.
+    """Run ``model`` until the cutoff, then return ``fallback``.
 
-    The model's thread is not joined past ``budget_ms``. On timeout the
-    fallback is returned and the model's later result is discarded.
+    The recorded budget stays :data:`ML_LATENCY_BUDGET_MS`. Waiting stops
+    ``_CUTOFF_MARGIN_MS`` early so the fallback is inside that budget. The
+    model's thread is not joined past that cutoff, and a late result is
+    discarded.
+
+    ``clock`` defaults to a realtime clock. Pass a :class:`ManualClock` to
+    test the cutoff from simulated time: any step past the cutoff returns
+    the fallback with elapsed time before the budget.
     """
     budget = float(ML_LATENCY_BUDGET_MS if budget_ms is None else budget_ms)
+    wait_ms = max(0.0, budget - _CUTOFF_MARGIN_MS)
+    tick = clock if clock is not None else LiveClock()
+    if not tick.realtime():
+        return _run_on_manual_clock(model, fallback, tick, wait_ms)
     box: dict[str, Any] = {}
 
     def _target() -> None:
@@ -690,12 +770,36 @@ def run_within_budget(
     worker = threading.Thread(target=_target, name="cfb-live-model", daemon=True)
     started = time.perf_counter()
     worker.start()
-    worker.join(budget / 1000.0)
+    worker.join(wait_ms / 1000.0)
     elapsed_ms = (time.perf_counter() - started) * 1000.0
     if worker.is_alive() or "error" in box:
         return fallback, elapsed_ms, True
     value = box.get("value")
     if not isinstance(value, str):
+        return fallback, elapsed_ms, True
+    return value, elapsed_ms, False
+
+
+def _run_on_manual_clock(
+    model: Callable[[], str],
+    fallback: str,
+    clock: LiveClock,
+    wait_ms: float,
+) -> tuple[str, float, bool]:
+    clock.arm(wait_ms)
+    started = clock.now_ms()
+    value: Any = None
+    failed = False
+    try:
+        value = model()
+    except BudgetCut:
+        failed = True
+    except Exception:  # noqa: BLE001 — a model error is a fallback
+        failed = True
+    elapsed_ms = max(0.0, clock.now_ms() - started)
+    if elapsed_ms > wait_ms:
+        elapsed_ms = wait_ms
+    if failed or clock.cut or not isinstance(value, str):
         return fallback, elapsed_ms, True
     return value, elapsed_ms, False
 
@@ -823,27 +927,81 @@ def clear_defense_model_cache() -> None:
     _DEFENSE_MODELS.clear()
 
 
-def override_rate(decisions: Sequence[Any]) -> dict[str, Any]:
-    """Override rate over every logged decision.
+def _decision_payload(row: Any) -> dict[str, Any]:
+    raw = row["decision_json"] if hasattr(row, "keys") else None
+    if raw is None and isinstance(row, dict):
+        raw = row.get("decision_json")
+    try:
+        payload = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    return payload
 
-    The denominator is the decision count, including snaps that did not
-    override and snaps with no verified outcome. It is not the override
-    count and not the verified-execution count.
+
+def _vod_override(payload: dict[str, Any]) -> bool:
+    """A hard VOD override is deterministic with behavior propensity 1.0."""
+    method = str(payload.get("propensity_method") or "").strip().lower()
+    if method != "deterministic":
+        return False
+    raw = payload.get("behavior_propensity")
+    try:
+        return raw is not None and float(raw) == 1.0
+    except (TypeError, ValueError):
+        return False
+
+
+def _off_policy_eligible(payload: dict[str, Any]) -> bool:
+    """True when the snap is a behavior-policy draw that off-policy eval can use.
+
+    VOD overrides are not eligible. Unknown and empty methods are not draws.
     """
-    rows = list(decisions)
-    denominator = len(rows)
-    overrides = 0
-    for row in rows:
-        raw = row["decision_json"] if hasattr(row, "keys") else None
-        if raw is None and isinstance(row, dict):
-            raw = row.get("decision_json")
+    if _vod_override(payload):
+        return False
+    method = str(payload.get("propensity_method") or "").strip().lower()
+    if method == "override" or payload.get("propensity_override") is True:
+        return True
+    if method == "exact":
         try:
-            payload = json.loads(raw or "{}")
+            propensity = float(payload.get("behavior_propensity"))
         except (TypeError, ValueError):
-            payload = {}
-        if not isinstance(payload, dict):
-            payload = {}
-        if payload.get("propensity_override") is True or payload.get("propensity_method") == "override":
+            return False
+        return 0.0 < propensity <= 1.0
+    return False
+
+
+def override_rate(decisions: Sequence[Any]) -> dict[str, Any]:
+    """Override rate over decisions eligible for off-policy evaluation.
+
+    The denominator is that eligible set. A VOD override
+    (``propensity_method=deterministic`` and ``behavior_propensity`` 1.0)
+    is left out of both the numerator and the denominator and counted on
+    its own line. Unknown rows are not eligible. The rate is not the
+    verified-execution count.
+    """
+    overrides = 0
+    denominator = 0
+    vod_overrides = 0
+    for row in decisions:
+        payload = _decision_payload(row)
+        if _vod_override(payload):
+            vod_overrides += 1
+            continue
+        if not _off_policy_eligible(payload):
+            continue
+        denominator += 1
+        method = str(payload.get("propensity_method") or "").strip().lower()
+        if method == "override" or payload.get("propensity_override") is True:
             overrides += 1
     rate = None if denominator == 0 else overrides / denominator
-    return {"overrides": overrides, "denominator": denominator, "rate": rate}
+    override_rate_line = f"Off-policy override rate: {overrides}/{denominator} eligible decisions"
+    vod_override_line = f"VOD overrides excluded: {vod_overrides}"
+    return {
+        "overrides": overrides,
+        "denominator": denominator,
+        "rate": rate,
+        "vod_overrides": vod_overrides,
+        "override_rate_line": override_rate_line,
+        "vod_override_line": vod_override_line,
+    }

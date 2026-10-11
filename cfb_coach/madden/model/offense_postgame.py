@@ -468,6 +468,7 @@ def _evaluate_game(
     distinct_inventory = sorted(set(inventory_ids))
     from cfb_coach.madden.model.inference import override_rate
 
+    rate = override_rate(decisions)
     return {
         "game_id": game_id,
         "opponent_id": None if session is None or "opponent_id" not in session.keys() else session["opponent_id"],
@@ -521,7 +522,9 @@ def _evaluate_game(
             "max": round(max(latencies), 3) if latencies else None,
         },
         "fallback_count": fallback,
-        "override_rate": override_rate(decisions),
+        "override_rate": rate,
+        "override_rate_line": rate["override_rate_line"],
+        "vod_override_line": rate["vod_override_line"],
         "inventory": {
             "fingerprints": distinct_inventory,
             "consistent": len(distinct_inventory) <= 1,
