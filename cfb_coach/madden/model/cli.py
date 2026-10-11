@@ -6,7 +6,6 @@ import argparse
 import json
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +17,11 @@ from cfb_coach.madden.model import evaluate as evaluate_mod
 from cfb_coach.madden.model import inference as inference_mod
 from cfb_coach.madden.model import registry as registry_mod
 from cfb_coach.madden.model import train as train_mod
+from cfb_coach.madden.model.data_layer import (
+    backup_database,
+    export_shadow,
+    migrate_database,
+)
 from cfb_coach.madden.model.schema import CoachingMode, MLStatus, to_dict
 
 
@@ -47,24 +51,26 @@ def cmd_ml_find_db(args: argparse.Namespace) -> int:
 
 
 def cmd_ml_backup(args: argparse.Namespace) -> int:
-    """Consistent SQLite backup via the backup API. Never modifies the source."""
-    src = madden_db_path()
-    if not src.is_file():
-        print(f"no database at {src}", file=sys.stderr)
-        return 1
-    dest_dir = Path(args.out or (src.parent / "backups"))
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    dest = dest_dir / f"{src.stem}.backup.{stamp}{src.suffix}"
-    # Prefer read-only source connection so inspect/backup never migrates.
-    db = CoachDB.open_read_only(src)
+    """Consistent SQLite backup via the backup API. Never modifies the source.
+
+    ``--db`` and ``--out`` are required. This command does not consult
+    ``madden_db_path()`` or any other default path.
+    """
+    explicit = getattr(args, "db", None)
+    out = getattr(args, "out", None)
+    if not explicit or not out:
+        print("ml backup-db requires --db and --out.", file=sys.stderr)
+        return 2
+    src = Path(explicit)
+    dest_dir = Path(out)
     try:
-        db.backup_to(dest)
-    finally:
-        db.close()
+        dest = backup_database(src, dest_dir)
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     print(f"source: {src}")
     print(f"backup: {dest}")
-    print(f"method: sqlite3.Connection.backup")
+    print("method: sqlite3.Connection.backup")
     print(f"size_bytes: {dest.stat().st_size}")
     return 0
 
@@ -144,28 +150,42 @@ def cmd_ml_export(args: argparse.Namespace) -> int:
 
 
 def cmd_ml_migrate(args: argparse.Namespace) -> int:
-    """Explicit migration of a Madden DB. Requires a prior verified backup path."""
-    src = madden_db_path()
-    backup = Path(args.backup) if args.backup else None
-    if not src.is_file():
-        print(f"no database at {src}", file=sys.stderr)
-        return 1
-    if backup is None or not backup.is_file():
+    """Explicit migration of a Madden DB. Requires ``--db`` and ``--backup``.
+
+    This command does not consult ``madden_db_path()`` or any other default path.
+    """
+    explicit = getattr(args, "db", None)
+    if not explicit:
+        print("ml migrate-db requires --db.", file=sys.stderr)
+        return 2
+    src = Path(explicit)
+    backup = Path(args.backup) if getattr(args, "backup", None) else None
+    if backup is None:
         print(
             "Refusing to migrate without --backup pointing at an existing verified backup.",
             file=sys.stderr,
         )
         print(
-            "Run: python -m cfb_coach ml backup-db && python -m cfb_coach ml migrate-db --backup <path>",
+            "Run: python -m cfb_coach ml backup-db --db <db> --out <dir> "
+            "&& python -m cfb_coach ml migrate-db --db <db> --backup <path>",
             file=sys.stderr,
         )
         return 2
-    db = CoachDB(src, seed=load_seed(), read_only=False, migrate=True)
     try:
-        print(f"migrated: {src}")
-        print(f"backup_ref: {backup}")
-    finally:
-        db.close()
+        migrate_database(src, backup)
+    except FileNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        print(
+            "Run: python -m cfb_coach ml backup-db --db <db> --out <dir> "
+            "&& python -m cfb_coach ml migrate-db --db <db> --backup <path>",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"migrated: {src}")
+    print(f"backup_ref: {backup}")
     return 0
 
 
@@ -662,10 +682,45 @@ def cmd_ml_offense_macro_lab(args: argparse.Namespace) -> int:
 
 
 
+def cmd_ml_shadow_export(args: argparse.Namespace) -> int:
+    """Export shadow artifacts. ``--db`` and ``--out`` are required absolute paths."""
+    try:
+        report = export_shadow(args.db, args.out, max_games=int(args.games))
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps(report, indent=2, default=str))
+    return 0
+
+
 def cmd_ml_four_user_games(args: argparse.Namespace) -> int:
     """Read local Madden history; fit isolated four-user-game shadow artifacts."""
     from cfb_coach.madden.model import dataset
     from cfb_coach.madden.model import user_game_learning as history
+
+    explicit = getattr(args, "db", None)
+    if explicit:
+        if args.train and not args.out:
+            print("shadow export with --db requires --out", file=sys.stderr)
+            return 1
+        try:
+            if args.train:
+                report = export_shadow(explicit, args.out, max_games=args.games)
+            else:
+                db = CoachDB.open_read_only(Path(explicit))
+                try:
+                    rows = dataset.build_rows(db=db)
+                finally:
+                    db.close()
+                report = history.model_diagnostics(
+                    history.select_recent_human_games(rows, max_games=args.games)
+                )
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+
     db = open_madden_db(read_only=True)
     try:
         rows = dataset.build_rows(db=db)
@@ -1664,15 +1719,25 @@ def build_ml_subparser(sub: Any) -> None:
         help="Consistent SQLite backup via backup API (source untouched, WAL-safe)",
     )
     p_bak.add_argument(
+        "--db",
+        required=True,
+        help="Absolute source database path. Required; no home-directory default.",
+    )
+    p_bak.add_argument(
         "--out",
-        default=None,
-        help="Backup directory (default: <data_dir>/backups)",
+        required=True,
+        help="Backup directory. Required; no default path.",
     )
     p_bak.set_defaults(func=cmd_ml_backup)
 
     p_mig = ml_sub.add_parser(
         "migrate-db",
-        help="Explicit schema migration (requires --backup of a verified copy)",
+        help="Explicit schema migration (requires --db and --backup)",
+    )
+    p_mig.add_argument(
+        "--db",
+        required=True,
+        help="Absolute database path to migrate. Required; no home-directory default.",
     )
     p_mig.add_argument(
         "--backup",
@@ -1837,10 +1902,20 @@ def build_ml_subparser(sub: Any) -> None:
     p_lab.set_defaults(func=cmd_ml_offense_macro_lab)
 
     p_four = ml_sub.add_parser("four-user-games", help="Audit/train SHADOW models from latest four locally logged human Madden games")
+    p_four.add_argument("--db", default=None, help="Absolute source database. Omit only to use the configured Madden DB.")
     p_four.add_argument("--games", type=int, default=4)
     p_four.add_argument("--train", action="store_true", help="Write isolated offline shadow artifacts (does not activate)")
-    p_four.add_argument("--out", default=None)
+    p_four.add_argument("--out", default=None, help="Absolute shadow output directory when --db is set")
     p_four.set_defaults(func=cmd_ml_four_user_games)
+
+    p_shadow_export = ml_sub.add_parser(
+        "shadow-export",
+        help="Read one database and write shadow artifacts. Both paths are required; no home default.",
+    )
+    p_shadow_export.add_argument("--db", required=True, help="Absolute source database path")
+    p_shadow_export.add_argument("--out", required=True, help="Absolute shadow output directory")
+    p_shadow_export.add_argument("--games", type=int, default=4)
+    p_shadow_export.set_defaults(func=cmd_ml_shadow_export)
 
     p_create = ml_sub.add_parser("macro-create", help="Generate original offense/defense macro compositions (draft only)")
     p_create.add_argument("--side", choices=("offense", "defense", "both"), default="both")
