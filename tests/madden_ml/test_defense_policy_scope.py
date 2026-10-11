@@ -727,14 +727,17 @@ class DatabasePathTests(unittest.TestCase):
     def test_readonly_path_is_the_madden_database_and_opens_read_only(self) -> None:
         import os
         import sqlite3
+        import warnings
 
         from cfb_coach import db as coach_db
         from cfb_coach.games import madden_db_path as games_madden_db_path
         from cfb_coach.madden.model.opponent_learning import readonly_madden_db_path
 
         with tempfile.TemporaryDirectory() as tmp:
-            coach = Path(tmp) / "coach.db"
-            madden = Path(tmp) / "madden27.db"
+            coach = Path(tmp) / "coach" / "coach.db"
+            madden = Path(tmp) / "madden" / "madden27.db"
+            coach.parent.mkdir()
+            madden.parent.mkdir()
             sqlite3.connect(coach).close()
             sqlite3.connect(madden).close()
             coach_hash = hashlib.sha256(coach.read_bytes()).hexdigest()
@@ -745,28 +748,30 @@ class DatabasePathTests(unittest.TestCase):
             os.environ["CFB_COACH_MADDEN_DB"] = str(madden)
             patcher = None
             try:
-                if not callable(getattr(coach_db, "madden_db_path", None)):
-                    # #46 has not added db.madden_db_path. The games helper
-                    # already honors CFB_COACH_MADDEN_DB, then the patch
-                    # installs that same callable where #46 will put it.
-                    self.assertEqual(readonly_madden_db_path(), madden)
-                    patcher = mock.patch.object(
-                        coach_db, "madden_db_path", games_madden_db_path, create=True,
-                    )
-                    patcher.start()
-                resolved = readonly_madden_db_path()
-                self.assertEqual(resolved, madden)
-                self.assertNotEqual(resolved, coach)
-                opened = CoachDB.open_read_only(resolved)
-                try:
-                    self.assertTrue(opened.read_only)
-                    self.assertEqual(Path(opened.path), madden)
-                    with self.assertRaises(sqlite3.OperationalError):
-                        opened.conn.execute("CREATE TABLE should_fail (id INTEGER)")
-                finally:
-                    opened.close()
-                self.assertEqual(hashlib.sha256(madden.read_bytes()).hexdigest(), madden_hash)
-                self.assertEqual(hashlib.sha256(coach.read_bytes()).hexdigest(), coach_hash)
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", UserWarning)
+                    if not callable(getattr(coach_db, "madden_db_path", None)):
+                        # #46 has not added db.madden_db_path. The games helper
+                        # already honors CFB_COACH_MADDEN_DB, then the patch
+                        # installs that same callable where #46 will put it.
+                        self.assertEqual(readonly_madden_db_path(), madden)
+                        patcher = mock.patch.object(
+                            coach_db, "madden_db_path", games_madden_db_path, create=True,
+                        )
+                        patcher.start()
+                    resolved = readonly_madden_db_path()
+                    self.assertEqual(resolved, madden)
+                    self.assertNotEqual(resolved, coach)
+                    opened = CoachDB.open_read_only(resolved)
+                    try:
+                        self.assertTrue(opened.read_only)
+                        self.assertEqual(Path(opened.path), madden)
+                        with self.assertRaises(sqlite3.OperationalError):
+                            opened.conn.execute("CREATE TABLE should_fail (id INTEGER)")
+                    finally:
+                        opened.close()
+                    self.assertEqual(hashlib.sha256(madden.read_bytes()).hexdigest(), madden_hash)
+                    self.assertEqual(hashlib.sha256(coach.read_bytes()).hexdigest(), coach_hash)
             finally:
                 if patcher is not None:
                     patcher.stop()
