@@ -1007,4 +1007,11 @@ def make_call(
     snote = score_call_note(sit)
     if snote:
         call.rationale += f" | {snote}"
+    # One live hook after the heuristic call exists. Heuristic text is unchanged.
+    try:
+        from cfb_coach.madden.model.inference import finish_live_snap
+
+        call = finish_live_snap(sit, call, db)
+    except Exception:  # noqa: BLE001 — never change the call when the hook fails
+        pass
     return call
