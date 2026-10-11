@@ -16,6 +16,39 @@ def resolve_db_path_from_env() -> Path | None:
     raw = os.environ.get("CFB_COACH_DB")
     return Path(raw) if raw else None
 
+
+def _madden_db_filename() -> str:
+    from cfb_coach.games import GAMES, MADDEN27
+
+    return GAMES[MADDEN27].db_filename
+
+
+def madden_db_path() -> Path:
+    """Prefer ``CFB_COACH_MADDEN_DB``, then ``~/.cfb-coach/madden27.db``.
+
+    A non-empty ``CFB_COACH_MADDEN_DB`` is returned as given. This branch does
+    not call ``Path.home()`` and does not create ``~/.cfb-coach``. Only the
+    parent of the given path is created, and only when that parent is missing.
+    An empty value is treated as unset. This function never reads
+    ``CFB_COACH_DB``.
+    """
+    raw = os.environ.get("CFB_COACH_MADDEN_DB")
+    if raw:
+        env = Path(raw)
+        parent = env.parent
+        if not parent.exists():
+            parent.mkdir()
+        return env
+    filename = _madden_db_filename()
+    try:
+        home = Path.home() / ".cfb-coach" / filename
+        home.parent.mkdir(parents=True, exist_ok=True)
+        return home
+    except OSError:
+        fallback = Path("/workspace/cfb-coach/data") / filename
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        return fallback
+
 def default_db_path() -> Path:
     """Prefer CFB_COACH_DB, then ~/.cfb-coach/coach.db, then package data/.
 
