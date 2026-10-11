@@ -1,4 +1,4 @@
-"""Scope tests for defensive intelligence on the df81381 baseline.
+"""Scope tests for defensive intelligence on the 2b372e2 baseline.
 
 Each test id is listed in ``NEW_TEST_SCOPES`` with the scope item it covers:
 1 opponent context, 2 joint ranking, 3 personnel and set, 4 staged install,
@@ -45,7 +45,7 @@ from cfb_coach.madden.playcaller import MaddenCall
 from cfb_coach.situation import Situation
 
 ROOT = Path(__file__).resolve().parents[2]
-BASELINE_IDS = Path(__file__).with_name("baseline_df81381_nodeids.txt")
+BASELINE_IDS = Path(__file__).with_name("baseline_2b372e2_nodeids.txt")
 PLAYWRIGHT_ID = (
     "tests/madden_ml/test_browser_idempotency_playwright.py::"
     "PlaywrightBrowserIdempotencyTests::test_browser_sends_keys_double_click_no_duplicate"
@@ -707,8 +707,8 @@ class BaselineIdTests(unittest.TestCase):
         baseline = [
             line.strip() for line in BASELINE_IDS.read_text(encoding="utf-8").splitlines() if line.strip()
         ]
-        self.assertEqual(len(baseline), 683)
-        self.assertEqual(len(set(baseline)), 683)
+        self.assertEqual(len(baseline), 694)
+        self.assertEqual(len(set(baseline)), 694)
         self.assertIn(PLAYWRIGHT_ID, baseline)
         scopes = set(NEW_TEST_SCOPES.values())
         for item in ("1", "2", "3", "4", "5", "6", "knowledge layer"):
