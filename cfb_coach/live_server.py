@@ -1808,7 +1808,9 @@ class ContextThreadingHTTPServer(ThreadingHTTPServer):
     server handles each request on a worker, so ``--no-vod-prior`` and
     ``--freeze-vod-book`` set on the command thread never reached ``make_call``.
     The snapshot is taken at construction, which is the flagged thread in
-    ``run_live_server``, and each worker enters that snapshot before the handler.
+    ``run_live_server``. A ``Context`` can be entered by only one thread at a
+    time, and the next request can start before the previous worker leaves
+    ``run``. Each worker therefore enters its own copy of that snapshot.
     """
 
     def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
@@ -1816,7 +1818,9 @@ class ContextThreadingHTTPServer(ThreadingHTTPServer):
         self._request_context = contextvars.copy_context()
 
     def process_request_thread(self, request, client_address):
-        self._request_context.run(super().process_request_thread, request, client_address)
+        self._request_context.copy().run(
+            super().process_request_thread, request, client_address
+        )
 
 
 def _posted_opp_look(body: dict[str, Any]) -> Any:
