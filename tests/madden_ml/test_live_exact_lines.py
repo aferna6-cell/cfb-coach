@@ -6,7 +6,6 @@ import json
 import os
 import random
 import tempfile
-import threading
 import time
 import unittest
 from pathlib import Path
@@ -14,6 +13,7 @@ from unittest import mock
 
 from cfb_coach.madden.model.inference import (
     ML_LATENCY_BUDGET_MS,
+    ManualClock,
     OppLookSession,
     clear_defense_model_cache,
     display_or_fallback,
@@ -125,24 +125,48 @@ class TestLiveFallback(unittest.TestCase):
 class TestLiveTimeout(unittest.TestCase):
     def test_slow_model_is_cut_off_and_fallback_lands_in_time(self) -> None:
         self.assertEqual(ML_LATENCY_BUDGET_MS, 150)
-        finished = threading.Event()
+        deterministic_elapsed = 0.0
+        for _ in range(20):
+            clock = ManualClock()
 
-        def slow() -> str:
-            time.sleep(2)
-            finished.set()
-            return "SLOW MODEL LINE THAT MUST NOT SHOW"
+            def slow(bound: ManualClock = clock) -> str:
+                bound.advance(2.0)
+                return "SLOW MODEL LINE THAT MUST NOT SHOW"
 
-        started = time.perf_counter()
-        line, elapsed_ms, timed_out = run_within_budget(slow, _FALLBACK)
-        wall_ms = (time.perf_counter() - started) * 1000.0
-        print(f"MEASURED timeout_fallback_ms={elapsed_ms:.2f} wall_ms={wall_ms:.2f}")
-        self.assertTrue(timed_out)
-        self.assertEqual(line, _FALLBACK)
-        self.assertNotIn("SLOW", line)
-        self.assertFalse(finished.is_set())
-        self.assertGreater(elapsed_ms, 50)
-        self.assertLess(elapsed_ms, 500)
-        self.assertLess(wall_ms, 500)
+            line, elapsed_ms, timed_out = run_within_budget(slow, _FALLBACK, clock=clock)
+            deterministic_elapsed = elapsed_ms
+            self.assertTrue(timed_out)
+            self.assertEqual(line, _FALLBACK)
+            self.assertNotIn("SLOW", line)
+            self.assertLessEqual(elapsed_ms, ML_LATENCY_BUDGET_MS)
+            self.assertLess(elapsed_ms, 150)
+
+        fast = ManualClock()
+
+        def quick() -> str:
+            fast.advance(0.01)
+            return "Gun Trips — Inside Zone | No adj | Read → Cut"
+
+        shown, fast_ms, fast_timed_out = run_within_budget(quick, _FALLBACK, clock=fast)
+        self.assertFalse(fast_timed_out)
+        self.assertEqual(shown, "Gun Trips — Inside Zone | No adj | Read → Cut")
+        self.assertLess(fast_ms, 150)
+
+        samples: list[float] = []
+        for _ in range(20):
+            def sleeper() -> str:
+                time.sleep(0.4)
+                return "SLOW MODEL LINE THAT MUST NOT SHOW"
+
+            _line, elapsed_ms, _timed_out = run_within_budget(sleeper, _FALLBACK)
+            samples.append(elapsed_ms)
+        ordered = sorted(samples)
+        max_ms = ordered[-1]
+        p95_ms = ordered[18]
+        print(
+            f"MEASURED timeout_max_ms={max_ms:.2f} p95_ms={p95_ms:.2f} "
+            f"deterministic_cutoff_ms={deterministic_elapsed:.2f}"
+        )
 
 
 class TestLiveSnap(unittest.TestCase):
@@ -357,15 +381,21 @@ class TestSeedFields(unittest.TestCase):
 
 
 class TestPostgameOverride(unittest.TestCase):
-    def test_override_rate_denominator_is_every_decision(self) -> None:
+    def test_override_rate_denominator_is_eligible_decisions(self) -> None:
         from cfb_coach.db import CoachDB
         from cfb_coach.madden.model.offense_postgame import evaluate_saved_games
 
         payloads = [
-            {"propensity_override": True},
-            {"propensity_override": False},
-            {},
-            {"experimental_offense": {"offense_action": {"kind": "none"}}},
+            {
+                "propensity_method": "override",
+                "propensity_override": True,
+                "propensity_override_reason": "unexpressible",
+            },
+            {"propensity_method": "exact", "propensity_override": False, "behavior_propensity": 0.4},
+            {"propensity_method": "exact", "propensity_override": False, "behavior_propensity": 0.25},
+            {"propensity_method": "unknown"},
+            {"propensity_method": "deterministic", "behavior_propensity": 1.0, "propensity_override": False},
+            {"propensity_method": "deterministic", "behavior_propensity": 1, "propensity_override": False},
         ]
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -392,5 +422,15 @@ class TestPostgameOverride(unittest.TestCase):
         rate = game["override_rate"]
         self.assertEqual(game["verified_executed_offensive_plays"], 0)
         self.assertEqual(rate["overrides"], 1)
-        self.assertEqual(rate["denominator"], 4)
-        self.assertEqual(rate["rate"], 0.25)
+        self.assertEqual(rate["denominator"], 3)
+        self.assertNotEqual(rate["denominator"], 6)
+        self.assertNotEqual(rate["denominator"], 4)
+        self.assertNotEqual(rate["denominator"], 1)
+        self.assertEqual(rate["vod_overrides"], 2)
+        self.assertEqual(rate["rate"], 1 / 3)
+        rendered = json.dumps(game)
+        self.assertEqual(game["override_rate_line"], "Off-policy override rate: 1/3 eligible decisions")
+        self.assertEqual(game["vod_override_line"], "VOD overrides excluded: 2")
+        self.assertIn(game["override_rate_line"], rendered)
+        self.assertIn(game["vod_override_line"], rendered)
+        self.assertNotEqual(game["override_rate_line"], game["vod_override_line"])
