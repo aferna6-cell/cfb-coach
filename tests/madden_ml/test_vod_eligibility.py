@@ -16,7 +16,8 @@ from cfb_coach.madden.model.dataset import (
     vod_training_eligible,
 )
 
-_BASELINE_REV = "5d9c566"
+# #44 head. dataset.py matches 5d9c566; that older SHA is not in this history.
+_BASELINE_REV = "ae24c7933be599a7a389e1901ca7d0c5964f60a5"
 _REPO = Path(__file__).resolve().parents[2]
 
 
@@ -253,7 +254,11 @@ def test_reviewed_only_held_out_subset(tmp_path):
 
 
 def test_flag_off_export_matches_5d9c566_bytes(tmp_path):
-    """Default export files match #44's JSONL writer on the same fixture."""
+    """Default export files match #44's JSONL writer on the same fixture.
+
+    The writer is the one on the current #44 head. Its ``export_jsonl`` matches
+    ``5d9c566``.
+    """
     rows = [
         _row(snap_id="m1", vod_id="vod-a", game="madden", opponent_type="h2h"),
         _row(snap_id="m2", vod_id="vod-b", game="madden", opponent_type="cpu", review_status="confirmed"),
