@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -14,16 +15,22 @@ _SCRIPT = _ROOT / "scripts" / "madden_coordinator_demo.py"
 
 class TestCoordinatorDemo(unittest.TestCase):
     def test_demo_script_writes_the_report(self) -> None:
-        completed = subprocess.run(
-            [sys.executable, str(_SCRIPT)],
-            cwd=_ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
-        report = _REPORT.read_text(encoding="utf-8")
+        checked_in_before = _REPORT.read_bytes()
+        with tempfile.TemporaryDirectory() as folder:
+            report_path = Path(folder) / "coordinator_demo_report.md"
+            completed = subprocess.run(
+                [sys.executable, str(_SCRIPT), "--report", str(report_path)],
+                cwd=_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
+            report = report_path.read_text(encoding="utf-8")
         self.assertEqual(report, completed.stdout)
+        self.assertEqual(_REPORT.read_bytes(), checked_in_before)
+        checked_in = checked_in_before.decode("utf-8")
+        self.assertIn("Calls timed: 50.", checked_in)
         self.assertIn("TEST FIXTURE - not an Aidan-verified macro", report)
         self.assertIn("Offense lines unchanged: 5/5.", report)
         self.assertIn("Draft line (macro absent):", report)

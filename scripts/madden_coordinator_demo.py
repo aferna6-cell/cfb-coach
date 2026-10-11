@@ -474,10 +474,17 @@ def run() -> str:
     return "\n".join(body) + "\n"
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    report_path = _REPORT
+    if args:
+        if len(args) != 2 or args[0] != "--report":
+            print("usage: madden_coordinator_demo.py [--report PATH]", file=sys.stderr)
+            return 2
+        report_path = Path(args[1])
     report = run()
-    _REPORT.parent.mkdir(parents=True, exist_ok=True)
-    _REPORT.write_text(report, encoding="utf-8")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(report, encoding="utf-8")
     print(report, end="")
     return 0
 
