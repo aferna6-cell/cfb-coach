@@ -210,21 +210,3 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int | pytest.ExitC
     if session.exitstatus == 0:
         session.exitstatus = pytest.ExitCode.TESTS_FAILED
     sys.stderr.write(failure + "\n")
-
-
-# The coordinators baseline skips this node (8f10cc5 and df81381). Installing
-# Playwright must not turn that skip into a pass and inflate the baseline.
-_BASELINE_PLAYWRIGHT_SKIP = (
-    "tests/madden_ml/test_browser_idempotency_playwright.py::"
-    "PlaywrightBrowserIdempotencyTests::test_browser_sends_keys_double_click_no_duplicate"
-)
-
-
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    del config
-    skip = pytest.mark.skip(
-        reason="df81381 baseline skips this test; installed Playwright must not change that"
-    )
-    for item in items:
-        if item.nodeid == _BASELINE_PLAYWRIGHT_SKIP:
-            item.add_marker(skip)

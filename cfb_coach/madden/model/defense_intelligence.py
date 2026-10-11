@@ -62,7 +62,8 @@ def is_counted_defensive_snap(row: Mapping[str, Any]) -> bool:
     """A human defensive snap with a verified execution, not a recommendation.
 
     CPU rows and recommendation-only rows are not counted. ``recommended_play``
-    is not an executed label. ``coverage_seen`` is not read.
+    is not an executed label. ``coverage_seen`` is not read. A user-entered
+    ``opp_look_verification`` is not an executed label and is not read.
     """
     if not isinstance(row, Mapping) or row.get("recommendation_only"):
         return False

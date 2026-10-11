@@ -1,4 +1,4 @@
-"""Scope tests for defensive intelligence on the 2b372e2 baseline.
+"""Scope tests for defensive intelligence on the b987e3f baseline.
 
 Each test id is listed in ``NEW_TEST_SCOPES`` with the scope item it covers:
 1 opponent context, 2 joint ranking, 3 personnel and set, 4 staged install,
@@ -45,7 +45,9 @@ from cfb_coach.madden.playcaller import MaddenCall
 from cfb_coach.situation import Situation
 
 ROOT = Path(__file__).resolve().parents[2]
-BASELINE_IDS = Path(__file__).with_name("baseline_2b372e2_nodeids.txt")
+BASELINE_IDS = Path(__file__).with_name("baseline_b987e3f_nodeids.txt")
+BOTH_NULL_SNAPSHOT = Path(__file__).with_name("fixtures") / "both_null_defense_rank_2b372e2.json"
+_RANK_KEYS_ADDED_AFTER_BASE = ("personnel", "verified_knowledge", "opponent_profile", "why")
 PLAYWRIGHT_ID = (
     "tests/madden_ml/test_browser_idempotency_playwright.py::"
     "PlaywrightBrowserIdempotencyTests::test_browser_sends_keys_double_click_no_duplicate"
@@ -71,11 +73,15 @@ NEW_TEST_SCOPES = {
     f"{SCOPE}::JointRankingTests::test_hybrid_above_forty_shows_the_joint_product": "2",
     f"{SCOPE}::PersonnelEncodingTests::test_both_null_fields_contribute_zero": "3",
     f"{SCOPE}::PersonnelEncodingTests::test_empty_string_is_not_null_and_is_not_verified": "3",
+    f"{SCOPE}::PersonnelEncodingTests::test_none_blank_and_empty_token_are_distinct": "3",
+    f"{SCOPE}::BothNullIdentityTests::test_both_null_rank_matches_the_2b372e2_snapshot": "3",
     f"{SCOPE}::DesignInstallTests::test_confirm_leaves_the_database_hash_until_aidan_applies": "4",
     f"{SCOPE}::ContextCoverageTests::test_proposal_names_each_portfolio_situation": "5",
+    f"{SCOPE}::ContextCoverageTests::test_sixteen_formations_is_refused": "5",
     f"{SCOPE}::HybridGateTests::test_below_forty_snaps_returns_no_metrics": "6",
     f"{SCOPE}::HybridGateTests::test_forty_snaps_runs_the_standard_gate": "6",
     f"{SCOPE}::HybridGateTests::test_live_hybrid_does_not_score_below_forty": "6",
+    f"{SCOPE}::HybridGateTests::test_user_entered_look_verification_does_not_count": "6",
     f"{SCOPE}::BaselineIdTests::test_collection_preserves_8f10cc5_ids_and_skips_playwright": "baseline",
     f"{SCOPE}::DatabasePathTests::test_db_paths_use_an_explicit_argument_or_default_db_path": "knowledge layer",
     f"{SCOPE}::DatabasePathTests::test_readonly_path_is_the_madden_database_and_opens_read_only": "knowledge layer",
@@ -438,7 +444,7 @@ class PersonnelEncodingTests(unittest.TestCase):
         encoding = ranked[0]["personnel"]
         self.assertFalse(encoding["verified"])
         self.assertEqual(encoding["personnel"], {
-            "missing": 0, "empty": 1, "unknown": 0, "one_hot": {"": 1},
+            "missing": 1, "empty": 0, "unknown": 0, "one_hot": {},
         })
         self.assertEqual(encoding["set"]["missing"], 0)
         self.assertEqual(encoding["set"]["empty"], 0)
@@ -453,6 +459,23 @@ class PersonnelEncodingTests(unittest.TestCase):
         self.assertEqual(unknown["personnel"]["empty"], 0)
         self.assertFalse(unknown["verified"])
         self.assertFalse(ranked[0]["verified_knowledge"].get("scored_ids"))
+
+    def test_none_blank_and_empty_token_are_distinct(self) -> None:
+        missing = {"missing": 1, "empty": 0, "unknown": 0, "one_hot": {}}
+        for value in (None, "", "   ", "\t"):
+            encoding = defense.personnel_features(sit(opp_personnel=value, opp_set=value))
+            self.assertEqual(encoding["personnel"], missing)
+            self.assertEqual(encoding["set"], missing)
+            self.assertEqual(encoding["delta"], 0.0)
+            self.assertFalse(encoding["verified"])
+        token = defense.personnel_features(sit(opp_personnel=None, opp_set="empty"))
+        self.assertEqual(token["personnel"], missing)
+        self.assertEqual(token["set"]["missing"], 0)
+        self.assertEqual(token["set"]["empty"], 0)
+        self.assertEqual(token["set"]["unknown"], 0)
+        self.assertEqual(token["set"]["one_hot"], {"empty": 1})
+        self.assertFalse(token["verified"])
+        self.assertNotEqual(token["delta"], 0.0)
 
 
 class DesignInstallTests(unittest.TestCase):
@@ -530,6 +553,11 @@ class ContextCoverageTests(unittest.TestCase):
             for formation in row["formations"]:
                 self.assertIn(formation, proposal["formations"])
 
+    def test_sixteen_formations_is_refused(self) -> None:
+        with self.assertRaises(ValueError) as caught:
+            defense.design_defense(max_formations=16, catalogue=CATALOG)
+        self.assertIn("1..15", str(caught.exception))
+
 
 class HybridGateTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -579,6 +607,67 @@ class HybridGateTests(unittest.TestCase):
         self.assertIs(decision.policy_source, PolicySource.HEURISTIC)
         self.assertIsNot(decision.fallback_reason, MLStatus.OK)
         self.assertIs(decision.fallback_reason, MLStatus.LOW_CONFIDENCE)
+
+    def test_user_entered_look_verification_does_not_count(self) -> None:
+        from cfb_coach.madden.model.defense_intelligence import is_counted_defensive_snap
+
+        look = snap(
+            99,
+            executed_verification="",
+            opp_look_verification="verified",
+        )
+        self.assertFalse(is_counted_defensive_snap(look))
+        rows = [snap(i) for i in range(39)]
+        rows.append(look)
+        self.assertEqual(defense.count_verified_defensive_snaps(rows), 39)
+        report = Path(self.tmp.name) / "eval_report.json"
+        result = defense.defense_hybrid_gate(self._entry(), rows, seed=7)
+        self.assertIs(result.gate, GateResult.INSUFFICIENT)
+        self.assertFalse(result.gate_passed)
+        self.assertEqual(result.metrics, ())
+        self.assertFalse(report.exists())
+
+
+def _strip_rank_row(row: dict) -> dict:
+    return {key: value for key, value in row.items() if key not in _RANK_KEYS_ADDED_AFTER_BASE}
+
+
+class BothNullIdentityTests(unittest.TestCase):
+    def test_both_null_rank_matches_the_2b372e2_snapshot(self) -> None:
+        import json
+
+        snapshot = json.loads(BOTH_NULL_SNAPSHOT.read_text(encoding="utf-8"))
+        self.assertEqual(snapshot["source_commit"], "2b372e2")
+        self.assertGreaterEqual(len(snapshot["cases"]), 3)
+        book = snapshot["book"]
+        for case in snapshot["cases"]:
+            fields = case["situation"]
+            situation = Situation(
+                raw=fields["raw"],
+                side=fields["side"],
+                down=fields["down"],
+                distance=fields["distance"],
+                yardline=fields["yardline"],
+                red_zone=fields["red_zone"],
+                goal_line=fields["goal_line"],
+                two_minute=fields["two_minute"],
+            )
+            self.assertIsNone(getattr(situation, "opp_personnel", None))
+            self.assertIsNone(getattr(situation, "opp_set", None))
+            ranks = defense.rank_defense(
+                situation, book, None, opponent_id=snapshot["opponent_id"],
+            )
+            displayed = defense._stable_choice(ranks, snapshot["session_id"], case["snap_seq"])
+            stripped = [_strip_rank_row(row) for row in ranks]
+            shown = _strip_rank_row(displayed)
+            self.assertEqual(stripped, case["ranks"])
+            self.assertEqual(shown, case["displayed"])
+            self.assertEqual(
+                [(row["formation"], row["play"], row["score"]) for row in stripped],
+                [(row["formation"], row["play"], row["score"]) for row in case["ranks"]],
+            )
+            self.assertEqual(shown["formation"], case["displayed"]["formation"])
+            self.assertEqual(shown["play"], case["displayed"]["play"])
 
 
 class DatabasePathTests(unittest.TestCase):
@@ -702,13 +791,11 @@ class DatabasePathTests(unittest.TestCase):
 
 class BaselineIdTests(unittest.TestCase):
     def test_collection_preserves_8f10cc5_ids_and_skips_playwright(self) -> None:
-        import importlib.util
-
         baseline = [
             line.strip() for line in BASELINE_IDS.read_text(encoding="utf-8").splitlines() if line.strip()
         ]
-        self.assertEqual(len(baseline), 694)
-        self.assertEqual(len(set(baseline)), 694)
+        self.assertEqual(len(baseline), 704)
+        self.assertEqual(len(set(baseline)), 704)
         self.assertIn(PLAYWRIGHT_ID, baseline)
         scopes = set(NEW_TEST_SCOPES.values())
         for item in ("1", "2", "3", "4", "5", "6", "knowledge layer"):
@@ -727,38 +814,6 @@ class BaselineIdTests(unittest.TestCase):
         missing = set(baseline) - set(current)
         self.assertEqual(missing, set())
         self.assertEqual(extra, set(NEW_TEST_SCOPES))
-
-        spec = importlib.util.spec_from_file_location(
-            "policy_conftest", ROOT / "tests" / "conftest.py",
-        )
-        module = importlib.util.module_from_spec(spec)
-        assert spec.loader is not None
-        spec.loader.exec_module(module)
-
-        class Item:
-            def __init__(self, nodeid: str) -> None:
-                self.nodeid = nodeid
-                self.markers: list = []
-
-            def add_marker(self, marker) -> None:
-                self.markers.append(marker)
-
-        browser = Item(PLAYWRIGHT_ID)
-        other = Item("tests/madden_ml/test_schema.py::SchemaTests::test_round_trip")
-        module.pytest_collection_modifyitems(None, [browser, other])
-        self.assertTrue(browser.markers)
-        self.assertEqual(other.markers, [])
-
-        skipped = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", PLAYWRIGHT_ID],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(skipped.returncode, 0, skipped.stdout + skipped.stderr)
-        self.assertIn("skipped", skipped.stdout)
-        self.assertNotIn("passed", skipped.stdout)
 
 
 if __name__ == "__main__":

@@ -130,16 +130,28 @@ def _rate(count: Sequence[int] | None) -> tuple[float, int]:
 # One-hot tokens are football personnel and set labels. They are not editor
 # values and they are not verified Madden mechanics.
 _PERSONNEL_TOKENS = ("10", "11", "12", "13", "20", "21", "22")
-_SET_TOKENS = ("bunch", "stack", "trips", "tight", "spread", "heavy", "condensed")
+# ``empty`` is the empty-backfield set: a recorded package, not a missing value.
+_SET_TOKENS = ("bunch", "stack", "trips", "tight", "spread", "heavy", "condensed", "empty")
 MIN_HYBRID_SNAPS = 40
 
 
+def _missing_token() -> dict[str, Any]:
+    return {"missing": 1, "empty": 0, "unknown": 0, "one_hot": {}}
+
+
 def _encode_token(value: Any, tokens: tuple[str, ...]) -> tuple[dict[str, Any], float]:
+    """One-hot a personnel or set token.
+
+    ``None``, ``""``, and whitespace-only are missing: ``missing`` is 1 and
+    there is no one-hot. The literal token ``empty`` is the empty-backfield
+    set and keeps its own one-hot with ``missing`` 0 when that token is in
+    ``tokens``.
+    """
     if value is None:
-        return {"missing": 1, "empty": 0, "unknown": 0, "one_hot": {}}, 0.0
-    text = str(value)
+        return _missing_token(), 0.0
+    text = str(value).strip()
     if text == "":
-        return {"missing": 0, "empty": 1, "unknown": 0, "one_hot": {"": 1}}, 0.001
+        return _missing_token(), 0.0
     known = {token.casefold(): token for token in tokens}
     folded = text.casefold()
     if folded in known:
@@ -153,8 +165,9 @@ def personnel_features(sit: Any) -> dict[str, Any]:
     """One-hot ``opp_personnel`` and ``opp_set`` plus a missing flag.
 
     Attributes are read with ``getattr`` because a situation may not have
-    them. Both null contributes exactly 0. Empty string is a present empty
-    token, not a missing one. The encoding is never verified knowledge.
+    them. Both null contributes exactly 0. A blank or whitespace-only value
+    is missing, the same as null. The literal set token ``empty`` is a
+    one-hot, not a missing value. The encoding is never verified knowledge.
     """
     personnel = getattr(sit, "opp_personnel", None)
     opp_set = getattr(sit, "opp_set", None)
