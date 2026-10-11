@@ -29,6 +29,7 @@ from cfb_coach.madden.model.schema import (
     MLStatus,
     OpponentContext,
     PolicySource,
+    from_dict,
     is_live_selectable,
     PreSnapObservation,
     PropensityMethod,
@@ -36,6 +37,7 @@ from cfb_coach.madden.model.schema import (
     SnapOutcome,
     Tri,
     legal_candidates,
+    to_dict,
 )
 from cfb_coach.madden.model.train import load_artifact
 
@@ -418,13 +420,87 @@ def set_model_version(db: Any, version: str | None) -> None:
         db.set_meta("ml_model_version", version)
 
 
+def resolve_live_db_path(explicit: str | Path | None = None) -> Path:
+    """Database file for the live server, the CLI, and opponent context.
+
+    An explicit ``--db`` path wins. Otherwise the path is
+    :func:`cfb_coach.db.default_db_path`.
+    """
+    if explicit is not None and str(explicit).strip():
+        path = Path(explicit).expanduser()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+    from cfb_coach.db import default_db_path
+
+    return default_db_path()
+
+
+_OPPONENT_CONTEXT_META = "ml_opponent_context.v1"
+
+
+def _opponent_context_key(opponent_id: str) -> str:
+    return f"{_OPPONENT_CONTEXT_META}:{opponent_id}"
+
+
+def save_opponent_context(
+    context: OpponentContext,
+    *,
+    db: Any = None,
+    db_path: str | Path | None = None,
+) -> Path:
+    """Store one opponent-context row in the live database."""
+    from cfb_coach.db import CoachDB
+
+    owns = db is None
+    if owns:
+        path = resolve_live_db_path(db_path)
+        db = CoachDB(path)
+    else:
+        path = Path(db.path)
+    try:
+        db.set_meta(
+            _opponent_context_key(context.opponent_id or ""),
+            json.dumps(to_dict(context)),
+        )
+    finally:
+        if owns:
+            db.close()
+    return path
+
+
+def load_opponent_context(
+    opponent_id: str,
+    *,
+    db: Any = None,
+    db_path: str | Path | None = None,
+) -> OpponentContext | None:
+    """Read one opponent-context row from the live database."""
+    from cfb_coach.db import CoachDB
+
+    owns = db is None
+    if owns:
+        path = resolve_live_db_path(db_path)
+        if not path.is_file():
+            return None
+        db = CoachDB(path)
+    try:
+        raw = db.get_meta(_opponent_context_key(opponent_id))
+    finally:
+        if owns:
+            db.close()
+    if not raw:
+        return None
+    loaded = from_dict(json.loads(raw))
+    if not isinstance(loaded, OpponentContext):
+        return None
+    return loaded
+
+
 def resolve_registry_dir(db: Any = None) -> str | None:
     raw = _meta(db, "ml_registry_dir")
     if raw:
         return raw
-    from cfb_coach.games import data_dir
-
-    return str(Path(data_dir()) / "madden_ml_registry")
+    return str(resolve_live_db_path().parent / "madden_ml_registry")
 
 
 def set_registry_dir(db: Any, path: str) -> None:

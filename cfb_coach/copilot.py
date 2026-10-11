@@ -162,15 +162,10 @@ def format_tips_block(look: DefenseLook, tips: list[str]) -> str:
 
 
 def default_overlay_path(filename: str = "copilot_overlay.html") -> "Path":
-    """Overlay beside the coach DB.
+    """Overlay beside the live database from ``default_db_path()``."""
+    from cfb_coach.db import default_db_path
 
-    With ``CFB_COACH_DB`` unset that directory is ``~/.cfb-coach``. An explicit
-    database keeps the overlay next to that file and does not create or read
-    ``~/.cfb-coach``.
-    """
-    from cfb_coach.games import data_dir
-
-    folder = data_dir()
+    folder = default_db_path().parent
     folder.mkdir(parents=True, exist_ok=True)
     return folder / filename
 

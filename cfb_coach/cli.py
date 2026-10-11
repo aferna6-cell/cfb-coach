@@ -9,8 +9,9 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
-from cfb_coach.db import CoachDB, resolve_db_path_from_env
+from cfb_coach.db import CoachDB, default_db_path
 from cfb_coach.opponents import format_opponent_list, resolve_opponent
 from cfb_coach.playcaller import make_call
 from cfb_coach.situation import parse_situation, format_heard
@@ -23,8 +24,14 @@ from cfb_coach.dynasty import (
 )
 
 
-def _db() -> CoachDB:
-    return CoachDB(resolve_db_path_from_env())
+def _db(explicit: str | None = None) -> CoachDB:
+    """Open the CLI database.
+
+    ``--db`` names the file. Otherwise the path is ``default_db_path()``.
+    """
+    if explicit:
+        return CoachDB(Path(explicit).expanduser())
+    return CoachDB(default_db_path())
 
 
 def _local_ts(ts: str) -> str:
@@ -378,7 +385,7 @@ def cmd_call(args: argparse.Namespace) -> int:
     if handler:
         return handler(args)
     oid = _require_opponent(args.opponent)
-    db = _db()
+    db = _db(getattr(args, "db", None))
     try:
         sit = parse_situation(args.situation, default_side=args.side or "offense")
         if args.side:
@@ -402,7 +409,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     if handler:
         return handler(args)
     oid = _require_opponent(args.opponent)
-    db = _db()
+    db = _db(getattr(args, "db", None))
     _ensure_rules(db)
     from cfb_coach.dynasty import resolve_dynasty
 
@@ -938,6 +945,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="This session may use VOD to pick an in-book play, and will not edit the book.",
     )
     p_play.add_argument(
+        "--db",
+        default=None,
+        help="Database file for this session. Default is default_db_path().",
+    )
+    p_play.add_argument(
         "--html-port",
         type=int,
         default=None,
@@ -983,6 +995,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_call = sub.add_parser("call", help="One-shot call (non-interactive)")
     p_call.add_argument("--opponent", "-o", required=True)
     p_call.add_argument("--situation", "-s", required=True)
+    p_call.add_argument(
+        "--db",
+        default=None,
+        help="Database file for this call. Default is default_db_path().",
+    )
     p_call.add_argument("--side", choices=("offense", "defense"), default=None)
     p_call.add_argument("--why", action="store_true")
     p_call.add_argument(
