@@ -32,16 +32,22 @@ _PASSING_DOWNS = frozenset({3, 4})
 
 
 def readonly_madden_db_path(path: Path | str | None = None) -> Path:
-    """Path for a read-only opponent report.
+    """Path for a read-only Madden log.
 
     An explicit ``path`` is used as given. With no argument, the path is
-    ``db.default_db_path()``, which honors ``CFB_COACH_DB``.
+    ``db.madden_db_path()``, which honors ``CFB_COACH_MADDEN_DB``. That is
+    the Madden database, not ``coach.db`` from ``CFB_COACH_DB``.
     """
     if path is not None and str(path).strip():
         return Path(path)
-    from cfb_coach.db import default_db_path
+    from cfb_coach import db as coach_db
 
-    return default_db_path()
+    # Data's db.madden_db_path is not on this tree until #46 lands.
+    # games.madden_db_path already honors CFB_COACH_MADDEN_DB.
+    madden_db_path = getattr(coach_db, "madden_db_path", None)
+    if madden_db_path is None:
+        from cfb_coach.games import madden_db_path
+    return madden_db_path()
 
 
 def _shrink(successes: float, n: int) -> float:

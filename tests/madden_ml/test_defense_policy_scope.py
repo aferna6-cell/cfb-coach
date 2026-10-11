@@ -78,6 +78,7 @@ NEW_TEST_SCOPES = {
     f"{SCOPE}::HybridGateTests::test_live_hybrid_does_not_score_below_forty": "6",
     f"{SCOPE}::BaselineIdTests::test_collection_preserves_8f10cc5_ids_and_skips_playwright": "baseline",
     f"{SCOPE}::DatabasePathTests::test_db_paths_use_an_explicit_argument_or_default_db_path": "knowledge layer",
+    f"{SCOPE}::DatabasePathTests::test_readonly_path_is_the_madden_database_and_opens_read_only": "knowledge layer",
 }
 
 CATALOG = {
@@ -620,11 +621,13 @@ class DatabasePathTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             chosen = Path(tmp) / "coach.db"
             saved = os.environ.get("CFB_COACH_DB")
+            saved_madden = os.environ.get("CFB_COACH_MADDEN_DB")
             os.environ["CFB_COACH_DB"] = str(chosen)
+            os.environ.pop("CFB_COACH_MADDEN_DB", None)
             try:
                 with mock.patch("pathlib.Path.home", side_effect=AssertionError("home")):
-                    self.assertEqual(readonly_madden_db_path(), default_db_path())
-                    self.assertEqual(readonly_madden_db_path(), chosen)
+                    self.assertEqual(default_db_path(), chosen)
+                    self.assertNotEqual(readonly_madden_db_path(), chosen)
                     self.assertEqual(
                         defense._data_path(),
                         chosen.parent / "madden_ml_experimental" / "defense_coordinator.json",
@@ -636,6 +639,65 @@ class DatabasePathTests(unittest.TestCase):
                     os.environ.pop("CFB_COACH_DB", None)
                 else:
                     os.environ["CFB_COACH_DB"] = saved
+                if saved_madden is None:
+                    os.environ.pop("CFB_COACH_MADDEN_DB", None)
+                else:
+                    os.environ["CFB_COACH_MADDEN_DB"] = saved_madden
+
+    def test_readonly_path_is_the_madden_database_and_opens_read_only(self) -> None:
+        import os
+        import sqlite3
+
+        from cfb_coach import db as coach_db
+        from cfb_coach.games import madden_db_path as games_madden_db_path
+        from cfb_coach.madden.model.opponent_learning import readonly_madden_db_path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            coach = Path(tmp) / "coach.db"
+            madden = Path(tmp) / "madden27.db"
+            sqlite3.connect(coach).close()
+            sqlite3.connect(madden).close()
+            coach_hash = hashlib.sha256(coach.read_bytes()).hexdigest()
+            madden_hash = hashlib.sha256(madden.read_bytes()).hexdigest()
+            saved_coach = os.environ.get("CFB_COACH_DB")
+            saved_madden = os.environ.get("CFB_COACH_MADDEN_DB")
+            os.environ["CFB_COACH_DB"] = str(coach)
+            os.environ["CFB_COACH_MADDEN_DB"] = str(madden)
+            patcher = None
+            try:
+                if not callable(getattr(coach_db, "madden_db_path", None)):
+                    # #46 has not added db.madden_db_path. The games helper
+                    # already honors CFB_COACH_MADDEN_DB, then the patch
+                    # installs that same callable where #46 will put it.
+                    self.assertEqual(readonly_madden_db_path(), madden)
+                    patcher = mock.patch.object(
+                        coach_db, "madden_db_path", games_madden_db_path, create=True,
+                    )
+                    patcher.start()
+                resolved = readonly_madden_db_path()
+                self.assertEqual(resolved, madden)
+                self.assertNotEqual(resolved, coach)
+                opened = CoachDB.open_read_only(resolved)
+                try:
+                    self.assertTrue(opened.read_only)
+                    self.assertEqual(Path(opened.path), madden)
+                    with self.assertRaises(sqlite3.OperationalError):
+                        opened.conn.execute("CREATE TABLE should_fail (id INTEGER)")
+                finally:
+                    opened.close()
+                self.assertEqual(hashlib.sha256(madden.read_bytes()).hexdigest(), madden_hash)
+                self.assertEqual(hashlib.sha256(coach.read_bytes()).hexdigest(), coach_hash)
+            finally:
+                if patcher is not None:
+                    patcher.stop()
+                if saved_coach is None:
+                    os.environ.pop("CFB_COACH_DB", None)
+                else:
+                    os.environ["CFB_COACH_DB"] = saved_coach
+                if saved_madden is None:
+                    os.environ.pop("CFB_COACH_MADDEN_DB", None)
+                else:
+                    os.environ["CFB_COACH_MADDEN_DB"] = saved_madden
 
 
 class BaselineIdTests(unittest.TestCase):
