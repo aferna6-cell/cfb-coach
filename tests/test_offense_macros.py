@@ -253,7 +253,10 @@ class TestTerminal(_DBCase):
         buf = io.StringIO()
         with mock.patch.object(cli, "make_call", fake_make_call), mock.patch("builtins.input", lambda *_: next(feed)), \
                 contextlib.redirect_stdout(buf):
-            self.assertEqual(cli.main(["play", "-o", "cpu", "--terminal", "--no-overlay"]), 0)
+            self.assertEqual(
+                cli.main(["play", "-o", "cpu", "--terminal", "--no-overlay", "--db", str(self.path)]),
+                0,
+            )
         out = buf.getvalue()
         self.assertIn("MACRO: MAN — LB → MAN | WR1 deep cross · WR2 zig · WR3 short cross · TE wheel · HB Texas", out)
         self.db.conn.commit()

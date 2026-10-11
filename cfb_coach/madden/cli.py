@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from cfb_coach.db import CoachDB
-from cfb_coach.games import GAMES, MADDEN27, madden_db_path
+from cfb_coach.games import GAMES, MADDEN27
 from cfb_coach.madden.data import load_seed
 from cfb_coach.madden.franchise import (
     doctrine_line,
@@ -118,8 +118,17 @@ def _html_shadow_hook(db: CoachDB, opponent_id: str):
     return _hook
 
 
-def open_db() -> CoachDB:
-    db = CoachDB(madden_db_path(), seed=load_seed())
+def open_db(explicit: str | None = None) -> CoachDB:
+    """Open the Madden database for the CLI and the live server.
+
+    ``--db`` names the file. Otherwise the path is ``madden_db_path()``
+    (``CFB_COACH_MADDEN_DB``, else ``madden27.db``). Madden rows are not
+    written to ``coach.db``.
+    """
+    from cfb_coach.madden.model.inference import resolve_live_db_path
+
+    path = resolve_live_db_path(explicit)
+    db = CoachDB(path, seed=load_seed())
     try:  # stored Active 8 selections migrate in place; the live loadout is 8 offense + 8 defense
         from cfb_coach.madden.macros import migrate_all_selections
 
@@ -420,12 +429,15 @@ def cmd_prep(args: argparse.Namespace) -> int:
 
 def cmd_call(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
-    db = open_db()
+    db = open_db(getattr(args, "db", None))
     try:
         pid = get_session_profile(db)
         sit = parse_madden_situation(args.situation, default_side=args.side or "offense")
         if args.side:
             sit.side = args.side
+        from cfb_coach.madden.model.inference import bind_opp_look
+
+        bind_opp_look(sit, raw=args.situation)
         from cfb_coach.game_score import absorb_and_stamp, context_from_args
 
         absorb_and_stamp(sit, context_from_args(args))
@@ -525,7 +537,7 @@ def _write_overlay(path: Path | None, text: str, short: str) -> None:
 
 def cmd_play(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
-    db = open_db()
+    db = open_db(getattr(args, "db", None))
     pid = _profile_arg(args, db)
     active = _active_after_prep(db, oid, pid)
     cpu = is_cpu_opponent(oid)
@@ -600,6 +612,9 @@ def cmd_play(args: argparse.Namespace) -> int:
 
     if getattr(args, "once", None):
         sit = parse_madden_situation(args.once, default_side="offense")
+        from cfb_coach.madden.model.inference import bind_opp_look
+
+        bind_opp_look(sit, raw=args.once)
         absorb_and_stamp(sit, live_ctx)
         heard = format_heard(sit)
         print(heard)
@@ -742,6 +757,10 @@ def cmd_play(args: argparse.Namespace) -> int:
                 continue
 
             sit = parse_madden_situation(raw, default_side=side)
+            from cfb_coach.madden.model.inference import bind_opp_look
+
+            bind_opp_look(sit, raw=raw)
+            logged_look = (sit.extras or {}).get("opp_look")
             snap_book.stamp_situation(sit)
             absorb_and_stamp(sit, live_ctx)
             heard = format_heard(sit)
@@ -757,7 +776,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             print(call.format())
             _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
             last_call, last_sit = call, sit
-            snap_book.remember_call(call, sit)
+            snap_book.remember_call(call, sit, opp_look=logged_look)
             if sit.coverage_hint and sit.side == "offense":
                 last_cov = sit.coverage_hint
             if sit.concept_hint and sit.side == "defense":

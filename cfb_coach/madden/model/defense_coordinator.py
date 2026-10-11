@@ -547,7 +547,13 @@ def live_pick(
     if not book:
         raise ValueError("Missing confirmed defensive book")
     art_path = db.get_meta(MODEL_META) if db is not None else None
-    model = load_model(art_path or None)
+    from cfb_coach.madden.model.inference import cached_defense_model
+
+    model = cached_defense_model(
+        session_id,
+        lambda: load_model(art_path or None),
+        path=str(art_path) if art_path else "",
+    )
     from cfb_coach import ingame
     records = ingame.session_records(db, session_id, "defense") if db is not None and session_id else []
     recent = [(r.formation, r.play) for r in records[-20:]]

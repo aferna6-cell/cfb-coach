@@ -570,12 +570,13 @@ class TestCfbUnchanged(_Isolated):
         cfb_forms = load_cfb_seed()["playbooks"]["offense_formations"]
         self.assertTrue(any(f in out for f in cfb_forms))
         self.assertNotIn("Madden", out)
+        self.assertIn("madden27.db", out)
+        self.assertTrue((self.dir / "madden27.db").is_file())
+        self.assertFalse((self.dir / "coach.db").exists())
         rc, out = self.run_cli(["prep", "-o", "cpu", "--offline", "--text"])
         self.assertEqual(rc, 0)
         self.assertIn("cfb27-2026-09", out)
-        # Games keep separate DBs
         self.assertTrue((self.dir / "coach.db").exists())
-        self.assertFalse((self.dir / "madden27.db").exists())
 
 
 if __name__ == "__main__":

@@ -9,8 +9,9 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
-from cfb_coach.db import CoachDB, resolve_db_path_from_env
+from cfb_coach.db import CoachDB, default_db_path
 from cfb_coach.opponents import format_opponent_list, resolve_opponent
 from cfb_coach.playcaller import make_call
 from cfb_coach.situation import parse_situation, format_heard
@@ -23,8 +24,26 @@ from cfb_coach.dynasty import (
 )
 
 
-def _db() -> CoachDB:
-    return CoachDB(resolve_db_path_from_env())
+def _db(explicit: str | None = None) -> CoachDB:
+    """Open the CLI database.
+
+    ``--db`` names the file. Otherwise the path is ``default_db_path()``.
+    """
+    if explicit:
+        return CoachDB(Path(explicit).expanduser())
+    return CoachDB(default_db_path())
+
+
+def _call_db(explicit: str | None = None) -> CoachDB:
+    """Open the database for ``call`` and ``play``.
+
+    ``--db`` names the file. Otherwise the path is ``madden_db_path()``.
+    """
+    if explicit:
+        return CoachDB(Path(explicit).expanduser())
+    from cfb_coach.games import madden_db_path
+
+    return CoachDB(madden_db_path())
 
 
 def _local_ts(ts: str) -> str:
@@ -378,7 +397,7 @@ def cmd_call(args: argparse.Namespace) -> int:
     if handler:
         return handler(args)
     oid = _require_opponent(args.opponent)
-    db = _db()
+    db = _call_db(getattr(args, "db", None))
     try:
         sit = parse_situation(args.situation, default_side=args.side or "offense")
         if args.side:
@@ -402,7 +421,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     if handler:
         return handler(args)
     oid = _require_opponent(args.opponent)
-    db = _db()
+    db = _call_db(getattr(args, "db", None))
     _ensure_rules(db)
     from cfb_coach.dynasty import resolve_dynasty
 
@@ -454,7 +473,7 @@ def cmd_play(args: argparse.Namespace) -> int:
 
         overlay_path = _P(overlay_arg)
     else:
-        overlay_path = default_overlay_path()  # ~/.cfb-coach/copilot_overlay.html
+        overlay_path = default_overlay_path()
 
     if getattr(args, "once", None):
         # Non-interactive: still refresh overlay file if enabled, but do not auto-open
@@ -632,6 +651,10 @@ def cmd_play(args: argparse.Namespace) -> int:
                 continue
 
             sit = parse_situation(raw, default_side=default_side)
+            from cfb_coach.madden.model.inference import bind_opp_look
+
+            bind_opp_look(sit, raw=raw)
+            logged_look = (sit.extras or {}).get("opp_look")
             snap_book.stamp_situation(sit)
             absorb_and_stamp(sit, live_ctx)
             heard = format_heard(sit)
@@ -648,7 +671,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             print(call.format())
             _refresh_overlay(call, sit, heard)
             last_call, last_sit = call, sit
-            snap_book.remember_call(call, sit)
+            snap_book.remember_call(call, sit, opp_look=logged_look)
             # If this sit itself named a live/last coverage or concept, remember for NEXT snap
             if sit.coverage_hint and sit.side == "offense":
                 last_coverage = sit.coverage_hint
@@ -938,6 +961,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="This session may use VOD to pick an in-book play, and will not edit the book.",
     )
     p_play.add_argument(
+        "--db",
+        default=None,
+        help="Database file for this session. Default is madden_db_path().",
+    )
+    p_play.add_argument(
         "--html-port",
         type=int,
         default=None,
@@ -983,6 +1011,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_call = sub.add_parser("call", help="One-shot call (non-interactive)")
     p_call.add_argument("--opponent", "-o", required=True)
     p_call.add_argument("--situation", "-s", required=True)
+    p_call.add_argument(
+        "--db",
+        default=None,
+        help="Database file for this call. Default is madden_db_path().",
+    )
     p_call.add_argument("--side", choices=("offense", "defense"), default=None)
     p_call.add_argument("--why", action="store_true")
     p_call.add_argument(

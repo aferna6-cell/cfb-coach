@@ -327,6 +327,7 @@ def apply_experimental_offense(
 
     decision_ts = datetime.now(timezone.utc).isoformat()
     budget = float(ML_LATENCY_BUDGET_MS if budget_ms is None else budget_ms)
+    scored_on = "unknown"
     if commit is None:
         commit = bool(snap_id)
     heur_form = getattr(heuristic_call, "formation", None)
@@ -383,6 +384,7 @@ def apply_experimental_offense(
             "final_play": heur_play,
             "evidence_quality": "fallback",
             "explanation": f"experimental fallback → heuristic ({status.value})",
+            "scored_on": scored_on,
             "fell_back": True,
         }
         _attach(heuristic_call, dec, info)
@@ -442,6 +444,14 @@ def apply_experimental_offense(
             artifact = art
         else:
             artifact = exp_mod.load_artifact(artifact_path)
+            from cfb_coach.madden.model.inference import read_scored_on
+
+            try:
+                scored_on = read_scored_on(
+                    json.loads(Path(artifact_path).read_text(encoding="utf-8"))
+                )
+            except (OSError, json.JSONDecodeError, TypeError):
+                scored_on = "unknown"
 
         elapsed = (time.perf_counter() - started) * 1000.0
         if elapsed > budget:
@@ -612,6 +622,7 @@ def apply_experimental_offense(
             "final_play": call.play,
             "evidence_quality": quality,
             "explanation": explanation,
+            "scored_on": scored_on,
             "model_version": artifact.model_version,
             "knowledge_version": artifact.knowledge_version,
             "knowledge_origin": artifact.knowledge_origin,
