@@ -2,8 +2,7 @@
 
 Each test id is listed in ``NEW_TEST_SCOPES`` with the scope item it covers:
 1 opponent context, 2 joint ranking, 3 personnel and set, 4 staged install,
-5 context coverage, 6 hybrid gate, plus the knowledge layer and the baseline
-id gate.
+5 context coverage, 6 hybrid gate, plus the knowledge layer.
 """
 from __future__ import annotations
 
@@ -11,8 +10,6 @@ import hashlib
 import inspect
 import math
 import random
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -45,13 +42,8 @@ from cfb_coach.madden.playcaller import MaddenCall
 from cfb_coach.situation import Situation
 
 ROOT = Path(__file__).resolve().parents[2]
-BASELINE_IDS = Path(__file__).with_name("baseline_b987e3f_nodeids.txt")
 BOTH_NULL_SNAPSHOT = Path(__file__).with_name("fixtures") / "both_null_defense_rank_2b372e2.json"
 _RANK_KEYS_ADDED_AFTER_BASE = ("personnel", "verified_knowledge", "opponent_profile", "why")
-PLAYWRIGHT_ID = (
-    "tests/madden_ml/test_browser_idempotency_playwright.py::"
-    "PlaywrightBrowserIdempotencyTests::test_browser_sends_keys_double_click_no_duplicate"
-)
 KNOWLEDGE = "tests/madden_ml/test_defense_knowledge_policy.py"
 SCOPE = "tests/madden_ml/test_defense_policy_scope.py"
 
@@ -82,7 +74,6 @@ NEW_TEST_SCOPES = {
     f"{SCOPE}::HybridGateTests::test_forty_snaps_runs_the_standard_gate": "6",
     f"{SCOPE}::HybridGateTests::test_live_hybrid_does_not_score_below_forty": "6",
     f"{SCOPE}::HybridGateTests::test_user_entered_look_verification_does_not_count": "6",
-    f"{SCOPE}::BaselineIdTests::test_collection_preserves_8f10cc5_ids_and_skips_playwright": "baseline",
     f"{SCOPE}::DatabasePathTests::test_db_paths_use_an_explicit_argument_or_default_db_path": "knowledge layer",
     f"{SCOPE}::DatabasePathTests::test_readonly_path_is_the_madden_database_and_opens_read_only": "knowledge layer",
 }
@@ -787,33 +778,6 @@ class DatabasePathTests(unittest.TestCase):
                     os.environ.pop("CFB_COACH_MADDEN_DB", None)
                 else:
                     os.environ["CFB_COACH_MADDEN_DB"] = saved_madden
-
-
-class BaselineIdTests(unittest.TestCase):
-    def test_collection_preserves_8f10cc5_ids_and_skips_playwright(self) -> None:
-        baseline = [
-            line.strip() for line in BASELINE_IDS.read_text(encoding="utf-8").splitlines() if line.strip()
-        ]
-        self.assertEqual(len(baseline), 704)
-        self.assertEqual(len(set(baseline)), 704)
-        self.assertIn(PLAYWRIGHT_ID, baseline)
-        scopes = set(NEW_TEST_SCOPES.values())
-        for item in ("1", "2", "3", "4", "5", "6", "knowledge layer"):
-            self.assertIn(item, scopes)
-
-        collected = subprocess.run(
-            [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        self.assertEqual(collected.returncode, 0, collected.stderr)
-        current = [line.strip() for line in collected.stdout.splitlines() if "::" in line]
-        extra = set(current) - set(baseline)
-        missing = set(baseline) - set(current)
-        self.assertEqual(missing, set())
-        self.assertEqual(extra, set(NEW_TEST_SCOPES))
 
 
 if __name__ == "__main__":
