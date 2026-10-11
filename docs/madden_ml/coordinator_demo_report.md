@@ -78,8 +78,8 @@ Unarmed Demo C play falls back to baseline BASE-OFF-85936814A2 is_no_adjustment=
 
 ml.latency_budget_ms stays 150.
 Calls timed: 50.
-Whole call (make_call plus the model call) ms: p50 2.306, p95 2.558, max 2.758.
-Model call only (defense live_pick elapsed_ms, offense rank_live latency) ms: p50 0.386, p95 1.016, max 1.099.
+Whole call (make_call plus the model call) ms: p50 2.473, p95 2.682, max 2.729.
+Model call only (defense live_pick elapsed_ms, offense rank_live latency) ms: p50 0.384, p95 1.285, max 1.324.
 Fallback count: 25. A fallback is any model result whose MLStatus is not ok.
 MLStatus counts: model_missing=25, ok=25
 Fallback model_missing: no model artifact is installed in the temp registry, so the live rank keeps the heuristic line (25).
