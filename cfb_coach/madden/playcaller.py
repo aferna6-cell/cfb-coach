@@ -1007,4 +1007,11 @@ def make_call(
     snote = score_call_note(sit)
     if snote:
         call.rationale += f" | {snote}"
+    # Clear the opponent look after the call exists. The call object stays as built.
+    try:
+        from cfb_coach.madden.model.inference import finish_live_snap
+
+        finish_live_snap(sit, db)
+    except Exception:  # noqa: BLE001 — a hook failure must not change the call
+        pass
     return call
