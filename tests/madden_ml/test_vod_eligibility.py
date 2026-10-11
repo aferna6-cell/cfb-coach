@@ -101,7 +101,7 @@ def test_flag_on_adds_only_permitted_unreviewed_rows(tmp_path):
         rows, tmp_path / "on", include_unreviewed_permitted=True
     )
     assert _ids(off["rows"]) == ["reviewed"]
-    assert _ids(on["rows"]) == ["reviewed", "unreviewed-ok"]
+    assert _ids(on["rows"]) == ["reviewed", "unreviewed-ok", "rejected"]
 
 
 def test_excluded_source_f8hm324smtg_always_excluded(tmp_path):
@@ -163,6 +163,32 @@ def test_unpermitted_rows_excluded_when_flag_on(tmp_path):
     assert _ids(report["rows"]) == ["allowed-unreviewed"]
 
 
+def test_auto_review_status_counts_as_unreviewed(tmp_path):
+    auto = _row(
+        snap_id="auto",
+        review_status="auto",
+        trainable=False,
+        permitted_use="training",
+        source="pilot-vod",
+    )
+    before = dict(auto)
+    off = export_vod_training_dataset([dict(auto)], tmp_path / "off")
+    on = export_vod_training_dataset(
+        [dict(auto)],
+        tmp_path / "on",
+        include_unreviewed_permitted=True,
+    )
+    assert off["include_unreviewed_permitted"] is False
+    assert on["include_unreviewed_permitted"] is True
+    assert off["rows"] == []
+    assert vod_training_eligible(auto, include_unreviewed_permitted=False) is False
+    assert vod_training_eligible(auto, include_unreviewed_permitted=True) is True
+    assert _ids(on["rows"]) == ["auto"]
+    assert on["rows"][0]["review_status"] == "auto"
+    assert on["rows"][0]["trainable"] is False
+    assert auto == before
+
+
 def test_review_status_and_trainable_pass_through_unchanged(tmp_path):
     untouched = _row(snap_id="reviewed", review_status="reviewed", trainable=True)
     unreviewed = _row(snap_id="unreviewed", review_status="unreviewed", trainable=False)
@@ -186,8 +212,10 @@ def test_review_status_and_trainable_pass_through_unchanged(tmp_path):
     assert exported["reviewed"]["trainable"] is True
     assert exported["unreviewed"]["review_status"] == "unreviewed"
     assert exported["unreviewed"]["trainable"] is False
-    assert "missing-status" not in exported
-    assert "none-status" not in exported
+    assert "review_status" not in exported["missing-status"]
+    assert exported["missing-status"]["trainable"] is True
+    assert exported["none-status"]["review_status"] is None
+    assert exported["none-status"]["trainable"] is None
 
 
 def test_group_does_not_span_train_and_held_out(tmp_path):
