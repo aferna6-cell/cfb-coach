@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -84,7 +85,11 @@ def test_missing_required_flags_exit_2_and_leave_home_untouched(tmp_path, argv):
 
 
 def test_defense_design_confirm_installed_cannot_write(tmp_path):
-    """--confirm-installed opens sqlite with mode=ro, so the staged book cannot change."""
+    """--confirm-installed opens sqlite with mode=ro and does not write the book.
+
+    confirm_design returns a diff only. The staged pending row stays, history
+    stays empty, and the database bytes do not change.
+    """
     from cfb_coach.db import CoachDB
     from cfb_coach.madden.data import load_seed
     from cfb_coach.madden.model import defense_coordinator as defense
@@ -113,8 +118,11 @@ def test_defense_design_confirm_installed_cannot_write(tmp_path):
         cwd=tmp_path,
         home=home,
     )
-    assert result.returncode != 0
-    assert "attempt to write a readonly database" in result.stderr
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["wrote_book"] is False
+    assert payload["confirmed"] is False
+    assert "attempt to write a readonly database" not in result.stderr
     assert db_path.read_bytes() == before
     assert _snapshot(home) == before_home
     assert list(home.iterdir()) == []
