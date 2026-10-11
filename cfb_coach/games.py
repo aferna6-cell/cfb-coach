@@ -88,10 +88,9 @@ def data_dir() -> Path:
 
 
 def madden_db_path() -> Path:
-    """``CFB_COACH_MADDEN_DB`` when set, else ``~/.cfb-coach/madden27.db``.
+    """``CFB_COACH_MADDEN_DB``, else beside ``CFB_COACH_DB``, else ``~/.cfb-coach``.
 
-    Does not read ``CFB_COACH_DB``. The implementation lives in
-    ``cfb_coach.db.madden_db_path``.
+    The implementation lives in ``cfb_coach.db.madden_db_path``.
     """
     from cfb_coach.db import madden_db_path as resolve
 

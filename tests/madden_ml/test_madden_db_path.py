@@ -1,7 +1,8 @@
-"""CFB_COACH_MADDEN_DB selects the Madden DB without reading CFB_COACH_DB."""
+"""Madden DB path: dedicated env, else beside CFB_COACH_DB, else home."""
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import pytest
@@ -99,17 +100,50 @@ def test_db_env_vars_stay_on_their_own_paths(tmp_path, monkeypatch):
     assert list(home.iterdir()) == []
 
 
-def test_cfb_coach_db_alone_does_not_change_madden_db_path(tmp_path, monkeypatch):
-    home = tmp_path / "home"
+def test_cfb_coach_db_alone_places_madden_db_beside_it(tmp_path, monkeypatch):
+    home = tmp_path / "empty-home"
     home.mkdir()
-    cfb_parent = tmp_path / "cfb-only"
+    cfb = tmp_path / "cfb" / "coach.db"
     calls = _track_home(monkeypatch, home)
-    monkeypatch.setenv("CFB_COACH_DB", str(cfb_parent / "coach.db"))
+    monkeypatch.setenv("CFB_COACH_DB", str(cfb))
     monkeypatch.delenv("CFB_COACH_MADDEN_DB", raising=False)
 
-    expected = home / ".cfb-coach" / "madden27.db"
-    assert madden_db_path() == expected
-    assert expected.parent.is_dir()
-    assert not (cfb_parent / "madden27.db").exists()
-    assert not cfb_parent.exists()
-    assert calls == [home]
+    assert madden_db_path() == cfb.parent / "madden27.db"
+    assert calls == []
+    assert list(home.iterdir()) == []
+
+
+def test_cfb_coach_madden_db_wins_when_both_are_set(tmp_path, monkeypatch):
+    home = tmp_path / "empty-home"
+    home.mkdir()
+    cfb = tmp_path / "cfb" / "coach.db"
+    madden = tmp_path / "madden" / "madden27.db"
+    calls = _track_home(monkeypatch, home)
+    monkeypatch.setenv("CFB_COACH_DB", str(cfb))
+    monkeypatch.setenv("CFB_COACH_MADDEN_DB", str(madden))
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        assert madden_db_path() == madden
+    assert madden != cfb.parent / "madden27.db"
+    assert calls == []
+    assert list(home.iterdir()) == []
+
+
+def test_same_resolved_file_warns(tmp_path, monkeypatch):
+    home = tmp_path / "empty-home"
+    home.mkdir()
+    folder = tmp_path / "same"
+    cfb = folder / "coach.db"
+    madden = folder / "madden27.db"
+    calls = _track_home(monkeypatch, home)
+    monkeypatch.setenv("CFB_COACH_DB", str(cfb))
+    monkeypatch.setenv("CFB_COACH_MADDEN_DB", str(madden))
+
+    with pytest.warns(UserWarning, match="CFB_COACH_MADDEN_DB") as caught:
+        path = madden_db_path()
+    message = str(caught[0].message)
+    assert "CFB_COACH_DB" in message
+    assert path == madden
+    assert calls == []
+    assert list(home.iterdir()) == []

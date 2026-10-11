@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
@@ -23,23 +24,39 @@ def _madden_db_filename() -> str:
     return GAMES[MADDEN27].db_filename
 
 
-def madden_db_path() -> Path:
-    """Prefer ``CFB_COACH_MADDEN_DB``, then ``~/.cfb-coach/madden27.db``.
+def _nonempty_env(name: str) -> str | None:
+    raw = os.environ.get(name)
+    return raw if raw else None
 
-    A non-empty ``CFB_COACH_MADDEN_DB`` is returned as given. This branch does
-    not call ``Path.home()`` and does not create ``~/.cfb-coach``. Only the
-    parent of the given path is created, and only when that parent is missing.
-    An empty value is treated as unset. This function never reads
-    ``CFB_COACH_DB``.
+
+def madden_db_path() -> Path:
+    """Resolve the Madden database path.
+
+    A non-empty ``CFB_COACH_MADDEN_DB`` wins. Otherwise a non-empty
+    ``CFB_COACH_DB`` selects ``<its parent>/madden27.db`` and does not call
+    ``Path.home()`` or create ``~/.cfb-coach``. Otherwise the path is
+    ``~/.cfb-coach/madden27.db``. Empty strings count as unset. When both
+    variables are set and name the same file, a ``UserWarning`` names them.
     """
-    raw = os.environ.get("CFB_COACH_MADDEN_DB")
-    if raw:
-        env = Path(raw)
-        parent = env.parent
+    filename = _madden_db_filename()
+    madden_raw = _nonempty_env("CFB_COACH_MADDEN_DB")
+    cfb_raw = _nonempty_env("CFB_COACH_DB")
+    sibling = Path(cfb_raw).parent / filename if cfb_raw else None
+    if madden_raw:
+        chosen = Path(madden_raw)
+        if sibling is not None and chosen.resolve() == sibling.resolve():
+            warnings.warn(
+                "CFB_COACH_MADDEN_DB and CFB_COACH_DB resolve to the same file "
+                f"({chosen})",
+                UserWarning,
+                stacklevel=2,
+            )
+        parent = chosen.parent
         if not parent.exists():
             parent.mkdir()
-        return env
-    filename = _madden_db_filename()
+        return chosen
+    if sibling is not None:
+        return sibling
     try:
         home = Path.home() / ".cfb-coach" / filename
         home.parent.mkdir(parents=True, exist_ok=True)
@@ -48,6 +65,7 @@ def madden_db_path() -> Path:
         fallback = Path("/workspace/cfb-coach/data") / filename
         fallback.parent.mkdir(parents=True, exist_ok=True)
         return fallback
+
 
 def default_db_path() -> Path:
     """Prefer CFB_COACH_DB, then ~/.cfb-coach/coach.db, then package data/.
