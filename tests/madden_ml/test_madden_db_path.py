@@ -147,3 +147,28 @@ def test_same_resolved_file_warns(tmp_path, monkeypatch):
     assert path == madden
     assert calls == []
     assert list(home.iterdir()) == []
+
+
+def test_both_vars_same_arbitrary_file_warns(tmp_path, monkeypatch):
+    home = tmp_path / "empty-home"
+    home.mkdir()
+    shared = tmp_path / "shared.db"
+    calls = _track_home(monkeypatch, home)
+    monkeypatch.setenv("CFB_COACH_DB", str(shared))
+    monkeypatch.setenv("CFB_COACH_MADDEN_DB", str(shared))
+
+    with pytest.warns(UserWarning, match="CFB_COACH_MADDEN_DB") as caught:
+        path = madden_db_path()
+    message = str(caught[0].message)
+    assert "CFB_COACH_DB" in message
+    assert path == shared
+    assert calls == []
+    assert list(home.iterdir()) == []
+
+    other = tmp_path / "other.db"
+    monkeypatch.setenv("CFB_COACH_MADDEN_DB", str(other))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        assert madden_db_path() == other
+    assert calls == []
+    assert list(home.iterdir()) == []

@@ -35,27 +35,40 @@ def madden_db_path() -> Path:
     A non-empty ``CFB_COACH_MADDEN_DB`` wins. Otherwise a non-empty
     ``CFB_COACH_DB`` selects ``<its parent>/madden27.db`` and does not call
     ``Path.home()`` or create ``~/.cfb-coach``. Otherwise the path is
-    ``~/.cfb-coach/madden27.db``. Empty strings count as unset. When both
-    variables are set and name the same file, a ``UserWarning`` names them.
+    ``~/.cfb-coach/madden27.db``. Empty strings count as unset. Whenever
+    ``CFB_COACH_DB`` is set, a ``UserWarning`` names both variables if the
+    resolved Madden path is that same file. The warning also fires when
+    ``CFB_COACH_MADDEN_DB`` names the sibling ``madden27.db``.
     """
     filename = _madden_db_filename()
     madden_raw = _nonempty_env("CFB_COACH_MADDEN_DB")
     cfb_raw = _nonempty_env("CFB_COACH_DB")
     sibling = Path(cfb_raw).parent / filename if cfb_raw else None
-    if madden_raw:
-        chosen = Path(madden_raw)
-        if sibling is not None and chosen.resolve() == sibling.resolve():
+
+    def _warn_if_same_file(chosen: Path) -> None:
+        if not cfb_raw:
+            return
+        resolved = chosen.resolve()
+        same = resolved == Path(cfb_raw).resolve()
+        if madden_raw and sibling is not None and resolved == sibling.resolve():
+            same = True
+        if same:
             warnings.warn(
                 "CFB_COACH_MADDEN_DB and CFB_COACH_DB resolve to the same file "
                 f"({chosen})",
                 UserWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
+
+    if madden_raw:
+        chosen = Path(madden_raw)
+        _warn_if_same_file(chosen)
         parent = chosen.parent
         if not parent.exists():
             parent.mkdir()
         return chosen
     if sibling is not None:
+        _warn_if_same_file(sibling)
         return sibling
     try:
         home = Path.home() / ".cfb-coach" / filename
