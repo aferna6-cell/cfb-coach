@@ -1,4 +1,4 @@
-"""Scope tests for defensive intelligence on the 8f10cc5 baseline.
+"""Scope tests for defensive intelligence on the df81381 baseline.
 
 Each test id is listed in ``NEW_TEST_SCOPES`` with the scope item it covers:
 1 opponent context, 2 joint ranking, 3 personnel and set, 4 staged install,
@@ -45,7 +45,7 @@ from cfb_coach.madden.playcaller import MaddenCall
 from cfb_coach.situation import Situation
 
 ROOT = Path(__file__).resolve().parents[2]
-BASELINE_IDS = Path(__file__).with_name("baseline_8f10cc5_nodeids.txt")
+BASELINE_IDS = Path(__file__).with_name("baseline_df81381_nodeids.txt")
 PLAYWRIGHT_ID = (
     "tests/madden_ml/test_browser_idempotency_playwright.py::"
     "PlaywrightBrowserIdempotencyTests::test_browser_sends_keys_double_click_no_duplicate"
@@ -596,6 +596,22 @@ class DatabasePathTests(unittest.TestCase):
             body = (ROOT / relative).read_text(encoding="utf-8").split("from __future__", 1)[1]
             self.assertNotIn("Path.home", body)
             self.assertNotIn(".cfb-coach", body)
+            self.assertNotIn("sqlite3.connect", body)
+            self.assertNotIn("CoachDB(", body)
+
+        for fn, name in (
+            (defense.save_model, "path"),
+            (defense.apply_design, "db"),
+            (defense.stage_design, "db"),
+            (defense.set_mode, "db"),
+        ):
+            param = inspect.signature(fn).parameters[name]
+            self.assertIs(param.default, inspect.Parameter.empty)
+        confirm_src = inspect.getsource(defense.confirm_design)
+        self.assertNotIn("set_meta", confirm_src)
+        self.assertNotIn("_save_state", confirm_src)
+        self.assertNotIn("sqlite3", confirm_src)
+        self.assertNotIn("CoachDB", confirm_src)
 
         explicit = Path("/tmp/explicit-policy.db")
         with mock.patch("pathlib.Path.home", side_effect=AssertionError("home")):
@@ -629,8 +645,8 @@ class BaselineIdTests(unittest.TestCase):
         baseline = [
             line.strip() for line in BASELINE_IDS.read_text(encoding="utf-8").splitlines() if line.strip()
         ]
-        self.assertEqual(len(baseline), 681)
-        self.assertEqual(len(set(baseline)), 681)
+        self.assertEqual(len(baseline), 683)
+        self.assertEqual(len(set(baseline)), 683)
         self.assertIn(PLAYWRIGHT_ID, baseline)
         scopes = set(NEW_TEST_SCOPES.values())
         for item in ("1", "2", "3", "4", "5", "6", "knowledge layer"):
