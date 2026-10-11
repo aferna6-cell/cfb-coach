@@ -436,19 +436,48 @@ class LastSnapBook:
         self.wrote = False
         return f"  undo: removed the last snap note (id {frame.snap_id})"
 
-    def _store_opp_look(self, snap_id: int | None) -> None:
-        """Persist the call's opponent look. Missing is SQL NULL, never ``\"\"``."""
-        if snap_id is None:
-            return
+    def _checked_token(self, raw: Any, allowed: tuple[str, ...]) -> str | None:
+        """A checked snap token, or NULL. Blank is NULL. ``\"\"`` is never stored."""
         from cfb_coach.madden.model.inference import normalize_opp_look
 
-        look = normalize_opp_look(self.opp_look)
+        text = normalize_opp_look(raw)
+        if text in allowed:
+            return text
+        return None
+
+    def _opponent_package(self) -> tuple[str | None, str | None]:
+        """Personnel and set for this snap.
+
+        Explicit situation fields win. Otherwise a normalized look token is
+        stored on the column whose check list contains it. ``empty`` is a set.
+        Anything outside the check lists, including a blank, is NULL.
+        """
+        from cfb_coach.madden.model.data_layer import OPP_PERSONNEL_VALUES, OPP_SET_VALUES
+
+        sit = self.sit
+        personnel = self._checked_token(getattr(sit, "opp_personnel", None), OPP_PERSONNEL_VALUES)
+        opp_set = self._checked_token(getattr(sit, "opp_set", None), OPP_SET_VALUES)
+        if personnel is None:
+            personnel = self._checked_token(self.opp_look, OPP_PERSONNEL_VALUES)
+        if opp_set is None:
+            opp_set = self._checked_token(self.opp_look, OPP_SET_VALUES)
+        return personnel, opp_set
+
+    def _store_opponent_package(self, snap_id: int | None) -> None:
+        """Write ``opp_personnel`` and ``opp_set`` when those columns exist.
+
+        Does not add a column and does not write ``opp_look``. Blank is NULL
+        and the token ``empty`` is kept on the set.
+        """
+        if snap_id is None:
+            return
         cols = {row[1] for row in self.db.conn.execute("PRAGMA table_info(snaps)")}
-        if "opp_look" not in cols:
-            self.db.conn.execute("ALTER TABLE snaps ADD COLUMN opp_look TEXT")
+        if "opp_personnel" not in cols or "opp_set" not in cols:
+            return
+        personnel, opp_set = self._opponent_package()
         self.db.conn.execute(
-            "UPDATE snaps SET opp_look = ? WHERE id = ?",
-            (look, snap_id),
+            "UPDATE snaps SET opp_personnel = ?, opp_set = ? WHERE id = ?",
+            (personnel, opp_set, snap_id),
         )
         self.db.conn.commit()
 
@@ -540,7 +569,7 @@ class LastSnapBook:
                 ml_decision_id=self.ml_decision_id,
                 data_source=self.data_source,
             )
-            self._store_opp_look(self.logged_id)
+            self._store_opponent_package(self.logged_id)
         else:
             self.db.update_snap(
                 self.logged_id,
@@ -554,7 +583,7 @@ class LastSnapBook:
                 executed_verification=executed_verification,
                 ml_decision_id=self.ml_decision_id,
             )
-            self._store_opp_look(self.logged_id)
+            self._store_opponent_package(self.logged_id)
         self.result, self.concept, self.coverage = result, concept, coverage
         note = ""
         if spec.get("result"):

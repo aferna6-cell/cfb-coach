@@ -187,9 +187,9 @@ class TestLiveSnap(unittest.TestCase):
                 read2="Drag",
                 opp_look=None,
             )
-            returned = finish_live_snap(sit, snap, None)
+            finish_live_snap(sit, None)
         self.assertEqual(vod_calls, [])
-        self.assertIs(returned, snap)
+        self.assertIsNone(sit.extras.get("opp_look"))
         self.assertRegex(snap.line, _OFFENSE_EXACT)
         self.assertNotIn("vod", snap.line.lower())
 
@@ -331,6 +331,9 @@ class TestOppLook(unittest.TestCase):
         madden_db = Path(os.environ["CFB_COACH_MADDEN_DB"])
         db = CoachDB(madden_db)
         self.addCleanup(db.close)
+        from cfb_coach.madden.model.data_layer import migrate_database
+
+        migrate_database(madden_db.resolve(), (madden_db.parent / "backup.db").resolve())
 
         class _Call:
             def __init__(self, sit) -> None:
@@ -364,11 +367,15 @@ class TestOppLook(unittest.TestCase):
         self.assertEqual(passed[:4], [None, None, "empty", None])
 
         api_rows = db.conn.execute(
-            "SELECT opp_look FROM snaps WHERE session_id = ? ORDER BY id",
+            "SELECT opp_personnel, opp_set FROM snaps WHERE session_id = ? ORDER BY id",
             ("api-look",),
         ).fetchall()
-        self.assertEqual([row["opp_look"] for row in api_rows], [None, None, "empty", None])
-        self.assertNotIn("", [row["opp_look"] for row in api_rows])
+        self.assertEqual([row["opp_set"] for row in api_rows], [None, None, "empty", None])
+        self.assertEqual([row["opp_personnel"] for row in api_rows], [None, None, None, None])
+        self.assertNotIn("", [row["opp_set"] for row in api_rows])
+        self.assertNotIn("", [row["opp_personnel"] for row in api_rows])
+        cols = {row[1] for row in db.conn.execute("PRAGMA table_info(snaps)")}
+        self.assertNotIn("opp_look", cols)
 
         def _cli(raw: str, look: object = UNSET_OPP_LOOK):
             sit = parse_madden_situation(raw, default_side="offense")
@@ -390,11 +397,13 @@ class TestOppLook(unittest.TestCase):
             book.remember_call(_Call(sit), sit, opp_look=sit.extras["opp_look"])
             book.close_from_form("+6", their="")
         cli_rows = db.conn.execute(
-            "SELECT opp_look FROM snaps WHERE session_id = ? ORDER BY id",
+            "SELECT opp_personnel, opp_set FROM snaps WHERE session_id = ? ORDER BY id",
             ("cli-look",),
         ).fetchall()
-        self.assertEqual([row["opp_look"] for row in cli_rows], [None, None, "empty"])
-        self.assertTrue(all(row["opp_look"] != "" for row in db.conn.execute("SELECT opp_look FROM snaps")))
+        self.assertEqual([row["opp_set"] for row in cli_rows], [None, None, "empty"])
+        self.assertEqual([row["opp_personnel"] for row in cli_rows], [None, None, None])
+        stored = db.conn.execute("SELECT opp_personnel, opp_set FROM snaps").fetchall()
+        self.assertTrue(all(row["opp_set"] != "" and row["opp_personnel"] != "" for row in stored))
 
         html = render_live_html(ctrl)
         self.assertIn("function opponentLook()", html)
@@ -423,6 +432,62 @@ class TestOppLook(unittest.TestCase):
         )
         self.assertIsNone(hooked.current)
         self.assertIsNone(sit.extras.get("opp_look"))
+
+    def test_returned_call_is_identical_when_hook_succeeds_raises_or_is_absent(self) -> None:
+        from copy import deepcopy
+        import cfb_coach.madden.model.inference as inference
+
+        books = _stock_books()
+        macros = {"offense": [], "defense": []}
+
+        def once() -> object:
+            sit = parse_madden_situation("1&10")
+            sit.extras = {"opp_look": "empty", "opp_look_session": OppLookSession()}
+            return make_call(
+                sit, "gavin", None,
+                rng=random.Random(7),
+                playbook=books,
+                active_macros=macros,
+                live_macros=False,
+            )
+
+        success = once()
+        with mock.patch.object(inference, "finish_live_snap", side_effect=RuntimeError("hook failed")):
+            raised = once()
+        original = inference.finish_live_snap
+        del inference.finish_live_snap
+        try:
+            absent = once()
+        finally:
+            inference.finish_live_snap = original
+        self.assertEqual(deepcopy(success), deepcopy(raised))
+        self.assertEqual(deepcopy(success), deepcopy(absent))
+        self.assertEqual(success, raised)
+        self.assertEqual(success, absent)
+
+    def test_hook_adds_no_model_path_time(self) -> None:
+        self.assertEqual(ML_LATENCY_BUDGET_MS, 150)
+        clock = ManualClock()
+
+        def model() -> str:
+            clock.advance(0.02)
+            return _FALLBACK
+
+        _line, elapsed_ms, timed_out = run_within_budget(model, _FALLBACK, clock=clock)
+        self.assertFalse(timed_out)
+        self.assertEqual(elapsed_ms, clock.now_ms())
+        self.assertLess(elapsed_ms, ML_LATENCY_BUDGET_MS)
+        marked = clock.now_ms()
+        sit = parse_madden_situation("1&10")
+        sit.extras = {"opp_look": "empty", "opp_look_session": OppLookSession()}
+        with mock.patch(
+            "cfb_coach.madden.model.inference.run_within_budget",
+            side_effect=AssertionError("hook entered the model path"),
+        ):
+            finish_live_snap(sit, None)
+        self.assertEqual(clock.now_ms(), marked)
+        self.assertIsNone(sit.extras.get("opp_look"))
+        self.assertIsNone(sit.extras["opp_look_session"].current)
 
 
 class TestSeedFields(unittest.TestCase):
