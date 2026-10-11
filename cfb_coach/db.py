@@ -17,10 +17,18 @@ def resolve_db_path_from_env() -> Path | None:
     return Path(raw) if raw else None
 
 def default_db_path() -> Path:
-    """Prefer CFB_COACH_DB, then ~/.cfb-coach/coach.db, then package data/."""
+    """Prefer CFB_COACH_DB, then ~/.cfb-coach/coach.db, then package data/.
+
+    A non-empty ``CFB_COACH_DB`` is returned as given. This branch does not
+    call ``Path.home()`` and does not create ``~/.cfb-coach``. Only the parent
+    of the given path is created, and only when that parent is missing. An
+    empty value is treated as unset.
+    """
     env = resolve_db_path_from_env()
     if env is not None:
-        env.parent.mkdir(parents=True, exist_ok=True)
+        parent = env.parent
+        if not parent.exists():
+            parent.mkdir()
         return env
     home = Path.home() / ".cfb-coach" / "coach.db"
     try:
