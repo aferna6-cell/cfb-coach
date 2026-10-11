@@ -320,23 +320,86 @@ class TestOppLook(unittest.TestCase):
         self.assertEqual(explicit_null, omitted)
         self.assertTrue(omitted)
 
-    def test_empty_string_token_is_distinct_from_null(self) -> None:
-        session = OppLookSession()
-        session.note("empty")
-        self.assertEqual(session.current, "empty")
-        session.note(None)
-        self.assertIsNone(session.current)
-        empty_snap = present_snap(
-            formation="Gun Bunch", play="Mesh", read1="Spot", read2="Drag", opp_look="empty",
+    def test_blank_opp_look_is_null_and_empty_stays_empty(self) -> None:
+        """'' and whitespace become NULL. None stays NULL. 'empty' stays 'empty'."""
+        self._isolated()
+        from cfb_coach.db import CoachDB
+        from cfb_coach.last_snap import LastSnapBook
+        from cfb_coach.live_server import LivePlayController, render_live_html
+        from cfb_coach.madden.model.inference import UNSET_OPP_LOOK, bind_opp_look
+
+        madden_db = Path(os.environ["CFB_COACH_MADDEN_DB"])
+        db = CoachDB(madden_db)
+        self.addCleanup(db.close)
+
+        class _Call:
+            def __init__(self, sit) -> None:
+                self.side = sit.side
+                self.formation = "Gun"
+                self.play = "Mesh"
+                self.macro = None
+
+            def format(self) -> str:
+                return "Gun — Mesh"
+
+        passed: list[object] = []
+
+        def _make(sit, **_kwargs):
+            passed.append((sit.extras or {}).get("opp_look"))
+            return _Call(sit)
+
+        ctrl = LivePlayController(
+            db=db,
+            opponent_id="gavin",
+            make_call=_make,
+            parse_situation=parse_madden_situation,
+            learn_summary=lambda: "",
+            session_id="api-look",
         )
-        null_snap = present_snap(
-            formation="Gun Bunch", play="Mesh", read1="Spot", read2="Drag", opp_look=None,
-        )
-        self.assertEqual(empty_snap.opp_look, "empty")
-        self.assertIsNone(null_snap.opp_look)
-        self.assertNotEqual(empty_snap.opp_look, null_snap.opp_look)
-        self.assertEqual(empty_snap.line, null_snap.line)
-        self.assertNotIn("empty", empty_snap.line)
+        ctrl.call_only("1&10", opp_look="")
+        ctrl.result_and_call(outcome="+4", sit_raw="2&7", opp_look=None)
+        ctrl.result_and_call(outcome="+5", sit_raw="1&10", opp_look="empty")
+        ctrl.result_and_call(outcome="+3", sit_raw="1&10", opp_look="   ")
+        ctrl.result_and_call(outcome="+1", sit_raw="1&10", opp_look=None)
+        self.assertEqual(passed[:4], [None, None, "empty", None])
+
+        api_rows = db.conn.execute(
+            "SELECT opp_look FROM snaps WHERE session_id = ? ORDER BY id",
+            ("api-look",),
+        ).fetchall()
+        self.assertEqual([row["opp_look"] for row in api_rows], [None, None, "empty", None])
+        self.assertNotIn("", [row["opp_look"] for row in api_rows])
+
+        def _cli(raw: str, look: object = UNSET_OPP_LOOK):
+            sit = parse_madden_situation(raw, default_side="offense")
+            return bind_opp_look(sit, look, raw=raw)
+
+        blank = _cli("1&10", "")
+        missing = _cli("1&10", None)
+        empty = _cli("1&10", "empty")
+        spaced = _cli("1&10", " \t ")
+        inferred = _cli("1&10 empty", UNSET_OPP_LOOK)
+        self.assertIsNone(blank.extras["opp_look"])
+        self.assertIsNone(missing.extras["opp_look"])
+        self.assertEqual(empty.extras["opp_look"], "empty")
+        self.assertIsNone(spaced.extras["opp_look"])
+        self.assertEqual(inferred.extras["opp_look"], "empty")
+
+        book = LastSnapBook(db, "gavin", parse_madden_situation, session_id="cli-look")
+        for sit in (blank, missing, empty):
+            book.remember_call(_Call(sit), sit, opp_look=sit.extras["opp_look"])
+            book.close_from_form("+6", their="")
+        cli_rows = db.conn.execute(
+            "SELECT opp_look FROM snaps WHERE session_id = ? ORDER BY id",
+            ("cli-look",),
+        ).fetchall()
+        self.assertEqual([row["opp_look"] for row in cli_rows], [None, None, "empty"])
+        self.assertTrue(all(row["opp_look"] != "" for row in db.conn.execute("SELECT opp_look FROM snaps")))
+
+        html = render_live_html(ctrl)
+        self.assertIn("function opponentLook()", html)
+        self.assertIn("return raw ? raw : null;", html)
+        self.assertIn("opp_look: opponentLook()", html)
 
     def test_opp_look_resets_after_each_snap(self) -> None:
         self._isolated()

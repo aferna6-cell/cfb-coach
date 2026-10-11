@@ -31,7 +31,7 @@ class LogRow:
     formation: str
     play: str
     result: str
-    look: str = ""
+    look: str | None = None
     call_text: str = ""
     side: str = "offense"
 
@@ -53,6 +53,7 @@ _RAW_DOWN = re.compile(
     r"\b([1-4])(?:st|nd|rd|th)?\s*(?:&|and)\s*(?:\d+|goal|g|inches)\b",
     re.I,
 )
+_OMITTED_LOOK = object()
 _RAW_SPOT = re.compile(
     r"\b(?:(?:my|our|own|opp(?:onent)?s?|their)\s*(?:yl|yard\s*line)?\s*\d{1,2}"
     r"|(?:yl|yardline)\s*\d{1,2})\b",
@@ -131,6 +132,7 @@ class LivePlayController:
     ml_tracker: Any | None = None
     # Durable HTTP idempotency: request_key -> last response (also persisted in DB).
     _idempotency_mem: dict[str, dict[str, Any]] = field(default_factory=dict)
+    pending_opp_look: str | None = None
 
     def book_state(self) -> dict[str, Any] | None:
         if self.book_info is None:
@@ -578,7 +580,9 @@ class LivePlayController:
         )
         book = self._book()
         if book.call is None:
-            book.remember_call(self.last_call, self.last_sit)
+            book.remember_call(
+                self.last_call, self.last_sit, opp_look=self.pending_opp_look,
+            )
         closed = book.close_from_form(
             outcome_raw,
             their=their,
@@ -698,6 +702,14 @@ class LivePlayController:
         out["executed_play"] = closed.get("executed_play")
         return out
 
+    def _bind_posted_look(self, sit: Any, sit_raw: str, opp_look: Any) -> None:
+        """Normalize a posted look before ``make_call`` sees the situation."""
+        from cfb_coach.madden.model.inference import UNSET_OPP_LOOK, bind_opp_look
+
+        posted = UNSET_OPP_LOOK if opp_look is _OMITTED_LOOK else opp_look
+        bind_opp_look(sit, posted, raw=sit_raw)
+        self.pending_opp_look = (sit.extras or {}).get("opp_look")
+
     def _make(self, sit: Any) -> Any:
         kwargs: dict[str, Any] = {}
         # CFB + Madden accept last_coverage / last_concept
@@ -720,6 +732,7 @@ class LivePlayController:
         score_them: Any = None,
         score_set: bool = False,
         request_key: str | None = None,
+        opp_look: Any = _OMITTED_LOOK,
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -733,6 +746,7 @@ class LivePlayController:
             if self.cpu_only:
                 side_use = "offense"
             sit = self._stamp(self.parse_situation(sit_raw, default_side=side_use))
+            self._bind_posted_look(sit, sit_raw, opp_look)
             self._book().stamp_situation(sit)
             from cfb_coach.situation import format_heard
 
@@ -744,7 +758,8 @@ class LivePlayController:
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             self._book().remember_call(
-                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row
+                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row,
+                opp_look=self.pending_opp_look,
             )
             self.call_text = self._format_call_text(call)
             self.heard = heard
@@ -774,6 +789,7 @@ class LivePlayController:
         applied_recommended_action: bool = False,
         confirmed_no_adjustment: bool = False,
         request_key: str | None = None,
+        opp_look: Any = _OMITTED_LOOK,
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -807,6 +823,7 @@ class LivePlayController:
             if self.cpu_only:
                 side_use = "offense"
             sit = self._stamp(self.parse_situation(sit_raw, default_side=side_use))
+            self._bind_posted_look(sit, sit_raw, opp_look)
             book = self._book()
             book.stamp_situation(sit)
             # The down boxes still describe the snap we just logged — the result moved the ball.
@@ -829,7 +846,8 @@ class LivePlayController:
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             book.remember_call(
-                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row
+                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row,
+                opp_look=self.pending_opp_look,
             )
             self._push_score()
             self.call_text = self._format_call_text(call)
@@ -1481,18 +1499,24 @@ async function withUiLock(fn) {{
   }}
 }}
 
+function opponentLook() {{
+  const raw = ($("look").value || "").trim();
+  return raw ? raw : null;
+}}
+
 function buildSit() {{
   const d = $("down").value || "1";
   const dist = $("distance").value || "10";
   const ylSide = $("yl-side").value;
   const yl = $("yl").value || "";
-  let look = ($("look").value || "").trim();
-  if (look && $("live-mark").checked && !/^\\s*(showing|live|pre-snap|aligned)\\b/i.test(look)) {{
-    look = "showing " + look;
+  const look = opponentLook();
+  let phrase = look;
+  if (phrase && $("live-mark").checked && !/^\\s*(showing|live|pre-snap|aligned)\\b/i.test(phrase)) {{
+    phrase = "showing " + phrase;
   }}
   const parts = [d + "&" + dist];
   if (yl) parts.push(ylSide + " " + yl);
-  if (look) parts.push(look);
+  if (phrase) parts.push(phrase);
   return parts.join(" ");
 }}
 
@@ -1528,6 +1552,7 @@ $("btn-submit").addEventListener("click", async () => {{
         executed_play: ($("exec-play").value || "").trim() || null,
         applied_recommended_action: !!($("action-applied") && $("action-applied").checked),
         confirmed_no_adjustment: !!($("no-action-confirmed") && $("no-action-confirmed").checked),
+        opp_look: opponentLook(),
       }};
       return await apiAction("/api/result_call", body);
     }});
@@ -1567,6 +1592,7 @@ $("btn-call-only").addEventListener("click", async () => {{
     const data = await withUiLock(async () => apiAction("/api/call", {{
       sit: buildSit(), side: $("side").value, quarter: $("quarter").value,
       score_us: $("score-us").value, score_them: $("score-them").value,
+      opp_look: opponentLook(),
     }}));
     if (!data) return;
     if ($("action-applied")) $("action-applied").checked = false;
@@ -1711,6 +1737,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                         score_us=body.get("score_us"), score_them=body.get("score_them"),
                         score_set=("score_us" in body or "score_them" in body),
                         request_key=body.get("idempotency_key") or body.get("request_key"),
+                        opp_look=_posted_opp_look(body),
                     ))
                     return
                 if path == "/api/undo":
@@ -1744,6 +1771,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             applied_recommended_action=body.get("applied_recommended_action") is True,
                             confirmed_no_adjustment=body.get("confirmed_no_adjustment") is True,
                             request_key=body.get("idempotency_key") or body.get("request_key"),
+                            opp_look=_posted_opp_look(body),
                         ),
                     )
                     return
@@ -1785,6 +1813,13 @@ class ContextThreadingHTTPServer(ThreadingHTTPServer):
 
     def process_request_thread(self, request, client_address):
         self._request_context.run(super().process_request_thread, request, client_address)
+
+
+def _posted_opp_look(body: dict[str, Any]) -> Any:
+    """JSON look field. A missing key is omitted. Blank and whitespace are kept for normalization."""
+    if "opp_look" not in body:
+        return _OMITTED_LOOK
+    return body.get("opp_look")
 
 
 def pick_port(host: str = "127.0.0.1", preferred: int = 8765) -> int:
