@@ -605,7 +605,7 @@ class HybridGateTests(unittest.TestCase):
         look = snap(
             99,
             executed_verification="",
-            opp_look_verification="verified",
+            opp_look_verification="user_entered",
         )
         self.assertFalse(is_counted_defensive_snap(look))
         rows = [snap(i) for i in range(39)]
