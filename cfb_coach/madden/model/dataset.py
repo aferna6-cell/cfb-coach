@@ -52,10 +52,12 @@ SUPERVISED_ELIGIBLE = frozenset(
 )
 
 # VOD training opt-in. Default eligibility stays reviewed rows with trainable
-# true. ``include_unreviewed_permitted`` adds any non-reviewed status only
-# when permitted_use is training. The blocked source never trains.
+# true. ``include_unreviewed_permitted`` adds only the allowlisted statuses
+# ``unreviewed`` and ``auto``, and only when permitted_use is training.
+# The blocked source never trains.
 EXCLUDED_VOD_SOURCE = "F8Hm324SMtg"
 REVIEWED_STATUSES = frozenset({"reviewed", "confirmed", "corrected"})
+UNREVIEWED_PERMITTED_STATUSES = frozenset({"unreviewed", "auto"})
 PERMITTED_USE_TRAINING = "training"
 
 
@@ -683,15 +685,19 @@ def vod_training_eligible(
     """Whether one VOD row may enter a training export.
 
     Off (default): reviewed and ``trainable is True`` only, and only when
-    ``permitted_use`` is ``training``. On: any non-reviewed status with that
-    same permission is added. ``F8Hm324SMtg`` and any unpermitted row stay out.
+    ``permitted_use`` is ``training``. On: ``review_status`` of exactly
+    ``unreviewed`` or ``auto`` with that same permission is added. Any other
+    status stays out. ``F8Hm324SMtg`` and any unpermitted row stay out.
     Does not rewrite ``review_status`` or ``trainable``.
     """
     if vod_source_excluded(row) or not vod_permitted_for_training(row):
         return False
     if _reviewed_status(row):
         return _trainable_true(row)
-    return bool(include_unreviewed_permitted)
+    status = row.get("review_status")
+    return bool(
+        include_unreviewed_permitted and status in UNREVIEWED_PERMITTED_STATUSES
+    )
 
 
 def select_vod_training_rows(

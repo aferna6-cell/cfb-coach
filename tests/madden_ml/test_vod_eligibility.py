@@ -101,7 +101,7 @@ def test_flag_on_adds_only_permitted_unreviewed_rows(tmp_path):
         rows, tmp_path / "on", include_unreviewed_permitted=True
     )
     assert _ids(off["rows"]) == ["reviewed"]
-    assert _ids(on["rows"]) == ["reviewed", "unreviewed-ok", "rejected"]
+    assert _ids(on["rows"]) == ["reviewed", "unreviewed-ok"]
 
 
 def test_excluded_source_f8hm324smtg_always_excluded(tmp_path):
@@ -189,6 +189,20 @@ def test_auto_review_status_counts_as_unreviewed(tmp_path):
     assert auto == before
 
 
+def test_rejected_and_unknown_status_excluded_when_flag_on(tmp_path):
+    rows = [
+        _row(snap_id="reviewed"),
+        _row(snap_id="rejected", review_status="rejected", trainable=True),
+        _row(snap_id="typo", review_status="reviewd_typo", trainable=True),
+    ]
+    report = export_vod_training_dataset(
+        rows, tmp_path / "on", include_unreviewed_permitted=True
+    )
+    assert _ids(report["rows"]) == ["reviewed"]
+    assert vod_training_eligible(rows[1], include_unreviewed_permitted=True) is False
+    assert vod_training_eligible(rows[2], include_unreviewed_permitted=True) is False
+
+
 def test_review_status_and_trainable_pass_through_unchanged(tmp_path):
     untouched = _row(snap_id="reviewed", review_status="reviewed", trainable=True)
     unreviewed = _row(snap_id="unreviewed", review_status="unreviewed", trainable=False)
@@ -212,10 +226,8 @@ def test_review_status_and_trainable_pass_through_unchanged(tmp_path):
     assert exported["reviewed"]["trainable"] is True
     assert exported["unreviewed"]["review_status"] == "unreviewed"
     assert exported["unreviewed"]["trainable"] is False
-    assert "review_status" not in exported["missing-status"]
-    assert exported["missing-status"]["trainable"] is True
-    assert exported["none-status"]["review_status"] is None
-    assert exported["none-status"]["trainable"] is None
+    assert "missing-status" not in exported
+    assert "none-status" not in exported
 
 
 def test_group_does_not_span_train_and_held_out(tmp_path):
