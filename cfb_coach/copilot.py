@@ -162,10 +162,10 @@ def format_tips_block(look: DefenseLook, tips: list[str]) -> str:
 
 
 def default_overlay_path(filename: str = "copilot_overlay.html") -> "Path":
-    """Overlay beside the live database from ``default_db_path()``."""
-    from cfb_coach.db import default_db_path
+    """Overlay beside the Madden database from ``madden_db_path()``."""
+    from cfb_coach.games import madden_db_path
 
-    folder = default_db_path().parent
+    folder = madden_db_path().parent
     folder.mkdir(parents=True, exist_ok=True)
     return folder / filename
 
