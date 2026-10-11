@@ -32,6 +32,30 @@ def open_madden_db(*, read_only: bool = False) -> CoachDB:
     return CoachDB(path, seed=load_seed())
 
 
+def _parser_error(args: argparse.Namespace, message: str) -> None:
+    """argparse failure (exit 2) before any database or artifact path is opened."""
+    parser = getattr(args, "cli_parser", None)
+    if isinstance(parser, argparse.ArgumentParser):
+        parser.error(message)
+    print(f"error: {message}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def _require_db(args: argparse.Namespace, mode: str) -> Path:
+    raw = getattr(args, "db", None)
+    if not raw:
+        _parser_error(args, f"--db is required for {mode}")
+    return Path(raw)
+
+
+def open_explicit_madden_db(path: Path, *, read_only: bool) -> CoachDB:
+    """Open a caller-supplied Madden DB. Read-only uses sqlite ``file:...?mode=ro``."""
+    if read_only:
+        # CoachDB.open_read_only connects with uri=True and mode=ro, so writes fail.
+        return CoachDB.open_read_only(path)
+    return CoachDB(path, seed=load_seed())
+
+
 def default_registry() -> Path:
     return Path(data_dir()) / "madden_ml_registry"
 
@@ -785,8 +809,12 @@ def cmd_ml_macro_create(args: argparse.Namespace) -> int:
 def cmd_ml_defense_design(args: argparse.Namespace) -> int:
     """Preview, stage or confirm a source-book constrained defensive portfolio."""
     from cfb_coach.madden.model import defense_coordinator as defense
-    mutate = bool(args.stage or args.confirm_installed)
-    db = open_madden_db(read_only=not mutate)
+    if args.stage or args.confirm_installed:
+        path = _require_db(args, "defense-design --stage and --confirm-installed")
+        # --confirm-installed attests an in-game install. It must not write the DB.
+        db = open_explicit_madden_db(path, read_only=bool(args.confirm_installed))
+    else:
+        db = open_madden_db(read_only=True)
     try:
         try:
             if args.confirm_installed:
@@ -814,8 +842,11 @@ def cmd_ml_defense_design(args: argparse.Namespace) -> int:
 def cmd_ml_defense_macro_lab(args: argparse.Namespace) -> int:
     """Create original source-grounded defensive macro drafts, never silently arm."""
     from cfb_coach.madden.model import defense_macro_lab as lab
-    mutate = bool(args.stage or args.verify or args.unverify)
-    db = open_madden_db(read_only=not mutate)
+    if args.stage or args.verify or args.unverify:
+        path = _require_db(args, "defense-macro-lab --stage, --verify, and --unverify")
+        db = open_explicit_madden_db(path, read_only=False)
+    else:
+        db = open_madden_db(read_only=True)
     try:
         try:
             if args.verify:
@@ -849,15 +880,22 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
     """Independent opt-in defensive ML, no effect on offense or CPU offense-only."""
     from cfb_coach.madden.model import defense_coordinator as defense
     from cfb_coach.madden import playbook
-    mutate = bool(args.enable or args.disable or args.retrain)
-    db = open_madden_db(read_only=not mutate)
+    writing = bool(args.enable or args.disable or args.retrain)
+    if writing:
+        path = _require_db(args, "defense-experimental --enable, --disable, and --retrain")
+    if args.retrain and not getattr(args, "out", None):
+        _parser_error(args, "--out is required for defense-experimental --retrain")
+    if writing:
+        db = open_explicit_madden_db(path, read_only=False)
+    else:
+        db = open_madden_db(read_only=True)
     try:
         if args.disable:
             defense.set_mode(db, "off")
         if args.retrain:
             from cfb_coach.madden.model.dataset import build_rows
             art = defense.train_defense(build_rows(db=db))
-            dest = defense.save_model(art, defense._data_path())
+            dest = defense.save_model(art, args.out)
             db.set_meta(defense.MODEL_META, str(dest))
         if args.enable:
             installed = (playbook.load_books(db).get("defense") or {}).get("formations") or {}
@@ -1929,7 +1967,12 @@ def build_ml_subparser(sub: Any) -> None:
     p_dd.add_argument("--show", action="store_true")
     p_dd.add_argument("--confirm-installed", metavar="PROPOSAL_ID", default=None)
     p_dd.add_argument("--attest", default=None)
-    p_dd.set_defaults(func=cmd_ml_defense_design)
+    p_dd.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required for --stage and --confirm-installed.",
+    )
+    p_dd.set_defaults(func=cmd_ml_defense_design, cli_parser=p_dd)
 
     p_dm = ml_sub.add_parser("defense-macro-lab", help="Compose original draft defensive Custom Adjustments")
     p_dm.add_argument("-o", "--opponent", default="cpu")
@@ -1940,13 +1983,28 @@ def build_ml_subparser(sub: Any) -> None:
     p_dm.add_argument("--unverify", metavar="NAME", default=None)
     p_dm.add_argument("--retire-existing", default=None)
     p_dm.add_argument("--attest", default=None)
-    p_dm.set_defaults(func=cmd_ml_defense_macro_lab)
+    p_dm.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required for --stage, --verify, and --unverify.",
+    )
+    p_dm.set_defaults(func=cmd_ml_defense_macro_lab, cli_parser=p_dm)
 
     p_dx = ml_sub.add_parser("defense-experimental", help="Opt in to defense model-primary calling in human games")
     p_dx.add_argument("--enable", action="store_true")
     p_dx.add_argument("--disable", action="store_true")
     p_dx.add_argument("--retrain", action="store_true")
-    p_dx.set_defaults(func=cmd_ml_defense_experimental)
+    p_dx.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required for --enable, --disable, and --retrain.",
+    )
+    p_dx.add_argument(
+        "--out",
+        default=None,
+        help="Artifact path for --retrain. Required so the model is not saved under the home data dir.",
+    )
+    p_dx.set_defaults(func=cmd_ml_defense_experimental, cli_parser=p_dx)
 
     p_coord = ml_sub.add_parser(
         "offense-coordinator",
