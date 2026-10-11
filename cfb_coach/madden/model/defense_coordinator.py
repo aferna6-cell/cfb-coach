@@ -30,8 +30,13 @@ PRIOR_STRENGTH = 8.0
 
 
 def _data_path() -> Path:
-    from cfb_coach.games import data_dir
-    return Path(data_dir()) / "madden_ml_experimental" / "defense_coordinator.json"
+    """Default artifact file beside ``db.default_db_path()``.
+
+    The directory comes from that function, which honors ``CFB_COACH_DB``.
+    """
+    from cfb_coach.db import default_db_path
+
+    return default_db_path().parent / "madden_ml_experimental" / "defense_coordinator.json"
 
 
 def _bucket(down: Any, distance: Any, *, red_zone: bool = False, goal_line: bool = False,
@@ -60,6 +65,7 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     from cfb_coach.madden.model.defense_intelligence import (
         verified_human_rows, fit_opponent_offense, fit_opponent_outcome_risks,
     )
+    from cfb_coach.madden.model.defense_knowledge import fit_opponent_profiles
     stats: dict[str, list[int]] = {}
     context: dict[str, list[int]] = {}
     plays: dict[str, list[int]] = {}
@@ -88,6 +94,7 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "families": stats, "contexts": context, "plays": plays,
         "opponent_tendencies": fit_opponent_offense(verified),
         "opponent_outcome_risks": fit_opponent_outcome_risks(rows),
+        "opponent_profiles": fit_opponent_profiles(verified),
         "verified_human_games": len({str(r["game_id"]) for r in verified}),
         "observational_only": True,
         "note": "Stop outcomes are observations, not proven counterfactual effects.",
@@ -118,6 +125,68 @@ def _rate(count: Sequence[int] | None) -> tuple[float, int]:
         return 0.5, 0
     won, total = int(count[0]), int(count[1])
     return (won + PRIOR_STRENGTH * 0.5) / (total + PRIOR_STRENGTH), total
+
+
+# One-hot tokens are football personnel and set labels. They are not editor
+# values and they are not verified Madden mechanics.
+_PERSONNEL_TOKENS = ("10", "11", "12", "13", "20", "21", "22")
+# ``empty`` is the empty-backfield set: a recorded package, not a missing value.
+_SET_TOKENS = ("bunch", "stack", "trips", "tight", "spread", "heavy", "condensed", "empty")
+MIN_HYBRID_SNAPS = 40
+
+
+def _missing_token() -> dict[str, Any]:
+    return {"missing": 1, "empty": 0, "unknown": 0, "one_hot": {}}
+
+
+def _encode_token(value: Any, tokens: tuple[str, ...]) -> tuple[dict[str, Any], float]:
+    """One-hot a personnel or set token.
+
+    ``None``, ``""``, and whitespace-only are missing: ``missing`` is 1 and
+    there is no one-hot. The literal token ``empty`` is the empty-backfield
+    set and keeps its own one-hot with ``missing`` 0 when that token is in
+    ``tokens``.
+    """
+    if value is None:
+        return _missing_token(), 0.0
+    text = str(value).strip()
+    if text == "":
+        return _missing_token(), 0.0
+    known = {token.casefold(): token for token in tokens}
+    folded = text.casefold()
+    if folded in known:
+        name = known[folded]
+        index = tokens.index(name)
+        return {"missing": 0, "empty": 0, "unknown": 0, "one_hot": {name: 1}}, 0.001 * (index + 1)
+    return {"missing": 0, "empty": 0, "unknown": 1, "one_hot": {}}, -0.001
+
+
+def personnel_features(sit: Any) -> dict[str, Any]:
+    """One-hot ``opp_personnel`` and ``opp_set`` plus a missing flag.
+
+    Attributes are read with ``getattr`` because a situation may not have
+    them. Both null contributes exactly 0. A blank or whitespace-only value
+    is missing, the same as null. The literal set token ``empty`` is a
+    one-hot, not a missing value. The encoding is never verified knowledge.
+    """
+    personnel = getattr(sit, "opp_personnel", None)
+    opp_set = getattr(sit, "opp_set", None)
+    if personnel is None and opp_set is None:
+        blank = {"missing": 1, "empty": 0, "unknown": 0, "one_hot": {}}
+        return {
+            "delta": 0.0,
+            "verified": False,
+            "personnel": blank,
+            "set": blank,
+        }
+    personnel_bits, personnel_delta = _encode_token(personnel, _PERSONNEL_TOKENS)
+    set_bits, set_delta = _encode_token(opp_set, _SET_TOKENS)
+    return {
+        "delta": personnel_delta + set_delta,
+        "verified": False,
+        "personnel": personnel_bits,
+        "set": set_bits,
+    }
 
 
 def _score(
@@ -152,12 +221,19 @@ def _score(
     if recent_four and call_family(recent_four[-1][1]) == family:
         score -= 0.04
     from cfb_coach.madden.model.defense_intelligence import score_defensive_knowledge
+    from cfb_coach.madden.model.defense_knowledge import explain_call, live_verified_adjustment
     intel = score_defensive_knowledge(
         family=family, sit=sit, opponent_id=opponent_id,
         tendencies=(model or {}).get("opponent_tendencies"),
         risks=(model or {}).get("opponent_outcome_risks"),
     )
-    score += intel["delta"]
+    verified = live_verified_adjustment(sit, play)
+    personnel = personnel_features(sit)
+    score += intel["delta"] + float(verified["delta"]) + personnel["delta"]
+    profiles = ((model or {}).get("opponent_profiles") or {}).get("opponents") or {}
+    profile = profiles.get(opponent_id) or {
+        "ready": False, "current_snap_known": False, "live_score_delta": 0.0,
+    }
     return {
         "formation": formation, "play": play, "family": family or "unknown",
         "score": round(score, 6),
@@ -165,6 +241,10 @@ def _score(
         "verified_context_n": n_ctx, "verified_play_n": n_play,
         "current_offensive_concept_used": intel["live_concept"],
         "football_intelligence": intel,
+        "verified_knowledge": verified,
+        "opponent_profile": profile,
+        "personnel": personnel,
+        "why": explain_call(sit, formation, play, family, verified),
     }
 
 
@@ -322,6 +402,7 @@ def _fallback_decision(
     snap_id: str | None,
     game_id: str | None,
     detail: str,
+    coaching_mode: Any = None,
 ) -> Any:
     from cfb_coach.madden.model.schema import (
         CoachingDecision,
@@ -332,11 +413,12 @@ def _fallback_decision(
     )
 
     heur = _book_candidate(book, getattr(call, "formation", None), getattr(call, "play", None))
+    selected_mode = coaching_mode or CoachingMode.EXPERIMENTAL
     return CoachingDecision(
         latency_ms=elapsed_ms,
         latency_ms_model=elapsed_ms,
         inference_budget_ms=ML_LATENCY_BUDGET_MS,
-        mode=CoachingMode.EXPERIMENTAL,
+        mode=selected_mode,
         effective_mode=CoachingMode.HEURISTIC,
         mode_downgrade_reason=detail,
         game_id=game_id,
@@ -419,8 +501,12 @@ def design_defense(*, max_formations: int = MAX_FORMATIONS,
             covered[fam] = covered.get(fam, 0) + 1
     if not chosen:
         raise ValueError("No catalogued defensive formations with recognized calls")
+    from cfb_coach.madden.model.defense_knowledge import (
+        context_coverage, formation_packages, verified_tags,
+    )
     forms = {r["formation"]: r["plays"] for r in chosen}
     sources = {r["formation"]: r["source_book"] for r in chosen}
+    packages = formation_packages(chosen)
     return {
         "schema": SCHEMA, "mode": "proposal_only",
         "formations": forms, "formation_sources": sources,
@@ -429,6 +515,16 @@ def design_defense(*, max_formations: int = MAX_FORMATIONS,
         "choices": [{k:v for k,v in r.items() if k != "plays"} for r in chosen],
         "model_evidence_quality": (model or {}).get("evidence_quality", "prior_driven"),
         "requires_physical_editor_installation": True,
+        "situation_packages": packages,
+        "context_coverage": context_coverage(packages, proposal_formations=list(forms)),
+        "knowledge_tags": [
+            {
+                "id": tag["id"], "label": tag["label"], "confidence": tag["confidence"],
+                "sources": list(tag["sources"]),
+            }
+            for tag in verified_tags()
+        ],
+        "hypothesis_tags_scored": [],
         "note": "No installed defensive book was modified. Verify all source-book plays in Madden.",
     }
 
@@ -438,8 +534,8 @@ def mode(db: Any) -> str:
 
 
 def set_mode(db: Any, new_mode: str) -> None:
-    if new_mode not in ("off", "experimental"):
-        raise ValueError("Expected off or experimental")
+    if new_mode not in ("off", "experimental", "shadow", "hybrid"):
+        raise ValueError("Expected off, experimental, shadow, or hybrid")
     db.set_meta(MODE_META, new_mode)
 
 
@@ -484,12 +580,411 @@ def live_pick(
     }
 
 
+def count_verified_defensive_snaps(rows: Sequence[Mapping[str, Any]] | None) -> int:
+    from cfb_coach.madden.model.defense_intelligence import is_counted_defensive_snap
+    return sum(1 for row in rows or () if is_counted_defensive_snap(row))
+
+
+def defense_hybrid_gate(entry: Any, rows: Sequence[Mapping[str, Any]], *, seed: int) -> Any:
+    """Refuse hybrid promotion below 40 verified defensive snaps.
+
+    The refusal happens before any metric is computed. At 40 or more, the
+    standard held-out gate in ``evaluate`` runs.
+    """
+    from dataclasses import replace
+
+    from cfb_coach.madden.model.evaluate import evaluate
+    from cfb_coach.madden.model.schema import GateResult
+
+    if count_verified_defensive_snaps(rows) < MIN_HYBRID_SNAPS:
+        return replace(
+            entry,
+            gate=GateResult.INSUFFICIENT,
+            gate_passed=False,
+            metrics=(),
+            seed=seed,
+        )
+    return evaluate(entry, rows, seed=seed)
+
+
+def _installed_book(book: Mapping[str, Sequence[str]]) -> dict[str, dict[str, list[str]]]:
+    return {
+        "offense": {},
+        "defense": {str(formation): [str(play) for play in plays] for formation, plays in book.items()},
+    }
+
+
+def _load_stored_records(db: Any) -> list[Any]:
+    """Read designer drafts already stored on this db. Does not generate any."""
+    from cfb_coach.madden.adjustments.candidates import candidate_from_json
+    from cfb_coach.madden.adjustments.synthesis import DRAFT_META_KEY, DesignRecord
+
+    if db is None:
+        return []
+    try:
+        payload = json.loads(db.get_meta(DRAFT_META_KEY) or "")
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    records = []
+    for raw in payload.get("candidates") or []:
+        try:
+            candidate = candidate_from_json(raw)
+        except (TypeError, ValueError):
+            continue
+        if not candidate.design_record_id:
+            continue
+        records.append(DesignRecord(
+            design_record_id=candidate.design_record_id,
+            candidate=candidate,
+            downside=None,
+            uncertainty_note=None,
+            catalog_comparison=(),
+            install_instructions=(),
+        ))
+    return records
+
+
+def _baseline_candidate(formation: str, play: str) -> Any:
+    """No-adjustment option. Live legality is the designer's baseline check."""
+    from cfb_coach.madden.adjustments.synthesis import design_record_id_for
+    from cfb_coach.madden.model.schema import (
+        MacroCandidate, MacroJointFeatures, MacroSide, MacroState,
+    )
+
+    macro_id = "NO_ADJUSTMENT"
+    return MacroCandidate(
+        macro_id=macro_id,
+        design_record_id=design_record_id_for(macro_id),
+        version="1",
+        side=MacroSide.DEF,
+        state=MacroState.ELIGIBLE,
+        formation=formation,
+        play=play,
+        adjustment_primitives=(),
+        editor_fields=None,
+        tactical_purpose="Call the installed play with no pre-snap adjustment.",
+        situations=(),
+        conflicts=(),
+        joint=MacroJointFeatures(compatibility=1.0, action_count=0),
+        is_no_adjustment=True,
+    )
+
+
+def _action_options(
+    records: Sequence[Any],
+    formation: str,
+    play: str,
+    installed: Mapping[str, Mapping[str, Sequence[str]]],
+) -> list[dict[str, Any]]:
+    """ARMED+ macros for this play, plus the no-adjustment baseline.
+
+    Legality is ``require_live`` / ``is_baseline_live_legal`` from the
+    adjustment designer. Editor-verified and draft sheets do not compete.
+    """
+    from cfb_coach.madden.adjustments.candidates import MacroSide, is_live_selectable
+    from cfb_coach.madden.adjustments.synthesis import (
+        NotLiveSelectable, is_baseline_live_legal, require_arm_cap, require_live,
+    )
+
+    require_arm_cap(list(records), MacroSide.DEF)
+    options: list[dict[str, Any]] = []
+    for row in records:
+        candidate = row.candidate
+        if candidate.formation != formation or candidate.play != play:
+            continue
+        if candidate.side is not MacroSide.DEF:
+            continue
+        try:
+            require_live(candidate, installed=installed)
+        except NotLiveSelectable:
+            continue
+        if candidate.is_no_adjustment:
+            if is_baseline_live_legal(candidate, installed):
+                options.append({"id": "NO_ADJUSTMENT", "kind": "none", "candidate": candidate})
+            continue
+        if is_live_selectable(candidate.state):
+            options.append({
+                "id": candidate.macro_id or "",
+                "kind": "macro",
+                "candidate": candidate,
+            })
+    if not any(option["kind"] == "none" for option in options):
+        baseline = _baseline_candidate(formation, play)
+        if is_baseline_live_legal(baseline, installed):
+            require_live(baseline, installed=installed)
+            options.append({"id": "NO_ADJUSTMENT", "kind": "none", "candidate": baseline})
+    options.sort(key=lambda option: (0 if option["kind"] == "none" else 1, option["id"]))
+    return options
+
+
+def _combine_stages(
+    play_method: Any,
+    play_p: float | None,
+    action_method: Any,
+    action_p: float | None,
+) -> dict[str, Any]:
+    from cfb_coach.madden.model.schema import PropensityMethod
+
+    stages = (
+        {"name": "play", "method": play_method, "propensity": play_p},
+        {"name": "action", "method": action_method, "propensity": action_p},
+    )
+    methods = (play_method, action_method)
+    if any(method is PropensityMethod.OVERRIDE for method in methods):
+        overall = PropensityMethod.OVERRIDE
+    elif all(method is PropensityMethod.EXACT for method in methods):
+        overall = PropensityMethod.EXACT
+    else:
+        overall = PropensityMethod.DETERMINISTIC
+    if (
+        play_p is None or action_p is None
+        or play_p <= 0 or action_p <= 0
+    ):
+        product = None
+        log_product = None
+    else:
+        product = float(play_p) * float(action_p)
+        log_product = math.log(product)
+    return {
+        "stages": stages,
+        "behavior_propensity": product,
+        "log_product": log_product,
+        "method": overall,
+    }
+
+
+def joint_rank(
+    sit: Situation,
+    book: Mapping[str, Sequence[str]],
+    records: Sequence[Any] = (),
+    *,
+    session_id: str = "",
+    snap_seq: int = 0,
+    opponent_id: str = "",
+    model: Mapping[str, Any] | None = None,
+    recent: Sequence[tuple[str, str]] = (),
+) -> dict[str, Any]:
+    """Two-stage play-then-action rank for shadow and hybrid.
+
+    Stage one is the existing near-tie draw. A one-row window is
+    deterministic with propensity 1. Stage two always includes no adjustment
+    and any armed-or-later macro on the chosen play. The logged probability
+    is the product. It is exact only when every stage is exact.
+    """
+    from cfb_coach.madden.model.schema import PropensityMethod, PropensityOverrideReason
+
+    installed = _installed_book(book)
+    ranks = rank_defense(sit, book, model, recent=recent, opponent_id=opponent_id)
+    if not ranks:
+        raise ValueError("No recognizable legal defensive calls")
+    chosen = _stable_choice(ranks, session_id, snap_seq)
+    play_method, play_p, play_reason = _sampling_facts(ranks, chosen)
+    options = _action_options(records, chosen["formation"], chosen["play"], installed)
+    if not options:
+        raise ValueError("no live defensive action for the chosen play")
+    if len(options) == 1:
+        action = options[0]
+        action_method, action_p, action_reason = PropensityMethod.DETERMINISTIC, 1.0, None
+    else:
+        digest = hashlib.sha256(
+            f"{session_id}:{snap_seq}:defense-action-v1:{chosen['formation']}:{chosen['play']}".encode()
+        ).digest()
+        rng = random.Random(int.from_bytes(digest[:8], "big"))
+        action = rng.choices(options, weights=[1.0] * len(options), k=1)[0]
+        action_method, action_p, action_reason = PropensityMethod.EXACT, 1.0 / len(options), None
+    combined = _combine_stages(play_method, play_p, action_method, action_p)
+    reason = play_reason or action_reason
+    if combined["method"] is PropensityMethod.OVERRIDE and reason is None:
+        reason = PropensityOverrideReason.UNEXPRESSIBLE
+    winner = {
+        "formation": chosen["formation"],
+        "play": chosen["play"],
+        "family": chosen.get("family"),
+        "macro_id": None if action["kind"] == "none" else action["id"],
+        "kind": action["kind"],
+        "id": action["id"],
+    }
+    return {
+        **combined,
+        "reason": reason,
+        "winner": winner,
+        "actions": [{"id": option["id"], "kind": option["kind"]} for option in options],
+        "play": {"formation": chosen["formation"], "play": chosen["play"]},
+    }
+
+
+def _joint_decision(
+    *,
+    book: Mapping[str, Sequence[str]],
+    call: Any,
+    ranking: Mapping[str, Any],
+    coaching_mode: Any,
+    policy_source: Any,
+    session_id: str | None,
+    snap_seq: int | None,
+    snap_id: str | None,
+    game_id: str | None,
+    elapsed_ms: float | None,
+    shown_formation: str,
+    shown_play: str,
+    shown_macro: str | None,
+) -> Any:
+    from cfb_coach.madden.model.schema import (
+        AdjustmentRef,
+        CoachingDecision,
+        ML_LATENCY_BUDGET_MS,
+        MLStatus,
+        Possession,
+        PropensityMethod,
+    )
+
+    winner = ranking["winner"]
+    method = ranking["method"]
+    override = method is PropensityMethod.OVERRIDE
+    propensity = None if override else ranking["behavior_propensity"]
+    macro = None
+    if shown_macro:
+        macro = AdjustmentRef(side=Possession.DEFENSE, macro_id=shown_macro)
+    return CoachingDecision(
+        latency_ms=elapsed_ms,
+        latency_ms_model=elapsed_ms,
+        inference_budget_ms=ML_LATENCY_BUDGET_MS,
+        mode=coaching_mode,
+        effective_mode=coaching_mode,
+        game_id=game_id,
+        snap_id=snap_id,
+        session_id=session_id or None,
+        snap_seq=snap_seq,
+        policy_version=SCHEMA,
+        policy_source=policy_source,
+        heuristic_pick=_book_candidate(
+            book, getattr(call, "formation", None), getattr(call, "play", None),
+        ),
+        final_pick=_book_candidate(book, shown_formation, shown_play),
+        shadow_pick=_book_candidate(book, winner["formation"], winner["play"]),
+        macro=macro,
+        behavior_propensity=propensity if policy_source.value == "model" else None,
+        propensity_method=method if policy_source.value == "model" else PropensityMethod.UNKNOWN,
+        propensity_override=override if policy_source.value == "model" else False,
+        propensity_override_reason=ranking.get("reason") if override and policy_source.value == "model" else None,
+        shadow_status=MLStatus.OK,
+        fell_back=False,
+        ml_status_detail="defense joint rank; stages are on joint_ranking",
+    )
+
+
+def _apply_logged_defense(
+    call: Any,
+    sit: Situation,
+    opponent_id: str,
+    db: Any,
+    book: Mapping[str, Sequence[str]],
+    current_mode: str,
+) -> Any:
+    """Shadow logs the joint call. Hybrid shows it only at 40 verified snaps."""
+    from cfb_coach.madden.model.schema import CoachingMode, MLStatus, PolicySource
+
+    try:
+        extras = getattr(sit, "extras", None) or {}
+        session = str(extras.get("session_id") or "defense-pilot")
+        seq = int(extras.get("snap_seq") or 0)
+        snap_id = extras.get("snap_id")
+        game_id = extras.get("game_id")
+    except Exception:
+        return call
+    coaching_mode = CoachingMode.SHADOW if current_mode == "shadow" else CoachingMode.HYBRID
+    if current_mode == "hybrid":
+        supplied = extras.get("verified_defensive_snaps")
+        if supplied is None:
+            artifact = load_model(db.get_meta(MODEL_META) or None) if db is not None else None
+            snaps = int((artifact or {}).get("supervised_defensive_snaps") or 0)
+        else:
+            snaps = count_verified_defensive_snaps(supplied)
+        if snaps < MIN_HYBRID_SNAPS:
+            try:
+                _stamp_decision(call, _fallback_decision(
+                    book=book, call=call, status=MLStatus.LOW_CONFIDENCE, elapsed_ms=None,
+                    session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                    detail="fewer than 40 verified defensive snaps",
+                    coaching_mode=CoachingMode.HYBRID,
+                ), db, extras)
+            except Exception:
+                pass
+            return call
+    started = time.perf_counter()
+    try:
+        records = list(extras.get("design_records") or []) or _load_stored_records(db)
+        ranking = joint_rank(
+            sit, book, records,
+            session_id=session, snap_seq=seq, opponent_id=opponent_id,
+        )
+        winner = ranking["winner"]
+        if current_mode == "shadow":
+            decision = _joint_decision(
+                book=book, call=call, ranking=ranking, coaching_mode=coaching_mode,
+                policy_source=PolicySource.HEURISTIC, session_id=session, snap_seq=seq,
+                snap_id=snap_id, game_id=game_id,
+                elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                shown_formation=str(getattr(call, "formation", "") or ""),
+                shown_play=str(getattr(call, "play", "") or ""),
+                shown_macro=getattr(call, "macro", None),
+            )
+            _stamp_decision(call, decision, db, extras)
+            try:
+                setattr(call, "joint_ranking", ranking)
+            except Exception:
+                pass
+            return call
+        from cfb_coach.madden.data import user_job_for
+        from cfb_coach.madden.playcaller import MaddenCall
+
+        macro_name = winner["macro_id"]
+        label = macro_name or "No adj"
+        result = MaddenCall(
+            "defense", winner["formation"], winner["play"], label,
+            user_job_for(winner["play"]) or "User hook",
+            f"DEFENSE HYBRID {winner['formation']} / {winner['play']} / {label}",
+            macro=macro_name,
+        )
+        result.joint_ranking = ranking
+        decision = _joint_decision(
+            book=book, call=call, ranking=ranking, coaching_mode=CoachingMode.HYBRID,
+            policy_source=PolicySource.MODEL, session_id=session, snap_seq=seq,
+            snap_id=snap_id, game_id=game_id,
+            elapsed_ms=(time.perf_counter() - started) * 1000.0,
+            shown_formation=winner["formation"], shown_play=winner["play"],
+            shown_macro=macro_name,
+        )
+        _stamp_decision(result, decision, db, extras)
+        return result
+    except Exception:
+        if current_mode == "hybrid":
+            try:
+                _stamp_decision(call, _fallback_decision(
+                    book=book, call=call, status=MLStatus.EXCEPTION,
+                    elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                    session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                    detail="defense hybrid joint rank raised",
+                    coaching_mode=CoachingMode.HYBRID,
+                ), db, extras)
+            except Exception:
+                pass
+        return call
+
+
 def maybe_apply_defense(
     call: Any, sit: Situation, opponent_id: str, db: Any,
     book: Mapping[str, Sequence[str]],
 ) -> Any:
     """Opt-in for human-user defense only; timeout/error falls back to old caller."""
-    if db is None or mode(db) != "experimental" or is_cpu_opponent(opponent_id):
+    if db is None or is_cpu_opponent(opponent_id):
+        return call
+    current_mode = mode(db)
+    if current_mode in ("shadow", "hybrid"):
+        return _apply_logged_defense(call, sit, opponent_id, db, book, current_mode)
+    if current_mode != "experimental":
         return call
     try:
         extras = getattr(sit, "extras", None) or {}
@@ -575,12 +1070,17 @@ def maybe_apply_defense(
         intelligence = winner.get("football_intelligence") or {}
         observation = intelligence.get("live_concept")
         tendency_state = intelligence.get("opponent_tendency") or {}
+        verified = winner.get("verified_knowledge") or {}
+        verified_note = ""
+        if verified.get("scored_ids"):
+            verified_note = " " + str(verified.get("why") or "")
         note = (
             f"DEFENSE ML [{ranked['model_quality']}] {winner['family']} "
             f"({ranked['n_candidates']} installed plays; action {plan['id']}; "
             f"concept={observation or 'unknown'}; "
             f"trend={tendency_state.get('family') if tendency_state.get('ready') else 'uncertain'}); "
             f"knowledge={intelligence.get('principle') or 'unknown'}"
+            f"{verified_note}"
         )
         result = MaddenCall(
             "defense", winner["formation"], winner["play"],
@@ -660,9 +1160,7 @@ def pending_design(db: Any) -> dict[str, Any] | None:
         return None
 
 
-def confirm_design(db: Any, proposal_id: str, attestation: str) -> dict[str, Any]:
-    if len((attestation or "").strip()) < 30:
-        raise ValueError("Explicit actual Madden playbook installation attestation required")
+def _validated_design(db: Any, proposal_id: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     staged = pending_design(db)
     if staged is None or staged.get("proposal_id") != proposal_id:
         raise ValueError("No staged defensive design with that ID")
@@ -678,11 +1176,6 @@ def confirm_design(db: Any, proposal_id: str, attestation: str) -> dict[str, Any
         available = catalog.book_formations("defense", source or "").get(formation) or []
         if len(set(plays)) != len(plays) or set(plays) != set(available):
             raise ValueError(f"Unverified source-book play list for formation: {formation}")
-    old_history = []
-    try:
-        old_history = json.loads(db.get_meta(HISTORY_KEY) or "[]")
-    except (TypeError, ValueError):
-        pass
     new_book = {
         "side": "defense", "mode": "custom",
         "name": "ML Designed Defense (custom)", "source_book": None,
@@ -693,13 +1186,67 @@ def confirm_design(db: Any, proposal_id: str, attestation: str) -> dict[str, Any
         "reason": "User installed complete model-ranked defensive formations",
         "locked_ts": datetime_now_iso(),
     }
+    return staged, current, new_book
+
+
+def _install_instructions(new_book: Mapping[str, Any]) -> list[str]:
+    lines = [
+        "This command did not write the defensive book.",
+        "In Madden, open the defensive playbook editor and install each formation below with every listed play.",
+    ]
+    for formation, plays in (new_book.get("formations") or {}).items():
+        lines.append(f"Install {formation}: {', '.join(plays)}.")
+    lines.append(
+        "After the book is installed in Madden, applying it here is a separate Aidan-only step and requires an attestation."
+    )
+    return lines
+
+
+def confirm_design(db: Any, proposal_id: str, attestation: str = "") -> dict[str, Any]:
+    """Return a staged diff and install instructions. Does not write the book.
+
+    ``attestation`` is accepted so existing callers keep working. A short
+    attestation does not raise and does not install anything.
+    """
+    del attestation
+    _staged, current, new_book = _validated_design(db, proposal_id)
+    return {
+        "confirmed": False,
+        "wrote_book": False,
+        "proposal_id": proposal_id,
+        "diff": {"from": current, "to": new_book},
+        "install_instructions": _install_instructions(new_book),
+        "generated_macros_armed": 0,
+        "installed_formations": 0,
+        "installed_plays": 0,
+    }
+
+
+def apply_design(
+    db: Any,
+    proposal_id: str,
+    attestation: str,
+    *,
+    operator: str,
+) -> dict[str, Any]:
+    """Write a previously staged design. Only Aidan may apply it."""
+    if operator != "Aidan":
+        raise ValueError("Applying a defensive design is limited to Aidan")
+    if len((attestation or "").strip()) < 30:
+        raise ValueError("Explicit actual Madden playbook installation attestation required")
+    _staged, current, new_book = _validated_design(db, proposal_id)
+    old_history = []
+    try:
+        old_history = json.loads(db.get_meta(HISTORY_KEY) or "[]")
+    except (TypeError, ValueError):
+        pass
     old_history.append({"id": proposal_id, "book": current, "new_book": new_book})
-    state["applied"]["defense"] = new_book
-    state["pending"].pop("defense", None)
+    state = playbook._load_state(db)
+    state.setdefault("applied", {})["defense"] = new_book
+    state.setdefault("pending", {}).pop("defense", None)
     playbook._save_state(db, state)
     db.set_meta(HISTORY_KEY, json.dumps(old_history[-15:], sort_keys=True))
     db.set_meta(PENDING_KEY, "")
-    # Changing a book requires physically rearming and re-verifying custom macros.
     try:
         keys = db.conn.execute(
             "SELECT key FROM meta WHERE key LIKE 'ml_defense_approved_macros.v1:%'"
@@ -709,7 +1256,10 @@ def confirm_design(db: Any, proposal_id: str, attestation: str) -> dict[str, Any
     except Exception:
         pass
     return {
-        "confirmed": True, "proposal_id": proposal_id,
+        "confirmed": True,
+        "wrote_book": True,
+        "proposal_id": proposal_id,
+        "operator": operator,
         "installed_formations": len(new_book["formations"]),
         "installed_plays": sum(map(len, new_book["formations"].values())),
         "generated_macros_armed": 0,

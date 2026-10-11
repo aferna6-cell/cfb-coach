@@ -83,11 +83,19 @@ def test_missing_required_flags_exit_2_and_leave_home_untouched(tmp_path, argv):
     assert not out.exists()
 
 
-def test_defense_design_confirm_installed_cannot_write(tmp_path):
-    """--confirm-installed opens sqlite with mode=ro, so the staged book cannot change."""
+def test_defense_design_confirm_installed_cannot_write(tmp_path, monkeypatch):
+    """--confirm-installed opens sqlite mode=ro and prints the diff. It does not write."""
+    import hashlib
+    import json
+    from contextlib import redirect_stdout
+    from io import StringIO
+    from types import SimpleNamespace
+
+    import cfb_coach.db as dbmod
     from cfb_coach.db import CoachDB
     from cfb_coach.madden.data import load_seed
     from cfb_coach.madden.model import defense_coordinator as defense
+    from cfb_coach.madden.model.cli import cmd_ml_defense_design
 
     home = tmp_path / "home"
     home.mkdir()
@@ -95,32 +103,63 @@ def test_defense_design_confirm_installed_cannot_write(tmp_path):
     db = CoachDB(db_path, seed=load_seed())
     try:
         proposal_id = defense.stage_design(db, max_formations=2)["proposal_id"]
+        pending_before = db.get_meta(defense.PENDING_KEY)
     finally:
         db.close()
-    before = db_path.read_bytes()
+    before_hash = hashlib.sha256(db_path.read_bytes()).hexdigest()
     before_home = _snapshot(home)
-    result = _run(
-        [
-            "ml",
-            "defense-design",
-            "--confirm-installed",
-            proposal_id,
-            "--db",
-            str(db_path),
-            "--attest",
-            "Installed every formation in the Madden editor.",
-        ],
-        cwd=tmp_path,
-        home=home,
-    )
-    assert result.returncode != 0
-    assert "attempt to write a readonly database" in result.stderr
-    assert db_path.read_bytes() == before
+
+    uris: list[str] = []
+    real_connect = dbmod.sqlite3.connect
+
+    def spy(target, *args, **kwargs):
+        uris.append(str(target))
+        return real_connect(target, *args, **kwargs)
+
+    monkeypatch.setattr(dbmod.sqlite3, "connect", spy)
+    saved = {
+        key: os.environ.get(key)
+        for key in ("HOME", "USERPROFILE", "CFB_COACH_DB", "CFB_COACH_MADDEN_DB")
+    }
+    os.environ["HOME"] = str(home)
+    os.environ["USERPROFILE"] = str(home)
+    os.environ.pop("CFB_COACH_DB", None)
+    os.environ.pop("CFB_COACH_MADDEN_DB", None)
+    stdout = StringIO()
+    try:
+        args = SimpleNamespace(
+            stage=False,
+            show=False,
+            confirm_installed=proposal_id,
+            max_formations=15,
+            attest="Installed every formation in the Madden editor.",
+            db=str(db_path),
+        )
+        with redirect_stdout(stdout):
+            code = cmd_ml_defense_design(args)
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    payload = json.loads(stdout.getvalue())
+    ro_uris = [uri for uri in uris if "mode=ro" in uri]
+    assert code == 0
+    assert payload["wrote_book"] is False
+    assert payload["diff"]["to"]["formations"]
+    assert ro_uris
+    assert all("mode=ro" in uri for uri in uris)
+    assert any(db_path.resolve().as_posix() in uri for uri in ro_uris)
+    assert hashlib.sha256(db_path.read_bytes()).hexdigest() == before_hash
     assert _snapshot(home) == before_home
     assert list(home.iterdir()) == []
+    assert list(home.rglob("*")) == []
     opened = CoachDB.open_read_only(db_path)
     try:
-        assert opened.get_meta(defense.PENDING_KEY)
+        assert opened.get_meta(defense.PENDING_KEY) == pending_before
         assert opened.get_meta(defense.HISTORY_KEY) is None
+        assert "diff" not in (opened.get_meta(defense.PENDING_KEY) or "")
     finally:
         opened.close()

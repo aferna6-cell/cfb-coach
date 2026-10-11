@@ -199,14 +199,19 @@ class DefensiveMacroTests(unittest.TestCase):
                 plan = defense.stage_design(self.db, max_formations=2)
                 self.assertEqual(plan["status"], "staged_only")
                 self.assertEqual(playbook.load_books(self.db)["defense"]["name"], "49ers")
-                with self.assertRaises(ValueError):
-                    defense.confirm_design(self.db, plan["proposal_id"], "yes")
+                preview = defense.confirm_design(self.db, plan["proposal_id"], "yes")
+                self.assertFalse(preview["wrote_book"])
+                self.assertTrue(preview["diff"])
+                self.assertTrue(preview["install_instructions"])
+                self.assertEqual(preview["generated_macros_armed"], 0)
                 confirmed = defense.confirm_design(
                     self.db, plan["proposal_id"],
                     "All defensive formations and every source play have been installed and tested in Madden."
                 )
-                self.assertTrue(confirmed["confirmed"])
+                self.assertFalse(confirmed["wrote_book"])
+                self.assertFalse(confirmed["confirmed"])
                 self.assertEqual(confirmed["generated_macros_armed"], 0)
+                self.assertEqual(playbook.load_books(self.db)["defense"]["name"], "49ers")
 
     def test_seeded_pick_unchanged_when_decision_is_logged(self):
         """The propensity log names the same call the selector already returned.

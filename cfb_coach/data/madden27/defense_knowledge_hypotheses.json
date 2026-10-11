@@ -1,0 +1,89 @@
+{
+ "schema": "madden27.defense_knowledge.v1",
+ "researched_at": "2026-10-10",
+ "patch": "1.007",
+ "book": {
+  "defense": [
+   "Dime 3-2 Odd",
+   "Nickel Double Mug",
+   "Nickel Single Mug",
+   "4-3 Over",
+   "Nickel Over"
+  ]
+ },
+ "live_scoring": false,
+ "status": "hypothesis",
+ "note": "Medium-confidence and unconfirmed rows from madden27.defense_knowledge.v1. Live scoring must not read this file.",
+ "items": [
+  {
+   "id": "db_fire2",
+   "category": "pressure",
+   "claim": "Dime 3-2 DB Fire 2 with show blitz LBs, pinch DL, Cover 2 shell is top pass-blitz macro",
+   "label": "VERIFIED-M27",
+   "confidence": "med",
+   "sources": [
+    "https://themaddenacademy.com/2026/09/mastering-madden-27-best-defensive-macro-after-the-patch"
+   ],
+   "excluded_from_live_scoring": true,
+   "exclusion_reason": "medium confidence; labeled VERIFIED-M27 in the source but excluded from live scoring"
+  },
+  {
+   "id": "mug_over_contain",
+   "category": "pressure",
+   "claim": "Mug looks + stunts beat contain-heavy 4-man rushes since 1.005",
+   "label": "VERIFIED-M27",
+   "confidence": "med",
+   "sources": [
+    "/workspace/madden/brief-2026-10-02.md"
+   ],
+   "excluded_from_live_scoring": true,
+   "exclusion_reason": "medium confidence; labeled VERIFIED-M27 in the source but excluded from live scoring"
+  },
+  {
+   "id": "base_c4",
+   "category": "coverage",
+   "claim": "Cover 4 Quarters + match checks is community base; Cover 6 run fit",
+   "label": "VERIFIED-M27",
+   "confidence": "med",
+   "sources": [
+    "/workspace/madden/brief-2026-10-02.md"
+   ],
+   "excluded_from_live_scoring": true,
+   "exclusion_reason": "medium confidence; labeled VERIFIED-M27 in the source but excluded from live scoring"
+  },
+  {
+   "id": "stunt_vs_rpo",
+   "category": "answer",
+   "claim": "A good stunt can blow up RPOs",
+   "label": "VERIFIED-M27",
+   "confidence": "med",
+   "sources": [
+    "https://www.civil.gg/tips/madden-27-complete-offense-guide"
+   ],
+   "excluded_from_live_scoring": true,
+   "exclusion_reason": "medium confidence; labeled VERIFIED-M27 in the source but excluded from live scoring"
+  },
+  {
+   "id": "unsourced_editor_fields",
+   "category": "gap",
+   "claim": "Hooks, LB Assignments, zone drop depths, LB Shift, Man Align have no sourced M27 values; keep Default",
+   "label": "HYPOTHESIS",
+   "confidence": "low",
+   "sources": [],
+   "excluded_from_live_scoring": true,
+   "exclusion_reason": "unconfirmed; label is not VERIFIED-M27"
+  },
+  {
+   "id": "mesh_answer",
+   "category": "answer",
+   "claim": "Vs mesh/crossers: match/Quarters + Look For Work, avoid Cover 0",
+   "label": "HYPOTHESIS",
+   "confidence": "med",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ],
+   "excluded_from_live_scoring": true,
+   "exclusion_reason": "unconfirmed; label is not VERIFIED-M27"
+  }
+ ]
+}
