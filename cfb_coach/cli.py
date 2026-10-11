@@ -639,6 +639,10 @@ def cmd_play(args: argparse.Namespace) -> int:
                 continue
 
             sit = parse_situation(raw, default_side=default_side)
+            from cfb_coach.madden.model.inference import bind_opp_look
+
+            bind_opp_look(sit, raw=raw)
+            logged_look = (sit.extras or {}).get("opp_look")
             snap_book.stamp_situation(sit)
             absorb_and_stamp(sit, live_ctx)
             heard = format_heard(sit)
@@ -655,7 +659,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             print(call.format())
             _refresh_overlay(call, sit, heard)
             last_call, last_sit = call, sit
-            snap_book.remember_call(call, sit)
+            snap_book.remember_call(call, sit, opp_look=logged_look)
             # If this sit itself named a live/last coverage or concept, remember for NEXT snap
             if sit.coverage_hint and sit.side == "offense":
                 last_coverage = sit.coverage_hint

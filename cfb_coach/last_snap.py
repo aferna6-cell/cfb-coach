@@ -228,6 +228,7 @@ class LastSnapBook:
     snap_seq: int | None = None
     ml_decision_id: int | None = None
     data_source: str = "live"
+    opp_look: str | None = None
     _undos: list[_Undo] = field(default_factory=list)
 
     def remember_call(
@@ -238,7 +239,10 @@ class LastSnapBook:
         ml_snap_id: str | None = None,
         snap_seq: int | None = None,
         ml_decision_id: int | None = None,
+        opp_look: Any = None,
     ) -> None:
+        from cfb_coach.madden.model.inference import UNSET_OPP_LOOK, normalize_opp_look
+
         self.call = call
         self.sit = sit
         self.logged_id = None
@@ -246,6 +250,11 @@ class LastSnapBook:
         self.concept = None
         self.coverage = None
         self.wrote = False
+        if opp_look is UNSET_OPP_LOOK:
+            pending = (getattr(sit, "extras", None) or {}).get("opp_look")
+            self.opp_look = normalize_opp_look(pending)
+        else:
+            self.opp_look = normalize_opp_look(opp_look)
         if ml_snap_id is not None:
             self.ml_snap_id = ml_snap_id
         if snap_seq is not None:
@@ -308,8 +317,11 @@ class LastSnapBook:
         """Browser submit: outcome, optional 'they ran', and the next line's last-play field."""
         if self.call is None or self.sit is None or not (outcome or "").strip():
             return None
+        from cfb_coach.madden.model.inference import normalize_opp_look
+
         side = getattr(self.call, "side", None) or "offense"
-        cov, concept = _prev_look(self.parse_situation, their, side)
+        their_look = normalize_opp_look(their)
+        cov, concept = _prev_look(self.parse_situation, their_look or "", side)
         if next_raw and not cov and not concept:
             cov, concept = _prev_look(self.parse_situation, next_raw, side)
         canon = parse_outcome(outcome).to_result_text()
@@ -367,7 +379,11 @@ class LastSnapBook:
             "formation": call.formation or "?",
             "play": call.play or "?",
             "result": self.result or "",
-            "look": self.concept or self.coverage or "",
+            "look": (
+                normalize_opp_look(self.concept)
+                or normalize_opp_look(self.coverage)
+                or normalize_opp_look(self.opp_look)
+            ),
             "call_text": call.format(),
             "side": call.side,
             "note": note,
@@ -420,18 +436,38 @@ class LastSnapBook:
         self.wrote = False
         return f"  undo: removed the last snap note (id {frame.snap_id})"
 
+    def _store_opp_look(self, snap_id: int | None) -> None:
+        """Persist the call's opponent look. Missing is SQL NULL, never ``\"\"``."""
+        if snap_id is None:
+            return
+        from cfb_coach.madden.model.inference import normalize_opp_look
+
+        look = normalize_opp_look(self.opp_look)
+        cols = {row[1] for row in self.db.conn.execute("PRAGMA table_info(snaps)")}
+        if "opp_look" not in cols:
+            self.db.conn.execute("ALTER TABLE snaps ADD COLUMN opp_look TEXT")
+        self.db.conn.execute(
+            "UPDATE snaps SET opp_look = ? WHERE id = ?",
+            (look, snap_id),
+        )
+        self.db.conn.commit()
+
     def _record(self, spec: dict[str, Any], *, inherit_sit_look: bool) -> str:
         from cfb_coach.game_score import snap_notes_for
         from cfb_coach.tendency import mild_bump_concept, mild_bump_coverage, situation_bucket
 
         prev_result, prev_concept, prev_coverage = self.result, self.concept, self.coverage
         prev_spot = replace(self.spot)
+        from cfb_coach.madden.model.inference import normalize_opp_look
+
         result = spec.get("result") or self.result
-        concept = spec.get("concept") or self.concept
-        coverage = spec.get("coverage") or self.coverage
+        concept = normalize_opp_look(spec.get("concept") or self.concept)
+        coverage = normalize_opp_look(spec.get("coverage") or self.coverage)
         if inherit_sit_look and not spec.get("concept") and not spec.get("coverage"):
-            concept = concept or getattr(self.sit, "concept_hint", None)
-            coverage = coverage or getattr(self.sit, "coverage_hint", None)
+            concept = concept or normalize_opp_look(getattr(self.sit, "concept_hint", None))
+            coverage = coverage or normalize_opp_look(getattr(self.sit, "coverage_hint", None))
+        concept = normalize_opp_look(concept)
+        coverage = normalize_opp_look(coverage)
 
         side = getattr(self.call, "side", None) or "offense"
         success = bool(outcome_success(result, side))
@@ -504,6 +540,7 @@ class LastSnapBook:
                 ml_decision_id=self.ml_decision_id,
                 data_source=self.data_source,
             )
+            self._store_opp_look(self.logged_id)
         else:
             self.db.update_snap(
                 self.logged_id,
@@ -517,6 +554,7 @@ class LastSnapBook:
                 executed_verification=executed_verification,
                 ml_decision_id=self.ml_decision_id,
             )
+            self._store_opp_look(self.logged_id)
         self.result, self.concept, self.coverage = result, concept, coverage
         note = ""
         if spec.get("result"):

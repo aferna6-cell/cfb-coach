@@ -435,6 +435,9 @@ def cmd_call(args: argparse.Namespace) -> int:
         sit = parse_madden_situation(args.situation, default_side=args.side or "offense")
         if args.side:
             sit.side = args.side
+        from cfb_coach.madden.model.inference import bind_opp_look
+
+        bind_opp_look(sit, raw=args.situation)
         from cfb_coach.game_score import absorb_and_stamp, context_from_args
 
         absorb_and_stamp(sit, context_from_args(args))
@@ -609,6 +612,9 @@ def cmd_play(args: argparse.Namespace) -> int:
 
     if getattr(args, "once", None):
         sit = parse_madden_situation(args.once, default_side="offense")
+        from cfb_coach.madden.model.inference import bind_opp_look
+
+        bind_opp_look(sit, raw=args.once)
         absorb_and_stamp(sit, live_ctx)
         heard = format_heard(sit)
         print(heard)
@@ -751,6 +757,10 @@ def cmd_play(args: argparse.Namespace) -> int:
                 continue
 
             sit = parse_madden_situation(raw, default_side=side)
+            from cfb_coach.madden.model.inference import bind_opp_look
+
+            bind_opp_look(sit, raw=raw)
+            logged_look = (sit.extras or {}).get("opp_look")
             snap_book.stamp_situation(sit)
             absorb_and_stamp(sit, live_ctx)
             heard = format_heard(sit)
@@ -766,7 +776,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             print(call.format())
             _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
             last_call, last_sit = call, sit
-            snap_book.remember_call(call, sit)
+            snap_book.remember_call(call, sit, opp_look=logged_look)
             if sit.coverage_hint and sit.side == "offense":
                 last_cov = sit.coverage_hint
             if sit.concept_hint and sit.side == "defense":

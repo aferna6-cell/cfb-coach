@@ -557,22 +557,67 @@ _DEFENSE_LINE = re.compile(r"^.+ — .+ \| .+ \| User .+$")
 _DEFENSE_MODELS: dict[str, Any] = {}
 
 
+class _UnsetOppLook:
+    """Look argument omitted. Distinct from an explicit missing look."""
+
+
+UNSET_OPP_LOOK = _UnsetOppLook()
+
+
+def normalize_opp_look(value: Any) -> str | None:
+    """Blank input is a missing look. ``empty`` is empty backfield.
+
+    ``None``, ``\"\"``, and whitespace-only text are missing and return
+    ``None``. Any other text is kept, including the exact token ``empty``.
+    The result is what gets passed to ``Situation`` and stored. It is never
+    ``\"\"``.
+    """
+    if value is None or value is UNSET_OPP_LOOK:
+        return None
+    text = str(value).strip()
+    if text == "":
+        return None
+    return text
+
+
+def bind_opp_look(sit: Any, look: Any = UNSET_OPP_LOOK, *, raw: str | None = None) -> Any:
+    """Attach one normalized opponent look to ``sit`` before a live call.
+
+    An omitted ``look`` reads the exact token ``empty`` from ``raw`` (or
+    ``sit.raw``). An explicit blank, including whitespace, is missing and
+    does not fall through to that token. Blank coverage or concept hints
+    are cleared so they are not passed on as ``\"\"``.
+    """
+    if look is UNSET_OPP_LOOK:
+        text = raw if raw is not None else (getattr(sit, "raw", "") or "")
+        value = "empty" if re.search(r"(?<!\S)empty(?!\S)", text) else None
+    else:
+        value = normalize_opp_look(look)
+    extras = getattr(sit, "extras", None)
+    if not isinstance(extras, dict):
+        extras = {}
+        sit.extras = extras
+    extras["opp_look"] = value
+    for name in ("coverage_hint", "concept_hint"):
+        current = getattr(sit, name, None)
+        if isinstance(current, str) and not current.strip():
+            setattr(sit, name, None)
+    return sit
+
+
 class OppLookSession:
     """Pre-snap opponent look for one live session.
 
-    ``None`` is a missing look. The token ``\"empty\"`` is a real value and
-    is not collapsed to missing. ``finish_snap`` clears the look so the next
-    snap cannot reuse it.
+    ``None`` is a missing look. A blank string is the same fact and is stored
+    as ``None``. The token ``\"empty\"`` is empty backfield and is kept.
+    ``finish_snap`` clears the look so the next snap cannot reuse it.
     """
 
     def __init__(self) -> None:
         self.current: str | None = None
 
     def note(self, value: Any) -> None:
-        if value is None:
-            self.current = None
-            return
-        self.current = str(value)
+        self.current = normalize_opp_look(value)
 
     def finish_snap(self) -> None:
         self.current = None
