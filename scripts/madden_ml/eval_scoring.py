@@ -767,19 +767,62 @@ def apply_context_rules(
 # ---------------------------------------------------------------------------
 
 
-def adapt_run_situation(
-    sit: Mapping[str, Any],
-    *,
-    mode: str,
-    opp_look: Any,
-    side: str,
-    seed: int,
-) -> dict[str, Any]:
-    """The only call into ``eval_harness.run_situation``.
+def _situation_line(sit: Any) -> Any:
+    """Situation text for ``run_situation``.
 
-    ``sit`` is the JSON situation dict this scorer builds. Blank opponent
-    looks are NULL before the harness sees them.
+    The scorer builds a dict whose ``raw`` field is the line. The harness
+    parses a string (or a ``Situation``). Passing the dict would parse
+    ``str(dict)`` and would not be that line.
     """
+    if isinstance(sit, Mapping):
+        raw = sit.get("raw")
+        if isinstance(raw, str) and raw.strip():
+            return raw
+        for key in ("situation", "sit"):
+            value = sit.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        raise ValueError("scoring row has no situation line for run_situation")
+    return sit
+
+
+def _look_token(look: Any) -> Any:
+    """One harness look. NULL and the literal ``empty`` stay distinct.
+
+    The scorer's look is a personnel/set pair. ``run_situation`` stores one
+    string: inference ``normalize_opp_look`` stringifies a mapping, so a
+    pair would not be stored as NULL or ``empty``. Both fields missing is
+    NULL. The token ``empty`` on the set, with personnel missing or
+    ``empty``, is ``empty``. Any other pair passes the set token when it
+    is present, otherwise the personnel token. The requested pair stays on
+    the scoring row as ``opp_look_sent``.
+    """
+    normalized = normalize_opp_look(look)
+    if not isinstance(normalized, Mapping):
+        return normalized
+    personnel = normalized.get("opp_personnel")
+    opp_set = normalized.get("opp_set")
+    if personnel is None and opp_set is None:
+        return None
+    if opp_set == "empty" and personnel in (None, "empty"):
+        return "empty"
+    if personnel == "empty" and opp_set is None:
+        return "empty"
+    if isinstance(opp_set, str) and opp_set.strip():
+        return opp_set
+    if isinstance(personnel, str) and personnel.strip():
+        return personnel
+    return None
+
+
+_HARNESS_RUN: Callable[..., Mapping[str, Any]] | None = None
+
+
+def _load_run_situation() -> Callable[..., Mapping[str, Any]]:
+    """Load ``run_situation`` once. Re-executing the harness does not change a call."""
+    global _HARNESS_RUN
+    if _HARNESS_RUN is not None:
+        return _HARNESS_RUN
     path = Path(__file__).with_name("eval_harness.py")
     if not path.is_file():
         raise FileNotFoundError(
@@ -796,7 +839,33 @@ def adapt_run_situation(
     run = getattr(module, "run_situation", None)
     if run is None:
         raise AttributeError("eval_harness.py has no run_situation")
-    return dict(run(sit, mode=mode, opp_look=normalize_opp_look(opp_look), side=side, seed=seed))
+    _HARNESS_RUN = run
+    return run
+
+
+def adapt_run_situation(
+    sit: Mapping[str, Any],
+    *,
+    mode: str,
+    opp_look: Any,
+    side: str,
+    seed: int,
+) -> dict[str, Any]:
+    """The only call into ``eval_harness.run_situation``.
+
+    ``sit`` is the JSON situation dict this scorer builds. Blank opponent
+    looks are NULL before the harness sees them.
+    """
+    run = _load_run_situation()
+    return dict(
+        run(
+            _situation_line(sit),
+            mode=mode,
+            opp_look=_look_token(opp_look),
+            side=side,
+            seed=seed,
+        )
+    )
 
 
 def evaluate(
