@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import importlib.util
 import json
 import os
@@ -179,18 +180,55 @@ class ObservedLoaderTests(unittest.TestCase):
         )
 
     def test_attached_csv_is_not_invented(self):
-        if scoring.OBSERVED_CSV.is_file():
-            rows = scoring.load_observed_csv(scoring.OBSERVED_CSV)
-            self.assertEqual(len(rows), 161)
-            games = {row["game_id"] for row in rows}
-            self.assertTrue(games <= {"g1", "g2", "g3", "g4", None})
-            return
-        with self.assertRaises(FileNotFoundError):
-            scoring.load_observed_csv(scoring.OBSERVED_CSV)
+        with scoring.OBSERVED_CSV.open(newline="", encoding="utf-8") as handle:
+            source = list(csv.DictReader(handle))
+        self.assertEqual(len(source), 161)
+        self.assertEqual(
+            list(source[0].keys()),
+            ["row", "game", "side", "down", "distance", "yardline", "quarter", "tag"],
+        )
+        loaded = scoring.load_observed_csv(scoring.OBSERVED_CSV)
+        self.assertEqual(len(loaded), 161)
+        for raw, row in zip(source, loaded):
+            self.assertEqual(raw["tag"], "observed")
+            self.assertEqual(row["side"], raw["side"])
+            self.assertEqual(row["down"], int(raw["down"]))
+            self.assertEqual(row["distance"], int(raw["distance"]))
+            self.assertEqual(row["yardline"], int(raw["yardline"]))
+            self.assertEqual(row["quarter"], int(raw["quarter"]))
+            self.assertEqual(row["game_id"], raw["game"])
+            self.assertEqual(row["tags"], ["observed"])
+            self.assertEqual(row["default_filled"], ["score", "clock"])
+            self.assertEqual((row["score_us"], row["score_them"]), (0, 0))
+            self.assertIsNone(row["clock_seconds"])
+            self.assertEqual(row["clock_bucket"], "normal")
+            self.assertFalse(row["two_minute"])
+            self.assertFalse(row["look_observed"])
+            self.assertEqual(len(row["looks"]), 3)
+            self.assertNotIn("opp_personnel", raw)
+            self.assertNotIn("nickel", row["raw"])
+            self.assertNotIn("empty", row["raw"])
+        expanded = scoring.expand_decision_rows(loaded)
+        self.assertEqual(len(expanded), 161 * 3)
+        self.assertTrue(
+            all(row["tags"] == ["observed_situation", "assigned_look"] for row in expanded)
+        )
+        self.assertTrue(all(row["look_observed"] is False for row in expanded))
         identities, note = scoring.load_situation_identities()
-        self.assertTrue(all(row["source"] == "synthetic" for row in identities))
-        self.assertFalse(note["observed_csv_present"])
-        self.assertIn("not in the workspace", note["observed_csv_reason"])
+        counts = note["fixture_counts"]
+        self.assertEqual(len(identities), 72 + 161)
+        self.assertEqual(counts["identity_tags_by_side"]["synthetic"], {"offense": 36, "defense": 36})
+        self.assertEqual(counts["identity_tags_by_side"]["observed"], {"offense": 161, "defense": 0})
+        self.assertEqual(
+            counts["decision_tags_by_side"]["synthetic"],
+            {"offense": 144, "defense": 144},
+        )
+        self.assertEqual(
+            counts["decision_tags_by_side"]["observed_situation,assigned_look"],
+            {"offense": 483, "defense": 0},
+        )
+        self.assertEqual(counts["identities"], 233)
+        self.assertGreaterEqual(counts["identities"], 120)
 
 
 class BookAndRuleTests(unittest.TestCase):

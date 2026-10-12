@@ -483,32 +483,51 @@ def load_situation_identities() -> tuple[list[dict[str, Any]], dict[str, Any]]:
             "presnap_observed_cpu.csv was not in the workspace, so no observed "
             "rows were invented"
         )
+        note["fixture_counts"] = fixture_counts(synthetic)
         return synthetic, note
     observed = load_observed_csv(OBSERVED_CSV)
     note["observed_source_rows"] = len(observed)
-    return synthetic + observed, note
+    identities = synthetic + observed
+    note["fixture_counts"] = fixture_counts(identities)
+    return identities, note
+
+
+def _empty_side_counts() -> dict[str, int]:
+    return {"offense": 0, "defense": 0}
 
 
 def fixture_counts(identities: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Counts of the situation identities and the expanded decision rows."""
+    """Counts of the situation identities and the expanded decision rows.
+
+    Identity tags and decision-row tags are split by offense and defense.
+    A side with no rows stays 0.
+    """
     by_source_side: dict[str, dict[str, int]] = {}
     tag_counts: dict[str, int] = {}
+    identity_tags_by_side: dict[str, dict[str, int]] = {}
     for row in identities:
-        by_source_side.setdefault(row["source"], {"offense": 0, "defense": 0})
+        by_source_side.setdefault(row["source"], _empty_side_counts())
         by_source_side[row["source"]][row["side"]] += 1
         for tag in row["tags"]:
             tag_counts[tag] = tag_counts.get(tag, 0) + 1
+            bucket = identity_tags_by_side.setdefault(tag, _empty_side_counts())
+            bucket[row["side"]] += 1
     expanded = expand_decision_rows(identities)
     expanded_tags: dict[str, int] = {}
+    decision_tags_by_side: dict[str, dict[str, int]] = {}
     for row in expanded:
         key = ",".join(row["tags"])
         expanded_tags[key] = expanded_tags.get(key, 0) + 1
+        bucket = decision_tags_by_side.setdefault(key, _empty_side_counts())
+        bucket[row["side"]] += 1
     return {
         "identities": len(identities),
         "by_source_side": by_source_side,
         "identity_tags": tag_counts,
+        "identity_tags_by_side": identity_tags_by_side,
         "decision_rows": len(expanded),
         "decision_tags": expanded_tags,
+        "decision_tags_by_side": decision_tags_by_side,
     }
 
 
@@ -1272,7 +1291,15 @@ def render_markdown(report: Mapping[str, Any]) -> str:
     note = report.get("inventory_note") or {}
     if note:
         for key, value in note.items():
-            lines.append(f"- {key}: {value}")
+            if isinstance(value, dict):
+                lines.append(f"- {key}:")
+                lines.append("")
+                lines.append("```json")
+                lines.append(json.dumps(value, indent=2, sort_keys=True))
+                lines.append("```")
+                lines.append("")
+            else:
+                lines.append(f"- {key}: {value}")
     summary = report["summary"]
     lines.extend(["", "## Summary counts", ""])
     lines.append(f"Decision rows scored: {summary['decision_rows']}")
