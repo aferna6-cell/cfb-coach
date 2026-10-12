@@ -1,0 +1,20 @@
+{
+  "budget_ms": 150,
+  "fail_reasons": [],
+  "fallback_counts": {},
+  "model_ms": {
+    "max": 0.0,
+    "p50": 0.0,
+    "p95": 0.0
+  },
+  "pass": true,
+  "passes": 50,
+  "reproduced": true,
+  "samples": 38550,
+  "situations": 771,
+  "whole_call_ms": {
+    "max": 26.69617699984883,
+    "p50": 4.2675889999372885,
+    "p95": 4.799972999990132
+  }
+}

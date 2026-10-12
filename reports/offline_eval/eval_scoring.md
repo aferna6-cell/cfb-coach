@@ -19,9 +19,6 @@ Latency budget: 150 ms
 
 ## Fixture inventory
 
-- observed_csv: /workspace/tests/madden_ml/fixtures/item3/presnap_observed_cpu.csv
-- observed_csv_present: True
-- observed_source_rows: 161
 - fixture_counts:
 
 ```json
@@ -69,78 +66,15 @@ Latency budget: 150 ms
 }
 ```
 
+- observed_csv: /workspace/tests/madden_ml/fixtures/item3/presnap_observed_cpu.csv
+- observed_csv_present: True
+- observed_source_rows: 161
 
 ## Summary counts
 
 Decision rows scored: 771
 
-### offense / synthetic
-
-- n: 144
-- formation agree: 144/144
-- play agree: 144/144
-- in book: 144
-- adjustment legal (armed macro or no adjustment): 144
-- hard fail: 0
-- adjustment id differs: 0
-- context fail rows: 0
-- book used: calls 27/93, formations 5/5
-- call entropy bits: 4.627986806877674
-- formation entropy bits: 2.0791262495325706
-- top call share: 0.08333333333333333
-- top formation share: 0.3055555555555556
-- top share flag (cap 0.25): True
-- rule no_deep_shot_on_short_or_goal_line: applies 36, passed 36, failed 0
-- rule two_minute_trailing_not_clock_kill_run: applies 24, passed 24, failed 0
-- rule no_kneel_or_run_clock_when_trailing_late: applies 36, passed 36, failed 0
-- rule goal_line_short_not_dime: applies 0, passed 0, failed 0
-- rule trailing_late_no_prevent: applies 0, passed 0, failed 0
-
-### offense / observed
-
-- n: 483
-- formation agree: 483/483
-- play agree: 483/483
-- in book: 483
-- adjustment legal (armed macro or no adjustment): 483
-- hard fail: 0
-- adjustment id differs: 0
-- context fail rows: 0
-- book used: calls 73/93, formations 5/5
-- call entropy bits: 5.981000225935749
-- formation entropy bits: 2.224306313097711
-- top call share: 0.037267080745341616
-- top formation share: 0.2919254658385093
-- top share flag (cap 0.25): True
-- rule no_deep_shot_on_short_or_goal_line: applies 27, passed 27, failed 0
-- rule two_minute_trailing_not_clock_kill_run: applies 0, passed 0, failed 0
-- rule no_kneel_or_run_clock_when_trailing_late: applies 0, passed 0, failed 0
-- rule goal_line_short_not_dime: applies 0, passed 0, failed 0
-- rule trailing_late_no_prevent: applies 0, passed 0, failed 0
-
-### offense / all
-
-- n: 627
-- formation agree: 627/627
-- play agree: 627/627
-- in book: 627
-- adjustment legal (armed macro or no adjustment): 627
-- hard fail: 0
-- adjustment id differs: 0
-- context fail rows: 0
-- book used: calls 76/93, formations 5/5
-- call entropy bits: 6.002164549146807
-- formation entropy bits: 2.2036633995891357
-- top call share: 0.04146730462519936
-- top formation share: 0.29505582137161085
-- top share flag (cap 0.25): True
-- rule no_deep_shot_on_short_or_goal_line: applies 63, passed 63, failed 0
-- rule two_minute_trailing_not_clock_kill_run: applies 24, passed 24, failed 0
-- rule no_kneel_or_run_clock_when_trailing_late: applies 36, passed 36, failed 0
-- rule goal_line_short_not_dime: applies 0, passed 0, failed 0
-- rule trailing_late_no_prevent: applies 0, passed 0, failed 0
-
-### defense / synthetic
+### defense / all
 
 - n: 144
 - formation agree: 144/144
@@ -184,7 +118,7 @@ Decision rows scored: 771
 - rule goal_line_short_not_dime: applies 0, passed 0, failed 0
 - rule trailing_late_no_prevent: applies 0, passed 0, failed 0
 
-### defense / all
+### defense / synthetic
 
 - n: 144
 - formation agree: 144/144
@@ -206,14 +140,80 @@ Decision rows scored: 771
 - rule goal_line_short_not_dime: applies 8, passed 8, failed 0
 - rule trailing_late_no_prevent: applies 36, passed 36, failed 0
 
+### offense / all
+
+- n: 627
+- formation agree: 627/627
+- play agree: 627/627
+- in book: 627
+- adjustment legal (armed macro or no adjustment): 627
+- hard fail: 0
+- adjustment id differs: 0
+- context fail rows: 0
+- book used: calls 76/93, formations 5/5
+- call entropy bits: 6.002164549146807
+- formation entropy bits: 2.2036633995891357
+- top call share: 0.04146730462519936
+- top formation share: 0.29505582137161085
+- top share flag (cap 0.25): True
+- rule no_deep_shot_on_short_or_goal_line: applies 63, passed 63, failed 0
+- rule two_minute_trailing_not_clock_kill_run: applies 24, passed 24, failed 0
+- rule no_kneel_or_run_clock_when_trailing_late: applies 36, passed 36, failed 0
+- rule goal_line_short_not_dime: applies 0, passed 0, failed 0
+- rule trailing_late_no_prevent: applies 0, passed 0, failed 0
+
+### offense / observed
+
+- n: 483
+- formation agree: 483/483
+- play agree: 483/483
+- in book: 483
+- adjustment legal (armed macro or no adjustment): 483
+- hard fail: 0
+- adjustment id differs: 0
+- context fail rows: 0
+- book used: calls 73/93, formations 5/5
+- call entropy bits: 5.981000225935749
+- formation entropy bits: 2.224306313097711
+- top call share: 0.037267080745341616
+- top formation share: 0.2919254658385093
+- top share flag (cap 0.25): True
+- rule no_deep_shot_on_short_or_goal_line: applies 27, passed 27, failed 0
+- rule two_minute_trailing_not_clock_kill_run: applies 0, passed 0, failed 0
+- rule no_kneel_or_run_clock_when_trailing_late: applies 0, passed 0, failed 0
+- rule goal_line_short_not_dime: applies 0, passed 0, failed 0
+- rule trailing_late_no_prevent: applies 0, passed 0, failed 0
+
+### offense / synthetic
+
+- n: 144
+- formation agree: 144/144
+- play agree: 144/144
+- in book: 144
+- adjustment legal (armed macro or no adjustment): 144
+- hard fail: 0
+- adjustment id differs: 0
+- context fail rows: 0
+- book used: calls 27/93, formations 5/5
+- call entropy bits: 4.627986806877674
+- formation entropy bits: 2.0791262495325706
+- top call share: 0.08333333333333333
+- top formation share: 0.3055555555555556
+- top share flag (cap 0.25): True
+- rule no_deep_shot_on_short_or_goal_line: applies 36, passed 36, failed 0
+- rule two_minute_trailing_not_clock_kill_run: applies 24, passed 24, failed 0
+- rule no_kneel_or_run_clock_when_trailing_late: applies 36, passed 36, failed 0
+- rule goal_line_short_not_dime: applies 0, passed 0, failed 0
+- rule trailing_late_no_prevent: applies 0, passed 0, failed 0
+
 ## Opponent adaptation
 
 A situation is adapted when it has at least three looks, every look matches on a same-seed rerun, and the new formation/play/adjustment is not the same on every look. A same-seed mismatch is seed noise and is not counted as adaptation.
 
-- offense:synthetic: situations 36, adapted 0, unchanged 36, seed noise 0, fewer than 3 looks 0
-- offense:observed: situations 161, adapted 0, unchanged 161, seed noise 0, fewer than 3 looks 0
-- defense:synthetic: situations 36, adapted 0, unchanged 36, seed noise 0, fewer than 3 looks 0
 - defense:observed: situations 0, adapted 0, unchanged 0, seed noise 0, fewer than 3 looks 0
+- defense:synthetic: situations 36, adapted 0, unchanged 36, seed noise 0, fewer than 3 looks 0
+- offense:observed: situations 161, adapted 0, unchanged 161, seed noise 0, fewer than 3 looks 0
+- offense:synthetic: situations 36, adapted 0, unchanged 36, seed noise 0, fewer than 3 looks 0
 
 ## Latency
 
@@ -1334,4 +1334,33 @@ Git merges of PR 55 and PR 56 had no conflicts. eval_scoring.evaluate passes the
 
 ### Latency pass
 
-The 50-pass latency run has not been attached.
+This is `eval_harness.run_cli` over every scored decision row, 50 passes each, same raw line, side, look token, and seed. The latency section above is the scorer's first call per row, not this pass.
+
+```json
+{
+  "budget_ms": 150,
+  "cli_exit": 0,
+  "fail_reasons": [],
+  "fallback_counts": {},
+  "model_ms": {
+    "max": 0.0,
+    "p50": 0.0,
+    "p95": 0.0
+  },
+  "pass": true,
+  "passes": 50,
+  "reproduced": true,
+  "samples": 38550,
+  "situations": 771,
+  "whole_call_ms": {
+    "max": 26.69617699984883,
+    "p50": 4.2675889999372885,
+    "p95": 4.799972999990132
+  }
+}
+```
+
+- whole p50/p95/max: 4.2675889999372885 / 4.799972999990132 / 26.69617699984883
+- model p50/p95/max: 0.0 / 0.0 / 0.0
+- fallback counts: {}
+- 150 ms budget (harness pass flag, model time): pass
