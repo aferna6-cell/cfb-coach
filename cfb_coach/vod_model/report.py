@@ -14,8 +14,9 @@ def format_vod_section(report: dict[str, Any] | None) -> list[str]:
         return []
     weight = report.get("quality_weight")
     nudge = report.get("log_nudge")
+    mapping = f" · {report['mapping_version']}" if report.get("mapping_version") else ""
     lines = [
-        f"## VOD beaters — {report.get('version')} {report.get('opponent_type')} "
+        f"## VOD beaters — {report.get('version')} {report.get('opponent_type')}{mapping} "
         f"(VOD weight {weight:g}, log nudge {nudge:g})",
         "  Call quality uses VOD success as the primary signal. Your logged games nudge a near-tie.",
         "  Logged tendencies pick which defensive look to expect. Thin samples are display-only.",
@@ -30,11 +31,13 @@ def format_vod_section(report: dict[str, Any] | None) -> list[str]:
     else:
         for change in changes:
             replaced = f" — replaced {change['replaced']}" if change.get("replaced") else ""
-            lines.append(f"  {change.get('action')}: {change.get('changed')}{replaced}")
+            shown = change.get("mapped") or change.get("changed")
+            mapping = f" mappings={change['mapping_version']}" if change.get("mapping_version") else ""
+            lines.append(f"  {change.get('action')}: {shown}{replaced}")
             lines.append(
                 f"    why: {change.get('why')} | n={change.get('n')} success={float(change.get('success') or 0):.3f} "
                 f"lb={float(change.get('lower_bound') or 0):.3f} tier={change.get('tier')} "
-                f"model={change.get('model_version')}"
+                f"model={change.get('model_version')}{mapping}"
             )
         lines.append("  Live play uses this book on the next snap. No confirmation step.")
     return lines
@@ -54,17 +57,20 @@ def render_vod_html(plan: dict[str, Any] | None) -> str:
         body = "<p>No playbook changes. Thin samples stay display-only.</p>"
     else:
         body = "<ul>" + "".join(
-            f"<li>{_esc(str(change.get('action')))}: {_esc(str(change.get('changed')))}"
+            f"<li>{_esc(str(change.get('action')))}: {_esc(str(change.get('mapped') or change.get('changed')))}"
             + (f" — replaced {_esc(str(change.get('replaced')))}" if change.get("replaced") else "")
             + f" (n={_esc(str(change.get('n')))}, success={_esc(str(change.get('success')))}, "
             f"lb={_esc(str(change.get('lower_bound')))}, tier={_esc(str(change.get('tier')))}, "
-            f"model={_esc(str(change.get('model_version')))})</li>"
+            f"model={_esc(str(change.get('model_version')))}"
+            + (f", {_esc(str(change.get('mapping_version')))}" if change.get("mapping_version") else "")
+            + ")</li>"
             for change in changes
         ) + "</ul><p>Live play uses this book on the next snap.</p>"
+    mapping = f" {_esc(str(report.get('mapping_version')))}." if report.get("mapping_version") else ""
     return (
         "<section id='vod-beaters'><h2>VOD beaters</h2>"
         f"<p>VOD weight {_esc(str(report.get('quality_weight')))}, "
         f"log nudge {_esc(str(report.get('log_nudge')))}. "
-        f"{_esc(str(report.get('version')))} / {_esc(str(report.get('opponent_type')))}.</p>"
+        f"{_esc(str(report.get('version')))} / {_esc(str(report.get('opponent_type')))}.{mapping}</p>"
         f"<ul>{items}</ul><h2>Playbook changes</h2>{body}</section>"
     )

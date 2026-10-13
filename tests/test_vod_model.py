@@ -234,6 +234,7 @@ class TestV07Replay(_Isolated):
             self.assertEqual(off_calls, base_calls, oid)
             self.assertEqual(off_forms, base_forms, oid)
             self.assertIn("## VOD beaters", on_text)
+            self.assertIn("play_mappings v1", on_text)
             self.assertIn("## Playbook changes", on_text)
             self.assertIn("No playbook changes", on_text)
             self.assertNotIn("## VOD beaters", base_text)

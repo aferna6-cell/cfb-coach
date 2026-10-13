@@ -1,0 +1,945 @@
+{
+ "schema": "play_mappings.v1",
+ "version": "v1",
+ "source_model_version": "v0.11",
+ "label_version": "v0.11",
+ "mappings": [
+  {
+   "game": "madden27",
+   "raw_name": "HB Dive",
+   "raw_spellings": {
+    "HB Dive": 33,
+    "HB DIVE": 1
+   },
+   "status": "resolved_book_formation_ambiguous",
+   "confidence": "low",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": null,
+   "formation_candidates": [
+    "Singleback Ace Double Wing",
+    "Singleback Tight Doubles",
+    "Singleback Wing Close",
+    "Singleback Wing Tight Left",
+    "Strong I H Wing",
+    "Pistol Bunch TE",
+    "Pistol Deuce Close",
+    "Goal Line Normal"
+   ],
+   "play_name": "HB Dive"
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Inside Zone",
+   "raw_spellings": {
+    "Inside Zone": 35
+   },
+   "status": "resolved_book_formation_ambiguous",
+   "confidence": "low",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": null,
+   "formation_candidates": [
+    "Singleback U Off Stack",
+    "Singleback U Off Trips",
+    "Singleback Wing Tight Left",
+    "Gun Bunch Spread",
+    "Gun Bunch X Nasty",
+    "Gun Deuce Close",
+    "Gun Doubles HB Wk",
+    "Gun Normal Y Off Close",
+    "Gun Spread",
+    "Gun Tight Open",
+    "Gun Tight Y Off Wk",
+    "Gun Trips",
+    "Gun Trips HB Wk",
+    "Gun Trips TE Flex",
+    "Gun Trips TE Offset Wk",
+    "Gun Wing Flex Offset Wk",
+    "Gun Wing Slot Offset",
+    "Gun Wing Tight Nasty",
+    "Gun Y Off Trio Wk",
+    "Gun Y Off Trips",
+    "Gun Y Off Trips Wk"
+   ],
+   "play_name": "Inside Zone"
+  },
+  {
+   "game": "madden27",
+   "raw_name": "HB Power O",
+   "raw_spellings": {
+    "HB Power O": 24
+   },
+   "status": "resolved_book_formation_ambiguous",
+   "confidence": "med",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": null,
+   "formation_candidates": [
+    "Singleback Ace Double Wing",
+    "I Form Wing"
+   ],
+   "play_name": "HB Power O"
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Zone WK",
+   "raw_spellings": {
+    "Zone WK": 19
+   },
+   "status": "resolved_book_formation_ambiguous",
+   "confidence": "med",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": null,
+   "formation_candidates": [
+    "I Form Wing",
+    "I Form Y Off Close",
+    "Strong I H Wing"
+   ],
+   "play_name": "Zone WK"
+  },
+  {
+   "game": "madden27",
+   "raw_name": "94 Will",
+   "raw_spellings": {
+    "94 Will": 10
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": "Weak Close",
+   "formation_candidates": [
+    "Weak Close"
+   ],
+   "play_name": "94 Will",
+   "formation_plays": {
+    "Weak Close": [
+     "94 Will",
+     "Bench Switch",
+     "FB Power",
+     "HB Zone WK",
+     "Mesh",
+     "PA Boot Lt",
+     "PA Boot Slide",
+     "PA Post Shot",
+     "Stick"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Double Dig",
+   "raw_spellings": {
+    "Double Dig": 8
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": "I Form Y Off Close",
+   "formation_candidates": [
+    "I Form Y Off Close"
+   ],
+   "play_name": "Double Dig",
+   "formation_plays": {
+    "I Form Y Off Close": [
+     "DBL Mtn PA Double Cross",
+     "DBL Mtn PA Sprint HB Flat",
+     "DBL Mtn Zone WK",
+     "DBL Outs",
+     "Double Dig",
+     "HB Iso",
+     "HB Stretch",
+     "HB Zone Toss",
+     "Mtn Counter Solid",
+     "Mtn Flood",
+     "Mtn PA Counter",
+     "PA Deep Read",
+     "PA Pylon Sail",
+     "PA X Deep Out",
+     "Zone WK"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Drive Stutter Flat",
+   "raw_spellings": {
+    "Drive Stutter Flat": 7
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Tight Open",
+   "formation_candidates": [
+    "Gun Tight Open"
+   ],
+   "play_name": "Drive Stutter Flat",
+   "formation_plays": {
+    "Gun Tight Open": [
+     "Bench",
+     "Bench Dig Pivot",
+     "Bench Return",
+     "Dig Z Spot",
+     "Drive Stutter Flat",
+     "Empty Mtn Mesh Rail",
+     "Empty Mtn Whip Flood",
+     "Empty Mtn Z Spot",
+     "FK Drive Stutter",
+     "HB Draw",
+     "HB Slip Screen",
+     "Inside Zone",
+     "Mesh Clearout",
+     "Mesh Spot",
+     "Verticals HB Burst"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "F Trail",
+   "raw_spellings": {
+    "F Trail": 3
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": "Strong I H Wing",
+   "formation_candidates": [
+    "Strong I H Wing"
+   ],
+   "play_name": "F Trail",
+   "formation_plays": {
+    "Strong I H Wing": [
+     "Curls",
+     "F Trail",
+     "Fade",
+     "HB Cntr WK",
+     "HB Dive",
+     "HB Duo",
+     "Inside Zone WK",
+     "PA Power O",
+     "PA Sprint HB Flat",
+     "Power O",
+     "X Slant",
+     "Zone WK"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Dagger",
+   "raw_spellings": {
+    "Dagger": 3
+   },
+   "status": "resolved_book_formation_ambiguous",
+   "confidence": "med",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": null,
+   "formation_candidates": [
+    "Gun Empty Chips Nasty",
+    "Gun Empty Chips Quads",
+    "Gun Trips TE Flex"
+   ],
+   "play_name": "Dagger"
+  },
+  {
+   "game": "madden27",
+   "raw_name": "HB Power",
+   "raw_spellings": {
+    "HB Power": 2
+   },
+   "status": "resolved_book_formation_ambiguous",
+   "confidence": "med",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": null,
+   "formation_candidates": [
+    "Singleback Wing Tight Left",
+    "Gun Trips TE Offset Wk",
+    "Gun Wing Flex Offset Wk"
+   ],
+   "play_name": "HB Power"
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Close FB Trail",
+   "raw_spellings": {
+    "Close FB Trail": 1
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "dolphins-off",
+   "playbook_name": "Dolphins",
+   "playbook_in_coach_catalog": "Dolphins",
+   "formation": "Gun Split Close",
+   "formation_candidates": [
+    "Gun Split Close"
+   ],
+   "play_name": "Close FB Trail",
+   "formation_plays": {
+    "Gun Split Close": [
+     "Clearout Crosser",
+     "Close FB Trail",
+     "Closex Drag",
+     "DBL Ins",
+     "Dig HB Rail",
+     "Dig Slot Out",
+     "Double Swirl",
+     "Drive HB Wheel",
+     "FB Inside",
+     "HB Gut",
+     "HB Option",
+     "HB Power O",
+     "HB Slip Screen",
+     "HB Wheel",
+     "Mesh",
+     "PA F Slide",
+     "Pivot Dig",
+     "Read Option",
+     "Scat",
+     "Swirl Curls",
+     "WR Corners"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Dig Stick",
+   "raw_spellings": {
+    "Dig Stick": 2
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Empty Chips Nasty",
+   "formation_candidates": [
+    "Gun Empty Chips Nasty"
+   ],
+   "play_name": "Dig Stick",
+   "formation_plays": {
+    "Gun Empty Chips Nasty": [
+     "Dagger",
+     "Dagger Deep Curl",
+     "Deep Post Out",
+     "Dig Stick",
+     "Double 7 Stop",
+     "Double Swirl",
+     "Out X Dig",
+     "Post Cross",
+     "QB Zone",
+     "Slot Sail",
+     "X Cross",
+     "X Whip In"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Escortpacrossers",
+   "raw_spellings": {
+    "Escortpacrossers": 1
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "jaguars-off",
+   "playbook_name": "Jaguars",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Wing Tight",
+   "formation_candidates": [
+    "Gun Wing Tight"
+   ],
+   "play_name": "Escort PA Crossers",
+   "formation_plays": {
+    "Gun Wing Tight": [
+     "Escort Inside Zone Split",
+     "Escort PA Crossers",
+     "Escort PA Slide",
+     "HB Punch",
+     "Inside Zone",
+     "Mesh Spot",
+     "O 1 Trap",
+     "Ohio Spacing",
+     "PA Double Post",
+     "PA X Curl",
+     "QB Zone",
+     "Read Option",
+     "Same Side Zone",
+     "Sluggo Seam",
+     "Stick Nod Vertical"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Mtnbunchcrossdig",
+   "raw_spellings": {
+    "Mtnbunchcrossdig": 1
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "raiders-off",
+   "playbook_name": "Raiders",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Tight Flex Wk",
+   "formation_candidates": [
+    "Gun Tight Flex Wk"
+   ],
+   "play_name": "Mtn Bunch Cross Dig",
+   "formation_plays": {
+    "Gun Tight Flex Wk": [
+     "Bench",
+     "Go Y-Choice",
+     "HB Slip Screen",
+     "Inside Hi Lo",
+     "Inside Zone",
+     "Mesh Spot Rail",
+     "Mid Zone",
+     "Mtn Bunch Cross Dig",
+     "Mtn Bunch Cross Screen",
+     "Mtn Bunch Drive",
+     "Mtn Bunch HB Draw",
+     "Mtn Bunch Switch Flood",
+     "Mtn Bunch Whip Smash",
+     "Mtn Mesh Spot",
+     "Mtn Stick Z Post",
+     "Mtn Y Cross",
+     "PA Dagger",
+     "PA Same Side Flood",
+     "Quick Looks",
+     "Same Side Zone",
+     "Stick"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Mtnbunchwhipsmash",
+   "raw_spellings": {
+    "Mtnbunchwhipsmash": 1
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "raiders-off",
+   "playbook_name": "Raiders",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Tight Flex Wk",
+   "formation_candidates": [
+    "Gun Tight Flex Wk"
+   ],
+   "play_name": "Mtn Bunch Whip Smash",
+   "formation_plays": {
+    "Gun Tight Flex Wk": [
+     "Bench",
+     "Go Y-Choice",
+     "HB Slip Screen",
+     "Inside Hi Lo",
+     "Inside Zone",
+     "Mesh Spot Rail",
+     "Mid Zone",
+     "Mtn Bunch Cross Dig",
+     "Mtn Bunch Cross Screen",
+     "Mtn Bunch Drive",
+     "Mtn Bunch HB Draw",
+     "Mtn Bunch Switch Flood",
+     "Mtn Bunch Whip Smash",
+     "Mtn Mesh Spot",
+     "Mtn Stick Z Post",
+     "Mtn Y Cross",
+     "PA Dagger",
+     "PA Same Side Flood",
+     "Quick Looks",
+     "Same Side Zone",
+     "Stick"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Pacrosssit",
+   "raw_spellings": {
+    "Pacrosssit": 1
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "raiders-off",
+   "playbook_name": "Raiders",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Trio HB Wk",
+   "formation_candidates": [
+    "Gun Trio HB Wk"
+   ],
+   "play_name": "PA Cross Sit",
+   "formation_plays": {
+    "Gun Trio HB Wk": [
+     "Buck Sweep Read Opt",
+     "Dagger Sit",
+     "Flood HB Flat",
+     "HB Slip Screen",
+     "Inside Zone",
+     "PA Cross Sit",
+     "PA Y Cross",
+     "RPO Alert Bubble",
+     "RPO Alert Buck",
+     "RPO Buck Peek",
+     "RPO Read Buck Bubble",
+     "Speed Option",
+     "Verticals",
+     "Wide Zone",
+     "Wide Zone Read"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Paswitchverts",
+   "raw_spellings": {
+    "Paswitchverts": 1
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "raiders-off",
+   "playbook_name": "Raiders",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Tight Flex Offset",
+   "formation_candidates": [
+    "Gun Tight Flex Offset"
+   ],
+   "play_name": "PA Switch Verts",
+   "formation_plays": {
+    "Gun Tight Flex Offset": [
+     "Dragon Spacing",
+     "HB Draw",
+     "HB Slip Screen",
+     "Inside Zone",
+     "Mesh Spot",
+     "Mtn Choice",
+     "Mtn Dagger H-Choice",
+     "Mtn FK H-Angle",
+     "Mtn Fork Y-Corner",
+     "Mtn H-Texas",
+     "Mtn Spot Dig",
+     "O 1 Trap",
+     "PA Switch Verts",
+     "Slot Outs H-Angle",
+     "Spot Shake"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Returnrpoalertswing",
+   "raw_spellings": {
+    "Returnrpoalertswing": 1
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "colts-off",
+   "playbook_name": "Colts",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Trips TE Flex Close Wk",
+   "formation_candidates": [
+    "Gun Trips TE Flex Close Wk"
+   ],
+   "play_name": "Return RPO Alert Swing",
+   "formation_plays": {
+    "Gun Trips TE Flex Close Wk": [
+     "Bounce Inside Zone",
+     "Bounce Read Option",
+     "Bounce Shallow Cross",
+     "China Y-Shake",
+     "HB Power",
+     "HB Slip Screen",
+     "Inside Zone",
+     "Mid Zone",
+     "Mtn Dagger",
+     "Mtn Fake Screen Wheel",
+     "Mtn HB Swing",
+     "Mtn Mesh Gos",
+     "Mtn Mesh Rail",
+     "Mtn Smash Slot Choice",
+     "Outside Zone",
+     "PA Deep Sail",
+     "PA Flood",
+     "Read Y Corner",
+     "Return PA Deep Sail",
+     "Return Post Curl",
+     "Return RPO Alert Swing",
+     "Return Sprint Comeback",
+     "Return Sprint Spot",
+     "Return Sprint TE Screen",
+     "RPO Read Bubble",
+     "Same Side Zone",
+     "Shallow Slot Fade",
+     "Stick",
+     "Switch Dagger",
+     "Verticals"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Returnsprintcomeback",
+   "raw_spellings": {
+    "Returnsprintcomeback": 1
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "colts-off",
+   "playbook_name": "Colts",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Trips TE Flex Close Wk",
+   "formation_candidates": [
+    "Gun Trips TE Flex Close Wk"
+   ],
+   "play_name": "Return Sprint Comeback",
+   "formation_plays": {
+    "Gun Trips TE Flex Close Wk": [
+     "Bounce Inside Zone",
+     "Bounce Read Option",
+     "Bounce Shallow Cross",
+     "China Y-Shake",
+     "HB Power",
+     "HB Slip Screen",
+     "Inside Zone",
+     "Mid Zone",
+     "Mtn Dagger",
+     "Mtn Fake Screen Wheel",
+     "Mtn HB Swing",
+     "Mtn Mesh Gos",
+     "Mtn Mesh Rail",
+     "Mtn Smash Slot Choice",
+     "Outside Zone",
+     "PA Deep Sail",
+     "PA Flood",
+     "Read Y Corner",
+     "Return PA Deep Sail",
+     "Return Post Curl",
+     "Return RPO Alert Swing",
+     "Return Sprint Comeback",
+     "Return Sprint Spot",
+     "Return Sprint TE Screen",
+     "RPO Read Bubble",
+     "Same Side Zone",
+     "Shallow Slot Fade",
+     "Stick",
+     "Switch Dagger",
+     "Verticals"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Saildig",
+   "raw_spellings": {
+    "Saildig": 1,
+    "Sail Dig": 1
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Doubles HB Wk",
+   "formation_candidates": [
+    "Gun Doubles HB Wk"
+   ],
+   "play_name": "Sail Dig",
+   "formation_plays": {
+    "Gun Doubles HB Wk": [
+     "Boomerang 0 1 Trap",
+     "Boomerang Slot Swing",
+     "Boomerang Y Delay",
+     "Curl Combo",
+     "Double Post",
+     "HB Base",
+     "HB Slip Screen",
+     "Inside Zone",
+     "PA Cross",
+     "PA Jailbreak Screen",
+     "PA Seams",
+     "Read Option",
+     "RPO Peek Slant",
+     "RPO Read Bubble",
+     "Sail Dig",
+     "Salem Y Corner",
+     "Shake HB Corner",
+     "X Dagger"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Verts Wrseam",
+   "raw_spellings": {
+    "Verts Wrseam": 1
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "bills-off",
+   "playbook_name": "Bills",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Split WR Backfield",
+   "formation_candidates": [
+    "Gun Split WR Backfield"
+   ],
+   "play_name": "Verts WR Seam",
+   "formation_plays": {
+    "Gun Split WR Backfield": [
+     "Dig WR Option",
+     "HB Power O",
+     "Inside Zone",
+     "Option Y Out",
+     "PA Slide",
+     "Redzone Corner",
+     "Slip Screen Lt",
+     "Snag Z Spot",
+     "Verts WR Seam"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Xwhip In",
+   "raw_spellings": {
+    "Xwhip In": 2,
+    "X Whip In": 1
+   },
+   "status": "resolved",
+   "confidence": "high",
+   "playbook": "bears-off",
+   "playbook_name": "Bears",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Empty Chips Nasty",
+   "formation_candidates": [
+    "Gun Empty Chips Nasty"
+   ],
+   "play_name": "X Whip In",
+   "formation_plays": {
+    "Gun Empty Chips Nasty": [
+     "Dagger",
+     "Dagger Deep Curl",
+     "Deep Post Out",
+     "Dig Stick",
+     "Double 7 Stop",
+     "Double Swirl",
+     "Out X Dig",
+     "Post Cross",
+     "QB Zone",
+     "Slot Sail",
+     "X Cross",
+     "X Whip In"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Cheat Inside Zone",
+   "raw_spellings": {
+    "Cheat Inside Zone": 1
+   },
+   "status": "resolved_book_formation_ambiguous",
+   "confidence": "med",
+   "playbook": "dolphins-off",
+   "playbook_name": "Dolphins",
+   "playbook_in_coach_catalog": "Dolphins",
+   "formation": null,
+   "formation_candidates": [
+    "Gun Bunch",
+    "Gun Normal Y Off Close",
+    "Gun Wing Slot Offset"
+   ],
+   "play_name": "Cheat Inside Zone"
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Curl Combo",
+   "raw_spellings": {
+    "Curl Combo": 1,
+    "CURL COMBO": 1
+   },
+   "status": "resolved_book_formation_ambiguous",
+   "confidence": "med",
+   "playbook": "colts-off",
+   "playbook_name": "Colts",
+   "playbook_in_coach_catalog": null,
+   "formation": null,
+   "formation_candidates": [
+    "Gun Normal Y Off",
+    "Gun Wing HB Wk Close"
+   ],
+   "play_name": "Curl Combo"
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Curl Flat",
+   "raw_spellings": {
+    "Curl Flat": 5
+   },
+   "status": "resolved",
+   "confidence": "med",
+   "playbook": "raiders-off",
+   "playbook_name": "Raiders",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Trio Y-Flex",
+   "formation_candidates": [
+    "Gun Trio Y-Flex"
+   ],
+   "play_name": "Curl Flat",
+   "formation_plays": {
+    "Gun Trio Y-Flex": [
+     "Curl Flat",
+     "Dagger",
+     "Flood Y-Post",
+     "HB Quick Base",
+     "HB Slip Screen",
+     "Inside Zone",
+     "Mesh Dagger",
+     "Mesh Whips",
+     "Mills",
+     "Mtn Mills",
+     "Mtn Shock Slot Dig",
+     "Mtn Stick",
+     "PA Crossers",
+     "PA Dagger",
+     "RPO Alert Bubble",
+     "Shockh Option",
+     "Slot Out",
+     "Verticals"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Dagger Whip",
+   "raw_spellings": {
+    "Dagger Whip": 2
+   },
+   "status": "resolved",
+   "confidence": "med",
+   "playbook": "saints-off",
+   "playbook_name": "Saints",
+   "playbook_in_coach_catalog": "Saints",
+   "formation": "Gun Y Off Trips Nasty",
+   "formation_candidates": [
+    "Gun Y Off Trips Nasty"
+   ],
+   "play_name": "Dagger Whip",
+   "formation_plays": {
+    "Gun Y Off Trips Nasty": [
+     "Counter Y",
+     "Dagger Whip",
+     "Double Cross",
+     "Flood HB Swing",
+     "HB Slip Screen",
+     "Inside Zone",
+     "Mtn Curls Y-Wheel",
+     "Mtn HB Choice",
+     "Mtn HB Out",
+     "PA Double Post",
+     "RPO Read Y Flat",
+     "Slot2buc"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Empty Mtn Flood H-Trail",
+   "raw_spellings": {
+    "Empty Mtn Flood H-Trail": 2
+   },
+   "status": "resolved",
+   "confidence": "med",
+   "playbook": "49ers-off",
+   "playbook_name": "49ers",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Y Off Trio Close",
+   "formation_candidates": [
+    "Gun Y Off Trio Close"
+   ],
+   "play_name": "Empty Mtn Flood H-Trail",
+   "formation_plays": {
+    "Gun Y Off Trio Close": [
+     "0 1 Trap",
+     "Boomerang Mesh Z Rail",
+     "Boomerang PA X Over",
+     "Boomerang RPO Alert Swing",
+     "Bounce Dash Crosser",
+     "Bounce Inside Zone",
+     "Bounce PA Deep Out",
+     "Counter Y",
+     "Dash Flood",
+     "Empty Mtn Flood H-Trail",
+     "Empty Mtn Mesh Flat",
+     "Empty Mtn Salem",
+     "Flood",
+     "HB Pump Draw",
+     "Mtn Inside Zone",
+     "Mtn Mesh Rail",
+     "Mtn PA Cross Switch",
+     "Outside Zone",
+     "PA Power Shallow Cross",
+     "PA Toss Lead Swing Crosser",
+     "Pin Pull Toss",
+     "Power O",
+     "RPO Zone Peek",
+     "Smash Return"
+    ]
+   }
+  },
+  {
+   "game": "madden27",
+   "raw_name": "Four Verticals",
+   "raw_spellings": {
+    "Four Verticals": 3
+   },
+   "status": "resolved",
+   "confidence": "med",
+   "playbook": "bills-off",
+   "playbook_name": "Bills",
+   "playbook_in_coach_catalog": null,
+   "formation": "Gun Doubles HB Wk",
+   "formation_candidates": [
+    "Gun Doubles HB Wk"
+   ],
+   "play_name": "Four Verticals",
+   "formation_plays": {
+    "Gun Doubles HB Wk": [
+     "Boomerang 0 1 Trap",
+     "Boomerang Slot Swing",
+     "Boomerang Y Delay",
+     "Corner Strike",
+     "Curl Combo",
+     "Double Slants",
+     "Four Verticals",
+     "HB Base",
+     "HB Cross Screen",
+     "HB Mid Draw",
+     "HB Slip Screen",
+     "Inside Zone",
+     "PA Y-Cross",
+     "Pin Pull Sweep",
+     "Re",
+     "Read Option"
+    ]
+   }
+  }
+ ]
+}

@@ -18,8 +18,13 @@ high (n >= 30, 5+ VODs, lower bound above the base rate by 0.05) may change
 the call and the book. Weight grows with that tier (med 0.65, high 1.0).
 
 ``CFB_COACH_VOD_MODELS`` is the directory that contains ``LAST_TRAINED.json``
-and ``vX.Y/``. Nothing here hardcodes a machine path. Missing or corrupt
-output is a no-op.
+and ``vX.Y/``. ``play_mappings/LATEST.json`` in that same directory points at
+``v<N>.json``. A med or high cell whose raw call maps to one formation is
+added to the book at prep when that formation is not already there. A book
+the coach does not catalogue is added only when the mapping includes that
+formation's play list. Low-confidence, ambiguous, and missing mapping files
+do nothing. ``live.py`` does not read mappings. Nothing here hardcodes a
+machine path. Missing or corrupt output is a no-op.
 
 ``CFB_COACH_NO_VOD_PRIOR=1`` or ``--no-vod-prior`` turns the prior off (no
 call changes, no book changes). ``CFB_COACH_VOD_FREEZE_BOOK=1`` or
