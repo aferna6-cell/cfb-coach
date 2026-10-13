@@ -29,7 +29,7 @@ import sys
 import tempfile
 import time
 from collections import Counter
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -553,47 +553,233 @@ def run_situation(
             db.close()
 
 
-def _norm_level(value: str) -> str:
-    return " ".join(str(value).casefold().split())
+def _blank_to_none(value: Any) -> Any:
+    """Blank personnel or look text is missing. Other values stay as given."""
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    return value
 
 
-def _first_weight(table: Any, levels: tuple[str, ...]) -> float:
-    if not isinstance(table, dict):
-        return 0.0
-    for level in levels:
-        if level in table:
-            return float(table[level])
-    return 0.0
+def _typed(value: Any) -> dict[str, Any]:
+    return {"value": value, "type": type(value).__name__}
+
+
+def _clock_text(value: Any) -> str | None:
+    if value is None or (isinstance(value, str) and value.strip() == ""):
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        seconds = value
+        return f"{seconds // 60}:{seconds % 60:02d}"
+    text = str(value).strip()
+    return text or None
+
+
+def _situation_text(sit: Any) -> str:
+    """Text the live parser understands. Mapping columns stay out of this string."""
+    from cfb_coach.situation import Situation
+
+    if isinstance(sit, Situation):
+        return sit.raw or ""
+    if isinstance(sit, str):
+        return sit
+    if isinstance(sit, Mapping):
+        named = sit.get("situation", sit.get("sit", sit.get("raw")))
+        if named not in (None, ""):
+            return str(named)
+        parts: list[str] = []
+        down = sit.get("down")
+        distance = sit.get("distance")
+        if down not in (None, "") and distance not in (None, ""):
+            parts.append(f"{down}&{distance}")
+        yardline = sit.get("yardline")
+        if yardline not in (None, ""):
+            parts.append(f"own {yardline}")
+        return " ".join(parts) or "1&10"
+    return str(sit)
+
+
+def _field(source: Mapping[str, Any] | None, key: str, fallback: Any) -> Any:
+    if source is not None and key in source:
+        return source[key]
+    return fallback
+
+
+# Columns ``snap_from_row`` already reads. Pressure is not a column: ``_pressure``
+# derives it from the look text, which is passed as ``look`` / ``coverage_seen``.
+_SNAP_FLAG_COLUMNS = (
+    "off_adjustment",
+    "off_adj",
+    "def_adjustment",
+    "def_adj",
+    "adjustment",
+    "audible",
+)
+
+
+def _snap_flag_values(
+    source: Mapping[str, Any] | None,
+    extras: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Copy trainer flag columns through unchanged. Do not interpret them."""
+    found: dict[str, Any] = {}
+    for key in _SNAP_FLAG_COLUMNS:
+        if source is not None and key in source:
+            found[key] = source[key]
+        elif key in extras:
+            found[key] = extras[key]
+    return found
+
+
+def _offline_context(
+    sit: Any,
+    parsed: Any,
+    *,
+    side_arg: Any,
+    used_side: str,
+    opp_look: Any,
+    bound_look: str | None,
+) -> dict[str, Any]:
+    """Training row plus the raw inputs, before blank and numeric coercion.
+
+    Down and distance are handed to ``snap_from_row`` unchanged, so a CSV
+    string ``\"1\"`` is coerced by the trainer's own ``_int``. Blank personnel
+    and look strings become ``None`` on the training row only.
+
+    ``off_adj``, ``def_adj``, and ``pressure`` are not rebuilt here.
+    ``snap_from_row`` sets the adjustment flags from ``off_adj``,
+    ``off_adjustment``, ``def_adj``, ``def_adjustment``, ``adjustment``, and
+    ``audible``, and sets pressure from the look text. Those columns are
+    copied onto the training row when the caller supplied them. Which side
+    an ``adjustment`` belongs to stays the trainer's ``_side_flag`` rule.
+    """
+    from cfb_coach.situation import Situation
+
+    source = sit if isinstance(sit, Mapping) and not isinstance(sit, Situation) else None
+    extras = getattr(parsed, "extras", None) or {}
+    down = _field(source, "down", getattr(parsed, "down", None))
+    distance = _field(source, "distance", getattr(parsed, "distance", None))
+    yardline = _field(source, "yardline", getattr(parsed, "yardline", None))
+    score_us = _field(source, "score_us", getattr(parsed, "score_us", None))
+    score_them = _field(source, "score_them", getattr(parsed, "score_them", None))
+    quarter = _field(source, "quarter", extras.get("quarter"))
+    clock = _field(source, "clock", extras.get("clock_seconds"))
+    personnel_raw = _field(source, "personnel", extras.get("personnel"))
+    look_raw = opp_look
+    if source is not None and opp_look is None:
+        if "opp_look" in source:
+            look_raw = source["opp_look"]
+        elif "look" in source:
+            look_raw = source["look"]
+    situation = sit if isinstance(sit, str) else (getattr(parsed, "raw", None) or _situation_text(sit))
+    if look_raw is opp_look:
+        look = bound_look
+    else:
+        look = _blank_to_none(look_raw)
+        if isinstance(look, str):
+            stripped = look.strip()
+            look = stripped if stripped else None
+    personnel = _blank_to_none(personnel_raw)
+    text = getattr(parsed, "raw", None) or _situation_text(sit)
+    clock_text = _clock_text(clock)
+    if quarter not in (None, "") or clock_text:
+        suffix = []
+        if quarter not in (None, ""):
+            suffix.append(f"q{quarter}")
+        if clock_text:
+            suffix.append(clock_text)
+        text = f"{text} {' '.join(suffix)}".strip()
+    row: dict[str, Any] = {
+        "game": "madden27",
+        "opponent_type": "human",
+        "side": used_side,
+        "down": down,
+        "distance": distance,
+        "yardline": yardline,
+        "score_us": score_us,
+        "score_them": score_them,
+        "situation_raw": text,
+        "success": None,
+    }
+    if quarter not in (None, ""):
+        row["quarter"] = quarter
+    if clock_text:
+        row["clock"] = clock_text
+    if look is not None:
+        row["look"] = look
+        row["coverage_seen"] = look
+    flags = _snap_flag_values(source, extras)
+    for key, value in flags.items():
+        if _blank_to_none(value) is None:
+            continue
+        row[key] = value
+    if source is not None and "zone" in source and _blank_to_none(source.get("zone")) is not None:
+        row["zone"] = source["zone"]
+    if source is not None and "dist" in source and _blank_to_none(source.get("dist")) is not None:
+        row["dist"] = source["dist"]
+    raw = {
+        "situation": _typed(situation),
+        "down": _typed(down),
+        "distance": _typed(distance),
+        "yardline": _typed(yardline),
+        "score_us": _typed(score_us),
+        "score_them": _typed(score_them),
+        "quarter": _typed(quarter),
+        "clock": _typed(clock),
+        "look": _typed(look_raw),
+        "personnel": _typed(personnel_raw),
+        "side": _typed(side_arg),
+    }
+    for key, value in flags.items():
+        raw[key] = _typed(value)
+    coerced = {"look": look, "personnel": personnel}
+    return {"row": row, "raw": raw, "coerced": coerced}
+
+
+def _candidate_feature_map(row: dict[str, Any], *, formation: str, play: str, side: str) -> dict[str, str]:
+    """One level per group, from the same builder the trainer uses."""
+    from cfb_coach.vod_success.features import feature_map, snap_from_row
+
+    built = dict(row)
+    built["formation"] = formation
+    built["play"] = play
+    built["side"] = side
+    return feature_map(snap_from_row(built))
 
 
 def _candidate_logit(
-    model: dict[str, Any], *, formation: str, play: str, side: str, look: str | None,
-) -> float:
-    """Rank one installed-book candidate from logistic coefficients.
+    models: Sequence[dict[str, Any]],
+    feats: Mapping[str, str],
+) -> tuple[float, dict[str, Any]]:
+    """Intercept plus one weight per training group.
 
-    The intercept is added once. Each coefficient group contributes the first
-    matching level only: the play, then its lower-case form, then formation,
-    side, and the opponent look.
+    The key is the one ``feature_map`` built (``call_x_family`` is
+    ``{call}|{family}``, ``down_x_dist`` is ``{down}|{dist}``). A group the
+    builder omitted, or a key absent from ``coef``, contributes 0.
     """
-    coef = model.get("coef") if isinstance(model.get("coef"), dict) else {}
-    logit = float(model.get("intercept") or 0.0)
-    play_levels = (play, play.lower(), _norm_level(play))
-    form_levels = (formation, formation.lower(), _norm_level(formation))
-    side_levels = (side, side.lower())
-    look_levels: tuple[str, ...] = ()
-    if look:
-        look_levels = (str(look), str(look).lower(), _norm_level(str(look)))
-    logit += _first_weight(coef.get("call"), play_levels)
-    logit += _first_weight(coef.get("formation"), form_levels)
-    logit += _first_weight(coef.get("side"), side_levels)
-    if look_levels:
-        logit += _first_weight(coef.get("look"), look_levels)
-    probes = play_levels + form_levels + side_levels + look_levels
-    for group, table in coef.items():
-        if group in {"call", "formation", "side", "look"}:
-            continue
-        logit += _first_weight(table, probes)
-    return logit
+    from cfb_coach.vod_success.features import ALL_GROUPS
+
+    intercepts = [float(model.get("intercept") or 0.0) for model in models]
+    intercept = sum(intercepts) / float(len(intercepts))
+    groups: dict[str, Any] = {}
+    total = intercept
+    for group in ALL_GROUPS:
+        key = feats.get(group)
+        weights: list[float] = []
+        matched = False
+        for model in models:
+            coef = model.get("coef") if isinstance(model.get("coef"), dict) else {}
+            table = coef.get(group) if isinstance(coef, dict) and isinstance(coef.get(group), dict) else {}
+            if key is not None and key in table:
+                matched = True
+                weights.append(float(table[key]))
+            else:
+                weights.append(0.0)
+        weight = sum(weights) / float(len(weights))
+        groups[group] = {"key": key, "matched": matched, "weight": weight}
+        total += weight
+    return total, {"intercept": intercept, "groups": groups}
 
 
 def _stratum_model(entry: Any, name: str) -> dict[str, Any]:
@@ -689,22 +875,34 @@ def _rank_installed_book(
     book: dict[str, list[str]],
     *,
     side: str,
-    look: str | None,
-) -> tuple[str, str]:
+    context: dict[str, Any],
+) -> tuple[str, str, dict[str, Any]]:
     """Top legal candidate. Out-of-book coefficient names are never candidates."""
-    ranked: list[tuple[float, str, str]] = []
+    ranked: list[tuple[float, str, str, dict[str, Any], bool]] = []
+    call_matches: list[str] = []
     for formation, plays in book.items():
         for play in plays:
-            logits = [
-                _candidate_logit(model, formation=formation, play=play, side=side, look=look)
-                for model in models
-            ]
-            score = sum(logits) / float(len(logits))
-            ranked.append((score, str(formation), str(play)))
+            feats = _candidate_feature_map(
+                context["row"], formation=str(formation), play=str(play), side=side,
+            )
+            score, detail = _candidate_logit(models, feats)
+            matched_call = bool(detail["groups"]["call"]["matched"])
+            if matched_call:
+                call_matches.append(str(play))
+            ranked.append((score, str(formation), str(play), detail, matched_call))
     if not ranked:
         raise ValueError("installed book has no legal candidates")
-    _score, formation, play = min(ranked, key=lambda item: (-item[0], item[1], item[2]))
-    return formation, play
+    _score, formation, play, detail, _matched = min(
+        ranked, key=lambda item: (-item[0], item[1], item[2]),
+    )
+    features = {
+        "intercept": detail["intercept"],
+        "groups": detail["groups"],
+        "raw": context["raw"],
+        "coerced": context["coerced"],
+        "call_matches": call_matches,
+    }
+    return formation, play, features
 
 
 def _offline_call(side: str, formation: str, play: str) -> Any:
@@ -734,6 +932,9 @@ def score_offline_model(
     write. This function does not call ``set_mode``, ``rank_live``, or the
     live shadow/hybrid path, so an unreviewed manifest still returns a pick.
     ``gate_bypassed`` records that the scored_on hybrid gate was not applied.
+    Feature keys come from ``cfb_coach.vod_success.features.feature_map``.
+    ``features`` lists each group's key, whether that key hit a weight, and
+    the weight, plus the raw situation inputs and their Python types.
     """
     if offline_ok is not True:
         raise RuntimeError("offline model scoring requires offline_ok=True")
@@ -749,21 +950,26 @@ def score_offline_model(
         try:
             from cfb_coach.madden.cli import _active_after_prep
             from cfb_coach.madden.franchise import get_session_profile
+            from cfb_coach.situation import Situation
 
             prepare_session(db)
-            parsed = _parse(sit, used_side, opp_look)
+            parsed_input: Any = sit if isinstance(sit, Situation) else _situation_text(sit)
+            parsed = _parse(parsed_input, used_side, opp_look)
             active = _active_after_prep(db, OPPONENT_ID, get_session_profile(db))
             heuristic = _make_call(copy.deepcopy(parsed), db, active, int(seed))
             book = (_installed_books(db).get(used_side) or {})
+            bound_look = (getattr(parsed, "extras", None) or {}).get("opp_look")
+            context = _offline_context(
+                sit, parsed, side_arg=side, used_side=used_side, opp_look=opp_look, bound_look=bound_look,
+            )
             model_started = time.perf_counter()
-            formation, play = _rank_installed_book(
-                models, book, side=used_side, look=(getattr(parsed, "extras", None) or {}).get("opp_look"),
+            formation, play, features = _rank_installed_book(
+                models, book, side=used_side, context=context,
             )
             model_ms = (time.perf_counter() - model_started) * 1000.0
             shown = _offline_call(used_side, formation, play)
             whole_ms = (time.perf_counter() - started) * 1000.0
             record = _call_record(shown, mode="offline")
-            bound_look = (getattr(parsed, "extras", None) or {}).get("opp_look")
             return {
                 **record,
                 "model_version": model_version,
@@ -779,6 +985,7 @@ def score_offline_model(
                 "side": used_side,
                 "situation": getattr(parsed, "raw", "") or "",
                 "opp_look": bound_look,
+                "features": features,
             }
         finally:
             db.close()
