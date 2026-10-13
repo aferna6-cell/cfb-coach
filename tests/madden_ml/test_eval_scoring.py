@@ -591,6 +591,15 @@ class ScoringTests(unittest.TestCase):
             self.assertEqual(payload["model_version"], "v0.21")
             self.assertTrue(payload.get("play"))
             self.assertTrue((payload.get("heuristic") or {}).get("play"))
+            fixture = _ROOT / "tests" / "madden_ml" / "fixtures" / "item3" / "v0.21"
+            total = sum(path.stat().st_size for path in fixture.iterdir() if path.is_file())
+            self.assertLess(total, 200_000)
+            stored = json.loads((fixture / "model_params.json").read_text(encoding="utf-8"))
+            groups = stored["strata"]["madden27/cpu/offense"]["model"]["coef"]
+            self.assertIn("call", groups)
+            self.assertIn("look", groups)
+            self.assertIn("look_family", groups)
+            self.assertLessEqual(len(groups["call"]), 8)
         else:
             with self.assertRaises(FileNotFoundError):
                 scoring.adapt_run_situation({}, mode="heuristic", opp_look=None, side="offense", seed=1)
@@ -602,6 +611,53 @@ class ScoringTests(unittest.TestCase):
                     strata=["madden27/cpu/offense"],
                     offline_ok=True,
                 )
+
+    def test_adapter_coerces_csv_text_and_rejects_a_missing_assigned_look(self):
+        sit = {
+            "raw": "1&10 my 50",
+            "down": "1",
+            "distance": "10",
+            "yardline": "  ",
+            "look_id": "11-nickel",
+        }
+        with self.assertRaises(RuntimeError):
+            scoring.adapt_score_offline_model(
+                sit,
+                side="offense",
+                model_dir=".",
+                strata=["madden27/cpu/offense"],
+                opp_look=None,
+                offline_ok=True,
+            )
+        with tempfile.TemporaryDirectory() as folder:
+            model = Path(folder) / "model"
+            _write_bundle(model, "v0.21")
+            payload = scoring.adapt_score_offline_model(
+                sit,
+                side="offense",
+                model_dir=model,
+                strata=["madden27/cpu/offense"],
+                opp_look={"opp_personnel": "11", "opp_set": "nickel"},
+                offline_ok=True,
+            )
+        diag = payload["input_diagnostics"]
+        self.assertEqual(diag["down_type"], "str")
+        self.assertEqual(diag["distance_type"], "str")
+        self.assertEqual(diag["yardline_type"], "str")
+        self.assertEqual(diag["down"], 1)
+        self.assertEqual(diag["distance"], 10)
+        self.assertIsNone(diag["yardline"])
+        self.assertEqual(diag["opp_look"], {"opp_personnel": "11", "opp_set": "nickel"})
+        self.assertEqual(diag["opp_look_type"], "dict")
+        self.assertEqual(diag["opp_look_raw"], repr(diag["opp_look"]))
+        blank = scoring._prepare_hook_call(
+            {"down": None, "distance": "", "yardline": "12", "look_id": "null"},
+            {"opp_personnel": None, "opp_set": None},
+            "offense",
+        )
+        self.assertEqual(blank["diagnostics"]["down_type"], "NoneType")
+        self.assertIsNone(blank["diagnostics"]["distance"])
+        self.assertEqual(blank["diagnostics"]["yardline"], 12)
 
     def test_report_files_do_not_invent_an_observed_count(self):
         request = _request("one", "offense", "synthetic")

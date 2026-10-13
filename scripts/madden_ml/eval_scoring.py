@@ -993,6 +993,79 @@ def strata_for_side(side: str) -> list[str]:
     return [f"madden27/cpu/{side}", f"madden27/human/{side}"]
 
 
+def _coerce_csv_number(value: Any) -> Any:
+    """CSV text that is an integer becomes an int. Blank text becomes None."""
+    if isinstance(value, str):
+        text = value.strip()
+        if text == "":
+            return None
+        if re.fullmatch(r"-?\d+", text):
+            return int(text)
+        return value
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
+
+
+def _look_was_assigned(sit: Any) -> bool:
+    """True when this row carried a look other than the explicit NULL look."""
+    if not isinstance(sit, Mapping):
+        return False
+    if sit.get("look_assigned") is True:
+        return True
+    look_id = sit.get("look_id")
+    if look_id is None:
+        return False
+    return str(look_id).strip() not in ("", "null")
+
+
+def _prepare_hook_call(sit: Any, opp_look: Any, side: str) -> dict[str, Any]:
+    """Coerce CSV numbers, then record the look value the hook will receive."""
+    types = {"down": "missing", "distance": "missing", "yardline": "missing"}
+    coerced = {"down": None, "distance": None, "yardline": None}
+    hook_sit: Any = sit
+    if isinstance(sit, Mapping):
+        from cfb_coach.madden.situation import parse_madden_situation
+
+        present = {}
+        for key in ("down", "distance", "yardline"):
+            if key not in sit:
+                continue
+            raw_value = sit.get(key)
+            types[key] = type(raw_value).__name__
+            coerced[key] = _coerce_csv_number(raw_value)
+            present[key] = coerced[key]
+        raw = sit.get("raw")
+        if isinstance(raw, str) and raw.strip():
+            parsed = parse_madden_situation(raw, default_side=side)
+            for key, value in present.items():
+                setattr(parsed, key, value)
+            hook_sit = parsed
+        else:
+            hook_sit = {key: sit.get(key) for key in sit}
+            hook_sit.update(present)
+    passed_look = normalize_opp_look(opp_look)
+    if _look_was_assigned(sit) and passed_look is None:
+        raise RuntimeError("opp_look is None on a row where a look was assigned")
+    return {
+        "hook_sit": hook_sit,
+        "opp_look": passed_look,
+        "diagnostics": {
+            "opp_look": passed_look,
+            "opp_look_type": type(passed_look).__name__,
+            "opp_look_raw": repr(passed_look),
+            "down_type": types["down"],
+            "distance_type": types["distance"],
+            "yardline_type": types["yardline"],
+            "down": coerced["down"],
+            "distance": coerced["distance"],
+            "yardline": coerced["yardline"],
+        },
+    }
+
+
 def adapt_score_offline_model(
     sit: Any,
     *,
@@ -1019,17 +1092,20 @@ def adapt_score_offline_model(
     hook = getattr(module, "score_offline_model", None)
     if hook is None:
         raise AttributeError("eval_harness.py has no score_offline_model")
-    return dict(
+    prepared = _prepare_hook_call(sit, opp_look, side)
+    result = dict(
         hook(
-            sit,
+            prepared["hook_sit"],
             side=side,
             model_dir=model_dir,
             strata=checked,
-            opp_look=normalize_opp_look(opp_look),
+            opp_look=prepared["opp_look"],
             seed=int(seed),
             offline_ok=True,
         )
     )
+    result["input_diagnostics"] = prepared["diagnostics"]
+    return result
 
 
 def wilson_interval(successes: int, n: int) -> dict[str, Any]:
@@ -1321,6 +1397,7 @@ def _paired_from_runs(
         "down_and_distance": f"{request.get('down')}|{request.get('distance_bucket')}",
         "field_zone": request.get("field_zone"),
         "yardline": request.get("yardline"),
+        "input_diagnostics": dict(primary.get("input_diagnostics") or {}),
         "live_eligible": (
             bool(primary.get("live_eligible"))
             if "live_eligible" in primary
@@ -1420,7 +1497,13 @@ def evaluate_shadow(
             for seed in _seed_values(int(request["seed"]), seed_count):
                 payload = dict(
                     runner(
-                        request.get("raw"),
+                        {
+                            "raw": request.get("raw"),
+                            "down": request.get("down"),
+                            "distance": request.get("distance"),
+                            "yardline": request.get("yardline"),
+                            "look_id": request.get("look_id"),
+                        },
                         side=side,
                         model_dir=directory,
                         strata=[stratum],
@@ -2322,7 +2405,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--coach-db", type=Path, default=None, help="A different temp CFB_COACH_DB path")
     parser.add_argument("--mode", default="heuristic")
     parser.add_argument("--shadow-model", default=None, help="Manifest label_version to score offline")
-    parser.add_argument("--model-params", type=Path, default=None, help="Directory or model_params.json")
+    parser.add_argument(
+        "--model-params",
+        type=Path,
+        default=None,
+        help="Model directory (manifest.json and model_params.json), such as /workspace/vod_data/models/v0.21",
+    )
     parser.add_argument("--observed-defense", type=Path, default=None)
     parser.add_argument("--seed-count", type=int, default=SEED_COUNT)
     args = parser.parse_args(list(argv) if argv is not None else None)
