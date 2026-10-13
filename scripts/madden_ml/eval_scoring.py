@@ -7,10 +7,15 @@ plus Markdown. The numbers in that report are counts from the rows it scored.
 These are decision-quality checks only. They are not effectiveness claims.
 Nothing here estimates yards, win probability, or whether a call worked.
 
-The live comparison itself is `scripts/madden_ml/eval_harness.py::run_situation`.
-That module may land on another branch. This file calls it through
-`adapt_run_situation` only, so a rebase stays in one function. Tests pass a
-stub runner and do not import the harness.
+The live comparison is reached only through ``adapt_run_situation``, which
+calls ``eval_harness.run_situation``. The offline model is reached only
+through ``adapt_score_offline_model``, which calls
+``eval_harness.score_offline_model`` when that function exists. Until it
+does, that same adapter scores a model directory. Both require the harness
+only from inside those two functions.
+
+A call that passes here passed its defined contextual rules, which cover a
+limited set of decisions.
 """
 
 from __future__ import annotations
@@ -19,8 +24,11 @@ import csv
 import hashlib
 import json
 import math
+import random
 import re
 import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -36,14 +44,21 @@ DISCLAIMER = (
     "These are decision-quality checks only. They are not effectiveness claims."
 )
 
-# Any single formation or call above this share of decisions on a side is flagged.
-SHARE_CAP = 0.25
+CONTEXT_RULES_NOTE = (
+    "A call that passes here passed its defined contextual rules, which cover a limited set of decisions."
+)
 
 BUDGET_MS = 150
+SEED_COUNT = 3
+_WILSON_Z = 1.959963984540054
 
 FIXTURE_DIR = _ROOT / "tests" / "madden_ml" / "fixtures" / "item3"
 SYNTHETIC_FIXTURE = FIXTURE_DIR / "synthetic_grid.json"
 OBSERVED_CSV = FIXTURE_DIR / "presnap_observed_cpu.csv"
+OBSERVED_DEFENSE_CSV = FIXTURE_DIR / "presnap_observed_defense.csv"
+
+# Strata the offline diagnostic is allowed to score. cfb27 is never used.
+_STRATUM_RE = re.compile(r"^madden27/(cpu|human)/(offense|defense)$")
 
 SIDES = ("offense", "defense")
 
@@ -452,10 +467,16 @@ def expand_decision_rows(identities: Sequence[Mapping[str, Any]]) -> list[dict[s
         for look in identity["looks"]:
             row = dict(identity)
             row.pop("looks", None)
-            if source == "observed":
+            if source == "observed" and identity.get("looks_from_file"):
+                tag = identity.get("source_tag") or "observed"
+                row["tags"] = ["observed_situation", tag]
+                row["look_observed"] = True
+            elif source == "observed":
                 row["tags"] = ["observed_situation", "assigned_look"]
+                row["look_observed"] = False
             else:
                 row["tags"] = list(identity["tags"])
+                row["look_observed"] = False
             row["look_id"] = look["look_id"]
             row["opp_personnel"] = look["opp_personnel"]
             row["opp_set"] = look["opp_set"]
@@ -465,14 +486,146 @@ def expand_decision_rows(identities: Sequence[Mapping[str, Any]]) -> list[dict[s
                     "opp_set": look["opp_set"],
                 }
             )
-            row["look_observed"] = False
             row["row_id"] = f"{identity['situation_id']}__{look['look_id']}"
+            row["offensive_personnel"] = offensive_personnel_of(identity)
+            row["fold_id"] = identity.get("fold_id")
+            row["source_tag"] = identity.get("source_tag")
             expanded.append(row)
     return expanded
 
 
-def load_situation_identities() -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Synthetic identities from the builder, plus the CSV when that file is present."""
+def offensive_personnel_of(row: Mapping[str, Any]) -> Any:
+    """Personnel only when the row itself carries it.
+
+    A formation name is not a personnel value. Missing stays None, and the
+    literal ``empty`` is left as ``empty``.
+    """
+    if "offensive_personnel" in row:
+        return _blank_to_none(row.get("offensive_personnel"))
+    if "off_personnel" in row:
+        return _blank_to_none(row.get("off_personnel"))
+    return None
+
+
+def load_observed_defense_csv(path: Path) -> list[dict[str, Any]]:
+    """Optional defense snaps. The file is not required.
+
+    Each row keeps its own ``fold_id``. Opponent personnel and set are taken
+    from their columns. Formation is not read, and personnel is not inferred
+    from a formation name. Score and clock are neutral defaults flagged
+    ``default_filled`` because this file does not carry them.
+    """
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = list(reader.fieldnames or [])
+        required = ("side", "down", "distance", "opp_personnel", "opp_set", "source_tag", "fold_id")
+        missing = [name for name in required if name not in fieldnames]
+        if missing:
+            raise ValueError(f"{path} is missing columns: {', '.join(missing)}")
+        if "yardline" not in fieldnames and "field_zone" not in fieldnames and "yardline/field_zone" not in fieldnames:
+            raise ValueError(f"{path} needs yardline or field_zone")
+        rows: list[dict[str, Any]] = []
+        for index, raw in enumerate(reader, start=1):
+            side = _normalize_side(raw.get("side") or "")
+            down = _exact_int(raw.get("down"), "down")
+            distance = _exact_int(raw.get("distance"), "distance")
+            yardline, zone = _yardline_or_zone(raw)
+            personnel = _blank_to_none(raw.get("opp_personnel"))
+            opp_set = _blank_to_none(raw.get("opp_set"))
+            source_tag = (raw.get("source_tag") or "").strip() or "observed"
+            fold_id = (raw.get("fold_id") or "").strip()
+            if not fold_id:
+                raise ValueError(f"row {index} is missing fold_id")
+            identity = _identity(
+                situation_id=f"obs-def-{index:04d}",
+                side=side,
+                tags=["observed"],
+                source="observed",
+                down=down,
+                distance=distance,
+                yardline=yardline if yardline is not None else 0,
+                field_zone=zone,
+                clock_name="normal",
+                score_name="close",
+                game_id=None,
+                default_filled=["score", "clock"],
+                looks=[
+                    {
+                        "look_id": f"file-{index}",
+                        "opp_personnel": personnel,
+                        "opp_set": opp_set,
+                    }
+                ],
+                look_observed=True,
+                quarter=None,
+                clock_seconds=None,
+                two_minute=False,
+                score_us=0,
+                score_them=0,
+            )
+            if yardline is None:
+                prefix = "d " if side == "defense" else ""
+                identity["yardline"] = None
+                identity["raw"] = f"{prefix}{down}&{distance}".strip()
+            identity["looks_from_file"] = True
+            identity["source_tag"] = source_tag
+            identity["fold_id"] = fold_id
+            identity["offensive_personnel"] = None
+            identity["formation"] = None
+            rows.append(identity)
+    return rows
+
+
+def _yardline_or_zone(raw: Mapping[str, Any]) -> tuple[int | None, str | None]:
+    """Read yardline and field zone from their own columns.
+
+    A combined ``yardline/field_zone`` header is accepted. Digits are a
+    yardline. Any other token is a field-zone label. Neither is invented,
+    and neither is treated as personnel.
+    """
+    yardline = None
+    zone = None
+    if "yardline" in raw and str(raw.get("yardline") or "").strip():
+        yardline = _exact_int(raw.get("yardline"), "yardline")
+    if "field_zone" in raw and str(raw.get("field_zone") or "").strip():
+        zone = str(raw.get("field_zone")).strip()
+    combined = raw.get("yardline/field_zone")
+    if combined is not None and str(combined).strip() and yardline is None and zone is None:
+        text = str(combined).strip()
+        if re.fullmatch(r"-?\d+", text):
+            yardline = int(text)
+        else:
+            zone = text
+    if zone is None and yardline is not None:
+        zone = observed_field_zone(yardline, _exact_int(raw.get("distance"), "distance"))
+    return yardline, zone
+
+
+def _attach_optional_defense(
+    identities: list[dict[str, Any]],
+    note: dict[str, Any],
+    defense_csv: Path | None,
+) -> list[dict[str, Any]]:
+    defense_path = OBSERVED_DEFENSE_CSV if defense_csv is None else Path(defense_csv)
+    note["observed_defense_csv"] = str(defense_path)
+    explicit = defense_csv is not None
+    if explicit and not defense_path.is_file():
+        raise FileNotFoundError(defense_path)
+    note["observed_defense_csv_present"] = defense_path.is_file()
+    if defense_path.is_file():
+        defense_rows = load_observed_defense_csv(defense_path)
+        note["observed_defense_source_rows"] = len(defense_rows)
+        return identities + defense_rows
+    note["observed_defense_source_rows"] = 0
+    return identities
+
+
+def load_situation_identities(
+    defense_csv: Path | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Synthetic identities from the builder, plus a CSV when that file is present."""
     synthetic = build_synthetic_identities()
     note: dict[str, Any] = {
         "observed_csv": str(OBSERVED_CSV),
@@ -483,11 +636,12 @@ def load_situation_identities() -> tuple[list[dict[str, Any]], dict[str, Any]]:
             "presnap_observed_cpu.csv was not in the workspace, so no observed "
             "rows were invented"
         )
-        note["fixture_counts"] = fixture_counts(synthetic)
-        return synthetic, note
+        identities = _attach_optional_defense(synthetic, note, defense_csv)
+        note["fixture_counts"] = fixture_counts(identities)
+        return identities, note
     observed = load_observed_csv(OBSERVED_CSV)
     note["observed_source_rows"] = len(observed)
-    identities = synthetic + observed
+    identities = _attach_optional_defense(synthetic + observed, note, defense_csv)
     note["fixture_counts"] = fixture_counts(identities)
     return identities, note
 
@@ -767,6 +921,31 @@ def apply_context_rules(
 # ---------------------------------------------------------------------------
 
 
+_HARNESS: Any = _UNSET
+_SHADOW_RESOURCES: Any = _UNSET
+_BUNDLES: dict[str, dict[str, Any]] = {}
+
+
+def _harness_module() -> Any:
+    """Load the sibling harness module once. Missing file returns None."""
+    global _HARNESS
+    if _HARNESS is not _UNSET:
+        return _HARNESS
+    path = Path(__file__).with_name("eval_harness.py")
+    if not path.is_file():
+        _HARNESS = None
+        return None
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("madden_ml_eval_harness", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _HARNESS = module
+    return module
+
+
 def adapt_run_situation(
     sit: Mapping[str, Any],
     *,
@@ -780,23 +959,984 @@ def adapt_run_situation(
     ``sit`` is the JSON situation dict this scorer builds. Blank opponent
     looks are NULL before the harness sees them.
     """
-    path = Path(__file__).with_name("eval_harness.py")
-    if not path.is_file():
+    module = _harness_module()
+    if module is None:
         raise FileNotFoundError(
             "scripts/madden_ml/eval_harness.py is not on this branch; "
             "pass a stub runner to evaluate()"
         )
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("madden_ml_eval_harness", path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"cannot load {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
     run = getattr(module, "run_situation", None)
     if run is None:
         raise AttributeError("eval_harness.py has no run_situation")
     return dict(run(sit, mode=mode, opp_look=normalize_opp_look(opp_look), side=side, seed=seed))
+
+
+def limit_strata(strata: Any, side: str) -> list[str]:
+    """Keep ``madden27/cpu/*`` and ``madden27/human/*`` for this side only."""
+    if isinstance(strata, str):
+        items = [strata]
+    else:
+        items = list(strata or [])
+    kept: list[str] = []
+    for item in items:
+        text = str(item)
+        if _STRATUM_RE.fullmatch(text) is None:
+            raise ValueError(
+                f"stratum {text!r} is outside madden27/cpu/* and madden27/human/*"
+            )
+        if not text.endswith("/" + side):
+            raise ValueError(f"stratum {text!r} does not match side {side}")
+        if text not in kept:
+            kept.append(text)
+    if not kept:
+        raise ValueError("no madden27 strata for this side")
+    return kept
+
+
+def strata_for_side(side: str) -> list[str]:
+    return [f"madden27/cpu/{side}", f"madden27/human/{side}"]
+
+
+def adapt_score_offline_model(
+    sit: Any,
+    *,
+    side: str,
+    model_dir: Any,
+    strata: Any,
+    opp_look: Any = None,
+    seed: int = 0,
+    offline_ok: bool = False,
+) -> dict[str, Any]:
+    """The only call into ``eval_harness.score_offline_model``.
+
+    Refuses unless ``offline_ok`` is true. When the harness function is not
+    defined yet, scores the model directory here. Hybrid is not called.
+    """
+    if offline_ok is not True:
+        raise RuntimeError("score_offline_model refuses to run unless offline_ok=True")
+    checked = limit_strata(strata, side)
+    module = _harness_module()
+    hook = getattr(module, "score_offline_model", None) if module is not None else None
+    look = normalize_opp_look(opp_look)
+    if hook is not None:
+        return dict(
+            hook(
+                sit,
+                side=side,
+                model_dir=model_dir,
+                strata=checked,
+                opp_look=look,
+                seed=int(seed),
+                offline_ok=True,
+            )
+        )
+    return _score_offline_locally(
+        sit,
+        side=side,
+        model_dir=model_dir,
+        strata=checked,
+        opp_look=look,
+        seed=int(seed),
+    )
+
+
+def wilson_interval(successes: int, n: int) -> dict[str, Any]:
+    """Wilson score interval at 95%. ``n`` of 0 has no rate and no bounds."""
+    if n <= 0:
+        return {"k": successes, "n": 0, "rate": None, "low": None, "high": None}
+    z = _WILSON_Z
+    phat = successes / n
+    z2 = z * z
+    denom = 1.0 + z2 / n
+    center = (phat + z2 / (2.0 * n)) / denom
+    margin = (z / denom) * math.sqrt((phat * (1.0 - phat) / n) + (z2 / (4.0 * n * n)))
+    return {"k": successes, "n": n, "rate": phat, "low": center - margin, "high": center + margin}
+
+
+def is_vod_derived(row: Mapping[str, Any]) -> bool:
+    """True when a row carries a VOD id. Presnap game ids g1-g4 are not VODs."""
+    for key in ("vod", "video_id", "vod_id"):
+        if row.get(key):
+            return True
+    blob = " ".join(str(row.get(key) or "") for key in ("game_id", "source_tag"))
+    return re.search(r"\bvod[:_-]|video_id", blob, re.I) is not None
+
+
+def load_model_bundle(model_dir: Any) -> dict[str, Any]:
+    """Read ``manifest.json`` and ``model_params.json`` from a directory."""
+    directory = Path(model_dir)
+    if directory.is_file():
+        directory = directory.parent
+    key = str(directory.resolve())
+    cached = _BUNDLES.get(key)
+    if cached is not None:
+        return cached
+    manifest_path = directory / "manifest.json"
+    params_path = directory / "model_params.json"
+    if not manifest_path.is_file() or not params_path.is_file():
+        raise FileNotFoundError(f"{directory} needs manifest.json and model_params.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    params = json.loads(params_path.read_text(encoding="utf-8"))
+    version = manifest.get("label_version")
+    if not version or params.get("label_version") != version:
+        raise ValueError(
+            f"{directory} manifest version {version!r} does not match model_params "
+            f"{params.get('label_version')!r}"
+        )
+    bundle = {
+        "dir": directory,
+        "manifest": manifest,
+        "params": params,
+        "model_version": str(version),
+        "fold_id": manifest.get("fold_id"),
+    }
+    _BUNDLES[key] = bundle
+    return bundle
+
+
+def resolve_fold_dir(model_dir: Path, fold_id: str) -> Path | None:
+    """Per-fold folder that is passed through as ``model_dir``. No match is None."""
+    root = Path(model_dir)
+    for candidate in (root / "folds" / fold_id, root / fold_id):
+        if (candidate / "manifest.json").is_file() and (candidate / "model_params.json").is_file():
+            return candidate
+    return None
+
+
+class _ShadowResources:
+    """One Madden database and a different coach database for heuristic calls."""
+
+    def __init__(self, madden: Path, coach: Path) -> None:
+        if madden.resolve() == coach.resolve():
+            raise ValueError("CFB_COACH_DB and CFB_COACH_MADDEN_DB must be different files")
+        madden.parent.mkdir(parents=True, exist_ok=True)
+        coach.parent.mkdir(parents=True, exist_ok=True)
+        from cfb_coach.db import CoachDB
+        from cfb_coach.madden.cli import _active_after_prep
+        from cfb_coach.madden.franchise import get_session_profile
+
+        self.book = load_installed_book(madden)
+        self.coach_db = CoachDB(coach)
+        self.coach_db.close()
+        self.db = CoachDB(madden)
+        self.active = _active_after_prep(self.db, "gavin", get_session_profile(self.db))
+        self.heuristic_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
+
+
+def set_shadow_databases(madden: Path, coach: Path) -> _ShadowResources:
+    """Use these two different database files for the offline heuristic."""
+    global _SHADOW_RESOURCES
+    resources = _ShadowResources(Path(madden), Path(coach))
+    _SHADOW_RESOURCES = resources
+    return resources
+
+
+def _shadow_resources() -> _ShadowResources:
+    global _SHADOW_RESOURCES
+    if _SHADOW_RESOURCES is _UNSET or _SHADOW_RESOURCES is None:
+        root = Path(tempfile.mkdtemp(prefix="eval-scoring-"))
+        _SHADOW_RESOURCES = _ShadowResources(root / "madden27.db", root / "coach.db")
+    return _SHADOW_RESOURCES
+
+
+def _record_from_call(call: Any, mode: str) -> dict[str, Any]:
+    from cfb_coach.madden.model.schema import MacroState, adapt_macro_state
+
+    explicit = getattr(call, "macro_state", None)
+    if explicit is None:
+        info = getattr(call, "macro_info", None)
+        if isinstance(info, dict):
+            explicit = info.get("state", info.get("macro_state"))
+    state = None
+    if explicit is not None:
+        try:
+            state = adapt_macro_state(explicit).value
+        except (TypeError, ValueError):
+            state = MacroState.UNKNOWN.value
+    elif getattr(call, "macro", None):
+        state = MacroState.ARMED.value
+    adjustment = None
+    macro = getattr(call, "macro", None)
+    if macro and str(macro).strip():
+        adjustment = str(macro).strip()
+    else:
+        adj = getattr(call, "adjustment", None)
+        if isinstance(adj, dict):
+            for key in ("id", "name", "label"):
+                value = adj.get(key)
+                if value and str(value).strip():
+                    adjustment = str(value).strip()
+                    break
+        if adjustment is None:
+            label = str(getattr(call, "adj_or_macro", "") or "").strip()
+            if label.casefold() not in {"", "no adj", "none", "no adjustment"}:
+                adjustment = label or None
+    headline = call.headline() if hasattr(call, "headline") else None
+    return {
+        "formation": getattr(call, "formation", None),
+        "play": getattr(call, "play", None),
+        "adjustment_id": adjustment,
+        "macro_state": state,
+        "display_line": headline,
+        "mode": mode,
+    }
+
+
+def _attach_personnel_look(sit: Any, look: Any) -> None:
+    """Store personnel and set without turning either into a coverage family."""
+    from cfb_coach.madden.model.inference import bind_opp_look
+
+    normalized = normalize_opp_look(look)
+    personnel = None
+    opp_set = None
+    token = None
+    if isinstance(normalized, str):
+        token = normalized
+        if normalized == "empty":
+            personnel = "empty"
+            opp_set = "empty"
+    elif isinstance(normalized, Mapping):
+        personnel = normalized.get("opp_personnel")
+        opp_set = normalized.get("opp_set")
+        if personnel == "empty" and opp_set == "empty":
+            token = "empty"
+    sit.opp_personnel = personnel
+    sit.opp_set = opp_set
+    bind_opp_look(sit, look=token, raw=getattr(sit, "raw", "") or "")
+
+
+def _heuristic_pick(raw: str, side: str, opp_look: Any, seed: int) -> dict[str, Any]:
+    import argparse
+
+    from cfb_coach.madden import playcaller
+    from cfb_coach.madden.cli import _session_live_macros
+    from cfb_coach.madden.situation import parse_madden_situation
+
+    resources = _shadow_resources()
+    cache_key = (raw, side, json.dumps(normalize_opp_look(opp_look), sort_keys=True), int(seed))
+    cached = resources.heuristic_cache.get(cache_key)
+    if cached is not None:
+        return dict(cached)
+    sit = parse_madden_situation(raw, default_side=side)
+    sit.side = side
+    _attach_personnel_look(sit, opp_look)
+    call = playcaller.make_call(
+        sit,
+        "gavin",
+        resources.db,
+        rng=random.Random(int(seed)),
+        active_macros=resources.active,
+        playbook=resources.book,
+        live_macros=_session_live_macros(argparse.Namespace(no_macros=False)),
+    )
+    record = _record_from_call(call, "heuristic")
+    resources.heuristic_cache[cache_key] = record
+    return dict(record)
+
+
+def _feature_row(raw: str, side: str, stratum: str) -> dict[str, Any]:
+    from cfb_coach.madden.situation import parse_madden_situation
+
+    parsed = parse_madden_situation(raw, default_side=side)
+    quarter_match = re.search(r"\bq\s*([1-4])\b", raw, re.I)
+    row: dict[str, Any] = {
+        "game": "madden27",
+        "opponent_type": "cpu" if "/cpu/" in stratum else "human",
+        "side": side,
+        "down": parsed.down,
+        "distance": parsed.distance,
+        "yardline": parsed.yardline,
+        "quarter": int(quarter_match.group(1)) if quarter_match else None,
+        "situation_raw": raw,
+        "success": None,
+    }
+    if parsed.score_us is not None and parsed.score_them is not None:
+        row["score_us"] = parsed.score_us
+        row["score_them"] = parsed.score_them
+    return row
+
+
+def _unique_book_formation(book_side: Mapping[str, Sequence[str]], play: str) -> str | None:
+    """Formation that lists this play, only when exactly one formation does.
+
+    This is a book lookup of the play name. It does not read personnel off
+    the formation name, and it does not choose among several formations.
+    """
+    key = play.casefold()
+    found = [
+        formation
+        for formation, plays in book_side.items()
+        if any(str(item).casefold() == key for item in plays)
+    ]
+    if len(found) == 1:
+        return found[0]
+    return None
+
+
+def _rank_stratum_call(bundle: Mapping[str, Any], stratum: str, raw: str, side: str) -> str | None:
+    from cfb_coach.vod_success.features import feature_map, snap_from_row
+    from cfb_coach.vod_success.glm import LogisticModel
+
+    block = (bundle["params"].get("strata") or {}).get(stratum) or {}
+    fitted = block.get("model") or {}
+    coef = fitted.get("coef") or {}
+    calls = list((coef.get("call") or {}).keys())
+    if not calls or "intercept" not in fitted:
+        return None
+    hyper = fitted.get("hyperparams") or {}
+    model = LogisticModel(
+        float(fitted["intercept"]),
+        coef,
+        (
+            float(hyper.get("lambda_situation", 0.0)),
+            float(hyper.get("lambda_entity", 0.0)),
+            float(hyper.get("lambda_interaction", 0.0)),
+        ),
+    )
+    base = _feature_row(raw, side, stratum)
+    best_key: tuple[float, str] | None = None
+    best_call: str | None = None
+    for call in calls:
+        snap = snap_from_row({**base, "play": call, "success": None})
+        score = model.predict_row(feature_map(snap))
+        key = (-float(score), call)
+        if best_key is None or key < best_key:
+            best_key = key
+            best_call = call
+    return best_call
+
+
+def _score_offline_locally(
+    sit: Any,
+    *,
+    side: str,
+    model_dir: Any,
+    strata: list[str],
+    opp_look: Any,
+    seed: int,
+) -> dict[str, Any]:
+    """Diagnostic rank of one stratum. Does not call the live gate."""
+    if len(strata) != 1:
+        raise ValueError("the offline diagnostic scores one stratum per call")
+    stratum = strata[0]
+    raw = sit if isinstance(sit, str) else str((sit or {}).get("raw") or sit)
+    bundle = load_model_bundle(model_dir)
+    started = time.perf_counter()
+    model_started = time.perf_counter()
+    play = _rank_stratum_call(bundle, stratum, raw, side)
+    model_ms = (time.perf_counter() - model_started) * 1000.0
+    heuristic_error = None
+    try:
+        heuristic = _heuristic_pick(raw, side, opp_look, seed)
+    except Exception as exc:  # noqa: BLE001 — recorded, not swapped for the model pick
+        heuristic = {
+            "formation": None,
+            "play": None,
+            "adjustment_id": None,
+            "macro_state": None,
+            "display_line": None,
+            "mode": "heuristic",
+        }
+        heuristic_error = f"{type(exc).__name__}: {exc}"
+    whole_ms = (time.perf_counter() - started) * 1000.0
+    book_side = _shadow_resources().book.get(side) or {}
+    formation = _unique_book_formation(book_side, play) if play else None
+    fallback = None if play else "stratum_missing"
+    over = whole_ms > BUDGET_MS or model_ms > BUDGET_MS
+    return {
+        "formation": formation,
+        "play": play,
+        "adjustment_id": None,
+        "macro_state": None,
+        "display_line": None,
+        "mode": "shadow",
+        "model_version": bundle["model_version"],
+        "scored_on": "unreviewed",
+        "strata_used": [stratum],
+        "latency_ms": {"whole": whole_ms, "model": model_ms},
+        "budget_ms": BUDGET_MS,
+        "over_budget": over,
+        "gate_bypassed": "offline_eval",
+        "fold_id": bundle.get("fold_id"),
+        "live_eligible": formation is not None and play is not None,
+        "heuristic": heuristic,
+        "fallback_reason": fallback,
+        "heuristic_error": heuristic_error,
+        "seed": int(seed),
+    }
+
+
+def _norm_token(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text.casefold()
+
+
+def _tokens_agree(left: Any, right: Any) -> bool:
+    return _norm_token(left) == _norm_token(right)
+
+
+def _payload_signature(payload: Mapping[str, Any], which: str) -> tuple[Any, Any, Any]:
+    block = payload if which == "model" else (payload.get("heuristic") or {})
+    return (
+        _norm_token(block.get("formation")),
+        _norm_token(block.get("play")),
+        _norm_token(block.get("adjustment_id")),
+    )
+
+
+def _is_model_refusal(payload: Mapping[str, Any]) -> str | None:
+    reason = payload.get("fallback_reason")
+    text = "" if reason is None else str(reason).strip().casefold()
+    if text and text != "ok":
+        return str(reason)
+    if not _norm_token(payload.get("play")):
+        return "no_model_play"
+    return None
+
+
+def _seed_values(seed: int, seed_count: int) -> list[int]:
+    count = max(1, int(seed_count))
+    return [int(seed) + offset for offset in range(count)]
+
+
+def _refused_row(request: Mapping[str, Any], reason: str, *, model_version: str | None, stratum: str | None, model_dir: Any) -> dict[str, Any]:
+    tags = list(request.get("tags") or [])
+    if request.get("side") == "defense" and request.get("source") == "synthetic":
+        for tag in ("synthetic_only", "exploratory"):
+            if tag not in tags:
+                tags.append(tag)
+    return {
+        "row_id": request.get("row_id"),
+        "situation_id": request.get("situation_id"),
+        "side": request.get("side"),
+        "source": request.get("source"),
+        "summary_bucket": "refused",
+        "tags": tags,
+        "stratum": stratum,
+        "model_version": model_version,
+        "manifest_model_version": model_version,
+        "returned_model_version": None,
+        "version_mismatch": False,
+        "fold_id": request.get("fold_id"),
+        "returned_fold_id": None,
+        "fold_mismatch": False,
+        "indicative": False,
+        "outcome": "refused",
+        "refusal_reason": reason,
+        "play_agree": None,
+        "formation_agree": None,
+        "adjustment_agree": None,
+        "gate_bypassed": "offline_eval",
+        "scored_on": "unreviewed",
+        "offensive_personnel": offensive_personnel_of(request),
+        "opp_personnel": (request.get("opp_look") or {}).get("opp_personnel") if isinstance(request.get("opp_look"), Mapping) else None,
+        "opp_set": (request.get("opp_look") or {}).get("opp_set") if isinstance(request.get("opp_look"), Mapping) else None,
+        "formation": None,
+        "model_formation": None,
+        "heuristic_formation": None,
+        "model_play": None,
+        "heuristic_play": None,
+        "model_adjustment": None,
+        "heuristic_adjustment": None,
+        "down": request.get("down"),
+        "distance": request.get("distance"),
+        "distance_bucket": request.get("distance_bucket"),
+        "down_and_distance": f"{request.get('down')}|{request.get('distance_bucket')}",
+        "field_zone": request.get("field_zone"),
+        "yardline": request.get("yardline"),
+        "live_eligible": False,
+        "seed": request.get("seed"),
+        "seed_runs": [],
+        "model_dir": str(model_dir) if model_dir is not None else None,
+        "context_rules_note": CONTEXT_RULES_NOTE,
+    }
+
+
+def _paired_from_runs(
+    request: Mapping[str, Any],
+    stratum: str,
+    bundle: Mapping[str, Any],
+    runs: Sequence[Mapping[str, Any]],
+    book: Mapping[str, Mapping[str, Sequence[str]]],
+    model_dir: Path,
+) -> dict[str, Any]:
+    primary = dict(runs[0])
+    manifest_version = str(bundle["model_version"])
+    returned_version = primary.get("model_version")
+    returned_fold = primary.get("fold_id")
+    our_fold = request.get("fold_id")
+    version_mismatch = returned_version is not None and str(returned_version) != manifest_version
+    fold_mismatch = False
+    if our_fold and returned_fold not in (None, "", our_fold):
+        fold_mismatch = True
+    if bundle.get("fold_id") and our_fold and str(bundle.get("fold_id")) != str(our_fold):
+        fold_mismatch = True
+    indicative = bool(version_mismatch or fold_mismatch)
+    refusal = _is_model_refusal(primary)
+    heuristic = primary.get("heuristic") or {}
+    model_play = primary.get("play")
+    model_formation = primary.get("formation")
+    model_adjustment = primary.get("adjustment_id")
+    if refusal:
+        outcome = "refused"
+        play_agree = formation_agree = adjustment_agree = None
+    else:
+        play_agree = _tokens_agree(model_play, heuristic.get("play"))
+        formation_agree = _tokens_agree(model_formation, heuristic.get("formation"))
+        adjustment_agree = _tokens_agree(model_adjustment, heuristic.get("adjustment_id"))
+        outcome = "same" if play_agree and formation_agree and adjustment_agree else "disagree"
+    tags = list(request.get("tags") or [])
+    if request.get("side") == "defense" and request.get("source") == "synthetic" and not indicative:
+        for tag in ("synthetic_only", "exploratory"):
+            if tag not in tags:
+                tags.append(tag)
+    if indicative and "indicative" not in tags:
+        tags.append("indicative")
+    if indicative:
+        summary_bucket = "indicative"
+    elif refusal:
+        summary_bucket = "refused"
+    else:
+        summary_bucket = "synthetic" if request.get("source") == "synthetic" else "observed"
+    legal, reasons = decision_legal(
+        str(request.get("side")),
+        model_formation,
+        model_play,
+        model_adjustment,
+        primary.get("macro_state"),
+        book,
+    )
+    model_context = apply_context_rules(request, model_formation, model_play) if model_play else []
+    heuristic_context = apply_context_rules(
+        request, heuristic.get("formation"), heuristic.get("play")
+    ) if heuristic.get("play") else []
+    seed_runs = []
+    for payload in runs:
+        seed_runs.append(
+            {
+                "seed": payload.get("seed"),
+                "model": list(_payload_signature(payload, "model")),
+                "heuristic": list(_payload_signature(payload, "heuristic")),
+                "refused": _is_model_refusal(payload) is not None,
+            }
+        )
+    look = request.get("opp_look") if isinstance(request.get("opp_look"), Mapping) else {}
+    # The summary key is the label_version of the manifest that was loaded
+    # for this row (root or per-fold). A hook that returns a different
+    # version flags the row indicative, but does not move it into that
+    # other version's counts.
+    group_version = manifest_version
+    return {
+        "row_id": f"{request.get('row_id')}__{stratum}",
+        "situation_id": request.get("situation_id"),
+        "side": request.get("side"),
+        "source": request.get("source"),
+        "summary_bucket": summary_bucket,
+        "tags": tags,
+        "stratum": stratum,
+        "model_version": group_version,
+        "manifest_model_version": manifest_version,
+        "returned_model_version": None if returned_version is None else str(returned_version),
+        "version_mismatch": version_mismatch,
+        "fold_id": our_fold,
+        "returned_fold_id": returned_fold,
+        "fold_mismatch": fold_mismatch,
+        "indicative": indicative,
+        "outcome": outcome,
+        "refusal_reason": refusal,
+        "play_agree": play_agree,
+        "formation_agree": formation_agree,
+        "adjustment_agree": adjustment_agree,
+        "gate_bypassed": primary.get("gate_bypassed") or "offline_eval",
+        "scored_on": "unreviewed",
+        "offensive_personnel": offensive_personnel_of(request),
+        "opp_personnel": look.get("opp_personnel") if isinstance(look, Mapping) else None,
+        "opp_set": look.get("opp_set") if isinstance(look, Mapping) else None,
+        "formation": model_formation,
+        "model_formation": model_formation,
+        "heuristic_formation": heuristic.get("formation"),
+        "model_play": model_play,
+        "heuristic_play": heuristic.get("play"),
+        "model_adjustment": model_adjustment,
+        "heuristic_adjustment": heuristic.get("adjustment_id"),
+        "down": request.get("down"),
+        "distance": request.get("distance"),
+        "distance_bucket": request.get("distance_bucket"),
+        "down_and_distance": f"{request.get('down')}|{request.get('distance_bucket')}",
+        "field_zone": request.get("field_zone"),
+        "yardline": request.get("yardline"),
+        "live_eligible": bool(primary.get("live_eligible")),
+        "legal_our": legal,
+        "legal_reasons": reasons,
+        "model_context": model_context,
+        "heuristic_context": heuristic_context,
+        "seed": request.get("seed"),
+        "seed_runs": seed_runs,
+        "latency_ms": primary.get("latency_ms"),
+        "over_budget": primary.get("over_budget"),
+        "model_dir": str(model_dir),
+        "context_rules_note": CONTEXT_RULES_NOTE,
+    }
+
+
+def evaluate_shadow(
+    identities: Sequence[Mapping[str, Any]],
+    runner: Callable[..., Mapping[str, Any]],
+    book: Mapping[str, Mapping[str, Sequence[str]]],
+    *,
+    model_dir: Path,
+    requested_version: str | None = None,
+    seed_count: int = SEED_COUNT,
+    inventory_note: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Score each situation with the offline hook. Versions are not pooled."""
+    root = load_model_bundle(model_dir)
+    if requested_version is not None and root["model_version"] != requested_version:
+        raise ValueError(
+            f"manifest label_version is {root['model_version']!r}, not {requested_version!r}"
+        )
+    decisions: list[dict[str, Any]] = []
+    excluded: list[str] = []
+    for request in expand_decision_rows(identities):
+        if is_vod_derived(request):
+            excluded.append(str(request.get("situation_id")))
+            continue
+        side = str(request["side"])
+        fold_id = request.get("fold_id")
+        if fold_id:
+            fold_dir = resolve_fold_dir(root["dir"], str(fold_id))
+            if fold_dir is None:
+                decisions.append(
+                    _refused_row(
+                        request,
+                        "no_matching_fold",
+                        model_version=None,
+                        stratum=None,
+                        model_dir=root["dir"],
+                    )
+                )
+                continue
+            try:
+                bundle = load_model_bundle(fold_dir)
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                decisions.append(
+                    _refused_row(
+                        request,
+                        f"no_matching_fold: {exc}",
+                        model_version=None,
+                        stratum=None,
+                        model_dir=fold_dir,
+                    )
+                )
+                continue
+            if bundle.get("fold_id") and str(bundle["fold_id"]) != str(fold_id):
+                decisions.append(
+                    _refused_row(
+                        request,
+                        "no_matching_fold",
+                        model_version=bundle["model_version"],
+                        stratum=None,
+                        model_dir=fold_dir,
+                    )
+                )
+                continue
+            directory = fold_dir
+        else:
+            bundle = root
+            directory = root["dir"]
+        for stratum in strata_for_side(side):
+            if stratum not in (bundle["params"].get("strata") or {}):
+                decisions.append(
+                    _refused_row(
+                        request,
+                        "no_matching_fold" if fold_id else "stratum_missing",
+                        model_version=bundle["model_version"],
+                        stratum=stratum,
+                        model_dir=directory,
+                    )
+                )
+                continue
+            runs = []
+            for seed in _seed_values(int(request["seed"]), seed_count):
+                payload = dict(
+                    runner(
+                        request.get("raw"),
+                        side=side,
+                        model_dir=directory,
+                        strata=[stratum],
+                        opp_look=request.get("opp_look"),
+                        seed=seed,
+                        offline_ok=True,
+                    )
+                )
+                payload.setdefault("seed", seed)
+                runs.append(payload)
+            decisions.append(_paired_from_runs(request, stratum, bundle, runs, book, directory))
+    return {
+        "disclaimer": DISCLAIMER,
+        "context_rules_note": CONTEXT_RULES_NOTE,
+        "budget_ms": BUDGET_MS,
+        "rules": scoring_rules(),
+        "inventory_note": dict(inventory_note or {}),
+        "requested_model_version": requested_version or root["model_version"],
+        "summary_grouped_by": "loaded_manifest_label_version",
+        "vod_derived_excluded": excluded,
+        "vod_derived_in_sample": [],
+        "by_model_version": _shadow_by_version(decisions),
+        "decisions": decisions,
+    }
+
+
+def _shadow_by_version(decisions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    versions: dict[str, list[Mapping[str, Any]]] = {}
+    unversioned_refused = [row for row in decisions if row.get("model_version") in (None, "")]
+    for row in decisions:
+        version = row.get("model_version")
+        if version in (None, ""):
+            continue
+        versions.setdefault(str(version), []).append(row)
+    out: dict[str, Any] = {}
+    for version, rows in versions.items():
+        out[version] = {
+            "model_version": version,
+            "grouped_by": "loaded_manifest_label_version",
+            "by_side": {
+                side: _shadow_side(side, [row for row in rows if row.get("side") == side])
+                for side in SIDES
+            },
+        }
+    out["refused_without_version"] = {
+        "n": len(unversioned_refused),
+        "by_reason": _count_reasons(unversioned_refused),
+    }
+    return out
+
+
+def _shadow_side(side: str, rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    blocks = {}
+    for bucket in ("synthetic", "observed", "indicative", "refused"):
+        chosen = [row for row in rows if row.get("summary_bucket") == bucket]
+        blocks[bucket] = _shadow_block(chosen)
+    if side == "defense":
+        blocks["synthetic_diff_tags"] = ["synthetic_only", "exploratory"]
+        blocks["indicative_kept_separate"] = True
+    return blocks
+
+
+def _shadow_block(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    scored = [row for row in rows if row.get("outcome") in {"same", "disagree"}]
+    refused = [row for row in rows if row.get("outcome") == "refused"]
+    by_stratum = {}
+    strata = sorted({str(row.get("stratum")) for row in rows if row.get("stratum")})
+    for stratum in strata:
+        stratum_rows = [row for row in rows if row.get("stratum") == stratum]
+        by_stratum[stratum] = _agreement_block(stratum_rows)
+    return {
+        "n": len(rows),
+        "refused": _agreement_block(refused)["refused"] if refused else {"n": 0, "by_reason": {}},
+        "scored_n": len(scored),
+        "by_stratum": by_stratum,
+        "pooled_across_strata": False,
+    }
+
+
+def _agreement_block(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    refused = [row for row in rows if row.get("outcome") == "refused"]
+    same = [row for row in rows if row.get("outcome") == "same"]
+    disagree = [row for row in rows if row.get("outcome") == "disagree"]
+    scored = same + disagree
+    play_k = sum(1 for row in scored if row.get("play_agree") is False)
+    formation_k = sum(1 for row in scored if row.get("formation_agree") is False)
+    adjustment_k = sum(1 for row in scored if row.get("adjustment_agree") is False)
+    joint = wilson_interval(len(disagree), len(scored))
+    return {
+        "n": len(rows),
+        "same": len(same),
+        "disagree": len(disagree),
+        "refused": {"n": len(refused), "by_reason": _count_reasons(refused)},
+        "play_disagree": play_k,
+        "formation_disagree": formation_k,
+        "adjustment_disagree": adjustment_k,
+        "disagreement": joint,
+        "play_disagreement": wilson_interval(play_k, len(scored)),
+        "by_down_and_distance": _split_disagreement(scored, "down_and_distance"),
+        "by_field_zone": _split_disagreement(scored, "field_zone"),
+        "by_opp_personnel": _bucket_quality(scored, "opp_personnel"),
+        "by_offensive_personnel": _bucket_quality(scored, "offensive_personnel"),
+        "by_down_and_distance_quality": _bucket_quality(scored, "down_and_distance"),
+        "by_field_zone_quality": _bucket_quality(scored, "field_zone"),
+        "seed_noise": _seed_noise(rows),
+        "penalty": None,
+    }
+
+
+def _count_reasons(rows: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        reason = str(row.get("refusal_reason") or "refused")
+        counts[reason] = counts.get(reason, 0) + 1
+    return counts
+
+
+def _split_disagreement(rows: Sequence[Mapping[str, Any]], key: str) -> list[dict[str, Any]]:
+    groups: dict[Any, list[Mapping[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(row.get(key), []).append(row)
+    out = []
+    for value, group in sorted(groups.items(), key=lambda item: str(item[0])):
+        disagree = sum(1 for row in group if row.get("outcome") == "disagree")
+        out.append({"value": value, "disagreement": wilson_interval(disagree, len(group))})
+    return out
+
+
+def _bucket_quality(rows: Sequence[Mapping[str, Any]], key: str) -> list[dict[str, Any]]:
+    groups: dict[Any, list[Mapping[str, Any]]] = {}
+    for row in rows:
+        groups.setdefault(row.get(key), []).append(row)
+    out = []
+    for value, group in sorted(groups.items(), key=lambda item: str(item[0])):
+        out.append(
+            {
+                "value": value,
+                "n": len(group),
+                "heuristic": _caller_quality(group, "heuristic"),
+                "model": _caller_quality(group, "model"),
+                "penalty": None,
+            }
+        )
+    return out
+
+
+def _caller_quality(rows: Sequence[Mapping[str, Any]], caller: str) -> dict[str, Any]:
+    formation_key = "heuristic_formation" if caller == "heuristic" else "model_formation"
+    context_key = "heuristic_context" if caller == "heuristic" else "model_context"
+    play_key = "heuristic_play" if caller == "heuristic" else "model_play"
+    usable = [row for row in rows if row.get(play_key)]
+    counts: dict[Any, int] = {}
+    for row in usable:
+        counts[row.get(formation_key)] = counts.get(row.get(formation_key), 0) + 1
+    return {
+        "n": len(usable),
+        "formation_usage": _usage_shares(counts),
+        "rules": _rule_pass_rates(usable, context_key),
+    }
+
+
+def _rule_pass_rates(rows: Sequence[Mapping[str, Any]], context_key: str) -> list[dict[str, Any]]:
+    rates = []
+    for rule in scoring_rules():
+        applies = passed = 0
+        for row in rows:
+            match = next((item for item in row.get(context_key) or [] if item.get("id") == rule["id"]), None)
+            if match is None or not match.get("applies"):
+                continue
+            applies += 1
+            if match.get("passed"):
+                passed += 1
+        rates.append(
+            {
+                "id": rule["id"],
+                "applies": applies,
+                "passed": passed,
+                "pass_rate": _rate(passed, applies),
+            }
+        )
+    return rates
+
+
+def _seed_noise(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """How often a pick changes across seeds, and how often it changes across situations."""
+    out = {}
+    for caller in ("model", "heuristic"):
+        comparable = []
+        seed_shift = 0
+        primary_sigs = []
+        for row in rows:
+            runs = [item for item in row.get("seed_runs") or [] if not item.get("refused")]
+            if len(runs) < 1:
+                continue
+            signatures = [tuple(item.get(caller) or []) for item in runs]
+            comparable.append(row)
+            if len(set(signatures)) > 1:
+                seed_shift += 1
+            primary_sigs.append(signatures[0])
+        n = len(comparable)
+        distinct = len(set(primary_sigs))
+        modal = 0
+        if primary_sigs:
+            modal = max(primary_sigs.count(sig) for sig in set(primary_sigs))
+        situation_shift = (n - modal) / n if n else None
+        out[caller] = {
+            "n": n,
+            "seeds_compared": max((len(row.get("seed_runs") or []) for row in comparable), default=0),
+            "seed_shift_n": seed_shift,
+            "seed_shift_rate": (seed_shift / n) if n else None,
+            "distinct_situation_picks": distinct,
+            "situation_shift_rate": situation_shift,
+        }
+    return out
+
+
+def _render_shadow_markdown(report: Mapping[str, Any]) -> str:
+    lines = [
+        "# Offline shadow decision-quality",
+        "",
+        report["disclaimer"],
+        "",
+        report.get("context_rules_note") or CONTEXT_RULES_NOTE,
+        "",
+        "Formation usage shares and contextual-rule pass rates are reported side by side.",
+        "No share penalty is applied.",
+        "A refused or fallback row is its own bucket and is not counted as the same as the heuristic.",
+        "Every summary is grouped by the model_version on the manifest that was loaded for those rows.",
+        "Observed-defense rows scored with a per-fold fit are reported under that fold manifest's model_version and are not pooled with any other model_version.",
+        "Indicative rows, where the returned version or fold does not match, stay out of the synthetic exploratory counts.",
+        "",
+        f"Requested model version: {report.get('requested_model_version')}",
+        f"VOD-derived rows excluded: {len(report.get('vod_derived_excluded') or [])}",
+        "",
+    ]
+    versions = report.get("by_model_version") or {}
+    for version, block in versions.items():
+        if version == "refused_without_version":
+            lines.append(f"## Refused before a model version was loaded: {block.get('n')}")
+            lines.append("")
+            lines.append(json.dumps(block.get("by_reason") or {}, sort_keys=True))
+            lines.append("")
+            continue
+        lines.append(f"## Model version {version}")
+        lines.append("")
+        for side, side_block in (block.get("by_side") or {}).items():
+            lines.append(f"### {side}")
+            lines.append("")
+            for bucket in ("synthetic", "observed", "indicative", "refused"):
+                part = side_block.get(bucket) or {}
+                lines.append(f"#### {bucket}")
+                lines.append("")
+                lines.append(f"- rows: {part.get('n')}")
+                lines.append(f"- scored: {part.get('scored_n')}")
+                for stratum, stats in (part.get("by_stratum") or {}).items():
+                    disagreement = stats.get("disagreement") or {}
+                    lines.append(
+                        f"- {stratum}: same {stats.get('same')} disagree {stats.get('disagree')} "
+                        f"refused {stats.get('refused', {}).get('n')} "
+                        f"disagreement {disagreement.get('k')}/{disagreement.get('n')} "
+                        f"95% CI {disagreement.get('low')} .. {disagreement.get('high')}"
+                    )
+                    noise = stats.get("seed_noise") or {}
+                    for caller, caller_noise in noise.items():
+                        lines.append(
+                            f"  - {caller} seed shift {caller_noise.get('seed_shift_n')}/{caller_noise.get('n')} "
+                            f"situation shift {caller_noise.get('situation_shift_rate')}"
+                        )
+                lines.append("")
+    lines.append("Paired rows are in `paired_rows.jsonl`.")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def evaluate(
@@ -837,7 +1977,7 @@ def build_report(
     summary = summarize(scored, book)
     return {
         "disclaimer": DISCLAIMER,
-        "share_cap": SHARE_CAP,
+        "context_rules_note": CONTEXT_RULES_NOTE,
         "budget_ms": BUDGET_MS,
         "rules": scoring_rules(),
         "inventory_note": dict(inventory_note or {}),
@@ -910,6 +2050,9 @@ def _score_prepared(
         "propensity": first["propensity"],
         "context": context,
         "context_failed": context_failed,
+        "gate_bypassed": first.get("gate_bypassed"),
+        "offensive_personnel": offensive_personnel_of(request),
+        "stratum": request.get("stratum"),
     }
 
 
@@ -958,6 +2101,7 @@ def _normalize_harness(raw: Mapping[str, Any]) -> dict[str, Any]:
         "propensity": raw.get("propensity"),
         "opp_look": normalize_opp_look(raw.get("opp_look")),
         "seed": int(seed) if isinstance(seed, int) or (isinstance(seed, str) and str(seed).isdigit()) else seed,
+        "gate_bypassed": raw.get("gate_bypassed"),
     }
 
 
@@ -1133,13 +2277,6 @@ def _diversity(
         used_calls += 1
     call_share = _top_share(call_counts)
     formation_share = _top_share(formation_counts)
-    flagged = bool(
-        (call_share["top_share"] is not None and call_share["top_share"] > SHARE_CAP)
-        or (
-            formation_share["top_share"] is not None
-            and formation_share["top_share"] > SHARE_CAP
-        )
-    )
     return {
         "eligible_calls": len(eligible_calls),
         "eligible_formations": len(eligible_formations),
@@ -1154,9 +2291,22 @@ def _diversity(
         "top_call": call_share["top"],
         "top_formation_share": formation_share["top_share"],
         "top_formation": formation_share["top"],
-        "share_cap": SHARE_CAP,
-        "top_share_flag": flagged,
+        "formation_usage": _usage_shares(formation_counts),
     }
+
+
+def _usage_shares(counts: Mapping[Any, int]) -> list[dict[str, Any]]:
+    """Formation or call shares. No threshold and no penalty."""
+    total = sum(counts.values())
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], str(item[0])))
+    return [
+        {
+            "value": key,
+            "n": count,
+            "share": (count / total) if total else None,
+        }
+        for key, count in ranked
+    ]
 
 
 def _top_share(counts: Mapping[Any, int]) -> dict[str, Any]:
@@ -1270,6 +2420,8 @@ def _latency_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 def render_markdown(report: Mapping[str, Any]) -> str:
+    if "by_model_version" in report:
+        return _render_shadow_markdown(report)
     lines = [
         "# Coordinator decision-quality evaluation",
         "",
@@ -1278,7 +2430,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         "Display lines are copied from the harness so a reader can see them. Agreement is formation and play, not formatting.",
         "Context rules are applied to the new decision. The old decision is the paired caller, not a second effectiveness score.",
         "",
-        f"Share cap: {report['share_cap']}",
+        report.get("context_rules_note") or CONTEXT_RULES_NOTE,
         "",
         f"Latency budget: {report['budget_ms']} ms",
         "",
@@ -1325,7 +2477,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
             lines.append(f"- formation entropy bits: {diversity['formation_entropy_bits']}")
             lines.append(f"- top call share: {diversity['top_call_share']}")
             lines.append(f"- top formation share: {diversity['top_formation_share']}")
-            lines.append(f"- top share flag (cap {diversity['share_cap']}): {diversity['top_share_flag']}")
+            lines.append(f"- formation usage: {json.dumps(diversity['formation_usage'], sort_keys=True)}")
             for rule in block["rules"]:
                 lines.append(
                     f"- rule {rule['id']}: applies {rule['applies']}, "
@@ -1392,13 +2544,17 @@ def _cell(value: Any) -> str:
     return str(value).replace("|", "/")
 
 
-def write_report(report: Mapping[str, Any], out_dir: Path) -> tuple[Path, Path]:
+def write_report(report: Mapping[str, Any], out_dir: Path) -> tuple[Path, Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / "eval_scoring.json"
     md_path = out_dir / "eval_scoring.md"
+    jsonl_path = out_dir / "paired_rows.jsonl"
     json_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     md_path.write_text(render_markdown(report), encoding="utf-8")
-    return json_path, md_path
+    with jsonl_path.open("w", encoding="utf-8") as handle:
+        for row in report.get("decisions") or []:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+    return json_path, md_path, jsonl_path
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1407,17 +2563,41 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Score coordinator decisions against the old caller.")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--db", type=Path, required=True, help="Temp CFB_COACH_MADDEN_DB path")
+    parser.add_argument("--coach-db", type=Path, default=None, help="A different temp CFB_COACH_DB path")
     parser.add_argument("--mode", default="heuristic")
+    parser.add_argument("--shadow-model", default=None, help="Manifest label_version to score offline")
+    parser.add_argument("--model-params", type=Path, default=None, help="Directory or model_params.json")
+    parser.add_argument("--observed-defense", type=Path, default=None)
+    parser.add_argument("--seed-count", type=int, default=SEED_COUNT)
     args = parser.parse_args(list(argv) if argv is not None else None)
-    identities, note = load_situation_identities()
-    book = load_installed_book(args.db)
-    report = evaluate(
-        identities,
-        adapt_run_situation,
-        book,
-        mode=args.mode,
-        inventory_note={**note, **{"fixture_counts": fixture_counts(identities)}},
-    )
+    coach = args.coach_db
+    if coach is None:
+        coach = args.db.parent / "coach.db"
+    if coach.resolve() == args.db.resolve():
+        coach = args.db.with_name("coach-session.db")
+    identities, note = load_situation_identities(defense_csv=args.observed_defense)
+    if args.shadow_model:
+        if args.model_params is None:
+            raise SystemExit("--model-params is required with --shadow-model")
+        resources = set_shadow_databases(args.db, coach)
+        report = evaluate_shadow(
+            identities,
+            adapt_score_offline_model,
+            resources.book,
+            model_dir=args.model_params,
+            requested_version=args.shadow_model,
+            seed_count=args.seed_count,
+            inventory_note={**note, **{"fixture_counts": fixture_counts(identities)}},
+        )
+    else:
+        book = load_installed_book(args.db)
+        report = evaluate(
+            identities,
+            adapt_run_situation,
+            book,
+            mode=args.mode,
+            inventory_note={**note, **{"fixture_counts": fixture_counts(identities)}},
+        )
     write_report(report, args.out)
     return 0
 

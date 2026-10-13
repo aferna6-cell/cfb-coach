@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import csv
 import importlib.util
 import json
@@ -301,7 +302,10 @@ class BookAndRuleTests(unittest.TestCase):
                 "trailing_late_no_prevent",
             ],
         )
-        self.assertEqual(scoring.SHARE_CAP, 0.25)
+        self.assertIn(
+            "passed its defined contextual rules, which cover a limited set of decisions.",
+            scoring.CONTEXT_RULES_NOTE,
+        )
         short_goal = {
             "side": "offense",
             "down": 3,
@@ -399,7 +403,7 @@ class ScoringTests(unittest.TestCase):
 
         report = scoring.evaluate(identities, runner, self.book, mode="heuristic")
         self.assertEqual(report["disclaimer"], scoring.DISCLAIMER)
-        self.assertEqual(report["share_cap"], 0.25)
+        self.assertNotIn("share_cap", report)
         offense = report["summary"]["by_side"]["offense"]["synthetic"]
         defense = report["summary"]["by_side"]["defense"]["synthetic"]
         self.assertEqual(offense["n"], 36 * 4)
@@ -409,8 +413,9 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(defense["play_agree"], 36 * 4)
         self.assertEqual(offense["hard_fail"], 0)
         self.assertEqual(offense["adjustment_legal"], 36 * 4)
-        self.assertTrue(offense["diversity"]["top_share_flag"])
+        self.assertNotIn("top_share_flag", offense["diversity"])
         self.assertGreater(offense["diversity"]["top_call_share"], 0.25)
+        self.assertTrue(offense["diversity"]["formation_usage"])
         adapt = report["summary"]["adaptation"]
         self.assertEqual(adapt["offense:synthetic"]["adapted"], 36)
         self.assertEqual(adapt["offense:synthetic"]["seed_noise"], 0)
@@ -443,7 +448,7 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(block["seed_noise"], 1)
         self.assertEqual(block["adapted"], 0)
 
-    def test_share_cap_flags_only_above_one_quarter(self):
+    def test_usage_shares_are_reported_without_a_penalty(self):
         pairs = [
             ("Pistol Trips", "HB Dive"),
             ("Pistol Deuce Close", "HB Dive"),
@@ -464,15 +469,18 @@ class ScoringTests(unittest.TestCase):
         report = scoring.build_report(prepared, self.book)
         diversity = report["summary"]["by_side"]["offense"]["synthetic"]["diversity"]
         self.assertEqual(diversity["top_call_share"], 0.25)
-        self.assertFalse(diversity["top_share_flag"])
+        self.assertNotIn("top_share_flag", diversity)
+        self.assertNotIn("share_cap", diversity)
+        self.assertIsNone(diversity.get("penalty"))
         self.assertEqual(diversity["call_entropy_bits"], 2.0)
+        self.assertEqual(sum(item["n"] for item in diversity["formation_usage"]), 4)
 
         prepared[1]["first"]["new"] = _call("Pistol Trips", "HB Dive")
         prepared[1]["second"]["new"] = _call("Pistol Trips", "HB Dive")
         crowded = scoring.build_report(prepared, self.book)
         crowded_div = crowded["summary"]["by_side"]["offense"]["synthetic"]["diversity"]
         self.assertGreater(crowded_div["top_call_share"], 0.25)
-        self.assertTrue(crowded_div["top_share_flag"])
+        self.assertNotIn("top_share_flag", crowded_div)
 
     def test_outside_book_and_unarmed_macro_are_hard_fails(self):
         request = _request("bad-1", "offense", "synthetic")
@@ -531,10 +539,46 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(report["decisions"][3]["over_budget"], True)
 
     def test_adapter_is_the_only_harness_door_and_it_is_absent(self):
+        source = (_ROOT / "scripts" / "madden_ml" / "eval_scoring.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        allowed: set[int] = set()
+        for node in tree.body:
+            if isinstance(node, ast.Expr) and isinstance(getattr(node, "value", None), ast.Constant):
+                allowed.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+            if isinstance(node, ast.FunctionDef) and node.name in {
+                "_harness_module",
+                "adapt_run_situation",
+                "adapt_score_offline_model",
+            }:
+                allowed.update(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+        needles = ("eval_harness", '"run_situation"', "'run_situation'", '"score_offline_model"', "'score_offline_model'")
+        for lineno, line in enumerate(source.splitlines(), start=1):
+            if any(needle in line for needle in needles):
+                self.assertIn(lineno, allowed, line)
+        self.assertNotIn("nothing ignored the game situation", source)
+        with self.assertRaises(RuntimeError):
+            scoring.adapt_score_offline_model(
+                "1&10",
+                side="offense",
+                model_dir=".",
+                strata=["madden27/cpu/offense"],
+                offline_ok=False,
+            )
+        with self.assertRaises(ValueError):
+            scoring.adapt_score_offline_model(
+                "1&10",
+                side="offense",
+                model_dir=".",
+                strata=["cfb27/cpu/offense"],
+                offline_ok=True,
+            )
         harness = _ROOT / "scripts" / "madden_ml" / "eval_harness.py"
-        self.assertFalse(harness.is_file())
-        with self.assertRaises(FileNotFoundError):
-            scoring.adapt_run_situation({}, mode="heuristic", opp_look=None, side="offense", seed=1)
+        if harness.is_file():
+            harness_text = harness.read_text(encoding="utf-8")
+            self.assertIn("def run_situation", harness_text)
+        else:
+            with self.assertRaises(FileNotFoundError):
+                scoring.adapt_run_situation({}, mode="heuristic", opp_look=None, side="offense", seed=1)
 
     def test_report_files_do_not_invent_an_observed_count(self):
         request = _request("one", "offense", "synthetic")
@@ -546,14 +590,276 @@ class ScoringTests(unittest.TestCase):
             inventory_note={"observed_csv_present": False},
         )
         with tempfile.TemporaryDirectory() as folder:
-            json_path, md_path = scoring.write_report(report, Path(folder))
+            json_path, md_path, jsonl_path = scoring.write_report(report, Path(folder))
             payload = json.loads(json_path.read_text(encoding="utf-8"))
             text = md_path.read_text(encoding="utf-8")
-        self.assertEqual(payload["share_cap"], 0.25)
+            self.assertTrue(jsonl_path.is_file())
+        self.assertNotIn("share_cap", payload)
         self.assertEqual(payload["disclaimer"], scoring.DISCLAIMER)
+        self.assertIn("passed its defined contextual rules, which cover a limited set of decisions.", text)
+        self.assertNotIn("nothing ignored the game situation", text)
         self.assertIn("no_deep_shot_on_short_or_goal_line", text)
-        self.assertIn("0.25", text)
         self.assertNotIn("161", text)
+
+
+class ShadowTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        madden = Path(cls._tmp.name) / "madden27.db"
+        coach = Path(cls._tmp.name) / "coach.db"
+        cls.resources = scoring.set_shadow_databases(madden, coach)
+        cls.book = cls.resources.book
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_stub_keeps_refusal_folds_and_versions_apart(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            _write_bundle(root, "v0.21")
+            _write_bundle(root / "folds" / "foldA", "v0.24", fold_id="foldA")
+            _write_bundle(root / "folds" / "foldB", "v0.24", fold_id="foldB")
+            seen = []
+
+            def score_offline_model(sit, *, side, model_dir, strata, opp_look=None, seed=0, offline_ok=False):
+                if offline_ok is not True:
+                    raise RuntimeError("offline_ok")
+                directory = Path(model_dir)
+                manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+                seen.append(
+                    {
+                        "side": side,
+                        "model_dir": directory,
+                        "strata": list(strata),
+                        "opp_look": opp_look,
+                        "seed": seed,
+                    }
+                )
+                version = manifest["label_version"]
+                if "MISMATCH" in str(sit):
+                    version = "v0.21"
+                refused = "REFUSE" in str(sit)
+                return {
+                    "formation": None,
+                    "play": None if refused else ("HB Dive" if int(seed) % 2 == 0 else "Verticals"),
+                    "adjustment_id": None,
+                    "macro_state": None,
+                    "display_line": "stub",
+                    "mode": "shadow",
+                    "model_version": version,
+                    "scored_on": "reviewed",
+                    "strata_used": list(strata),
+                    "latency_ms": {"whole": 4.0, "model": 1.0},
+                    "budget_ms": 150,
+                    "over_budget": False,
+                    "gate_bypassed": "offline_eval",
+                    "fold_id": manifest.get("fold_id"),
+                    "live_eligible": False,
+                    "fallback_reason": "timeout" if refused else None,
+                    "heuristic": {
+                        "formation": "Gun Trips X Nasty",
+                        "play": "Inside Zone",
+                        "adjustment_id": None,
+                        "macro_state": None,
+                        "display_line": "heuristic",
+                        "mode": "heuristic",
+                    },
+                }
+
+            offense = scoring.build_synthetic_identities()[0]
+            offense = dict(offense)
+            offense["looks"] = [offense["looks"][0], offense["looks"][1]]
+            empty = dict(offense)
+            empty["situation_id"] = "syn-empty"
+            empty["looks"] = [offense["looks"][1]]
+            refused = _defense_fold_identity("REFUSE token", "missing-fold", "obs-def-refuse")
+            matched = _defense_fold_identity("3&2 my 12", "foldA", "obs-def-match")
+            mismatched = _defense_fold_identity("MISMATCH 2&8 my 40", "foldB", "obs-def-mismatch")
+            report = scoring.evaluate_shadow(
+                [offense, empty, refused, matched, mismatched],
+                score_offline_model,
+                self.book,
+                model_dir=root,
+                requested_version="v0.21",
+                seed_count=2,
+            )
+        for call in seen:
+            self.assertTrue(all(item.startswith("madden27/cpu/") or item.startswith("madden27/human/") for item in call["strata"]))
+            self.assertEqual(len(call["strata"]), 1)
+            self.assertTrue(call["strata"][0].endswith("/" + call["side"]))
+        fold_dirs = {call["model_dir"] for call in seen if "folds" in call["model_dir"].parts}
+        self.assertIn(root / "folds" / "foldA", fold_dirs)
+        self.assertIn(root / "folds" / "foldB", fold_dirs)
+        self.assertTrue(all(row["gate_bypassed"] == "offline_eval" for row in report["decisions"]))
+        self.assertTrue(all(row["scored_on"] == "unreviewed" for row in report["decisions"]))
+        self.assertTrue(all(row["offensive_personnel"] is None for row in report["decisions"]))
+        personnel = {row["opp_personnel"] for row in report["decisions"] if row["situation_id"] == offense["situation_id"]}
+        self.assertIn(None, personnel)
+        self.assertIn("empty", personnel)
+        versions = report["by_model_version"]
+        self.assertEqual(report["summary_grouped_by"], "loaded_manifest_label_version")
+        self.assertIn("v0.21", versions)
+        self.assertIn("v0.24", versions)
+        self.assertNotIn("v0.23", versions)
+        versioned = [row for row in report["decisions"] if row.get("model_version")]
+        self.assertTrue(versioned)
+        self.assertTrue(all(row["model_version"] == row["manifest_model_version"] for row in versioned))
+        fold_rows = [row for row in report["decisions"] if row.get("fold_id") in {"foldA", "foldB"}]
+        self.assertTrue(fold_rows)
+        self.assertTrue(all(row["model_version"] == "v0.24" for row in fold_rows))
+        matched_rows = [row for row in fold_rows if row["situation_id"] == "obs-def-match"]
+        mismatch_rows = [row for row in fold_rows if row["situation_id"] == "obs-def-mismatch"]
+        self.assertTrue(matched_rows)
+        self.assertTrue(all(row["summary_bucket"] == "observed" for row in matched_rows))
+        self.assertTrue(all(row["returned_model_version"] == "v0.24" for row in matched_rows))
+        self.assertTrue(mismatch_rows)
+        self.assertTrue(all(row["summary_bucket"] == "indicative" for row in mismatch_rows))
+        self.assertTrue(all(row["returned_model_version"] == "v0.21" and row["version_mismatch"] for row in mismatch_rows))
+        v21_synth = versions["v0.21"]["by_side"]["offense"]["synthetic"]["by_stratum"]
+        self.assertGreater(v21_synth["madden27/cpu/offense"]["disagreement"]["n"], 0)
+        v24_defense = versions["v0.24"]["by_side"]["defense"]
+        v24_observed = v24_defense["observed"]["by_stratum"]
+        self.assertGreater(v24_observed["madden27/cpu/defense"]["disagreement"]["n"], 0)
+        self.assertGreater(v24_defense["indicative"]["n"], 0)
+        self.assertEqual(v24_defense["synthetic"]["n"], 0)
+        for bucket in ("synthetic", "observed", "indicative", "refused"):
+            self.assertEqual(versions["v0.21"]["by_side"]["defense"][bucket]["n"], 0)
+            self.assertEqual(versions["v0.24"]["by_side"]["offense"][bucket]["n"], 0)
+        refused_rows = [row for row in report["decisions"] if row["outcome"] == "refused"]
+        self.assertTrue(refused_rows)
+        self.assertTrue(all(row["outcome"] != "same" for row in refused_rows))
+        self.assertIn("no_matching_fold", versions["refused_without_version"]["by_reason"])
+        cpu = v21_synth["madden27/cpu/offense"]
+        self.assertEqual(cpu["disagreement"]["k"] + cpu["same"], cpu["disagreement"]["n"])
+        self.assertLessEqual(cpu["disagreement"]["low"], cpu["disagreement"]["rate"])
+        self.assertGreaterEqual(cpu["disagreement"]["high"], cpu["disagreement"]["rate"])
+        self.assertGreater(cpu["seed_noise"]["model"]["seed_shift_n"], 0)
+        self.assertEqual(cpu["seed_noise"]["heuristic"]["seed_shift_n"], 0)
+        self.assertIsNone(cpu["penalty"])
+        quality = cpu["by_down_and_distance_quality"]
+        self.assertTrue(quality)
+        self.assertIn("formation_usage", quality[0]["heuristic"])
+        self.assertIn("formation_usage", quality[0]["model"])
+        self.assertIn("rules", quality[0]["heuristic"])
+        self.assertIsNone(quality[0]["penalty"])
+        text = scoring.render_markdown(report)
+        self.assertIn("passed its defined contextual rules, which cover a limited set of decisions.", text)
+        self.assertIn("grouped by the model_version on the manifest that was loaded", text)
+        self.assertIn("## Model version v0.24", text)
+        self.assertIn("## Model version v0.21", text)
+        self.assertNotIn("nothing ignored the game situation", text)
+        self.assertNotIn("v0.23", json.dumps(versions["v0.21"]))
+        with tempfile.TemporaryDirectory() as out:
+            _json_path, _md_path, jsonl_path = scoring.write_report(report, Path(out))
+            lines = [json.loads(line) for line in jsonl_path.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(len(lines), len(report["decisions"]))
+        recounted = sum(1 for row in lines if row["outcome"] == "disagree" and row["model_version"] == "v0.21" and row["summary_bucket"] == "synthetic" and row["stratum"] == "madden27/cpu/offense")
+        self.assertEqual(recounted, cpu["disagree"])
+
+    def test_v021_rank_matches_the_logistic_model(self):
+        identity = dict(scoring.build_synthetic_identities()[0])
+        identity["looks"] = identity["looks"][:1]
+        report = scoring.evaluate_shadow(
+            [identity],
+            scoring.adapt_score_offline_model,
+            self.book,
+            model_dir=_ROOT / "tests" / "madden_ml" / "fixtures" / "item3" / "v0.21",
+            requested_version="v0.21",
+            seed_count=2,
+        )
+        rows = [
+            row
+            for row in report["decisions"]
+            if row["stratum"] == "madden27/cpu/offense" and row["outcome"] != "refused"
+        ]
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["manifest_model_version"], "v0.21")
+        self.assertEqual(row["scored_on"], "unreviewed")
+        self.assertEqual(row["gate_bypassed"], "offline_eval")
+        self.assertIsNone(row["offensive_personnel"])
+        self.assertEqual(row["model_version"], "v0.21")
+        self.assertEqual(
+            row["model_formation"],
+            scoring._unique_book_formation(self.book["offense"], row["model_play"]),
+        )
+        bundle = scoring.load_model_bundle(_ROOT / "tests" / "madden_ml" / "fixtures" / "item3" / "v0.21")
+        calls = list(bundle["params"]["strata"]["madden27/cpu/offense"]["model"]["coef"]["call"])
+        self.assertIn(row["model_play"], calls)
+        ranked = scoring._rank_stratum_call(bundle, "madden27/cpu/offense", identity["raw"], "offense")
+        self.assertEqual(row["model_play"], ranked)
+        self.assertIn(row["outcome"], {"same", "disagree"})
+        noise = report["by_model_version"]["v0.21"]["by_side"]["offense"]["synthetic"]["by_stratum"]["madden27/cpu/offense"]["seed_noise"]
+        self.assertEqual(noise["model"]["seed_shift_n"], 0)
+        self.assertIn("heuristic", noise)
+        defense = [
+            item
+            for item in report["decisions"]
+            if item["side"] == "defense"
+        ]
+        self.assertEqual(defense, [])
+
+
+def _write_bundle(directory: Path, version: str, fold_id: str | None = None) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    manifest = {"label_version": version}
+    if fold_id:
+        manifest["fold_id"] = fold_id
+    strata = {}
+    for name in (
+        "madden27/cpu/offense",
+        "madden27/cpu/defense",
+        "madden27/human/offense",
+        "madden27/human/defense",
+    ):
+        strata[name] = {
+            "model": {
+                "intercept": 0.0,
+                "coef": {"call": {"hb dive": 0.1}},
+                "hyperparams": {
+                    "lambda_situation": 1.0,
+                    "lambda_entity": 1.0,
+                    "lambda_interaction": 1.0,
+                },
+            }
+        }
+    (directory / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (directory / "model_params.json").write_text(
+        json.dumps({"label_version": version, "strata": strata}),
+        encoding="utf-8",
+    )
+
+
+def _defense_fold_identity(raw: str, fold_id: str, situation_id: str) -> dict:
+    identity = scoring._identity(
+        situation_id=situation_id,
+        side="defense",
+        tags=["observed"],
+        source="observed",
+        down=3,
+        distance=2,
+        yardline=12,
+        field_zone="own_deep",
+        clock_name="normal",
+        score_name="close",
+        game_id=None,
+        default_filled=["score", "clock"],
+        looks=[{"look_id": "file", "opp_personnel": "11", "opp_set": "nickel"}],
+        look_observed=True,
+        quarter=None,
+        clock_seconds=None,
+        two_minute=False,
+        score_us=0,
+        score_them=0,
+    )
+    identity["raw"] = raw
+    identity["looks_from_file"] = True
+    identity["source_tag"] = "film"
+    identity["fold_id"] = fold_id
+    identity["offensive_personnel"] = None
+    return identity
 
 
 class IsolationTests(unittest.TestCase):
