@@ -1,0 +1,582 @@
+{
+  "label_version": "v0.21",
+  "script_version": "trimmed-fixture",
+  "strata": {
+    "madden27/cpu/offense": {
+      "n_train_rows": 4,
+      "base_rate": 0.5,
+      "hp_selection": {
+        "source": "trimmed-fixture"
+      },
+      "model": {
+        "intercept": 0.0,
+        "coef": {
+          "call": {
+            "hb dive": 0.2,
+            "inside zone": 0.05,
+            "verticals": -0.1
+          },
+          "look": {
+            "nickel": 0.1,
+            "base": 0.0,
+            "empty": -0.05
+          },
+          "look_family": {
+            "cover_3": 0.08,
+            "cover_1": 0.02,
+            "none": 0.0
+          },
+          "call_x_family": {
+            "hb dive|none": 0.04,
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
+          },
+          "class_x_family": {
+            "run|none": 0.02,
+            "pass|cover_3": 0.01
+          },
+          "down": {
+            "1": 0.0,
+            "3": 0.01
+          },
+          "dist": {
+            "short": 0.0,
+            "long": 0.01
+          },
+          "zone": {
+            "midfield": 0.0,
+            "red_zone": 0.01
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      },
+      "situation_only_model": {
+        "intercept": 0.0,
+        "coef": {
+          "down": {
+            "1": 0.0
+          },
+          "dist": {
+            "long": 0.0
+          },
+          "zone": {
+            "midfield": 0.0
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      }
+    },
+    "madden27/cpu/defense": {
+      "n_train_rows": 4,
+      "base_rate": 0.5,
+      "hp_selection": {
+        "source": "trimmed-fixture"
+      },
+      "model": {
+        "intercept": 0.0,
+        "coef": {
+          "call": {
+            "hb dive": 0.2,
+            "inside zone": 0.05,
+            "verticals": -0.1
+          },
+          "look": {
+            "nickel": 0.1,
+            "base": 0.0,
+            "empty": -0.05
+          },
+          "look_family": {
+            "cover_3": 0.08,
+            "cover_1": 0.02,
+            "none": 0.0
+          },
+          "call_x_family": {
+            "hb dive|none": 0.04,
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
+          },
+          "class_x_family": {
+            "run|none": 0.02,
+            "pass|cover_3": 0.01
+          },
+          "down": {
+            "1": 0.0,
+            "3": 0.01
+          },
+          "dist": {
+            "short": 0.0,
+            "long": 0.01
+          },
+          "zone": {
+            "midfield": 0.0,
+            "red_zone": 0.01
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      },
+      "situation_only_model": {
+        "intercept": 0.0,
+        "coef": {
+          "down": {
+            "1": 0.0
+          },
+          "dist": {
+            "long": 0.0
+          },
+          "zone": {
+            "midfield": 0.0
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      }
+    },
+    "madden27/human/offense": {
+      "n_train_rows": 4,
+      "base_rate": 0.5,
+      "hp_selection": {
+        "source": "trimmed-fixture"
+      },
+      "model": {
+        "intercept": 0.0,
+        "coef": {
+          "call": {
+            "hb dive": 0.2,
+            "inside zone": 0.05,
+            "verticals": -0.1
+          },
+          "look": {
+            "nickel": 0.1,
+            "base": 0.0,
+            "empty": -0.05
+          },
+          "look_family": {
+            "cover_3": 0.08,
+            "cover_1": 0.02,
+            "none": 0.0
+          },
+          "call_x_family": {
+            "hb dive|none": 0.04,
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
+          },
+          "class_x_family": {
+            "run|none": 0.02,
+            "pass|cover_3": 0.01
+          },
+          "down": {
+            "1": 0.0,
+            "3": 0.01
+          },
+          "dist": {
+            "short": 0.0,
+            "long": 0.01
+          },
+          "zone": {
+            "midfield": 0.0,
+            "red_zone": 0.01
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      },
+      "situation_only_model": {
+        "intercept": 0.0,
+        "coef": {
+          "down": {
+            "1": 0.0
+          },
+          "dist": {
+            "long": 0.0
+          },
+          "zone": {
+            "midfield": 0.0
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      }
+    },
+    "madden27/human/defense": {
+      "n_train_rows": 4,
+      "base_rate": 0.5,
+      "hp_selection": {
+        "source": "trimmed-fixture"
+      },
+      "model": {
+        "intercept": 0.0,
+        "coef": {
+          "call": {
+            "hb dive": 0.2,
+            "inside zone": 0.05,
+            "verticals": -0.1
+          },
+          "look": {
+            "nickel": 0.1,
+            "base": 0.0,
+            "empty": -0.05
+          },
+          "look_family": {
+            "cover_3": 0.08,
+            "cover_1": 0.02,
+            "none": 0.0
+          },
+          "call_x_family": {
+            "hb dive|none": 0.04,
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
+          },
+          "class_x_family": {
+            "run|none": 0.02,
+            "pass|cover_3": 0.01
+          },
+          "down": {
+            "1": 0.0,
+            "3": 0.01
+          },
+          "dist": {
+            "short": 0.0,
+            "long": 0.01
+          },
+          "zone": {
+            "midfield": 0.0,
+            "red_zone": 0.01
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      },
+      "situation_only_model": {
+        "intercept": 0.0,
+        "coef": {
+          "down": {
+            "1": 0.0
+          },
+          "dist": {
+            "long": 0.0
+          },
+          "zone": {
+            "midfield": 0.0
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      }
+    },
+    "cfb27/cpu/offense": {
+      "n_train_rows": 4,
+      "base_rate": 0.5,
+      "hp_selection": {
+        "source": "trimmed-fixture"
+      },
+      "model": {
+        "intercept": 0.0,
+        "coef": {
+          "call": {
+            "hb dive": 0.2,
+            "inside zone": 0.05,
+            "verticals": -0.1
+          },
+          "look": {
+            "nickel": 0.1,
+            "base": 0.0,
+            "empty": -0.05
+          },
+          "look_family": {
+            "cover_3": 0.08,
+            "cover_1": 0.02,
+            "none": 0.0
+          },
+          "call_x_family": {
+            "hb dive|none": 0.04,
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
+          },
+          "class_x_family": {
+            "run|none": 0.02,
+            "pass|cover_3": 0.01
+          },
+          "down": {
+            "1": 0.0,
+            "3": 0.01
+          },
+          "dist": {
+            "short": 0.0,
+            "long": 0.01
+          },
+          "zone": {
+            "midfield": 0.0,
+            "red_zone": 0.01
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      },
+      "situation_only_model": {
+        "intercept": 0.0,
+        "coef": {
+          "down": {
+            "1": 0.0
+          },
+          "dist": {
+            "long": 0.0
+          },
+          "zone": {
+            "midfield": 0.0
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      }
+    },
+    "cfb27/cpu/defense": {
+      "n_train_rows": 4,
+      "base_rate": 0.5,
+      "hp_selection": {
+        "source": "trimmed-fixture"
+      },
+      "model": {
+        "intercept": 0.0,
+        "coef": {
+          "call": {
+            "hb dive": 0.2,
+            "inside zone": 0.05,
+            "verticals": -0.1
+          },
+          "look": {
+            "nickel": 0.1,
+            "base": 0.0,
+            "empty": -0.05
+          },
+          "look_family": {
+            "cover_3": 0.08,
+            "cover_1": 0.02,
+            "none": 0.0
+          },
+          "call_x_family": {
+            "hb dive|none": 0.04,
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
+          },
+          "class_x_family": {
+            "run|none": 0.02,
+            "pass|cover_3": 0.01
+          },
+          "down": {
+            "1": 0.0,
+            "3": 0.01
+          },
+          "dist": {
+            "short": 0.0,
+            "long": 0.01
+          },
+          "zone": {
+            "midfield": 0.0,
+            "red_zone": 0.01
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      },
+      "situation_only_model": {
+        "intercept": 0.0,
+        "coef": {
+          "down": {
+            "1": 0.0
+          },
+          "dist": {
+            "long": 0.0
+          },
+          "zone": {
+            "midfield": 0.0
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      }
+    },
+    "cfb27/human/offense": {
+      "n_train_rows": 4,
+      "base_rate": 0.5,
+      "hp_selection": {
+        "source": "trimmed-fixture"
+      },
+      "model": {
+        "intercept": 0.0,
+        "coef": {
+          "call": {
+            "hb dive": 0.2,
+            "inside zone": 0.05,
+            "verticals": -0.1
+          },
+          "look": {
+            "nickel": 0.1,
+            "base": 0.0,
+            "empty": -0.05
+          },
+          "look_family": {
+            "cover_3": 0.08,
+            "cover_1": 0.02,
+            "none": 0.0
+          },
+          "call_x_family": {
+            "hb dive|none": 0.04,
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
+          },
+          "class_x_family": {
+            "run|none": 0.02,
+            "pass|cover_3": 0.01
+          },
+          "down": {
+            "1": 0.0,
+            "3": 0.01
+          },
+          "dist": {
+            "short": 0.0,
+            "long": 0.01
+          },
+          "zone": {
+            "midfield": 0.0,
+            "red_zone": 0.01
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      },
+      "situation_only_model": {
+        "intercept": 0.0,
+        "coef": {
+          "down": {
+            "1": 0.0
+          },
+          "dist": {
+            "long": 0.0
+          },
+          "zone": {
+            "midfield": 0.0
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      }
+    },
+    "cfb27/human/defense": {
+      "n_train_rows": 4,
+      "base_rate": 0.5,
+      "hp_selection": {
+        "source": "trimmed-fixture"
+      },
+      "model": {
+        "intercept": 0.0,
+        "coef": {
+          "call": {
+            "hb dive": 0.2,
+            "inside zone": 0.05,
+            "verticals": -0.1
+          },
+          "look": {
+            "nickel": 0.1,
+            "base": 0.0,
+            "empty": -0.05
+          },
+          "look_family": {
+            "cover_3": 0.08,
+            "cover_1": 0.02,
+            "none": 0.0
+          },
+          "call_x_family": {
+            "hb dive|none": 0.04,
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
+          },
+          "class_x_family": {
+            "run|none": 0.02,
+            "pass|cover_3": 0.01
+          },
+          "down": {
+            "1": 0.0,
+            "3": 0.01
+          },
+          "dist": {
+            "short": 0.0,
+            "long": 0.01
+          },
+          "zone": {
+            "midfield": 0.0,
+            "red_zone": 0.01
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      },
+      "situation_only_model": {
+        "intercept": 0.0,
+        "coef": {
+          "down": {
+            "1": 0.0
+          },
+          "dist": {
+            "long": 0.0
+          },
+          "zone": {
+            "midfield": 0.0
+          }
+        },
+        "hyperparams": {
+          "lambda_situation": 16.0,
+          "lambda_entity": 16.0,
+          "lambda_interaction": 16.0
+        }
+      }
+    }
+  }
+}
