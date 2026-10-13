@@ -12,10 +12,26 @@ import threading
 import time
 import traceback
 import unittest
+import warnings
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from http.client import HTTPConnection
 from pathlib import Path
 from unittest import mock
+
+import pytest
+
+pytestmark = pytest.mark.filterwarnings(
+    "error:CFB_COACH_MADDEN_DB and CFB_COACH_DB resolve to the same file:UserWarning"
+)
+
+_SAME_FILE_WARNING = r"CFB_COACH_MADDEN_DB and CFB_COACH_DB resolve to the same file"
+
+
+@contextmanager
+def _fail_on_same_file_warning():
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", message=_SAME_FILE_WARNING, category=UserWarning)
+        yield
 
 
 def _real_home() -> Path:
@@ -164,8 +180,12 @@ class TestEmptyHome(unittest.TestCase):
                 os.path.abspath(str(_real_home() / ".cfb-coach")),
                 os.path.abspath(str(empty_home)),
             )
-            coach_db = workspace / "coach.db"
-            madden_db = workspace / "madden27.db"
+            coach_dir = workspace / "coach"
+            madden_dir = workspace / "madden"
+            coach_dir.mkdir()
+            madden_dir.mkdir()
+            coach_db = coach_dir / "coach.db"
+            madden_db = madden_dir / "madden27.db"
             env = {
                 "HOME": str(empty_home),
                 "CFB_COACH_DB": str(coach_db),
@@ -173,7 +193,8 @@ class TestEmptyHome(unittest.TestCase):
             }
             previous_madden = os.environ.pop("CFB_COACH_MADDEN_DB", None)
             try:
-                self._run_isolated(roots, empty_home, workspace, coach_db, madden_db, env)
+                with _fail_on_same_file_warning():
+                    self._run_isolated(roots, empty_home, workspace, coach_db, madden_db, env)
             finally:
                 if previous_madden is not None:
                     os.environ["CFB_COACH_MADDEN_DB"] = previous_madden
@@ -231,7 +252,7 @@ class TestEmptyHome(unittest.TestCase):
                     self.assertEqual(call_code, 0, call_out)
                     self.assertEqual(play_code, 0, play_out)
                     self.assertEqual(bare_code, 0, bare_out)
-                    overlay = workspace / "madden27_overlay.html"
+                    overlay = madden_db.parent / "madden27_overlay.html"
                     self.assertTrue(overlay.is_file(), play_out)
                     self.assertIn(str(overlay), play_out)
 
@@ -356,7 +377,7 @@ class TestMaddenDbSeparateFromCoach(unittest.TestCase):
                 "CFB_COACH_DB": str(coach_db),
                 "CFB_COACH_MADDEN_DB": str(madden_db),
             }
-            with mock.patch.dict(os.environ, env, clear=False):
+            with mock.patch.dict(os.environ, env, clear=False), _fail_on_same_file_warning():
                 self.assertEqual(resolve_live_db_path(), madden_db)
                 self.assertNotEqual(resolve_live_db_path(), coach_db)
                 db = open_db()
@@ -488,7 +509,7 @@ class TestCallPlayDefaultDb(unittest.TestCase):
                 "CFB_COACH_DB": str(coach_db),
                 "CFB_COACH_MADDEN_DB": str(madden_db),
             }
-            with mock.patch.dict(os.environ, env, clear=False):
+            with mock.patch.dict(os.environ, env, clear=False), _fail_on_same_file_warning():
                 def run_cli(argv: list[str]) -> tuple[int, str]:
                     out = io.StringIO()
                     err = io.StringIO()
