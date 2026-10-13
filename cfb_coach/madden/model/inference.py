@@ -7,6 +7,7 @@ mode must not call this module. Hybrid stays off until promotion is allowed.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import threading
 import time
@@ -40,6 +41,8 @@ from cfb_coach.madden.model.schema import (
     to_dict,
 )
 from cfb_coach.madden.model.train import load_artifact
+
+logger = logging.getLogger(__name__)
 
 # Live scoring must take GameState and PreSnapObservation from this function.
 _SITUATION_ADAPTER = adapters.situation_to_state
@@ -598,6 +601,85 @@ _OFFENSE_LINE = re.compile(r"^.+ — .+ \| .+ \| .+ → .+$")
 _DEFENSE_LINE = re.compile(r"^.+ — .+ \| .+ \| User .+$")
 
 _DEFENSE_MODELS: dict[str, Any] = {}
+_PARSED_MODELS: dict[tuple, Any] = {}
+
+
+class StageClock:
+    """Named stage durations for one live offense call."""
+
+    def __init__(self) -> None:
+        self.stages: dict[str, float] = {}
+        self._name: str | None = None
+        self._started = 0.0
+
+    def begin(self, name: str) -> None:
+        self.end()
+        self._name = name
+        self._started = time.perf_counter()
+
+    def end(self) -> None:
+        if self._name is None:
+            return
+        elapsed = (time.perf_counter() - self._started) * 1000.0
+        self.stages[self._name] = self.stages.get(self._name, 0.0) + elapsed
+        self._name = None
+
+    def slowest(self) -> str | None:
+        if not self.stages:
+            return None
+        best = max(self.stages.values())
+        for name, value in self.stages.items():
+            if value == best:
+                return name
+        return None
+
+
+def log_offense_inference(
+    *,
+    latency_ms: float | None,
+    timed_out: bool,
+    slowest_stage: str | None,
+) -> None:
+    """One line per live offense call: latency, timeout, and the slowest stage."""
+    latency = "none" if latency_ms is None else f"{float(latency_ms):.3f}"
+    logger.info(
+        "latency_ms=%s timed_out=%s slowest_stage=%s",
+        latency,
+        "true" if timed_out else "false",
+        slowest_stage or "none",
+    )
+
+
+def file_revision(*paths: str | Path) -> tuple | None:
+    """Identity of on-disk model files. Missing required files return None."""
+    parts: list[tuple[str, int, int]] = []
+    for raw in paths:
+        path = Path(raw)
+        try:
+            st = path.stat()
+        except OSError:
+            return None
+        parts.append((str(path), int(st.st_mtime_ns), int(st.st_size)))
+    return tuple(parts)
+
+
+def cached_parsed_model(revision: tuple, loader: Callable[[], Any]) -> Any:
+    """Return a previously parsed model when ``revision`` is unchanged.
+
+    ``None`` is a cached result. A missing file is not a revision, so the
+    caller loads it every time and a mocked path still runs the loader.
+    """
+    if revision in _PARSED_MODELS:
+        return _PARSED_MODELS[revision]
+    loaded = loader()
+    if len(_PARSED_MODELS) >= 8:
+        _PARSED_MODELS.clear()
+    _PARSED_MODELS[revision] = loaded
+    return loaded
+
+
+def clear_parsed_model_cache() -> None:
+    _PARSED_MODELS.clear()
 
 
 class _UnsetOppLook:

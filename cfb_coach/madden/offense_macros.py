@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 from cfb_coach.macros import (
     aidan_settings_gaps,
@@ -46,6 +46,7 @@ _W_LOG = 0.08
 _W_PREV = 0.05
 EDITOR_PATH = ["Create & Share", "Custom Adjustments", "Offense", "Create Adjustment"]
 _RPO = re.compile(r"rpo", re.I)
+_PLAY_RE: dict[str, re.Pattern[str]] = {}
 
 
 def known(mid: str | None) -> bool:
@@ -89,6 +90,14 @@ def _kind_ok(fire: dict[str, Any], play: str) -> bool:
     return True
 
 
+def _compiled_play_re(pattern: str) -> re.Pattern[str]:
+    compiled = _PLAY_RE.get(pattern)
+    if compiled is None:
+        compiled = re.compile(pattern, re.I)
+        _PLAY_RE[pattern] = compiled
+    return compiled
+
+
 def pairs_in_book(mid: str, book: dict[str, list[str]] | None, *, cap: int = 6) -> list[str]:
     """'Play (Formation)' for plays in *this* book the macro's concept matches.
 
@@ -98,10 +107,11 @@ def pairs_in_book(mid: str, book: dict[str, list[str]] | None, *, cap: int = 6) 
     rx = spec.get("play_re") or ""
     if not book or not rx:
         return []
+    pattern = _compiled_play_re(rx)
     out: list[str] = []
     for formation, plays in book.items():
         for play in plays:
-            if not re.search(rx, play, re.I) or not _kind_ok(fire, play):
+            if pattern.search(play) is None or not _kind_ok(fire, play):
                 continue
             if fire.get("deep_only") and not is_deep(play):
                 continue
@@ -109,6 +119,49 @@ def pairs_in_book(mid: str, book: dict[str, list[str]] | None, *, cap: int = 6) 
             if len(out) >= cap:
                 return out
     return out
+
+
+def macro_book_index(
+    book: dict[str, list[str]] | None,
+    active: Sequence[str],
+) -> dict[str, Any]:
+    """Scan each armed macro once for this book.
+
+    The joint coordinator used to call :func:`pairs_in_book` again for every
+    eligible play. The strings and the membership set match a full-book cap.
+    """
+    act = clean_ids(list(active or []))
+    plays = 0 if not book else sum(len(ps) for ps in book.values())
+    cap = 1 + plays
+    pairs: dict[str, list[str]] = {}
+    pair_sets: dict[str, set[str]] = {}
+    for mid in act:
+        rows = pairs_in_book(mid, book, cap=cap)
+        pairs[mid] = rows
+        pair_sets[mid] = set(rows)
+    return {
+        "active": act,
+        "pairs": pairs,
+        "pair_sets": pair_sets,
+        "details": {},
+        "cap": cap,
+    }
+
+
+def cached_offense_detail(
+    index: Mapping[str, Any],
+    mid: str,
+    book: dict[str, list[str]] | None,
+) -> dict[str, Any]:
+    """One offense-detail build per macro for this snap's index."""
+    details = index.get("details")
+    if not isinstance(details, dict):
+        return offense_detail(mid, book)
+    cached = details.get(mid)
+    if cached is None:
+        cached = offense_detail(mid, book)
+        details[mid] = cached
+    return cached
 
 
 def _logged_classes(db: Any, opponent_id: str) -> Counter:
@@ -446,15 +499,24 @@ def suggest_for_snap(
     weights: dict[str, float] | None = None,
     score_phase: str | None = None,
     cooled: set[str] | None = None,
+    prepared: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """One offense Custom Adjustment for this snap, or None.
 
     Only ids in ``active``. The called play has to be one of the macro's pairs in the
     trimmed book. When more than one macro fits that play, the higher learned weight
-    wins. A coverage macro needs a live look (or a look repeated this game)."""
+    wins. A coverage macro needs a live look (or a look repeated this game).
+
+    ``prepared`` is a :func:`macro_book_index` for this book. The joint path passes
+    it so each play does not scan the book or rebuild the macro sheet again.
+    """
     from cfb_coach.macros import LIVE_MACRO_PRIORITY, classify_coverage
 
-    act = clean_ids(active)
+    if prepared is not None:
+        wanted = {str(item).upper() for item in (active or [])}
+        act = [mid for mid in (prepared.get("active") or []) if mid in wanted]
+    else:
+        act = clean_ids(active)
     if not act or not play or not book:
         return None
     data = load_offense_settings().get("macros") or {}
@@ -469,7 +531,10 @@ def suggest_for_snap(
         w, fire = ready
         if zone not in (fire.get("zones") or ["open", "rz", "gl"]):
             continue
-        pairs = pairs_in_book(mid, book, cap=1 + sum(map(len, book.values())))
+        if prepared is not None:
+            pairs = list((prepared.get("pairs") or {}).get(mid) or [])
+        else:
+            pairs = pairs_in_book(mid, book, cap=1 + sum(map(len, book.values())))
         if not any(play.lower() == item.split(" (", 1)[0].lower() for item in pairs):
             continue
         if fire.get("downs") and down not in fire["downs"]:
@@ -484,7 +549,7 @@ def suggest_for_snap(
         return None
     mid, w = chosen
     fire = next(block for name, _w, block in found if name == mid)
-    det = offense_detail(mid, book)
+    det = cached_offense_detail(prepared, mid, book) if prepared is not None else offense_detail(mid, book)
     want = set(fire.get("coverages") or [])
     trig = f"{coverage_source} {coverage}" if want else ("red zone" if zone in ("rz", "gl") else "run")
     return {
@@ -502,7 +567,7 @@ def suggest_for_snap(
 
 
 __all__ = [
-    "activate_buttons", "attach_detail", "clean_ids", "copy_block", "known", "offense_detail",
-    "pairs_in_book", "rank_offense", "select_offense", "situation_macro", "suggest_for_snap",
-    "xbox_name",
+    "activate_buttons", "attach_detail", "cached_offense_detail", "clean_ids", "copy_block",
+    "known", "macro_book_index", "offense_detail", "pairs_in_book", "rank_offense",
+    "select_offense", "situation_macro", "suggest_for_snap", "xbox_name",
 ]
