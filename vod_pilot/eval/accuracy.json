@@ -1,0 +1,97 @@
+{
+  "labeled_snaps": 16,
+  "matched_predictions": 16,
+  "unmatched_labels": 0,
+  "fields": {
+    "down": {
+      "hand_known": 14,
+      "recall": 1.0,
+      "recall_correct": 14,
+      "precision": 1.0,
+      "precision_correct": 14,
+      "filled": 14,
+      "false_fills": 0,
+      "abstain_when_unknown": 2,
+      "labeled": 16
+    },
+    "distance": {
+      "hand_known": 14,
+      "recall": 1.0,
+      "recall_correct": 14,
+      "precision": 1.0,
+      "precision_correct": 14,
+      "filled": 14,
+      "false_fills": 0,
+      "abstain_when_unknown": 2,
+      "labeled": 16
+    },
+    "quarter": {
+      "hand_known": 16,
+      "recall": 1.0,
+      "recall_correct": 16,
+      "precision": 1.0,
+      "precision_correct": 16,
+      "filled": 16,
+      "false_fills": 0,
+      "abstain_when_unknown": 0,
+      "labeled": 16
+    },
+    "yardline": {
+      "hand_known": 2,
+      "recall": 1.0,
+      "recall_correct": 2,
+      "precision": 1.0,
+      "precision_correct": 2,
+      "filled": 2,
+      "false_fills": 0,
+      "abstain_when_unknown": 14,
+      "labeled": 16
+    },
+    "formation": {
+      "hand_known": 0,
+      "recall": null,
+      "recall_correct": 0,
+      "precision": null,
+      "precision_correct": 0,
+      "filled": 0,
+      "false_fills": 0,
+      "abstain_when_unknown": 16,
+      "labeled": 16
+    },
+    "play": {
+      "hand_known": 3,
+      "recall": 1.0,
+      "recall_correct": 3,
+      "precision": 1.0,
+      "precision_correct": 3,
+      "filled": 3,
+      "false_fills": 0,
+      "abstain_when_unknown": 13,
+      "labeled": 16
+    },
+    "coverage_seen": {
+      "hand_known": 2,
+      "recall": 1.0,
+      "recall_correct": 2,
+      "precision": 1.0,
+      "precision_correct": 2,
+      "filled": 2,
+      "false_fills": 0,
+      "abstain_when_unknown": 14,
+      "labeled": 16
+    },
+    "result": {
+      "hand_known": 8,
+      "recall": 1.0,
+      "recall_correct": 8,
+      "precision": 0.889,
+      "precision_correct": 8,
+      "filled": 9,
+      "false_fills": 1,
+      "abstain_when_unknown": 7,
+      "labeled": 16
+    }
+  },
+  "pipeline_snaps": 16,
+  "note": "All emitted Madden snaps. CFB clip emitted 0 snaps and is not in this table."
+}

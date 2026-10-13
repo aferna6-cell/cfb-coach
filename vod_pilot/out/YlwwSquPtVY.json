@@ -1,0 +1,21 @@
+{
+  "schema": "cfb_coach.snaps.v1",
+  "compatible_with": [
+    "snaps",
+    "play_records"
+  ],
+  "import": "Rows use CoachDB.log_snap column names. Do not insert them into coach.db from this pilot: opponent_id is the channel, side is the broadcast offense/defense, and our_call is empty.",
+  "game": "cfb27",
+  "source": {
+    "video_id": "YlwwSquPtVY",
+    "title": "Our Final Home Game Could Define This Season! | College Football 27 Dynasty Mode Part 26",
+    "channel": "Gamer Ability",
+    "url": "https://www.youtube.com/watch?v=YlwwSquPtVY",
+    "published": "about 20 hours before 2026-10-07",
+    "file": "/tmp/vod_pilot/raw/YlwwSquPtVY.mp4",
+    "sample_fps": 1.0,
+    "frames_read": 281
+  },
+  "snap_count": 0,
+  "snaps": []
+}
