@@ -647,14 +647,29 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(diag["down"], 1)
         self.assertEqual(diag["distance"], 10)
         self.assertIsNone(diag["yardline"])
-        self.assertEqual(diag["opp_look"], {"opp_personnel": "11", "opp_set": "nickel"})
-        self.assertEqual(diag["opp_look_type"], "dict")
-        self.assertEqual(diag["opp_look_raw"], repr(diag["opp_look"]))
+        self.assertEqual(diag["opp_look"], "nickel")
+        self.assertEqual(diag["opp_look_type"], "str")
+        self.assertEqual(diag["opp_look_raw"], repr("nickel"))
+        self.assertEqual(diag["opp_look_assigned"], {"opp_personnel": "11", "opp_set": "nickel"})
+        self.assertEqual(payload["features"]["groups"]["look"]["key"], "nickel")
         blank = scoring._prepare_hook_call(
             {"down": None, "distance": "", "yardline": "12", "look_id": "null"},
             {"opp_personnel": None, "opp_set": None},
             "offense",
         )
+        self.assertIsNone(blank["opp_look"])
+        with self.assertRaises(RuntimeError):
+            scoring._prepare_hook_call(
+                {"raw": "1&10 my 50", "down": 1, "distance": 10, "yardline": 50, "look_id": "11-nickel"},
+                {"opp_personnel": None, "opp_set": None},
+                "offense",
+            )
+        defense = scoring._prepare_hook_call(
+            {"raw": "d 1&10 my 50", "down": 1, "distance": 10, "yardline": 50, "look_id": "11-nickel"},
+            {"opp_personnel": None, "opp_set": None},
+            "defense",
+        )
+        self.assertIsNone(defense["opp_look"])
         self.assertEqual(blank["diagnostics"]["down_type"], "NoneType")
         self.assertIsNone(blank["diagnostics"]["distance"])
         self.assertEqual(blank["diagnostics"]["yardline"], 12)
@@ -839,6 +854,79 @@ class ShadowTests(unittest.TestCase):
             if item["side"] == "defense"
         ]
         self.assertEqual(defense, [])
+
+    def test_assigned_look_reaches_the_hook_and_flips_on_the_fixture(self):
+        fixture = _ROOT / "tests" / "madden_ml" / "fixtures" / "item3" / "v0.21"
+        synthetic = next(
+            row for row in scoring.build_synthetic_identities() if row["situation_id"] == "syn-offense-028"
+        )
+        self.assertEqual({look["look_id"] for look in synthetic["looks"]}, {"null", "empty", "11-nickel", "12-base"})
+        observed = scoring.load_observed_csv(scoring.OBSERVED_CSV)[0]
+        self.assertTrue(any(look["look_id"] not in {"", "null"} for look in observed["looks"]))
+        report = scoring.evaluate_shadow(
+            [synthetic, observed],
+            scoring.adapt_score_offline_model,
+            self.book,
+            model_dir=fixture,
+            requested_version="v0.21",
+            seed_count=1,
+        )
+
+        def cpu(situation_id, look_id):
+            matches = [
+                row
+                for row in report["decisions"]
+                if row["situation_id"] == situation_id
+                and row["look_id"] == look_id
+                and row["stratum"] == "madden27/cpu/offense"
+            ]
+            self.assertEqual(len(matches), 1)
+            return matches[0]
+
+        nickel = cpu("syn-offense-028", "11-nickel")
+        self.assertEqual(nickel["hook_look"], "nickel")
+        self.assertEqual(nickel["features"]["groups"]["look"]["key"], "nickel")
+        self.assertTrue(nickel["features"]["groups"]["look"]["matched"])
+        self.assertEqual(nickel["input_diagnostics"]["opp_look"], "nickel")
+        base = cpu("syn-offense-028", "12-base")
+        self.assertEqual(base["hook_look"], "base")
+        self.assertEqual(base["features"]["groups"]["look"]["key"], "base")
+        empty = cpu("syn-offense-028", "empty")
+        self.assertEqual(empty["hook_look"], "empty")
+        self.assertEqual(empty["features"]["groups"]["look"]["key"], "empty")
+        missing = cpu("syn-offense-028", "null")
+        self.assertIsNone(missing["hook_look"])
+        self.assertIsNone(missing["features"]["groups"]["look"]["key"])
+        self.assertEqual(missing["features"]["groups"]["look_family"]["key"], "none")
+        self.assertNotEqual(missing["model_pick"], nickel["model_pick"])
+
+        observed_live = [
+            cpu(observed["situation_id"], look["look_id"])
+            for look in observed["looks"]
+            if look["look_id"] not in {"", "null"}
+        ]
+        self.assertGreaterEqual(len(observed_live), 1)
+        for row in observed_live:
+            self.assertIsInstance(row["hook_look"], str)
+            self.assertEqual(row["features"]["groups"]["look"]["key"], row["hook_look"])
+            self.assertNotIn("{", row["hook_look"])
+
+        without = report["offense_without_look"]
+        self.assertGreater(without["n"], 0)
+        self.assertTrue(any(str(row_id).endswith("__null__madden27/cpu/offense") for row_id in without["row_ids"]))
+        self.assertFalse(any("11-nickel" in str(row_id) for row_id in without["row_ids"]))
+        self.assertFalse(any(str(row_id).endswith("__empty__madden27/cpu/offense") for row_id in without["row_ids"]))
+
+        summary = report["by_model_version"]["v0.21"]["by_side"]["offense"]["synthetic"]["by_stratum"]["madden27/cpu/offense"]["paired_summary"]
+        self.assertGreater(summary["look_flip_count"], 0)
+
+        self.assertEqual(nickel["field_zone"], "midfield")
+        self.assertEqual(nickel["yardline"], 50)
+        self.assertEqual(nickel["trainer_zone"], "opp")
+        self.assertIn("midfield", nickel["zone_note"])
+        self.assertIn("opp", nickel["zone_note"])
+        self.assertIn("Trainer zone buckets", nickel["zone_note"])
+        self.assertIn("yardline passed to the hook is unchanged", nickel["zone_note"])
 
 
 def _write_bundle(

@@ -1033,7 +1033,62 @@ def _look_was_assigned(sit: Any) -> bool:
     look_id = sit.get("look_id")
     if look_id is None:
         return False
-    return str(look_id).strip() not in ("", "null")
+    return str(look_id).strip().casefold() not in ("", "null")
+
+
+def _look_is_all_none(look: Any) -> bool:
+    """True for a missing look. A personnel dict of Nones counts as missing."""
+    if look is None:
+        return True
+    if isinstance(look, str):
+        return look.strip() == ""
+    if isinstance(look, Mapping):
+        personnel = _blank_to_none(look.get("opp_personnel"))
+        package = _blank_to_none(look.get("opp_set"))
+        return personnel is None and package is None
+    return False
+
+
+def _source_has_no_look(sit: Any, look: Any) -> bool:
+    """The source row's own look is the explicit NULL look, not a dropped one."""
+    if not _look_is_all_none(look):
+        return False
+    if not isinstance(sit, Mapping):
+        return True
+    if _look_was_assigned(sit):
+        return False
+    return True
+
+
+def _hook_look(look: Any) -> str | None:
+    """Look string ``score_offline_model`` can score.
+
+    The hook normalizes with ``str(value)``. A personnel dict becomes an
+    unmatched key and ``look_family`` falls back to ``other``. Pass ``None``
+    for a true NULL look, and the package token (``nickel``, ``base``,
+    ``empty``) otherwise. A string look is passed through unchanged.
+    """
+    if look is None:
+        return None
+    if isinstance(look, str):
+        text = look.strip()
+        return None if text == "" else text
+    if isinstance(look, Mapping):
+        personnel = _blank_to_none(look.get("opp_personnel"))
+        package = _blank_to_none(look.get("opp_set"))
+        if personnel is None and package is None:
+            return None
+        if package is not None:
+            return str(package)
+        return str(personnel)
+    return str(look)
+
+
+_TRAINER_ZONE_NOTE = (
+    "Trainer zone buckets are own_deep (yardline <= 20), own (< 50), "
+    "opp (50-79), and red_zone (>= 80). There is no midfield or goal_line label. "
+    "The eval field_zone is the report label. The yardline passed to the hook is unchanged."
+)
 
 
 def _prepare_hook_call(sit: Any, opp_look: Any, side: str) -> dict[str, Any]:
@@ -1061,9 +1116,13 @@ def _prepare_hook_call(sit: Any, opp_look: Any, side: str) -> dict[str, Any]:
         else:
             hook_sit = {key: sit.get(key) for key in sit}
             hook_sit.update(present)
-    passed_look = normalize_opp_look(opp_look)
-    if _look_was_assigned(sit) and passed_look is None:
-        raise RuntimeError("opp_look is None on a row where a look was assigned")
+    assigned = normalize_opp_look(opp_look)
+    passed_look = _hook_look(assigned)
+    if side == "offense" and _look_is_all_none(passed_look) and not _source_has_no_look(sit, assigned):
+        raise RuntimeError(
+            "offense row reached the hook with an all-None look "
+            "but its source row has a look assigned"
+        )
     return {
         "hook_sit": hook_sit,
         "opp_look": passed_look,
@@ -1071,6 +1130,7 @@ def _prepare_hook_call(sit: Any, opp_look: Any, side: str) -> dict[str, Any]:
             "opp_look": passed_look,
             "opp_look_type": type(passed_look).__name__,
             "opp_look_raw": repr(passed_look),
+            "opp_look_assigned": assigned,
             "down_type": types["down"],
             "distance_type": types["distance"],
             "yardline_type": types["yardline"],
@@ -1397,6 +1457,18 @@ def _paired_columns(
     else:
         evaluable = True
         reason = None
+    features = _carried_features(seed0) if ordered else None
+    groups = features.get("groups") if isinstance(features, Mapping) else None
+    zone_group = groups.get("zone") if isinstance(groups, Mapping) else None
+    trainer_zone = zone_group.get("key") if isinstance(zone_group, Mapping) else None
+    field_zone = request.get("field_zone")
+    zone_note = None
+    if trainer_zone is not None and trainer_zone != field_zone:
+        zone_note = (
+            f"eval field_zone {field_zone!r} at yardline {request.get('yardline')}; "
+            f"trainer zone key {trainer_zone!r}. {_TRAINER_ZONE_NOTE}"
+        )
+    hook_look = seed0.get("opp_look") if isinstance(seed0, Mapping) and "opp_look" in seed0 else None
     return {
         "look_id": request.get("look_id"),
         "model_pick": model_pick,
@@ -1410,7 +1482,10 @@ def _paired_columns(
         "agree_with_majority": agree_with_majority,
         "model_pick_heuristic_prob": prob,
         "prob_source": prob_source,
-        "features": _carried_features(seed0) if ordered else None,
+        "features": features,
+        "hook_look": hook_look,
+        "trainer_zone": trainer_zone,
+        "zone_note": zone_note,
         "evaluable": evaluable,
         "evaluable_reason": reason,
         "heuristic_tie_break": HEURISTIC_TIE_BREAK,
@@ -1794,10 +1869,33 @@ def evaluate_shadow(
         "seed_count": int(seed_count),
         "seeds": _seed_values(0, seed_count),
         "heuristic_tie_break": HEURISTIC_TIE_BREAK,
+        "offense_without_look": _offense_without_look(decisions),
         "vod_derived_excluded": excluded,
         "vod_derived_in_sample": [],
         "by_model_version": _shadow_by_version(decisions),
         "decisions": decisions,
+    }
+
+
+def _offense_without_look(decisions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Offense rows whose source look is NULL. Assigned looks that arrive blank fail the run."""
+    rows = []
+    for row in decisions:
+        if row.get("side") != "offense":
+            continue
+        diag = row.get("input_diagnostics") or {}
+        if "opp_look" not in diag:
+            continue
+        if _look_is_all_none(diag.get("opp_look")):
+            rows.append(row)
+    return {
+        "n": len(rows),
+        "row_ids": [row.get("row_id") for row in rows],
+        "note": (
+            "These source rows have no look (look_id null). They are scored with "
+            "a missing look and are not a hard failure. An offense row that had a "
+            "look assigned and reached the hook with an all-None look fails the run."
+        ),
     }
 
 
@@ -2010,6 +2108,10 @@ def _render_shadow_markdown(report: Mapping[str, Any]) -> str:
         HEURISTIC_SEED_CHANGE,
         "model_pick is the seed-0 play. model_seed_stable records whether that play is the same on every seed (0-9 by default).",
         f"Defense rows are still emitted and marked not evaluable: {DEFENSE_PENDING_REASON} They are excluded from paired summary metrics.",
+        "An offense row with an assigned look fails the run if that look reaches the hook as all-None. Source rows that truly have no look are counted under offense_without_look.",
+        _TRAINER_ZONE_NOTE,
+        "",
+        f"Offense rows with no source look: {(report.get('offense_without_look') or {}).get('n')}",
         "",
         f"Requested model version: {report.get('requested_model_version')}",
         f"VOD-derived rows excluded: {len(report.get('vod_derived_excluded') or [])}",

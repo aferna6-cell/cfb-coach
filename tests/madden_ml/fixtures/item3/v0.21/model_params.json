@@ -28,7 +28,8 @@
           },
           "call_x_family": {
             "hb dive|none": 0.04,
-            "verticals|cover_3": 0.03
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
           },
           "class_x_family": {
             "run|none": 0.02,
@@ -99,7 +100,8 @@
           },
           "call_x_family": {
             "hb dive|none": 0.04,
-            "verticals|cover_3": 0.03
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
           },
           "class_x_family": {
             "run|none": 0.02,
@@ -170,7 +172,8 @@
           },
           "call_x_family": {
             "hb dive|none": 0.04,
-            "verticals|cover_3": 0.03
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
           },
           "class_x_family": {
             "run|none": 0.02,
@@ -241,7 +244,8 @@
           },
           "call_x_family": {
             "hb dive|none": 0.04,
-            "verticals|cover_3": 0.03
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
           },
           "class_x_family": {
             "run|none": 0.02,
@@ -312,7 +316,8 @@
           },
           "call_x_family": {
             "hb dive|none": 0.04,
-            "verticals|cover_3": 0.03
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
           },
           "class_x_family": {
             "run|none": 0.02,
@@ -383,7 +388,8 @@
           },
           "call_x_family": {
             "hb dive|none": 0.04,
-            "verticals|cover_3": 0.03
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
           },
           "class_x_family": {
             "run|none": 0.02,
@@ -454,7 +460,8 @@
           },
           "call_x_family": {
             "hb dive|none": 0.04,
-            "verticals|cover_3": 0.03
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
           },
           "class_x_family": {
             "run|none": 0.02,
@@ -525,7 +532,8 @@
           },
           "call_x_family": {
             "hb dive|none": 0.04,
-            "verticals|cover_3": 0.03
+            "verticals|cover_3": 0.03,
+            "inside zone|other": 0.4
           },
           "class_x_family": {
             "run|none": 0.02,
