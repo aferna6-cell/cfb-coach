@@ -45,6 +45,51 @@ META_DATA_VERSION = "ml_data_version"
 PENDING_ATTR = "_pending_ml_decision"
 
 
+def _cached_experimental_artifact(path: Path) -> tuple[Any, str]:
+    """Load the offense artifact once per file revision.
+
+    The live path used to read and parse the same JSON on every snap, then
+    parse it a second time for ``scored_on``. A missing path still calls the
+    loader so tests can replace it.
+    """
+    from cfb_coach.madden.model.inference import (
+        cached_parsed_model,
+        file_revision,
+        read_scored_on,
+    )
+
+    def _read() -> tuple[Any, str]:
+        artifact = exp_mod.load_artifact(path)
+        scored = "unknown"
+        try:
+            scored = read_scored_on(json.loads(Path(path).read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError, TypeError):
+            scored = "unknown"
+        return artifact, scored
+
+    revision = file_revision(path)
+    if revision is None:
+        return _read()
+    return cached_parsed_model(("experimental-offense",) + revision, _read)
+
+
+def _inference_trace(clock: Any, latency: float | None, timed_out: bool) -> dict[str, Any]:
+    from cfb_coach.madden.model.inference import log_offense_inference
+
+    clock.end()
+    slowest = clock.slowest()
+    log_offense_inference(
+        latency_ms=latency,
+        timed_out=timed_out,
+        slowest_stage=slowest,
+    )
+    return {
+        "latency_ms": None if latency is None else round(float(latency), 3),
+        "timed_out": bool(timed_out),
+        "slowest_stage": slowest,
+    }
+
+
 def resolve_artifact_path(db: Any = None) -> Path | None:
     if db is not None:
         try:
@@ -323,9 +368,12 @@ def apply_experimental_offense(
     is attached to the call for later :func:`commit_experimental_decision`
     after seal — never an anonymous DB row.
     """
+    from cfb_coach.madden.model.inference import StageClock
     from cfb_coach.madden.model.schema import Possession
 
     decision_ts = datetime.now(timezone.utc).isoformat()
+    clock = StageClock()
+    traced = False
     budget = float(ML_LATENCY_BUDGET_MS if budget_ms is None else budget_ms)
     scored_on = "unknown"
     if commit is None:
@@ -352,7 +400,15 @@ def apply_experimental_offense(
             except Exception:  # noqa: BLE001
                 pass
 
+    def _mark(latency: float | None, timed_out: bool) -> dict[str, Any]:
+        nonlocal traced
+        if traced:
+            return {}
+        traced = True
+        return _inference_trace(clock, latency, timed_out)
+
     def _fallback(status: MLStatus, latency: float | None = None) -> tuple[Any, CoachingDecision]:
+        trace = _mark(latency, status is MLStatus.TIMEOUT)
         dec = CoachingDecision(
             decision_ts=decision_ts,
             latency_ms=latency,
@@ -386,6 +442,9 @@ def apply_experimental_offense(
             "explanation": f"experimental fallback → heuristic ({status.value})",
             "scored_on": scored_on,
             "fell_back": True,
+            "latency_ms": trace.get("latency_ms"),
+            "timed_out": trace.get("timed_out", False),
+            "slowest_stage": trace.get("slowest_stage"),
         }
         _attach(heuristic_call, dec, info)
         if commit and db is not None and snap_id:
@@ -398,6 +457,7 @@ def apply_experimental_offense(
     if str(getattr(heuristic_call, "side", "offense") or "offense").startswith("d"):
         return _fallback(MLStatus.CIRCUIT_OPEN)
 
+    clock.begin("candidates")
     pairs, bonuses = situational_offense_candidates(
         sit, book, db=db, opponent_id=opponent_id
     )
@@ -427,6 +487,7 @@ def apply_experimental_offense(
             pass
 
     artifact_path = resolve_artifact_path(db)
+    clock.begin("load_model")
     started = time.perf_counter()
     try:
         if artifact_path is None:
@@ -443,15 +504,7 @@ def apply_experimental_offense(
                 db.set_meta(META_DATA_VERSION, art.data_version)
             artifact = art
         else:
-            artifact = exp_mod.load_artifact(artifact_path)
-            from cfb_coach.madden.model.inference import read_scored_on
-
-            try:
-                scored_on = read_scored_on(
-                    json.loads(Path(artifact_path).read_text(encoding="utf-8"))
-                )
-            except (OSError, json.JSONDecodeError, TypeError):
-                scored_on = "unknown"
+            artifact, scored_on = _cached_experimental_artifact(artifact_path)
 
         elapsed = (time.perf_counter() - started) * 1000.0
         if elapsed > budget:
@@ -465,6 +518,7 @@ def apply_experimental_offense(
             cov_src = "none"
 
         opp_type = "cpu" if is_cpu_opponent(opponent_id) else "human"
+        clock.begin("rank")
         ranked = exp_mod.rank_candidates(
             artifact,
             pairs,
@@ -490,6 +544,7 @@ def apply_experimental_offense(
         # screen exposure before choosing its next in-book candidate.
         from cfb_coach.madden.model.offense_selection_policy import select_from_database
 
+        clock.begin("select")
         ranked, selection_audit = select_from_database(
             ranked, db=db, opponent_id=opponent_id,
             sit=sit, opponent_type=opp_type,
@@ -511,6 +566,7 @@ def apply_experimental_offense(
             JOINT_POLICY, choose_joint_action,
         )
 
+        clock.begin("joint")
         memory = None
         strategy_previous = None
         if db is not None:
@@ -595,6 +651,7 @@ def apply_experimental_offense(
 
         # Always build the model-selected call, even when the play name agrees
         # with the heuristic. Accessories must never be inherited by accident.
+        clock.begin("rebuild")
         call = rebuild_offense_attachments(
             formation=ml_form,
             play=ml_play,
@@ -613,6 +670,7 @@ def apply_experimental_offense(
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
 
+        trace = _mark(latency, False)
         info = {
             "heuristic_formation": heur_form,
             "heuristic_play": heur_play,
@@ -651,6 +709,9 @@ def apply_experimental_offense(
             # coverage as a training feature for which action to fire.
             # Quarter lives on extras, not as a Situation attribute.
             "pre_snap_action_context": _pre_snap_context(sit, joint.get("input_audit")),
+            "latency_ms": trace.get("latency_ms"),
+            "timed_out": trace.get("timed_out", False),
+            "slowest_stage": trace.get("slowest_stage"),
         }
 
         if db is not None and (session_id or game_id):
@@ -772,6 +833,9 @@ def commit_experimental_decision(
                 "joint_exploration": info.get("joint_exploration"),
                 "joint_policy": info.get("joint_policy"),
                 "football_reason": info.get("football_reason"),
+                "latency_ms": info.get("latency_ms"),
+                "timed_out": info.get("timed_out"),
+                "slowest_stage": info.get("slowest_stage"),
             }
             db.conn.execute(
                 "UPDATE ml_decisions SET decision_json=? WHERE id=?",
