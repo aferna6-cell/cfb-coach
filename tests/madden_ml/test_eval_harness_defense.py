@@ -90,14 +90,24 @@ def _assert_call_empty(row: dict, play: str) -> None:
     assert row["features"]["call_matches"] == []
 
 
-def test_lower_offense_success_look_ranks_first_and_call_stays_empty(
-    tmp_path: Path, defense_book,
-) -> None:
-    del defense_book
+def _score(model: Path, **overrides):
+    params = {
+        "side": "defense",
+        "model_dir": model,
+        "strata": "madden27/human/defense",
+        "opp_look": "Mesh",
+        "seed": 1,
+        "offline_ok": True,
+    }
+    params.update(overrides)
+    return score_offline_model("1st and 10", **params)
+
+
+def _direction_models(tmp_path: Path) -> tuple[Path, Path]:
     # Cover 2 lowers offense success. Cover 3 raises it. A max ranking would
     # pick Cover 3. Stuffing our play into ``call`` would add the +100 weights
     # and, under a min ranking, would also pick Cover 3.
-    model = _write_model(
+    low_cover_2 = _write_model(
         tmp_path / "low-cover-2",
         {
             "look_family": {"cover_2": -4.0, "cover_3": 5.0},
@@ -109,20 +119,21 @@ def test_lower_offense_success_look_ranks_first_and_call_stays_empty(
             },
         },
     )
-    low = score_offline_model(
-        "1st and 10",
-        side="defense",
-        model_dir=model,
-        strata="madden27/human/defense",
-        opp_look="Mesh",
-        seed=1,
-        offline_ok=True,
+    low_cover_3 = _write_model(
+        tmp_path / "low-cover-3",
+        {"look_family": {"cover_2": 3.0, "cover_3": -8.0}},
     )
+    return low_cover_2, low_cover_3
+
+
+def test_lower_offense_success_look_ranks_first(tmp_path: Path, defense_book) -> None:
+    del defense_book
+    low_cover_2, low_cover_3 = _direction_models(tmp_path)
+    low = _score(low_cover_2)
     assert low["play"] == "Cover 2"
     assert low["play"] != "Cover 3"
     assert low["legal"] is True
     assert low["side"] == "defense"
-    _assert_call_empty(low, "Cover 2")
     assert low["features"]["groups"]["look"]["key"] == "cover 2"
     assert low["features"]["groups"]["look_family"] == {
         "key": "cover_2",
@@ -130,6 +141,24 @@ def test_lower_offense_success_look_ranks_first_and_call_stays_empty(
         "weight": -4.0,
     }
     assert low["features"]["groups"]["look"]["key"] != "mesh"
+    assert low["features"]["ranking"] == "min_offense_success"
+
+    other = _score(low_cover_3)
+    assert other["play"] == "Cover 3"
+    assert other["features"]["groups"]["look"]["key"] == "cover 3"
+    assert other["features"]["groups"]["look_family"]["key"] == "cover_3"
+    assert other["features"]["groups"]["look_family"]["weight"] == -8.0
+
+
+def test_defense_rows_leave_call_and_call_x_family_empty(tmp_path: Path, defense_book) -> None:
+    del defense_book
+    low_cover_2, low_cover_3 = _direction_models(tmp_path)
+    rows = (_score(low_cover_2), _score(low_cover_3))
+    plays = ("Cover 2", "Cover 3")
+    for row, play in zip(rows, plays, strict=True):
+        _assert_call_empty(row, play)
+        assert row["features"]["groups"]["call"]["key"] is None
+        assert row["features"]["groups"]["call_x_family"]["key"] is None
     trainer = feature_map(snap_from_row({
         "game": "madden27",
         "opponent_type": "human",
@@ -146,25 +175,7 @@ def test_lower_offense_success_look_ranks_first_and_call_stays_empty(
     assert "call" not in trainer
     assert "call_x_family" not in trainer
     assert trainer["call_class"] == "none"
+    low = rows[0]
     assert low["features"]["groups"]["look_family"]["key"] == trainer["look_family"]
     assert low["features"]["groups"]["class_x_family"]["key"] == trainer["class_x_family"]
     assert trainer["class_x_family"] == "none|cover_2"
-
-    flipped = _write_model(
-        tmp_path / "low-cover-3",
-        {"look_family": {"cover_2": 3.0, "cover_3": -8.0}},
-    )
-    other = score_offline_model(
-        "1st and 10",
-        side="defense",
-        model_dir=flipped,
-        strata="madden27/human/defense",
-        opp_look="Mesh",
-        seed=1,
-        offline_ok=True,
-    )
-    assert other["play"] == "Cover 3"
-    _assert_call_empty(other, "Cover 3")
-    assert other["features"]["groups"]["look"]["key"] == "cover 3"
-    assert other["features"]["groups"]["look_family"]["key"] == "cover_3"
-    assert other["features"]["groups"]["look_family"]["weight"] == -8.0
