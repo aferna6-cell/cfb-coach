@@ -606,6 +606,32 @@ def _field(source: Mapping[str, Any] | None, key: str, fallback: Any) -> Any:
     return fallback
 
 
+# Columns ``snap_from_row`` already reads. Pressure is not a column: ``_pressure``
+# derives it from the look text, which is passed as ``look`` / ``coverage_seen``.
+_SNAP_FLAG_COLUMNS = (
+    "off_adjustment",
+    "off_adj",
+    "def_adjustment",
+    "def_adj",
+    "adjustment",
+    "audible",
+)
+
+
+def _snap_flag_values(
+    source: Mapping[str, Any] | None,
+    extras: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Copy trainer flag columns through unchanged. Do not interpret them."""
+    found: dict[str, Any] = {}
+    for key in _SNAP_FLAG_COLUMNS:
+        if source is not None and key in source:
+            found[key] = source[key]
+        elif key in extras:
+            found[key] = extras[key]
+    return found
+
+
 def _offline_context(
     sit: Any,
     parsed: Any,
@@ -620,6 +646,13 @@ def _offline_context(
     Down and distance are handed to ``snap_from_row`` unchanged, so a CSV
     string ``\"1\"`` is coerced by the trainer's own ``_int``. Blank personnel
     and look strings become ``None`` on the training row only.
+
+    ``off_adj``, ``def_adj``, and ``pressure`` are not rebuilt here.
+    ``snap_from_row`` sets the adjustment flags from ``off_adj``,
+    ``off_adjustment``, ``def_adj``, ``def_adjustment``, ``adjustment``, and
+    ``audible``, and sets pressure from the look text. Those columns are
+    copied onto the training row when the caller supplied them. Which side
+    an ``adjustment`` belongs to stays the trainer's ``_side_flag`` rule.
     """
     from cfb_coach.situation import Situation
 
@@ -676,6 +709,11 @@ def _offline_context(
     if look is not None:
         row["look"] = look
         row["coverage_seen"] = look
+    flags = _snap_flag_values(source, extras)
+    for key, value in flags.items():
+        if _blank_to_none(value) is None:
+            continue
+        row[key] = value
     if source is not None and "zone" in source and _blank_to_none(source.get("zone")) is not None:
         row["zone"] = source["zone"]
     if source is not None and "dist" in source and _blank_to_none(source.get("dist")) is not None:
@@ -693,6 +731,8 @@ def _offline_context(
         "personnel": _typed(personnel_raw),
         "side": _typed(side_arg),
     }
+    for key, value in flags.items():
+        raw[key] = _typed(value)
     coerced = {"look": look, "personnel": personnel}
     return {"row": row, "raw": raw, "coerced": coerced}
 

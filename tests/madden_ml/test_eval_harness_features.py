@@ -223,3 +223,88 @@ def test_real_key_format_strings_and_csv_coercion(tmp_path: Path, tiny_book) -> 
     assert csv["features"]["groups"]["look"] == {"key": None, "matched": False, "weight": 0.0}
     assert csv["features"]["groups"]["look_family"]["key"] == "none"
     assert csv["features"]["groups"]["pressure"] == {"key": None, "matched": False, "weight": 0.0}
+
+
+def test_trainer_builds_pressure_and_adjustment_keys(tmp_path: Path, tiny_book) -> None:
+    del tiny_book
+    model = _write_model(
+        tmp_path / "model",
+        {
+            "pressure": {"yes": 1.0},
+            "off_adj": {"yes": 1.0},
+            "def_adj": {"yes": 1.0},
+        },
+    )
+    pressed = _score(model, "1st and 10", opp_look="Fire Blitz")
+    trainer = feature_map(snap_from_row({
+        "game": "madden27",
+        "opponent_type": "human",
+        "side": "offense",
+        "play": pressed["play"],
+        "formation": pressed["formation"],
+        "down": 1,
+        "distance": 10,
+        "look": "Fire Blitz",
+        "coverage_seen": "Fire Blitz",
+        "situation_raw": "1st and 10",
+        "success": None,
+    }))
+    assert pressed["features"]["groups"]["pressure"] == {
+        "key": "yes",
+        "matched": True,
+        "weight": 1.0,
+    }
+    assert pressed["features"]["groups"]["pressure"]["key"] == trainer["pressure"]
+    assert pressed["features"]["groups"]["look_family"]["key"] == trainer["look_family"] == "pressure_other"
+    assert pressed["features"]["groups"]["off_adj"]["key"] is None
+    assert pressed["features"]["groups"]["def_adj"]["key"] is None
+
+    flagged = _score(
+        model,
+        {
+            "down": "1",
+            "distance": "10",
+            "off_adj": "yes",
+            "def_adjustment": "1",
+            "adjustment": "   ",
+        },
+        opp_look="Cover 3",
+    )
+    assert flagged["features"]["groups"]["off_adj"] == {"key": "yes", "matched": True, "weight": 1.0}
+    assert flagged["features"]["groups"]["def_adj"] == {"key": "yes", "matched": True, "weight": 1.0}
+    assert flagged["features"]["groups"]["pressure"]["key"] is None
+    assert flagged["features"]["raw"]["off_adj"] == {"value": "yes", "type": "str"}
+    assert flagged["features"]["raw"]["def_adjustment"] == {"value": "1", "type": "str"}
+    assert flagged["side"] == "offense"
+    shared = feature_map(snap_from_row({
+        "game": "madden27",
+        "opponent_type": "human",
+        "side": "offense",
+        "play": flagged["play"],
+        "formation": flagged["formation"],
+        "down": "1",
+        "distance": "10",
+        "look": "Cover 3",
+        "coverage_seen": "Cover 3",
+        "off_adj": "yes",
+        "def_adjustment": "1",
+        "situation_raw": "1&10",
+        "success": None,
+    }))
+    assert flagged["features"]["groups"]["off_adj"]["key"] == shared["off_adj"]
+    assert flagged["features"]["groups"]["def_adj"]["key"] == shared["def_adj"]
+
+    blank = _score(
+        model,
+        {"down": "1", "distance": "10", "off_adj": "  ", "def_adj": "none"},
+        opp_look="Cover 3",
+    )
+    assert blank["features"]["groups"]["off_adj"]["key"] is None
+    assert blank["features"]["groups"]["def_adj"]["key"] is None
+
+    defense = _score(model, "d 1st and 10", side="defense", opp_look="Cover 3")
+    assert defense["side"] == "defense"
+    assert defense["features"]["groups"]["side"]["key"] == "defense"
+    assert defense["features"]["groups"]["off_adj"]["key"] is None
+    assert defense["features"]["groups"]["def_adj"]["key"] is None
+    assert defense["features"]["groups"]["pressure"]["key"] is None
