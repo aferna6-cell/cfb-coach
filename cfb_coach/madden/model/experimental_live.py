@@ -155,6 +155,143 @@ def _pre_snap_context(sit: Any, audit: Mapping[str, Any] | None) -> dict[str, An
     }
 
 
+def _catalog_macro(macro: Any) -> dict[str, Any] | None:
+    """A Custom Adjustment id Aidan actually confirmed. Unknown names are not macros."""
+    from cfb_coach.madden.offense_macros import known
+
+    if not isinstance(macro, dict):
+        return None
+    mid = str(macro.get("id") or "").strip()
+    if not mid or not known(mid):
+        return None
+    return macro
+
+
+def _verified_created_macro(macro: Any) -> dict[str, Any] | None:
+    """A user-attested created macro the action policy already accepted.
+
+    A bare invented id does not qualify. Settings and sources are required,
+    the same gate the joint policy uses before it will offer one.
+    """
+    if not isinstance(macro, dict) or macro.get("verified_armed") is not True:
+        return None
+    if not macro.get("settings") or not macro.get("source_ids"):
+        return None
+    if not str(macro.get("id") or "").strip():
+        return None
+    return macro
+
+
+def _heuristic_catalog_macro(
+    *,
+    sit: Any,
+    zone: str,
+    play: str,
+    coverage: str | None,
+    coverage_source: str,
+    active: Sequence[str],
+    repeated: bool,
+    book: dict[str, list[str]],
+    weights: dict[str, float],
+    score_phase: str | None,
+    cooled: set[str],
+) -> dict[str, Any] | None:
+    """The catalog macro the heuristic caller would arm for this play, or None.
+
+    Same fire rules, same active list, same ``suggest_for_snap`` winner.
+    ``--no-macros`` withholds it. A name that is not in the catalog is ignored.
+    """
+    if (getattr(sit, "extras", None) or {}).get("live_macros", True) is False:
+        return None
+    try:
+        from cfb_coach.madden.offense_macros import known, suggest_for_snap
+
+        info = suggest_for_snap(
+            zone=zone,
+            play=play,
+            coverage=coverage,
+            coverage_source=coverage_source,
+            active=list(active),
+            down=getattr(sit, "down", None),
+            repeated=repeated,
+            book=book,
+            weights=weights,
+            score_phase=score_phase,
+            cooled=cooled,
+        )
+    except Exception:  # noqa: BLE001 — a macro lookup must not blank the play
+        return None
+    if not isinstance(info, dict) or not known(str(info.get("id") or "")):
+        return None
+    return info
+
+
+def _resolve_model_adjustment(
+    decision: Mapping[str, Any] | None,
+    *,
+    sit: Any,
+    zone: str,
+    play: str,
+    coverage: str | None,
+    coverage_source: str,
+    active: Sequence[str],
+    repeated: bool,
+    book: dict[str, list[str]],
+    weights: dict[str, float],
+    score_phase: str | None,
+    cooled: set[str],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any]]:
+    """Pair a model-selected play with the heuristic's catalog macro.
+
+    The success model returns a formation and a play. The joint action score
+    then often keeps ``NO_ADJUSTMENT`` after its execution-cost penalty, so
+    the rebuilt call used to ship with no macro. Timeout fallback was the
+    only path that still ran ``suggest_for_snap``. This uses that same
+    compatibility winner whenever it arms one. An invented macro name is
+    dropped. A verified created macro stays only when no catalog macro fits.
+    """
+    resolved = dict(decision or {})
+    kind = str(resolved.get("kind") or "none")
+    macros_on = (getattr(sit, "extras", None) or {}).get("live_macros", True) is not False
+    policy_macro = resolved.get("macro") if kind == "macro" and macros_on else None
+    catalog = _catalog_macro(policy_macro)
+    paired = _heuristic_catalog_macro(
+        sit=sit, zone=zone, play=play, coverage=coverage,
+        coverage_source=coverage_source, active=active, repeated=repeated,
+        book=book, weights=weights, score_phase=score_phase, cooled=cooled,
+    )
+    if paired is not None:
+        macro: dict[str, Any] | None = paired
+        adjustment: dict[str, Any] | None = None
+        if kind != "macro" or resolved.get("id") != paired.get("id"):
+            resolved["kind"] = "macro"
+            resolved["id"] = paired["id"]
+            resolved["macro"] = paired
+            resolved["adjustment"] = None
+            resolved["reason"] = paired.get("why") or resolved.get("reason") or ""
+    elif catalog is not None:
+        macro, adjustment = catalog, None
+    else:
+        created = _verified_created_macro(policy_macro)
+        if created is not None:
+            macro, adjustment = created, None
+        else:
+            macro = None
+            raw_adj = resolved.get("adjustment")
+            adjustment = raw_adj if kind == "adjustment" and isinstance(raw_adj, dict) else None
+            if kind == "macro":
+                resolved["kind"] = "none"
+                resolved["id"] = None
+                resolved["macro"] = None
+                resolved["adjustment"] = None
+                resolved["reason"] = (
+                    "macros withheld"
+                    if not macros_on
+                    else "invented macro name is not in the catalog"
+                )
+    return macro, adjustment, resolved
+
+
 def rebuild_offense_attachments(
     *,
     formation: str,
@@ -223,17 +360,27 @@ def rebuild_offense_attachments(
             db=db,
             opponent_id=opponent_id,
         )
-        chosen_macro = decision.get("macro")
-        chosen_adj = decision.get("adjustment")
+        # The model pick is formation + play. Arm the same catalog macro the
+        # heuristic would, instead of leaving the live line on "No adj".
+        chosen_macro, chosen_adj, decision = _resolve_model_adjustment(
+            decision,
+            sit=sit, zone=zone, play=play, coverage=cov, coverage_source=src,
+            active=list(active), repeated=repeated, book=book, weights=weights,
+            score_phase=score_phase, cooled=cooled,
+        )
+        macro_id = str(chosen_macro.get("id")).strip() if chosen_macro else ""
         call = MaddenCall(
             "offense", formation, play,
             chosen_adj["label"] if chosen_adj else "No adj",
             reads_for(play),
             rationale + f" | ACTION {decision['kind']}: {decision['reason']}",
-            macro=chosen_macro["id"] if chosen_macro else None,
+            macro=macro_id or None,
             macro_info=chosen_macro,
             adjustment=chosen_adj,
         )
+        if macro_id:
+            # Armed for this snap. The exact live line prints the id only then.
+            call.macro_state = "armed"
         call.ml_offense_action = {
             key: value for key, value in decision.items()
             if key not in ("macro", "adjustment")
