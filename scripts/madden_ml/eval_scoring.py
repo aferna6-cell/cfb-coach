@@ -34,6 +34,7 @@ if str(_ROOT) not in sys.path:
 
 from cfb_coach.madden.catalog import is_deep, is_run
 from cfb_coach.madden.model.schema import MLStatus, is_live_selectable
+from cfb_coach.vod_success.features import _look_family, _norm
 from cfb_coach.zones import field_zone
 
 DISCLAIMER = (
@@ -62,6 +63,31 @@ HEURISTIC_SEED_CHANGE = (
 )
 # First key present on the seed-0 heuristic (then any later seed) wins.
 _HEURISTIC_WEIGHT_KEYS = ("candidate_probabilities", "sampling_weights", "weights")
+# Trainer look text is def_call, then coverage_seen, then def_overlay.
+# Family is coverage_seen first, mapped by the trainer's own _look_family.
+_COVERAGE_FIELDS = ("def_call", "coverage_seen", "def_overlay")
+# These are personnel packages. They are not trained look or look_family keys.
+_PACKAGE_TOKENS = frozenset(
+    {
+        "nickel",
+        "dime",
+        "base",
+        "empty",
+        "dollar",
+        "quarter",
+        "goal_line",
+        "11",
+        "12",
+        "21",
+        "10",
+        "22",
+        "13",
+    }
+)
+# Fallback family labels are not trained-key hits.
+_FALLBACK_LOOK_KEYS = frozenset({"other", "none"})
+_SNAP_ID_FIELDS = ("video_id", "vod_id", "game_id", "youtube_id", "id")
+LABEL_LOOK_CHECK = "training rows, key-construction check, not held-out"
 
 FIXTURE_DIR = _ROOT / "tests" / "madden_ml" / "fixtures" / "item3"
 SYNTHETIC_FIXTURE = FIXTURE_DIR / "synthetic_grid.json"
@@ -405,6 +431,12 @@ def load_observed_csv(path: Path) -> list[dict[str, Any]]:
             if game_id and game_id not in {"g1", "g2", "g3", "g4"}:
                 raise ValueError(f"row {index} game {game_id!r} is not g1-g4")
             zone = observed_field_zone(yardline, distance)
+            looks = []
+            coverage = _csv_coverage(fieldnames, raw)
+            for item in assigned_observed_looks(index - 1):
+                look = dict(item)
+                look.update(coverage)
+                looks.append(look)
             rows.append(
                 _identity(
                     situation_id=f"obs-{index:04d}",
@@ -419,7 +451,7 @@ def load_observed_csv(path: Path) -> list[dict[str, Any]]:
                     score_name="close",
                     game_id=game_id or None,
                     default_filled=["score", "clock"],
-                    looks=assigned_observed_looks(index - 1),
+                    looks=looks,
                     look_observed=False,
                     quarter=quarter,
                     clock_seconds=None,
@@ -470,6 +502,11 @@ def _exact_int(value: Any, name: str) -> int:
     return int(text)
 
 
+def _csv_coverage(fieldnames: Sequence[str], raw: Mapping[str, Any]) -> dict[str, Any]:
+    """Coverage columns that are actually on this file. Absent columns stay absent."""
+    return {key: raw.get(key) for key in _COVERAGE_FIELDS if key in fieldnames}
+
+
 def expand_decision_rows(identities: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
     """One row per situation × look. Observed looks are tagged assigned, not observed."""
     expanded: list[dict[str, Any]] = []
@@ -491,6 +528,15 @@ def expand_decision_rows(identities: Sequence[Mapping[str, Any]]) -> list[dict[s
             row["look_id"] = look["look_id"]
             row["opp_personnel"] = look["opp_personnel"]
             row["opp_set"] = look["opp_set"]
+            for key in _COVERAGE_FIELDS:
+                if key in look:
+                    row[key] = look[key]
+                elif key in identity:
+                    row[key] = identity[key]
+            if "defense_look" in look:
+                row["defense_look"] = look["defense_look"]
+            elif "defense_look" in identity:
+                row["defense_look"] = identity["defense_look"]
             row["opp_look"] = normalize_opp_look(
                 {
                     "opp_personnel": look["opp_personnel"],
@@ -549,6 +595,12 @@ def load_observed_defense_csv(path: Path) -> list[dict[str, Any]]:
             fold_id = (raw.get("fold_id") or "").strip()
             if not fold_id:
                 raise ValueError(f"row {index} is missing fold_id")
+            look = {
+                "look_id": f"file-{index}",
+                "opp_personnel": personnel,
+                "opp_set": opp_set,
+            }
+            look.update(_csv_coverage(fieldnames, raw))
             identity = _identity(
                 situation_id=f"obs-def-{index:04d}",
                 side=side,
@@ -562,13 +614,7 @@ def load_observed_defense_csv(path: Path) -> list[dict[str, Any]]:
                 score_name="close",
                 game_id=None,
                 default_filled=["score", "clock"],
-                looks=[
-                    {
-                        "look_id": f"file-{index}",
-                        "opp_personnel": personnel,
-                        "opp_set": opp_set,
-                    }
-                ],
+                looks=[look],
                 look_observed=True,
                 quarter=None,
                 clock_seconds=None,
@@ -1024,64 +1070,85 @@ def _coerce_csv_number(value: Any) -> Any:
     return value
 
 
-def _look_was_assigned(sit: Any) -> bool:
-    """True when this row carried a look other than the explicit NULL look."""
-    if not isinstance(sit, Mapping):
-        return False
-    if sit.get("look_assigned") is True:
-        return True
-    look_id = sit.get("look_id")
-    if look_id is None:
-        return False
-    return str(look_id).strip().casefold() not in ("", "null")
+def _trainer_text(value: Any) -> str | None:
+    """Trainer normalization. Structured values are not look text."""
+    if value is None or isinstance(value, (Mapping, list, tuple, bool)):
+        return None
+    text = _norm(value)
+    return text or None
 
 
-def _look_is_all_none(look: Any) -> bool:
-    """True for a missing look. A personnel dict of Nones counts as missing."""
-    if look is None:
-        return True
-    if isinstance(look, str):
-        return look.strip() == ""
-    if isinstance(look, Mapping):
-        personnel = _blank_to_none(look.get("opp_personnel"))
-        package = _blank_to_none(look.get("opp_set"))
-        return personnel is None and package is None
-    return False
-
-
-def _source_has_no_look(sit: Any, look: Any) -> bool:
-    """The source row's own look is the explicit NULL look, not a dropped one."""
-    if not _look_is_all_none(look):
+def _raw_coverage_nonblank(value: Any) -> bool:
+    if value is None or isinstance(value, bool):
         return False
-    if not isinstance(sit, Mapping):
-        return True
-    if _look_was_assigned(sit):
-        return False
+    if isinstance(value, str):
+        return bool(value.strip())
     return True
 
 
-def _hook_look(look: Any) -> str | None:
-    """Look string ``score_offline_model`` can score.
+def _coverage_containers(sit: Any, opp_look: Any) -> list[Mapping[str, Any]]:
+    containers: list[Mapping[str, Any]] = []
+    for source in (sit, opp_look):
+        if not isinstance(source, Mapping):
+            continue
+        defense = source.get("defense_look")
+        if isinstance(defense, Mapping):
+            containers.append(defense)
+        containers.append(source)
+    return containers
 
-    The hook normalizes with ``str(value)``. A personnel dict becomes an
-    unmatched key and ``look_family`` falls back to ``other``. Pass ``None``
-    for a true NULL look, and the package token (``nickel``, ``base``,
-    ``empty``) otherwise. A string look is passed through unchanged.
+
+def _raise_if_coverage_dropped(*, columns_present: bool, nonblank: bool, look: str | None) -> None:
+    """Hard-fail only when coverage columns hold a value and the look is empty."""
+    if columns_present and nonblank and look is None:
+        raise RuntimeError(
+            "source has coverage columns but the look came out empty"
+        )
+
+
+def build_prep_look(sit: Any, opp_look: Any = None) -> dict[str, Any]:
+    """Look from def_call, then coverage_seen, then def_overlay.
+
+    ``look_family`` uses coverage_seen first and the trainer's ``_look_family``.
+    A source with none of those columns is no look (``None``), not a failure.
+    A personnel package is not a coverage column.
     """
-    if look is None:
-        return None
-    if isinstance(look, str):
-        text = look.strip()
-        return None if text == "" else text
-    if isinstance(look, Mapping):
-        personnel = _blank_to_none(look.get("opp_personnel"))
-        package = _blank_to_none(look.get("opp_set"))
-        if personnel is None and package is None:
-            return None
-        if package is not None:
-            return str(package)
-        return str(personnel)
-    return str(look)
+    raws: dict[str, Any] = {}
+    columns_present = False
+    for container in _coverage_containers(sit, opp_look):
+        for field in _COVERAGE_FIELDS:
+            if field in container and field not in raws:
+                raws[field] = container[field]
+                columns_present = True
+    if isinstance(opp_look, str) and "coverage_seen" not in raws:
+        text = _trainer_text(opp_look)
+        if text and text not in _PACKAGE_TOKENS:
+            raws["coverage_seen"] = opp_look
+            columns_present = True
+    nonblank = any(
+        _raw_coverage_nonblank(raws[field]) for field in _COVERAGE_FIELDS if field in raws
+    )
+    look = (
+        _trainer_text(raws.get("def_call"))
+        or _trainer_text(raws.get("coverage_seen"))
+        or _trainer_text(raws.get("def_overlay"))
+    )
+    _raise_if_coverage_dropped(columns_present=columns_present, nonblank=nonblank, look=look)
+    family_source = _trainer_text(raws.get("coverage_seen")) or look
+    family = _look_family(family_source or "")
+    if not columns_present:
+        status = "no_coverage_in_source"
+    elif look is None:
+        status = "blank_coverage"
+    else:
+        status = "coverage"
+    return {
+        "look": look,
+        "family": family,
+        "columns_present": columns_present,
+        "nonblank": nonblank,
+        "status": status,
+    }
 
 
 _TRAINER_ZONE_NOTE = (
@@ -1116,13 +1183,9 @@ def _prepare_hook_call(sit: Any, opp_look: Any, side: str) -> dict[str, Any]:
         else:
             hook_sit = {key: sit.get(key) for key in sit}
             hook_sit.update(present)
+    prep = build_prep_look(sit, opp_look)
+    passed_look = prep["look"]
     assigned = normalize_opp_look(opp_look)
-    passed_look = _hook_look(assigned)
-    if side == "offense" and _look_is_all_none(passed_look) and not _source_has_no_look(sit, assigned):
-        raise RuntimeError(
-            "offense row reached the hook with an all-None look "
-            "but its source row has a look assigned"
-        )
     return {
         "hook_sit": hook_sit,
         "opp_look": passed_look,
@@ -1131,6 +1194,10 @@ def _prepare_hook_call(sit: Any, opp_look: Any, side: str) -> dict[str, Any]:
             "opp_look_type": type(passed_look).__name__,
             "opp_look_raw": repr(passed_look),
             "opp_look_assigned": assigned,
+            "prep_look": prep["look"],
+            "prep_look_family": prep["family"],
+            "no_coverage_in_source": prep["status"] == "no_coverage_in_source",
+            "coverage_status": prep["status"],
             "down_type": types["down"],
             "distance_type": types["distance"],
             "yardline_type": types["yardline"],
@@ -1512,10 +1579,65 @@ def _median_prob(values: Sequence[Any]) -> float | None:
     return (nums[mid - 1] + nums[mid]) / 2.0
 
 
+def _coef_keys(bundle: Mapping[str, Any], stratum: str, group: str) -> set[str]:
+    strata = (bundle.get("params") or {}).get("strata") or {}
+    block = strata.get(stratum) or {}
+    coef = ((block.get("model") or {}).get("coef") or {})
+    raw = coef.get(group) or {}
+    if not isinstance(raw, Mapping):
+        return set()
+    return {_norm(key) for key in raw}
+
+
+def _is_trained_match(key: Any, trained: set[str], *, exclude_packages: bool) -> bool:
+    """True when ``key`` is a trained key and not a fallback or package token."""
+    text = _trainer_text(key)
+    if text is None or text in _FALLBACK_LOOK_KEYS:
+        return False
+    if exclude_packages and text in _PACKAGE_TOKENS:
+        return False
+    return text in trained
+
+
+def _feature_real_hit(features: Any, group_name: str, *, exclude_packages: bool) -> bool:
+    groups = features.get("groups") if isinstance(features, Mapping) else None
+    group = groups.get(group_name) if isinstance(groups, Mapping) else None
+    if not isinstance(group, Mapping) or group.get("matched") is not True:
+        return False
+    return _is_trained_match(group.get("key"), {_norm(str(group.get("key")))}, exclude_packages=exclude_packages)
+
+
+def _look_match_flags(
+    request: Mapping[str, Any],
+    features: Any,
+    look_trained: set[str],
+    family_trained: set[str],
+) -> dict[str, Any]:
+    prep = build_prep_look(request, request.get("opp_look"))
+    look_hit = _is_trained_match(prep["look"], look_trained, exclude_packages=True) or _feature_real_hit(
+        features, "look", exclude_packages=True
+    )
+    family_hit = _is_trained_match(prep["family"], family_trained, exclude_packages=False) or _feature_real_hit(
+        features, "look_family", exclude_packages=False
+    )
+    return {
+        "prep_look": prep["look"],
+        "prep_look_family": prep["family"],
+        "no_coverage_in_source": prep["status"] == "no_coverage_in_source",
+        "look_key_matched": look_hit,
+        "look_family_key_matched": family_hit,
+    }
+
+
 def _look_flip_count(rows: Sequence[Mapping[str, Any]]) -> int:
-    """Situations whose model_pick is not the same on every look."""
+    """Situations whose model_pick changes across looks that hit a trained key.
+
+    A fallback key (``other`` or ``none``) or a package token does not count.
+    """
     grouped: dict[Any, dict[Any, Any]] = {}
     for row in rows:
+        if row.get("look_key_matched") is not True and row.get("look_family_key_matched") is not True:
+            continue
         looks = grouped.setdefault(row.get("situation_id"), {})
         looks[row.get("look_id")] = row.get("model_pick")
     count = 0
@@ -1540,13 +1662,34 @@ def _situation_changes_within_look(rows: Sequence[Mapping[str, Any]]) -> int:
     return count
 
 
+def _look_match_shares(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Share of non-refused rows whose look or look_family hits a trained key."""
+    counted = [row for row in rows if row.get("outcome") != "refused"]
+    n = len(counted)
+    look_hits = sum(1 for row in counted if row.get("look_key_matched") is True)
+    family_hits = sum(1 for row in counted if row.get("look_family_key_matched") is True)
+    return {
+        "look_match_n": n,
+        "look_key_matches": look_hits,
+        "look_key_match_share": (look_hits / n) if n else None,
+        "look_family_key_matches": family_hits,
+        "look_family_key_match_share": (family_hits / n) if n else None,
+        "look_match_note": (
+            "Fallback keys other and none, and package tokens, do not count. "
+            "The share uses non-refused rows."
+        ),
+    }
+
+
 def _paired_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Stratum metrics. Defense rows are excluded."""
+    """Stratum metrics. Defense rows stay out of the agreement metrics."""
+    shares = _look_match_shares(rows)
     if rows and all(_is_defense_path(row.get("side"), row.get("stratum")) for row in rows):
         return {
             "evaluable": False,
             "reason": DEFENSE_PENDING_REASON,
             "n_rows_excluded": len(rows),
+            **shares,
         }
     evaluable = [row for row in rows if row.get("evaluable") is True]
     stable = [row for row in evaluable if row.get("stable_heuristic") is True]
@@ -1569,6 +1712,7 @@ def _paired_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "situation_changes_pick_within_look": _situation_changes_within_look(evaluable),
         "heuristic_tie_break": HEURISTIC_TIE_BREAK,
         "heuristic_seed_change_rate_definition": HEURISTIC_SEED_CHANGE,
+        **shares,
     }
 
 
@@ -1623,6 +1767,7 @@ def _refused_row(request: Mapping[str, Any], reason: str, *, model_version: str 
         "model_dir": str(model_dir) if model_dir is not None else None,
         "context_rules_note": CONTEXT_RULES_NOTE,
         **_paired_columns(request, stratum, [], refusal=reason),
+        **_look_match_flags(request, None, set(), set()),
     }
 
 
@@ -1756,6 +1901,12 @@ def _paired_from_runs(
         "model_dir": str(model_dir),
         "context_rules_note": CONTEXT_RULES_NOTE,
         **_paired_columns(request, stratum, runs, refusal=refusal),
+        **_look_match_flags(
+            request,
+            _carried_features(primary),
+            _coef_keys(bundle, stratum, "look"),
+            _coef_keys(bundle, stratum, "look_family"),
+        ),
     }
 
 
@@ -1837,16 +1988,20 @@ def evaluate_shadow(
                 )
                 continue
             runs = []
+            hook_sit = {
+                "raw": request.get("raw"),
+                "down": request.get("down"),
+                "distance": request.get("distance"),
+                "yardline": request.get("yardline"),
+                "look_id": request.get("look_id"),
+            }
+            for key in (*_COVERAGE_FIELDS, "defense_look"):
+                if key in request:
+                    hook_sit[key] = request[key]
             for seed in _seed_values(int(request["seed"]), seed_count):
                 payload = dict(
                     runner(
-                        {
-                            "raw": request.get("raw"),
-                            "down": request.get("down"),
-                            "distance": request.get("distance"),
-                            "yardline": request.get("yardline"),
-                            "look_id": request.get("look_id"),
-                        },
+                        hook_sit,
                         side=side,
                         model_dir=directory,
                         strata=[stratum],
@@ -1869,7 +2024,7 @@ def evaluate_shadow(
         "seed_count": int(seed_count),
         "seeds": _seed_values(0, seed_count),
         "heuristic_tie_break": HEURISTIC_TIE_BREAK,
-        "offense_without_look": _offense_without_look(decisions),
+        "no_coverage_in_source": _no_coverage_in_source(decisions),
         "vod_derived_excluded": excluded,
         "vod_derived_in_sample": [],
         "by_model_version": _shadow_by_version(decisions),
@@ -1877,24 +2032,16 @@ def evaluate_shadow(
     }
 
 
-def _offense_without_look(decisions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Offense rows whose source look is NULL. Assigned looks that arrive blank fail the run."""
-    rows = []
-    for row in decisions:
-        if row.get("side") != "offense":
-            continue
-        diag = row.get("input_diagnostics") or {}
-        if "opp_look" not in diag:
-            continue
-        if _look_is_all_none(diag.get("opp_look")):
-            rows.append(row)
+def _no_coverage_in_source(decisions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Rows whose source file has no def_call, coverage_seen, or def_overlay."""
+    rows = [row for row in decisions if row.get("no_coverage_in_source") is True]
     return {
         "n": len(rows),
         "row_ids": [row.get("row_id") for row in rows],
         "note": (
-            "These source rows have no look (look_id null). They are scored with "
-            "a missing look and are not a hard failure. An offense row that had a "
-            "look assigned and reached the hook with an all-None look fails the run."
+            "These rows come from a source with no def_call, coverage_seen, or "
+            "def_overlay. With that field order every one of them is no look. "
+            "They are not a failure."
         ),
     }
 
@@ -2107,11 +2254,12 @@ def _render_shadow_markdown(report: Mapping[str, Any]) -> str:
         HEURISTIC_TIE_BREAK,
         HEURISTIC_SEED_CHANGE,
         "model_pick is the seed-0 play. model_seed_stable records whether that play is the same on every seed (0-9 by default).",
-        f"Defense rows are still emitted and marked not evaluable: {DEFENSE_PENDING_REASON} They are excluded from paired summary metrics.",
-        "An offense row with an assigned look fails the run if that look reaches the hook as all-None. Source rows that truly have no look are counted under offense_without_look.",
+        f"Defense rows are still emitted and marked not evaluable: {DEFENSE_PENDING_REASON} They are excluded from paired summary agreement metrics. Look-key match share is still reported for them.",
+        "Rows whose source has no def_call, coverage_seen, or def_overlay are no look. They are reported as no_coverage_in_source and are not a failure.",
+        "A row is a hard failure only when its source has those coverage columns and a non-blank value still produces an empty look.",
         _TRAINER_ZONE_NOTE,
         "",
-        f"Offense rows with no source look: {(report.get('offense_without_look') or {}).get('n')}",
+        f"Rows with no coverage in source: {(report.get('no_coverage_in_source') or {}).get('n')}",
         "",
         f"Requested model version: {report.get('requested_model_version')}",
         f"VOD-derived rows excluded: {len(report.get('vod_derived_excluded') or [])}",
@@ -2156,6 +2304,10 @@ def _render_shadow_markdown(report: Mapping[str, Any]) -> str:
                             f"  - paired summary excluded: {paired.get('reason')} "
                             f"({paired.get('n_rows_excluded')} rows)"
                         )
+                        lines.append(
+                            f"  - look key match {paired.get('look_key_matches')}/{paired.get('look_match_n')} "
+                            f"look family match {paired.get('look_family_key_matches')}/{paired.get('look_match_n')}"
+                        )
                     elif paired:
                         agree = paired.get("agreement_vs_majority") or {}
                         lines.append(
@@ -2166,12 +2318,38 @@ def _render_shadow_markdown(report: Mapping[str, Any]) -> str:
                             f"mean heuristic seed change {paired.get('mean_heuristic_seed_change_rate')} "
                             f"median model_pick_heuristic_prob {paired.get('median_model_pick_heuristic_prob')} "
                             f"look flips {paired.get('look_flip_count')} "
-                            f"situation_changes_pick_within_look {paired.get('situation_changes_pick_within_look')}"
+                            f"situation_changes_pick_within_look {paired.get('situation_changes_pick_within_look')} "
+                            f"look key match {paired.get('look_key_matches')}/{paired.get('look_match_n')} "
+                            f"look family match {paired.get('look_family_key_matches')}/{paired.get('look_match_n')}"
                         )
                 lines.append("")
+    lines.extend(_label_look_lines(report))
     lines.append("Paired rows are in `paired_rows.jsonl`.")
     lines.append("")
     return "\n".join(lines)
+
+
+def _label_look_lines(report: Mapping[str, Any]) -> list[str]:
+    check = report.get("label_look_key_check")
+    if not isinstance(check, Mapping):
+        return []
+    lines = [
+        f"## {check.get('label')}",
+        "",
+        f"Excluded snaps: {check.get('excluded_n')}",
+        "",
+    ]
+    for stratum, block in (check.get("by_stratum") or {}).items():
+        lines.append(
+            f"- {stratum} ({block.get('side')}): "
+            f"n {block.get('n')} "
+            f"look key {block.get('look_key_matches')}/{block.get('n')} "
+            f"share {block.get('look_key_match_share')} "
+            f"look family {block.get('look_family_key_matches')}/{block.get('n')} "
+            f"share {block.get('look_family_key_match_share')}"
+        )
+    lines.append("")
+    return lines
 
 
 def evaluate(
@@ -2792,6 +2970,99 @@ def write_report(report: Mapping[str, Any], out_dir: Path) -> tuple[Path, Path, 
     return json_path, md_path, jsonl_path
 
 
+def load_label_snaps(path: Any) -> list[dict[str, Any]]:
+    """Read a JSON list of snaps. Each snap's ``defense_look`` carries the coverage fields."""
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(payload, Mapping) and isinstance(payload.get("snaps"), list):
+        payload = payload["snaps"]
+    if not isinstance(payload, list):
+        raise ValueError("label snaps must be a JSON list")
+    return [dict(item) for item in payload]
+
+
+def _snap_id_values(snap: Mapping[str, Any]) -> set[str]:
+    found: set[str] = set()
+    sources: list[Mapping[str, Any]] = [snap]
+    defense = snap.get("defense_look")
+    if isinstance(defense, Mapping):
+        sources.append(defense)
+    for source in sources:
+        for key in _SNAP_ID_FIELDS:
+            value = source.get(key)
+            if value not in (None, ""):
+                found.add(str(value))
+    return found
+
+
+def _snap_stratum(snap: Mapping[str, Any]) -> tuple[str, str]:
+    side = str(snap.get("side") or snap.get("streamer_side") or "").strip().casefold()
+    stratum = snap.get("stratum")
+    if stratum:
+        text = str(stratum)
+        if text.endswith("/defense"):
+            side = "defense"
+        elif text.endswith("/offense"):
+            side = "offense"
+        elif side not in SIDES:
+            side = "offense"
+        return text, side
+    if side not in SIDES:
+        side = "offense"
+    opponent = str(snap.get("opponent_type") or "cpu").strip().casefold()
+    if opponent not in {"cpu", "human"}:
+        opponent = "cpu"
+    return f"madden27/{opponent}/{side}", side
+
+
+def label_look_key_check(
+    snaps: Sequence[Mapping[str, Any]],
+    model_dir: Any,
+    exclude_ids: Sequence[str],
+) -> dict[str, Any]:
+    """Match share of constructed look keys on label snaps.
+
+    ``exclude_ids`` is the caller's list. This function does not supply ids
+    of its own. The result is a key-construction check on training rows.
+    """
+    bundle = load_model_bundle(model_dir)
+    excluded = {str(item) for item in exclude_ids}
+    grouped: dict[str, dict[str, Any]] = {}
+    excluded_n = 0
+    for snap in snaps:
+        if _snap_id_values(snap) & excluded:
+            excluded_n += 1
+            continue
+        stratum, side = _snap_stratum(snap)
+        prep = build_prep_look(snap, snap.get("defense_look"))
+        look_hit = _is_trained_match(
+            prep["look"], _coef_keys(bundle, stratum, "look"), exclude_packages=True
+        )
+        family_hit = _is_trained_match(
+            prep["family"], _coef_keys(bundle, stratum, "look_family"), exclude_packages=False
+        )
+        block = grouped.setdefault(stratum, {"side": side, "rows": []})
+        block["rows"].append({"look": look_hit, "family": family_hit})
+    by_stratum: dict[str, Any] = {}
+    for stratum, block in sorted(grouped.items()):
+        rows = block["rows"]
+        n = len(rows)
+        look_hits = sum(1 for row in rows if row["look"])
+        family_hits = sum(1 for row in rows if row["family"])
+        by_stratum[stratum] = {
+            "side": block["side"],
+            "n": n,
+            "look_key_matches": look_hits,
+            "look_key_match_share": (look_hits / n) if n else None,
+            "look_family_key_matches": family_hits,
+            "look_family_key_match_share": (family_hits / n) if n else None,
+        }
+    return {
+        "label": LABEL_LOOK_CHECK,
+        "excluded_n": excluded_n,
+        "by_stratum": by_stratum,
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     import argparse
 
@@ -2814,7 +3085,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=SEED_COUNT,
         help="Seeds 0 .. seed-count-1. The default 10 is seeds 0-9.",
     )
+    parser.add_argument(
+        "--label-snaps",
+        type=Path,
+        default=None,
+        help="Optional JSON snaps. defense_look supplies def_call, coverage_seen, and def_overlay.",
+    )
+    parser.add_argument(
+        "--exclude-id",
+        action="append",
+        default=None,
+        help="Id to leave out of the label look-key check. Repeat for each id.",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
+    exclude_ids = [str(item) for item in (args.exclude_id or [])]
+    label_check = None
+    if args.label_snaps is not None:
+        if args.model_params is None:
+            raise SystemExit("--model-params is required with --label-snaps")
+        label_check = label_look_key_check(
+            load_label_snaps(args.label_snaps),
+            args.model_params,
+            exclude_ids,
+        )
     coach = args.coach_db
     if coach is None:
         coach = args.db.parent / "coach.db"
@@ -2843,6 +3136,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             mode=args.mode,
             inventory_note={**note, **{"fixture_counts": fixture_counts(identities)}},
         )
+    if label_check is not None:
+        report["label_look_key_check"] = label_check
     write_report(report, args.out)
     return 0
 

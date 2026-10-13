@@ -612,7 +612,7 @@ class ScoringTests(unittest.TestCase):
                     offline_ok=True,
                 )
 
-    def test_adapter_coerces_csv_text_and_rejects_a_missing_assigned_look(self):
+    def test_adapter_coerces_csv_text_and_keeps_a_package_look_as_no_coverage(self):
         sit = {
             "raw": "1&10 my 50",
             "down": "1",
@@ -620,15 +620,9 @@ class ScoringTests(unittest.TestCase):
             "yardline": "  ",
             "look_id": "11-nickel",
         }
-        with self.assertRaises(RuntimeError):
-            scoring.adapt_score_offline_model(
-                sit,
-                side="offense",
-                model_dir=".",
-                strata=["madden27/cpu/offense"],
-                opp_look=None,
-                offline_ok=True,
-            )
+        missing_columns = scoring._prepare_hook_call(sit, None, "offense")
+        self.assertIsNone(missing_columns["opp_look"])
+        self.assertTrue(missing_columns["diagnostics"]["no_coverage_in_source"])
         with tempfile.TemporaryDirectory() as folder:
             model = Path(folder) / "model"
             _write_bundle(model, "v0.21")
@@ -640,6 +634,20 @@ class ScoringTests(unittest.TestCase):
                 opp_look={"opp_personnel": "11", "opp_set": "nickel"},
                 offline_ok=True,
             )
+            covered = scoring.adapt_score_offline_model(
+                {
+                    "raw": "1&10 my 50",
+                    "down": "1",
+                    "distance": "10",
+                    "yardline": "50",
+                    "coverage_seen": "Cover 3",
+                },
+                side="offense",
+                model_dir=model,
+                strata=["madden27/cpu/offense"],
+                opp_look=None,
+                offline_ok=True,
+            )
         diag = payload["input_diagnostics"]
         self.assertEqual(diag["down_type"], "str")
         self.assertEqual(diag["distance_type"], "str")
@@ -647,23 +655,28 @@ class ScoringTests(unittest.TestCase):
         self.assertEqual(diag["down"], 1)
         self.assertEqual(diag["distance"], 10)
         self.assertIsNone(diag["yardline"])
-        self.assertEqual(diag["opp_look"], "nickel")
-        self.assertEqual(diag["opp_look_type"], "str")
-        self.assertEqual(diag["opp_look_raw"], repr("nickel"))
+        self.assertIsNone(diag["opp_look"])
+        self.assertEqual(diag["opp_look_type"], "NoneType")
+        self.assertTrue(diag["no_coverage_in_source"])
         self.assertEqual(diag["opp_look_assigned"], {"opp_personnel": "11", "opp_set": "nickel"})
-        self.assertEqual(payload["features"]["groups"]["look"]["key"], "nickel")
+        self.assertIsNone(payload["features"]["groups"]["look"]["key"])
+        self.assertEqual(covered["input_diagnostics"]["opp_look"], "cover 3")
+        self.assertEqual(covered["input_diagnostics"]["prep_look_family"], "cover_3")
+        self.assertEqual(covered["features"]["groups"]["look_family"]["key"], "cover_3")
         blank = scoring._prepare_hook_call(
             {"down": None, "distance": "", "yardline": "12", "look_id": "null"},
             {"opp_personnel": None, "opp_set": None},
             "offense",
         )
         self.assertIsNone(blank["opp_look"])
-        with self.assertRaises(RuntimeError):
-            scoring._prepare_hook_call(
-                {"raw": "1&10 my 50", "down": 1, "distance": 10, "yardline": 50, "look_id": "11-nickel"},
-                {"opp_personnel": None, "opp_set": None},
-                "offense",
-            )
+        self.assertTrue(blank["diagnostics"]["no_coverage_in_source"])
+        package = scoring._prepare_hook_call(
+            {"raw": "1&10 my 50", "down": 1, "distance": 10, "yardline": 50, "look_id": "11-nickel"},
+            {"opp_personnel": None, "opp_set": None},
+            "offense",
+        )
+        self.assertIsNone(package["opp_look"])
+        self.assertTrue(package["diagnostics"]["no_coverage_in_source"])
         defense = scoring._prepare_hook_call(
             {"raw": "d 1&10 my 50", "down": 1, "distance": 10, "yardline": 50, "look_id": "11-nickel"},
             {"opp_personnel": None, "opp_set": None},
@@ -863,8 +876,26 @@ class ShadowTests(unittest.TestCase):
         self.assertEqual({look["look_id"] for look in synthetic["looks"]}, {"null", "empty", "11-nickel", "12-base"})
         observed = scoring.load_observed_csv(scoring.OBSERVED_CSV)[0]
         self.assertTrue(any(look["look_id"] not in {"", "null"} for look in observed["looks"]))
+        covered = _paired_identity(
+            "sit-cover",
+            "offense",
+            1,
+            10,
+            50,
+            "midfield",
+            [
+                {
+                    "look_id": "cover",
+                    "opp_personnel": None,
+                    "opp_set": None,
+                    "def_call": "Nickel Double Mug",
+                    "coverage_seen": "Cover 3",
+                    "def_overlay": "Cover 2",
+                }
+            ],
+        )
         report = scoring.evaluate_shadow(
-            [synthetic, observed],
+            [synthetic, observed, covered],
             scoring.adapt_score_offline_model,
             self.book,
             model_dir=fixture,
@@ -884,21 +915,26 @@ class ShadowTests(unittest.TestCase):
             return matches[0]
 
         nickel = cpu("syn-offense-028", "11-nickel")
-        self.assertEqual(nickel["hook_look"], "nickel")
-        self.assertEqual(nickel["features"]["groups"]["look"]["key"], "nickel")
-        self.assertTrue(nickel["features"]["groups"]["look"]["matched"])
-        self.assertEqual(nickel["input_diagnostics"]["opp_look"], "nickel")
+        self.assertIsNone(nickel["hook_look"])
+        self.assertIsNone(nickel["features"]["groups"]["look"]["key"])
+        self.assertFalse(nickel["features"]["groups"]["look"]["matched"])
+        self.assertFalse(nickel["look_key_matched"])
+        self.assertFalse(nickel["look_family_key_matched"])
+        self.assertTrue(nickel["no_coverage_in_source"])
+        self.assertIsNone(nickel["input_diagnostics"]["opp_look"])
         base = cpu("syn-offense-028", "12-base")
-        self.assertEqual(base["hook_look"], "base")
-        self.assertEqual(base["features"]["groups"]["look"]["key"], "base")
+        self.assertIsNone(base["hook_look"])
+        self.assertFalse(base["look_key_matched"])
+        self.assertFalse(base["look_family_key_matched"])
         empty = cpu("syn-offense-028", "empty")
-        self.assertEqual(empty["hook_look"], "empty")
-        self.assertEqual(empty["features"]["groups"]["look"]["key"], "empty")
+        self.assertIsNone(empty["hook_look"])
+        self.assertFalse(empty["look_key_matched"])
         missing = cpu("syn-offense-028", "null")
         self.assertIsNone(missing["hook_look"])
         self.assertIsNone(missing["features"]["groups"]["look"]["key"])
         self.assertEqual(missing["features"]["groups"]["look_family"]["key"], "none")
-        self.assertNotEqual(missing["model_pick"], nickel["model_pick"])
+        self.assertFalse(missing["look_family_key_matched"])
+        self.assertEqual(missing["model_pick"], nickel["model_pick"])
 
         observed_live = [
             cpu(observed["situation_id"], look["look_id"])
@@ -907,18 +943,33 @@ class ShadowTests(unittest.TestCase):
         ]
         self.assertGreaterEqual(len(observed_live), 1)
         for row in observed_live:
-            self.assertIsInstance(row["hook_look"], str)
-            self.assertEqual(row["features"]["groups"]["look"]["key"], row["hook_look"])
-            self.assertNotIn("{", row["hook_look"])
+            self.assertIsNone(row["hook_look"])
+            self.assertTrue(row["no_coverage_in_source"])
+            self.assertFalse(row["look_key_matched"])
+            self.assertFalse(row["look_family_key_matched"])
 
-        without = report["offense_without_look"]
+        without = report["no_coverage_in_source"]
         self.assertGreater(without["n"], 0)
         self.assertTrue(any(str(row_id).endswith("__null__madden27/cpu/offense") for row_id in without["row_ids"]))
-        self.assertFalse(any("11-nickel" in str(row_id) for row_id in without["row_ids"]))
-        self.assertFalse(any(str(row_id).endswith("__empty__madden27/cpu/offense") for row_id in without["row_ids"]))
+        self.assertTrue(any("11-nickel" in str(row_id) for row_id in without["row_ids"]))
+        self.assertTrue(any(str(row_id).endswith("__empty__madden27/cpu/offense") for row_id in without["row_ids"]))
+
+        cover = cpu("sit-cover", "cover")
+        self.assertEqual(cover["hook_look"], "nickel double mug")
+        self.assertEqual(cover["prep_look"], "nickel double mug")
+        self.assertEqual(cover["prep_look_family"], "cover_3")
+        self.assertEqual(cover["features"]["groups"]["look_family"]["key"], "pressure_other")
+        self.assertFalse(cover["features"]["groups"]["look_family"]["matched"])
+        self.assertFalse(cover["look_key_matched"])
+        self.assertTrue(cover["look_family_key_matched"])
+        self.assertFalse(cover["no_coverage_in_source"])
+        self.assertNotIn("sit-cover", "".join(str(row_id) for row_id in without["row_ids"]))
 
         summary = report["by_model_version"]["v0.21"]["by_side"]["offense"]["synthetic"]["by_stratum"]["madden27/cpu/offense"]["paired_summary"]
-        self.assertGreater(summary["look_flip_count"], 0)
+        self.assertEqual(summary["look_flip_count"], 0)
+        self.assertEqual(summary["look_key_matches"], 0)
+        self.assertEqual(summary["look_family_key_matches"], 1)
+        self.assertEqual(summary["look_family_key_match_share"], 1 / summary["look_match_n"])
 
         self.assertEqual(nickel["field_zone"], "midfield")
         self.assertEqual(nickel["yardline"], 50)
@@ -951,7 +1002,15 @@ def _write_bundle(
         strata[name] = {
             "model": {
                 "intercept": 0.0,
-                "coef": {"call": {"hb dive": 0.1}},
+                "coef": {
+                    "call": {"hb dive": 0.1},
+                    "look_family": {
+                        "cover_3": 0.0,
+                        "cover_1": 0.0,
+                        "none": 0.0,
+                        "other": 0.0,
+                    },
+                },
                 "hyperparams": {
                     "lambda_situation": 1.0,
                     "lambda_entity": 1.0,
@@ -1096,12 +1155,16 @@ class PairedReportTests(unittest.TestCase):
         _write_bundle(bundle, "v0.21")
         looks_one = [_NULL_LOOK]
         looks_two = [_NULL_LOOK, _EMPTY_LOOK]
+        looks_flip = [
+            {**_NULL_LOOK, "coverage_seen": "Cover 3"},
+            {**_EMPTY_LOOK, "coverage_seen": "Cover 1"},
+        ]
         identities = [
             _paired_identity("sit-tie", "offense", 1, 10, 50, "midfield", looks_one),
             _paired_identity("sit-unstable", "offense", 2, 4, 50, "midfield", looks_one),
             _paired_identity("sit-weights", "offense", 3, 10, 50, "midfield", looks_one),
             _paired_identity("sit-zero", "offense", 4, 10, 50, "midfield", looks_one),
-            _paired_identity("sit-flip", "offense", 1, 2, 50, "midfield", looks_two),
+            _paired_identity("sit-flip", "offense", 1, 2, 50, "midfield", looks_flip),
             _paired_identity("sit-same", "offense", 1, 4, 50, "midfield", looks_two),
             _paired_identity("sit-def", "defense", 3, 2, 12, "own_deep", looks_one),
         ]
@@ -1211,6 +1274,15 @@ class PairedReportTests(unittest.TestCase):
         self.assertNotIn("n_stable", defense_summary)
         self.assertGreater(defense_summary["n_rows_excluded"], 0)
 
+        flip_null = self._cpu("sit-flip", "null")
+        flip_empty = self._cpu("sit-flip", "empty")
+        self.assertEqual(flip_null["prep_look_family"], "cover_3")
+        self.assertEqual(flip_empty["prep_look_family"], "cover_1")
+        self.assertTrue(flip_null["look_family_key_matched"])
+        self.assertTrue(flip_empty["look_family_key_matched"])
+        self.assertFalse(flip_null["look_key_matched"])
+        self.assertNotEqual(flip_null["model_pick"], flip_empty["model_pick"])
+
         summary = self.report["by_model_version"]["v0.21"]["by_side"]["offense"]["synthetic"]["by_stratum"]["madden27/cpu/offense"]["paired_summary"]
         self.assertTrue(summary["evaluable"])
         self.assertEqual(summary["n_situations"], 8)
@@ -1291,6 +1363,150 @@ class PairedReportTests(unittest.TestCase):
         self.assertEqual(summary["n_situations"], 1)
         defense_summary = report["by_model_version"]["v0.21"]["by_side"]["defense"]["synthetic"]["by_stratum"]
         self.assertEqual(defense_summary, {})
+
+
+class LookConstructionTests(unittest.TestCase):
+    def test_prep_order_uses_the_trainer_family_and_hard_fails_only_on_dropped_coverage(self):
+        prep = scoring.build_prep_look(
+            {
+                "def_call": "Nickel Double Mug",
+                "coverage_seen": "Cover 3",
+                "def_overlay": "Cover 2",
+            },
+            {"opp_personnel": "11", "opp_set": "nickel"},
+        )
+        self.assertEqual(prep["look"], "nickel double mug")
+        self.assertEqual(prep["family"], "cover_3")
+        self.assertEqual(prep["status"], "coverage")
+        seen_only = scoring.build_prep_look({"coverage_seen": "Cover 3"}, None)
+        self.assertEqual(seen_only["look"], "cover 3")
+        self.assertEqual(seen_only["family"], scoring._look_family("Cover 3"))
+        overlay = scoring.build_prep_look({"def_overlay": "Cover 1"}, None)
+        self.assertEqual(overlay["look"], "cover 1")
+        self.assertEqual(overlay["family"], "cover_1")
+        blank = scoring.build_prep_look({"def_call": "  ", "coverage_seen": None}, None)
+        self.assertIsNone(blank["look"])
+        self.assertEqual(blank["status"], "blank_coverage")
+        self.assertTrue(blank["columns_present"])
+        missing = scoring.build_prep_look(
+            {"look_id": "11-nickel"},
+            {"opp_personnel": "11", "opp_set": "nickel"},
+        )
+        self.assertIsNone(missing["look"])
+        self.assertEqual(missing["status"], "no_coverage_in_source")
+        scoring._raise_if_coverage_dropped(columns_present=False, nonblank=False, look=None)
+        scoring._raise_if_coverage_dropped(columns_present=True, nonblank=False, look=None)
+        with self.assertRaises(RuntimeError) as caught:
+            scoring.build_prep_look({"coverage_seen": {"dropped": "Cover 3"}}, None)
+        self.assertIn("coverage columns", str(caught.exception))
+        self.assertIn("empty", str(caught.exception))
+        self.assertFalse(scoring._is_trained_match("nickel", {"nickel", "base", "empty"}, exclude_packages=True))
+        self.assertFalse(scoring._is_trained_match("none", {"none", "cover_3"}, exclude_packages=False))
+        self.assertFalse(scoring._is_trained_match("other", {"other", "cover_3"}, exclude_packages=False))
+        self.assertTrue(scoring._is_trained_match("cover_3", {"cover_3", "none"}, exclude_packages=False))
+        fallback = [
+            {
+                "situation_id": "s",
+                "look_id": "nickel",
+                "model_pick": "Inside Zone",
+                "look_key_matched": False,
+                "look_family_key_matched": False,
+            },
+            {
+                "situation_id": "s",
+                "look_id": "null",
+                "model_pick": "HB Dive",
+                "look_key_matched": False,
+                "look_family_key_matched": False,
+            },
+        ]
+        self.assertEqual(scoring._look_flip_count(fallback), 0)
+        real = [
+            {
+                "situation_id": "s",
+                "look_id": "c3",
+                "model_pick": "dive",
+                "look_key_matched": False,
+                "look_family_key_matched": True,
+            },
+            {
+                "situation_id": "s",
+                "look_id": "c1",
+                "model_pick": "screen",
+                "look_key_matched": False,
+                "look_family_key_matched": True,
+            },
+        ]
+        self.assertEqual(scoring._look_flip_count(real), 1)
+
+    def test_label_snaps_report_match_share_without_hardcoded_ids(self):
+        source = (_ROOT / "scripts" / "madden_ml" / "eval_scoring.py").read_text(encoding="utf-8")
+        self.assertNotIn("four_game_ids", source)
+        self.assertNotIn("F8Hm324SMtg", source)
+        fixture = _ROOT / "tests" / "madden_ml" / "fixtures" / "item3" / "v0.21"
+        snaps = [
+            {
+                "video_id": "synthetic-off",
+                "side": "offense",
+                "stratum": "madden27/cpu/offense",
+                "defense_look": {
+                    "def_call": "cover 3 buzz match",
+                    "coverage_seen": "Cover 3",
+                    "def_overlay": None,
+                },
+            },
+            {
+                "video_id": "synthetic-def",
+                "side": "defense",
+                "stratum": "madden27/cpu/defense",
+                "defense_look": {
+                    "def_call": "cover 3 buzz match",
+                    "coverage_seen": "Cover 3",
+                    "def_overlay": None,
+                },
+            },
+            {
+                "video_id": "F8Hm324SMtg",
+                "side": "offense",
+                "stratum": "madden27/cpu/offense",
+                "defense_look": {"coverage_seen": "Cover 3"},
+            },
+            {
+                "game_id": "audit-game-1",
+                "side": "offense",
+                "stratum": "madden27/human/offense",
+                "defense_look": {"coverage_seen": "Cover 1"},
+            },
+            {
+                "video_id": "synthetic-package",
+                "side": "offense",
+                "stratum": "madden27/cpu/offense",
+                "defense_look": {"opp_personnel": "11", "opp_set": "nickel"},
+            },
+        ]
+        exclude = ["F8Hm324SMtg", "audit-game-1", "audit-game-2", "audit-game-3", "audit-game-4"]
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "snaps.json"
+            path.write_text(json.dumps(snaps), encoding="utf-8")
+            loaded = scoring.load_label_snaps(path)
+        self.assertEqual(len(loaded), 5)
+        check = scoring.label_look_key_check(loaded, fixture, exclude)
+        self.assertEqual(check["label"], "training rows, key-construction check, not held-out")
+        self.assertEqual(check["excluded_n"], 2)
+        offense = check["by_stratum"]["madden27/cpu/offense"]
+        defense = check["by_stratum"]["madden27/cpu/defense"]
+        self.assertEqual(offense["side"], "offense")
+        self.assertEqual(defense["side"], "defense")
+        self.assertEqual(offense["n"], 2)
+        self.assertEqual(defense["n"], 1)
+        self.assertEqual(offense["look_key_matches"], 0)
+        self.assertEqual(offense["look_family_key_matches"], 1)
+        self.assertEqual(offense["look_family_key_match_share"], 0.5)
+        self.assertEqual(defense["look_family_key_matches"], 1)
+        self.assertEqual(defense["look_family_key_match_share"], 1.0)
+        self.assertNotIn("madden27/human/offense", check["by_stratum"])
+        text = scoring.render_markdown({"by_model_version": {}, "label_look_key_check": check, "disclaimer": scoring.DISCLAIMER, "no_coverage_in_source": {"n": 0}, "vod_derived_excluded": [], "requested_model_version": "v0.21"})
+        self.assertIn("training rows, key-construction check, not held-out", text)
 
 
 class IsolationTests(unittest.TestCase):
