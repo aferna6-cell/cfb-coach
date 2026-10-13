@@ -19,15 +19,17 @@ from __future__ import annotations
 
 import argparse
 import copy
+import fnmatch
 import json
 import math
 import os
 import random
+import re
 import sys
 import tempfile
 import time
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -42,6 +44,8 @@ from cfb_coach.madden.model.schema import CoachingMode, MLStatus
 
 OPPONENT_ID = "gavin"
 _PLACEHOLDER_ADJUSTMENTS = frozenset({"", "no adj", "none", "no adjustment"})
+_MADDEN_STRATUM = re.compile(r"^madden27/(?:cpu|human)(?:/[^/]+)?$")
+_OFFLINE_GATE = "offline_eval"
 
 # Installed by tests that need a fake model clock. Production calls leave it unset.
 clock: LiveClock | None = None
@@ -545,6 +549,237 @@ def run_situation(
             prepare_session(db)
             parsed = _parse(sit, used_side, opp_look)
             return _evaluate(db, parsed, mode=requested, side=used_side, seed=int(seed))
+        finally:
+            db.close()
+
+
+def _norm_level(value: str) -> str:
+    return " ".join(str(value).casefold().split())
+
+
+def _first_weight(table: Any, levels: tuple[str, ...]) -> float:
+    if not isinstance(table, dict):
+        return 0.0
+    for level in levels:
+        if level in table:
+            return float(table[level])
+    return 0.0
+
+
+def _candidate_logit(
+    model: dict[str, Any], *, formation: str, play: str, side: str, look: str | None,
+) -> float:
+    """Rank one installed-book candidate from logistic coefficients.
+
+    The intercept is added once. Each coefficient group contributes the first
+    matching level only: the play, then its lower-case form, then formation,
+    side, and the opponent look.
+    """
+    coef = model.get("coef") if isinstance(model.get("coef"), dict) else {}
+    logit = float(model.get("intercept") or 0.0)
+    play_levels = (play, play.lower(), _norm_level(play))
+    form_levels = (formation, formation.lower(), _norm_level(formation))
+    side_levels = (side, side.lower())
+    look_levels: tuple[str, ...] = ()
+    if look:
+        look_levels = (str(look), str(look).lower(), _norm_level(str(look)))
+    logit += _first_weight(coef.get("call"), play_levels)
+    logit += _first_weight(coef.get("formation"), form_levels)
+    logit += _first_weight(coef.get("side"), side_levels)
+    if look_levels:
+        logit += _first_weight(coef.get("look"), look_levels)
+    probes = play_levels + form_levels + side_levels + look_levels
+    for group, table in coef.items():
+        if group in {"call", "formation", "side", "look"}:
+            continue
+        logit += _first_weight(table, probes)
+    return logit
+
+
+def _stratum_model(entry: Any, name: str) -> dict[str, Any]:
+    if not isinstance(entry, dict):
+        raise ValueError(f"refused stratum {name}")
+    model = entry.get("model")
+    if isinstance(model, dict) and ("intercept" in model or "coef" in model):
+        return model
+    if "intercept" in entry or "coef" in entry:
+        return entry
+    raise ValueError(f"refused stratum {name}")
+
+
+def _load_offline_files(model_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    folder = Path(model_dir)
+    params_path = folder / "model_params.json"
+    manifest_path = folder / "manifest.json"
+    if not params_path.is_file() or not manifest_path.is_file():
+        raise FileNotFoundError(
+            f"offline model dir needs model_params.json and manifest.json: {folder}"
+        )
+    params = json.loads(params_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(params, dict) or not isinstance(manifest, dict):
+        raise ValueError(f"offline model files must be JSON objects: {folder}")
+    return params, manifest
+
+
+def _available_strata(params: dict[str, Any]) -> dict[str, Any]:
+    raw = params.get("strata")
+    if not isinstance(raw, dict):
+        raise ValueError("model_params.json has no strata object")
+    return raw
+
+
+def _allowed_stratum(name: str) -> bool:
+    return _MADDEN_STRATUM.fullmatch(name) is not None
+
+
+def _expand_strata(strata: str | Sequence[str], available: dict[str, Any]) -> list[str]:
+    """Keep only madden27/cpu and madden27/human strata. Anything else is refused."""
+    if isinstance(strata, str):
+        requested: list[str] = [strata]
+    elif isinstance(strata, Sequence):
+        requested = [str(item) for item in strata]
+    else:
+        raise ValueError(f"refused stratum {strata!r}")
+    if not requested:
+        raise ValueError("missing stratum")
+    chosen: list[str] = []
+    seen: set[str] = set()
+    names = set(available)
+    for item in requested:
+        text = item.strip()
+        if not text:
+            raise ValueError("refused stratum ")
+        if any(mark in text for mark in "*?["):
+            matches = sorted(name for name in names if fnmatch.fnmatchcase(name, text))
+            if not matches:
+                raise ValueError(f"missing stratum {text}")
+            for name in matches:
+                if not _allowed_stratum(name):
+                    raise ValueError(f"refused stratum {name}")
+                if name not in seen:
+                    seen.add(name)
+                    chosen.append(name)
+            continue
+        if not _allowed_stratum(text):
+            raise ValueError(f"refused stratum {text}")
+        if text not in names:
+            raise ValueError(f"missing stratum {text}")
+        if text not in seen:
+            seen.add(text)
+            chosen.append(text)
+    return chosen
+
+
+def _offline_report(manifest: dict[str, Any]) -> tuple[str | None, str]:
+    from cfb_coach.madden.model.inference import read_scored_on
+
+    version = manifest.get("model_version")
+    if version in (None, ""):
+        version = manifest.get("label_version")
+    model_version = None if version in (None, "") else str(version)
+    direct = manifest.get("scored_on")
+    if direct in ("reviewed", "unreviewed"):
+        return model_version, direct
+    return model_version, read_scored_on(manifest)
+
+
+def _rank_installed_book(
+    models: Sequence[dict[str, Any]],
+    book: dict[str, list[str]],
+    *,
+    side: str,
+    look: str | None,
+) -> tuple[str, str]:
+    """Top legal candidate. Out-of-book coefficient names are never candidates."""
+    ranked: list[tuple[float, str, str]] = []
+    for formation, plays in book.items():
+        for play in plays:
+            logits = [
+                _candidate_logit(model, formation=formation, play=play, side=side, look=look)
+                for model in models
+            ]
+            score = sum(logits) / float(len(logits))
+            ranked.append((score, str(formation), str(play)))
+    if not ranked:
+        raise ValueError("installed book has no legal candidates")
+    _score, formation, play = min(ranked, key=lambda item: (-item[0], item[1], item[2]))
+    return formation, play
+
+
+def _offline_call(side: str, formation: str, play: str) -> Any:
+    from cfb_coach.madden.data import reads_for, user_job_for
+    from cfb_coach.madden.playcaller import MaddenCall
+
+    if side == "defense":
+        read = user_job_for(play)
+    else:
+        read = reads_for(play)
+    return MaddenCall(side, formation, play, "No adj", read or "")
+
+
+def score_offline_model(
+    sit: Any,
+    *,
+    side: str,
+    model_dir: str | Path,
+    strata: str | Sequence[str],
+    opp_look: Any = None,
+    seed: int = 0,
+    offline_ok: bool = False,
+) -> dict[str, Any]:
+    """Score one situation from a model directory. Eval only.
+
+    The default ``offline_ok=False`` raises before any database or mode
+    write. This function does not call ``set_mode``, ``rank_live``, or the
+    live shadow/hybrid path, so an unreviewed manifest still returns a pick.
+    ``gate_bypassed`` records that the scored_on hybrid gate was not applied.
+    """
+    if offline_ok is not True:
+        raise RuntimeError("offline model scoring requires offline_ok=True")
+    started = time.perf_counter()
+    params, manifest = _load_offline_files(Path(model_dir))
+    available = _available_strata(params)
+    used = _expand_strata(strata, available)
+    models = [_stratum_model(available[name], name) for name in used]
+    model_version, scored_on = _offline_report(manifest)
+    used_side = _side(side)
+    with _temp_env() as (_root, madden, coach):
+        db = _open_temp_dbs(madden, coach)
+        try:
+            from cfb_coach.madden.cli import _active_after_prep
+            from cfb_coach.madden.franchise import get_session_profile
+
+            prepare_session(db)
+            parsed = _parse(sit, used_side, opp_look)
+            active = _active_after_prep(db, OPPONENT_ID, get_session_profile(db))
+            heuristic = _make_call(copy.deepcopy(parsed), db, active, int(seed))
+            book = (_installed_books(db).get(used_side) or {})
+            model_started = time.perf_counter()
+            formation, play = _rank_installed_book(
+                models, book, side=used_side, look=(getattr(parsed, "extras", None) or {}).get("opp_look"),
+            )
+            model_ms = (time.perf_counter() - model_started) * 1000.0
+            shown = _offline_call(used_side, formation, play)
+            whole_ms = (time.perf_counter() - started) * 1000.0
+            record = _call_record(shown, mode="offline")
+            bound_look = (getattr(parsed, "extras", None) or {}).get("opp_look")
+            return {
+                **record,
+                "model_version": model_version,
+                "scored_on": scored_on,
+                "strata_used": list(used),
+                "latency_ms": {"whole_call": whole_ms, "model": float(model_ms)},
+                "budget_ms": ML_LATENCY_BUDGET_MS,
+                "over_budget": float(model_ms) > float(ML_LATENCY_BUDGET_MS),
+                "legal": _legal(shown, book),
+                "gate_bypassed": _OFFLINE_GATE,
+                "heuristic": _call_record(heuristic, mode="heuristic"),
+                "seed": int(seed),
+                "side": used_side,
+                "situation": getattr(parsed, "raw", "") or "",
+                "opp_look": bound_look,
+            }
         finally:
             db.close()
 

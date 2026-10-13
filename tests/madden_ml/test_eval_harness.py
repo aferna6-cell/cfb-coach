@@ -12,7 +12,27 @@ from cfb_coach.madden.model.inference import ManualClock
 from cfb_coach.madden.model.schema import ML_LATENCY_BUDGET_MS, MacroState
 from cfb_coach.madden.playcaller import MaddenCall
 from scripts.madden_ml import eval_harness
-from scripts.madden_ml.eval_harness import main, run_situation
+from scripts.madden_ml.eval_harness import main, run_situation, score_offline_model
+
+pytestmark = pytest.mark.filterwarnings(
+    "error:CFB_COACH_MADDEN_DB and CFB_COACH_DB resolve to the same file:UserWarning"
+)
+
+
+@pytest.fixture(autouse=True)
+def separate_coach_databases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two different temp files in two directories. A shared file fails the test."""
+    coach_dir = tmp_path / "coach-db"
+    madden_dir = tmp_path / "madden-db"
+    coach_dir.mkdir()
+    madden_dir.mkdir()
+    coach = coach_dir / "coach.db"
+    madden = madden_dir / "live.db"
+    assert coach.parent != madden.parent
+    assert madden.resolve() != coach.resolve()
+    assert madden.name != "madden27.db"
+    monkeypatch.setenv("CFB_COACH_DB", str(coach))
+    monkeypatch.setenv("CFB_COACH_MADDEN_DB", str(madden))
 
 _TOP = (
     "seed",
@@ -211,3 +231,214 @@ def test_cli_writes_jsonl_and_latency_summary(tmp_path: Path) -> None:
         assert summary[block]["max"] >= summary[block]["p95"] >= summary[block]["p50"]
     assert summary["model_ms"]["max"] <= 150
     assert "fallback_counts" in summary
+
+
+def _write_model(folder: Path, strata: dict, *, model_version: str = "v0-test", scored_on: str = "unreviewed") -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "model_params.json").write_text(
+        json.dumps({"strata": strata}),
+        encoding="utf-8",
+    )
+    (folder / "manifest.json").write_text(
+        json.dumps({
+            "model_version": model_version,
+            "label_version": "labels-ignored-when-model-version-set",
+            "scored_on": scored_on,
+            "training_report": {"tags": {"scored_on": scored_on}},
+        }),
+        encoding="utf-8",
+    )
+    return folder
+
+
+def _flat_stratum() -> dict:
+    return {"model": {"intercept": 0.0, "coef": {"call": {"ZZZ Illegal": 1000.0}}}}
+
+
+def test_offline_hook_raises_unless_offline_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    model = _write_model(tmp_path / "model", {"madden27/cpu": _flat_stratum()})
+    with pytest.raises(RuntimeError, match="offline_ok=True"):
+        score_offline_model(
+            "1&10", side="offense", model_dir=model, strata="madden27/cpu", seed=1,
+        )
+    with pytest.raises(RuntimeError, match="offline_ok=True"):
+        score_offline_model(
+            "1&10",
+            side="offense",
+            model_dir=tmp_path / "missing",
+            strata="cfb",
+            offline_ok=False,
+        )
+    assert list(home.rglob("*")) == []
+
+
+def test_offline_hook_refuses_non_madden_strata(tmp_path: Path) -> None:
+    model = _write_model(
+        tmp_path / "model",
+        {
+            "madden27/cpu": _flat_stratum(),
+            "madden27/human": _flat_stratum(),
+            "madden27/cpu/redzone": _flat_stratum(),
+            "cfb": _flat_stratum(),
+            "cfb/human": _flat_stratum(),
+            "cfb27/human": _flat_stratum(),
+        },
+    )
+    for strata in ("cfb", "cfb/human", "cfb27/human", "madden27/unknown", ["madden27/cpu", "cfb"]):
+        with pytest.raises(ValueError, match="refused stratum"):
+            score_offline_model(
+                "1&10",
+                side="offense",
+                model_dir=model,
+                strata=strata,
+                offline_ok=True,
+            )
+    with pytest.raises(ValueError, match="refused stratum"):
+        score_offline_model(
+            "1&10", side="offense", model_dir=model, strata="*", offline_ok=True,
+        )
+    with pytest.raises(ValueError, match="missing stratum"):
+        score_offline_model(
+            "1&10", side="offense", model_dir=model, strata="madden27/human/missing", offline_ok=True,
+        )
+
+
+def test_offline_hook_ranks_only_the_installed_book(tmp_path: Path) -> None:
+    model = _write_model(
+        tmp_path / "model",
+        {
+            "madden27/cpu": _flat_stratum(),
+            "madden27/human": _flat_stratum(),
+            "cfb/human": {"model": {"intercept": 0.0, "coef": {"call": {"CFB Only": 9999.0}}}},
+        },
+        scored_on="unreviewed",
+    )
+    flat = score_offline_model(
+        "1&10",
+        side="offense",
+        model_dir=model,
+        strata=["madden27/cpu", "madden27/human"],
+        opp_look=None,
+        seed=3,
+        offline_ok=True,
+    )
+    assert flat["legal"] is True
+    assert flat["play"] != "ZZZ Illegal"
+    assert flat["play"] != "CFB Only"
+    assert flat["gate_bypassed"] == "offline_eval"
+    assert flat["scored_on"] == "unreviewed"
+    assert flat["model_version"] == "v0-test"
+    assert flat["strata_used"] == ["madden27/cpu", "madden27/human"]
+    assert flat["mode"] == "offline"
+    assert flat["adjustment_id"] is None
+    assert flat["budget_ms"] == 150
+    assert flat["over_budget"] is False
+    assert set(flat["latency_ms"]) >= {"whole_call", "model"}
+    assert flat["heuristic"]["mode"] == "heuristic"
+    assert flat["heuristic"]["formation"]
+    assert flat["heuristic"]["play"]
+    for key in _SIDE:
+        assert key in flat
+        assert key in flat["heuristic"]
+
+    boosted = _write_model(
+        tmp_path / "boosted",
+        {
+            "madden27/cpu": {
+                "model": {
+                    "intercept": 0.0,
+                    "coef": {
+                        "call": {
+                            "ZZZ Illegal": 5000.0,
+                            flat["play"].lower(): -50.0,
+                        },
+                    },
+                },
+            },
+        },
+    )
+    moved = score_offline_model(
+        "1&10",
+        side="offense",
+        model_dir=boosted,
+        strata="madden27/cpu",
+        seed=3,
+        offline_ok=True,
+    )
+    assert moved["legal"] is True
+    assert moved["play"] != "ZZZ Illegal"
+    assert (moved["formation"], moved["play"]) != (flat["formation"], flat["play"])
+    assert moved["heuristic"] == flat["heuristic"]
+
+    globed = _write_model(
+        tmp_path / "glob",
+        {
+            "madden27/cpu/redzone": {
+                "model": {
+                    "intercept": 0.0,
+                    "coef": {"call": {moved["play"].lower(): 4.0, "ZZZ Illegal": 80.0}},
+                },
+            },
+            "cfb/human": _flat_stratum(),
+        },
+    )
+    picked = score_offline_model(
+        "1&10",
+        side="offense",
+        model_dir=globed,
+        strata="madden27/cpu/*",
+        seed=3,
+        offline_ok=True,
+    )
+    assert picked["strata_used"] == ["madden27/cpu/redzone"]
+    assert picked["legal"] is True
+    assert picked["play"] != "ZZZ Illegal"
+    assert "cfb" not in " ".join(picked["strata_used"])
+
+
+def test_offline_hook_same_seed_reproduces_and_leaves_home_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    def refuse_live(*_args, **_kwargs):
+        raise AssertionError("offline scoring reached the live gate")
+
+    monkeypatch.setattr("cfb_coach.madden.model.inference.set_mode", refuse_live)
+    monkeypatch.setattr("cfb_coach.madden.model.inference.rank_live", refuse_live)
+    model = _write_model(tmp_path / "model", {"madden27/human": _flat_stratum()}, model_version="fixture-1")
+    kwargs = {
+        "side": "offense",
+        "model_dir": model,
+        "strata": "madden27/human",
+        "opp_look": "empty",
+        "seed": 11,
+        "offline_ok": True,
+    }
+    first = score_offline_model("2&7", **kwargs)
+    second = score_offline_model("2&7", **kwargs)
+    assert first["formation"] == second["formation"]
+    assert first["play"] == second["play"]
+    assert first["line"] == second["line"]
+    assert first["heuristic"] == second["heuristic"]
+    assert first["opp_look"] == "empty"
+    assert first["seed"] == 11
+    assert list(home.rglob("*")) == []
+
+
+def test_live_paths_do_not_import_the_offline_hook() -> None:
+    root = Path(__file__).resolve().parents[2] / "cfb_coach"
+    for path in root.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        assert "score_offline_model" not in text
+        assert "eval_harness" not in text
+    live = run_situation("1&10", mode="hybrid", opp_look=None, side="offense", seed=1)
+    assert "gate_bypassed" not in live
+    assert live["fallback_reason"] == "circuit_open"
