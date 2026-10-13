@@ -1,0 +1,3386 @@
+[
+  {
+    "situation_id": "syn-offense-001",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "2&2 my 12 q2 clock 10:00 score 17-20",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2943045967
+  },
+  {
+    "situation_id": "syn-offense-002",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&2 my 12 q4 clock 1:30 score 31-10 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1348706181
+  },
+  {
+    "situation_id": "syn-offense-003",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "4&2 my 12 q4 clock 4:00 score 3-24 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 716049942
+  },
+  {
+    "situation_id": "syn-offense-004",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&2 my 50 q2 clock 10:00 score 17-20",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1327057895
+  },
+  {
+    "situation_id": "syn-offense-005",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "2&2 my 50 q4 clock 4:00 score 31-10 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 21287576
+  },
+  {
+    "situation_id": "syn-offense-006",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&2 opp 30 q2 clock 10:00 score 3-24",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3972885802
+  },
+  {
+    "situation_id": "syn-offense-007",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "4&2 opp 30 q4 clock 1:30 score 17-20 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3890084738
+  },
+  {
+    "situation_id": "syn-offense-008",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&2 opp 30 q4 clock 4:00 score 31-10 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3405968241
+  },
+  {
+    "situation_id": "syn-offense-009",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "2&2 opp 12 q4 clock 1:30 score 3-24 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1771454024
+  },
+  {
+    "situation_id": "syn-offense-010",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&2 opp 12 q4 clock 4:00 score 17-20 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2584475642
+  },
+  {
+    "situation_id": "syn-offense-011",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 1,
+    "distance_bucket": "short",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "4&1 opp 3 q2 clock 10:00 score 31-10",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2651991784
+  },
+  {
+    "situation_id": "syn-offense-012",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 1,
+    "distance_bucket": "short",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&1 opp 3 q4 clock 1:30 score 3-24 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2762289013
+  },
+  {
+    "situation_id": "syn-offense-013",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "2&4 my 12 q2 clock 10:00 score 17-20",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2639648275
+  },
+  {
+    "situation_id": "syn-offense-014",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&4 my 12 q4 clock 1:30 score 31-10 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 859901688
+  },
+  {
+    "situation_id": "syn-offense-015",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "4&4 my 12 q4 clock 4:00 score 3-24 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 601632603
+  },
+  {
+    "situation_id": "syn-offense-016",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "1&4 my 50 q2 clock 10:00 score 17-20",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1815769954
+  },
+  {
+    "situation_id": "syn-offense-017",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "2&4 my 50 q4 clock 4:00 score 31-10 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1611749951
+  },
+  {
+    "situation_id": "syn-offense-018",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&4 opp 30 q2 clock 10:00 score 3-24",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3113316221
+  },
+  {
+    "situation_id": "syn-offense-019",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "4&4 opp 30 q4 clock 1:30 score 17-20 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 322067745
+  },
+  {
+    "situation_id": "syn-offense-020",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "1&4 opp 30 q4 clock 4:00 score 31-10 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1930258508
+  },
+  {
+    "situation_id": "syn-offense-021",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "2&4 opp 12 q4 clock 1:30 score 3-24 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 399690968
+  },
+  {
+    "situation_id": "syn-offense-022",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&4 opp 12 q4 clock 4:00 score 17-20 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2049911793
+  },
+  {
+    "situation_id": "syn-offense-023",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "4&4 opp 3 q2 clock 10:00 score 31-10",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3742829
+  },
+  {
+    "situation_id": "syn-offense-024",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "1&4 opp 3 q4 clock 1:30 score 3-24 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 122172837
+  },
+  {
+    "situation_id": "syn-offense-025",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "2&10 my 12 q2 clock 10:00 score 17-20",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1997841352
+  },
+  {
+    "situation_id": "syn-offense-026",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&10 my 12 q4 clock 1:30 score 31-10 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 158702192
+  },
+  {
+    "situation_id": "syn-offense-027",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "4&10 my 12 q4 clock 4:00 score 3-24 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 4095028300
+  },
+  {
+    "situation_id": "syn-offense-028",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "1&10 my 50 q2 clock 10:00 score 17-20",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3505595818
+  },
+  {
+    "situation_id": "syn-offense-029",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "2&10 my 50 q4 clock 4:00 score 31-10 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3726166184
+  },
+  {
+    "situation_id": "syn-offense-030",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&10 opp 30 q2 clock 10:00 score 3-24",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 950883990
+  },
+  {
+    "situation_id": "syn-offense-031",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "4&10 opp 30 q4 clock 1:30 score 17-20 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1333863981
+  },
+  {
+    "situation_id": "syn-offense-032",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "1&10 opp 30 q4 clock 4:00 score 31-10 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3924065052
+  },
+  {
+    "situation_id": "syn-offense-033",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "2&10 opp 12 q4 clock 1:30 score 3-24 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 318763999
+  },
+  {
+    "situation_id": "syn-offense-034",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "3&10 opp 12 q4 clock 4:00 score 17-20 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3210864241
+  },
+  {
+    "situation_id": "syn-offense-035",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "4&10 opp 3 q2 clock 10:00 score 31-10",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1966153579
+  },
+  {
+    "situation_id": "syn-offense-036",
+    "side": "offense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "1&10 opp 3 q4 clock 1:30 score 3-24 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1184816242
+  },
+  {
+    "situation_id": "syn-defense-001",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 2&2 my 12 q2 clock 10:00 score 17-20",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2719686748
+  },
+  {
+    "situation_id": "syn-defense-002",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&2 my 12 q4 clock 1:30 score 31-10 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3081363504
+  },
+  {
+    "situation_id": "syn-defense-003",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 4&2 my 12 q4 clock 4:00 score 3-24 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1281011952
+  },
+  {
+    "situation_id": "syn-defense-004",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&2 my 50 q4 clock 1:30 score 17-20 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3202649841
+  },
+  {
+    "situation_id": "syn-defense-005",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 2&2 my 50 q4 clock 4:00 score 31-10 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1303106555
+  },
+  {
+    "situation_id": "syn-defense-006",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&2 opp 30 q2 clock 10:00 score 3-24",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3526683840
+  },
+  {
+    "situation_id": "syn-defense-007",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 4&2 opp 30 q4 clock 1:30 score 17-20 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 729923168
+  },
+  {
+    "situation_id": "syn-defense-008",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&2 opp 12 q2 clock 10:00 score 31-10",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3231116831
+  },
+  {
+    "situation_id": "syn-defense-009",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 2&2 opp 12 q4 clock 1:30 score 3-24 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 4117005863
+  },
+  {
+    "situation_id": "syn-defense-010",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 2,
+    "distance_bucket": "short",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&2 opp 12 q4 clock 4:00 score 17-20 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1129027096
+  },
+  {
+    "situation_id": "syn-defense-011",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 1,
+    "distance_bucket": "short",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 4&1 opp 3 q2 clock 10:00 score 31-10",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 4066385824
+  },
+  {
+    "situation_id": "syn-defense-012",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 1,
+    "distance_bucket": "short",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&1 opp 3 q4 clock 4:00 score 3-24 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 735559396
+  },
+  {
+    "situation_id": "syn-defense-013",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 2&4 my 12 q2 clock 10:00 score 17-20",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1972221432
+  },
+  {
+    "situation_id": "syn-defense-014",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&4 my 12 q4 clock 1:30 score 31-10 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2335852161
+  },
+  {
+    "situation_id": "syn-defense-015",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 4&4 my 12 q4 clock 4:00 score 3-24 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 36825110
+  },
+  {
+    "situation_id": "syn-defense-016",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 1&4 my 50 q4 clock 1:30 score 17-20 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1218492913
+  },
+  {
+    "situation_id": "syn-defense-017",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 2&4 my 50 q4 clock 4:00 score 31-10 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1834953325
+  },
+  {
+    "situation_id": "syn-defense-018",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&4 opp 30 q2 clock 10:00 score 3-24",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 760147807
+  },
+  {
+    "situation_id": "syn-defense-019",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 4&4 opp 30 q4 clock 1:30 score 17-20 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3611462467
+  },
+  {
+    "situation_id": "syn-defense-020",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 1&4 opp 12 q2 clock 10:00 score 31-10",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2910780192
+  },
+  {
+    "situation_id": "syn-defense-021",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 2&4 opp 12 q4 clock 1:30 score 3-24 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3797161665
+  },
+  {
+    "situation_id": "syn-defense-022",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&4 opp 12 q4 clock 4:00 score 17-20 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1061958542
+  },
+  {
+    "situation_id": "syn-defense-023",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 4&4 opp 3 q2 clock 10:00 score 31-10",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2299831107
+  },
+  {
+    "situation_id": "syn-defense-024",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 4,
+    "distance_bucket": "medium",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 1&4 opp 3 q4 clock 4:00 score 3-24 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3738817553
+  },
+  {
+    "situation_id": "syn-defense-025",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 2&10 my 12 q2 clock 10:00 score 17-20",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1874930027
+  },
+  {
+    "situation_id": "syn-defense-026",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&10 my 12 q4 clock 1:30 score 31-10 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2975805853
+  },
+  {
+    "situation_id": "syn-defense-027",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 12,
+    "field_zone": "own_deep",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 4&10 my 12 q4 clock 4:00 score 3-24 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1233636281
+  },
+  {
+    "situation_id": "syn-defense-028",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 1&10 my 50 q4 clock 1:30 score 17-20 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 163435578
+  },
+  {
+    "situation_id": "syn-defense-029",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 50,
+    "field_zone": "midfield",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 2&10 my 50 q4 clock 4:00 score 31-10 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1170639380
+  },
+  {
+    "situation_id": "syn-defense-030",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&10 opp 30 q2 clock 10:00 score 3-24",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 3873077191
+  },
+  {
+    "situation_id": "syn-defense-031",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 70,
+    "field_zone": "plus_territory",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 4&10 opp 30 q4 clock 1:30 score 17-20 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1372154489
+  },
+  {
+    "situation_id": "syn-defense-032",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 1&10 opp 12 q2 clock 10:00 score 31-10",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 658205564
+  },
+  {
+    "situation_id": "syn-defense-033",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 2,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "2-minute",
+    "clock_seconds": 90,
+    "two_minute": true,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 2&10 opp 12 q4 clock 1:30 score 3-24 two minute",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2306511244
+  },
+  {
+    "situation_id": "syn-defense-034",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 3,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 88,
+    "field_zone": "red_zone",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "close",
+    "score_us": 17,
+    "score_them": 20,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 3&10 opp 12 q4 clock 4:00 score 17-20 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 2086297479
+  },
+  {
+    "situation_id": "syn-defense-035",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 4,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 2,
+    "clock_bucket": "normal",
+    "clock_seconds": 600,
+    "two_minute": false,
+    "score_bucket": "leading_big",
+    "score_us": 31,
+    "score_them": 10,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 4&10 opp 3 q2 clock 10:00 score 31-10",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 1239049772
+  },
+  {
+    "situation_id": "syn-defense-036",
+    "side": "defense",
+    "tags": [
+      "synthetic"
+    ],
+    "source": "synthetic",
+    "down": 1,
+    "distance": 10,
+    "distance_bucket": "long",
+    "yardline": 97,
+    "field_zone": "goal_line",
+    "quarter": 4,
+    "clock_bucket": "4-min protect",
+    "clock_seconds": 240,
+    "two_minute": false,
+    "score_bucket": "trailing_big",
+    "score_us": 3,
+    "score_them": 24,
+    "default_filled": [],
+    "game_id": null,
+    "raw": "d 1&10 opp 3 q4 clock 4:00 score 3-24 4-min protect",
+    "looks": [
+      {
+        "look_id": "null",
+        "opp_personnel": null,
+        "opp_set": null
+      },
+      {
+        "look_id": "empty",
+        "opp_personnel": "empty",
+        "opp_set": "empty"
+      },
+      {
+        "look_id": "11-nickel",
+        "opp_personnel": "11",
+        "opp_set": "nickel"
+      },
+      {
+        "look_id": "12-base",
+        "opp_personnel": "12",
+        "opp_set": "base"
+      }
+    ],
+    "look_observed": false,
+    "seed": 819015224
+  }
+]
