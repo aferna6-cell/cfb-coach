@@ -748,6 +748,31 @@ def _candidate_feature_map(row: dict[str, Any], *, formation: str, play: str, si
     return feature_map(snap_from_row(built))
 
 
+def _defense_feature_map(row: dict[str, Any], *, formation: str, play: str, side: str) -> dict[str, str]:
+    """Defensive candidate as the look. The offense call stays empty.
+
+    Defense models estimate P(offense succeeds | offense play, our look,
+    situation). ``call`` is the offense play, which this hook does not have,
+    so ``feature_map`` does not build ``call``, ``call_x_family``, or a
+    ``call_class`` from our defensive play name. Look, look family, and the
+    other keys ``feature_map`` derives from that look are the trainer's.
+    """
+    from cfb_coach.vod_success.features import feature_map, snap_from_row
+
+    built = dict(row)
+    built["formation"] = formation
+    built["play"] = ""
+    built["call"] = ""
+    built["our_call"] = ""
+    built["side"] = side
+    # On a defense snap the trainer reads ``coverage_seen`` as the call when
+    # the play is blank. Clear it so the offense call stays empty, and put
+    # our defensive play in ``look``, which ``_look_text`` still reads.
+    built["coverage_seen"] = ""
+    built["look"] = play
+    return feature_map(snap_from_row(built))
+
+
 def _candidate_logit(
     models: Sequence[dict[str, Any]],
     feats: Mapping[str, str],
@@ -870,6 +895,36 @@ def _offline_report(manifest: dict[str, Any]) -> tuple[str | None, str]:
     return model_version, read_scored_on(manifest)
 
 
+def _rank_defense_book(
+    models: Sequence[dict[str, Any]],
+    book: dict[str, list[str]],
+    *,
+    side: str,
+    context: dict[str, Any],
+) -> tuple[str, str, dict[str, Any]]:
+    """Lowest predicted offense success. The offense path does not use this."""
+    ranked: list[tuple[float, str, str, dict[str, Any]]] = []
+    for formation, plays in book.items():
+        for play in plays:
+            feats = _defense_feature_map(
+                context["row"], formation=str(formation), play=str(play), side=side,
+            )
+            score, detail = _candidate_logit(models, feats)
+            ranked.append((score, str(formation), str(play), detail))
+    if not ranked:
+        raise ValueError("installed book has no legal candidates")
+    _score, formation, play, detail = min(ranked, key=lambda item: (item[0], item[1], item[2]))
+    features = {
+        "intercept": detail["intercept"],
+        "groups": detail["groups"],
+        "raw": context["raw"],
+        "coerced": context["coerced"],
+        "call_matches": [],
+        "ranking": "min_offense_success",
+    }
+    return formation, play, features
+
+
 def _rank_installed_book(
     models: Sequence[dict[str, Any]],
     book: dict[str, list[str]],
@@ -878,6 +933,8 @@ def _rank_installed_book(
     context: dict[str, Any],
 ) -> tuple[str, str, dict[str, Any]]:
     """Top legal candidate. Out-of-book coefficient names are never candidates."""
+    if side == "defense":
+        return _rank_defense_book(models, book, side=side, context=context)
     ranked: list[tuple[float, str, str, dict[str, Any], bool]] = []
     call_matches: list[str] = []
     for formation, plays in book.items():
