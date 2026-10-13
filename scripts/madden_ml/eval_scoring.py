@@ -45,8 +45,23 @@ CONTEXT_RULES_NOTE = (
 )
 
 BUDGET_MS = 150
-SEED_COUNT = 3
+# Shadow reruns use seeds 0 .. SEED_COUNT-1. The default is seeds 0-9.
+# model_pick is the seed-0 play. The situation-id seed is not added.
+SEED_COUNT = 10
 _WILSON_Z = 1.959963984540054
+DEFENSE_PENDING_REASON = "defense path pending (call keyed by offense play)"
+# Highest seed count wins. A tie uses exact, case-sensitive string order.
+HEURISTIC_TIE_BREAK = (
+    "heuristic_majority_pick breaks ties by lexicographic play name "
+    "(exact string order, case-sensitive)."
+)
+# Adjacent seed pairs whose plays differ, divided by (seed count - 1).
+HEURISTIC_SEED_CHANGE = (
+    "heuristic_seed_change_rate is the fraction of adjacent seeds whose "
+    "plays differ. One seed has rate 0."
+)
+# First key present on the seed-0 heuristic (then any later seed) wins.
+_HEURISTIC_WEIGHT_KEYS = ("candidate_probabilities", "sampling_weights", "weights")
 
 FIXTURE_DIR = _ROOT / "tests" / "madden_ml" / "fixtures" / "item3"
 SYNTHETIC_FIXTURE = FIXTURE_DIR / "synthetic_grid.json"
@@ -1227,8 +1242,259 @@ def _is_model_refusal(payload: Mapping[str, Any]) -> str | None:
 
 
 def _seed_values(seed: int, seed_count: int) -> list[int]:
+    """Seeds ``0 .. seed_count-1``. ``seed`` is not added.
+
+    The default report compares seeds 0-9. ``model_pick`` is the seed-0 play.
+    """
+    _ = int(seed)
     count = max(1, int(seed_count))
-    return [int(seed) + offset for offset in range(count)]
+    return list(range(count))
+
+
+def _is_defense_path(side: Any, stratum: Any) -> bool:
+    if side == "defense":
+        return True
+    return isinstance(stratum, str) and stratum.endswith("/defense")
+
+
+def _ordered_runs(runs: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    return sorted(runs, key=lambda run: int(run.get("seed") or 0))
+
+
+def _run_at_seed(runs: Sequence[Mapping[str, Any]], seed: int) -> Mapping[str, Any]:
+    for run in runs:
+        if int(run.get("seed") or 0) == seed:
+            return run
+    return runs[0] if runs else {}
+
+
+def _carried_features(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Copy the hook ``features`` dict. Keys are not rebuilt here."""
+    raw = payload.get("features")
+    if not isinstance(raw, Mapping):
+        return None
+    return json.loads(json.dumps(raw))
+
+
+def _heuristic_weight_table(runs: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """Sampling weights or probabilities exposed by the heuristic, if any."""
+    ordered = _ordered_runs(runs)
+    preferred = []
+    seed0 = _run_at_seed(ordered, 0) if ordered else None
+    if seed0 is not None:
+        preferred.append(seed0)
+    preferred.extend(run for run in ordered if run is not seed0)
+    for run in preferred:
+        heuristic = run.get("heuristic") if isinstance(run.get("heuristic"), Mapping) else {}
+        for source in (heuristic, run):
+            if not isinstance(source, Mapping):
+                continue
+            for key in _HEURISTIC_WEIGHT_KEYS:
+                table = source.get(key)
+                if isinstance(table, Mapping) and table:
+                    return dict(table)
+    return None
+
+
+def _weight_for_pick(table: Mapping[str, Any], model_pick: Any) -> float:
+    target = _norm_token(model_pick)
+    for key, value in table.items():
+        if _norm_token(key) == target:
+            return float(value)
+    return 0.0
+
+
+def _majority_play(plays: Sequence[Any]) -> tuple[Any, float]:
+    """Modal play. Ties break by lexicographic play name. Share is count/n."""
+    counts: dict[str, int] = {}
+    labels: dict[str, Any] = {}
+    for play in plays:
+        key = "" if play is None else str(play)
+        counts[key] = counts.get(key, 0) + 1
+        labels.setdefault(key, play)
+    if not counts:
+        return None, 0.0
+    best = max(counts.values())
+    winner = sorted(key for key, count in counts.items() if count == best)[0]
+    return labels[winner], best / float(len(plays))
+
+
+def _heuristic_seed_change_rate(plays: Sequence[Any]) -> float:
+    """Fraction of adjacent seeds whose plays differ."""
+    if len(plays) <= 1:
+        return 0.0
+    changes = 0
+    for left, right in zip(plays, plays[1:]):
+        if _norm_token(left) != _norm_token(right):
+            changes += 1
+    return changes / float(len(plays) - 1)
+
+
+def _model_pick_probability(
+    model_pick: Any,
+    heuristic_plays: Sequence[Any],
+    runs: Sequence[Mapping[str, Any]],
+) -> tuple[Any, str | None]:
+    """Weight of ``model_pick`` when the heuristic exposes one, else its seed frequency.
+
+    A zero frequency is ``'<0.1'`` (no hit in the seed sample). Weights are
+    used as given; they are not renormalized.
+    """
+    table = _heuristic_weight_table(runs)
+    if table is not None:
+        return _weight_for_pick(table, model_pick), "heuristic_weights"
+    if not heuristic_plays:
+        return None, None
+    count = sum(1 for play in heuristic_plays if _tokens_agree(play, model_pick))
+    if count == 0:
+        return "<0.1", "seed_frequency_estimate"
+    return count / float(len(heuristic_plays)), "seed_frequency_estimate"
+
+
+def _paired_columns(
+    request: Mapping[str, Any],
+    stratum: str | None,
+    runs: Sequence[Mapping[str, Any]],
+    *,
+    refusal: str | None,
+) -> dict[str, Any]:
+    """Per-situation paired columns. Defense stays in the file and out of the metrics."""
+    ordered = _ordered_runs(runs)
+    seed0 = _run_at_seed(ordered, 0) if ordered else {}
+    model_pick = seed0.get("play") if ordered else None
+    model_plays = [_norm_token(run.get("play")) for run in ordered]
+    model_seed_stable = bool(ordered) and len(set(model_plays)) <= 1
+    heuristic_picks = [
+        {"seed": int(run.get("seed") or 0), "play": (run.get("heuristic") or {}).get("play")}
+        for run in ordered
+    ]
+    plays = [item["play"] for item in heuristic_picks]
+    majority, share = _majority_play(plays)
+    stable = bool(plays) and share >= 0.5
+    if not stable:
+        agreement = "no_stable_heuristic_pick"
+        agree_with_majority = None
+    else:
+        agree_with_majority = _tokens_agree(model_pick, majority)
+        agreement = "agree" if agree_with_majority else "disagree"
+    if ordered:
+        prob, prob_source = _model_pick_probability(model_pick, plays, ordered)
+        change_rate: float | None = _heuristic_seed_change_rate(plays)
+    else:
+        prob, prob_source = None, None
+        change_rate = None
+        agreement = "no_stable_heuristic_pick"
+        agree_with_majority = None
+        stable = False
+        majority = None
+        share = None
+    if _is_defense_path(request.get("side"), stratum):
+        evaluable = False
+        reason = DEFENSE_PENDING_REASON
+    elif refusal:
+        evaluable = False
+        reason = refusal
+    else:
+        evaluable = True
+        reason = None
+    return {
+        "look_id": request.get("look_id"),
+        "model_pick": model_pick,
+        "model_seed_stable": model_seed_stable if ordered else None,
+        "heuristic_picks": heuristic_picks,
+        "heuristic_majority_pick": majority,
+        "heuristic_majority_share": share,
+        "heuristic_seed_change_rate": change_rate,
+        "stable_heuristic": stable,
+        "agreement": agreement,
+        "agree_with_majority": agree_with_majority,
+        "model_pick_heuristic_prob": prob,
+        "prob_source": prob_source,
+        "features": _carried_features(seed0) if ordered else None,
+        "evaluable": evaluable,
+        "evaluable_reason": reason,
+        "heuristic_tie_break": HEURISTIC_TIE_BREAK,
+    }
+
+
+def _prob_number(value: Any) -> float | None:
+    """``'<0.1'`` sorts as 0, below every positive seed frequency."""
+    if value == "<0.1":
+        return 0.0
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _median_prob(values: Sequence[Any]) -> float | None:
+    nums = [number for number in (_prob_number(value) for value in values) if number is not None]
+    if not nums:
+        return None
+    nums.sort()
+    mid = len(nums) // 2
+    if len(nums) % 2:
+        return nums[mid]
+    return (nums[mid - 1] + nums[mid]) / 2.0
+
+
+def _look_flip_count(rows: Sequence[Mapping[str, Any]]) -> int:
+    """Situations whose model_pick is not the same on every look."""
+    grouped: dict[Any, dict[Any, Any]] = {}
+    for row in rows:
+        looks = grouped.setdefault(row.get("situation_id"), {})
+        looks[row.get("look_id")] = row.get("model_pick")
+    count = 0
+    for looks in grouped.values():
+        picks = {_norm_token(play) for play in looks.values()}
+        if len(looks) >= 2 and len(picks) > 1:
+            count += 1
+    return count
+
+
+def _situation_changes_within_look(rows: Sequence[Mapping[str, Any]]) -> int:
+    """Looks whose model_pick is not the same on every situation."""
+    grouped: dict[Any, dict[Any, Any]] = {}
+    for row in rows:
+        situations = grouped.setdefault(row.get("look_id"), {})
+        situations[row.get("situation_id")] = row.get("model_pick")
+    count = 0
+    for situations in grouped.values():
+        picks = {_norm_token(play) for play in situations.values()}
+        if len(situations) >= 2 and len(picks) > 1:
+            count += 1
+    return count
+
+
+def _paired_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Stratum metrics. Defense rows are excluded."""
+    if rows and all(_is_defense_path(row.get("side"), row.get("stratum")) for row in rows):
+        return {
+            "evaluable": False,
+            "reason": DEFENSE_PENDING_REASON,
+            "n_rows_excluded": len(rows),
+        }
+    evaluable = [row for row in rows if row.get("evaluable") is True]
+    stable = [row for row in evaluable if row.get("stable_heuristic") is True]
+    agreed = sum(1 for row in stable if row.get("agree_with_majority") is True)
+    rates = [
+        float(row["heuristic_seed_change_rate"])
+        for row in evaluable
+        if isinstance(row.get("heuristic_seed_change_rate"), (int, float))
+        and not isinstance(row.get("heuristic_seed_change_rate"), bool)
+    ]
+    probs = [row.get("model_pick_heuristic_prob") for row in evaluable]
+    return {
+        "evaluable": True,
+        "n_situations": len(evaluable),
+        "n_stable": len(stable),
+        "agreement_vs_majority": wilson_interval(agreed, len(stable)),
+        "mean_heuristic_seed_change_rate": (sum(rates) / len(rates)) if rates else None,
+        "median_model_pick_heuristic_prob": _median_prob(probs),
+        "look_flip_count": _look_flip_count(evaluable),
+        "situation_changes_pick_within_look": _situation_changes_within_look(evaluable),
+        "heuristic_tie_break": HEURISTIC_TIE_BREAK,
+        "heuristic_seed_change_rate_definition": HEURISTIC_SEED_CHANGE,
+    }
 
 
 def _refused_row(request: Mapping[str, Any], reason: str, *, model_version: str | None, stratum: str | None, model_dir: Any) -> dict[str, Any]:
@@ -1281,6 +1547,7 @@ def _refused_row(request: Mapping[str, Any], reason: str, *, model_version: str 
         "seed_runs": [],
         "model_dir": str(model_dir) if model_dir is not None else None,
         "context_rules_note": CONTEXT_RULES_NOTE,
+        **_paired_columns(request, stratum, [], refusal=reason),
     }
 
 
@@ -1413,6 +1680,7 @@ def _paired_from_runs(
         "over_budget": primary.get("over_budget"),
         "model_dir": str(model_dir),
         "context_rules_note": CONTEXT_RULES_NOTE,
+        **_paired_columns(request, stratum, runs, refusal=refusal),
     }
 
 
@@ -1523,6 +1791,9 @@ def evaluate_shadow(
         "inventory_note": dict(inventory_note or {}),
         "requested_model_version": requested_version or root["model_version"],
         "summary_grouped_by": "loaded_manifest_label_version",
+        "seed_count": int(seed_count),
+        "seeds": _seed_values(0, seed_count),
+        "heuristic_tie_break": HEURISTIC_TIE_BREAK,
         "vod_derived_excluded": excluded,
         "vod_derived_in_sample": [],
         "by_model_version": _shadow_by_version(decisions),
@@ -1610,6 +1881,7 @@ def _agreement_block(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "by_field_zone_quality": _bucket_quality(scored, "field_zone"),
         "seed_noise": _seed_noise(rows),
         "penalty": None,
+        "paired_summary": _paired_summary(rows),
     }
 
 
@@ -1734,6 +2006,10 @@ def _render_shadow_markdown(report: Mapping[str, Any]) -> str:
         "Every summary is grouped by the model_version on the manifest that was loaded for those rows.",
         "Observed-defense rows scored with a per-fold fit are reported under that fold manifest's model_version and are not pooled with any other model_version.",
         "Indicative rows, where the returned version or fold does not match, stay out of the synthetic exploratory counts.",
+        HEURISTIC_TIE_BREAK,
+        HEURISTIC_SEED_CHANGE,
+        "model_pick is the seed-0 play. model_seed_stable records whether that play is the same on every seed (0-9 by default).",
+        f"Defense rows are still emitted and marked not evaluable: {DEFENSE_PENDING_REASON} They are excluded from paired summary metrics.",
         "",
         f"Requested model version: {report.get('requested_model_version')}",
         f"VOD-derived rows excluded: {len(report.get('vod_derived_excluded') or [])}",
@@ -1771,6 +2047,24 @@ def _render_shadow_markdown(report: Mapping[str, Any]) -> str:
                         lines.append(
                             f"  - {caller} seed shift {caller_noise.get('seed_shift_n')}/{caller_noise.get('n')} "
                             f"situation shift {caller_noise.get('situation_shift_rate')}"
+                        )
+                    paired = stats.get("paired_summary") or {}
+                    if paired.get("evaluable") is False:
+                        lines.append(
+                            f"  - paired summary excluded: {paired.get('reason')} "
+                            f"({paired.get('n_rows_excluded')} rows)"
+                        )
+                    elif paired:
+                        agree = paired.get("agreement_vs_majority") or {}
+                        lines.append(
+                            f"  - paired situations {paired.get('n_situations')} "
+                            f"stable {paired.get('n_stable')} "
+                            f"agree {agree.get('k')}/{agree.get('n')} "
+                            f"95% CI {agree.get('low')} .. {agree.get('high')} "
+                            f"mean heuristic seed change {paired.get('mean_heuristic_seed_change_rate')} "
+                            f"median model_pick_heuristic_prob {paired.get('median_model_pick_heuristic_prob')} "
+                            f"look flips {paired.get('look_flip_count')} "
+                            f"situation_changes_pick_within_look {paired.get('situation_changes_pick_within_look')}"
                         )
                 lines.append("")
     lines.append("Paired rows are in `paired_rows.jsonl`.")
@@ -2412,7 +2706,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Model directory (manifest.json and model_params.json), such as /workspace/vod_data/models/v0.21",
     )
     parser.add_argument("--observed-defense", type=Path, default=None)
-    parser.add_argument("--seed-count", type=int, default=SEED_COUNT)
+    parser.add_argument(
+        "--seed-count",
+        type=int,
+        default=SEED_COUNT,
+        help="Seeds 0 .. seed-count-1. The default 10 is seeds 0-9.",
+    )
     args = parser.parse_args(list(argv) if argv is not None else None)
     coach = args.coach_db
     if coach is None:

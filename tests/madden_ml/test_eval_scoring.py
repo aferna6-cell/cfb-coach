@@ -908,6 +908,303 @@ def _defense_fold_identity(raw: str, fold_id: str, situation_id: str) -> dict:
     return identity
 
 
+def _paired_identity(situation_id, side, down, distance, yardline, zone, looks):
+    return scoring._identity(
+        situation_id=situation_id,
+        side=side,
+        tags=["synthetic"],
+        source="synthetic",
+        down=down,
+        distance=distance,
+        yardline=yardline,
+        field_zone=zone,
+        clock_name="normal",
+        score_name="close",
+        game_id=None,
+        default_filled=[],
+        looks=looks,
+        look_observed=False,
+    )
+
+
+_NULL_LOOK = {"look_id": "null", "opp_personnel": None, "opp_set": None}
+_EMPTY_LOOK = {"look_id": "empty", "opp_personnel": "empty", "opp_set": "empty"}
+_SENTINEL_FEATURES = {
+    "intercept": 0.0,
+    "groups": {
+        "not_a_real_group": {"key": "sentinel-key", "matched": True, "weight": 0.25},
+    },
+    "call_matches": ["sentinel-key"],
+}
+
+
+def _scripted_payload(seed, model_play, heuristic_play, *, weights=None, features=None):
+    heuristic = {
+        "formation": "Gun Trips",
+        "play": heuristic_play,
+        "adjustment_id": None,
+        "mode": "heuristic",
+    }
+    if weights is not None:
+        heuristic["candidate_probabilities"] = weights
+    return {
+        "formation": "Pistol Trips",
+        "play": model_play,
+        "adjustment_id": None,
+        "mode": "offline",
+        "model_version": "v0.21",
+        "scored_on": "reviewed",
+        "legal": True,
+        "gate_bypassed": "offline_eval",
+        "heuristic": heuristic,
+        "seed": seed,
+        "features": features if features is not None else _SENTINEL_FEATURES,
+    }
+
+
+def _scripted_runner(sit, *, side, model_dir, strata, opp_look, seed, offline_ok):
+    del model_dir, strata, opp_look
+    if offline_ok is not True:
+        raise AssertionError("offline_ok")
+    seed = int(seed)
+    down = int(sit["down"])
+    distance = int(sit["distance"])
+    look_id = sit["look_id"]
+    if side == "defense":
+        model = "Cover 1" if seed < 9 else "Cover 2"
+        return _scripted_payload(seed, model, "Cover 4")
+    if (down, distance) == (1, 10):
+        heuristic = "alpha" if seed < 5 else "zeta"
+        return _scripted_payload(seed, "alpha", heuristic)
+    if (down, distance) == (2, 4):
+        plays = ["a"] * 4 + ["b"] * 3 + ["c"] * 2 + ["d"]
+        return _scripted_payload(seed, "a", plays[seed])
+    if (down, distance) == (3, 10):
+        return _scripted_payload(
+            seed,
+            "screen",
+            "dive",
+            weights={"screen": 0.15, "dive": 0.85},
+        )
+    if (down, distance) == (4, 10):
+        return _scripted_payload(seed, "never", "dive")
+    if (down, distance) == (1, 2):
+        model = "dive" if look_id == "null" else "screen"
+        return _scripted_payload(seed, model, "dive")
+    if (down, distance) == (1, 4):
+        return _scripted_payload(seed, "dive", "dive")
+    raise AssertionError(f"unexpected row {side} {down} {distance} {look_id}")
+
+
+class PairedReportTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        root = Path(cls._tmp.name)
+        madden = root / "madden27.db"
+        coach = root / "coach.db"
+        cls.resources = scoring.set_shadow_databases(madden, coach)
+        bundle = root / "bundle"
+        _write_bundle(bundle, "v0.21")
+        looks_one = [_NULL_LOOK]
+        looks_two = [_NULL_LOOK, _EMPTY_LOOK]
+        identities = [
+            _paired_identity("sit-tie", "offense", 1, 10, 50, "midfield", looks_one),
+            _paired_identity("sit-unstable", "offense", 2, 4, 50, "midfield", looks_one),
+            _paired_identity("sit-weights", "offense", 3, 10, 50, "midfield", looks_one),
+            _paired_identity("sit-zero", "offense", 4, 10, 50, "midfield", looks_one),
+            _paired_identity("sit-flip", "offense", 1, 2, 50, "midfield", looks_two),
+            _paired_identity("sit-same", "offense", 1, 4, 50, "midfield", looks_two),
+            _paired_identity("sit-def", "defense", 3, 2, 12, "own_deep", looks_one),
+        ]
+        cls.report = scoring.evaluate_shadow(
+            identities,
+            _scripted_runner,
+            cls.resources.book,
+            model_dir=bundle,
+            requested_version="v0.21",
+            seed_count=10,
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def _cpu(self, situation_id, look_id="null", side="offense"):
+        stratum = f"madden27/cpu/{side}"
+        matches = [
+            row
+            for row in self.report["decisions"]
+            if row["situation_id"] == situation_id
+            and row["look_id"] == look_id
+            and row["stratum"] == stratum
+        ]
+        self.assertEqual(len(matches), 1)
+        return matches[0]
+
+    def test_columns_tie_break_probability_and_defense(self):
+        self.assertEqual(self.report["seeds"], list(range(10)))
+        self.assertIn("lexicographic play name", self.report["heuristic_tie_break"])
+        tie = self._cpu("sit-tie")
+        self.assertEqual(tie["down"], 1)
+        self.assertEqual(tie["distance"], 10)
+        self.assertEqual(tie["field_zone"], "midfield")
+        self.assertEqual(tie["look_id"], "null")
+        self.assertEqual(tie["stratum"], "madden27/cpu/offense")
+        self.assertEqual(tie["model_pick"], "alpha")
+        self.assertTrue(tie["model_seed_stable"])
+        self.assertEqual([item["seed"] for item in tie["heuristic_picks"]], list(range(10)))
+        self.assertEqual(
+            [item["play"] for item in tie["heuristic_picks"]],
+            ["alpha"] * 5 + ["zeta"] * 5,
+        )
+        self.assertEqual(tie["heuristic_majority_pick"], "alpha")
+        self.assertEqual(tie["heuristic_majority_share"], 5 / 10)
+        self.assertAlmostEqual(tie["heuristic_seed_change_rate"], 1 / 9)
+        self.assertTrue(tie["stable_heuristic"])
+        self.assertEqual(tie["agreement"], "agree")
+        self.assertIs(tie["agree_with_majority"], True)
+        self.assertEqual(tie["model_pick_heuristic_prob"], 0.5)
+        self.assertEqual(tie["prob_source"], "seed_frequency_estimate")
+        self.assertEqual(tie["features"]["groups"]["not_a_real_group"]["key"], "sentinel-key")
+        self.assertIs(tie["features"]["groups"]["not_a_real_group"]["matched"], True)
+        self.assertTrue(tie["evaluable"])
+        self.assertIsNone(tie["evaluable_reason"])
+
+        unstable = self._cpu("sit-unstable")
+        self.assertEqual(unstable["heuristic_majority_pick"], "a")
+        self.assertEqual(unstable["heuristic_majority_share"], 4 / 10)
+        self.assertFalse(unstable["stable_heuristic"])
+        self.assertEqual(unstable["agreement"], "no_stable_heuristic_pick")
+        self.assertIsNone(unstable["agree_with_majority"])
+        self.assertAlmostEqual(unstable["heuristic_seed_change_rate"], 3 / 9)
+        self.assertEqual(unstable["prob_source"], "seed_frequency_estimate")
+        self.assertEqual(unstable["model_pick_heuristic_prob"], 0.4)
+
+        weights = self._cpu("sit-weights")
+        self.assertEqual(weights["model_pick_heuristic_prob"], 0.15)
+        self.assertEqual(weights["prob_source"], "heuristic_weights")
+        self.assertEqual(weights["agreement"], "disagree")
+        self.assertIs(weights["agree_with_majority"], False)
+        self.assertEqual(weights["heuristic_majority_pick"], "dive")
+        self.assertTrue(weights["stable_heuristic"])
+
+        zero = self._cpu("sit-zero")
+        self.assertEqual(zero["model_pick_heuristic_prob"], "<0.1")
+        self.assertEqual(zero["prob_source"], "seed_frequency_estimate")
+        self.assertEqual(zero["agreement"], "disagree")
+
+        other_weight_keys = [
+            {"seed": 0, "play": "screen", "heuristic": {"play": "dive", "weights": {"screen": 0.2}}},
+            {"seed": 0, "play": "screen", "heuristic": {"play": "dive", "sampling_weights": {"screen": 0.4}}},
+        ]
+        prob, source = scoring._model_pick_probability("screen", ["dive"], other_weight_keys[:1])
+        self.assertEqual((prob, source), (0.2, "heuristic_weights"))
+        prob, source = scoring._model_pick_probability("screen", ["dive"], other_weight_keys[1:])
+        self.assertEqual((prob, source), (0.4, "heuristic_weights"))
+        missing, source = scoring._model_pick_probability(
+            "absent",
+            ["dive"],
+            [{"seed": 0, "play": "absent", "heuristic": {"play": "dive", "weights": {"dive": 1.0}}}],
+        )
+        self.assertEqual((missing, source), (0.0, "heuristic_weights"))
+
+        defense = self._cpu("sit-def", side="defense")
+        self.assertFalse(defense["evaluable"])
+        self.assertEqual(defense["evaluable_reason"], scoring.DEFENSE_PENDING_REASON)
+        self.assertEqual(defense["model_pick"], "Cover 1")
+        self.assertFalse(defense["model_seed_stable"])
+        self.assertEqual(len(defense["heuristic_picks"]), 10)
+        defense_summary = self.report["by_model_version"]["v0.21"]["by_side"]["defense"]["synthetic"]["by_stratum"]["madden27/cpu/defense"]["paired_summary"]
+        self.assertFalse(defense_summary["evaluable"])
+        self.assertEqual(defense_summary["reason"], "defense path pending (call keyed by offense play)")
+        self.assertNotIn("agreement_vs_majority", defense_summary)
+        self.assertNotIn("n_situations", defense_summary)
+        self.assertNotIn("n_stable", defense_summary)
+        self.assertGreater(defense_summary["n_rows_excluded"], 0)
+
+        summary = self.report["by_model_version"]["v0.21"]["by_side"]["offense"]["synthetic"]["by_stratum"]["madden27/cpu/offense"]["paired_summary"]
+        self.assertTrue(summary["evaluable"])
+        self.assertEqual(summary["n_situations"], 8)
+        self.assertEqual(summary["n_stable"], 7)
+        self.assertEqual(summary["agreement_vs_majority"], scoring.wilson_interval(4, 7))
+        self.assertAlmostEqual(summary["mean_heuristic_seed_change_rate"], (1 / 9 + 1 / 3) / 8)
+        self.assertAlmostEqual(summary["median_model_pick_heuristic_prob"], 0.45)
+        self.assertEqual(summary["look_flip_count"], 1)
+        self.assertEqual(summary["situation_changes_pick_within_look"], 2)
+        human = self.report["by_model_version"]["v0.21"]["by_side"]["offense"]["synthetic"]["by_stratum"]["madden27/human/offense"]["paired_summary"]
+        self.assertEqual(human["n_situations"], summary["n_situations"])
+        self.assertEqual(human["agreement_vs_majority"], summary["agreement_vs_majority"])
+        text = scoring.render_markdown(self.report)
+        self.assertIn("lexicographic play name", text)
+        self.assertIn("defense path pending (call keyed by offense play)", text)
+        self.assertIn("paired summary excluded", text)
+
+    def test_trimmed_fixture_carries_hook_features_and_seed_zero_pick(self):
+        source = (_ROOT / "scripts" / "madden_ml" / "eval_scoring.py").read_text(encoding="utf-8")
+        self.assertNotIn("feature_map", source)
+        self.assertNotIn("ALL_GROUPS", source)
+        self.assertNotIn("snap_from_row", source)
+        fixture = _ROOT / "tests" / "madden_ml" / "fixtures" / "item3" / "v0.21"
+        size = sum(path.stat().st_size for path in fixture.rglob("*") if path.is_file())
+        self.assertLess(size, 20_000)
+        identity = dict(scoring.build_synthetic_identities()[0])
+        identity["looks"] = [identity["looks"][0]]
+        report = scoring.evaluate_shadow(
+            [identity],
+            scoring.adapt_score_offline_model,
+            self.resources.book,
+            model_dir=fixture,
+            requested_version="v0.21",
+            seed_count=10,
+        )
+        row = next(
+            item
+            for item in report["decisions"]
+            if item["stratum"] == "madden27/cpu/offense"
+        )
+        direct = scoring.adapt_score_offline_model(
+            {
+                "raw": identity["raw"],
+                "down": identity["down"],
+                "distance": identity["distance"],
+                "yardline": identity["yardline"],
+                "look_id": identity["looks"][0]["look_id"],
+            },
+            side="offense",
+            model_dir=fixture,
+            strata=["madden27/cpu/offense"],
+            opp_look=identity["looks"][0],
+            seed=0,
+            offline_ok=True,
+        )
+        self.assertEqual(row["model_pick"], direct["play"])
+        self.assertTrue(row["model_seed_stable"])
+        self.assertEqual([item["seed"] for item in row["heuristic_picks"]], list(range(10)))
+        self.assertEqual(row["features"], direct["features"])
+        self.assertTrue(row["features"]["groups"])
+        for group in row["features"]["groups"].values():
+            self.assertIn("key", group)
+            self.assertIn("matched", group)
+            self.assertIsInstance(group["matched"], bool)
+        self.assertEqual(row["prob_source"], "seed_frequency_estimate")
+        self.assertIn(
+            row["agreement"],
+            {"agree", "disagree", "no_stable_heuristic_pick"},
+        )
+        if row["stable_heuristic"]:
+            self.assertIsInstance(row["agree_with_majority"], bool)
+        else:
+            self.assertEqual(row["agreement"], "no_stable_heuristic_pick")
+            self.assertIsNone(row["agree_with_majority"])
+        share = row["heuristic_majority_share"]
+        self.assertAlmostEqual(share * 10, round(share * 10))
+        summary = report["by_model_version"]["v0.21"]["by_side"]["offense"]["synthetic"]["by_stratum"]["madden27/cpu/offense"]["paired_summary"]
+        self.assertEqual(summary["n_situations"], 1)
+        defense_summary = report["by_model_version"]["v0.21"]["by_side"]["defense"]["synthetic"]["by_stratum"]
+        self.assertEqual(defense_summary, {})
+
+
 class IsolationTests(unittest.TestCase):
     def test_scoring_does_not_write_home_or_call_path_home(self):
         source = (_ROOT / "scripts" / "madden_ml" / "eval_scoring.py").read_text(encoding="utf-8")
