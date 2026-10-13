@@ -157,6 +157,13 @@ class LivePlayController:
             self.opponent_id, dynasty=self.dynasty, db=self.db, notes="html-live"
         )
         self.session_id = sess.session_id
+        if str(self.brand).lower().startswith("madden"):
+            try:
+                from cfb_coach.madden.model.call_outcome_log import record_session_run_config
+
+                record_session_run_config(self.db, self.session_id)
+            except Exception:  # noqa: BLE001 — logging must not break live play
+                pass
 
     def state(self) -> dict[str, Any]:
         return {
@@ -348,6 +355,19 @@ class LivePlayController:
             except Exception:  # noqa: BLE001 — never break live play
                 row_id = None
             tracker.bind_decision_row(row_id)
+        try:
+            from cfb_coach.madden.model.call_outcome_log import apply_seal_logging
+
+            apply_seal_logging(
+                self.db,
+                tracker,
+                decision_id=row_id,
+                sit=sit,
+                call=call,
+                is_new=is_new,
+            )
+        except Exception:  # noqa: BLE001 — logging must not break live play
+            pass
         return snap_id, seq, row_id
 
     def benched_state(self) -> dict[str, list[str]]:
@@ -620,6 +640,21 @@ class LivePlayController:
                 from cfb_coach.outcome import parse_outcome
 
                 parsed = parse_outcome(closed.get("result") or outcome_raw)
+                from cfb_coach.madden.model.call_outcome_log import (
+                    context_from_situation,
+                    recommended_from_call,
+                )
+
+                ctx = context_from_situation(self.last_sit)
+                confirmed_adjustment = bool(
+                    applied_recommended_action
+                    and (closed.get("executed_status") or "") == "identified"
+                    and (closed.get("executed_play") or "") == getattr(self.last_call, "play", None)
+                )
+                shown_adjustment = None
+                adjustment = getattr(self.last_call, "adjustment", None)
+                if isinstance(adjustment, dict):
+                    shown_adjustment = adjustment.get("id")
                 self.db.log_ml_outcome(
                     snap_id=ml_snap_id,
                     game_id=self.session_id or None,
@@ -635,6 +670,14 @@ class LivePlayController:
                             else "unknown"
                         )
                     ),
+                    drive_id=ctx.get("drive_id"),
+                    quarter=ctx.get("quarter"),
+                    game_clock=ctx.get("game_clock"),
+                    score_for=ctx.get("score_for"),
+                    score_against=ctx.get("score_against"),
+                    recommended_adjustment_id=recommended_from_call(self.last_call),
+                    executed_adjustment_id=shown_adjustment if confirmed_adjustment else None,
+                    adjustment_confirmed=confirmed_adjustment,
                     outcome={
                         "result": closed.get("result"),
                         "yards": parsed.yards,

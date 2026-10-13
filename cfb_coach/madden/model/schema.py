@@ -90,9 +90,12 @@ LEAKAGE_FIELDS = frozenset(
         "observed_concept",
         "executed_play",
         "executed",
+        "executed_adjustment_id",
         "success",
         "success_probability",
         "parsed",
+        "penalty",
+        "snap_link",
     }
 )
 

@@ -100,6 +100,9 @@ SHADOW_FEATURE_DENYLIST = LEAKAGE_FIELDS | frozenset(
         "yards_gained",
         "eligibility",
         "supervised_eligible",
+        "penalty",
+        "executed_adjustment_id",
+        "snap_link",
     }
 )
 _FEATURE_LEAK = SHADOW_FEATURE_DENYLIST.intersection(SHADOW_FEATURE_FIELDS)
