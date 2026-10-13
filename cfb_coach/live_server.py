@@ -6,6 +6,7 @@ keeps the classic typed loop.
 
 from __future__ import annotations
 
+import contextvars
 import json
 import re
 import socket
@@ -123,6 +124,13 @@ class LivePlayController:
     # v1.13 (CFB): playbook-of-record hooks — optional so Madden is unaffected
     book_info: Callable[[], dict[str, Any] | None] | None = None
     book_apply: Callable[[int | None], dict[str, Any] | None] | None = None
+    # Madden ML: optional shared shadow scorer. Never mutates the displayed call.
+    # Signature: (sit, call, *, game_id, snap_id, snap_seq, session_id, is_new) -> row_id|None
+    shadow_evaluate: Callable[..., int | None] | None = None
+    enable_execution_verify: bool = False
+    ml_tracker: Any | None = None
+    # Durable HTTP idempotency: request_key -> last response (also persisted in DB).
+    _idempotency_mem: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def book_state(self) -> dict[str, Any] | None:
         if self.book_info is None:
@@ -179,7 +187,63 @@ class LivePlayController:
             "quarter": self.quarter,
             "benched": self.benched_state(),
             "ball": self._book().spot.as_dict(),
+            "execution_verify": bool(self.enable_execution_verify),
+            "pending_recommendation": self._pending_recommendation(),
         }
+
+    def _pending_recommendation(self) -> dict[str, Any] | None:
+        call = self.last_call
+        if call is None or self.ended:
+            return None
+        return {
+            "formation": getattr(call, "formation", None),
+            "play": getattr(call, "play", None),
+            "macro": getattr(call, "macro", None),
+            "side": getattr(call, "side", None),
+        }
+
+    def _ensure_tracker(self) -> Any:
+        if self.ml_tracker is not None:
+            return self.ml_tracker
+        if not self.enable_execution_verify and self.shadow_evaluate is None:
+            return None
+        from cfb_coach.madden.model.identity import LiveDecisionTracker, next_seq_from_db
+
+        sid = self.session_id or ""
+        if not sid:
+            return None
+        self.ml_tracker = LiveDecisionTracker.from_session(
+            sid, next_seq=next_seq_from_db(self.db, sid)
+        )
+        return self.ml_tracker
+
+    def _seal_and_shadow(self, sit: Any, call: Any) -> tuple[str | None, int | None, int | None]:
+        """Allocate snap identity and optionally run shadow once. Returns snap_id, seq, decision_row."""
+        tracker = self._ensure_tracker()
+        if tracker is None:
+            return None, None, None
+        snap_id, seq, _key, is_new = tracker.seal_call(
+            side=getattr(call, "side", "offense") or "offense",
+            formation=getattr(call, "formation", None),
+            play=getattr(call, "play", None),
+            situation_raw=getattr(sit, "raw", None),
+        )
+        row_id = tracker.pending_ml_decision_row_id
+        if self.shadow_evaluate is not None and is_new:
+            try:
+                row_id = self.shadow_evaluate(
+                    sit,
+                    call,
+                    game_id=tracker.game_id,
+                    snap_id=snap_id,
+                    snap_seq=seq,
+                    session_id=self.session_id,
+                    is_new=is_new,
+                )
+            except Exception:  # noqa: BLE001 — never break live play
+                row_id = None
+            tracker.bind_decision_row(row_id)
+        return snap_id, seq, row_id
 
     def benched_state(self) -> dict[str, list[str]]:
         """Calls benched for the rest of this half, per side."""
@@ -313,24 +377,100 @@ class LivePlayController:
             book.spot.score_us = self.live_score.us
             book.spot.score_them = self.live_score.them
 
-    def undo_last(self) -> dict[str, Any]:
+    @staticmethod
+    def _parse_snap_seq(snap_id: str | None) -> int | None:
+        try:
+            from cfb_coach.madden.model.identity import parse_snap_seq
+
+            return parse_snap_seq(snap_id)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _idempotency_get(self, request_key: str | None) -> dict[str, Any] | None:
+        if not request_key:
+            return None
+        cached = self._idempotency_mem.get(request_key)
+        if cached is not None:
+            out = dict(cached)
+            out["idempotent_replay"] = True
+            return out
+        if hasattr(self.db, "get_idempotent_response"):
+            return self.db.get_idempotent_response(request_key)
+        return None
+
+    def _idempotency_put(
+        self, request_key: str | None, endpoint: str, response: dict[str, Any]
+    ) -> dict[str, Any]:
+        if not request_key:
+            return response
+        stored = dict(response)
+        stored["idempotency_key"] = request_key
+        self._idempotency_mem[request_key] = stored
+        if hasattr(self.db, "store_idempotent_response"):
+            self.db.store_idempotent_response(
+                request_key,
+                endpoint=endpoint,
+                response=stored,
+                session_id=self.session_id or None,
+            )
+        return stored
+
+    def undo_last(self, *, request_key: str | None = None) -> dict[str, Any]:
         with self.lock:
+            cached = self._idempotency_get(request_key)
+            if cached is not None:
+                return cached
             book = self._book()
             before = len(book._undos)
+            # Capture ml identity before undo so the tracker can restore pending.
+            undone_ml_snap = book.ml_snap_id
+            undone_decision = book.ml_decision_id
             msg = book.undo()
             if len(book._undos) < before and self.log:
                 self.log.pop()
+            # After voiding the outcome, re-bind the pending call identity so a
+            # retry can re-log against the same snap rather than skipping ahead.
+            tracker = self.ml_tracker
+            if tracker is not None and undone_ml_snap and book.call is not None:
+                tracker.pending_snap_id = undone_ml_snap
+                tracker.pending_ml_decision_row_id = undone_decision
+                tracker.pending_decision_key = tracker.decision_key(
+                    side=getattr(book.call, "side", "offense") or "offense",
+                    formation=getattr(book.call, "formation", None),
+                    play=getattr(book.call, "play", None),
+                    situation_raw=getattr(book.sit, "raw", None) if book.sit else None,
+                    seq=self._parse_snap_seq(undone_ml_snap),
+                )
             self._push_score()
-            return {"ok": True, "message": msg.strip(), "state": self.state()}
+            out = {"ok": True, "message": msg.strip(), "state": self.state()}
+            return self._idempotency_put(request_key, "/api/undo", out)
 
-    def _log_pending_result(self, outcome_raw: str, their: str = "", next_raw: str | None = None) -> dict[str, Any] | None:
+    def _log_pending_result(
+        self,
+        outcome_raw: str,
+        their: str = "",
+        next_raw: str | None = None,
+        *,
+        executed_status: str = "unknown",
+        executed_formation: str | None = None,
+        executed_play: str | None = None,
+        executed_macro: str | None = None,
+    ) -> dict[str, Any] | None:
         """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
             return None
         book = self._book()
         if book.call is None:
             book.remember_call(self.last_call, self.last_sit)
-        closed = book.close_from_form(outcome_raw, their=their, next_raw=next_raw)
+        closed = book.close_from_form(
+            outcome_raw,
+            their=their,
+            next_raw=next_raw,
+            executed_status=executed_status,
+            executed_formation=executed_formation,
+            executed_play=executed_play,
+            executed_macro=executed_macro,
+        )
         if closed is None:
             return None
         side = getattr(self.last_call, "side", "") or ""
@@ -339,6 +479,42 @@ class LivePlayController:
         if book.coverage and not side.startswith("d"):
             self.last_coverage = book.coverage
         self._push_score()
+        # Link ML outcome to the sealed decision identity.
+        tracker = self._ensure_tracker()
+        ml_snap_id = book.ml_snap_id
+        decision_id = book.ml_decision_id
+        if tracker is not None:
+            pending_snap, pending_dec = tracker.consume_pending()
+            ml_snap_id = ml_snap_id or pending_snap
+            decision_id = decision_id or pending_dec
+        if ml_snap_id and hasattr(self.db, "log_ml_outcome"):
+            try:
+                from cfb_coach.outcome import parse_outcome
+
+                parsed = parse_outcome(closed.get("result") or outcome_raw)
+                self.db.log_ml_outcome(
+                    snap_id=ml_snap_id,
+                    game_id=self.session_id or None,
+                    decision_id=decision_id,
+                    executed_status=closed.get("executed_status") or "unknown",
+                    executed_formation=closed.get("executed_formation"),
+                    executed_play=closed.get("executed_play"),
+                    executed_verification=(
+                        "verified"
+                        if (closed.get("executed_status") or "") == "identified"
+                        else "unknown"
+                    ),
+                    outcome={
+                        "result": closed.get("result"),
+                        "yards": parsed.yards,
+                        "kind": parsed.kind,
+                        "coverage_seen": book.coverage,
+                        "concept_seen": book.concept,
+                    },
+                    replace=True,
+                )
+            except Exception:  # noqa: BLE001
+                pass
         row = LogRow(
             formation=closed["formation"],
             play=closed["play"],
@@ -348,7 +524,12 @@ class LivePlayController:
             side=closed["side"],
         )
         self.log.append(row)
-        return row.to_dict()
+        out = row.to_dict()
+        out["ml_snap_id"] = ml_snap_id
+        out["executed_status"] = closed.get("executed_status")
+        out["executed_formation"] = closed.get("executed_formation")
+        out["executed_play"] = closed.get("executed_play")
+        return out
 
     def _make(self, sit: Any) -> Any:
         kwargs: dict[str, Any] = {}
@@ -371,8 +552,12 @@ class LivePlayController:
         score_us: Any = None,
         score_them: Any = None,
         score_set: bool = False,
+        request_key: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
+            cached = self._idempotency_get(request_key)
+            if cached is not None:
+                return cached
             if self.ended:
                 return {"ok": False, "error": "game already ended"}
             self._set_quarter(quarter)
@@ -390,7 +575,10 @@ class LivePlayController:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
             self.last_call, self.last_sit = call, sit
-            self._book().remember_call(call, sit)
+            ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
+            self._book().remember_call(
+                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row
+            )
             self.call_text = call.format()
             self.heard = heard
             if getattr(sit, "coverage_hint", None) and sit.side == "offense":
@@ -398,7 +586,8 @@ class LivePlayController:
             if getattr(sit, "concept_hint", None) and sit.side == "defense":
                 self.last_concept = sit.concept_hint
             self.default_side = sit.side
-            return {"ok": True, "call_text": self.call_text, "heard": heard, "state": self.state()}
+            out = {"ok": True, "call_text": self.call_text, "heard": heard, "state": self.state()}
+            return self._idempotency_put(request_key, "/api/call", out)
 
     def result_and_call(
         self,
@@ -411,15 +600,31 @@ class LivePlayController:
         score_us: Any = None,
         score_them: Any = None,
         score_set: bool = False,
+        executed_status: str = "unknown",
+        executed_formation: str | None = None,
+        executed_play: str | None = None,
+        executed_macro: str | None = None,
+        request_key: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
+            cached = self._idempotency_get(request_key)
+            if cached is not None:
+                return cached
             if self.ended:
                 return {"ok": False, "error": "game already ended"}
             self._apply_form_score(score_us, score_them, score_set)
             logged = None
             closed_sit = self.last_sit
             if self.last_call is not None and (outcome or "").strip():
-                logged = self._log_pending_result(outcome, their=their, next_raw=sit_raw)
+                logged = self._log_pending_result(
+                    outcome,
+                    their=their,
+                    next_raw=sit_raw,
+                    executed_status=executed_status,
+                    executed_formation=executed_formation,
+                    executed_play=executed_play,
+                    executed_macro=executed_macro,
+                )
             elif self.last_call is not None and not (outcome or "").strip():
                 # Allow first snap without prior outcome
                 pass
@@ -451,7 +656,10 @@ class LivePlayController:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
             self.last_call, self.last_sit = call, sit
-            book.remember_call(call, sit)
+            ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
+            book.remember_call(
+                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row
+            )
             self._push_score()
             self.call_text = call.format()
             self.heard = heard
@@ -460,16 +668,22 @@ class LivePlayController:
             if getattr(sit, "concept_hint", None) and sit.side == "defense":
                 self.last_concept = sit.concept_hint
             self.default_side = sit.side
-            return {
+            out = {
                 "ok": True,
                 "logged": logged,
                 "call_text": self.call_text,
                 "heard": heard,
                 "state": self.state(),
             }
+            return self._idempotency_put(request_key, "/api/result_call", out)
 
-    def end_game(self, *, result_wl: str, score: str = "") -> dict[str, Any]:
+    def end_game(
+        self, *, result_wl: str, score: str = "", request_key: str | None = None
+    ) -> dict[str, Any]:
         with self.lock:
+            cached = self._idempotency_get(request_key)
+            if cached is not None:
+                return cached
             if self.ended:
                 return {"ok": True, "retrain_summary": self.retrain_summary, "state": self.state()}
             wl = (result_wl or "").lower().strip()
@@ -535,12 +749,13 @@ class LivePlayController:
             self.call_text = f"GAME OVER — {wl.upper()}" + (
                 f"  {self.score}" if self.score else ""
             )
-            return {
+            out = {
                 "ok": True,
                 "retrain_summary": self.retrain_summary,
                 "grades": grades,
                 "state": self.state(),
             }
+            return self._idempotency_put(request_key, "/api/end_game", out)
 
 
 def _esc(s: Any) -> str:
@@ -650,6 +865,20 @@ def render_live_html(ctrl: LivePlayController) -> str:
     <div class="row">
       <label title="Their call on the snap you just logged: their coverage/blitz when you had the ball, their concept when they had it">they ran</label>
       <input class="wide" id="their" placeholder="cover 6 · A-gap blitz · cross wheels · mesh"/>
+    </div>
+    <div id="exec-verify" hidden>
+      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional)</span></h2>
+      <div class="row">
+        <label><input type="radio" name="exec" value="unknown" checked/> unknown</label>
+        <label><input type="radio" name="exec" value="used_recommended"/> used recommended</label>
+        <label><input type="radio" name="exec" value="used_different"/> used different</label>
+      </div>
+      <div class="row" id="exec-diff" hidden>
+        <label>formation</label>
+        <input class="wide" id="exec-formation" placeholder="from applied book or other"/>
+        <label>play</label>
+        <input class="wide" id="exec-play" placeholder="actual play name"/>
+      </div>
     </div>
 
     <h2 style="margin-top:1rem">Next situation</h2>
@@ -800,6 +1029,8 @@ function renderState(st) {{
     $("side").style.display = "";
     $("side-label").style.display = "";
   }}
+  const ev = $("exec-verify");
+  if (ev) ev.hidden = !st.execution_verify;
 }}
 
 function renderMacro(m) {{
@@ -852,15 +1083,111 @@ function renderBook(b) {{
     "<div><b>" + f + "</b>: " + ps.join(", ") + "</div>").join("");
 }}
 
-async function api(path, body) {{
-  const res = await fetch(path, {{
-    method: "POST",
-    headers: {{"Content-Type": "application/json"}},
-    body: JSON.stringify(body || {{}}),
+/* ---- Idempotency for browser actions (durable across retries / refresh) ---- */
+const IDEM_STORE = "cfb_coach_live_idempotency_v1";
+const ACTION_BTN_IDS = ["btn-submit", "btn-undo", "btn-call-only", "btn-end", "btn-book-apply"];
+let uiLocked = false;
+
+function newIdempotencyKey() {{
+  if (window.crypto && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return "k-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
+}}
+
+function actionFingerprint(path, body) {{
+  const copy = Object.assign({{}}, body || {{}});
+  delete copy.idempotency_key;
+  delete copy.request_key;
+  return path + "|" + JSON.stringify(copy);
+}}
+
+function loadPending() {{
+  try {{ return JSON.parse(sessionStorage.getItem(IDEM_STORE) || "null"); }}
+  catch (e) {{ return null; }}
+}}
+
+function savePending(p) {{
+  try {{
+    if (p) sessionStorage.setItem(IDEM_STORE, JSON.stringify(p));
+    else sessionStorage.removeItem(IDEM_STORE);
+  }} catch (e) {{ /* private mode / quota — in-memory only this page */ }}
+}}
+
+function setBusy(busy) {{
+  ACTION_BTN_IDS.forEach(id => {{
+    const el = $(id);
+    if (!el) return;
+    if (busy) {{
+      el.dataset.wasDisabled = el.disabled ? "1" : "0";
+      el.disabled = true;
+    }} else {{
+      el.disabled = el.dataset.wasDisabled === "1";
+      delete el.dataset.wasDisabled;
+    }}
   }});
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error || ("HTTP " + res.status));
+}}
+
+function claimIdempotencyKey(path, body) {{
+  const fp = actionFingerprint(path, body);
+  const pending = loadPending();
+  // Retry / double-submit of the same intentional action reuses the key.
+  if (pending && pending.path === path && pending.fingerprint === fp && pending.key) {{
+    pending.status = "in_flight";
+    pending.ts = Date.now();
+    savePending(pending);
+    return pending.key;
+  }}
+  // New intentional action → new key.
+  const key = newIdempotencyKey();
+  savePending({{ path: path, fingerprint: fp, key: key, status: "in_flight", ts: Date.now() }});
+  return key;
+}}
+
+async function apiAction(path, body) {{
+  const fp = actionFingerprint(path, body);
+  const key = claimIdempotencyKey(path, body);
+  const payload = Object.assign({{}}, body || {{}}, {{ idempotency_key: key }});
+  let res;
+  try {{
+    res = await fetch(path, {{
+      method: "POST",
+      headers: {{"Content-Type": "application/json"}},
+      body: JSON.stringify(payload),
+    }});
+  }} catch (netErr) {{
+    // Ambiguous network failure: server may have applied — keep key for retry.
+    savePending({{ path: path, fingerprint: fp, key: key, status: "ambiguous", ts: Date.now() }});
+    throw new Error("Network error — retry the same action (idempotency key kept)");
+  }}
+  let data = null;
+  try {{
+    data = await res.json();
+  }} catch (parseErr) {{
+    savePending({{ path: path, fingerprint: fp, key: key, status: "ambiguous", ts: Date.now() }});
+    throw new Error("Ambiguous response — retry the same action (idempotency key kept)");
+  }}
+  if (!res.ok || !data.ok) {{
+    if (res.status >= 500) {{
+      savePending({{ path: path, fingerprint: fp, key: key, status: "ambiguous", ts: Date.now() }});
+    }} else {{
+      // Clear client/validation errors so a corrected form gets a fresh key.
+      savePending(null);
+    }}
+    throw new Error((data && data.error) || ("HTTP " + res.status));
+  }}
+  savePending(null);
   return data;
+}}
+
+async function withUiLock(fn) {{
+  if (uiLocked) return null; // ignore double-click while in flight
+  uiLocked = true;
+  setBusy(true);
+  try {{
+    return await fn();
+  }} finally {{
+    uiLocked = false;
+    setBusy(false);
+  }}
 }}
 
 function buildSit() {{
@@ -898,24 +1225,46 @@ document.querySelectorAll("#outcome-btns button.outcome").forEach(btn => {{
 $("btn-submit").addEventListener("click", async () => {{
   setErr("");
   try {{
-    const out = currentOutcome();
-    const sit = buildSit();
-    const body = {{ outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value, their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value }};
-    const data = await api("/api/result_call", body);
+    const data = await withUiLock(async () => {{
+      const out = currentOutcome();
+      const sit = buildSit();
+      const exec = (document.querySelector('input[name="exec"]:checked') || {{}}).value || "unknown";
+      const body = {{
+        outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value,
+        their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value,
+        executed_status: exec,
+        executed_formation: ($("exec-formation").value || "").trim() || null,
+        executed_play: ($("exec-play").value || "").trim() || null,
+      }};
+      return await apiAction("/api/result_call", body);
+    }});
+    if (!data) return; // double-click ignored
     outcomeChoice = "";
     $("outcome-text").value = "";
     $("their").value = "";
     $("look").value = "";
     $("live-mark").checked = false;
     document.querySelectorAll("#outcome-btns button.outcome").forEach(b => b.style.outline = "");
+    const unk = document.querySelector('input[name="exec"][value="unknown"]');
+    if (unk) unk.checked = true;
+    $("exec-formation").value = "";
+    $("exec-play").value = "";
+    $("exec-diff").hidden = true;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
+}});
+
+document.querySelectorAll('input[name="exec"]').forEach(r => {{
+  r.addEventListener("change", () => {{
+    $("exec-diff").hidden = r.value !== "used_different";
+  }});
 }});
 
 $("btn-undo").addEventListener("click", async () => {{
   setErr("");
   try {{
-    const data = await api("/api/undo", {{}});
+    const data = await withUiLock(async () => apiAction("/api/undo", {{}}));
+    if (!data) return;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -923,7 +1272,11 @@ $("btn-undo").addEventListener("click", async () => {{
 $("btn-call-only").addEventListener("click", async () => {{
   setErr("");
   try {{
-    const data = await api("/api/call", {{ sit: buildSit(), side: $("side").value, quarter: $("quarter").value, score_us: $("score-us").value, score_them: $("score-them").value }});
+    const data = await withUiLock(async () => apiAction("/api/call", {{
+      sit: buildSit(), side: $("side").value, quarter: $("quarter").value,
+      score_us: $("score-us").value, score_them: $("score-them").value,
+    }}));
+    if (!data) return;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -932,10 +1285,11 @@ $("btn-end").addEventListener("click", async () => {{
   setErr("");
   if (!confirm("End game and run retrain on this log?")) return;
   try {{
-    const data = await api("/api/end_game", {{
+    const data = await withUiLock(async () => apiAction("/api/end_game", {{
       result_wl: $("wl").value,
       score: $("score").value || "",
-    }});
+    }}));
+    if (!data) return;
     renderState(data.state);
     $("summary").hidden = false;
     $("summary").textContent = data.retrain_summary || data.state.retrain_summary || "";
@@ -946,8 +1300,11 @@ $("btn-book-apply").addEventListener("click", async () => {{
   setErr("");
   if (!confirm("Confirm you made every edit in the " + ($("btn-book-apply").textContent.replace("I applied these edits in ", "") || "CFB 27") + " custom playbook editor?")) return;
   try {{
-    const rev = parseInt($("btn-book-apply").dataset.rev || "0", 10) || null;
-    const data = await api("/api/book_apply", {{ rev: rev }});
+    const data = await withUiLock(async () => {{
+      const rev = parseInt($("btn-book-apply").dataset.rev || "0", 10) || null;
+      return await apiAction("/api/book_apply", {{ rev: rev }});
+    }});
+    if (!data) return;
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -1049,10 +1406,16 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                         sit, side=body.get("side"), quarter=body.get("quarter"),
                         score_us=body.get("score_us"), score_them=body.get("score_them"),
                         score_set=("score_us" in body or "score_them" in body),
+                        request_key=body.get("idempotency_key") or body.get("request_key"),
                     ))
                     return
                 if path == "/api/undo":
-                    self._json(200, ctrl.undo_last())
+                    self._json(
+                        200,
+                        ctrl.undo_last(
+                            request_key=body.get("idempotency_key") or body.get("request_key"),
+                        ),
+                    )
                     return
                 if path in ("/api/result_call", "/api/result+call"):
                     sit = (body.get("sit") or body.get("situation") or "").strip()
@@ -1070,6 +1433,11 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             score_us=body.get("score_us"),
                             score_them=body.get("score_them"),
                             score_set=("score_us" in body or "score_them" in body),
+                            executed_status=body.get("executed_status") or "unknown",
+                            executed_formation=body.get("executed_formation"),
+                            executed_play=body.get("executed_play"),
+                            executed_macro=body.get("executed_macro"),
+                            request_key=body.get("idempotency_key") or body.get("request_key"),
                         ),
                     )
                     return
@@ -1084,6 +1452,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                         ctrl.end_game(
                             result_wl=body.get("result_wl") or body.get("result") or "",
                             score=body.get("score") or "",
+                            request_key=body.get("idempotency_key") or body.get("request_key"),
                         ),
                     )
                     return
@@ -1092,6 +1461,24 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                 self._json(500, {"ok": False, "error": str(exc), "trace": traceback.format_exc()})
 
     return Handler
+
+
+class ContextThreadingHTTPServer(ThreadingHTTPServer):
+    """Request threads see the ContextVars from when this server was created.
+
+    ``threading.Thread`` does not copy contextvars on this runtime. The HTML
+    server handles each request on a worker, so ``--no-vod-prior`` and
+    ``--freeze-vod-book`` set on the command thread never reached ``make_call``.
+    The snapshot is taken at construction, which is the flagged thread in
+    ``run_live_server``, and each worker enters that snapshot before the handler.
+    """
+
+    def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
+        super().__init__(server_address, RequestHandlerClass, bind_and_activate)
+        self._request_context = contextvars.copy_context()
+
+    def process_request_thread(self, request, client_address):
+        self._request_context.run(super().process_request_thread, request, client_address)
 
 
 def pick_port(host: str = "127.0.0.1", preferred: int = 8765) -> int:
@@ -1120,7 +1507,7 @@ def run_live_server(
     ctrl.start()
     port = port or pick_port(host)
     handler = make_handler(ctrl)
-    server = ThreadingHTTPServer((host, port), handler)
+    server = ContextThreadingHTTPServer((host, port), handler)
     url = f"http://{host}:{port}/"
     print(f"HTML live play ON → {url}")
     print("  Submit outcome + next situation in the browser. Ctrl+C to stop the server.")
@@ -1137,6 +1524,7 @@ def run_live_server(
 
 
 __all__ = [
+    "ContextThreadingHTTPServer",
     "LivePlayController",
     "LogRow",
     "make_handler",

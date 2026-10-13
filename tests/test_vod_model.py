@@ -402,6 +402,58 @@ class TestBookChangeGate(_Isolated):
         finally:
             db.close()
 
+    def test_vod_override_builds_reads_and_macro_for_the_final_play(self) -> None:
+        from cfb_coach.madden import adjustments as adjmod
+        from cfb_coach.madden import offense_macros as om
+        from cfb_coach.madden.data import reads_for
+        from cfb_coach.madden.offense_macros import pairs_in_book
+
+        db = self.madden_db()
+        try:
+            build_prep_plan("james", db=db, offline=True, persist=True)
+            forms = _forms(db)
+            self.assertIn("Mesh", forms.get("Gun 5WR Tight") or [])
+            self.assertTrue(any("HB Dive" in plays for plays in forms.values()))
+            _write_model(self.models, game="madden27", opponent_type="human", look="cover_3", play="Mesh")
+            os.environ["CFB_COACH_VOD_MODELS"] = str(self.models)
+            labeled: list[str] = []
+            real_suggest = om.suggest_for_snap
+            real_adjust = adjmod.offense_adjustment
+
+            def _suggest(**kwargs):
+                labeled.append(kwargs["play"])
+                return real_suggest(**kwargs)
+
+            def _adjust(**kwargs):
+                labeled.append(kwargs["play"])
+                return real_adjust(**kwargs)
+
+            def _sample(rows, rng):
+                for row in rows:
+                    if row["play"] == "HB Dive":
+                        return row
+                self.fail("HB Dive was not in the pre-VOD pool")
+
+            sit = parse_madden_situation("1&10 showing cover 3")
+            with (
+                mock.patch("cfb_coach.playcaller._sample", _sample),
+                mock.patch("cfb_coach.madden.offense_macros.suggest_for_snap", _suggest),
+                mock.patch("cfb_coach.madden.adjustments.offense_adjustment", _adjust),
+            ):
+                call = make_call(sit, "james", db, rng=random.Random(0), active_macros=[], live_macros=True)
+            self.assertEqual((call.formation, call.play), ("Gun 5WR Tight", "Mesh"))
+            self.assertEqual(call.read_or_user, reads_for(call.play))
+            self.assertNotEqual(call.read_or_user, reads_for("HB Dive"))
+            self.assertTrue(labeled)
+            self.assertTrue(all(play == call.play for play in labeled))
+            if call.macro:
+                paired = pairs_in_book(call.macro, forms, cap=500)
+                self.assertTrue(
+                    any(call.play.lower() == item.split(" (", 1)[0].lower() for item in paired)
+                )
+        finally:
+            db.close()
+
 
 class TestCfbBook(_Isolated):
     def test_cfb_edit_is_current_and_reverts(self) -> None:

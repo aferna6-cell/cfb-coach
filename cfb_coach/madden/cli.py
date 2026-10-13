@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 from cfb_coach.db import CoachDB
 from cfb_coach.games import GAMES, MADDEN27, madden_db_path
@@ -25,9 +26,79 @@ from cfb_coach.opponents import is_cpu_opponent, resolve_opponent
 PROFILE = GAMES[MADDEN27]
 
 
+def _maybe_shadow(
+    db: CoachDB,
+    sit: Any,
+    call: Any,
+    opponent_id: str,
+    *,
+    game_id: str | None = None,
+    session_id: str | None = None,
+    tracker: Any | None = None,
+) -> int | None:
+    """Opt-in shadow scoring shared by HTML, terminal, and one-shot paths."""
+    try:
+        from cfb_coach.madden.model import inference as ml_inference
+        from cfb_coach.madden.model.identity import LiveDecisionTracker, next_seq_from_db
+        from cfb_coach.madden.model.schema import CoachingMode
+        from cfb_coach.session import start_session
+
+        if ml_inference.resolve_mode(db) is not CoachingMode.SHADOW:
+            return None
+        # Prefer an explicit game/session; never use opponent_id as game_id.
+        gid = game_id or session_id
+        if not gid:
+            sess = start_session(opponent_id, dynasty=get_session_profile(db), db=db, notes="ml-oneshot")
+            gid = sess.session_id
+        tr = tracker or LiveDecisionTracker.from_session(gid, next_seq=next_seq_from_db(db, gid))
+        snap_id, seq, _key, is_new = tr.seal_call(
+            side=getattr(call, "side", "offense") or "offense",
+            formation=getattr(call, "formation", None),
+            play=getattr(call, "play", None),
+            situation_raw=getattr(sit, "raw", None),
+        )
+        _decision, row_id = ml_inference.evaluate_live_shadow(
+            db=db,
+            situation=sit,
+            call=call,
+            opponent_id=opponent_id,
+            game_id=gid,
+            snap_id=snap_id,
+            snap_seq=seq,
+            session_id=gid,
+            run=is_new,
+        )
+        tr.bind_decision_row(row_id)
+        return row_id
+    except Exception:  # noqa: BLE001 — shadow must never break live coaching
+        return None
+
+
+def _html_shadow_hook(db: CoachDB, opponent_id: str):
+    """Closure for LivePlayController.shadow_evaluate."""
+
+    def _hook(sit, call, *, game_id, snap_id, snap_seq, session_id, is_new):
+        from cfb_coach.madden.model import inference as ml_inference
+
+        _decision, row_id = ml_inference.evaluate_live_shadow(
+            db=db,
+            situation=sit,
+            call=call,
+            opponent_id=opponent_id,
+            game_id=game_id,
+            snap_id=snap_id,
+            snap_seq=snap_seq,
+            session_id=session_id,
+            run=is_new,
+        )
+        return row_id
+
+    return _hook
+
+
 def open_db() -> CoachDB:
     db = CoachDB(madden_db_path(), seed=load_seed())
-    try:  # v1.17: stored Active 8 → 10 offense + 10 defense (nothing dropped; idempotent)
+    try:  # stored Active 8 selections migrate in place; the live loadout is 8 offense + 8 defense
         from cfb_coach.madden.macros import migrate_all_selections
 
         migrate_all_selections(db)
@@ -97,7 +168,7 @@ def format_opponents() -> str:
             f"{o['persona_confidence']:<9}{o['confidence']}"
         )
     lines.append("")
-    lines.append("CPU = offense-only (adjustments). User personas = O + D (10 defense macros; offense adjustments).")
+    lines.append("CPU = offense-only (adjustments). User personas = O + D (8 offense + 8 defense).")
     return "\n".join(lines)
 
 
@@ -346,6 +417,7 @@ def cmd_call(args: argparse.Namespace) -> int:
         except NoActivePlaybook as exc:
             print(str(exc).replace("<opp>", oid), file=sys.stderr)
             return 2
+        _maybe_shadow(db, sit, call, oid)
         print(call.format())
         if args.why:
             print(f"  ({call.rationale})")
@@ -492,6 +564,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         heard = format_heard(sit)
         print(heard)
         call = make_call(sit, oid, db, active_macros=_active_now(), live_macros=macros_on)
+        _maybe_shadow(db, sit, call, oid)
         print(call.headline())
         print(call.format())
         if args.why:
@@ -532,6 +605,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             book_apply=lambda rev: live_apply(db, rev),
             live_score=live_ctx.score,
             quarter=live_ctx.quarter,
+            shadow_evaluate=_html_shadow_hook(db, oid),
+            enable_execution_verify=True,
         )
         print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
         try:
@@ -632,6 +707,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )
+            _maybe_shadow(db, sit, call, oid)
             print(call.headline())
             print(call.format())
             _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)

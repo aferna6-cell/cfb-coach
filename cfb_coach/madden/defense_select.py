@@ -157,6 +157,9 @@ class DefensePick:
     rationale: str
     user_job: str
     mix: dict[str, float] = field(default_factory=dict)
+    # Exact P(formation, play) from this call's family mix and within-family softmax.
+    # Keys are the pairs ``rng.choices`` could return. Values sum to 1.
+    call_probs: dict[tuple[str, str], float] = field(default_factory=dict)
 
 
 def _recent(records: list[ingame.CallRecord], n: int) -> list[ingame.CallRecord]:
@@ -256,7 +259,8 @@ def select_defense(
     shares = {f: round(w / total, 3) for f, w in weights.items()}
     fam = rng.choices(list(weights), weights=list(weights.values()), k=1)[0]
 
-    # Step 2: a call inside the family
+    # Step 2: a call inside the family. Scoring does not touch rng, so the two
+    # choices below are the same draws as before call_probs existed.
     bl = baseline or {}
     dg = bl.get("defense_gameplan") or {}
     backed = set((dg.get("home_rotation") or {}).keys())
@@ -266,20 +270,35 @@ def select_defense(
     zone = zone_of_situation(sit)
     recent4 = [(r.formation, r.play) for r in _recent(records, 4)]
     last_form = records[-1].formation if records else None
-    cands = [fp for fp in by_family.get(fam, pool) if not bench.is_benched(*fp)] or by_family.get(fam, pool) or pool
-    scored = []
-    for f, p in cands:
-        s = 0.0
-        s += LEARNED_WEIGHT * _learned(lw, zone, f, p) if lw is not None else 0.0
-        s += BASELINE_CALL_BONUS if p in backed else 0.0
-        s += RESEARCH_CALL_BONUS if p in named else 0.0
-        s -= CALL_REPEAT_PENALTY * recent4.count((f, p))
-        s -= FORMATION_REPEAT_PENALTY if f == last_form else 0.0
-        scored.append((s, f, p))
-    scored.sort(key=lambda t: -t[0])
+
+    def _score_family(family: str) -> list[tuple[float, str, str]]:
+        cands = [fp for fp in by_family.get(family, pool) if not bench.is_benched(*fp)] or by_family.get(family, pool) or pool
+        scored_rows: list[tuple[float, str, str]] = []
+        for f, p in cands:
+            s = 0.0
+            s += LEARNED_WEIGHT * _learned(lw, zone, f, p) if lw is not None else 0.0
+            s += BASELINE_CALL_BONUS if p in backed else 0.0
+            s += RESEARCH_CALL_BONUS if p in named else 0.0
+            s -= CALL_REPEAT_PENALTY * recent4.count((f, p))
+            s -= FORMATION_REPEAT_PENALTY if f == last_form else 0.0
+            scored_rows.append((s, f, p))
+        scored_rows.sort(key=lambda t: -t[0])
+        return scored_rows
+
+    scored = _score_family(fam)
     top = scored[:TOP_CALLS]
     probs = [math.exp(s / CALL_TEMPERATURE) for s, _, _ in top]
     _, form, play = rng.choices(top, weights=probs, k=1)[0]
+    call_probs: dict[tuple[str, str], float] = {}
+    for family, weight in weights.items():
+        top_i = _score_family(family)[:TOP_CALLS]
+        raw = [math.exp(s / CALL_TEMPERATURE) for s, _, _ in top_i]
+        denom = sum(raw)
+        if denom <= 0 or total <= 0:
+            continue
+        share = weight / total
+        for (_s, f, p), r in zip(top_i, raw):
+            call_probs[(f, p)] = call_probs.get((f, p), 0.0) + share * (r / denom)
 
     mix_txt = " · ".join(f"{FAMILY_LABEL[f].split(' (')[0]} {round(v * 100)}%" for f, v in sorted(shares.items(), key=lambda kv: -kv[1]))
     rationale = f"D mix ({key.replace('_', ' ')}): {mix_txt} → {FAMILY_LABEL[fam]}"
@@ -290,7 +309,7 @@ def select_defense(
     job = user_job_for(play)
     if job == "User hook":
         job = FAMILY_USER_JOB.get(fam, job)
-    return DefensePick(form, play, fam, rationale, job, shares)
+    return DefensePick(form, play, fam, rationale, job, shares, call_probs)
 
 
 __all__ = [
