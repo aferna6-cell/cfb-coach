@@ -576,9 +576,32 @@ class ScoringTests(unittest.TestCase):
         if harness.is_file():
             harness_text = harness.read_text(encoding="utf-8")
             self.assertIn("def run_situation", harness_text)
+            self.assertIn("def score_offline_model", harness_text)
+            with tempfile.TemporaryDirectory() as folder:
+                model = Path(folder) / "model"
+                _write_bundle(model, "v0.21")
+                payload = scoring.adapt_score_offline_model(
+                    "1&10",
+                    side="offense",
+                    model_dir=model,
+                    strata=["madden27/cpu/offense"],
+                    offline_ok=True,
+                )
+            self.assertEqual(payload["gate_bypassed"], "offline_eval")
+            self.assertEqual(payload["model_version"], "v0.21")
+            self.assertTrue(payload.get("play"))
+            self.assertTrue((payload.get("heuristic") or {}).get("play"))
         else:
             with self.assertRaises(FileNotFoundError):
                 scoring.adapt_run_situation({}, mode="heuristic", opp_look=None, side="offense", seed=1)
+            with self.assertRaises(FileNotFoundError):
+                scoring.adapt_score_offline_model(
+                    "1&10",
+                    side="offense",
+                    model_dir=".",
+                    strata=["madden27/cpu/offense"],
+                    offline_ok=True,
+                )
 
     def test_report_files_do_not_invent_an_observed_count(self):
         request = _request("one", "offense", "synthetic")
@@ -615,83 +638,34 @@ class ShadowTests(unittest.TestCase):
     def tearDownClass(cls):
         cls._tmp.cleanup()
 
-    def test_stub_keeps_refusal_folds_and_versions_apart(self):
+    def test_hook_keeps_refusal_folds_and_versions_apart(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             _write_bundle(root, "v0.21")
             _write_bundle(root / "folds" / "foldA", "v0.24", fold_id="foldA")
-            _write_bundle(root / "folds" / "foldB", "v0.24", fold_id="foldB")
-            seen = []
-
-            def score_offline_model(sit, *, side, model_dir, strata, opp_look=None, seed=0, offline_ok=False):
-                if offline_ok is not True:
-                    raise RuntimeError("offline_ok")
-                directory = Path(model_dir)
-                manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
-                seen.append(
-                    {
-                        "side": side,
-                        "model_dir": directory,
-                        "strata": list(strata),
-                        "opp_look": opp_look,
-                        "seed": seed,
-                    }
-                )
-                version = manifest["label_version"]
-                if "MISMATCH" in str(sit):
-                    version = "v0.21"
-                refused = "REFUSE" in str(sit)
-                return {
-                    "formation": None,
-                    "play": None if refused else ("HB Dive" if int(seed) % 2 == 0 else "Verticals"),
-                    "adjustment_id": None,
-                    "macro_state": None,
-                    "display_line": "stub",
-                    "mode": "shadow",
-                    "model_version": version,
-                    "scored_on": "reviewed",
-                    "strata_used": list(strata),
-                    "latency_ms": {"whole": 4.0, "model": 1.0},
-                    "budget_ms": 150,
-                    "over_budget": False,
-                    "gate_bypassed": "offline_eval",
-                    "fold_id": manifest.get("fold_id"),
-                    "live_eligible": False,
-                    "fallback_reason": "timeout" if refused else None,
-                    "heuristic": {
-                        "formation": "Gun Trips X Nasty",
-                        "play": "Inside Zone",
-                        "adjustment_id": None,
-                        "macro_state": None,
-                        "display_line": "heuristic",
-                        "mode": "heuristic",
-                    },
-                }
-
+            _write_bundle(
+                root / "folds" / "foldB",
+                "v0.24",
+                fold_id="foldB",
+                returned_version="v0.21",
+            )
             offense = scoring.build_synthetic_identities()[0]
             offense = dict(offense)
             offense["looks"] = [offense["looks"][0], offense["looks"][1]]
             empty = dict(offense)
             empty["situation_id"] = "syn-empty"
             empty["looks"] = [offense["looks"][1]]
-            refused = _defense_fold_identity("REFUSE token", "missing-fold", "obs-def-refuse")
+            refused = _defense_fold_identity("3&1 my 12", "missing-fold", "obs-def-refuse")
             matched = _defense_fold_identity("3&2 my 12", "foldA", "obs-def-match")
-            mismatched = _defense_fold_identity("MISMATCH 2&8 my 40", "foldB", "obs-def-mismatch")
+            mismatched = _defense_fold_identity("2&8 my 40", "foldB", "obs-def-mismatch")
             report = scoring.evaluate_shadow(
                 [offense, empty, refused, matched, mismatched],
-                score_offline_model,
+                scoring.adapt_score_offline_model,
                 self.book,
                 model_dir=root,
                 requested_version="v0.21",
                 seed_count=2,
             )
-        for call in seen:
-            self.assertTrue(all(item.startswith("madden27/cpu/") or item.startswith("madden27/human/") for item in call["strata"]))
-            self.assertEqual(len(call["strata"]), 1)
-            self.assertTrue(call["strata"][0].endswith("/" + call["side"]))
-        fold_dirs = {call["model_dir"] for call in seen if "folds" in call["model_dir"].parts}
-        self.assertIn(root / "folds" / "foldA", fold_dirs)
-        self.assertIn(root / "folds" / "foldB", fold_dirs)
         self.assertTrue(all(row["gate_bypassed"] == "offline_eval" for row in report["decisions"]))
         self.assertTrue(all(row["scored_on"] == "unreviewed" for row in report["decisions"]))
         self.assertTrue(all(row["offensive_personnel"] is None for row in report["decisions"]))
@@ -714,6 +688,8 @@ class ShadowTests(unittest.TestCase):
         self.assertTrue(matched_rows)
         self.assertTrue(all(row["summary_bucket"] == "observed" for row in matched_rows))
         self.assertTrue(all(row["returned_model_version"] == "v0.24" for row in matched_rows))
+        self.assertTrue(all(str(row["model_dir"]).endswith("folds/foldA") for row in matched_rows))
+        self.assertTrue(all(str(row["model_dir"]).endswith("folds/foldB") for row in mismatch_rows))
         self.assertTrue(mismatch_rows)
         self.assertTrue(all(row["summary_bucket"] == "indicative" for row in mismatch_rows))
         self.assertTrue(all(row["returned_model_version"] == "v0.21" and row["version_mismatch"] for row in mismatch_rows))
@@ -735,8 +711,9 @@ class ShadowTests(unittest.TestCase):
         self.assertEqual(cpu["disagreement"]["k"] + cpu["same"], cpu["disagreement"]["n"])
         self.assertLessEqual(cpu["disagreement"]["low"], cpu["disagreement"]["rate"])
         self.assertGreaterEqual(cpu["disagreement"]["high"], cpu["disagreement"]["rate"])
-        self.assertGreater(cpu["seed_noise"]["model"]["seed_shift_n"], 0)
-        self.assertEqual(cpu["seed_noise"]["heuristic"]["seed_shift_n"], 0)
+        self.assertEqual(cpu["seed_noise"]["model"]["seed_shift_n"], 0)
+        self.assertEqual(cpu["seed_noise"]["model"]["seeds_compared"], 2)
+        self.assertIn("heuristic", cpu["seed_noise"])
         self.assertIsNone(cpu["penalty"])
         quality = cpu["by_down_and_distance_quality"]
         self.assertTrue(quality)
@@ -781,15 +758,21 @@ class ShadowTests(unittest.TestCase):
         self.assertEqual(row["gate_bypassed"], "offline_eval")
         self.assertIsNone(row["offensive_personnel"])
         self.assertEqual(row["model_version"], "v0.21")
-        self.assertEqual(
-            row["model_formation"],
-            scoring._unique_book_formation(self.book["offense"], row["model_play"]),
+        direct = scoring.adapt_score_offline_model(
+            identity["raw"],
+            side="offense",
+            model_dir=_ROOT / "tests" / "madden_ml" / "fixtures" / "item3" / "v0.21",
+            strata=["madden27/cpu/offense"],
+            opp_look=identity["looks"][0],
+            seed=identity["seed"],
+            offline_ok=True,
         )
-        bundle = scoring.load_model_bundle(_ROOT / "tests" / "madden_ml" / "fixtures" / "item3" / "v0.21")
-        calls = list(bundle["params"]["strata"]["madden27/cpu/offense"]["model"]["coef"]["call"])
-        self.assertIn(row["model_play"], calls)
-        ranked = scoring._rank_stratum_call(bundle, "madden27/cpu/offense", identity["raw"], "offense")
-        self.assertEqual(row["model_play"], ranked)
+        self.assertEqual(row["model_play"], direct["play"])
+        self.assertEqual(row["model_formation"], direct["formation"])
+        self.assertEqual(direct["gate_bypassed"], "offline_eval")
+        self.assertTrue(row["model_play"])
+        self.assertTrue(row["model_formation"])
+        self.assertNotEqual(row["model_formation"], row["offensive_personnel"])
         self.assertIn(row["outcome"], {"same", "disagree"})
         noise = report["by_model_version"]["v0.21"]["by_side"]["offense"]["synthetic"]["by_stratum"]["madden27/cpu/offense"]["seed_noise"]
         self.assertEqual(noise["model"]["seed_shift_n"], 0)
@@ -802,9 +785,16 @@ class ShadowTests(unittest.TestCase):
         self.assertEqual(defense, [])
 
 
-def _write_bundle(directory: Path, version: str, fold_id: str | None = None) -> None:
+def _write_bundle(
+    directory: Path,
+    version: str,
+    fold_id: str | None = None,
+    returned_version: str | None = None,
+) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     manifest = {"label_version": version}
+    if returned_version:
+        manifest["model_version"] = returned_version
     if fold_id:
         manifest["fold_id"] = fold_id
     strata = {}

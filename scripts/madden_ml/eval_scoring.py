@@ -10,9 +10,8 @@ Nothing here estimates yards, win probability, or whether a call worked.
 The live comparison is reached only through ``adapt_run_situation``, which
 calls ``eval_harness.run_situation``. The offline model is reached only
 through ``adapt_score_offline_model``, which calls
-``eval_harness.score_offline_model`` when that function exists. Until it
-does, that same adapter scores a model directory. Both require the harness
-only from inside those two functions.
+``eval_harness.score_offline_model``. Both require the harness only from
+inside those two functions.
 
 A call that passes here passed its defined contextual rules, which cover a
 limited set of decisions.
@@ -24,11 +23,8 @@ import csv
 import hashlib
 import json
 import math
-import random
 import re
 import sys
-import tempfile
-import time
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -1009,34 +1005,30 @@ def adapt_score_offline_model(
 ) -> dict[str, Any]:
     """The only call into ``eval_harness.score_offline_model``.
 
-    Refuses unless ``offline_ok`` is true. When the harness function is not
-    defined yet, scores the model directory here. Hybrid is not called.
+    Refuses unless ``offline_ok`` is true. The harness ranks the installed
+    book. This adapter does not rank on its own.
     """
     if offline_ok is not True:
         raise RuntimeError("score_offline_model refuses to run unless offline_ok=True")
     checked = limit_strata(strata, side)
     module = _harness_module()
-    hook = getattr(module, "score_offline_model", None) if module is not None else None
-    look = normalize_opp_look(opp_look)
-    if hook is not None:
-        return dict(
-            hook(
-                sit,
-                side=side,
-                model_dir=model_dir,
-                strata=checked,
-                opp_look=look,
-                seed=int(seed),
-                offline_ok=True,
-            )
+    if module is None:
+        raise FileNotFoundError(
+            "scripts/madden_ml/eval_harness.py is not on this branch"
         )
-    return _score_offline_locally(
-        sit,
-        side=side,
-        model_dir=model_dir,
-        strata=checked,
-        opp_look=look,
-        seed=int(seed),
+    hook = getattr(module, "score_offline_model", None)
+    if hook is None:
+        raise AttributeError("eval_harness.py has no score_offline_model")
+    return dict(
+        hook(
+            sit,
+            side=side,
+            model_dir=model_dir,
+            strata=checked,
+            opp_look=normalize_opp_look(opp_look),
+            seed=int(seed),
+            offline_ok=True,
+        )
     )
 
 
@@ -1104,7 +1096,7 @@ def resolve_fold_dir(model_dir: Path, fold_id: str) -> Path | None:
 
 
 class _ShadowResources:
-    """One Madden database and a different coach database for heuristic calls."""
+    """Trimmed book on one Madden file, with a different coach file left unused."""
 
     def __init__(self, madden: Path, coach: Path) -> None:
         if madden.resolve() == coach.resolve():
@@ -1112,258 +1104,18 @@ class _ShadowResources:
         madden.parent.mkdir(parents=True, exist_ok=True)
         coach.parent.mkdir(parents=True, exist_ok=True)
         from cfb_coach.db import CoachDB
-        from cfb_coach.madden.cli import _active_after_prep
-        from cfb_coach.madden.franchise import get_session_profile
 
         self.book = load_installed_book(madden)
-        self.coach_db = CoachDB(coach)
-        self.coach_db.close()
-        self.db = CoachDB(madden)
-        self.active = _active_after_prep(self.db, "gavin", get_session_profile(self.db))
-        self.heuristic_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
+        held = CoachDB(coach)
+        held.close()
 
 
 def set_shadow_databases(madden: Path, coach: Path) -> _ShadowResources:
-    """Use these two different database files for the offline heuristic."""
+    """Install the trimmed book on ``madden`` and keep ``coach`` a different file."""
     global _SHADOW_RESOURCES
     resources = _ShadowResources(Path(madden), Path(coach))
     _SHADOW_RESOURCES = resources
     return resources
-
-
-def _shadow_resources() -> _ShadowResources:
-    global _SHADOW_RESOURCES
-    if _SHADOW_RESOURCES is _UNSET or _SHADOW_RESOURCES is None:
-        root = Path(tempfile.mkdtemp(prefix="eval-scoring-"))
-        _SHADOW_RESOURCES = _ShadowResources(root / "madden27.db", root / "coach.db")
-    return _SHADOW_RESOURCES
-
-
-def _record_from_call(call: Any, mode: str) -> dict[str, Any]:
-    from cfb_coach.madden.model.schema import MacroState, adapt_macro_state
-
-    explicit = getattr(call, "macro_state", None)
-    if explicit is None:
-        info = getattr(call, "macro_info", None)
-        if isinstance(info, dict):
-            explicit = info.get("state", info.get("macro_state"))
-    state = None
-    if explicit is not None:
-        try:
-            state = adapt_macro_state(explicit).value
-        except (TypeError, ValueError):
-            state = MacroState.UNKNOWN.value
-    elif getattr(call, "macro", None):
-        state = MacroState.ARMED.value
-    adjustment = None
-    macro = getattr(call, "macro", None)
-    if macro and str(macro).strip():
-        adjustment = str(macro).strip()
-    else:
-        adj = getattr(call, "adjustment", None)
-        if isinstance(adj, dict):
-            for key in ("id", "name", "label"):
-                value = adj.get(key)
-                if value and str(value).strip():
-                    adjustment = str(value).strip()
-                    break
-        if adjustment is None:
-            label = str(getattr(call, "adj_or_macro", "") or "").strip()
-            if label.casefold() not in {"", "no adj", "none", "no adjustment"}:
-                adjustment = label or None
-    headline = call.headline() if hasattr(call, "headline") else None
-    return {
-        "formation": getattr(call, "formation", None),
-        "play": getattr(call, "play", None),
-        "adjustment_id": adjustment,
-        "macro_state": state,
-        "display_line": headline,
-        "mode": mode,
-    }
-
-
-def _attach_personnel_look(sit: Any, look: Any) -> None:
-    """Store personnel and set without turning either into a coverage family."""
-    from cfb_coach.madden.model.inference import bind_opp_look
-
-    normalized = normalize_opp_look(look)
-    personnel = None
-    opp_set = None
-    token = None
-    if isinstance(normalized, str):
-        token = normalized
-        if normalized == "empty":
-            personnel = "empty"
-            opp_set = "empty"
-    elif isinstance(normalized, Mapping):
-        personnel = normalized.get("opp_personnel")
-        opp_set = normalized.get("opp_set")
-        if personnel == "empty" and opp_set == "empty":
-            token = "empty"
-    sit.opp_personnel = personnel
-    sit.opp_set = opp_set
-    bind_opp_look(sit, look=token, raw=getattr(sit, "raw", "") or "")
-
-
-def _heuristic_pick(raw: str, side: str, opp_look: Any, seed: int) -> dict[str, Any]:
-    import argparse
-
-    from cfb_coach.madden import playcaller
-    from cfb_coach.madden.cli import _session_live_macros
-    from cfb_coach.madden.situation import parse_madden_situation
-
-    resources = _shadow_resources()
-    cache_key = (raw, side, json.dumps(normalize_opp_look(opp_look), sort_keys=True), int(seed))
-    cached = resources.heuristic_cache.get(cache_key)
-    if cached is not None:
-        return dict(cached)
-    sit = parse_madden_situation(raw, default_side=side)
-    sit.side = side
-    _attach_personnel_look(sit, opp_look)
-    call = playcaller.make_call(
-        sit,
-        "gavin",
-        resources.db,
-        rng=random.Random(int(seed)),
-        active_macros=resources.active,
-        playbook=resources.book,
-        live_macros=_session_live_macros(argparse.Namespace(no_macros=False)),
-    )
-    record = _record_from_call(call, "heuristic")
-    resources.heuristic_cache[cache_key] = record
-    return dict(record)
-
-
-def _feature_row(raw: str, side: str, stratum: str) -> dict[str, Any]:
-    from cfb_coach.madden.situation import parse_madden_situation
-
-    parsed = parse_madden_situation(raw, default_side=side)
-    quarter_match = re.search(r"\bq\s*([1-4])\b", raw, re.I)
-    row: dict[str, Any] = {
-        "game": "madden27",
-        "opponent_type": "cpu" if "/cpu/" in stratum else "human",
-        "side": side,
-        "down": parsed.down,
-        "distance": parsed.distance,
-        "yardline": parsed.yardline,
-        "quarter": int(quarter_match.group(1)) if quarter_match else None,
-        "situation_raw": raw,
-        "success": None,
-    }
-    if parsed.score_us is not None and parsed.score_them is not None:
-        row["score_us"] = parsed.score_us
-        row["score_them"] = parsed.score_them
-    return row
-
-
-def _unique_book_formation(book_side: Mapping[str, Sequence[str]], play: str) -> str | None:
-    """Formation that lists this play, only when exactly one formation does.
-
-    This is a book lookup of the play name. It does not read personnel off
-    the formation name, and it does not choose among several formations.
-    """
-    key = play.casefold()
-    found = [
-        formation
-        for formation, plays in book_side.items()
-        if any(str(item).casefold() == key for item in plays)
-    ]
-    if len(found) == 1:
-        return found[0]
-    return None
-
-
-def _rank_stratum_call(bundle: Mapping[str, Any], stratum: str, raw: str, side: str) -> str | None:
-    from cfb_coach.vod_success.features import feature_map, snap_from_row
-    from cfb_coach.vod_success.glm import LogisticModel
-
-    block = (bundle["params"].get("strata") or {}).get(stratum) or {}
-    fitted = block.get("model") or {}
-    coef = fitted.get("coef") or {}
-    calls = list((coef.get("call") or {}).keys())
-    if not calls or "intercept" not in fitted:
-        return None
-    hyper = fitted.get("hyperparams") or {}
-    model = LogisticModel(
-        float(fitted["intercept"]),
-        coef,
-        (
-            float(hyper.get("lambda_situation", 0.0)),
-            float(hyper.get("lambda_entity", 0.0)),
-            float(hyper.get("lambda_interaction", 0.0)),
-        ),
-    )
-    base = _feature_row(raw, side, stratum)
-    best_key: tuple[float, str] | None = None
-    best_call: str | None = None
-    for call in calls:
-        snap = snap_from_row({**base, "play": call, "success": None})
-        score = model.predict_row(feature_map(snap))
-        key = (-float(score), call)
-        if best_key is None or key < best_key:
-            best_key = key
-            best_call = call
-    return best_call
-
-
-def _score_offline_locally(
-    sit: Any,
-    *,
-    side: str,
-    model_dir: Any,
-    strata: list[str],
-    opp_look: Any,
-    seed: int,
-) -> dict[str, Any]:
-    """Diagnostic rank of one stratum. Does not call the live gate."""
-    if len(strata) != 1:
-        raise ValueError("the offline diagnostic scores one stratum per call")
-    stratum = strata[0]
-    raw = sit if isinstance(sit, str) else str((sit or {}).get("raw") or sit)
-    bundle = load_model_bundle(model_dir)
-    started = time.perf_counter()
-    model_started = time.perf_counter()
-    play = _rank_stratum_call(bundle, stratum, raw, side)
-    model_ms = (time.perf_counter() - model_started) * 1000.0
-    heuristic_error = None
-    try:
-        heuristic = _heuristic_pick(raw, side, opp_look, seed)
-    except Exception as exc:  # noqa: BLE001 — recorded, not swapped for the model pick
-        heuristic = {
-            "formation": None,
-            "play": None,
-            "adjustment_id": None,
-            "macro_state": None,
-            "display_line": None,
-            "mode": "heuristic",
-        }
-        heuristic_error = f"{type(exc).__name__}: {exc}"
-    whole_ms = (time.perf_counter() - started) * 1000.0
-    book_side = _shadow_resources().book.get(side) or {}
-    formation = _unique_book_formation(book_side, play) if play else None
-    fallback = None if play else "stratum_missing"
-    over = whole_ms > BUDGET_MS or model_ms > BUDGET_MS
-    return {
-        "formation": formation,
-        "play": play,
-        "adjustment_id": None,
-        "macro_state": None,
-        "display_line": None,
-        "mode": "shadow",
-        "model_version": bundle["model_version"],
-        "scored_on": "unreviewed",
-        "strata_used": [stratum],
-        "latency_ms": {"whole": whole_ms, "model": model_ms},
-        "budget_ms": BUDGET_MS,
-        "over_budget": over,
-        "gate_bypassed": "offline_eval",
-        "fold_id": bundle.get("fold_id"),
-        "live_eligible": formation is not None and play is not None,
-        "heuristic": heuristic,
-        "fallback_reason": fallback,
-        "heuristic_error": heuristic_error,
-        "seed": int(seed),
-    }
 
 
 def _norm_token(value: Any) -> str | None:
@@ -1569,7 +1321,11 @@ def _paired_from_runs(
         "down_and_distance": f"{request.get('down')}|{request.get('distance_bucket')}",
         "field_zone": request.get("field_zone"),
         "yardline": request.get("yardline"),
-        "live_eligible": bool(primary.get("live_eligible")),
+        "live_eligible": (
+            bool(primary.get("live_eligible"))
+            if "live_eligible" in primary
+            else bool(primary.get("legal")) and bool(model_play) and bool(model_formation)
+        ),
         "legal_our": legal,
         "legal_reasons": reasons,
         "model_context": model_context,
