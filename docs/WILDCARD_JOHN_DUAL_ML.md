@@ -133,14 +133,14 @@ Aidan's real offense artifact will call different plays than the prior-driven fi
 
 ## Regression
 
-Collected **909** tests (baseline 902, plus 7 in `tests/madden_ml/test_wildcard_dual_ml.py`). None of the baseline ids were removed. The skip is `tests/madden_ml/test_browser_idempotency_playwright.py` (`playwright not installed`).
+Collected **910** tests (baseline 902, plus 8 in `tests/madden_ml/test_wildcard_dual_ml.py`, including `test_ml_experimental_refuses_without_artifact_unless_retrain`). None of the baseline ids were removed. The skip is `tests/madden_ml/test_browser_idempotency_playwright.py` (`playwright not installed`).
 
-`python3 -m pytest -q` twice on this branch:
+`PYTHONPATH` pointed at this checkout. `python3 -m pytest -q` ran twice with cwd `/tmp/pytest-cwd`, not `/workspace`. Both runs used `ca37c89e47fe423320c97367404075d912d4b565`. This paragraph is the only later edit.
 
 | Run | Result |
 | --- | --- |
-| 1 | 908 passed, 1 skipped, 73.05s |
-| 2 | 908 passed, 1 skipped, 73.07s |
+| 1 | 909 passed, 1 skipped, 70.58s |
+| 2 | 909 passed, 1 skipped, 69.63s |
 
 ## Laptop commands
 
