@@ -1115,7 +1115,7 @@ class _LiveCall:
         return "Gun Bunch — Mesh"
 
 
-def _live(tmp_path: Path, adjustment_id: str | None):
+def _live_pad(tmp_path: Path, adjustment_id: str | None):
     db = _open(tmp_path / "madden27.db")
     ctrl = LivePlayController(
         db=db,
@@ -1171,7 +1171,7 @@ def test_update_snap_cannot_write_executed_adjustment_id(tmp_path: Path) -> None
 
 
 def test_live_loop_confirmed_adjustment_is_logged(tmp_path: Path) -> None:
-    db, ctrl = _live(tmp_path, "SLIDE")
+    db, ctrl = _live_pad(tmp_path, "SLIDE")
     try:
         assert resolve_mode(db) is CoachingMode.HEURISTIC
         assert ML_LATENCY_BUDGET_MS == 150
@@ -1209,7 +1209,7 @@ def test_live_loop_confirmed_adjustment_is_logged(tmp_path: Path) -> None:
 
 
 def test_live_loop_unconfirmed_adjustment_stays_a_recommendation(tmp_path: Path) -> None:
-    db, ctrl = _live(tmp_path, "SLIDE")
+    db, ctrl = _live_pad(tmp_path, "SLIDE")
     try:
         ctrl.call_only("1&10 my 25", game_clock="9:00", quarter=1)
         logged = ctrl.result_and_call(
@@ -1232,7 +1232,7 @@ def test_live_loop_unconfirmed_adjustment_stays_a_recommendation(tmp_path: Path)
 
 
 def test_live_loop_without_a_recommendation_leaves_execution_empty(tmp_path: Path) -> None:
-    db, ctrl = _live(tmp_path, None)
+    db, ctrl = _live_pad(tmp_path, None)
     try:
         ctrl.call_only("1&10 my 40 clock 5:15", quarter=3)
         logged = ctrl.result_and_call(
@@ -1256,7 +1256,7 @@ def test_live_loop_without_a_recommendation_leaves_execution_empty(tmp_path: Pat
 
 
 def test_live_loop_fills_snap_and_outcome_fields(tmp_path: Path) -> None:
-    db, ctrl = _live(tmp_path, "HOT")
+    db, ctrl = _live_pad(tmp_path, "HOT")
     try:
         assert db.get_meta("ml_mode") is None
         ctrl.call_only(
@@ -1331,7 +1331,7 @@ def test_live_loop_fills_snap_and_outcome_fields(tmp_path: Path) -> None:
 
 
 def test_live_loop_without_an_explicit_drive_stores_null(tmp_path: Path) -> None:
-    db, ctrl = _live(tmp_path, "HOT")
+    db, ctrl = _live_pad(tmp_path, "HOT")
     try:
         ctrl.call_only("1&10 my 25", game_clock="12:00", quarter=1)
         missing = ctrl.result_and_call(
@@ -1367,7 +1367,7 @@ def test_live_loop_without_an_explicit_drive_stores_null(tmp_path: Path) -> None
 
 
 def test_plain_submit_without_touching_verify_stores_unknown(tmp_path: Path) -> None:
-    db, ctrl = _live(tmp_path, "SLIDE")
+    db, ctrl = _live_pad(tmp_path, "SLIDE")
     try:
         html = render_live_html(ctrl)
         assert 'value="used_recommended"' in html
