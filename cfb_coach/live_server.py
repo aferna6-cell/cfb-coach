@@ -947,7 +947,8 @@ class LivePlayController:
                 wl = "loss"
             self.result_wl = wl
             self.score = (score or "").strip()
-            # Flush dangling call without outcome? leave unlogged.
+            # The call still waiting on a result is not given a snap. Ending
+            # the session records that row as no_result instead of deleting it.
             play_count = len(self.log)
             try:
                 play_count = max(play_count, logged_play_count(self.db, self.session_id))

@@ -651,15 +651,19 @@ def log_offense_inference(
 
 
 def file_revision(*paths: str | Path) -> tuple | None:
-    """Identity of on-disk model files. Missing required files return None."""
-    parts: list[tuple[str, int, int]] = []
+    """Identity of on-disk model files. Missing required files return None.
+
+    The key is path, mtime, size, and inode. A same-size replace that keeps
+    the old timestamp still misses the cache, because the inode changed.
+    """
+    parts: list[tuple[str, int, int, int]] = []
     for raw in paths:
         path = Path(raw)
         try:
             st = path.stat()
         except OSError:
             return None
-        parts.append((str(path), int(st.st_mtime_ns), int(st.st_size)))
+        parts.append((str(path), int(st.st_mtime_ns), int(st.st_size), int(st.st_ino)))
     return tuple(parts)
 
 

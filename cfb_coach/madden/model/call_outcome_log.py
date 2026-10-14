@@ -20,6 +20,12 @@ from cfb_coach.outcome import parse_outcome
 
 NO_SNAP_RECORDED = "no_snap_recorded"
 LINKED = "linked"
+# Why a sealed call has no snap. The row stays. A later call replaced it, or
+# the result never arrived. A timeout is not one of these: the fallback call
+# is still the sealed call and gets the snap when the result is logged.
+SUPERSEDED = "superseded"
+NO_RESULT = "no_result"
+ORPHAN_REASONS = frozenset({SUPERSEDED, NO_RESULT})
 SCHEMA_META_KEY = "madden_call_outcome_schema"
 SCHEMA_VERSION = "1"
 
@@ -30,6 +36,8 @@ POST_SNAP_LOG_FIELDS = frozenset(
         "penalty",
         "executed_adjustment_id",
         "snap_link",
+        "orphan_reason",
+        "play_mismatch",
         "accepted",
         "outcome",
         "outcome_json",
@@ -38,6 +46,7 @@ POST_SNAP_LOG_FIELDS = frozenset(
 
 DECISION_COLUMNS = {
     "snap_link": "TEXT",
+    "orphan_reason": "TEXT",
     "drive_id": "TEXT",
     "quarter": "INTEGER",
     "game_clock": "TEXT",
@@ -72,6 +81,7 @@ SNAP_COLUMNS = {
     "accepted": "TEXT",
     "recommended_adjustment_id": "TEXT",
     "executed_adjustment_id": "TEXT",
+    "play_mismatch": "INTEGER",
 }
 
 _YARDED_KINDS = frozenset({"td", "sack", "int", "fumble"})
@@ -426,7 +436,7 @@ def apply_seal_logging(
     if is_new and tracker is not None:
         abandoned = getattr(tracker, "abandoned_decision_row_id", None)
         if abandoned is not None and abandoned != decision_id and hasattr(db, "mark_call_no_snap"):
-            db.mark_call_no_snap(abandoned)
+            db.mark_call_no_snap(abandoned, reason=SUPERSEDED)
     if decision_id is not None and hasattr(db, "stamp_call_context"):
         db.stamp_call_context(
             decision_id,
@@ -436,13 +446,23 @@ def apply_seal_logging(
 
 
 def orphan_call_ids(rows: list[dict[str, Any]]) -> list[int]:
-    """Decision ids that are neither linked to a snap/outcome nor explicitly closed."""
+    """Decision ids that are neither linked to a snap/outcome nor explicitly closed.
+
+    ``no_snap_recorded`` without ``superseded`` or ``no_result`` is still an
+    orphan: the row was closed without saying why.
+    """
     orphans: list[int] = []
     for row in rows:
         link = row.get("snap_link")
+        reason = row.get("orphan_reason")
         has_snap = bool(row.get("has_snap"))
         has_outcome = bool(row.get("has_outcome"))
-        if link == NO_SNAP_RECORDED and not has_snap and not has_outcome:
+        if (
+            link == NO_SNAP_RECORDED
+            and reason in ORPHAN_REASONS
+            and not has_snap
+            and not has_outcome
+        ):
             continue
         if link == LINKED and (has_snap or has_outcome):
             continue
