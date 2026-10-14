@@ -414,13 +414,14 @@ def _fallback_decision(
 
     heur = _book_candidate(book, getattr(call, "formation", None), getattr(call, "play", None))
     selected_mode = coaching_mode or CoachingMode.EXPERIMENTAL
+    logged = detail if "fallback_source=" in detail else f"{detail}; fallback_source=select_defense"
     return CoachingDecision(
         latency_ms=elapsed_ms,
         latency_ms_model=elapsed_ms,
         inference_budget_ms=ML_LATENCY_BUDGET_MS,
         mode=selected_mode,
         effective_mode=CoachingMode.HEURISTIC,
-        mode_downgrade_reason=detail,
+        mode_downgrade_reason=logged,
         game_id=game_id,
         snap_id=snap_id,
         session_id=session_id or None,
@@ -433,7 +434,7 @@ def _fallback_decision(
         shadow_status=status,
         fell_back=True,
         fallback_reason=status,
-        ml_status_detail=detail,
+        ml_status_detail=logged,
     )
 
 
@@ -1000,6 +1001,22 @@ def maybe_apply_defense(
         game_id = extras.get("game_id")
     except Exception:
         return call
+    if extras.get("require_trained_defense_artifact"):
+        # A prior-only or missing file is not a trained defense model. Do not
+        # fit one here. The established caller is the legal play.
+        model = load_model(db.get_meta(MODEL_META) or None) if db is not None else None
+        snaps = int((model or {}).get("supervised_defensive_snaps") or 0)
+        if model is None or snaps < 1:
+            try:
+                from cfb_coach.madden.model.schema import MLStatus
+                _stamp_decision(call, _fallback_decision(
+                    book=book, call=call, status=MLStatus.MODEL_MISSING, elapsed_ms=0.0,
+                    session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                    detail="missing defense artifact or zero verified snaps",
+                ), db, extras)
+            except Exception:
+                pass
+            return call
     # Existing researched active macro/adjustment triggers are not yet jointly
     # calibrated against this new defensive model. Keep the established
     # caller's already-armed action instead of silently discarding it.
@@ -1064,7 +1081,38 @@ def maybe_apply_defense(
                 "id": plan["id"], "side": "defense", "kind": "adjustment",
                 "label": plan["label"], "buttons": plan["buttons"],
                 "why": plan["why"], "sources": plan.get("research_sources") or [],
+                "executable": plan.get("executable", True),
             }
+        plays = [str(item) for item in (book.get(winner["formation"]) or [])]
+        if str(winner["play"]) not in plays:
+            _stamp_decision(call, _fallback_decision(
+                book=book, call=call, status=MLStatus.INVALID_OUTPUT,
+                elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                detail="illegal play not in installed book",
+            ), db, extras)
+            return call
+        from types import SimpleNamespace
+
+        from cfb_coach.madden.model.dual_control import adjustment_block_reason
+
+        blocked = None
+        if extras.get("require_trained_defense_artifact"):
+            blocked = adjustment_block_reason(
+                SimpleNamespace(macro=macro_name, adjustment=adjustment),
+                side="defense",
+                armed=list(extras.get("defense_armed_ids") or []),
+                db=db,
+                opponent_id=opponent_id,
+            )
+        if blocked:
+            _stamp_decision(call, _fallback_decision(
+                book=book, call=call, status=MLStatus.INVALID_OUTPUT,
+                elapsed_ms=(time.perf_counter() - started) * 1000.0,
+                session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                detail=blocked,
+            ), db, extras)
+            return call
         if (time.perf_counter() - started) * 1000.0 > LATENCY_MS:
             _stamp_decision(call, _fallback_decision(
                 book=book, call=call, status=MLStatus.TIMEOUT,

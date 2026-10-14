@@ -272,6 +272,8 @@ class LivePlayController:
             "data_version": info.get("data_version"),
             "probability": info.get("probability"),
             "fell_back": bool(info.get("fell_back")),
+            "fallback_reason": info.get("fallback_reason"),
+            "fallback_source": info.get("fallback_source"),
             "scored_on": info.get("scored_on") or "unknown",
             "input_audit": (info.get("pre_snap_action_context") or {}).get("input_audit")
             or info.get("input_audit"),
@@ -284,14 +286,22 @@ class LivePlayController:
         text = call.format() if hasattr(call, "format") else str(call)
         info = getattr(call, "ml_experimental", None)
         if isinstance(info, dict) and info.get("explanation"):
-            eq = info.get("evidence_quality") or "unknown"
-            scored = info.get("scored_on") or "unknown"
-            text += (
-                f"\n  ML experimental [{eq}]: {info['explanation']}"
-                f"\n  model scored_on {scored}"
-                f"\n  heuristic kept visible: {info.get('heuristic_formation')}/{info.get('heuristic_play')}"
-                f"\n  (opt-in pilot — not a validated competitive model)"
-            )
+            if info.get("fell_back"):
+                reason = info.get("fallback_reason") or "fallback"
+                source = info.get("fallback_source") or "heuristic_offense"
+                text += (
+                    f"\n  fallback_reason: {reason}"
+                    f"\n  fallback_source: {source}"
+                )
+            else:
+                eq = info.get("evidence_quality") or "unknown"
+                scored = info.get("scored_on") or "unknown"
+                text += (
+                    f"\n  ML experimental [{eq}]: {info['explanation']}"
+                    f"\n  model scored_on {scored}"
+                    f"\n  heuristic kept visible: {info.get('heuristic_formation')}/{info.get('heuristic_play')}"
+                    f"\n  (opt-in pilot — not a validated competitive model)"
+                )
         return text
 
     def _ensure_tracker(self) -> Any:
@@ -1314,12 +1324,18 @@ function renderState(st) {{
     if (mlBox) {{
       if (st.ml_experimental && st.ml_experimental.explanation) {{
         mlBox.hidden = false;
-        mlBox.textContent = "ML experimental [" + (st.ml_experimental.evidence_quality || "?") + "] · "
+        if (st.ml_experimental.fell_back) {{
+          mlBox.textContent = "LABEL: HEURISTIC · fallback_reason "
+            + (st.ml_experimental.fallback_reason || "fallback")
+            + " · fallback_source " + (st.ml_experimental.fallback_source || "heuristic_offense");
+        }} else {{
+        mlBox.textContent = "LABEL: EXPERIMENTAL · ML experimental [" + (st.ml_experimental.evidence_quality || "?") + "] · "
           + "heuristic " + (st.ml_experimental.heuristic || "") + " · "
           + "ML " + (st.ml_experimental.ml || "") + " · "
           + "shown " + (st.ml_experimental.final || "") + " · "
           + "scored_on " + (st.ml_experimental.scored_on || "unknown") + " · "
           + (st.ml_experimental.explanation || "");
+        }}
         const audit = st.ml_experimental.input_audit;
         if (audit) {{
           mlBox.textContent += " · known " + ((audit.known || []).join(", ") || "none")

@@ -910,6 +910,13 @@ def build_parser() -> argparse.ArgumentParser:
              "Off by default; requires `ml experimental`; heuristic rollback: `ml heuristic`.",
     )
     p_play.add_argument(
+        "--ml-defense-control",
+        action="store_true",
+        help="Madden only: allow EXPERIMENTAL defensive ML calls during this human-opponent play session. "
+             "Off by default; requires `ml defense-experimental` already enabled with a trained artifact. "
+             "Does not train. Rollback: `ml defense-experimental --disable --db <absolute>`.",
+    )
+    p_play.add_argument(
         "--score",
         default=None,
         metavar="US-THEM",
