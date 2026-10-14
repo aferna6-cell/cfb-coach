@@ -6,7 +6,7 @@
 
 This does not authorize a merge to `main`. The pull request targets `madden-ml/coordinators`.
 
-Base: `madden-ml/coordinators` at `510ba67f079bdd62db9e3e3d9a07c9297ded810a`. Branch: `madden-ml/wildcard-dual-ml`. The two full-suite runs below were executed on this branch's working tree immediately before the commit that adds this file. No franchise database and no real game rows are in the commit.
+Base: `madden-ml/coordinators` at `510ba67f079bdd62db9e3e3d9a07c9297ded810a`. Branch: `madden-ml/wildcard-dual-ml`. Tested code SHA: `7b6884ecc804fe0003d4af712a88d542113e1693`. The two full-suite runs below were executed on that tree. This sentence is the only later edit. No franchise database and no real game rows are in the commit.
 
 John stays a Madden-only cold start (`unknown` / `none`, empty offense, empty coverages, no borrowed film). He learns from observations logged against his id. `accepted` stays `unknown` until verify is touched. `ML_LATENCY_BUDGET_MS` stays 150.
 
