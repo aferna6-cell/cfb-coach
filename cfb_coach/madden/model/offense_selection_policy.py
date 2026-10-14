@@ -108,11 +108,19 @@ def choose_model_play(
     # O(N log N), not the earlier O(N²) strongest-alternative scan. The
     # formation designer may expose hundreds of legal plays, and the live
     # call must remain under its 150-ms clock budget.
+    from cfb_coach.madden.model.football_situation import short_yardage_exposure_penalty
+
     prob_order = sorted(
         ranked, key=lambda r: -float(r["probability"])
     )
     best_key = (str(prob_order[0]["formation"]), str(prob_order[0]["play"]))
     best_prob = float(prob_order[0]["probability"])
+    non_run_probs = [
+        float(r["probability"]) for r in ranked
+        if _play_family(str(r.get("play") or "")) != "run"
+    ]
+    best_non_run = max(non_run_probs) if non_run_probs else None
+    recent_runs = family_count.get("run", 0)
     runner_prob = next(
         (float(r["probability"]) for r in prob_order
          if (str(r["formation"]), str(r["play"])) != best_key),
@@ -139,6 +147,12 @@ def choose_model_play(
                 penalty += min(0.14, 0.05 + .015 * (screen_exposure - 2))
             if sum(p == key for p in last4) >= 3:
                 penalty += 0.055
+            penalty += short_yardage_exposure_penalty(
+                key[1], sit,
+                recent_run_calls=recent_runs,
+                probability=float(row["probability"]),
+                best_non_run_probability=best_non_run,
+            )
         situation_delta, situation_reason = _situational_adjustment(key[1], sit)
         # Do not discard a high-confidence/high-margin finding for cosmetic
         # variety. In contrast, low-data inflated scores are not sacrosanct.

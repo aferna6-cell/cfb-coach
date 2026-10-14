@@ -857,6 +857,8 @@ class LivePlayController:
 
         self._book().assign_drive(sit)
         token = normalize_game_clock(game_clock)
+        if token is None and sit is not None:
+            token = normalize_game_clock(str(getattr(sit, "raw", "") or ""))
         if token is None:
             return
         extras = getattr(sit, "extras", None)
@@ -999,6 +1001,9 @@ class LivePlayController:
                     score=self.score,
                     recovered=False,
                 )
+                from cfb_coach.madden.model.call_outcome_log import record_final_score_gap
+
+                record_final_score_gap(self.db, self.session_id, self.score)
                 # A premature recovery may already have set ended_ts. This write
                 # replaces that row; drop the recovered flag so the real close wins.
                 clear_recovered_note(self.db, self.session_id)

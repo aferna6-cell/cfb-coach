@@ -71,6 +71,7 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     plays: dict[str, list[int]] = {}
     n = 0
     verified = [r for r in verified_human_rows(rows) if str(r.get("side") or "") == "defense"]
+    used: list[dict[str, Any]] = []
     for row in verified:
         if str(row.get("side") or "").lower() != "defense":
             continue
@@ -86,9 +87,15 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             count[0] += ok
             count[1] += 1
         n += 1
+        used.append(dict(row))
+    from cfb_coach.madden.model.defense_hierarchy import (
+        audit_defensive_rows, fit_defense_hierarchy,
+    )
+    hierarchy = fit_defense_hierarchy(used)
     return {
         "schema": SCHEMA, "type": "defense_stop_model",
         "verification_policy": "strict_human_verified_execution.v1",
+        "model_version": hierarchy["version"],
         "supervised_defensive_snaps": n,
         "evidence_quality": "empirical" if n >= 40 else ("limited" if n >= 10 else "prior_driven"),
         "families": stats, "contexts": context, "plays": plays,
@@ -96,6 +103,10 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "opponent_outcome_risks": fit_opponent_outcome_risks(rows),
         "opponent_profiles": fit_opponent_profiles(verified),
         "verified_human_games": len({str(r["game_id"]) for r in verified}),
+        "hierarchy": hierarchy,
+        "training_audit": audit_defensive_rows(rows),
+        "offense_artifact": "not_modified",
+        "auto_promote": False,
         "observational_only": True,
         "note": "Stop outcomes are observations, not proven counterfactual effects.",
     }
@@ -207,19 +218,20 @@ def _score(
     specific, n_ctx = _rate((model or {}).get("contexts", {}).get(ctx + "|" + str(family)))
     play_rate, n_play = _rate((model or {}).get("plays", {}).get(play))
     # Conservative prior; more verified executions can overcome it.
-    score = 0.20 * math.log(max(0.02, baseline)) + 1.10 * (learned - 0.5)
-    score += 0.75 * (specific - 0.5) + 0.24 * (play_rate - 0.5)
+    learned_score = 0.20 * math.log(max(0.02, baseline)) + 1.10 * (learned - 0.5)
+    learned_score += 0.75 * (specific - 0.5) + 0.24 * (play_rate - 0.5)
+    structural = 0.0
     if eligible and formation not in eligible:
-        score -= 0.18
+        structural -= 0.18
     if sit.goal_line and any(x in formation.lower() for x in ("dime", "dollar", "quarter")):
-        score -= 0.38
+        structural -= 0.38
     if ctx == "long" and any(x in formation.lower() for x in ("goal line", "4-4")):
-        score -= 0.34
+        structural -= 0.34
     recent_four = list(recent)[-4:]
-    score -= 0.13 * recent_four.count((formation, play))
-    score -= 0.035 * sum(form == formation for form, _ in recent_four)
+    structural -= 0.13 * recent_four.count((formation, play))
+    structural -= 0.035 * sum(form == formation for form, _ in recent_four)
     if recent_four and call_family(recent_four[-1][1]) == family:
-        score -= 0.04
+        structural -= 0.04
     from cfb_coach.madden.model.defense_intelligence import score_defensive_knowledge
     from cfb_coach.madden.model.defense_knowledge import explain_call, live_verified_adjustment
     intel = score_defensive_knowledge(
@@ -229,7 +241,21 @@ def _score(
     )
     verified = live_verified_adjustment(sit, play)
     personnel = personnel_features(sit)
-    score += intel["delta"] + float(verified["delta"]) + personnel["delta"]
+    context_delta = intel["delta"] + float(verified["delta"]) + personnel["delta"]
+    hierarchy = (model or {}).get("hierarchy") or {}
+    prediction = None
+    score_source = "stop_rate_prior"
+    if int(hierarchy.get("supervised_snaps") or 0) > 0:
+        from cfb_coach.madden.model.defense_hierarchy import context_from_situation, predict_cost
+        prediction = predict_cost(
+            hierarchy, play=play, context=context_from_situation(sit),
+            opponent_id=opponent_id,
+        )
+        # Trained cost is the decision. The mix prior is not added again.
+        score = -float(prediction["cost"]) + structural + context_delta
+        score_source = "hierarchical_objective"
+    else:
+        score = learned_score + structural + context_delta
     profiles = ((model or {}).get("opponent_profiles") or {}).get("opponents") or {}
     profile = profiles.get(opponent_id) or {
         "ready": False, "current_snap_known": False, "live_score_delta": 0.0,
@@ -245,6 +271,8 @@ def _score(
         "opponent_profile": profile,
         "personnel": personnel,
         "why": explain_call(sit, formation, play, family, verified),
+        "score_source": score_source,
+        "defensive_prediction": prediction,
     }
 
 
@@ -576,7 +604,7 @@ def live_pick(
     except Exception:
         decision = None
     return {
-        "selected": chosen, "top": ranks[:8],
+        "selected": chosen, "top": ranks[:8], "all": ranks,
         "tendencies": (model or {}).get("opponent_tendencies") or {},
         "n_candidates": len(ranks),
         "model_quality": (model or {}).get("evidence_quality", "prior_driven"),
@@ -1038,10 +1066,16 @@ def maybe_apply_defense(
         from cfb_coach.madden.model.schema import MLStatus, PropensityMethod
         ranked = live_pick(sit, db, opponent_id, book, session_id=session, snap_seq=seq)
         from cfb_coach.madden.model.defense_action_policy import select_defensive_action
-        # Evaluate the whole playbook for calls and a bounded top set for
-        # executable changes, comparing every action with doing nothing.
+        # Every installed play is already scored. Action search stays inside the
+        # near-tie window so a macro cannot resurrect a play the model rejected,
+        # and so the 150 ms budget still holds on a full book.
+        pool = list(ranked["top"])
+        if pool and pool[0].get("score_source") == "hierarchical_objective":
+            full = list(ranked.get("all") or pool)
+            best_score = float(full[0]["score"])
+            pool = [row for row in full if best_score - float(row["score"]) <= 0.06] or pool[:1]
         options = []
-        for candidate in ranked["top"]:
+        for candidate in pool:
             plan = select_defensive_action(
                 sit, db, opponent_id,
                 candidate["formation"], candidate["play"],
@@ -1097,7 +1131,8 @@ def maybe_apply_defense(
         from cfb_coach.madden.model.dual_control import adjustment_block_reason
 
         blocked = None
-        if extras.get("require_trained_defense_artifact"):
+        armed_known = "defense_armed_ids" in extras or extras.get("require_trained_defense_artifact")
+        if armed_known:
             blocked = adjustment_block_reason(
                 SimpleNamespace(macro=macro_name, adjustment=adjustment),
                 side="defense",
@@ -1105,6 +1140,15 @@ def maybe_apply_defense(
                 db=db,
                 opponent_id=opponent_id,
             )
+        dropped_macro = None
+        if blocked and str(blocked).startswith("invalid_adjustment:"):
+            # The play stays. An unarmed macro or an unexecutable sheet is not shown.
+            token = str(blocked).split(":")[-1] or macro_name or "adjustment"
+            dropped_macro = f"dropped_unarmed_macro:{token}"
+            macro_name = None
+            macro_info = None
+            adjustment = None
+            blocked = None
         if blocked:
             _stamp_decision(call, _fallback_decision(
                 book=book, call=call, status=MLStatus.INVALID_OUTPUT,
@@ -1136,12 +1180,16 @@ def maybe_apply_defense(
             f"knowledge={intelligence.get('principle') or 'unknown'}"
             f"{verified_note}"
         )
+        if dropped_macro:
+            note = f"{note} | {dropped_macro}"
         result = MaddenCall(
             "defense", winner["formation"], winner["play"],
             macro_name or (adjustment["label"] if adjustment else "No adj"),
             user_job_for(winner["play"]) or FAMILY_USER_JOB.get(winner["family"], "User hook"),
             note, macro=macro_name, macro_info=macro_info, adjustment=adjustment,
         )
+        if dropped_macro:
+            result.adjustment_dropped = dropped_macro
         heur = _book_candidate(book, getattr(call, "formation", None), getattr(call, "play", None))
         try:
             decision = _model_decision(

@@ -10,7 +10,7 @@ the live call only evaluates these rules.
 """
 from __future__ import annotations
 
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from cfb_coach.madden.catalog import is_deep, is_run
 from cfb_coach.madden.model.experimental_model import _play_family
@@ -53,6 +53,21 @@ SELECTION_PRIORS: dict[str, dict[str, Any]] = {
     "short_yardage_deep": {
         "delta": -0.035,
         "reason": "long-developing route on short yardage",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_quick": {
+        "delta": 0.02,
+        "reason": "short-yardage quick pass can convert without a run",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_play_action": {
+        "delta": 0.018,
+        "reason": "play-action on short yardage when a run look is credible",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_rpo": {
+        "delta": 0.02,
+        "reason": "RPO keeps the run fit and a quick throw",
         "claim": "conversion_proxy_not_expected_points",
     },
     "two_minute_trail_run": {
@@ -408,6 +423,137 @@ def audit_situation_inputs(
     }
 
 
+# Frozen deltas from before short-yardage passes were given a selection prior.
+# The offensive artifact is not rewritten when the challenger prior changes.
+BASELINE_SHORT_DELTAS = {
+    "run": 0.025,
+    "deep": -0.035,
+    "quick": 0.0,
+    "play_action": 0.0,
+    "rpo": 0.0,
+    "screen": 0.0,
+    "other": 0.0,
+}
+
+
+def is_third_or_fourth_and_short(sit: Any) -> bool:
+    if sit is None:
+        return False
+    try:
+        down = int(getattr(sit, "down", None))
+        distance = int(getattr(sit, "distance", None))
+    except (TypeError, ValueError):
+        return False
+    return down in (3, 4) and distance <= 2
+
+
+def short_yardage_kind(play: str) -> str:
+    """Run, quick pass, play-action, RPO, screen, or deep. Deep wins over play-action."""
+    import re
+
+    if is_deep(play):
+        return "deep"
+    raw = play or ""
+    if re.search(r"\brpo\b", raw, re.I):
+        return "rpo"
+    if re.search(r"\bpa\b|play[\s-]*action|\bboot\b", raw, re.I):
+        return "play_action"
+    if _play_family(play) == "screen":
+        return "screen"
+    if is_run(play):
+        return "run"
+    if _play_family(play) == "pass":
+        return "quick"
+    return "other"
+
+
+def short_yardage_exposure_penalty(
+    play: str,
+    sit: Any,
+    *,
+    recent_run_calls: int,
+    probability: float,
+    best_non_run_probability: float | None,
+) -> float:
+    """Small cost after repeated runs, only while a non-run is close.
+
+    A clearly better run is not penalized. There is no run/pass quota.
+    """
+    if not is_third_or_fourth_and_short(sit):
+        return 0.0
+    if short_yardage_kind(play) != "run":
+        return 0.0
+    if recent_run_calls < 2 or best_non_run_probability is None:
+        return 0.0
+    if float(probability) - float(best_non_run_probability) > 0.08:
+        return 0.0
+    return min(0.035, 0.01 * (int(recent_run_calls) - 1))
+
+
+def short_yardage_policy_report() -> dict[str, Any]:
+    """Candidate-kind deltas. The stored offense artifact is not part of this policy."""
+    challenger = {
+        kind: float(SELECTION_PRIORS[prior]["delta"])
+        for kind, prior in (
+            ("run", "short_yardage_run"),
+            ("deep", "short_yardage_deep"),
+            ("quick", "short_yardage_quick"),
+            ("play_action", "short_yardage_play_action"),
+            ("rpo", "short_yardage_rpo"),
+        )
+    }
+    challenger["screen"] = 0.0
+    return {
+        "situation": "3rd or 4th and 2 or fewer",
+        "baseline_deltas": dict(BASELINE_SHORT_DELTAS),
+        "challenger_deltas": challenger,
+        "heuristic_pool_run_bonus": 0.12,
+        "heuristic_pool_applied_on_experimental_rank": False,
+        "quota": False,
+        "forced_alternation": False,
+        "offense_artifact": "not modified",
+        "clear_run_gap": 0.08,
+        "note": (
+            "The experimental ranker scores every eligible installed play. "
+            "The previous short-yardage prior was +0.025 for a run and 0 for a "
+            "quick pass, play-action, or RPO, so an equal-probability run won. "
+            "Those passes now sit just under the run prior and win when their "
+            "conversion probability clears that gap. The heuristic caller's "
+            "+0.12 short-yardage run bonus is not applied on this rank. "
+            "Repeated runs take a small exposure penalty only when a non-run "
+            "is within 0.08 probability. There is no quota."
+        ),
+    }
+
+
+def compare_short_yardage_policies(
+    cases: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Score probability plus delta. Does not load or write an offense artifact."""
+    rows = []
+    regressions = []
+    for case in cases:
+        kind = short_yardage_kind(str(case.get("play") or ""))
+        probability = float(case["probability"])
+        base = probability + float(BASELINE_SHORT_DELTAS.get(kind, 0.0))
+        chall = probability + float(short_yardage_policy_report()["challenger_deltas"].get(kind, 0.0))
+        rows.append({
+            "play": case.get("play"),
+            "kind": kind,
+            "probability": probability,
+            "baseline_score": round(base, 5),
+            "challenger_score": round(chall, 5),
+        })
+    by_play = {row["play"]: row for row in rows}
+    return {
+        "rows": rows,
+        "by_play": by_play,
+        "offense_artifact_modified": False,
+        "quota": False,
+        "regressions": regressions,
+    }
+
+
 def _selection_parts(play: str, sit: Any) -> list[dict[str, Any]]:
     """Legacy magnitudes used by model-primary sampling."""
     if sit is None:
@@ -431,10 +577,16 @@ def _selection_parts(play: str, sit: Any) -> list[dict[str, Any]]:
         if not run and not screen and deep:
             parts.append({"id": "third_long_reachable", **SELECTION_PRIORS["third_long_reachable"]})
     elif d in (3, 4) and yards <= 2:
-        if run:
-            parts.append({"id": "short_yardage_run", **SELECTION_PRIORS["short_yardage_run"]})
-        if deep:
-            parts.append({"id": "short_yardage_deep", **SELECTION_PRIORS["short_yardage_deep"]})
+        kind = short_yardage_kind(play)
+        prior_id = {
+            "run": "short_yardage_run",
+            "deep": "short_yardage_deep",
+            "quick": "short_yardage_quick",
+            "play_action": "short_yardage_play_action",
+            "rpo": "short_yardage_rpo",
+        }.get(kind)
+        if prior_id:
+            parts.append({"id": prior_id, **SELECTION_PRIORS[prior_id]})
     if bool(getattr(sit, "two_minute", False)) and yards >= 4 and run:
         score_us, score_them = getattr(sit, "score_us", None), getattr(sit, "score_them", None)
         if score_us is not None and score_them is not None:

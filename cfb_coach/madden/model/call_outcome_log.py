@@ -298,6 +298,41 @@ def recommended_from_call(call: Any) -> str | None:
     return None
 
 
+def clock_from_situation_text(text: str | None) -> str | None:
+    """A labeled clock inside a situation line. A bare down-and-distance is not a clock."""
+    return normalize_game_clock(text)
+
+
+def record_final_score_gap(db: Any, session_id: str, session_score: str | None) -> dict[str, Any]:
+    """Remember a final score that the snap log does not contain.
+
+    This does not insert a snap and does not invent the missing play.
+    """
+    from cfb_coach.session import last_logged_score
+
+    last, _wl = last_logged_score(db, session_id)
+    entered = (session_score or "").strip() or None
+    payload = {
+        "session_id": session_id,
+        "session_score": entered,
+        "last_snap_score": last,
+        "gap": bool(entered and last and entered != last),
+        "invented_snap": False,
+        "snap_created": False,
+    }
+    if payload["gap"]:
+        payload["explanation"] = (
+            "The entered final score differs from the last logged snap. "
+            "No snap was created for the missing points."
+        )
+    if db is not None and session_id:
+        db.set_meta(
+            f"final_score_gap.v1:{session_id}",
+            json.dumps(payload, sort_keys=True),
+        )
+    return payload
+
+
 def normalize_game_clock(raw: str | None) -> str | None:
     """``m:ss`` for a labeled or bare clock. Anything else stays unknown."""
     from cfb_coach.situation import parse_clock_seconds

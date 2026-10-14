@@ -946,11 +946,17 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
             if not installed:
                 print("Cannot enable: no physically confirmed defensive playbook", file=sys.stderr)
                 return 2
-            if not defense.load_model(db.get_meta(defense.MODEL_META) or None):
-                from cfb_coach.madden.model.dataset import build_rows
-                art = defense.train_defense(build_rows(db=db))
-                dest = defense.save_model(art, defense._data_path())
-                db.set_meta(defense.MODEL_META, str(dest))
+            # Enabling never trains and never promotes a prior-only artifact.
+            # The established caller stays active until a recorded eval passes.
+            from cfb_coach.madden.model.defense_hierarchy import promotion_status
+
+            model = defense.load_model(db.get_meta(defense.MODEL_META) or None)
+            gate = promotion_status(model)
+            if not gate["allowed"]:
+                print(f"Cannot enable: {gate['reason']}", file=sys.stderr)
+                print("defense_mode:", defense.mode(db), file=sys.stderr)
+                print("auto_promote: false")
+                return 2
             defense.set_mode(db, "experimental")
         model = defense.load_model(db.get_meta(defense.MODEL_META) or None)
         result = {
@@ -968,6 +974,134 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
         return 0
     finally:
         db.close()
+
+
+def _installed_defense_book(args: argparse.Namespace) -> dict[str, list[str]] | None:
+    """Confirmed defensive formations when ``--db`` is set. Never a home default."""
+    raw_db = getattr(args, "db", None)
+    if not raw_db:
+        return None
+    from cfb_coach.madden import playbook
+
+    db = open_explicit_madden_db(Path(raw_db), read_only=True)
+    try:
+        formations = (playbook.load_books(db).get("defense") or {}).get("formations") or {}
+    finally:
+        db.close()
+    cleaned = {
+        str(form): [str(play) for play in plays]
+        for form, plays in formations.items() if plays
+    }
+    return cleaned or None
+
+
+def _defense_input_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
+    """JSONL paths plus an explicit database. No home-directory default."""
+    import json
+    from cfb_coach.madden.model.dataset import build_rows
+
+    rows: list[dict[str, Any]] = []
+    for raw in list(getattr(args, "path", None) or []):
+        for line in Path(raw).read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    raw_db = getattr(args, "db", None)
+    if raw_db:
+        db = open_explicit_madden_db(Path(raw_db), read_only=True)
+        try:
+            rows.extend(build_rows(db=db))
+        finally:
+            db.close()
+    return rows
+
+
+def cmd_ml_defense_audit(args: argparse.Namespace) -> int:
+    """Count candidate defensive snaps against verified supervised examples."""
+    from cfb_coach.madden.model.defense_hierarchy import audit_defensive_rows
+
+    rows = _defense_input_rows(args)
+    report = audit_defensive_rows(
+        rows, reported_candidates=getattr(args, "reported_candidates", None),
+    )
+    print(json.dumps(report, indent=2, default=str))
+    print(
+        f"candidates={report['candidate_snaps']} supervised={report['supervised_snaps']} "
+        f"excluded={report['excluded_snaps']}"
+    )
+    return 0
+
+
+def cmd_ml_defense_hierarchy_eval(args: argparse.Namespace) -> int:
+    """Hold out executed snaps by game. Does not enable the defensive caller."""
+    import time
+
+    from cfb_coach.madden.model import defense_coordinator as defense
+    from cfb_coach.madden.model.defense_hierarchy import (
+        evaluate_defense_hierarchy, record_promotion,
+    )
+    from cfb_coach.madden.situation import Situation
+
+    if not getattr(args, "model", None):
+        _parser_error(args, "--model is required for defense-hierarchy-eval")
+    rows = _defense_input_rows(args)
+    model = defense.load_model(args.model)
+    if model is None:
+        print("error: --model is not a defense coordinator artifact", file=sys.stderr)
+        return 1
+    installed = _installed_defense_book(args)
+    book = installed or {
+        "Nickel Over": ["Cover 3 Sky", "Cover 4 Drop", "Tampa 2"],
+        "Dime": ["Cover 2 Man", "Cover 6"],
+    }
+    sit = Situation(raw="d 3&8", side="defense", down=3, distance=8)
+    samples = []
+    for _ in range(8):
+        started = time.perf_counter()
+        defense.rank_defense(sit, book, model)
+        samples.append((time.perf_counter() - started) * 1000.0)
+    report = evaluate_defense_hierarchy(
+        rows, book=book, seed=int(args.seed), latency_ms=samples,
+    )
+    report["latency_candidates"] = sum(len(plays) for plays in book.values())
+    report["latency_book_source"] = (
+        "installed_playbook" if installed else "latency_probe_only"
+    )
+    record_promotion(model, report)
+    defense.save_model(model, args.model)
+    print(f"gate: {report['promotion']['reason']}")
+    print("auto_promote: false")
+    print("defense_mode: unchanged")
+    if getattr(args, "out", None):
+        Path(args.out).write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+    print(json.dumps(report, indent=2, default=str))
+    return 0
+
+
+def cmd_ml_defense_go_nogo(args: argparse.Namespace) -> int:
+    """Print the experimental-defense playtest verdict. Does not enable anything."""
+    from cfb_coach.madden.model.defense_hierarchy import go_nogo_report, reconcile_interceptions
+
+    rows = _defense_input_rows(args)
+    stored = None
+    if getattr(args, "eval", None):
+        stored = json.loads(Path(args.eval).read_text(encoding="utf-8"))
+    report = go_nogo_report(
+        rows, report=stored, reported_candidates=int(args.reported_candidates),
+    )
+    report["interceptions"] = reconcile_interceptions(rows)
+    print(json.dumps(report, indent=2, default=str))
+    print(f"verdict: {report['verdict']}")
+    print(f"rollback: {report['rollback_command']}")
+    return 0 if report["verdict"] == "GO" else 2
+
+
+def cmd_ml_short_yardage_audit(args: argparse.Namespace) -> int:
+    """Show the short-yardage pool and the baseline-versus-challenger deltas."""
+    from cfb_coach.madden.model.football_situation import short_yardage_policy_report
+
+    print(json.dumps(short_yardage_policy_report(), indent=2))
+    return 0
 
 
 def cmd_ml_offense_coordinator(args: argparse.Namespace) -> int:
@@ -2085,6 +2219,42 @@ def build_ml_subparser(sub: Any) -> None:
         help="Artifact path for --retrain. Required so the model is not saved under the home data dir.",
     )
     p_dx.set_defaults(func=cmd_ml_defense_experimental, cli_parser=p_dx)
+
+    p_da = ml_sub.add_parser(
+        "defense-audit",
+        help="Count candidate defensive snaps versus verified supervised examples",
+    )
+    p_da.add_argument("--path", action="append", default=[], help="JSONL of snaps")
+    p_da.add_argument("--db", default=None, help="Optional Madden SQLite path")
+    p_da.add_argument("--reported-candidates", type=int, default=178)
+    p_da.set_defaults(func=cmd_ml_defense_audit, cli_parser=p_da)
+
+    p_he = ml_sub.add_parser(
+        "defense-hierarchy-eval",
+        help="Game holdout of the defensive hierarchy. Writes the verdict onto --model and does not enable",
+    )
+    p_he.add_argument("--path", action="append", default=[], help="JSONL of snaps")
+    p_he.add_argument("--db", default=None, help="Optional Madden SQLite path")
+    p_he.add_argument("--model", required=True, help="Defense artifact to attach the eval verdict to")
+    p_he.add_argument("--out", default=None, help="Optional JSON report path")
+    p_he.add_argument("--seed", type=int, default=7)
+    p_he.set_defaults(func=cmd_ml_defense_hierarchy_eval, cli_parser=p_he)
+
+    p_go = ml_sub.add_parser(
+        "defense-go-nogo",
+        help="Experimental defense playtest verdict. Does not enable the caller",
+    )
+    p_go.add_argument("--path", action="append", default=[], help="JSONL of snaps")
+    p_go.add_argument("--db", default=None, help="Optional Madden SQLite path")
+    p_go.add_argument("--eval", default=None, help="Optional eval JSON from defense-hierarchy-eval")
+    p_go.add_argument("--reported-candidates", type=int, default=178)
+    p_go.set_defaults(func=cmd_ml_defense_go_nogo, cli_parser=p_go)
+
+    p_sy = ml_sub.add_parser(
+        "short-yardage-audit",
+        help="Short-yardage candidate kinds and baseline versus challenger deltas",
+    )
+    p_sy.set_defaults(func=cmd_ml_short_yardage_audit, cli_parser=p_sy)
 
     p_coord = ml_sub.add_parser(
         "offense-coordinator",
