@@ -95,6 +95,13 @@ def _madden_handler(args: argparse.Namespace, name: str):
     return getattr(madden_cli, name)
 
 
+def cmd_preflight(args: argparse.Namespace) -> int:
+    handler = _madden_handler(args, "cmd_preflight")
+    if handler:
+        return handler(args)
+    raise SystemExit("preflight is Madden-only; add --game madden27")
+
+
 def cmd_opponents(args: argparse.Namespace) -> int:
     handler = _madden_handler(args, "cmd_opponents")
     if handler:
@@ -974,6 +981,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_game_args(p_play)
     p_play.set_defaults(func=cmd_play)
+
+    p_preflight = sub.add_parser(
+        "preflight",
+        help="Madden human-mode playoff preflight (cold-start opponent, both sides)",
+    )
+    p_preflight.add_argument("--opponent", "-o", required=True)
+    p_preflight.add_argument(
+        "--mode",
+        choices=("human",),
+        required=True,
+        help="human: offense model only behind --ml-human-control; defense stays the established caller",
+    )
+    p_preflight.add_argument(
+        "--db",
+        default=None,
+        help="Database file for this check. Default is madden_db_path().",
+    )
+    p_preflight.add_argument(
+        "--no-vod-prior",
+        dest="no_vod_prior",
+        action="store_true",
+        help="Required for a passing human preflight. Turns the VOD prior off and freezes the book.",
+    )
+    p_preflight.add_argument(
+        "--freeze-vod-book",
+        dest="freeze_vod_book",
+        action="store_true",
+        help="Also freeze the book while a VOD prior is on. Human preflight still requires --no-vod-prior.",
+    )
+    _add_game_args(p_preflight)
+    p_preflight.set_defaults(func=cmd_preflight)
 
     p_post = sub.add_parser(
         "postgame",
