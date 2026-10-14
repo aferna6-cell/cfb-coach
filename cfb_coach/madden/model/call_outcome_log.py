@@ -37,6 +37,7 @@ POST_SNAP_LOG_FIELDS = frozenset(
         "executed_adjustment_id",
         "snap_link",
         "orphan_reason",
+        "play_mismatch",
         "accepted",
         "outcome",
         "outcome_json",
@@ -80,6 +81,7 @@ SNAP_COLUMNS = {
     "accepted": "TEXT",
     "recommended_adjustment_id": "TEXT",
     "executed_adjustment_id": "TEXT",
+    "play_mismatch": "INTEGER",
 }
 
 _YARDED_KINDS = frozenset({"td", "sack", "int", "fumble"})

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import warnings
@@ -654,6 +655,19 @@ class CoachDB:
             "recommended_adjustment_id",
             "executed_adjustment_id",
         )
+        if "ml_decision_id" in fields:
+            # A later correction must not put a stale decision back on a snap
+            # whose snap id already has a sealed owner.
+            ml_snap_id = fields.get("ml_snap_id")
+            if not ml_snap_id and "ml_snap_id" in self._table_columns("snaps"):
+                current = self.conn.execute(
+                    "SELECT ml_snap_id FROM snaps WHERE id = ?", (snap_id,)
+                ).fetchone()
+                if current is not None:
+                    ml_snap_id = current["ml_snap_id"] if hasattr(current, "keys") else current[0]
+            owned = self._decision_id_for_snap(ml_snap_id)
+            if owned is not None:
+                fields["ml_decision_id"] = owned
         present = self._table_columns("snaps")
         cols = [(k, fields[k]) for k in allowed if k in fields and k in present]
         if not cols:
@@ -663,6 +677,8 @@ class CoachDB:
             f"UPDATE snaps SET {sets} WHERE id = ?",
             [v for _, v in cols] + [snap_id],
         )
+        if "ml_decision_id" in fields or "executed_play" in fields:
+            self._record_play_mismatch(snap_id)
         self.conn.commit()
 
     def delete_snap(self, snap_id: int) -> None:
@@ -1230,6 +1246,51 @@ class CoachDB:
             )
         self.conn.commit()
 
+    def _record_play_mismatch(self, snap_row_id: int) -> None:
+        """Flag a snap whose executed play differs from the linked decision.
+
+        An unknown executed play is not a mismatch. A real disagreement is
+        stored on ``play_mismatch`` and logged. It is never left unmarked.
+        """
+        if "play_mismatch" not in self._table_columns("snaps"):
+            return
+        if "final_play" not in self._table_columns("ml_decisions"):
+            return
+        snap = self.conn.execute(
+            "SELECT ml_decision_id, executed_play FROM snaps WHERE id = ?",
+            (snap_row_id,),
+        ).fetchone()
+        if snap is None:
+            return
+        decision_id = snap["ml_decision_id"] if hasattr(snap, "keys") else snap[0]
+        executed = snap["executed_play"] if hasattr(snap, "keys") else snap[1]
+        executed_text = "" if executed is None else str(executed).strip()
+        flag = None
+        final_text = ""
+        if decision_id is not None and executed_text:
+            decision = self.conn.execute(
+                "SELECT final_play FROM ml_decisions WHERE id = ?",
+                (int(decision_id),),
+            ).fetchone()
+            final = None if decision is None else (
+                decision["final_play"] if hasattr(decision, "keys") else decision[0]
+            )
+            final_text = "" if final is None else str(final).strip()
+            if final_text:
+                flag = 0 if executed_text == final_text else 1
+        self.conn.execute(
+            "UPDATE snaps SET play_mismatch = ? WHERE id = ?",
+            (flag, snap_row_id),
+        )
+        if flag == 1:
+            logging.getLogger(__name__).warning(
+                "play mismatch snap_row=%s decision_id=%s executed_play=%s final_play=%s",
+                snap_row_id,
+                decision_id,
+                executed_text,
+                final_text,
+            )
+
     def _decision_id_for_snap(self, snap_id: str | None) -> int | None:
         """The decision sealed for ``snap_id``, if one was logged."""
         if not snap_id or "snap_id" not in self._table_columns("ml_decisions"):
@@ -1257,6 +1318,11 @@ class CoachDB:
             """,
             (int(decision_id), snap_id, int(decision_id)),
         )
+        row = self.conn.execute(
+            "SELECT id FROM snaps WHERE ml_snap_id = ?", (snap_id,)
+        ).fetchone()
+        if row is not None:
+            self._record_play_mismatch(int(row["id"] if hasattr(row, "keys") else row[0]))
 
     def _link_decision(self, snap_id: str | None, decision_id: int | None) -> None:
         columns = self._table_columns("ml_decisions")

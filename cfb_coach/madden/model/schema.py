@@ -97,6 +97,7 @@ LEAKAGE_FIELDS = frozenset(
         "penalty",
         "snap_link",
         "orphan_reason",
+        "play_mismatch",
     }
 )
 

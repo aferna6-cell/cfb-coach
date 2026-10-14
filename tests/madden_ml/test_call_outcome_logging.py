@@ -7,6 +7,7 @@ a real game, a database file, or an audit row.
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import sqlite3
 import subprocess
@@ -920,5 +921,179 @@ def test_timeout_call_is_kept_and_an_executed_one_gets_the_snap(tmp_path: Path) 
         assert kept["orphan_reason"] is None
         assert ML_LATENCY_BUDGET_MS == 150
         assert inference.resolve_mode(db) is CoachingMode.HEURISTIC
+    finally:
+        db.close()
+
+
+def test_update_snap_does_not_restore_a_stale_decision_id(tmp_path: Path) -> None:
+    """A later update_snap cannot put a stale decision back on an owned snap.
+
+    The snap id's sealed decision wins, including when the caller passes None.
+    A snap that has no sealed owner still stores the id it was given.
+    """
+    db = _open(tmp_path / "madden27.db")
+    try:
+
+        def decision(seq: int, play: str) -> int:
+            return db.log_ml_decision(
+                {
+                    "decision_ts": "t",
+                    "game_id": SESSION,
+                    "session_id": SESSION,
+                    "snap_id": f"{SESSION}-{seq:04d}",
+                    "snap_seq": seq,
+                    "mode": "heuristic",
+                    "final_pick": {"formation": "Gun Bunch", "play": play},
+                }
+            )
+
+        owner = decision(1, "Mesh")
+        stale = decision(2, "Flood")
+        row = db.log_snap(
+            opponent_id="cpu",
+            side="offense",
+            situation_raw="1st and 10",
+            our_call="Gun Bunch — Mesh",
+            result="+4",
+            session_id=SESSION,
+            ml_snap_id=f"{SESSION}-0001",
+            snap_seq=1,
+            executed_play="Mesh",
+            ml_decision_id=stale,
+        )
+        db.update_snap(row, ml_decision_id=stale)
+        linked = db.conn.execute(
+            "SELECT ml_decision_id FROM snaps WHERE id = ?", (row,)
+        ).fetchone()
+        assert linked["ml_decision_id"] == owner
+        db.update_snap(row, ml_decision_id=None)
+        cleared = db.conn.execute(
+            "SELECT ml_decision_id FROM snaps WHERE id = ?", (row,)
+        ).fetchone()
+        assert cleared["ml_decision_id"] == owner
+
+        loose = db.log_snap(
+            opponent_id="cpu",
+            side="offense",
+            situation_raw="2nd and 7",
+            our_call="Gun Bunch — Flood",
+            result="incomplete",
+            session_id=SESSION,
+            ml_snap_id=f"{SESSION}-0099",
+            snap_seq=99,
+        )
+        db.update_snap(loose, ml_decision_id=stale)
+        accepted = db.conn.execute(
+            "SELECT ml_decision_id FROM snaps WHERE id = ?", (loose,)
+        ).fetchone()
+        assert accepted["ml_decision_id"] == stale
+    finally:
+        db.close()
+
+
+def test_repoint_flags_executed_play_that_differs_from_final_play(
+    tmp_path: Path, caplog
+) -> None:
+    """A repointed snap whose executed play differs from final_play is flagged.
+
+    The comparison uses the sealed owner, not the stale id that was passed.
+    An unknown executed play is not a mismatch. A later correction clears the flag.
+    """
+    caplog.set_level(logging.WARNING, logger="cfb_coach.db")
+    db = _open(tmp_path / "madden27.db")
+    try:
+        owner = db.log_ml_decision(
+            {
+                "decision_ts": "t",
+                "game_id": SESSION,
+                "session_id": SESSION,
+                "snap_id": f"{SESSION}-0001",
+                "snap_seq": 1,
+                "mode": "heuristic",
+                "final_pick": {"formation": "Gun Bunch", "play": "Mesh"},
+            }
+        )
+        stale = db.log_ml_decision(
+            {
+                "decision_ts": "t",
+                "game_id": SESSION,
+                "session_id": SESSION,
+                "snap_id": f"{SESSION}-0002",
+                "snap_seq": 2,
+                "mode": "heuristic",
+                "final_pick": {"formation": "Gun Bunch", "play": "Flood"},
+            }
+        )
+        row = db.log_snap(
+            opponent_id="cpu",
+            side="offense",
+            situation_raw="1st and 10",
+            our_call="Gun Bunch — Mesh",
+            result="+4",
+            session_id=SESSION,
+            ml_snap_id=f"{SESSION}-0001",
+            snap_seq=1,
+            executed_play="Flood",
+            ml_decision_id=stale,
+        )
+        flagged = db.conn.execute(
+            "SELECT ml_decision_id, executed_play, play_mismatch FROM snaps WHERE id = ?",
+            (row,),
+        ).fetchone()
+        assert flagged["ml_decision_id"] == owner
+        assert flagged["executed_play"] == "Flood"
+        assert flagged["play_mismatch"] == 1
+        warnings = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "cfb_coach.db" and record.levelno == logging.WARNING
+        ]
+        assert len(warnings) == 1
+        assert "play mismatch" in warnings[0]
+        assert "executed_play=Flood" in warnings[0]
+        assert "final_play=Mesh" in warnings[0]
+
+        db.update_snap(row, executed_play="Mesh")
+        matched = db.conn.execute(
+            "SELECT play_mismatch FROM snaps WHERE id = ?", (row,)
+        ).fetchone()
+        assert matched["play_mismatch"] == 0
+        assert len(warnings) == 1
+
+        unknown_owner = db.log_ml_decision(
+            {
+                "decision_ts": "t",
+                "game_id": SESSION,
+                "session_id": SESSION,
+                "snap_id": f"{SESSION}-0003",
+                "snap_seq": 3,
+                "mode": "heuristic",
+                "final_pick": {"formation": "Gun Bunch", "play": "Mesh"},
+            }
+        )
+        unknown = db.log_snap(
+            opponent_id="cpu",
+            side="offense",
+            situation_raw="3rd and 4",
+            our_call="Gun Bunch — Mesh",
+            result="incomplete",
+            session_id=SESSION,
+            ml_snap_id=f"{SESSION}-0003",
+            snap_seq=3,
+            ml_decision_id=unknown_owner,
+        )
+        blank = db.conn.execute(
+            "SELECT ml_decision_id, executed_play, play_mismatch FROM snaps WHERE id = ?",
+            (unknown,),
+        ).fetchone()
+        assert blank["ml_decision_id"] == unknown_owner
+        assert blank["executed_play"] is None
+        assert blank["play_mismatch"] is None
+        still = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "cfb_coach.db" and record.levelno == logging.WARNING
+        ]
+        assert still == warnings
     finally:
         db.close()
