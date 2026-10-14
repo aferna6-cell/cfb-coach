@@ -295,7 +295,10 @@ class TestDesigner(_Isolated):
         )
 
     def test_offense_pair_notes_list_every_evaluated_conflict(self) -> None:
-        path = Path("cfb_coach/data/madden27/notes/offense_primitive_pair_conflicts.md")
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "cfb_coach/data/madden27/notes/offense_primitive_pair_conflicts.md"
+        )
         text = path.read_text(encoding="utf-8")
         verdicts = offense_pair_verdicts()
         self.assertEqual(len(verdicts), 6)

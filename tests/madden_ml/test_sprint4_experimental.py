@@ -445,7 +445,8 @@ class ResearchRefreshTests(unittest.TestCase):
     def test_dry_run_preserves_active(self) -> None:
         from cfb_coach.madden import research_refresh
 
-        before = Path("research/madden27.json").read_text(encoding="utf-8")
+        research = Path(__file__).resolve().parents[2] / "research" / "madden27.json"
+        before = research.read_text(encoding="utf-8")
         with mock.patch.object(
             research_refresh,
             "_fetch",
@@ -459,7 +460,7 @@ class ResearchRefreshTests(unittest.TestCase):
             },
         ):
             result = research_refresh.run_research_refresh(dry_run=True, open_pr=False)
-        after = Path("research/madden27.json").read_text(encoding="utf-8")
+        after = research.read_text(encoding="utf-8")
         self.assertEqual(before, after)
         self.assertTrue(result.get("ok"))
         self.assertTrue(result.get("active_research_preserved"))
