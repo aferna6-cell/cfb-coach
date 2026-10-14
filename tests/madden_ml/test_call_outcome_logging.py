@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 from cfb_coach.db import CoachDB
+from cfb_coach.live_server import LivePlayController
 from cfb_coach.madden.model.call_outcome_log import (
     LINKED,
     NO_SNAP_RECORDED,
@@ -24,6 +25,9 @@ from cfb_coach.madden.model.call_outcome_log import (
     record_session_run_config,
     yards_for_log,
 )
+from cfb_coach.madden.model.inference import resolve_mode
+from cfb_coach.madden.model.schema import ML_LATENCY_BUDGET_MS, CoachingMode
+from cfb_coach.madden.situation import parse_madden_situation
 from cfb_coach.madden.model.data_layer import SHADOW_FEATURE_FIELDS
 from cfb_coach.madden.model.features import pre_snap_feature_names
 from cfb_coach.madden.model.identity import LiveDecisionTracker
@@ -645,5 +649,229 @@ def test_run_config_logs_mode_model_flags_commit_and_playbook(tmp_path: Path) ->
         assert row["playbook_version"] == playbook_version_of(db)
         assert "rev3" in row["playbook_version"]
         assert "rev2" in row["playbook_version"]
+    finally:
+        db.close()
+
+
+class _LiveCall:
+    def __init__(self, adjustment_id: str | None):
+        self.side = "offense"
+        self.formation = "Gun Bunch"
+        self.play = "Mesh"
+        self.macro = None
+        self.adjustment = (
+            {"id": adjustment_id, "label": adjustment_id} if adjustment_id else None
+        )
+
+    def format(self) -> str:
+        return "Gun Bunch — Mesh"
+
+
+def _live(tmp_path: Path, adjustment_id: str | None):
+    db = _open(tmp_path / "madden27.db")
+    ctrl = LivePlayController(
+        db=db,
+        opponent_id="cpu",
+        make_call=lambda sit, **_kwargs: _LiveCall(adjustment_id),
+        parse_situation=parse_madden_situation,
+        learn_summary=lambda: "",
+        brand="Madden 27 Franchise",
+        cpu_only=True,
+        enable_execution_verify=True,
+        session_id=SESSION,
+    )
+    return db, ctrl
+
+
+def _pair(db: CoachDB):
+    snap = db.conn.execute("SELECT * FROM snaps ORDER BY id DESC LIMIT 1").fetchone()
+    outcome = db.conn.execute(
+        "SELECT * FROM ml_outcomes WHERE snap_id = ?",
+        (snap["ml_snap_id"],),
+    ).fetchone()
+    return snap, outcome
+
+
+def test_update_snap_cannot_write_executed_adjustment_id(tmp_path: Path) -> None:
+    db = _open(tmp_path / "madden27.db")
+    try:
+        row_id = db.log_snap(
+            opponent_id="cpu",
+            side="offense",
+            situation_raw="1st and 10",
+            our_call="Gun Bunch — Mesh",
+            result="+4",
+            session_id=SESSION,
+            ml_snap_id=f"{SESSION}-0001",
+            recommended_adjustment_id="HOT",
+            executed_adjustment_id="SLIDE",
+            adjustment_confirmed=False,
+        )
+        db.update_snap(
+            row_id,
+            result="+5",
+            executed_adjustment_id="SLIDE",
+            accepted="true",
+        )
+        snap = db.conn.execute("SELECT * FROM snaps WHERE id = ?", (row_id,)).fetchone()
+        assert snap["result"] == "+5"
+        assert snap["accepted"] == "true"
+        assert snap["recommended_adjustment_id"] == "HOT"
+        assert snap["executed_adjustment_id"] is None
+    finally:
+        db.close()
+
+
+def test_live_loop_confirmed_adjustment_is_logged(tmp_path: Path) -> None:
+    db, ctrl = _live(tmp_path, "SLIDE")
+    try:
+        assert resolve_mode(db) is CoachingMode.HEURISTIC
+        assert ML_LATENCY_BUDGET_MS == 150
+        ctrl.call_only(
+            "1&10 my 25",
+            game_clock="12:00",
+            quarter=2,
+            score_us=7,
+            score_them=0,
+            score_set=True,
+        )
+        logged = ctrl.result_and_call(
+            outcome="+8",
+            sit_raw="2&2 my 33",
+            game_clock="11:20",
+            quarter=2,
+            score_us=7,
+            score_them=0,
+            score_set=True,
+            executed_status="used_recommended",
+            applied_recommended_action=True,
+        )
+        assert logged["ok"]
+        snap, outcome = _pair(db)
+        for row in (snap, outcome):
+            assert row["accepted"] == "true"
+            assert row["recommended_adjustment_id"] == "SLIDE"
+            assert row["executed_adjustment_id"] == "SLIDE"
+            assert row["drive_id"] == "1"
+            assert row["game_clock"] == "12:00"
+        assert resolve_mode(db) is CoachingMode.HEURISTIC
+    finally:
+        db.close()
+
+
+def test_live_loop_unconfirmed_adjustment_stays_a_recommendation(tmp_path: Path) -> None:
+    db, ctrl = _live(tmp_path, "SLIDE")
+    try:
+        ctrl.call_only("1&10 my 25", game_clock="9:00", quarter=1)
+        logged = ctrl.result_and_call(
+            outcome="+4",
+            sit_raw="2&6 my 29",
+            quarter=1,
+            executed_status="unknown",
+            applied_recommended_action=False,
+        )
+        assert logged["ok"]
+        snap, outcome = _pair(db)
+        for row in (snap, outcome):
+            assert row["accepted"] == "unknown"
+            assert row["recommended_adjustment_id"] == "SLIDE"
+            assert row["executed_adjustment_id"] is None
+            assert row["drive_id"] == "1"
+            assert row["game_clock"] == "9:00"
+    finally:
+        db.close()
+
+
+def test_live_loop_without_a_recommendation_leaves_execution_empty(tmp_path: Path) -> None:
+    db, ctrl = _live(tmp_path, None)
+    try:
+        ctrl.call_only("1&10 my 40 clock 5:15", quarter=3)
+        logged = ctrl.result_and_call(
+            outcome="+3",
+            sit_raw="2&7 my 43",
+            quarter=3,
+            executed_status="used_recommended",
+            applied_recommended_action=True,
+        )
+        assert logged["ok"]
+        snap, outcome = _pair(db)
+        for row in (snap, outcome):
+            assert row["recommended_adjustment_id"] is None
+            assert row["executed_adjustment_id"] is None
+            assert row["accepted"] == "true"
+            assert row["drive_id"] == "1"
+            assert row["game_clock"] == "5:15"
+    finally:
+        db.close()
+
+
+def test_live_loop_fills_snap_and_outcome_fields(tmp_path: Path) -> None:
+    db, ctrl = _live(tmp_path, "HOT")
+    try:
+        assert db.get_meta("ml_mode") is None
+        ctrl.call_only(
+            "1&10 my 25",
+            game_clock="8:00",
+            quarter=4,
+            score_us=14,
+            score_them=7,
+            score_set=True,
+        )
+        first = ctrl.result_and_call(
+            outcome="td",
+            sit_raw="1&10 my 25",
+            game_clock="6:30",
+            quarter=4,
+            score_us=14,
+            score_them=7,
+            score_set=True,
+            executed_status="used_recommended",
+            applied_recommended_action=True,
+        )
+        second = ctrl.result_and_call(
+            outcome="+4",
+            sit_raw="2&6 my 40",
+            game_clock="6:00",
+            quarter=4,
+            score_us=20,
+            score_them=7,
+            score_set=True,
+            executed_status="used_recommended",
+            applied_recommended_action=True,
+        )
+        assert first["ok"] and second["ok"]
+        rows = db.conn.execute(
+            """
+            SELECT s.drive_id, s.game_clock, s.accepted, s.recommended_adjustment_id,
+                   s.executed_adjustment_id, s.result,
+                   o.drive_id AS outcome_drive, o.game_clock AS outcome_clock,
+                   o.accepted AS outcome_accepted,
+                   o.recommended_adjustment_id AS outcome_recommended,
+                   o.executed_adjustment_id AS outcome_executed
+            FROM snaps s
+            JOIN ml_outcomes o ON o.snap_id = s.ml_snap_id
+            ORDER BY s.id
+            """
+        ).fetchall()
+        assert len(rows) == 2
+        assert rows[0]["result"] == "td"
+        assert rows[1]["result"] == "+4"
+        for row in rows:
+            assert row["accepted"] == "true"
+            assert row["outcome_accepted"] == "true"
+            assert row["recommended_adjustment_id"] == "HOT"
+            assert row["outcome_recommended"] == "HOT"
+            assert row["executed_adjustment_id"] == "HOT"
+            assert row["outcome_executed"] == "HOT"
+            assert row["drive_id"]
+            assert row["game_clock"]
+            assert row["outcome_drive"] == row["drive_id"]
+            assert row["outcome_clock"] == row["game_clock"]
+        assert rows[0]["drive_id"] == "1"
+        assert rows[0]["game_clock"] == "8:00"
+        assert rows[1]["drive_id"] == "2"
+        assert rows[1]["game_clock"] == "6:30"
+        assert resolve_mode(db) is CoachingMode.HEURISTIC
+        assert ML_LATENCY_BUDGET_MS == 150
     finally:
         db.close()

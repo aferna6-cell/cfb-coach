@@ -603,7 +603,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     print("  Live look only with: showing / live / pre-snap / aligned (e.g. 'showing cover 2 man')")
     print("  A play or result with no down (mesh, 4 verts, cover 2, +7, td, int) is the last snap, not a new call. undo removes it.")
     print("  Score (optional, us-them): --score 21-14, or `score 21-14` / `score clear` mid-game.")
-    print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. Close early games stay neutral.")
+    print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. `clock 12:00` is stored on the snap.")
     macros_on = _session_live_macros(args)
 
     def _active_now() -> dict:
@@ -785,6 +785,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )
+            snap_book.assign_drive(sit)
             _maybe_shadow(db, sit, call, oid)
             print(call.headline())
             print(call.format())

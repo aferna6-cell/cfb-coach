@@ -90,6 +90,14 @@ _PENALTY_ACCEPTED = re.compile(
     re.I,
 )
 _PENALTY_VALUES = frozenset({"no_penalty", "accepted", "declined"})
+_NOT_A_RECOMMENDATION = frozenset({
+    "none",
+    "null",
+    "no adj",
+    "no adjustment",
+})
+_DRIVE_END_TEXT = re.compile(r"\b(?:punt|safety|field\s*goal|fg)\b", re.I)
+_CLOCK_TEXT = re.compile(r"^(\d{1,2}):(\d{2})$")
 
 
 def _blank(value: Any) -> bool:
@@ -234,17 +242,27 @@ def _mapping(decision: Any) -> dict[str, Any]:
     return {}
 
 
+def _recommendation_token(value: Any) -> str | None:
+    """A shown adjustment id. ``none`` and ``No adj`` are not recommendations."""
+    token = _text(value)
+    if token is None:
+        return None
+    if token.lower().replace("_", " ").replace("-", " ") in _NOT_A_RECOMMENDATION:
+        return None
+    return token
+
+
 def recommended_adjustment_id(decision: Any) -> str | None:
     """The adjustment the coach showed. This is not an execution."""
     payload = _mapping(decision)
     macro = payload.get("macro") or {}
     if isinstance(macro, dict):
-        macro_id = _text(macro.get("macro_id") or macro.get("id"))
+        macro_id = _recommendation_token(macro.get("macro_id") or macro.get("id"))
         if macro_id:
             return macro_id
     final = payload.get("final_pick") or {}
     if isinstance(final, dict):
-        adjustment = _text(final.get("adjustment_id"))
+        adjustment = _recommendation_token(final.get("adjustment_id"))
         if adjustment:
             return adjustment
     return None
@@ -256,19 +274,80 @@ def recommended_from_call(call: Any) -> str | None:
         return None
     adjustment = getattr(call, "adjustment", None)
     if isinstance(adjustment, dict):
-        token = _text(adjustment.get("id"))
+        token = _recommendation_token(adjustment.get("id"))
         if token:
             return token
     macro = getattr(call, "macro", None)
-    token = _text(macro)
+    token = _recommendation_token(macro)
     if token:
         return token
     action = getattr(call, "ml_offense_action", None)
     if isinstance(action, dict):
         kind = str(action.get("kind") or "").strip().lower()
         if kind and kind != "none":
-            return _text(action.get("id"))
+            return _recommendation_token(action.get("id"))
     return None
+
+
+def normalize_game_clock(raw: str | None) -> str | None:
+    """``m:ss`` for a labeled or bare clock. Anything else stays unknown."""
+    from cfb_coach.situation import parse_clock_seconds
+
+    token = _text(raw)
+    if token is None:
+        return None
+    match = _CLOCK_TEXT.fullmatch(token)
+    if match:
+        minutes, seconds = int(match.group(1)), int(match.group(2))
+        if seconds >= 60 or minutes > 15:
+            return None
+        return f"{minutes}:{seconds:02d}"
+    seconds = parse_clock_seconds(token)
+    if seconds is None and token.isdigit():
+        seconds = parse_clock_seconds(f"clock {token}")
+    return format_game_clock(seconds)
+
+
+def acceptance_for_log(
+    *,
+    executed_status: str | None = None,
+    executed_play: str | None = None,
+    recommended_play: str | None = None,
+    explicit: str | None = None,
+) -> str:
+    """``unknown`` until the user confirms the recommended play.
+
+    Displaying a call does not accept it. ``true`` means they confirmed that
+    play. ``false`` means they confirmed a different play. The value is stored
+    either way, including ``unknown``.
+    """
+    token = _text(explicit)
+    if token is not None:
+        lowered = token.lower()
+        if lowered in {"true", "false", "unknown"}:
+            return lowered
+        if lowered in {"yes", "1"}:
+            return "true"
+        if lowered in {"no", "0"}:
+            return "false"
+    status = (executed_status or "").strip().lower()
+    played = _text(executed_play)
+    shown = _text(recommended_play)
+    if status == "identified" and played and shown:
+        return "true" if played == shown else "false"
+    return "unknown"
+
+
+def result_ends_drive(result: str | None, note: str | None = None) -> bool:
+    """A score, turnover, punt, or failed fourth down starts the next drive."""
+    if note and "turnover on downs" in note.lower():
+        return True
+    text = (result or "").strip()
+    if not text:
+        return False
+    if parse_outcome(text).kind in {"td", "int", "fumble"}:
+        return True
+    return _DRIVE_END_TEXT.search(text) is not None
 
 
 def executed_adjustment_for_log(

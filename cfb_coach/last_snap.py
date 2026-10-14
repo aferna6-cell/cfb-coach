@@ -206,6 +206,7 @@ class _Undo:
     ml_snap_id: str | None = None
     ml_decision_id: int | None = None
     prev_ml_outcome: dict[str, Any] | None = None
+    drive_seq: int = 1
 
 
 @dataclass
@@ -229,7 +230,38 @@ class LastSnapBook:
     ml_decision_id: int | None = None
     data_source: str = "live"
     opp_look: str | None = None
+    drive_seq: int = 1
     _undos: list[_Undo] = field(default_factory=list)
+
+    def assign_drive(self, sit: Any) -> str | None:
+        """Stamp the current drive onto ``sit``. An explicit id wins.
+
+        A situation with no drive id keeps this session's drive. The counter
+        advances only after a logged result ends the drive.
+        """
+        if sit is None:
+            return None
+        extras = getattr(sit, "extras", None)
+        if not isinstance(extras, dict):
+            extras = {}
+            try:
+                sit.extras = extras
+            except Exception:  # noqa: BLE001
+                return None
+        from cfb_coach.madden.model.call_outcome_log import drive_id_from_text
+
+        explicit = extras.get("drive_id")
+        if explicit is None or (isinstance(explicit, str) and not explicit.strip()):
+            explicit = drive_id_from_text(str(getattr(sit, "raw", "") or ""))
+        if explicit is not None and str(explicit).strip():
+            token = str(explicit).strip()
+            extras["drive_id"] = token
+            if token.isdigit():
+                self.drive_seq = max(1, int(token))
+            return token
+        token = str(max(1, int(self.drive_seq or 1)))
+        extras["drive_id"] = token
+        return token
 
     def remember_call(
         self,
@@ -270,6 +302,7 @@ class LastSnapBook:
         if getattr(sit, "score_us", None) is not None:
             self.spot.score_us = sit.score_us
             self.spot.score_them = sit.score_them
+        self.assign_drive(sit)
 
     def stamp_situation(self, sit: Any) -> None:
         """Fill a new situation from the ball spot when the line left a field out."""
@@ -428,6 +461,7 @@ class LastSnapBook:
                         outcome=prev.get("outcome"),
                         replace=True,
                     )
+        self.drive_seq = frame.drive_seq
         self.logged_id = frame.logged_id
         self.result = frame.result
         self.concept = frame.concept
@@ -481,6 +515,51 @@ class LastSnapBook:
         )
         self.db.conn.commit()
 
+    def _log_live_outcome(
+        self,
+        *,
+        result: str | None,
+        executed_status: str,
+        executed_formation: str | None,
+        executed_play: str | None,
+        executed_verification: str,
+        ctx: dict[str, Any],
+        accepted: str,
+        recommended: str | None,
+        logged_yards: int | None,
+        logged_penalty: str | None,
+    ) -> None:
+        """Write the same pre-snap fields onto the outcome when this snap has an id.
+
+        The adjustment is not marked executed here. ``executed_adjustment_id``
+        stays empty unless a later confirm goes through
+        ``executed_adjustment_for_log(confirmed=True)``.
+        """
+        if not self.ml_snap_id or not hasattr(self.db, "log_ml_outcome"):
+            return
+        self.db.log_ml_outcome(
+            snap_id=self.ml_snap_id,
+            game_id=self.session_id,
+            decision_id=self.ml_decision_id,
+            executed_status=executed_status,
+            executed_formation=executed_formation,
+            executed_play=executed_play,
+            executed_verification=executed_verification,
+            outcome={"result": result} if result else None,
+            yards=logged_yards,
+            penalty=logged_penalty,
+            drive_id=ctx.get("drive_id"),
+            quarter=ctx.get("quarter"),
+            game_clock=ctx.get("game_clock"),
+            score_for=ctx.get("score_for"),
+            score_against=ctx.get("score_against"),
+            accepted=accepted,
+            recommended_adjustment_id=recommended,
+            executed_adjustment_id=recommended,
+            adjustment_confirmed=False,
+            replace=True,
+        )
+
     def _record(self, spec: dict[str, Any], *, inherit_sit_look: bool) -> str:
         from cfb_coach.game_score import snap_notes_for
         from cfb_coach.tendency import mild_bump_concept, mild_bump_coverage, situation_bucket
@@ -530,14 +609,21 @@ class LastSnapBook:
         executed_verification = spec.get("executed_verification") or "unknown"
 
         from cfb_coach.madden.model.call_outcome_log import (
+            acceptance_for_log,
             coerce_logged_yards,
             context_from_situation,
             penalty_for_log,
             recommended_from_call,
         )
 
+        self.assign_drive(sit)
         ctx = context_from_situation(sit)
         recommended = recommended_from_call(self.call)
+        accepted = acceptance_for_log(
+            executed_status=executed_status,
+            executed_play=executed_play,
+            recommended_play=getattr(self.call, "play", None),
+        )
         logged_yards = coerce_logged_yards(result, None)
         logged_penalty = penalty_for_log(result, None)
         inserted = self.logged_id is None
@@ -583,6 +669,7 @@ class LastSnapBook:
                 game_clock=ctx.get("game_clock"),
                 score_for=ctx.get("score_for"),
                 score_against=ctx.get("score_against"),
+                accepted=accepted,
                 recommended_adjustment_id=recommended,
                 yards=logged_yards,
                 penalty=logged_penalty,
@@ -604,6 +691,7 @@ class LastSnapBook:
                 game_clock=ctx.get("game_clock"),
                 score_for=ctx.get("score_for"),
                 score_against=ctx.get("score_against"),
+                accepted=accepted,
                 recommended_adjustment_id=recommended,
                 yards=logged_yards,
                 penalty=logged_penalty,
@@ -640,6 +728,7 @@ class LastSnapBook:
                     }
             except Exception:  # noqa: BLE001
                 prev_ml_outcome = None
+        prior_drive = self.drive_seq
         self._undos.append(_Undo(
             snap_id=self.logged_id,
             inserted=inserted,
@@ -653,7 +742,25 @@ class LastSnapBook:
             ml_snap_id=self.ml_snap_id,
             ml_decision_id=self.ml_decision_id,
             prev_ml_outcome=prev_ml_outcome,
+            drive_seq=prior_drive,
         ))
+        self._log_live_outcome(
+            result=result,
+            executed_status=executed_status,
+            executed_formation=executed_formation,
+            executed_play=executed_play,
+            executed_verification=executed_verification,
+            ctx=ctx,
+            accepted=accepted,
+            recommended=recommended,
+            logged_yards=logged_yards,
+            logged_penalty=logged_penalty,
+        )
+        if inserted:
+            from cfb_coach.madden.model.call_outcome_log import result_ends_drive
+
+            if result_ends_drive(result, note):
+                self.drive_seq = prior_drive + 1
         self.wrote = True
         bits = [b for b in (result, concept, coverage) if b]
         head = "logged last snap: " + " | ".join(bits) if bits else "logged last snap"

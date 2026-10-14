@@ -641,20 +641,27 @@ class LivePlayController:
 
                 parsed = parse_outcome(closed.get("result") or outcome_raw)
                 from cfb_coach.madden.model.call_outcome_log import (
+                    acceptance_for_log,
                     context_from_situation,
+                    executed_adjustment_for_log,
                     recommended_from_call,
                 )
 
                 ctx = context_from_situation(self.last_sit)
+                recommended = recommended_from_call(self.last_call)
                 confirmed_adjustment = bool(
                     applied_recommended_action
                     and (closed.get("executed_status") or "") == "identified"
                     and (closed.get("executed_play") or "") == getattr(self.last_call, "play", None)
                 )
-                shown_adjustment = None
-                adjustment = getattr(self.last_call, "adjustment", None)
-                if isinstance(adjustment, dict):
-                    shown_adjustment = adjustment.get("id")
+                accepted = acceptance_for_log(
+                    executed_status=closed.get("executed_status"),
+                    executed_play=closed.get("executed_play"),
+                    recommended_play=getattr(self.last_call, "play", None),
+                )
+                executed_id = executed_adjustment_for_log(
+                    recommended, confirmed=confirmed_adjustment
+                )
                 self.db.log_ml_outcome(
                     snap_id=ml_snap_id,
                     game_id=self.session_id or None,
@@ -675,8 +682,9 @@ class LivePlayController:
                     game_clock=ctx.get("game_clock"),
                     score_for=ctx.get("score_for"),
                     score_against=ctx.get("score_against"),
-                    recommended_adjustment_id=recommended_from_call(self.last_call),
-                    executed_adjustment_id=shown_adjustment if confirmed_adjustment else None,
+                    accepted=accepted,
+                    recommended_adjustment_id=recommended,
+                    executed_adjustment_id=recommended,
                     adjustment_confirmed=confirmed_adjustment,
                     outcome={
                         "result": closed.get("result"),
@@ -685,13 +693,7 @@ class LivePlayController:
                         "coverage_seen": book.coverage,
                         "concept_seen": book.concept,
                         "executed_macro": closed.get("executed_macro"),
-                        "executed_adjustment_id": (
-                            (getattr(self.last_call, "adjustment", None) or {}).get("id")
-                            if applied_recommended_action
-                            and (closed.get("executed_status") or "") == "identified"
-                            and (closed.get("executed_play") or "") == getattr(self.last_call, "play", None)
-                            else None
-                        ),
+                        "executed_adjustment_id": executed_id,
                         "offense_action_explicitly_confirmed": bool(
                             applied_recommended_action
                             and (closed.get("executed_status") or "") == "identified"
@@ -779,6 +781,7 @@ class LivePlayController:
         score_set: bool = False,
         request_key: str | None = None,
         opp_look: Any = _OMITTED_LOOK,
+        game_clock: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -801,6 +804,7 @@ class LivePlayController:
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
+            self._stamp_live_context(sit, game_clock)
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             self._book().remember_call(
@@ -816,6 +820,18 @@ class LivePlayController:
             self.default_side = sit.side
             out = {"ok": True, "call_text": self.call_text, "heard": heard, "state": self.state()}
             return self._idempotency_put(request_key, "/api/call", out)
+
+    def _stamp_live_context(self, sit: Any, game_clock: str | None) -> None:
+        """Drive and clock for the snap about to be logged. The call is already made."""
+        from cfb_coach.madden.model.call_outcome_log import normalize_game_clock
+
+        self._book().assign_drive(sit)
+        token = normalize_game_clock(game_clock)
+        if token is None:
+            return
+        extras = getattr(sit, "extras", None)
+        if isinstance(extras, dict):
+            extras["game_clock"] = token
 
     def result_and_call(
         self,
@@ -836,6 +852,7 @@ class LivePlayController:
         confirmed_no_adjustment: bool = False,
         request_key: str | None = None,
         opp_look: Any = _OMITTED_LOOK,
+        game_clock: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -889,6 +906,7 @@ class LivePlayController:
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
+            self._stamp_live_context(sit, game_clock)
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             book.remember_call(
@@ -1154,6 +1172,8 @@ def render_live_html(ctrl: LivePlayController) -> str:
         <option value="4">4th</option>
         <option value="5">OT</option>
       </select>
+      <label title="Game clock for this snap. Blank stays unknown.">clock</label>
+      <input id="game-clock" placeholder="12:00" inputmode="numeric" style="width:4.5rem"/>
       <label title="Our score. Sticks until you change it. Us-them, not the final winner-first score.">us</label>
       <input type="number" id="score-us" min="0" max="99" placeholder="—" value="{_esc(us_v)}"/>
       <label title="Their score">them</label>
@@ -1600,6 +1620,7 @@ $("btn-submit").addEventListener("click", async () => {{
         applied_recommended_action: !!($("action-applied") && $("action-applied").checked),
         confirmed_no_adjustment: !!($("no-action-confirmed") && $("no-action-confirmed").checked),
         opp_look: opponentLook(),
+        game_clock: ($("game-clock").value || "").trim() || null,
       }};
       return await apiAction("/api/result_call", body);
     }});
@@ -1640,6 +1661,7 @@ $("btn-call-only").addEventListener("click", async () => {{
       sit: buildSit(), side: $("side").value, quarter: $("quarter").value,
       score_us: $("score-us").value, score_them: $("score-them").value,
       opp_look: opponentLook(),
+      game_clock: ($("game-clock").value || "").trim() || null,
     }}));
     if (!data) return;
     if ($("action-applied")) $("action-applied").checked = false;
@@ -1785,6 +1807,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                         score_set=("score_us" in body or "score_them" in body),
                         request_key=body.get("idempotency_key") or body.get("request_key"),
                         opp_look=_posted_opp_look(body),
+                        game_clock=body.get("game_clock"),
                     ))
                     return
                 if path == "/api/undo":
@@ -1819,6 +1842,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             confirmed_no_adjustment=body.get("confirmed_no_adjustment") is True,
                             request_key=body.get("idempotency_key") or body.get("request_key"),
                             opp_look=_posted_opp_look(body),
+                            game_clock=body.get("game_clock"),
                         ),
                     )
                     return
