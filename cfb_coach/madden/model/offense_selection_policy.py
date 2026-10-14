@@ -139,6 +139,23 @@ def choose_model_play(
                 penalty += min(0.14, 0.05 + .015 * (screen_exposure - 2))
             if sum(p == key for p in last4) >= 3:
                 penalty += 0.055
+            # Short-yardage run exposure: let passes/PA/RPO compete when the
+            # recent call list is run-heavy. Not a fixed quota or forced flip.
+            try:
+                down_i = int(getattr(sit, "down", 0) or 0)
+                dist_i = int(getattr(sit, "distance", 99) or 99)
+            except (TypeError, ValueError):
+                down_i, dist_i = 0, 99
+            short_yardage = bool(
+                getattr(sit, "short_yardage", False)
+                or (down_i in (3, 4) and dist_i <= 2)
+            )
+            if short_yardage and fam == "run":
+                run_exposure = family_count.get("run", 0)
+                if run_exposure >= 3:
+                    penalty += min(0.06, 0.015 * (run_exposure - 2))
+                if last4 and _play_family(last4[0][1]) == "run":
+                    penalty += 0.022
         situation_delta, situation_reason = _situational_adjustment(key[1], sit)
         # Do not discard a high-confidence/high-margin finding for cosmetic
         # variety. In contrast, low-data inflated scores are not sacrosanct.

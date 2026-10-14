@@ -104,16 +104,24 @@ A defensive snap is verified when it has a `concept_seen` label from a reviewed 
 
 `eval-defense` holds out by match, compares the model with the situation baseline, and prints bootstrap 95% CIs, a per-situation breakdown, and a gate verdict. The gate passes only when the CI lies entirely above 0 and scoring p95 is under 150 ms.
 
-`ml defense-experimental --enable` refuses unless the installed artifact already carries that passing report. It does not train.
+`ml defense-experimental --enable` refuses unless the installed artifact already carries that passing report **and** has at least 40 verified supervised defensive snaps. It does not train. `auto_promote` is always false.
+
+`ml audit-defense` prints candidate vs verified counts by game and exclusion reasons. Aggregates such as “178 snaps” are candidates, not automatic supervised examples.
+
+`ml wildcard-postgame` reconciles issue #75 fields (INT counts, drive/clock/score gaps, unarmed macros) without inventing snaps.
 
 `ml eval-adjustments` reports recommended vs applied (executed or accepted) vs outcome on each side, with bootstrap CIs. A side with fewer than 8 snaps prints a small-n warning. When application was not recorded the applied count is `unknown`, not zero.
 
 ```bash
+python3 -m cfb_coach ml audit-defense --db "$CFB_COACH_MADDEN_DB"
 python3 -m cfb_coach ml train-defense --out /tmp/defense.json --path snaps.jsonl --seed 7
 python3 -m cfb_coach ml eval-defense --model /tmp/defense.json --path snaps.jsonl --seed 7
 python3 -m cfb_coach ml defense-experimental --enable --db "$CFB_COACH_MADDEN_DB"
 python3 -m cfb_coach ml eval-adjustments --path adjustments.jsonl --seed 7
+python3 -m cfb_coach ml wildcard-postgame --db "$CFB_COACH_MADDEN_DB" --issue-ints 3 --user-ints 4
 ```
+
+See `docs/WILDCARD_DEFENSE_ML_GO_NOGO.md` for the experimental defense NO-GO and launch/rollback commands.
 
 ## Sealed pipeline
 

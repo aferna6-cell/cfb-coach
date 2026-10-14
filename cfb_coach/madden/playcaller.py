@@ -285,7 +285,16 @@ def _offense_pool(
         run, deep = is_run(p), is_deep(p)
         dist = sit.distance or 10
         if short:
-            b += SIT_BONUS if run else 0.0
+            # Runs stay viable, but legitimate short-yardage passes, play-action,
+            # and RPOs receive a competing bonus so the pool is not run-only.
+            if run:
+                b += SIT_BONUS
+            elif not deep:
+                low = p.lower()
+                if "rpo" in low or re.search(r"\bpa\b|play[\s-]*action", low):
+                    b += round(SIT_BONUS * 0.75, 3)
+                else:
+                    b += round(SIT_BONUS * 0.55, 3)
             b -= 0.10 if deep else 0.0
         elif sit.down in (3, 4) and dist >= 7:
             b += SIT_BONUS if not run else -0.20

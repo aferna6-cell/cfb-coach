@@ -87,7 +87,8 @@ SNAP_COLUMNS = {
 _YARDED_KINDS = frozenset({"td", "sack", "int", "fumble"})
 _EXPLICIT_YARDS = re.compile(r"([+-]?\d+)")
 _DRIVE_ID = re.compile(
-    r"\bdrive[\s_]*(?:id|#|no\.?|number)\s*[:=]?\s*([A-Za-z0-9][\w-]*)",
+    r"\bdrive[\s_]*(?:id|#|no\.?|number)?\s*[:=]\s*([A-Za-z0-9][\w-]*)"
+    r"|\bdrive[\s_]*(?:id|#|no\.?|number)\s+([A-Za-z0-9][\w-]*)",
     re.I,
 )
 _NO_PENALTY = re.compile(r"\bno\s+penalty\b|\bno\s+flag\b", re.I)
@@ -195,7 +196,7 @@ def drive_id_from_text(text: str | None) -> str | None:
     match = _DRIVE_ID.search(text or "")
     if match is None:
         return None
-    return match.group(1)
+    return match.group(1) or match.group(2)
 
 
 def format_game_clock(seconds: int | None, raw: str | None = None) -> str | None:

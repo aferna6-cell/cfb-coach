@@ -66,6 +66,23 @@ def _bucket(down: Any, distance: Any, *, red_zone: bool = False, goal_line: bool
     return "early"
 
 
+def _yards_value(row: Mapping[str, Any]) -> int | None:
+    try:
+        return int(row["yards"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _touchdown_allowed(row: Mapping[str, Any], yards: int | None) -> bool:
+    raw = str(row.get("result") or row.get("outcome") or row.get("outcome_kind") or "").lower()
+    if "td" in raw or "touchdown" in raw:
+        # A defensive interception return is not yards-allowed against the call.
+        if any(token in raw for token in ("int", "intercept", "pick")):
+            return False
+        return True
+    return bool(yards is not None and yards >= 40 and row.get("success") is False)
+
+
 def train_defense(
     rows: Sequence[Mapping[str, Any]], *, preverified: bool = False,
 ) -> dict[str, Any]:
@@ -74,6 +91,11 @@ def train_defense(
     ``preverified`` means the caller already applied
     ``defense_verified.VERIFIED_DEFINITION`` and passed only those snaps.
     The default path still uses ``verified_human_rows``.
+
+    The artifact also stores hierarchical explosive- and touchdown-risk tables.
+    Preventing a 40-yard touchdown weighs more than a routine first-down gain.
+    Opponent-specific tables stay separate from the general family/context/play
+    knowledge.
     """
     from cfb_coach.madden.model.defense_intelligence import (
         verified_human_rows, fit_opponent_offense, fit_opponent_outcome_risks,
@@ -82,6 +104,11 @@ def train_defense(
     stats: dict[str, list[int]] = {}
     context: dict[str, list[int]] = {}
     plays: dict[str, list[int]] = {}
+    # [explosives, touchdowns, yards_sum, n] — play-specific when verified.
+    explosive_risk: dict[str, list[float]] = {}
+    td_risk: dict[str, list[float]] = {}
+    expected_yards: dict[str, list[float]] = {}
+    by_game: dict[str, int] = {}
     n = 0
     if preverified:
         verified = [dict(r) for r in rows if str(r.get("side") or "defense").lower() in ("defense", "d")]
@@ -94,28 +121,75 @@ def train_defense(
             continue
         play = str(row.get("executed_play") or row.get("action_play") or "")
         fam = call_family(play)
-        if fam not in FAMILIES or str(row.get("success") or "").lower() not in ("true", "false"):
+        success_raw = row.get("success")
+        if isinstance(success_raw, bool):
+            success_text = "true" if success_raw else "false"
+        else:
+            success_text = str(success_raw if success_raw is not None else "").strip().lower()
+        if fam not in FAMILIES or success_text not in ("true", "false"):
             continue
-        ok = int(str(row["success"]).lower() == "true")
+        ok = int(success_text == "true")
         key = _bucket(row.get("down"), row.get("distance"),
                       red_zone=bool(row.get("red_zone")), goal_line=bool(row.get("goal_line")))
+        yards = _yards_value(row)
+        explosive = int(yards is not None and yards >= 15)
+        touchdown = int(_touchdown_allowed(row, yards))
         for dest, tag in ((stats, fam), (context, key + "|" + fam), (plays, play)):
             count = dest.setdefault(tag, [0, 0])
             count[0] += ok
             count[1] += 1
+        for dest, tag in (
+            (explosive_risk, fam),
+            (explosive_risk, key + "|" + fam),
+            (explosive_risk, play),
+            (td_risk, fam),
+            (td_risk, key + "|" + fam),
+            (td_risk, play),
+        ):
+            slot = dest.setdefault(tag, [0.0, 0.0])
+            if dest is explosive_risk:
+                slot[0] += explosive
+            else:
+                slot[0] += touchdown
+            slot[1] += 1.0
+        if yards is not None:
+            for tag in (fam, key + "|" + fam, play):
+                yslot = expected_yards.setdefault(tag, [0.0, 0.0])
+                yslot[0] += float(yards)
+                yslot[1] += 1.0
+        gid = str(row.get("game_id") or row.get("match_id") or "")
+        if gid:
+            by_game[gid] = by_game.get(gid, 0) + 1
         n += 1
     return {
         "schema": SCHEMA, "type": "defense_stop_model",
         "verification_policy": policy,
+        "objective": "situational_defense.v1",
+        "objective_weights": {
+            "stop": 1.0,
+            "expected_yards": 0.35,
+            "explosive": 0.55,
+            "touchdown": 1.15,
+        },
         "supervised_defensive_snaps": n,
+        "supervised_by_game": dict(sorted(by_game.items())),
         "evidence_quality": "empirical" if n >= 40 else ("limited" if n >= 10 else "prior_driven"),
         "families": stats, "contexts": context, "plays": plays,
+        "explosive_risk": explosive_risk,
+        "touchdown_risk": td_risk,
+        "expected_yards": expected_yards,
         "opponent_tendencies": fit_opponent_offense(verified),
         "opponent_outcome_risks": fit_opponent_outcome_risks(rows),
         "opponent_profiles": fit_opponent_profiles(verified),
-        "verified_human_games": len({str(r["game_id"]) for r in verified}),
+        "verified_human_games": len({str(r.get("game_id") or "") for r in verified if r.get("game_id")}),
         "observational_only": True,
-        "note": "Stop outcomes are observations, not proven counterfactual effects.",
+        "independent_of_offense_artifact": True,
+        "auto_promote": False,
+        "note": (
+            "Stop/explosive/TD outcomes are observations, not proven "
+            "counterfactual effects. Opponent tables stay separate from "
+            "general defensive knowledge."
+        ),
     }
 
 
@@ -143,6 +217,26 @@ def _rate(count: Sequence[int] | None) -> tuple[float, int]:
         return 0.5, 0
     won, total = int(count[0]), int(count[1])
     return (won + PRIOR_STRENGTH * 0.5) / (total + PRIOR_STRENGTH), total
+
+
+def _risk_rate(count: Sequence[float] | None, *, prior: float = 0.12) -> tuple[float, int]:
+    """Shrunk rate for a bad event (explosive or TD). Lower is better on defense."""
+    if not count:
+        return prior, 0
+    bad, total = float(count[0]), float(count[1])
+    if total <= 0:
+        return prior, 0
+    return (bad + PRIOR_STRENGTH * prior) / (total + PRIOR_STRENGTH), int(total)
+
+
+def _expected_yards_rate(count: Sequence[float] | None) -> tuple[float, int]:
+    if not count:
+        return 6.5, 0
+    total_yards, n = float(count[0]), float(count[1])
+    if n <= 0:
+        return 6.5, 0
+    # Shrink toward a modest league-ish allowed average.
+    return (total_yards + PRIOR_STRENGTH * 6.5) / (n + PRIOR_STRENGTH), int(n)
 
 
 # One-hot tokens are football personnel and set labels. They are not editor
@@ -224,9 +318,38 @@ def _score(
     learned, n_family = _rate((model or {}).get("families", {}).get(family or ""))
     specific, n_ctx = _rate((model or {}).get("contexts", {}).get(ctx + "|" + str(family)))
     play_rate, n_play = _rate((model or {}).get("plays", {}).get(play))
+    weights = ((model or {}).get("objective_weights") or {})
+    w_stop = float(weights.get("stop", 1.0))
+    w_yards = float(weights.get("expected_yards", 0.35))
+    w_explosive = float(weights.get("explosive", 0.55))
+    w_td = float(weights.get("touchdown", 1.15))
     # Conservative prior; more verified executions can overcome it.
-    score = 0.20 * math.log(max(0.02, baseline)) + 1.10 * (learned - 0.5)
-    score += 0.75 * (specific - 0.5) + 0.24 * (play_rate - 0.5)
+    score = 0.20 * math.log(max(0.02, baseline)) + 1.10 * w_stop * (learned - 0.5)
+    score += 0.75 * w_stop * (specific - 0.5) + 0.24 * w_stop * (play_rate - 0.5)
+    # Situational defensive objective: conversions matter, but a 40-yard TD
+    # costs more than a routine first-down gain.
+    bucket = _bucket(
+        getattr(sit, "down", None), getattr(sit, "distance", None),
+        red_zone=bool(getattr(sit, "red_zone", False)),
+        goal_line=bool(getattr(sit, "goal_line", False)),
+        two_minute=bool(getattr(sit, "two_minute", False)),
+    )
+    exp_tables = (model or {}).get("explosive_risk") or {}
+    td_tables = (model or {}).get("touchdown_risk") or {}
+    yards_tables = (model or {}).get("expected_yards") or {}
+    exp_rate, n_exp = _risk_rate(
+        exp_tables.get(play) or exp_tables.get(bucket + "|" + str(family)) or exp_tables.get(family or "")
+    )
+    td_rate, n_td = _risk_rate(
+        td_tables.get(play) or td_tables.get(bucket + "|" + str(family)) or td_tables.get(family or ""),
+        prior=0.05,
+    )
+    yards_rate, n_yards = _expected_yards_rate(
+        yards_tables.get(play) or yards_tables.get(bucket + "|" + str(family)) or yards_tables.get(family or "")
+    )
+    score -= w_explosive * (exp_rate - 0.12)
+    score -= w_td * (td_rate - 0.05)
+    score -= w_yards * max(-0.08, min(0.08, (yards_rate - 6.5) / 40.0))
     if eligible and formation not in eligible:
         score -= 0.18
     if sit.goal_line and any(x in formation.lower() for x in ("dime", "dollar", "quarter")):
@@ -257,6 +380,9 @@ def _score(
         "score": round(score, 6),
         "prior_share": baseline, "verified_family_n": n_family,
         "verified_context_n": n_ctx, "verified_play_n": n_play,
+        "explosive_risk": round(exp_rate, 5), "explosive_n": n_exp,
+        "touchdown_risk": round(td_rate, 5), "touchdown_n": n_td,
+        "expected_yards_allowed": round(yards_rate, 3), "expected_yards_n": n_yards,
         "current_offensive_concept_used": intel["live_concept"],
         "football_intelligence": intel,
         "verified_knowledge": verified,

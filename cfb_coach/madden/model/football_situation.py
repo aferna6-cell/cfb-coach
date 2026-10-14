@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from cfb_coach.madden.catalog import is_deep, is_run
-from cfb_coach.madden.model.experimental_model import _play_family
+from cfb_coach.madden.model.experimental_model import _play_concept, _play_family
 
 # Situation families the pregame portfolio must be able to discuss.
 SITUATION_NAMES: tuple[str, ...] = (
@@ -27,8 +27,9 @@ SITUATION_NAMES: tuple[str, ...] = (
     "clock_management",
 )
 
-# Magnitudes below match the Sprint 7 selection policy exactly. Do not retune
-# them silently; tests lock the signs and the two-minute lead/trail split.
+# Magnitudes below are locked by tests for sign and relative ordering.
+# Short-yardage pass/PA/RPO were added so conversion throws compete with runs;
+# do not retune the rest silently. Two-minute lead/trail split stays fixed.
 SELECTION_PRIORS: dict[str, dict[str, Any]] = {
     "third_long_run": {
         "delta": -0.45,
@@ -46,8 +47,23 @@ SELECTION_PRIORS: dict[str, dict[str, Any]] = {
         "claim": "conversion_proxy_not_expected_points",
     },
     "short_yardage_run": {
-        "delta": 0.025,
+        "delta": 0.018,
         "reason": "short-yardage run option",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_pass": {
+        "delta": 0.016,
+        "reason": "short-yardage conversion pass competes with the run",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_play_action": {
+        "delta": 0.017,
+        "reason": "short-yardage play-action when a run look is available",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_rpo": {
+        "delta": 0.015,
+        "reason": "short-yardage RPO keeps a run threat with a quick read",
         "claim": "conversion_proxy_not_expected_points",
     },
     "short_yardage_deep": {
@@ -431,8 +447,19 @@ def _selection_parts(play: str, sit: Any) -> list[dict[str, Any]]:
         if not run and not screen and deep:
             parts.append({"id": "third_long_reachable", **SELECTION_PRIORS["third_long_reachable"]})
     elif d in (3, 4) and yards <= 2:
+        family = _play_family(play)
+        concept = _play_concept(play)
         if run:
             parts.append({"id": "short_yardage_run", **SELECTION_PRIORS["short_yardage_run"]})
+        elif family == "rpo" or concept == "rpo":
+            parts.append({"id": "short_yardage_rpo", **SELECTION_PRIORS["short_yardage_rpo"]})
+        elif concept == "pa":
+            parts.append({
+                "id": "short_yardage_play_action",
+                **SELECTION_PRIORS["short_yardage_play_action"],
+            })
+        elif not deep:
+            parts.append({"id": "short_yardage_pass", **SELECTION_PRIORS["short_yardage_pass"]})
         if deep:
             parts.append({"id": "short_yardage_deep", **SELECTION_PRIORS["short_yardage_deep"]})
     if bool(getattr(sit, "two_minute", False)) and yards >= 4 and run:

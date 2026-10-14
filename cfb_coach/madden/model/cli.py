@@ -1021,15 +1021,25 @@ def cmd_ml_train_defense(args: argparse.Namespace) -> int:
         return 1
     parts = partition_verified(rows)
     verified = [training_view(row) for row in parts["live"] + parts["vod"]]
+    from cfb_coach.madden.model.defense_audit import audit_defensive_training, format_audit
+
+    audit = audit_defensive_training(rows)
+    print(format_audit(audit))
     art = defense.train_defense(verified, preverified=True)
     art["verified_definition"] = format_verified_counts(counts).split("\n", 1)[0].split(": ", 1)[1]
     art["verified_by_source"] = {"live": counts["live"], "vod": counts["vod"]}
     art["verified_snaps"] = counts["total"]
+    art["training_audit"] = {
+        "play_specific_supervised": audit.get("play_specific_supervised"),
+        "verified_by_game": audit.get("verified_by_game"),
+        "exclusion_counts": audit.get("exclusion_counts"),
+    }
     art["eval_report"] = evaluate_defense(verified, seed=int(args.seed))
     art["auto_promote"] = False
     dest = defense.save_model(art, args.out)
     print(f"gate: {art['eval_report']['gate']}")
     print(f"artifact: {dest}")
+    print(f"supervised_by_game: {json.dumps(art.get('supervised_by_game') or {})}")
     print("defense_mode: off")
     print("auto_promote: false")
     return 0
@@ -1066,6 +1076,83 @@ def cmd_ml_eval_defense(args: argparse.Namespace) -> int:
     print(f"ci95: {report['ci95']}")
     print(f"p95_ms: {report['p95_ms']}")
     print("auto_promote: false")
+    print(json.dumps(report, indent=2, default=str))
+    return 0
+
+
+def cmd_ml_audit_defense(args: argparse.Namespace) -> int:
+    """Per-game verified defensive training audit. Never trains or enables."""
+    from cfb_coach.madden.model.defense_audit import audit_defensive_training, format_audit
+
+    rows = _defense_rows(args)
+    report = audit_defensive_training(rows)
+    print(format_audit(report))
+    print(json.dumps(report, indent=2, default=str))
+    return 0 if int(report.get("verified_by_source", {}).get("total") or 0) >= 0 else 1
+
+
+def cmd_ml_wildcard_postgame(args: argparse.Namespace) -> int:
+    """Issue #75 field audit: INTs, drive/clock/score, unarmed macros."""
+    from cfb_coach.madden.model.wildcard_postgame import audit_wildcard_session
+
+    snaps: list[dict[str, Any]] = []
+    decisions: list[dict[str, Any]] = []
+    outcomes: list[dict[str, Any]] = []
+    session: dict[str, Any] = {}
+    for raw in list(getattr(args, "path", None) or []):
+        payload = json.loads(Path(raw).read_text(encoding="utf-8"))
+        if isinstance(payload, list):
+            snaps.extend(row for row in payload if isinstance(row, dict))
+        elif isinstance(payload, dict):
+            snaps.extend(row for row in payload.get("snaps") or [] if isinstance(row, dict))
+            decisions.extend(
+                row for row in payload.get("decisions") or [] if isinstance(row, dict)
+            )
+            outcomes.extend(
+                row for row in payload.get("outcomes") or [] if isinstance(row, dict)
+            )
+            if isinstance(payload.get("session"), dict):
+                session.update(payload["session"])
+    raw_db = getattr(args, "db", None)
+    if raw_db:
+        db = open_explicit_madden_db(Path(raw_db), read_only=True)
+        try:
+            from cfb_coach.madden.model.defense_verified import rows_from_db
+
+            snaps.extend(rows_from_db(db))
+            try:
+                for item in db.conn.execute("SELECT * FROM ml_decisions ORDER BY id ASC"):
+                    decisions.append(dict(item))
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                for item in db.conn.execute("SELECT * FROM ml_outcomes ORDER BY id ASC"):
+                    outcomes.append(dict(item))
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                row = db.conn.execute(
+                    "SELECT * FROM sessions ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                if row is not None:
+                    session.update(dict(row))
+            except Exception:  # noqa: BLE001
+                pass
+        finally:
+            db.close()
+    reported_final = None
+    if getattr(args, "final_us", None) is not None and getattr(args, "final_them", None) is not None:
+        reported_final = {"for": int(args.final_us), "against": int(args.final_them)}
+    report = audit_wildcard_session(
+        snaps=snaps,
+        decisions=decisions,
+        outcomes=outcomes,
+        session=session,
+        reported_final=reported_final,
+        reported_offense_ints=getattr(args, "issue_ints", 3),
+        user_reported_ints=getattr(args, "user_ints", 4),
+        armed_defense_macros=list(getattr(args, "armed_macro", None) or []),
+    )
     print(json.dumps(report, indent=2, default=str))
     return 0
 
@@ -2224,6 +2311,27 @@ def build_ml_subparser(sub: Any) -> None:
     p_ea.add_argument("--db", default=None, help="Optional Madden SQLite path")
     p_ea.add_argument("--seed", type=int, default=7)
     p_ea.set_defaults(func=cmd_ml_eval_adjustments, cli_parser=p_ea)
+
+    p_ad = ml_sub.add_parser(
+        "audit-defense",
+        help="Per-game verified defensive training audit. Does not train or enable",
+    )
+    p_ad.add_argument("--path", action="append", default=[], help="JSONL of defensive snaps")
+    p_ad.add_argument("--db", default=None, help="Optional Madden SQLite path")
+    p_ad.set_defaults(func=cmd_ml_audit_defense, cli_parser=p_ad)
+
+    p_wp = ml_sub.add_parser(
+        "wildcard-postgame",
+        help="Issue #75 postgame audit: INTs, drive/clock/score, unarmed macros",
+    )
+    p_wp.add_argument("--path", action="append", default=[], help="JSON session dump or snap list")
+    p_wp.add_argument("--db", default=None, help="Optional Madden SQLite path")
+    p_wp.add_argument("--issue-ints", type=int, default=3, help="INT count recorded in issue #75")
+    p_wp.add_argument("--user-ints", type=int, default=4, help="INT count reported by the player")
+    p_wp.add_argument("--final-us", type=int, default=None)
+    p_wp.add_argument("--final-them", type=int, default=None)
+    p_wp.add_argument("--armed-macro", action="append", default=[], help="Armed defense macro id")
+    p_wp.set_defaults(func=cmd_ml_wildcard_postgame, cli_parser=p_wp)
 
     p_coord = ml_sub.add_parser(
         "offense-coordinator",

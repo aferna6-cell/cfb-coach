@@ -229,11 +229,15 @@ def test_enable_refuses_without_a_passing_report(tmp_path: Path) -> None:
         tmp_path, home,
     )
     assert refused.returncode != 0
-    assert "no eval report" in refused.stderr
+    assert (
+        "no eval report" in refused.stderr
+        or "insufficient verified training" in refused.stderr
+    )
     db = CoachDB(db_path, seed=mdata.load_seed())
     try:
         assert defense.mode(db) == "off"
         art = json.loads(bare.read_text(encoding="utf-8"))
+        art["supervised_defensive_snaps"] = defense.MIN_HYBRID_SNAPS
         art["eval_report"] = {
             "beats_baseline": True,
             "ci_excludes_0": True,
@@ -245,11 +249,13 @@ def test_enable_refuses_without_a_passing_report(tmp_path: Path) -> None:
         bare.write_text(json.dumps(art), encoding="utf-8")
     finally:
         db.close()
-    enabled = _run(
+    still_refused = _run(
         ["ml", "defense-experimental", "--enable", "--db", str(db_path)],
         tmp_path, home,
     )
-    assert enabled.returncode == 0, enabled.stderr
+    # A fabricated count alone is not enough if auto_promote were set; with a
+    # valid report and enough snaps the opt-in enable is allowed.
+    assert still_refused.returncode == 0, still_refused.stderr
     db = CoachDB(db_path, seed=mdata.load_seed())
     try:
         assert defense.mode(db) == "experimental"

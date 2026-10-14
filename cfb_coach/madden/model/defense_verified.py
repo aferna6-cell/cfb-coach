@@ -381,8 +381,25 @@ def evaluate_defense(
 
 
 def report_allows_enable(model: Mapping[str, Any] | None) -> tuple[bool, str]:
-    """True only when the installed artifact's eval report clears the gate."""
-    report = (model or {}).get("eval_report") if isinstance(model, Mapping) else None
+    """True only when the installed artifact's eval report clears the gate.
+
+    Insufficient verified training refuses promotion even if a tiny synthetic
+    holdout happens to print ``gate: pass``. Experimental mode is never
+    enabled automatically.
+    """
+    from cfb_coach.madden.model.defense_coordinator import MIN_HYBRID_SNAPS
+
+    if not isinstance(model, Mapping) or not model:
+        return False, "no defensive artifact installed"
+    snaps = int(model.get("supervised_defensive_snaps") or model.get("verified_snaps") or 0)
+    if snaps < MIN_HYBRID_SNAPS:
+        return (
+            False,
+            f"insufficient verified training ({snaps} < {MIN_HYBRID_SNAPS}); heuristic stays active",
+        )
+    if model.get("auto_promote") is True:
+        return False, "auto_promote is forbidden for defensive artifacts"
+    report = model.get("eval_report")
     if not isinstance(report, Mapping) or not report:
         return False, "installed artifact has no eval report"
     ci = report.get("ci95")
