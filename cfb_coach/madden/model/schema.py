@@ -96,6 +96,7 @@ LEAKAGE_FIELDS = frozenset(
         "parsed",
         "penalty",
         "snap_link",
+        "orphan_reason",
     }
 )
 
