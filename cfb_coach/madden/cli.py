@@ -59,6 +59,12 @@ def _maybe_shadow(
         if not gid:
             sess = start_session(opponent_id, dynasty=get_session_profile(db), db=db, notes="ml-oneshot")
             gid = sess.session_id
+        try:
+            from cfb_coach.madden.model.call_outcome_log import record_session_run_config
+
+            record_session_run_config(db, gid)
+        except Exception:  # noqa: BLE001 — logging must not break live coaching
+            pass
         tr = tracker or LiveDecisionTracker.from_session(gid, next_seq=next_seq_from_db(db, gid))
         snap_id, seq, _key, is_new = tr.seal_call(
             side=getattr(call, "side", "offense") or "offense",
@@ -91,6 +97,14 @@ def _maybe_shadow(
                 run=is_new,
             )
         tr.bind_decision_row(row_id)
+        try:
+            from cfb_coach.madden.model.call_outcome_log import apply_seal_logging
+
+            apply_seal_logging(
+                db, tr, decision_id=row_id, sit=sit, call=call, is_new=is_new,
+            )
+        except Exception:  # noqa: BLE001 — logging must not break live coaching
+            pass
         return row_id
     except Exception:  # noqa: BLE001 — ML must never break live coaching
         return None

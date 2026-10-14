@@ -529,6 +529,17 @@ class LastSnapBook:
         executed_macro = spec.get("executed_macro")
         executed_verification = spec.get("executed_verification") or "unknown"
 
+        from cfb_coach.madden.model.call_outcome_log import (
+            coerce_logged_yards,
+            context_from_situation,
+            penalty_for_log,
+            recommended_from_call,
+        )
+
+        ctx = context_from_situation(sit)
+        recommended = recommended_from_call(self.call)
+        logged_yards = coerce_logged_yards(result, None)
+        logged_penalty = penalty_for_log(result, None)
         inserted = self.logged_id is None
         prev_row = {
             "result": prev_result,
@@ -553,7 +564,7 @@ class LastSnapBook:
                 down=getattr(sit, "down", None),
                 distance=getattr(sit, "distance", None),
                 yardline=getattr(sit, "yardline", None),
-                quarter=quarter,
+                quarter=quarter if quarter is not None else ctx.get("quarter"),
                 result=result,
                 coverage_seen=coverage,
                 concept_seen=concept,
@@ -568,6 +579,13 @@ class LastSnapBook:
                 executed_verification=executed_verification,
                 ml_decision_id=self.ml_decision_id,
                 data_source=self.data_source,
+                drive_id=ctx.get("drive_id"),
+                game_clock=ctx.get("game_clock"),
+                score_for=ctx.get("score_for"),
+                score_against=ctx.get("score_against"),
+                recommended_adjustment_id=recommended,
+                yards=logged_yards,
+                penalty=logged_penalty,
             )
             self._store_opponent_package(self.logged_id)
         else:
@@ -582,6 +600,13 @@ class LastSnapBook:
                 executed_macro=executed_macro,
                 executed_verification=executed_verification,
                 ml_decision_id=self.ml_decision_id,
+                drive_id=ctx.get("drive_id"),
+                game_clock=ctx.get("game_clock"),
+                score_for=ctx.get("score_for"),
+                score_against=ctx.get("score_against"),
+                recommended_adjustment_id=recommended,
+                yards=logged_yards,
+                penalty=logged_penalty,
             )
             self._store_opponent_package(self.logged_id)
         self.result, self.concept, self.coverage = result, concept, coverage

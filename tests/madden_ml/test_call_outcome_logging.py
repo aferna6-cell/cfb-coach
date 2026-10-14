@@ -1,0 +1,649 @@
+"""Synthetic Madden call/outcome logging.
+
+These tests build databases in a temp directory. They do not read or commit
+a real game, a database file, or an audit row.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import sqlite3
+import subprocess
+from pathlib import Path
+
+from cfb_coach.db import CoachDB
+from cfb_coach.madden.model.call_outcome_log import (
+    LINKED,
+    NO_SNAP_RECORDED,
+    POST_SNAP_LOG_FIELDS,
+    SCHEMA_META_KEY,
+    SCHEMA_VERSION,
+    apply_seal_logging,
+    playbook_version_of,
+    record_session_run_config,
+    yards_for_log,
+)
+from cfb_coach.madden.model.data_layer import SHADOW_FEATURE_FIELDS
+from cfb_coach.madden.model.features import pre_snap_feature_names
+from cfb_coach.madden.model.identity import LiveDecisionTracker
+from cfb_coach.outcome import parse_outcome
+from cfb_coach.situation import Situation
+from cfb_coach.vod_model.flags import use_cli_flags
+
+SESSION = "synthetic-cpu-001"
+
+
+def _seed() -> dict:
+    return {
+        "opponents": {
+            "cpu": {
+                "display_name": "CPU",
+                "team_now": "DET",
+                "skill": "cpu",
+                "confidence": "low",
+            }
+        }
+    }
+
+
+def _open(path: Path) -> CoachDB:
+    return CoachDB(path, seed=_seed())
+
+
+def _columns(path: Path, table: str) -> list[str]:
+    conn = sqlite3.connect(path)
+    try:
+        return [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+    finally:
+        conn.close()
+
+
+def _create_old_madden_db(path: Path) -> None:
+    """A pre-call-outcome Madden file: decisions and snaps, no new columns."""
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO meta (key, value) VALUES ('seeded', 'old');
+        CREATE TABLE snaps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL,
+            opponent_id TEXT NOT NULL,
+            side TEXT NOT NULL,
+            down INTEGER,
+            distance INTEGER,
+            yardline INTEGER,
+            quarter INTEGER,
+            situation_raw TEXT,
+            our_call TEXT,
+            formation TEXT,
+            play TEXT,
+            macro TEXT,
+            result TEXT,
+            coverage_seen TEXT,
+            concept_seen TEXT,
+            notes TEXT,
+            session_id TEXT
+        );
+        CREATE TABLE ml_decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            decision_ts TEXT NOT NULL,
+            game_id TEXT,
+            snap_id TEXT,
+            session_id TEXT,
+            snap_seq INTEGER,
+            mode TEXT NOT NULL,
+            model_version TEXT,
+            policy_version TEXT,
+            policy_source TEXT,
+            heuristic_formation TEXT,
+            heuristic_play TEXT,
+            final_formation TEXT,
+            final_play TEXT,
+            shadow_formation TEXT,
+            shadow_play TEXT,
+            shadow_status TEXT,
+            agree INTEGER,
+            candidates_json TEXT,
+            decision_json TEXT NOT NULL,
+            latency_ms_model REAL,
+            created_ts TEXT NOT NULL
+        );
+        CREATE TABLE ml_outcomes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snap_id TEXT NOT NULL,
+            game_id TEXT,
+            decision_id INTEGER,
+            executed_status TEXT,
+            executed_formation TEXT,
+            executed_play TEXT,
+            executed_verification TEXT,
+            outcome_json TEXT,
+            created_ts TEXT NOT NULL
+        );
+        INSERT INTO snaps (
+            ts, opponent_id, side, down, distance, yardline, quarter,
+            situation_raw, our_call, formation, play, result, notes, session_id
+        ) VALUES (
+            '2026-01-01T00:00:00+00:00', 'cpu', 'offense', 1, 10, 25, 1,
+            '1st and 10', 'Gun Bunch — Mesh', 'Gun Bunch', 'Mesh', 'TD',
+            'score_us=7 score_them=0', 'old-session'
+        );
+        INSERT INTO ml_decisions (
+            decision_ts, game_id, snap_id, session_id, snap_seq, mode,
+            final_formation, final_play, decision_json, created_ts
+        ) VALUES (
+            '2026-01-01T00:00:00+00:00', 'old-session', 'old-session-0001',
+            'old-session', 1, 'heuristic', 'Gun Bunch', 'Mesh',
+            '{"final_pick":{"formation":"Gun Bunch","play":"Mesh"}}',
+            '2026-01-01T00:00:00+00:00'
+        );
+        INSERT INTO ml_outcomes (
+            snap_id, game_id, decision_id, executed_status, outcome_json, created_ts
+        ) VALUES (
+            'old-session-0001', 'old-session', 1, 'unknown',
+            '{"result":"TD","yards":0}', '2026-01-01T00:00:00+00:00'
+        );
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def _result_for(index: int) -> str:
+    return {
+        0: "TD",
+        1: "TD +8",
+        2: "sack",
+        3: "sack -6",
+        4: "INT",
+        5: "INT return 15",
+        6: "+4",
+    }[index % 7]
+
+
+def _expected_yards(result: str) -> int | None:
+    return yards_for_log(result)
+
+
+def test_yards_unknown_stays_null_and_parser_placeholder_is_unchanged() -> None:
+    assert parse_outcome("INT").yards == 0
+    assert parse_outcome("fumble").yards == 0
+    assert parse_outcome("incomplete").yards == 0
+    assert yards_for_log("TD") is None
+    assert yards_for_log("sack") is None
+    assert yards_for_log("INT") is None
+    assert yards_for_log("fumble") is None
+    assert yards_for_log("incomplete") is None
+    assert yards_for_log("stop") is None
+    assert yards_for_log("TD +8") == 8
+    assert yards_for_log("sack -6") == -6
+    assert yards_for_log("INT return 15") == 15
+    assert yards_for_log("sack 0") == 0
+
+
+def test_post_snap_fields_stay_out_of_pre_snap_features() -> None:
+    features = set(pre_snap_feature_names())
+    assert POST_SNAP_LOG_FIELDS.isdisjoint(features)
+    assert POST_SNAP_LOG_FIELDS.isdisjoint(set(SHADOW_FEATURE_FIELDS))
+    assert "executed_adjustment_id" not in features
+    assert "penalty" not in features
+    assert "yards" not in features
+    assert "behavior_propensity" not in features
+
+
+def test_migration_is_idempotent(tmp_path: Path) -> None:
+    path = tmp_path / "madden27.db"
+    db = _open(path)
+    try:
+        before = {table: _columns(path, table) for table in ("ml_decisions", "ml_outcomes", "snaps")}
+        decision_id = db.log_ml_decision(
+            {
+                "decision_ts": "2026-01-01T00:00:00+00:00",
+                "game_id": SESSION,
+                "session_id": SESSION,
+                "snap_id": f"{SESSION}-0001",
+                "snap_seq": 1,
+                "mode": "heuristic",
+                "accepted": "unknown",
+                "behavior_propensity": None,
+                "propensity_method": "unknown",
+                "propensity_override": False,
+                "macro": {"macro_id": "HOT"},
+            }
+        )
+        stored = dict(
+            db.conn.execute("SELECT * FROM ml_decisions WHERE id = ?", (decision_id,)).fetchone()
+        )
+        db._migrate_madden_call_outcome()
+        db._migrate_madden_call_outcome()
+        again = dict(
+            db.conn.execute("SELECT * FROM ml_decisions WHERE id = ?", (decision_id,)).fetchone()
+        )
+        assert db.get_meta(SCHEMA_META_KEY) == SCHEMA_VERSION
+    finally:
+        db.close()
+    assert {table: _columns(path, table) for table in before} == before
+    assert again == stored
+    assert stored["accepted"] == "unknown"
+    assert stored["behavior_propensity"] is None
+    assert stored["recommended_adjustment_id"] == "HOT"
+    assert "executed_adjustment_id" not in stored
+    reopened = CoachDB.open_read_only(path)
+    try:
+        row = reopened.conn.execute(
+            "SELECT accepted, recommended_adjustment_id FROM ml_decisions WHERE id = ?",
+            (decision_id,),
+        ).fetchone()
+        assert row["accepted"] == "unknown"
+        assert row["recommended_adjustment_id"] == "HOT"
+    finally:
+        reopened.close()
+
+
+def test_old_db_upgrade_stays_readable(tmp_path: Path) -> None:
+    source = tmp_path / "legacy.db"
+    _create_old_madden_db(source)
+    readable = tmp_path / "legacy-ro.db"
+    shutil.copy(source, readable)
+    reader = CoachDB.open_read_only(readable)
+    try:
+        snap = reader.conn.execute("SELECT result, notes, play FROM snaps").fetchone()
+        decision = reader.conn.execute(
+            "SELECT final_play, decision_json FROM ml_decisions"
+        ).fetchone()
+        outcome = reader.conn.execute("SELECT outcome_json FROM ml_outcomes").fetchone()
+        assert snap["result"] == "TD"
+        assert snap["notes"] == "score_us=7 score_them=0"
+        assert snap["play"] == "Mesh"
+        assert decision["final_play"] == "Mesh"
+        assert "Mesh" in decision["decision_json"]
+        assert json.loads(outcome["outcome_json"])["result"] == "TD"
+        assert "yards" not in _columns(readable, "ml_outcomes")
+    finally:
+        reader.close()
+
+    db = _open(source)
+    try:
+        snap = db.conn.execute("SELECT * FROM snaps").fetchone()
+        decision = db.conn.execute("SELECT * FROM ml_decisions").fetchone()
+        outcome = db.conn.execute("SELECT * FROM ml_outcomes").fetchone()
+        assert snap["result"] == "TD"
+        assert snap["play"] == "Mesh"
+        assert snap["notes"] == "score_us=7 score_them=0"
+        assert snap["yards"] is None
+        assert snap["penalty"] is None
+        assert snap["drive_id"] is None
+        assert snap["score_for"] is None
+        assert decision["final_play"] == "Mesh"
+        assert decision["accepted"] is None
+        assert decision["behavior_propensity"] is None
+        assert decision["snap_link"] is None
+        assert outcome["yards"] is None
+        assert outcome["executed_adjustment_id"] is None
+        assert json.loads(outcome["outcome_json"])["yards"] == 0
+        db._migrate_madden_call_outcome()
+        assert db.conn.execute("SELECT COUNT(*) FROM snaps").fetchone()[0] == 1
+        assert db.conn.execute("SELECT COUNT(*) FROM ml_decisions").fetchone()[0] == 1
+    finally:
+        db.close()
+    assert _columns(source, "ml_decisions").count("accepted") == 1
+    assert _columns(source, "ml_outcomes").count("yards") == 1
+
+
+def test_fifty_seven_calls_and_forty_two_snaps_leave_no_orphans(tmp_path: Path) -> None:
+    path = tmp_path / "madden27.db"
+    db = _open(path)
+    try:
+        for index in range(1, 58):
+            db.log_ml_decision(
+                {
+                    "decision_ts": "2026-01-01T00:00:00+00:00",
+                    "game_id": SESSION,
+                    "session_id": SESSION,
+                    "snap_id": f"{SESSION}-{index:04d}",
+                    "snap_seq": index,
+                    "mode": "heuristic",
+                    "accepted": "true" if index % 5 == 0 else "unknown",
+                    "behavior_propensity": 0.25 if index % 2 == 0 else None,
+                    "propensity_method": "exact" if index % 2 == 0 else "unknown",
+                    "propensity_override": False,
+                    "drive_id": f"d{(index - 1) // 6 + 1}",
+                    "quarter": ((index - 1) % 4) + 1,
+                    "game_clock": f"{index % 15}:00",
+                    "score_for": index % 5,
+                    "score_against": index % 3,
+                    "final_pick": {
+                        "formation": "Gun Bunch",
+                        "play": "Mesh",
+                        "adjustment_id": "HOT",
+                    },
+                    "macro": {"macro_id": "HOT"},
+                }
+            )
+        for index in range(1, 43):
+            snap_id = f"{SESSION}-{index:04d}"
+            result = "TD +8, penalty declined" if index == 8 else _result_for(index)
+            confirmed = index == 11
+            db.log_snap(
+                opponent_id="cpu",
+                side="offense",
+                situation_raw="1st and 10",
+                our_call="Gun Bunch — Mesh",
+                formation="Gun Bunch",
+                play="Mesh",
+                result=result,
+                session_id=SESSION,
+                ml_snap_id=snap_id,
+                snap_seq=index,
+                quarter=((index - 1) % 4) + 1,
+                drive_id=f"d{(index - 1) // 6 + 1}",
+                game_clock=f"{index % 15}:00",
+                score_for=index % 5,
+                score_against=index % 3,
+                recommended_adjustment_id="HOT",
+                executed_adjustment_id="SLIDE" if confirmed else "HOT",
+                adjustment_confirmed=confirmed,
+            )
+            decision_id = db.conn.execute(
+                "SELECT id FROM ml_decisions WHERE snap_id = ?",
+                (snap_id,),
+            ).fetchone()[0]
+            db.log_ml_outcome(
+                snap_id=snap_id,
+                game_id=SESSION,
+                decision_id=int(decision_id),
+                executed_status="identified" if confirmed else "unknown",
+                executed_formation="Gun Bunch" if confirmed else None,
+                executed_play="Mesh" if confirmed else None,
+                executed_verification="verified" if confirmed else "unknown",
+                outcome={"result": result, "yards": 0},
+                recommended_adjustment_id="HOT",
+                executed_adjustment_id="HOT" if not confirmed else "SLIDE",
+                adjustment_confirmed=confirmed,
+                drive_id=f"d{(index - 1) // 6 + 1}",
+                quarter=((index - 1) % 4) + 1,
+                game_clock=f"{index % 15}:00",
+                score_for=index % 5,
+                score_against=index % 3,
+                penalty="declined" if index == 8 else None,
+            )
+        first = db.reconcile_call_links(SESSION)
+        second = db.reconcile_call_links(SESSION)
+        assert first == second
+        assert first == {
+            "calls": 57,
+            "linked": 42,
+            "no_snap_recorded": 15,
+            "orphans": 0,
+        }
+        counts = dict(
+            db.conn.execute(
+                "SELECT snap_link, COUNT(*) FROM ml_decisions WHERE session_id = ? "
+                "GROUP BY snap_link",
+                (SESSION,),
+            ).fetchall()
+        )
+        assert counts[LINKED] == 42
+        assert counts[NO_SNAP_RECORDED] == 15
+        assert None not in counts
+        orphans = db.conn.execute(
+            """
+            SELECT d.id
+            FROM ml_decisions d
+            WHERE d.session_id = ?
+              AND NOT (
+                (
+                  d.snap_link = 'no_snap_recorded'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM snaps s WHERE s.ml_snap_id = d.snap_id
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM ml_outcomes o
+                    WHERE o.snap_id = d.snap_id OR o.decision_id = d.id
+                  )
+                )
+                OR EXISTS (SELECT 1 FROM snaps s WHERE s.ml_snap_id = d.snap_id)
+                OR EXISTS (
+                  SELECT 1 FROM ml_outcomes o
+                  WHERE o.snap_id = d.snap_id OR o.decision_id = d.id
+                )
+              )
+            """,
+            (SESSION,),
+        ).fetchall()
+        assert orphans == []
+        assert db.conn.execute("SELECT COUNT(*) FROM snaps").fetchone()[0] == 42
+        assert db.conn.execute("SELECT COUNT(*) FROM ml_outcomes").fetchone()[0] == 42
+        rows = db.conn.execute(
+            """
+            SELECT d.snap_seq, d.accepted, d.behavior_propensity, d.propensity_method,
+                   d.recommended_adjustment_id, d.drive_id, d.quarter, d.game_clock,
+                   d.score_for, d.score_against, d.snap_link,
+                   o.yards, o.penalty, o.executed_adjustment_id, o.recommended_adjustment_id
+                     AS outcome_recommended,
+                   s.yards AS snap_yards, s.result
+            FROM ml_decisions d
+            LEFT JOIN ml_outcomes o ON o.snap_id = d.snap_id
+            LEFT JOIN snaps s ON s.ml_snap_id = d.snap_id
+            WHERE d.session_id = ?
+            ORDER BY d.snap_seq
+            """,
+            (SESSION,),
+        ).fetchall()
+        assert len(rows) == 57
+        for row in rows:
+            assert row["drive_id"]
+            assert row["quarter"] in {1, 2, 3, 4}
+            assert row["game_clock"]
+            assert row["score_for"] is not None
+            assert row["score_against"] is not None
+            assert row["accepted"] in {"true", "unknown"}
+            assert row["propensity_method"] in {"exact", "unknown"}
+            assert row["recommended_adjustment_id"] == "HOT"
+            if row["snap_seq"] % 2 == 0:
+                assert row["behavior_propensity"] == 0.25
+            else:
+                assert row["behavior_propensity"] is None
+            if row["snap_link"] == NO_SNAP_RECORDED:
+                assert row["yards"] is None
+                assert row["result"] is None
+                continue
+            assert row["snap_link"] == LINKED
+            assert row["yards"] == _expected_yards(row["result"])
+            assert row["snap_yards"] == row["yards"]
+            assert row["yards"] != 0 or row["result"] == "sack 0"
+            assert row["outcome_recommended"] == "HOT"
+            if row["snap_seq"] == 11:
+                assert row["executed_adjustment_id"] == "SLIDE"
+            else:
+                assert row["executed_adjustment_id"] is None
+            if row["snap_seq"] == 8:
+                assert row["penalty"] == "declined"
+                assert row["yards"] == 8
+    finally:
+        db.close()
+
+
+def test_executed_adjustment_is_not_the_displayed_recommendation(tmp_path: Path) -> None:
+    db = _open(tmp_path / "madden27.db")
+    try:
+        decision_id = db.log_ml_decision(
+            {
+                "decision_ts": "t",
+                "game_id": SESSION,
+                "session_id": SESSION,
+                "snap_id": f"{SESSION}-0001",
+                "snap_seq": 1,
+                "mode": "heuristic",
+                "final_pick": {
+                    "formation": "Gun Bunch",
+                    "play": "Mesh",
+                    "adjustment_id": "HOT-MAN",
+                },
+                "macro": {"macro_id": "HOT-MAN"},
+            }
+        )
+        db.log_ml_outcome(
+            snap_id=f"{SESSION}-0001",
+            game_id=SESSION,
+            decision_id=decision_id,
+            outcome={"result": "+4"},
+            recommended_adjustment_id="HOT-MAN",
+            executed_adjustment_id="HOT-MAN",
+            adjustment_confirmed=False,
+        )
+        decision = db.conn.execute(
+            "SELECT * FROM ml_decisions WHERE id = ?", (decision_id,)
+        ).fetchone()
+        outcome = db.conn.execute(
+            "SELECT * FROM ml_outcomes WHERE snap_id = ?", (f"{SESSION}-0001",)
+        ).fetchone()
+        assert decision["recommended_adjustment_id"] == "HOT-MAN"
+        assert "executed_adjustment_id" not in decision.keys()
+        assert outcome["recommended_adjustment_id"] == "HOT-MAN"
+        assert outcome["executed_adjustment_id"] is None
+        db.log_ml_outcome(
+            snap_id=f"{SESSION}-0001",
+            game_id=SESSION,
+            decision_id=decision_id,
+            outcome={"result": "+4"},
+            recommended_adjustment_id="HOT-MAN",
+            executed_adjustment_id="SLIDE",
+            adjustment_confirmed=True,
+        )
+        outcome = db.conn.execute(
+            "SELECT executed_adjustment_id, recommended_adjustment_id FROM ml_outcomes"
+        ).fetchone()
+        assert outcome["recommended_adjustment_id"] == "HOT-MAN"
+        assert outcome["executed_adjustment_id"] == "SLIDE"
+    finally:
+        db.close()
+
+
+def test_superseded_call_without_a_snap_is_marked(tmp_path: Path) -> None:
+    db = _open(tmp_path / "madden27.db")
+    try:
+        tracker = LiveDecisionTracker.from_session(SESSION)
+        first_snap, _seq, _key, is_new = tracker.seal_call(
+            side="offense", formation="Gun Bunch", play="Mesh", situation_raw="1st and 10"
+        )
+        assert is_new
+        first_id = db.log_ml_decision(
+            {
+                "decision_ts": "t",
+                "game_id": SESSION,
+                "session_id": SESSION,
+                "snap_id": first_snap,
+                "snap_seq": 1,
+                "mode": "heuristic",
+                "accepted": "unknown",
+                "propensity_method": "unknown",
+                "behavior_propensity": None,
+                "propensity_override": False,
+            }
+        )
+        tracker.bind_decision_row(first_id)
+        second_snap, seq, _key, is_new = tracker.seal_call(
+            side="offense", formation="Gun Trips", play="Flood", situation_raw="2nd and 7"
+        )
+        assert is_new
+        assert seq == 2
+        assert tracker.abandoned_decision_row_id == first_id
+        second_id = db.log_ml_decision(
+            {
+                "decision_ts": "t",
+                "game_id": SESSION,
+                "session_id": SESSION,
+                "snap_id": second_snap,
+                "snap_seq": 2,
+                "mode": "heuristic",
+                "accepted": "unknown",
+                "propensity_method": "exact",
+                "behavior_propensity": 0.5,
+                "propensity_override": False,
+            }
+        )
+        tracker.bind_decision_row(second_id)
+        sit = Situation(raw="2nd and 7 drive id 4", side="offense")
+        sit.score_us = 14
+        sit.score_them = 7
+        sit.extras["quarter"] = 2
+        sit.extras["clock_seconds"] = 90
+        sit.extras["drive_id"] = "4"
+
+        class _Call:
+            adjustment = {"id": "HOT"}
+            macro = None
+
+        apply_seal_logging(
+            db, tracker, decision_id=second_id, sit=sit, call=_Call(), is_new=True,
+        )
+        first = db.conn.execute(
+            "SELECT snap_link FROM ml_decisions WHERE id = ?", (first_id,)
+        ).fetchone()
+        second = db.conn.execute(
+            "SELECT snap_link, drive_id, quarter, game_clock, score_for, score_against, "
+            "recommended_adjustment_id FROM ml_decisions WHERE id = ?",
+            (second_id,),
+        ).fetchone()
+        assert first["snap_link"] == NO_SNAP_RECORDED
+        assert second["drive_id"] == "4"
+        assert second["quarter"] == 2
+        assert second["game_clock"] == "1:30"
+        assert second["score_for"] == 14
+        assert second["score_against"] == 7
+        assert second["recommended_adjustment_id"] == "HOT"
+        assert second["snap_link"] in {None, LINKED}
+    finally:
+        db.close()
+
+
+def test_run_config_logs_mode_model_flags_commit_and_playbook(tmp_path: Path) -> None:
+    path = tmp_path / "madden27.db"
+    db = _open(path)
+    try:
+        assert db.get_meta("ml_mode") is None
+        db.set_meta(
+            "active_playbook_json",
+            json.dumps(
+                {
+                    "applied": {
+                        "offense": {"name": "PRIMARY META O", "mode": "custom", "rev": 3},
+                        "defense": {"name": "PRIMARY META D", "mode": "custom", "rev": 2},
+                    }
+                }
+            ),
+        )
+        db.set_meta("ml_model_version", "synthetic-model")
+        with use_cli_flags(no_vod_prior=True, freeze_vod_book=False):
+            record_session_run_config(db, SESSION)
+            record_session_run_config(
+                db,
+                SESSION,
+                flags={"no_vod_prior": False},
+                mode="shadow",
+                model_id="other-model",
+            )
+        assert db.get_meta("ml_mode") is None
+        row = db.conn.execute(
+            "SELECT * FROM ml_run_config WHERE session_id = ?", (SESSION,)
+        ).fetchone()
+        flags = json.loads(row["flags_json"])
+        commit, branch = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True
+        ).strip(), subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True
+        ).strip()
+        assert row["mode"] == "heuristic"
+        assert row["model_id"] == "synthetic-model"
+        assert flags["no_vod_prior"] is True
+        assert "freeze_vod_book" in flags
+        assert row["git_commit"] == commit
+        assert row["git_branch"] == branch
+        assert row["playbook_version"] == playbook_version_of(db)
+        assert "rev3" in row["playbook_version"]
+        assert "rev2" in row["playbook_version"]
+    finally:
+        db.close()
