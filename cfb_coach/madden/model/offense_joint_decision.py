@@ -724,6 +724,7 @@ def choose_joint_action(
     recent_calls: Sequence[Any] | None = None,
     use_opponent_learning: bool = True,
     use_expert_learning: bool = True,
+    prepared_macros: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Pick one legal (formation, play, plan) from the complete action space.
 
@@ -786,9 +787,12 @@ def choose_joint_action(
     anchor_score = float(anchor.get("selection_score", anchor.get("probability", 0.0)) or 0.0)
     macro_index = None
     if allow_macros:
-        from cfb_coach.madden.offense_macros import macro_book_index
+        if prepared_macros is None:
+            from cfb_coach.madden.offense_macros import macro_book_index
 
-        macro_index = macro_book_index(book, list(active or []))
+            macro_index = macro_book_index(book, list(active or []))
+        else:
+            macro_index = prepared_macros
     expert_signal: Mapping[str, Any] | None = None
     expert_personal: Mapping[str, Any] | None = None
     expert_policy = None
