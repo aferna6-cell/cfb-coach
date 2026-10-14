@@ -18,7 +18,16 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from cfb_coach.browser_open import open_url
-from cfb_coach.session import start_session
+from cfb_coach.session import (
+    arm_session_exit,
+    clear_recovered_note,
+    close_armed_sessions,
+    disarm_session_exit,
+    last_logged_score,
+    logged_play_count,
+    recover_unclosed_sessions,
+    start_session,
+)
 
 
 MakeCallFn = Callable[..., Any]
@@ -153,10 +162,18 @@ class LivePlayController:
         return {"ok": True, "applied_rev": rec.get("rev"), "dynasty": self.dynasty, "state": self.state()}
 
     def start(self) -> None:
+        try:
+            recover_unclosed_sessions(self.db)
+        except Exception:  # noqa: BLE001 — a failed recovery must not block the new game
+            pass
         sess = start_session(
             self.opponent_id, dynasty=self.dynasty, db=self.db, notes="html-live"
         )
         self.session_id = sess.session_id
+        try:
+            arm_session_exit(self.db, self.session_id)
+        except Exception:  # noqa: BLE001 — live play still runs if the handler cannot arm
+            pass
         if str(self.brand).lower().startswith("madden"):
             try:
                 from cfb_coach.madden.model.call_outcome_log import record_session_run_config
@@ -934,12 +951,25 @@ class LivePlayController:
             # the session records that row as no_result instead of deleting it.
             play_count = len(self.log)
             try:
+                play_count = max(play_count, logged_play_count(self.db, self.session_id))
+                if not self.score:
+                    logged_score, _inferred = last_logged_score(self.db, self.session_id)
+                    if logged_score:
+                        self.score = logged_score
+            except Exception:
+                pass
+            try:
                 self.db.end_game_session(
                     self.session_id,
                     play_count=play_count,
                     result_wl=wl,
                     score=self.score,
+                    recovered=False,
                 )
+                # A premature recovery may already have set ended_ts. This write
+                # replaces that row; drop the recovered flag so the real close wins.
+                clear_recovered_note(self.db, self.session_id)
+                disarm_session_exit(self.session_id)
             except Exception:
                 pass
             # Persist W/L note in meta too
@@ -1911,6 +1941,10 @@ def run_live_server(
     except KeyboardInterrupt:
         print("\nStopping live server…")
     finally:
+        try:
+            close_armed_sessions(ctrl.session_id)
+        except Exception:  # noqa: BLE001 — shutdown still has to release the port
+            pass
         server.shutdown()
         server.server_close()
     return 0
