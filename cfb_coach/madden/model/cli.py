@@ -1065,6 +1065,8 @@ def cmd_ml_eval_defense(args: argparse.Namespace) -> int:
     print(f"diff: {report['diff']}")
     print(f"ci95: {report['ci95']}")
     print(f"p95_ms: {report['p95_ms']}")
+    print(f"dropped_unlabelled: {report.get('n_dropped_unlabelled')}")
+    print(f"unlabelled_reasons: {report.get('unlabelled_drop_reasons')}")
     print("auto_promote: false")
     print(json.dumps(report, indent=2, default=str))
     return 0

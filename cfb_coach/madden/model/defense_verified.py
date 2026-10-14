@@ -2,14 +2,18 @@
 
 Verified means one of two things, and nothing else:
 
-* a ``concept_seen`` label from a reviewed or permitted source, or
-* an executed/accepted live defensive row.
+* an executed/accepted live defensive row, or
+* a ``concept_seen`` label on a VOD row whose ``review_status`` is in the
+  reviewed set or whose ``trainable`` flag is true, that is not
+  ``excluded_from_training``, and whose concept_seen confidence is at least
+  ``MIN_CONCEPT_SEEN_CONFIDENCE``.
 
+``permitted_use`` is a rights field. It does not make a VOD row verified.
 Live defense rows and VOD observed-defense rows are separate sources. A
-recommendation, an unreviewed VOD row that is not permitted for training, and
-the blocked VOD source are not verified. Zero verified snaps is a refusal.
-Training never runs on that empty set, and nothing here promotes the
-established defense caller.
+recommendation, an auto-labelled non-trainable row, and the blocked VOD
+source are not verified. Zero verified snaps is a refusal. Training never
+runs on that empty set, and nothing here promotes the established defense
+caller.
 """
 
 from __future__ import annotations
@@ -20,9 +24,12 @@ import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+MIN_CONCEPT_SEEN_CONFIDENCE = 0.5
 VERIFIED_DEFINITION = (
-    "A defensive snap is verified when it has a concept_seen label from a "
-    "reviewed or permitted source, or it is an executed/accepted live row."
+    "A defensive snap is verified when it is an executed/accepted live row, "
+    "or it has a concept_seen label, review_status is in the reviewed set or "
+    "trainable is true, excluded_from_training is not true, and concept_seen "
+    f"confidence is at least {MIN_CONCEPT_SEEN_CONFIDENCE}."
 )
 P95_LIMIT_MS = 150.0
 SMALL_N = 8
@@ -63,15 +70,41 @@ def _excluded_vod(row: Mapping[str, Any]) -> bool:
     return vod_source_excluded(row)
 
 
-def _reviewed_or_permitted(row: Mapping[str, Any]) -> bool:
-    from cfb_coach.madden.model.dataset import (
-        _reviewed_status, vod_permitted_for_training,
-    )
+def _concept_seen_confidence(row: Mapping[str, Any]) -> float | None:
+    """Numeric concept_seen confidence, or None when the row has none."""
+    raw = row.get("concept_seen_confidence")
+    if raw is None:
+        fields = row.get("field_confidence")
+        if isinstance(fields, Mapping):
+            raw = fields.get("concept_seen")
+    if raw is None or isinstance(raw, bool) or _blank(raw):
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
 
-    if _reviewed_status(row) or vod_permitted_for_training(row):
+
+def _excluded_from_training(row: Mapping[str, Any]) -> bool:
+    flag = row.get("excluded_from_training")
+    if flag is True or flag == 1:
         return True
-    label = str(row.get("label_source") or row.get("source") or "").strip().lower()
-    return label in {"reviewed", "permitted", "confirmed", "corrected"}
+    if isinstance(flag, str) and flag.strip().lower() in {"true", "1", "yes"}:
+        return True
+    return False
+
+
+def _vod_quality(row: Mapping[str, Any]) -> bool:
+    """Quality gate for a VOD row. ``permitted_use`` is not consulted."""
+    from cfb_coach.madden.model.dataset import REVIEWED_STATUSES
+
+    reviewed = str(row.get("review_status") or "") in REVIEWED_STATUSES
+    if not (reviewed or row.get("trainable") is True):
+        return False
+    if _excluded_from_training(row):
+        return False
+    confidence = _concept_seen_confidence(row)
+    return confidence is not None and confidence >= MIN_CONCEPT_SEEN_CONFIDENCE
 
 
 def _looks_like_vod(row: Mapping[str, Any]) -> bool:
@@ -108,7 +141,7 @@ def verification_source(row: Mapping[str, Any]) -> str | None:
     if live:
         return "live"
     concept = str(row.get("concept_seen") or "").strip()
-    if concept and _looks_like_vod(row) and _reviewed_or_permitted(row):
+    if concept and _looks_like_vod(row) and _vod_quality(row):
         return "vod"
     return None
 
@@ -172,11 +205,82 @@ def training_view(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _match_id(row: Mapping[str, Any]) -> str:
-    for key in ("match_id", "game_id", "vod_id", "session_id"):
+    for key in ("match_id", "video_id", "game_id", "vod_id", "session_id"):
         value = row.get(key)
         if not _blank(value):
             return str(value)
     return "unknown"
+
+
+def record_defensive_execution(
+    row: Mapping[str, Any] | None = None,
+    *,
+    executed_status: str | None = None,
+    executed_play: str | None = None,
+    executed_formation: str | None = None,
+    recommended_play: str | None = None,
+    accepted: str | None = None,
+    executed_adjustment_id: str | None = None,
+    touched: bool = False,
+    adjustment_confirmed: bool = False,
+) -> dict[str, Any]:
+    """Optional accept/execute stamp for a defensive call.
+
+    Reuses the offense helpers. Omitting every option leaves ``accepted`` and
+    ``executed_status`` at ``unknown`` and does not store an executed
+    adjustment. Passing the same flags the offense path already accepts is
+    what records a confirmation.
+    """
+    from cfb_coach.madden.model.call_outcome_log import (
+        acceptance_for_log, executed_adjustment_for_log,
+    )
+
+    out = dict(row or {})
+    out.setdefault("side", "defense")
+    opted = (
+        touched or adjustment_confirmed
+        or executed_status is not None or accepted is not None
+    )
+    if not opted:
+        out.setdefault("accepted", "unknown")
+        out.setdefault("executed_status", "unknown")
+        out.setdefault("executed_verification", "unknown")
+        return out
+    status = executed_status if executed_status is not None else out.get("executed_status")
+    status = str(status or "unknown").strip().lower() or "unknown"
+    played = executed_play if executed_play is not None else out.get("executed_play")
+    shown = recommended_play
+    if shown is None:
+        shown = out.get("recommended_play") or out.get("play")
+    verification = str(out.get("executed_verification") or "unknown")
+    if status == "used_recommended":
+        status = "identified"
+        played = played or shown
+        verification = "verified"
+    elif status == "identified" and touched:
+        verification = "verified"
+    out["executed_status"] = status
+    out["executed_verification"] = verification
+    if played is not None:
+        out["executed_play"] = played
+    if executed_formation is not None:
+        out["executed_formation"] = executed_formation
+    out["accepted"] = acceptance_for_log(
+        executed_status=status,
+        executed_play=None if played is None else str(played),
+        recommended_play=None if shown is None else str(shown),
+        explicit=accepted,
+        touched=touched,
+    )
+    adjustment = executed_adjustment_id
+    if adjustment is None:
+        adjustment = out.get("recommended_adjustment_id") or out.get("macro")
+    if adjustment_confirmed:
+        out["executed_adjustment_id"] = executed_adjustment_for_log(
+            None if adjustment is None else str(adjustment),
+            confirmed=True,
+        )
+    return out
 
 
 def _situation(row: Mapping[str, Any]) -> str:
@@ -230,12 +334,13 @@ def _fit(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _predict(fit: Mapping[str, Any], row: Mapping[str, Any]) -> tuple[float, float]:
-    """Return ``(model_p, situation_baseline_p)`` for the executed play.
+def _predict(fit: Mapping[str, Any], row: Mapping[str, Any]) -> tuple[float, float, bool]:
+    """Return ``(model_p, situation_baseline_p, used_model)`` for the executed play.
 
     The baseline is the situation stop rate, which is what the established
     caller uses. The model uses that situation's rate for the executed
-    play's coverage family.
+    play's coverage family. ``used_model`` is false when that family slot is
+    missing and the score falls back to the situation baseline.
     """
     sit = _situation(row)
     base = fit["by_sit"].get(sit) or fit["overall"]
@@ -244,8 +349,18 @@ def _predict(fit: Mapping[str, Any], row: Mapping[str, Any]) -> tuple[float, flo
     slot = None
     if fam:
         slot = fit["by_sit_fam"].get(sit + "|" + fam) or fit["by_fam"].get(fam)
-    model_p = _rate(int(slot[0]), int(slot[1])) if slot else baseline
-    return model_p, baseline
+    if not slot:
+        return baseline, baseline, False
+    return _rate(int(slot[0]), int(slot[1])), baseline, True
+
+
+def _unlabelled_reason(row: Mapping[str, Any]) -> str:
+    raw = row.get("success")
+    if raw is None:
+        raw = row.get("stop")
+    if raw is None or _blank(raw):
+        return "missing_success"
+    return "unparseable_success"
 
 
 def _brier(y: float, p: float) -> float:
@@ -280,8 +395,11 @@ def evaluate_defense(
     p95 is under 150 ms. Passing does not enable the caller.
     """
     labeled = []
+    drop_reasons: dict[str, int] = {}
     for row in rows:
         if _success_text(row) is None:
+            reason = _unlabelled_reason(row)
+            drop_reasons[reason] = drop_reasons.get(reason, 0) + 1
             continue
         labeled.append(training_view(row))
     matches = sorted({_match_id(row) for row in labeled})
@@ -289,6 +407,8 @@ def evaluate_defense(
         "definition": VERIFIED_DEFINITION,
         "holdout": "match",
         "n_verified_labeled": len(labeled),
+        "n_dropped_unlabelled": sum(drop_reasons.values()),
+        "unlabelled_drop_reasons": drop_reasons,
         "n_matches": len(matches),
         "beats_baseline": False,
         "ci_excludes_0": False,
@@ -315,12 +435,13 @@ def evaluate_defense(
         fit = _fit(train)
         for row in by_match[held]:
             started = time.perf_counter()
-            model_p, base_p = _predict(fit, row)
+            model_p, base_p, used_model = _predict(fit, row)
             latencies.append((time.perf_counter() - started) * 1000.0)
             y = 1.0 if _success_text(row) == "true" else 0.0
             diff = _brier(y, base_p) - _brier(y, model_p)
             scored.append({
                 "match": held, "situation": _situation(row), "diff": diff, "y": y,
+                "model_used": used_model,
             })
     point = sum(item["diff"] for item in scored) / len(scored)
     rng = random.Random(seed)
@@ -357,8 +478,11 @@ def evaluate_defense(
             if bag:
                 sit_samples.append(sum(bag) / len(bag))
         sit_ci = _ci(sit_samples)
+        n_model = sum(1 for item in sit_rows if item["model_used"])
         situations[sit] = {
             "n": len(sit_rows),
+            "n_model_used": n_model,
+            "n_baseline_fallback": len(sit_rows) - n_model,
             "diff": round(sit_point, 6),
             "ci95": sit_ci,
         }

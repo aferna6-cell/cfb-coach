@@ -100,9 +100,9 @@ python -m cfb_coach ml evaluate --seed 7 --registry /tmp/madden_ml_registry_smok
 
 ## Defense train and eval
 
-A defensive snap is verified when it has a `concept_seen` label from a reviewed or permitted source, or it is an executed/accepted live row. Live defense rows and VOD observed-defense rows are counted separately. Zero verified snaps refuses the command and does not train. The established defense caller stays the default. `train-defense` and `eval-defense` do not enable it.
+A defensive snap is verified when it is an executed/accepted live row, or it has a `concept_seen` label, `review_status` is in the reviewed set (`reviewed`, `confirmed`, `corrected`) or `trainable` is true, `excluded_from_training` is not true, and `concept_seen_confidence` is at least `MIN_CONCEPT_SEEN_CONFIDENCE` (0.5). `permitted_use` is a rights field and does not verify a row. An auto-labelled, non-trainable row at confidence 0.3 is not verified. Live defense rows and VOD observed-defense rows are counted separately. A live defense row stays unverified until accept/execute is recorded; that recording is optional and defaults to `unknown`. Zero verified snaps refuses the command and does not train. The established defense caller stays the default. `train-defense` and `eval-defense` do not enable it.
 
-`eval-defense` holds out by match, compares the model with the situation baseline, and prints bootstrap 95% CIs, a per-situation breakdown, and a gate verdict. The gate passes only when the CI lies entirely above 0 and scoring p95 is under 150 ms.
+`eval-defense` holds out by match, compares the model with the situation baseline, and prints bootstrap 95% CIs, a per-situation breakdown, and a gate verdict. It also prints how many verified rows were dropped as unlabelled and why. Each situation bucket includes `n_model_used` and `n_baseline_fallback`, so a fallback to the situation rate is visible when the diff is 0. The gate passes only when the CI lies entirely above 0 and scoring p95 is under 150 ms.
 
 `ml defense-experimental --enable` refuses unless the installed artifact already carries that passing report. It does not train.
 

@@ -79,6 +79,7 @@ def train_defense(
         verified_human_rows, fit_opponent_offense, fit_opponent_outcome_risks,
     )
     from cfb_coach.madden.model.defense_knowledge import fit_opponent_profiles
+    from cfb_coach.madden.model.defense_verified import _match_id as _verified_match_id
     stats: dict[str, list[int]] = {}
     context: dict[str, list[int]] = {}
     plays: dict[str, list[int]] = {}
@@ -113,7 +114,7 @@ def train_defense(
         "opponent_tendencies": fit_opponent_offense(verified),
         "opponent_outcome_risks": fit_opponent_outcome_risks(rows),
         "opponent_profiles": fit_opponent_profiles(verified),
-        "verified_human_games": len({str(r["game_id"]) for r in verified}),
+        "verified_human_games": len({_verified_match_id(r) for r in verified}),
         "observational_only": True,
         "note": "Stop outcomes are observations, not proven counterfactual effects.",
     }
