@@ -724,14 +724,20 @@ def _pick_defense(
     cooled = _cooled_macros(db, sit)
     if cooled:
         active = [m for m in active if m not in cooled]
-    # The family's best macro among the defense loadout (prep rank order). When none of them
-    # answers it, the research DB's best one is only named as a suggestion (re-prep to carry it).
+    # The family's best macro among the armed defense loadout. A research-pool
+    # macro that is not armed is not shown.
     from cfb_coach.madden.macro_pool import pool_ids
 
     by_rank = sorted(pool_ids("defense"), key=lambda m: (get_macro(m) or {}).get("meta_rank", 99))
     if cooled:
         by_rank = [m for m in by_rank if m not in cooled]
-    fam_macro = best_for_family(fam, active, weights) or best_for_family(fam, by_rank, weights)
+    dropped: list[str] = []
+    # Only the opponent's armed list may be shown. The research pool's answer
+    # is logged and omitted when it is not armed.
+    fam_macro = best_for_family(fam, active, weights)
+    pool_family = best_for_family(fam, by_rank, weights)
+    if fam_macro is None and pool_family and pool_family not in active:
+        _remember_unarmed(dropped, pool_family)
     if concept:
         src = sit.concept_source or "none"
         repeated = _family_repeat_count(db, oid, fam) >= 2
@@ -769,8 +775,8 @@ def _pick_defense(
                 user = (get_macro(fam_macro) or {}).get("user_job") or user_job_for(play)
                 rationale = f"REPEATED {fam} tendency ({concept}) — {play} + {fam_macro}"
             else:
-                suggest = f"{fam_macro} — repeated {concept} but not in your defense macros; re-prep to add it"
-                rationale += f" | REPEATED {concept} — {fam_macro} not in the defense macros"
+                _remember_unarmed(dropped, fam_macro)
+                rationale += f" | REPEATED {concept} — {fam_macro} not armed"
                 d_adj = _d_adjustment(fam, concept)
         else:
             rationale += f" | REPEATED {concept} — no defense macro answers it"
@@ -794,6 +800,9 @@ def _pick_defense(
         rationale = f"{pivot} → {form}/{play} (new coverage family) | {rationale}"
         suggest = suggest or "macros cleared — re-arm only on repeated tendency"
     elif macro is None:
+        pool_hit = _situation_defense_macro(sit, by_rank, weights)
+        if pool_hit and pool_hit[0] not in active:
+            _remember_unarmed(dropped, pool_hit[0])
         hit = _situation_defense_macro(sit, active, weights)
         if hit:
             mid, why = hit
@@ -832,8 +841,10 @@ def _pick_defense(
             suggest = tag_live(head, db) + (f" — {rest}" if rest else "")
     if d_adj and not macro:
         rationale += f" | adj {d_adj['label']}"
-    return MaddenCall("defense", form, play, macro_out, user, rationale, suggest, macro=macro, macro_info=info,
+    call = MaddenCall("defense", form, play, macro_out, user, rationale, suggest, macro=macro, macro_info=info,
                       adjustment=None if macro else d_adj)
+    _stamp_unarmed(call, dropped)
+    return call
 
 
 def _gate_defense_label(
@@ -851,6 +862,26 @@ def _gate_defense_label(
     if (getattr(sit, "extras", None) or {}).get("live_macros", True) is False:
         return None, None, None
     return macro, macro_why, suggest
+
+
+def _remember_unarmed(dropped: list[str], name: str | None) -> None:
+    token = str(name or "").strip()
+    if not token:
+        return
+    reason = f"dropped_unarmed_macro:{token}"
+    if reason not in dropped:
+        dropped.append(reason)
+
+
+def _stamp_unarmed(call: MaddenCall, dropped: list[str]) -> None:
+    if not dropped:
+        return
+    import logging
+
+    logged = "; ".join(dropped)
+    call.adjustment_dropped = logged
+    call.rationale = f"{call.rationale} | {logged}".strip(" |")
+    logging.getLogger("cfb_coach.madden.playcaller").info(logged)
 
 
 def _d_adjustment(fam: str | None, concept: str | None) -> dict[str, Any] | None:
@@ -1049,8 +1080,14 @@ def make_call(
     except Exception:  # noqa: BLE001 — a hook failure must not change the call
         pass
     try:
-        from cfb_coach.madden.model.dual_control import stamp_displayed_label
+        from cfb_coach.madden.model.dual_control import (
+            enforce_shown_adjustments, stamp_displayed_label,
+        )
 
+        enforce_shown_adjustments(
+            call, side=sit.side, armed=list(sel.get(sit.side) or []),
+            db=db, opponent_id=opponent_id,
+        )
         stamp_displayed_label(call)
     except Exception:  # noqa: BLE001 — the label must not change the play
         pass
