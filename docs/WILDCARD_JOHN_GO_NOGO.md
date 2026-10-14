@@ -55,14 +55,17 @@ Timeouts: **0**.
 
 ## Laptop commands, in order
 
-Run these on the machine that holds the real Madden database, after this pull request is merged into `madden-ml/coordinators`. Do not check out `main`. Paths for `--db` and `--out` must be absolute. A leading `~` is rejected. Do not pass `--opp-team`. John's NFL team is unknown.
+Run these on the machine that holds the real Madden database, after this pull request is merged into `madden-ml/coordinators`. Do not check out `main`. Paths for `--db` and `--out` must be absolute. A leading `~` is rejected by `ml backup-db`. Do not pass `--opp-team`. John's NFL team is unknown. Do not pass `--retrain`. That flag overwrites `offense.json` with no eval gate.
 
-`ml backup-db` already exists on `madden-ml/coordinators` at `c5e1ebe`, so the backup can run before the fetch. `ml experimental --retrain` is not in the requested list, but `play --ml-human-control` exits 2 until experimental mode is on. It is inserted after prep and before play. `ml defense-experimental` with no flags is read-only.
+Use one absolute database for every step that can take it. Copy the `madden_db:` line from `ml find-db` into `CFB_COACH_MADDEN_DB`. Pass that same path as `--db` on every command that accepts the flag: `ml backup-db`, `preflight`, `ml defense-experimental --disable`, and `play`. `prep`, `ml experimental`, `ml heuristic`, and `ml defense-experimental` with no write flag have no `--db`. They open `CFB_COACH_MADDEN_DB` (else `madden_db_path()`). `ml experimental --db` is an unrecognized argument and exits 2.
+
+`ml backup-db` already exists on `madden-ml/coordinators` at `c5e1ebe`, so the backup can run before the fetch. `play --ml-human-control` exits 2 until experimental mode is on, and only when the existing artifact is present. `ml defense-experimental` with no flags is read-only.
 
 ```bash
 # 1. Back up the live DB first. Source is opened read-only.
 python3 -m cfb_coach ml find-db
-python3 -m cfb_coach ml backup-db --db /ABSOLUTE/PATH/madden27.db --out /ABSOLUTE/PATH/backups
+export CFB_COACH_MADDEN_DB=/ABSOLUTE/PATH/madden27.db
+python3 -m cfb_coach ml backup-db --db "$CFB_COACH_MADDEN_DB" --out /ABSOLUTE/PATH/backups
 
 # 2. Coordinators at the merged head. Never main.
 git fetch origin madden-ml/coordinators
@@ -73,24 +76,40 @@ git pull origin madden-ml/coordinators
 python3 -m pip install -e .
 
 # 4. Human preflight. --no-vod-prior also freezes the book (book_frozen is true when the prior is off).
-python3 -m cfb_coach preflight --game madden27 --mode human -o john --no-vod-prior
+python3 -m cfb_coach preflight --game madden27 --mode human -o john --no-vod-prior --db "$CFB_COACH_MADDEN_DB"
 
 # 4b. If that preflight fails on defense_mode_off, turn the experimental defense caller off, then rerun step 4.
+#     The status line has no --db; it reads CFB_COACH_MADDEN_DB. --disable requires --db.
 python3 -m cfb_coach ml defense-experimental
-python3 -m cfb_coach ml defense-experimental --disable --db /ABSOLUTE/PATH/madden27.db
+python3 -m cfb_coach ml defense-experimental --disable --db "$CFB_COACH_MADDEN_DB"
 
-# 5. Prep. If the printed book says PENDING, run the same command again with --mark-applied before play.
+# 5. Prep. No --db flag; CFB_COACH_MADDEN_DB is the file.
 python3 -m cfb_coach prep --game madden27 -o john --franchise primary --no-vod-prior
+# If the printed book says PENDING, build those sheet changes in Madden first.
+# Run --mark-applied only after those changes are actually made. The flag only records that they were applied.
+python3 -m cfb_coach prep --game madden27 -o john --franchise primary --no-vod-prior --mark-applied
 
-# 6. Opt in to experimental offense. This is the only mode --ml-human-control will start.
-#    Heuristic remains the code default. Rollback for the next call: python3 -m cfb_coach ml heuristic
-python3 -m cfb_coach ml experimental --retrain
-
-# 7. Play. Offense: experimental, this session only. Defense: established caller (do not pass --enable).
-python3 -m cfb_coach play --game madden27 -o john --franchise primary --ml-human-control --no-vod-prior
+# 6. Confirm the existing experimental artifact. This is the path ml experimental writes
+#    when the file is missing (data_dir()/madden_ml_experimental/offense.json).
+#    find-db prints data_dir. The default data_dir is ~/.cfb-coach.
+ls "$(python3 -c 'from cfb_coach.games import data_dir; print(data_dir() / "madden_ml_experimental" / "offense.json")')"
 ```
 
-Confirm each call in the live window. `accepted` stays `unknown` until verify is touched. `drive_id` stays NULL unless the situation text contains an explicit drive id. To leave the pilot, stop the session and run `python3 -m cfb_coach ml heuristic`.
+If that `ls` fails, the artifact is missing. Do not run `ml experimental`. With no artifact it trains and overwrites `offense.json` even without `--retrain`. Fall back to heuristic offense: leave the mode heuristic and play without `--ml-human-control`.
+
+```bash
+python3 -m cfb_coach ml heuristic
+python3 -m cfb_coach play --game madden27 -o john --franchise primary --no-vod-prior --db "$CFB_COACH_MADDEN_DB"
+```
+
+If that `ls` succeeds, enable the existing artifact. No `--retrain`. If `play` later prints `Run python -m cfb_coach ml experimental --retrain first`, ignore that hint. Do not add `--retrain`.
+
+```bash
+python3 -m cfb_coach ml experimental
+python3 -m cfb_coach play --game madden27 -o john --franchise primary --ml-human-control --no-vod-prior --db "$CFB_COACH_MADDEN_DB"
+```
+
+Confirm each call in the live window. `accepted` stays `unknown` until verify is touched. `drive_id` stays NULL unless the situation text contains an explicit drive id. Defense stays the established caller. Do not pass `ml defense-experimental --enable`. To leave the pilot, stop the session and run `python3 -m cfb_coach ml heuristic` with the same `CFB_COACH_MADDEN_DB`.
 
 ## Out of scope
 
