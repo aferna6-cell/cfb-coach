@@ -108,6 +108,7 @@ _OWNERS: dict[str, "_LiveOwner"] = {}
 _GUARD = threading.Lock()
 _ATEXIT_INSTALLED = False
 _SIGTERM_INSTALLED = False
+_PREVIOUS_SIGTERM: Any = signal.SIG_DFL
 
 
 @dataclass
@@ -325,10 +326,12 @@ def _lock_held_by_owner(db_path: Path, session_id: str) -> bool | None:
 
 
 def owner_is_live(db: Any, row: Any) -> bool:
-    """True when this row's owner pid is alive and its heartbeat is fresh.
+    """True when this row's owner process is still in the game.
 
     A free advisory lock means the recorded pid is not the process that armed
     the session, so a reused pid does not keep a dead game looking live.
+    A held lock wins over a stale heartbeat: the owner can be alive while its
+    heartbeat writes are stalled on a database lock.
     """
     if row is None:
         return False
@@ -339,16 +342,16 @@ def owner_is_live(db: Any, row: Any) -> bool:
         pid = None
     if not _pid_alive(pid):
         return False
-    if not _heartbeat_fresh(_cell(row, "heartbeat_ts")):
-        return False
     db_path = getattr(db, "path", None)
     session_id = str(_cell(row, "session_id") or "")
-    if db_path is None or not session_id:
-        return True
-    held = _lock_held_by_owner(Path(db_path), session_id)
+    held: bool | None = None
+    if db_path is not None and session_id:
+        held = _lock_held_by_owner(Path(db_path), session_id)
     if held is False:
         return False
-    return True
+    if held is True:
+        return True
+    return _heartbeat_fresh(_cell(row, "heartbeat_ts"))
 
 
 def _recovered_row(row: Any) -> bool:
@@ -676,19 +679,25 @@ def _on_sigterm(signum: int, frame: Any) -> None:
         close_armed_sessions()
     except Exception:
         pass
-    raise SystemExit(128 + int(signum))
+    previous = _PREVIOUS_SIGTERM
+    if previous in (signal.SIG_DFL, signal.SIG_IGN, None) or not callable(previous):
+        raise SystemExit(128 + int(signum))
+    if previous is _on_sigterm:
+        raise SystemExit(128 + int(signum))
+    previous(signum, frame)
 
 
 def _install_exit_handlers() -> None:
-    global _ATEXIT_INSTALLED, _SIGTERM_INSTALLED
+    global _ATEXIT_INSTALLED, _SIGTERM_INSTALLED, _PREVIOUS_SIGTERM
     if not _ATEXIT_INSTALLED:
         atexit.register(close_armed_sessions)
         _ATEXIT_INSTALLED = True
     if not _SIGTERM_INSTALLED:
         try:
-            signal.signal(signal.SIGTERM, _on_sigterm)
+            previous = signal.signal(signal.SIGTERM, _on_sigterm)
         except ValueError:
             return
+        _PREVIOUS_SIGTERM = previous
         _SIGTERM_INSTALLED = True
 
 

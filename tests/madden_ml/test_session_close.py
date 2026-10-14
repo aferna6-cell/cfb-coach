@@ -5,6 +5,7 @@ Synthetic rows only. These tests never open a real Madden database.
 
 from __future__ import annotations
 
+import os
 import selectors
 import signal
 import sqlite3
@@ -51,6 +52,53 @@ arm_session_exit(db, sess.session_id)
 print(sess.session_id, flush=True)
 time.sleep(60)
 """
+
+# Installed before arm_session_exit. Exits 42 only if the session is already closed,
+# so the chained handler's code is the one the process keeps.
+_CHILD_CHAIN = """
+import signal
+import sqlite3
+import sys
+import time
+from pathlib import Path
+
+from cfb_coach.db import CoachDB
+from cfb_coach.session import arm_session_exit, start_session
+
+path, us, them = sys.argv[1:]
+db = CoachDB(Path(path))
+sess = start_session("cpu", db=db, notes="synthetic-live")
+db.log_snap(
+    opponent_id="cpu",
+    side="offense",
+    situation_raw="1&10 my 25",
+    our_call="synthetic",
+    session_id=sess.session_id,
+    score_for=int(us),
+    score_against=int(them),
+)
+sid = sess.session_id
+
+def _previous(signum, frame):
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute(
+            "SELECT ended_ts FROM game_sessions WHERE session_id = ?",
+            (sid,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is not None and row[0]:
+        raise SystemExit(42)
+    raise SystemExit(7)
+
+signal.signal(signal.SIGTERM, _previous)
+arm_session_exit(db, sid)
+print(sid, flush=True)
+time.sleep(60)
+"""
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class _Call:
@@ -333,11 +381,33 @@ class SessionCloseTests(unittest.TestCase):
         finally:
             self._stop_child(proc)
 
-    def _spawn_holder(self, us: int, them: int) -> subprocess.Popen[str]:
+    def test_sigterm_keeps_previous_handler_exit_code(self) -> None:
+        proc = self._spawn_holder(14, 7, script=_CHILD_CHAIN)
+        try:
+            sid = self._read_child_session(proc)
+            proc.send_signal(signal.SIGTERM)
+            proc.wait(timeout=5)
+            self.assertEqual(proc.returncode, 42)
+            row = _row(self.db, sid)
+            self.assertTrue(row["ended_ts"])
+            self.assertEqual(row["score"], "14-7")
+            self.assertEqual(int(row["recovered"] or 0), 0)
+        finally:
+            self._stop_child(proc)
+
+    def _spawn_holder(
+        self, us: int, them: int, *, script: str = _CHILD
+    ) -> subprocess.Popen[str]:
         self.db.close()
+        env = os.environ.copy()
+        prior = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = (
+            str(_REPO_ROOT) if not prior else str(_REPO_ROOT) + os.pathsep + prior
+        )
         return subprocess.Popen(
-            [sys.executable, "-c", _CHILD, str(self.db.path), str(us), str(them)],
-            cwd="/workspace",
+            [sys.executable, "-c", script, str(self.db.path), str(us), str(them)],
+            cwd=self._tmp.name,
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
