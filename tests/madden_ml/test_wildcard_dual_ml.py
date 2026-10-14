@@ -233,13 +233,14 @@ class DualControlTests(unittest.TestCase):
         self.assertEqual(plain.call_label, "HEURISTIC")
 
     def test_defense_timeout_exception_and_illegal_play_fall_back(self) -> None:
-        row = {
-            "supervised_eligible": True, "side": "defense", "executed_play": "Cover 3",
+        rows = [{
+            "supervised_eligible": True, "side": "defense", "executed_play": "Cover 3 Sky",
             "success": "true", "executed_verification": "verified",
             "executed_status": "identified", "label_available": True,
             "opponent_type": "human", "opponent_id": "john", "game_id": "synthetic-unit",
-        }
-        art = defense.train_defense([row])
+            "down": 2, "distance": 7, "yards": 1,
+        } for _ in range(12)]
+        art = defense.train_defense(rows)
         dest = self.home / "defense.json"
         defense.save_model(art, dest)
         self.db.set_meta(defense.MODEL_META, str(dest))

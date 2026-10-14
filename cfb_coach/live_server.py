@@ -142,6 +142,9 @@ class LivePlayController:
     # Durable HTTP idempotency: request_key -> last response (also persisted in DB).
     _idempotency_mem: dict[str, dict[str, Any]] = field(default_factory=dict)
     pending_opp_look: str | None = None
+    drive_seq: int = 0
+    last_drive_side: str | None = None
+    score_gap: dict[str, Any] | None = None
 
     def book_state(self) -> dict[str, Any] | None:
         if self.book_info is None:
@@ -853,15 +856,30 @@ class LivePlayController:
 
     def _stamp_live_context(self, sit: Any, game_clock: str | None) -> None:
         """Drive and clock for the snap about to be logged. The call is already made."""
-        from cfb_coach.madden.model.call_outcome_log import normalize_game_clock
+        from cfb_coach.madden.model.call_outcome_log import (
+            format_game_clock,
+            normalize_game_clock,
+        )
 
         self._book().assign_drive(sit)
-        token = normalize_game_clock(game_clock)
-        if token is None:
-            return
         extras = getattr(sit, "extras", None)
-        if isinstance(extras, dict):
+        if not isinstance(extras, dict):
+            extras = {}
+            try:
+                sit.extras = extras
+            except Exception:  # noqa: BLE001 — logging must not replace the call
+                return
+        token = normalize_game_clock(game_clock)
+        if token is None and extras.get("clock_seconds") is not None:
+            token = format_game_clock(extras.get("clock_seconds"))
+        if token:
             extras["game_clock"] = token
+        if not str(extras.get("drive_id") or "").strip():
+            side = str(getattr(sit, "side", None) or self.default_side or "offense")
+            if self.last_drive_side is None or side != self.last_drive_side:
+                self.drive_seq += 1
+                self.last_drive_side = side
+            extras["drive_id"] = f"D{self.drive_seq}"
 
     def result_and_call(
         self,
@@ -983,14 +1001,32 @@ class LivePlayController:
             # The call still waiting on a result is not given a snap. Ending
             # the session records that row as no_result instead of deleting it.
             play_count = len(self.log)
+            last_snap_score = None
             try:
                 play_count = max(play_count, logged_play_count(self.db, self.session_id))
-                if not self.score:
-                    logged_score, _inferred = last_logged_score(self.db, self.session_id)
-                    if logged_score:
-                        self.score = logged_score
+                logged_score, _inferred = last_logged_score(self.db, self.session_id)
+                last_snap_score = logged_score
+                if not self.score and logged_score:
+                    self.score = logged_score
             except Exception:
-                pass
+                last_snap_score = None
+            if self.score and last_snap_score and self.score != last_snap_score:
+                self.score_gap = {
+                    "final_score": self.score,
+                    "last_snap_score": last_snap_score,
+                    "invented_snap": False,
+                    "note": (
+                        "Final scoring differs from the last logged snap. "
+                        "The missing points are recorded here without inventing a play."
+                    ),
+                }
+                try:
+                    self.db.set_meta(
+                        f"score_gap:{self.session_id}",
+                        json.dumps(self.score_gap),
+                    )
+                except Exception:
+                    pass
             try:
                 self.db.end_game_session(
                     self.session_id,
@@ -1218,8 +1254,10 @@ def render_live_html(ctrl: LivePlayController) -> str:
         <option value="4">4th</option>
         <option value="5">OT</option>
       </select>
-      <label title="Game clock for this snap. Blank stays unknown.">clock</label>
+      <label title="Game clock for this snap. Kept until you change it. Blank stays unknown.">clock</label>
       <input id="game-clock" placeholder="12:00" inputmode="numeric" style="width:4.5rem"/>
+      <label title="Drive number. Increments when you switch O/D. Written as an explicit drive id.">drive</label>
+      <input type="number" id="drive-n" min="1" max="99" value="1" style="width:3.2rem"/>
       <label title="Our score. Sticks until you change it. Us-them, not the final winner-first score.">us</label>
       <input type="number" id="score-us" min="0" max="99" placeholder="—" value="{_esc(us_v)}"/>
       <label title="Their score">them</label>
@@ -1639,7 +1677,21 @@ function buildSit() {{
   const parts = [d + "&" + dist];
   if (yl) parts.push(ylSide + " " + yl);
   if (phrase) parts.push(phrase);
+  const drive = ($("drive-n") && $("drive-n").value) ? String($("drive-n").value).trim() : "";
+  if (drive) parts.push("drive id " + drive);
   return parts.join(" ");
+}}
+
+let lastPostedSide = $("side") ? $("side").value : "offense";
+if ($("side")) {{
+  $("side").addEventListener("change", () => {{
+    const next = $("side").value;
+    if (next && next !== lastPostedSide && $("drive-n")) {{
+      const cur = parseInt($("drive-n").value || "1", 10);
+      $("drive-n").value = String((Number.isFinite(cur) ? cur : 0) + 1);
+    }}
+    lastPostedSide = next;
+  }});
 }}
 
 function currentOutcome() {{
@@ -1732,9 +1784,12 @@ $("btn-end").addEventListener("click", async () => {{
   setErr("");
   if (!confirm("End game and run retrain on this log?")) return;
   try {{
+    const us = ($("score-us").value || "").trim();
+    const them = ($("score-them").value || "").trim();
+    const typed = ($("score").value || "").trim();
     const data = await withUiLock(async () => apiAction("/api/end_game", {{
       result_wl: $("wl").value,
-      score: $("score").value || "",
+      score: typed || (us && them ? (us + "-" + them) : ""),
     }}));
     if (!data) return;
     renderState(data.state);

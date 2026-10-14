@@ -274,6 +274,8 @@ def _offense_pool(
     menu = {(e["formation"], e["play"]): e for e in og["situations"].get(key, [])}
     any_menu = {(e["formation"], e["play"]) for m in og["situations"].values() for e in m}
     bonus: dict[tuple[str, str], float] = {}
+    from cfb_coach.madden.model.football_situation import is_short_yardage_pass
+
     for f, p in pool:
         b = 0.0
         if (f, p) in menu:
@@ -285,7 +287,8 @@ def _offense_pool(
         run, deep = is_run(p), is_deep(p)
         dist = sit.distance or 10
         if short:
-            b += SIT_BONUS if run else 0.0
+            if run or is_short_yardage_pass(p):
+                b += SIT_BONUS
             b -= 0.10 if deep else 0.0
         elif sit.down in (3, 4) and dist >= 7:
             b += SIT_BONUS if not run else -0.20
@@ -724,14 +727,10 @@ def _pick_defense(
     cooled = _cooled_macros(db, sit)
     if cooled:
         active = [m for m in active if m not in cooled]
-    # The family's best macro among the defense loadout (prep rank order). When none of them
-    # answers it, the research DB's best one is only named as a suggestion (re-prep to carry it).
-    from cfb_coach.madden.macro_pool import pool_ids
-
-    by_rank = sorted(pool_ids("defense"), key=lambda m: (get_macro(m) or {}).get("meta_rank", 99))
-    if cooled:
-        by_rank = [m for m in by_rank if m not in cooled]
-    fam_macro = best_for_family(fam, active, weights) or best_for_family(fam, by_rank, weights)
+    # The family's best macro among the armed defense loadout (prep rank order).
+    # Research-ranked macros that were not physically created and armed stay off
+    # the live line entirely — they are not suggestions either.
+    fam_macro = best_for_family(fam, active, weights)
     if concept:
         src = sit.concept_source or "none"
         repeated = _family_repeat_count(db, oid, fam) >= 2
@@ -769,8 +768,7 @@ def _pick_defense(
                 user = (get_macro(fam_macro) or {}).get("user_job") or user_job_for(play)
                 rationale = f"REPEATED {fam} tendency ({concept}) — {play} + {fam_macro}"
             else:
-                suggest = f"{fam_macro} — repeated {concept} but not in your defense macros; re-prep to add it"
-                rationale += f" | REPEATED {concept} — {fam_macro} not in the defense macros"
+                rationale += f" | REPEATED {concept} — no armed defense macro answers it"
                 d_adj = _d_adjustment(fam, concept)
         else:
             rationale += f" | REPEATED {concept} — no defense macro answers it"
@@ -828,7 +826,9 @@ def _pick_defense(
         info = macro_info(macro, macro_why or f"REPEATED {fam} tendency ({concept}) — {play}")
     if suggest:
         head, _, rest = suggest.partition(" — ")
-        if get_macro(head):
+        if head not in (active or []) or not get_macro(head):
+            suggest = None
+        else:
             suggest = tag_live(head, db) + (f" — {rest}" if rest else "")
     if d_adj and not macro:
         rationale += f" | adj {d_adj['label']}"

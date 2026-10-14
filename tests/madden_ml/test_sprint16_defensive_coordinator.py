@@ -254,6 +254,23 @@ class DefensiveMacroTests(unittest.TestCase):
         self.assertIsNone(decision.fallback_reason)
         self.assertIs(decision.mode, CoachingMode.EXPERIMENTAL)
 
+        # Experimental live apply refuses a missing/prior-driven file. A
+        # limited artifact with empty tables keeps the mix-prior ranking that
+        # this snapshot recorded.
+        stub = {
+            "schema": defense.SCHEMA,
+            "type": "defense_stop_model",
+            "verification_policy": "strict_human_verified_execution.v1",
+            "supervised_defensive_snaps": 12,
+            "n_supervised": 12,
+            "evidence_quality": "limited",
+            "independent_of_offense": True,
+            "side": "defense",
+        }
+        dest = Path(self.tmp.name) / "stub-defense.json"
+        defense.save_model(stub, dest)
+        self.db.set_meta(defense.MODEL_META, str(dest))
+
         heuristic = MaddenCall(
             "defense", "Nickel Over", "Tampa 2", "No adj", "User hook", "heuristic",
         )

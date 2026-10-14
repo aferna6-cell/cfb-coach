@@ -195,12 +195,18 @@ class WildcardJohnGamesTest(unittest.TestCase):
 
         snaps = list(self.db.conn.execute("SELECT accepted, drive_id, situation_raw FROM snaps"))
         self.assertGreater(len(snaps), 0)
-        explicit = [row for row in snaps if row["drive_id"]]
-        plain = [row for row in snaps if not row["drive_id"]]
+        explicit = [
+            row for row in snaps
+            if "drive id" in (row["situation_raw"] or "").lower()
+        ]
+        session_assigned = [
+            row for row in snaps
+            if "drive id" not in (row["situation_raw"] or "").lower()
+        ]
         self.assertTrue(explicit)
-        self.assertTrue(all("drive id" in (row["situation_raw"] or "").lower() for row in explicit))
-        self.assertTrue(plain)
-        self.assertTrue(all(row["drive_id"] is None for row in plain))
+        self.assertTrue(all(row["drive_id"] for row in explicit))
+        self.assertTrue(session_assigned)
+        self.assertTrue(all(str(row["drive_id"] or "").startswith("D") for row in session_assigned))
         outcomes = list(self.db.conn.execute("SELECT accepted FROM ml_outcomes"))
         accepted = [row["accepted"] for row in outcomes]
         self.assertIn("unknown", accepted)

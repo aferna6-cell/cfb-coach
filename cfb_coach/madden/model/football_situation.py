@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from cfb_coach.madden.catalog import is_deep, is_run
-from cfb_coach.madden.model.experimental_model import _play_family
+from cfb_coach.madden.model.experimental_model import _play_concept, _play_family
 
 # Situation families the pregame portfolio must be able to discuss.
 SITUATION_NAMES: tuple[str, ...] = (
@@ -48,6 +48,11 @@ SELECTION_PRIORS: dict[str, dict[str, Any]] = {
     "short_yardage_run": {
         "delta": 0.025,
         "reason": "short-yardage run option",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_conversion_pass": {
+        "delta": 0.025,
+        "reason": "short-yardage pass, play-action, or RPO that can convert",
         "claim": "conversion_proxy_not_expected_points",
     },
     "short_yardage_deep": {
@@ -408,6 +413,19 @@ def audit_situation_inputs(
     }
 
 
+def is_short_yardage_pass(play: str) -> bool:
+    """Pass, play-action, or RPO that can convert 1–2 yards. Deep shots are not."""
+    if is_run(play) or is_deep(play):
+        return False
+    fam = _play_family(play)
+    concept = _play_concept(play)
+    if fam in ("rpo", "screen"):
+        return True
+    if concept in ("pa", "rpo", "slant", "stick", "smash", "screen", "cross"):
+        return True
+    return fam == "pass"
+
+
 def _selection_parts(play: str, sit: Any) -> list[dict[str, Any]]:
     """Legacy magnitudes used by model-primary sampling."""
     if sit is None:
@@ -433,6 +451,11 @@ def _selection_parts(play: str, sit: Any) -> list[dict[str, Any]]:
     elif d in (3, 4) and yards <= 2:
         if run:
             parts.append({"id": "short_yardage_run", **SELECTION_PRIORS["short_yardage_run"]})
+        elif is_short_yardage_pass(play):
+            parts.append({
+                "id": "short_yardage_conversion_pass",
+                **SELECTION_PRIORS["short_yardage_conversion_pass"],
+            })
         if deep:
             parts.append({"id": "short_yardage_deep", **SELECTION_PRIORS["short_yardage_deep"]})
     if bool(getattr(sit, "two_minute", False)) and yards >= 4 and run:

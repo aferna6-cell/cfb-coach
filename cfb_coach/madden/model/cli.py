@@ -924,6 +924,14 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
     """Independent opt-in defensive ML, no effect on offense or CPU offense-only."""
     from cfb_coach.madden.model import defense_coordinator as defense
     from cfb_coach.madden import playbook
+    if args.enable and args.retrain:
+        print(
+            "Cannot combine --enable with --retrain. Train with `ml train-defense` "
+            "or `ml defense-experimental --retrain --out`, then enable separately. "
+            "Enable never trains.",
+            file=sys.stderr,
+        )
+        return 2
     writing = bool(args.enable or args.disable or args.retrain)
     if writing:
         path = _require_db(args, "defense-experimental --enable, --disable, and --retrain")
@@ -946,11 +954,24 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
             if not installed:
                 print("Cannot enable: no physically confirmed defensive playbook", file=sys.stderr)
                 return 2
-            if not defense.load_model(db.get_meta(defense.MODEL_META) or None):
-                from cfb_coach.madden.model.dataset import build_rows
-                art = defense.train_defense(build_rows(db=db))
-                dest = defense.save_model(art, defense._data_path())
-                db.set_meta(defense.MODEL_META, str(dest))
+            model = defense.load_model(db.get_meta(defense.MODEL_META) or None)
+            allowed, reason = defense.experimental_promotion_allowed(model)
+            if not allowed:
+                print(
+                    "Cannot enable: experimental defense refuses promotion without a "
+                    "separately trained artifact of verified human executions. "
+                    f"reason={reason}. Heuristic remains active. "
+                    "Train with `ml train-defense` or `ml defense-experimental --retrain --out`.",
+                    file=sys.stderr,
+                )
+                result = {
+                    "defense_mode": defense.mode(db),
+                    "enabled": False,
+                    "promotion": reason,
+                    "offense_mode_unchanged": True,
+                }
+                print(json.dumps(result, indent=2))
+                return 2
             defense.set_mode(db, "experimental")
         model = defense.load_model(db.get_meta(defense.MODEL_META) or None)
         result = {
@@ -960,11 +981,87 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
             "model": {
                 "quality": (model or {}).get("evidence_quality", "not_trained"),
                 "verified_defensive_snaps": (model or {}).get("supervised_defensive_snaps", 0),
+                "model_version": (model or {}).get("model_version"),
+                "independent_of_offense": True,
             },
             "actual_xbox_controls": "user_operated_only",
-            "note": "Opt-in human defense pilot. No verified data means prior-driven, not empirical.",
+            "note": "Opt-in human defense pilot. Missing or insufficient verified training refuses enable.",
         }
         print(json.dumps(result, indent=2))
+        return 0
+    finally:
+        db.close()
+
+
+def cmd_ml_audit_defense(args: argparse.Namespace) -> int:
+    """Report candidate vs verified defensive snaps. Does not train or enable."""
+    from cfb_coach.madden.model.dataset import build_rows
+    from cfb_coach.madden.model.defense_audit import audit_defensive_rows
+
+    if getattr(args, "db", None):
+        db = open_explicit_madden_db(Path(args.db), read_only=True)
+    else:
+        db = open_madden_db(read_only=True)
+    try:
+        extra = [args.path] if getattr(args, "path", None) else []
+        rows = build_rows(db=db, extra_paths=extra)
+        report = audit_defensive_rows(rows)
+        print(json.dumps(report, indent=2, default=str))
+        return 0 if report["supervised"]["play_specific_training"] else 2
+    finally:
+        db.close()
+
+
+def cmd_ml_train_defense(args: argparse.Namespace) -> int:
+    """Train a defense-only artifact from verified executions. Does not enable live mode."""
+    from cfb_coach.madden.model import defense_coordinator as defense
+    from cfb_coach.madden.model.dataset import build_rows
+
+    path = _require_db(args, "train-defense")
+    if not getattr(args, "out", None):
+        _parser_error(args, "--out is required for train-defense")
+    db = open_explicit_madden_db(path, read_only=False)
+    try:
+        extra = [args.path] if getattr(args, "path", None) else []
+        rows = build_rows(db=db, extra_paths=extra)
+        art = defense.train_defense(rows)
+        dest = defense.save_model(art, args.out)
+        db.set_meta(defense.MODEL_META, str(Path(dest).resolve()))
+        snaps = int(art.get("supervised_defensive_snaps") or 0)
+        print(json.dumps({
+            "path": str(dest),
+            "model_version": art.get("model_version"),
+            "supervised_defensive_snaps": snaps,
+            "evidence_quality": art.get("evidence_quality"),
+            "independent_of_offense": True,
+            "enabled": False,
+            "defense_mode": defense.mode(db),
+            "by_game": (art.get("training_audit") or {}).get("games") or [],
+            "exclusions": (art.get("training_audit") or {}).get("exclusions") or {},
+            "note": "Artifact written and recorded. Live mode stays heuristic until defense-experimental --enable passes the gate.",
+        }, indent=2, default=str))
+        return 0 if snaps else 2
+    finally:
+        db.close()
+
+
+def cmd_ml_eval_defense(args: argparse.Namespace) -> int:
+    """Observational held-out eval of a defense artifact versus the heuristic caller."""
+    from cfb_coach.madden.model.dataset import build_rows
+    from cfb_coach.madden.model.defense_eval import evaluate_defense, load_and_evaluate
+
+    if getattr(args, "db", None):
+        db = open_explicit_madden_db(Path(args.db), read_only=True)
+    else:
+        db = open_madden_db(read_only=True)
+    try:
+        extra = [args.path] if getattr(args, "path", None) else []
+        rows = build_rows(db=db, extra_paths=extra)
+        if getattr(args, "model", None):
+            report = load_and_evaluate(args.model, rows)
+        else:
+            report = evaluate_defense(rows)
+        print(json.dumps(report, indent=2, default=str))
         return 0
     finally:
         db.close()
@@ -2085,6 +2182,32 @@ def build_ml_subparser(sub: Any) -> None:
         help="Artifact path for --retrain. Required so the model is not saved under the home data dir.",
     )
     p_dx.set_defaults(func=cmd_ml_defense_experimental, cli_parser=p_dx)
+
+    p_dau = ml_sub.add_parser(
+        "audit-defense",
+        help="Count candidate vs verified defensive snaps by game; never trains",
+    )
+    p_dau.add_argument("--db", default=None, help="Madden SQLite path. Read-only.")
+    p_dau.add_argument("--path", default=None, help="Optional extra JSONL of snaps")
+    p_dau.set_defaults(func=cmd_ml_audit_defense, cli_parser=p_dau)
+
+    p_dtr = ml_sub.add_parser(
+        "train-defense",
+        help="Train a defense-only artifact from verified executions (does not enable live mode)",
+    )
+    p_dtr.add_argument("--db", default=None, help="Madden SQLite path. Required.")
+    p_dtr.add_argument("--out", default=None, help="Artifact JSON path. Required.")
+    p_dtr.add_argument("--path", default=None, help="Optional extra JSONL of snaps")
+    p_dtr.set_defaults(func=cmd_ml_train_defense, cli_parser=p_dtr)
+
+    p_dev = ml_sub.add_parser(
+        "eval-defense",
+        help="Held-out observational eval of a defense artifact versus the heuristic caller",
+    )
+    p_dev.add_argument("--db", default=None, help="Madden SQLite path. Read-only.")
+    p_dev.add_argument("--model", default=None, help="Defense artifact JSON")
+    p_dev.add_argument("--path", default=None, help="Optional extra JSONL of snaps")
+    p_dev.set_defaults(func=cmd_ml_eval_defense, cli_parser=p_dev)
 
     p_coord = ml_sub.add_parser(
         "offense-coordinator",

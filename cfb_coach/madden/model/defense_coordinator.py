@@ -27,6 +27,9 @@ MODEL_META = "ml_defense_coordinator_artifact.v1"
 MAX_FORMATIONS = 15
 LATENCY_MS = 150.0
 PRIOR_STRENGTH = 8.0
+OPP_PRIOR_STRENGTH = 12.0
+MIN_EXPERIMENTAL_VERIFIED = 10
+MODEL_KIND = "hierarchical_shrinkage.v1"
 
 
 def _data_path() -> Path:
@@ -60,8 +63,112 @@ def _bucket(down: Any, distance: Any, *, red_zone: bool = False, goal_line: bool
     return "early"
 
 
+def _dd_bucket(down: Any, distance: Any) -> str:
+    try:
+        d, dist = int(down), int(distance)
+    except (TypeError, ValueError):
+        return "unknown"
+    if dist <= 3:
+        return f"{d}_short"
+    if dist >= 8:
+        return f"{d}_long"
+    return f"{d}_med"
+
+
+def _field_bucket(yardline: Any) -> str:
+    try:
+        yl = int(yardline)
+    except (TypeError, ValueError):
+        return "unknown"
+    if yl >= 80:
+        return "red_zone"
+    if yl < 40:
+        return "own"
+    return "mid"
+
+
+def _clock_bucket(row: Mapping[str, Any]) -> str:
+    if row.get("two_minute"):
+        return "two_minute"
+    return "normal"
+
+
+def _score_bucket(row: Mapping[str, Any]) -> str:
+    try:
+        us, them = int(row.get("score_us")), int(row.get("score_them"))
+    except (TypeError, ValueError):
+        return "unknown"
+    if us > them + 8:
+        return "protect"
+    if them > us + 8:
+        return "chase"
+    return "tied"
+
+
+def _outcome_bits(row: Mapping[str, Any]) -> dict[str, Any]:
+    stop = str(row.get("success") or "").lower() == "true"
+    yards = None
+    try:
+        yards = int(row["yards"])
+    except (KeyError, TypeError, ValueError):
+        yards = None
+    dist = None
+    try:
+        dist = int(row["distance"])
+    except (KeyError, TypeError, ValueError):
+        dist = None
+    kind = str(row.get("result") or row.get("outcome_kind") or "").lower()
+    td = kind in ("td", "touchdown") or bool(row.get("touchdown"))
+    explosive = (yards is not None and yards >= 15) or td
+    house = (yards is not None and yards >= 40) or td
+    conversion = yards is not None and dist is not None and yards >= dist
+    return {
+        "stop": stop,
+        "no_conversion": (not conversion) if dist is not None and yards is not None else None,
+        "no_explosive": (not explosive) if yards is not None or td else None,
+        "no_td": not td,
+        "no_house": not house,
+        "yards": yards,
+    }
+
+
+def _bump_pair(dest: dict[str, list[int]], key: str, ok: int) -> None:
+    count = dest.setdefault(key, [0, 0])
+    count[0] += ok
+    count[1] += 1
+
+
+def _bump_objective(dest: dict[str, dict[str, list[float]]], key: str, bits: Mapping[str, Any]) -> None:
+    slot = dest.setdefault(key, {
+        "stop": [0, 0],
+        "no_conversion": [0, 0],
+        "no_explosive": [0, 0],
+        "no_td": [0, 0],
+        "no_house": [0, 0],
+        "yards": [0, 0],
+    })
+    slot["stop"][0] += int(bits["stop"])
+    slot["stop"][1] += 1
+    if bits["no_conversion"] is not None:
+        slot["no_conversion"][0] += int(bits["no_conversion"])
+        slot["no_conversion"][1] += 1
+    if bits["no_explosive"] is not None:
+        slot["no_explosive"][0] += int(bits["no_explosive"])
+        slot["no_explosive"][1] += 1
+    slot["no_td"][0] += int(bits["no_td"])
+    slot["no_td"][1] += 1
+    slot["no_house"][0] += int(bits["no_house"])
+    slot["no_house"][1] += 1
+    if bits["yards"] is not None:
+        slot["yards"][0] += float(bits["yards"])
+        slot["yards"][1] += 1
+
+
 def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Fit shrinkage stop rates, exclusively from verified defensive executions."""
+    from datetime import datetime, timezone
+
+    from cfb_coach.madden.model.defense_audit import attach_audit, audit_defensive_rows
     from cfb_coach.madden.model.defense_intelligence import (
         verified_human_rows, fit_opponent_offense, fit_opponent_outcome_risks,
     )
@@ -69,6 +176,18 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     stats: dict[str, list[int]] = {}
     context: dict[str, list[int]] = {}
     plays: dict[str, list[int]] = {}
+    down_distance: dict[str, list[int]] = {}
+    family_dd: dict[str, list[int]] = {}
+    field_zone: dict[str, list[int]] = {}
+    clock: dict[str, list[int]] = {}
+    score_phase: dict[str, list[int]] = {}
+    personnel: dict[str, list[int]] = {}
+    pressure: dict[str, list[int]] = {}
+    objectives: dict[str, dict[str, list[float]]] = {}
+    obj_ctx: dict[str, dict[str, list[float]]] = {}
+    obj_plays: dict[str, dict[str, list[float]]] = {}
+    general_plays: dict[str, list[int]] = {}
+    opponent_plays: dict[str, dict[str, list[int]]] = {}
     n = 0
     verified = [r for r in verified_human_rows(rows) if str(r.get("side") or "") == "defense"]
     for row in verified:
@@ -80,25 +199,74 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             continue
         ok = int(str(row["success"]).lower() == "true")
         key = _bucket(row.get("down"), row.get("distance"),
-                      red_zone=bool(row.get("red_zone")), goal_line=bool(row.get("goal_line")))
+                      red_zone=bool(row.get("red_zone")), goal_line=bool(row.get("goal_line")),
+                      two_minute=bool(row.get("two_minute")))
         for dest, tag in ((stats, fam), (context, key + "|" + fam), (plays, play)):
             count = dest.setdefault(tag, [0, 0])
             count[0] += ok
             count[1] += 1
+        dd = _dd_bucket(row.get("down"), row.get("distance"))
+        _bump_pair(down_distance, dd, ok)
+        _bump_pair(family_dd, f"{fam}|{dd}", ok)
+        _bump_pair(field_zone, _field_bucket(row.get("yardline")), ok)
+        _bump_pair(clock, _clock_bucket(row), ok)
+        _bump_pair(score_phase, _score_bucket(row), ok)
+        _bump_pair(pressure, "pressure" if fam == "pressure" else "coverage", ok)
+        token = str(row.get("opp_personnel") or row.get("personnel") or "").strip()
+        if token:
+            _bump_pair(personnel, f"{token}|{fam}", ok)
+        bits = _outcome_bits(row)
+        _bump_objective(objectives, fam, bits)
+        _bump_objective(obj_ctx, key + "|" + fam, bits)
+        _bump_objective(obj_plays, play, bits)
+        _bump_pair(general_plays, play, ok)
+        oid = str(row.get("opponent_id") or "")
+        if oid:
+            _bump_pair(opponent_plays.setdefault(oid, {}), play, ok)
         n += 1
-    return {
+    quality = "empirical" if n >= 40 else ("limited" if n >= MIN_EXPERIMENTAL_VERIFIED else "prior_driven")
+    version = f"madden-ml.defense.coordinator.{n}.{quality}"
+    audit = audit_defensive_rows(rows)
+    artifact = {
         "schema": SCHEMA, "type": "defense_stop_model",
+        "model_kind": MODEL_KIND,
+        "side": "defense",
+        "independent_of_offense": True,
+        "model_version": version,
+        "trained_at": datetime.now(timezone.utc).isoformat(),
         "verification_policy": "strict_human_verified_execution.v1",
         "supervised_defensive_snaps": n,
-        "evidence_quality": "empirical" if n >= 40 else ("limited" if n >= 10 else "prior_driven"),
+        "n_supervised": n,
+        "evidence_quality": quality,
         "families": stats, "contexts": context, "plays": plays,
+        "hierarchy": {
+            "down_distance": down_distance,
+            "family_down_distance": family_dd,
+            "field_zone": field_zone,
+            "clock": clock,
+            "score_phase": score_phase,
+            "personnel": personnel,
+            "pressure": pressure,
+        },
+        "objectives": {
+            "families": objectives,
+            "contexts": obj_ctx,
+            "plays": obj_plays,
+        },
+        "general": {"plays": general_plays, "families": stats},
+        "opponent_specific": {"plays": opponent_plays},
         "opponent_tendencies": fit_opponent_offense(verified),
         "opponent_outcome_risks": fit_opponent_outcome_risks(rows),
         "opponent_profiles": fit_opponent_profiles(verified),
         "verified_human_games": len({str(r["game_id"]) for r in verified}),
         "observational_only": True,
-        "note": "Stop outcomes are observations, not proven counterfactual effects.",
+        "note": (
+            "Stop, conversion, explosive, and touchdown rates are observations, "
+            "not proven counterfactual effects. Opponent tables shrink toward the "
+            "general prior. Post-snap concept_seen is not a live pre-snap feature."
+        ),
     }
+    return attach_audit(artifact, audit)
 
 
 def save_model(model: Mapping[str, Any], path: str | Path) -> Path:
@@ -125,6 +293,43 @@ def _rate(count: Sequence[int] | None) -> tuple[float, int]:
         return 0.5, 0
     won, total = int(count[0]), int(count[1])
     return (won + PRIOR_STRENGTH * 0.5) / (total + PRIOR_STRENGTH), total
+
+
+def _rate_prior(count: Sequence[int] | None, prior: float, strength: float) -> tuple[float, int]:
+    if not count:
+        return prior, 0
+    won, total = float(count[0]), float(count[1])
+    return (won + prior * strength) / (total + strength), int(total)
+
+
+def experimental_promotion_allowed(model: Mapping[str, Any] | None) -> tuple[bool, str]:
+    """Refuse live experimental defense without verified training.
+
+    Enabling the experimental switch never trains a file. A prior-driven or
+    missing artifact leaves the heuristic caller active.
+    """
+    if not model:
+        return False, "missing_defense_artifact"
+    snaps = int(model.get("supervised_defensive_snaps") or model.get("n_supervised") or 0)
+    quality = str(model.get("evidence_quality") or "prior_driven")
+    if snaps < MIN_EXPERIMENTAL_VERIFIED or quality == "prior_driven":
+        return False, f"insufficient_verified_training:{snaps}:{quality}"
+    if model.get("schema") != SCHEMA or model.get("type") != "defense_stop_model":
+        return False, "incompatible_defense_artifact"
+    return True, "ok"
+
+
+def _objective_rate(slot: Mapping[str, Any] | None, name: str, prior: float = 0.5) -> tuple[float, int]:
+    if not slot:
+        return prior, 0
+    return _rate_prior(slot.get(name), prior, PRIOR_STRENGTH)
+
+
+def _expected_yards(slot: Mapping[str, Any] | None) -> float | None:
+    raw = None if not slot else slot.get("yards")
+    if not raw or len(raw) < 2 or not raw[1]:
+        return None
+    return float(raw[0]) / float(raw[1])
 
 
 # One-hot tokens are football personnel and set labels. They are not editor
@@ -205,10 +410,54 @@ def _score(
     baseline = mix.get(family or "", 0.025)
     learned, n_family = _rate((model or {}).get("families", {}).get(family or ""))
     specific, n_ctx = _rate((model or {}).get("contexts", {}).get(ctx + "|" + str(family)))
-    play_rate, n_play = _rate((model or {}).get("plays", {}).get(play))
+    general_play, n_play_general = _rate(((model or {}).get("general") or {}).get("plays", {}).get(play)
+                                         or (model or {}).get("plays", {}).get(play))
+    opp_table = (((model or {}).get("opponent_specific") or {}).get("plays") or {}).get(opponent_id) or {}
+    play_rate, n_play = _rate_prior(opp_table.get(play), general_play, OPP_PRIOR_STRENGTH)
+    if n_play == 0:
+        play_rate, n_play = general_play, n_play_general
     # Conservative prior; more verified executions can overcome it.
     score = 0.20 * math.log(max(0.02, baseline)) + 1.10 * (learned - 0.5)
     score += 0.75 * (specific - 0.5) + 0.24 * (play_rate - 0.5)
+    hierarchy = (model or {}).get("hierarchy") or {}
+    dd = _dd_bucket(getattr(sit, "down", None), getattr(sit, "distance", None))
+    p_dd, n_dd = _rate(hierarchy.get("down_distance", {}).get(dd))
+    p_fam_dd, n_fam_dd = _rate_prior(
+        hierarchy.get("family_down_distance", {}).get(f"{family}|{dd}"), learned, PRIOR_STRENGTH,
+    )
+    p_field, _n_field = _rate(hierarchy.get("field_zone", {}).get(_field_bucket(getattr(sit, "yardline", None))))
+    clock_key = "two_minute" if getattr(sit, "two_minute", False) else "normal"
+    p_clock, _n_clock = _rate(hierarchy.get("clock", {}).get(clock_key))
+    try:
+        us, them = int(getattr(sit, "score_us", None)), int(getattr(sit, "score_them", None))
+        if us > them + 8:
+            phase = "protect"
+        elif them > us + 8:
+            phase = "chase"
+        else:
+            phase = "tied"
+    except (TypeError, ValueError):
+        phase = "unknown"
+    p_phase, _n_phase = _rate(hierarchy.get("score_phase", {}).get(phase))
+    score += 0.18 * (p_fam_dd - 0.5) + 0.08 * (p_dd - 0.5)
+    score += 0.08 * (p_field - 0.5) + 0.06 * (p_clock - 0.5) + 0.05 * (p_phase - 0.5)
+    obj = ((model or {}).get("objectives") or {}).get("plays", {}).get(play) or {}
+    obj_fam = ((model or {}).get("objectives") or {}).get("families", {}).get(family or "") or {}
+    no_conv, n_conv = _objective_rate(obj or obj_fam, "no_conversion")
+    no_expl, n_expl = _objective_rate(obj or obj_fam, "no_explosive")
+    no_td, n_td = _objective_rate(obj or obj_fam, "no_td")
+    no_house, n_house = _objective_rate(obj or obj_fam, "no_house")
+    # A 40-yard touchdown is worse than a routine first down.
+    score += 0.55 * (no_conv - 0.5) + 1.15 * (no_expl - 0.5)
+    score += 1.45 * (no_td - 0.5) + 1.25 * (no_house - 0.5)
+    expected = _expected_yards(obj or obj_fam)
+    if expected is not None:
+        score -= 0.012 * min(40.0, max(0.0, expected))
+    personnel_token = str(getattr(sit, "opp_personnel", None) or "").strip()
+    if personnel_token and family:
+        p_pers, n_pers = _rate(hierarchy.get("personnel", {}).get(f"{personnel_token}|{family}"))
+        if n_pers:
+            score += 0.07 * (p_pers - 0.5)
     if eligible and formation not in eligible:
         score -= 0.18
     if sit.goal_line and any(x in formation.lower() for x in ("dime", "dollar", "quarter")):
@@ -1001,22 +1250,21 @@ def maybe_apply_defense(
         game_id = extras.get("game_id")
     except Exception:
         return call
-    if extras.get("require_trained_defense_artifact"):
-        # A prior-only or missing file is not a trained defense model. Do not
-        # fit one here. The established caller is the legal play.
-        model = load_model(db.get_meta(MODEL_META) or None) if db is not None else None
-        snaps = int((model or {}).get("supervised_defensive_snaps") or 0)
-        if model is None or snaps < 1:
-            try:
-                from cfb_coach.madden.model.schema import MLStatus
-                _stamp_decision(call, _fallback_decision(
-                    book=book, call=call, status=MLStatus.MODEL_MISSING, elapsed_ms=0.0,
-                    session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
-                    detail="missing defense artifact or zero verified snaps",
-                ), db, extras)
-            except Exception:
-                pass
-            return call
+    # Experimental mode on the switch is not a trained model. A missing or
+    # prior-driven artifact leaves the established caller labeled heuristic.
+    model = load_model(db.get_meta(MODEL_META) or None) if db is not None else None
+    allowed, reason = experimental_promotion_allowed(model)
+    if not allowed:
+        try:
+            from cfb_coach.madden.model.schema import MLStatus
+            _stamp_decision(call, _fallback_decision(
+                book=book, call=call, status=MLStatus.MODEL_MISSING, elapsed_ms=0.0,
+                session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                detail=f"defense experimental promotion refused ({reason})",
+            ), db, extras)
+        except Exception:
+            pass
+        return call
     # Existing researched active macro/adjustment triggers are not yet jointly
     # calibrated against this new defensive model. Keep the established
     # caller's already-armed action instead of silently discarding it.
@@ -1096,23 +1344,20 @@ def maybe_apply_defense(
 
         from cfb_coach.madden.model.dual_control import adjustment_block_reason
 
-        blocked = None
-        if extras.get("require_trained_defense_artifact"):
-            blocked = adjustment_block_reason(
-                SimpleNamespace(macro=macro_name, adjustment=adjustment),
-                side="defense",
-                armed=list(extras.get("defense_armed_ids") or []),
-                db=db,
-                opponent_id=opponent_id,
-            )
+        blocked = adjustment_block_reason(
+            SimpleNamespace(macro=macro_name, adjustment=adjustment),
+            side="defense",
+            armed=list(extras.get("defense_armed_ids") or []),
+            db=db,
+            opponent_id=opponent_id,
+        )
+        dropped_macro = None
         if blocked:
-            _stamp_decision(call, _fallback_decision(
-                book=book, call=call, status=MLStatus.INVALID_OUTPUT,
-                elapsed_ms=(time.perf_counter() - started) * 1000.0,
-                session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
-                detail=blocked,
-            ), db, extras)
-            return call
+            # An unarmed or unverified sheet is dropped. The in-book play remains.
+            dropped_macro = blocked
+            macro_name = None
+            macro_info = None
+            adjustment = None
         if (time.perf_counter() - started) * 1000.0 > LATENCY_MS:
             _stamp_decision(call, _fallback_decision(
                 book=book, call=call, status=MLStatus.TIMEOUT,
@@ -1128,14 +1373,17 @@ def maybe_apply_defense(
         verified_note = ""
         if verified.get("scored_ids"):
             verified_note = " " + str(verified.get("why") or "")
+        action_id = "none" if dropped_macro else plan["id"]
         note = (
             f"DEFENSE ML [{ranked['model_quality']}] {winner['family']} "
-            f"({ranked['n_candidates']} installed plays; action {plan['id']}; "
+            f"({ranked['n_candidates']} installed plays; action {action_id}; "
             f"concept={observation or 'unknown'}; "
             f"trend={tendency_state.get('family') if tendency_state.get('ready') else 'uncertain'}); "
             f"knowledge={intelligence.get('principle') or 'unknown'}"
             f"{verified_note}"
         )
+        if dropped_macro:
+            note += f" | dropped unarmed macro ({dropped_macro})"
         result = MaddenCall(
             "defense", winner["formation"], winner["play"],
             macro_name or (adjustment["label"] if adjustment else "No adj"),

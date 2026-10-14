@@ -88,6 +88,21 @@ python -m cfb_coach ml evaluate --seed 7 --registry /tmp/madden_ml_registry_smok
 # hybrid_activation remains false.
 ```
 
+## Defense training (independent of offense)
+
+Verified human executions only. The figure 178 is a candidate count, not a supervised count.
+
+```bash
+python -m cfb_coach ml audit-defense --db "$CFB_COACH_MADDEN_DB"
+python -m cfb_coach ml train-defense --db "$CFB_COACH_MADDEN_DB" --out /abs/defense_coordinator.json
+python -m cfb_coach ml eval-defense --db "$CFB_COACH_MADDEN_DB" --model /abs/defense_coordinator.json
+# Enable refuses unless the installed artifact has ≥10 verified snaps. It does not train.
+python -m cfb_coach ml defense-experimental --enable --db "$CFB_COACH_MADDEN_DB"
+python -m cfb_coach ml defense-experimental --disable --db "$CFB_COACH_MADDEN_DB"
+```
+
+See `docs/madden_ml/DEFENSE_ML_GO_NOGO.md`.
+
 ## Training eligibility
 
 | Class | Supervised play-action training | Action features |

@@ -139,6 +139,22 @@ def choose_model_play(
                 penalty += min(0.14, 0.05 + .015 * (screen_exposure - 2))
             if sum(p == key for p in last4) >= 3:
                 penalty += 0.055
+            try:
+                down_i = int(getattr(sit, "down", None))
+                dist_i = int(getattr(sit, "distance", None))
+            except (TypeError, ValueError):
+                down_i, dist_i = 0, 99
+            short = bool(
+                sit is not None
+                and (
+                    getattr(sit, "short_yardage", False)
+                    or (down_i in (3, 4) and dist_i <= 2)
+                )
+            )
+            if short and fam == "run":
+                recent_runs = family_count.get("run", 0)
+                if recent_runs >= 2:
+                    penalty += min(0.07, 0.018 * recent_runs)
         situation_delta, situation_reason = _situational_adjustment(key[1], sit)
         # Do not discard a high-confidence/high-margin finding for cosmetic
         # variety. In contrast, low-data inflated scores are not sacrosanct.

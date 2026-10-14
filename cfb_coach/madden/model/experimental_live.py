@@ -770,6 +770,17 @@ def apply_experimental_offense(
 
         opp_type = "cpu" if is_cpu_opponent(opponent_id) else "human"
         clock.begin("rank")
+        try:
+            down_i = int(getattr(sit, "down"))
+            dist_i = int(getattr(sit, "distance"))
+        except (TypeError, ValueError):
+            down_i, dist_i = 0, 0
+        short = bool(
+            getattr(sit, "short_yardage", False)
+            or (down_i in (2, 3, 4) and dist_i <= 2)
+        )
+        # Short-yardage conversion bonuses let passes/PA/RPO compete with runs.
+        # Other situations stay model-primary with no heuristic blend.
         ranked = exp_mod.rank_candidates(
             artifact,
             pairs,
@@ -781,7 +792,7 @@ def apply_experimental_offense(
             opponent_id=opponent_id,
             opponent_type=opp_type,
             heuristic=None,
-            heuristic_bonuses={},
+            heuristic_bonuses=bonuses if short else {},
             near_tie_margin=0.0,
         )
         latency = (time.perf_counter() - started) * 1000.0

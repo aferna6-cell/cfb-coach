@@ -1202,7 +1202,7 @@ def test_live_loop_confirmed_adjustment_is_logged(tmp_path: Path) -> None:
             assert row["accepted"] == "true"
             assert row["recommended_adjustment_id"] == "SLIDE"
             assert row["executed_adjustment_id"] == "SLIDE"
-            assert row["drive_id"] is None
+            assert row["drive_id"] == "D1"
             assert row["game_clock"] == "12:00"
         assert resolve_mode(db) is CoachingMode.HEURISTIC
     finally:
@@ -1226,7 +1226,7 @@ def test_live_loop_unconfirmed_adjustment_stays_a_recommendation(tmp_path: Path)
             assert row["accepted"] == "unknown"
             assert row["recommended_adjustment_id"] == "SLIDE"
             assert row["executed_adjustment_id"] is None
-            assert row["drive_id"] is None
+            assert row["drive_id"] == "D1"
             assert row["game_clock"] == "9:00"
     finally:
         db.close()
@@ -1250,7 +1250,7 @@ def test_live_loop_without_a_recommendation_leaves_execution_empty(tmp_path: Pat
             assert row["recommended_adjustment_id"] is None
             assert row["executed_adjustment_id"] is None
             assert row["accepted"] == "true"
-            assert row["drive_id"] is None
+            assert row["drive_id"] == "D1"
             assert row["game_clock"] == "5:15"
     finally:
         db.close()
@@ -1319,11 +1319,11 @@ def test_live_loop_fills_snap_and_outcome_fields(tmp_path: Path) -> None:
             assert row["game_clock"]
             assert row["outcome_drive"] == row["drive_id"]
             assert row["outcome_clock"] == row["game_clock"]
-        assert rows[0]["drive_id"] is None
-        assert rows[0]["outcome_drive"] is None
+        assert rows[0]["drive_id"] == "D1"
+        assert rows[0]["outcome_drive"] == "D1"
         assert rows[0]["game_clock"] == "8:00"
-        assert rows[1]["drive_id"] is None
-        assert rows[1]["outcome_drive"] is None
+        assert rows[1]["drive_id"] == "D1"
+        assert rows[1]["outcome_drive"] == "D1"
         assert rows[1]["game_clock"] == "6:30"
         assert resolve_mode(db) is CoachingMode.HEURISTIC
         assert ML_LATENCY_BUDGET_MS == 150
@@ -1331,7 +1331,7 @@ def test_live_loop_fills_snap_and_outcome_fields(tmp_path: Path) -> None:
         db.close()
 
 
-def test_live_loop_without_an_explicit_drive_stores_null(tmp_path: Path) -> None:
+def test_live_loop_without_an_explicit_drive_uses_session_sequence(tmp_path: Path) -> None:
     db, ctrl = _live_pad(tmp_path, "HOT")
     try:
         ctrl.call_only("1&10 my 25", game_clock="12:00", quarter=1)
@@ -1359,8 +1359,8 @@ def test_live_loop_without_an_explicit_drive_stores_null(tmp_path: Path) -> None
             """
         ).fetchall()
         assert len(rows) == 2
-        assert rows[0]["drive_id"] is None
-        assert rows[0]["outcome_drive"] is None
+        assert rows[0]["drive_id"] == "D1"
+        assert rows[0]["outcome_drive"] == "D1"
         assert rows[1]["drive_id"] == "4"
         assert rows[1]["outcome_drive"] == "4"
     finally:
