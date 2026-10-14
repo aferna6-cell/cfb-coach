@@ -1028,6 +1028,18 @@ class CoachDB:
                     self.conn.commit()
                 except sqlite3.Error:
                     pass
+            if "owner_pid" not in gs_cols:
+                try:
+                    self.conn.execute("ALTER TABLE game_sessions ADD COLUMN owner_pid INTEGER")
+                    self.conn.commit()
+                except sqlite3.Error:
+                    pass
+            if "heartbeat_ts" not in gs_cols:
+                try:
+                    self.conn.execute("ALTER TABLE game_sessions ADD COLUMN heartbeat_ts TEXT")
+                    self.conn.commit()
+                except sqlite3.Error:
+                    pass
 
     def _migrate_ml_tables(self) -> None:
         """Additive Madden ML decision/outcome tables. Safe to run repeatedly."""

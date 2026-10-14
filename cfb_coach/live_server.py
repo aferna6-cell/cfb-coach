@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 from cfb_coach.browser_open import open_url
 from cfb_coach.session import (
     arm_session_exit,
+    clear_recovered_note,
     close_armed_sessions,
     disarm_session_exit,
     last_logged_score,
@@ -964,6 +965,9 @@ class LivePlayController:
                     score=self.score,
                     recovered=False,
                 )
+                # A premature recovery may already have set ended_ts. This write
+                # replaces that row; drop the recovered flag so the real close wins.
+                clear_recovered_note(self.db, self.session_id)
                 disarm_session_exit(self.session_id)
             except Exception:
                 pass
