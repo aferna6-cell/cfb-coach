@@ -105,6 +105,13 @@ def test_mode_switch_prints_using_db_before_write(tmp_path, argv, marker):
     from cfb_coach.madden.data import load_seed
 
     db = CoachDB(db_path, seed=load_seed())
+    if argv == ["ml", "experimental"]:
+        from cfb_coach.madden.model import experimental_live, experimental_model
+
+        art = experimental_model.train_experimental([], side="offense")
+        dest = tmp_path / "offense.json"
+        experimental_model.save_artifact(art, dest)
+        experimental_live.set_artifact_path(db, dest)
     db.close()
     before = db_path.read_bytes()
     result = _run(argv, cwd=tmp_path, home=home, db=db_path)

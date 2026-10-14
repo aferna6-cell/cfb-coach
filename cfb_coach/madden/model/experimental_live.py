@@ -653,8 +653,16 @@ def apply_experimental_offense(
         traced = True
         return _inference_trace(clock, latency, timed_out)
 
-    def _fallback(status: MLStatus, latency: float | None = None) -> tuple[Any, CoachingDecision]:
+    def _fallback(
+        status: MLStatus,
+        latency: float | None = None,
+        detail: str | None = None,
+    ) -> tuple[Any, CoachingDecision]:
         trace = _mark(latency, status is MLStatus.TIMEOUT)
+        source = "heuristic_offense"
+        note = f"fallback_source={source}"
+        if detail:
+            note = f"{note}; {detail}"
         dec = CoachingDecision(
             decision_ts=decision_ts,
             latency_ms=latency,
@@ -676,6 +684,7 @@ def apply_experimental_offense(
             fallback_reason=status,
             propensity_method=PropensityMethod.UNKNOWN,
             accepted=Tri.UNKNOWN,
+            ml_status_detail=note,
         )
         info = {
             "heuristic_formation": heur_form,
@@ -688,6 +697,9 @@ def apply_experimental_offense(
             "explanation": f"experimental fallback → heuristic ({status.value})",
             "scored_on": scored_on,
             "fell_back": True,
+            "fallback_reason": status.value,
+            "fallback_source": source,
+            "fallback_detail": detail,
             "latency_ms": trace.get("latency_ms"),
             "timed_out": trace.get("timed_out", False),
             "slowest_stage": trace.get("slowest_stage"),
@@ -737,20 +749,13 @@ def apply_experimental_offense(
     started = time.perf_counter()
     try:
         if artifact_path is None:
-            from cfb_coach.madden.model import dataset as dataset_mod
-            from cfb_coach.games import data_dir
-
-            rows = dataset_mod.build_rows(db=db) if db is not None else []
-            art = exp_mod.train_experimental(rows, side="offense")
-            dest = Path(data_dir()) / "madden_ml_experimental" / "offense.json"
-            exp_mod.save_artifact(art, dest)
-            if db is not None:
-                set_artifact_path(db, dest)
-                db.set_meta(META_KNOWLEDGE, art.knowledge_version)
-                db.set_meta(META_DATA_VERSION, art.data_version)
-            artifact = art
-        else:
-            artifact, scored_on = _cached_experimental_artifact(artifact_path)
+            # Do not train from the live call. A missing file is a heuristic snap.
+            return _fallback(
+                MLStatus.MODEL_MISSING,
+                (time.perf_counter() - started) * 1000.0,
+                detail="missing offense artifact",
+            )
+        artifact, scored_on = _cached_experimental_artifact(artifact_path)
 
         elapsed = (time.perf_counter() - started) * 1000.0
         if elapsed > budget:
@@ -923,6 +928,13 @@ def apply_experimental_offense(
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
+        from cfb_coach.madden.model.dual_control import adjustment_block_reason
+
+        blocked = adjustment_block_reason(
+            call, side="offense", armed=list(active or []), db=db, opponent_id=opponent_id,
+        )
+        if blocked:
+            return _fallback(MLStatus.INVALID_OUTPUT, latency, detail=blocked)
 
         trace = _mark(latency, False)
         info = {
@@ -1184,6 +1196,20 @@ def maybe_apply_experimental(
         )
         return new_call
     except Exception:  # noqa: BLE001
+        try:
+            if not isinstance(getattr(call, "ml_experimental", None), dict):
+                call.ml_experimental = {
+                    "fell_back": True,
+                    "fallback_reason": "exception",
+                    "fallback_source": "heuristic_offense",
+                    "heuristic_formation": getattr(call, "formation", None),
+                    "heuristic_play": getattr(call, "play", None),
+                    "final_formation": getattr(call, "formation", None),
+                    "final_play": getattr(call, "play", None),
+                    "explanation": "experimental fallback → heuristic (exception)",
+                }
+        except Exception:  # noqa: BLE001
+            pass
         return call
 
 

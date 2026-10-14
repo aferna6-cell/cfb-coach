@@ -658,10 +658,11 @@ def test_run_config_logs_mode_model_flags_commit_and_playbook(tmp_path: Path) ->
             "SELECT * FROM ml_run_config WHERE session_id = ?", (SESSION,)
         ).fetchone()
         flags = json.loads(row["flags_json"])
+        repo = Path(__file__).resolve().parents[2]
         commit, branch = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], text=True
+            ["git", "rev-parse", "HEAD"], cwd=repo, text=True
         ).strip(), subprocess.check_output(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo, text=True
         ).strip()
         assert row["mode"] == "heuristic"
         assert row["model_id"] == "synthetic-model"

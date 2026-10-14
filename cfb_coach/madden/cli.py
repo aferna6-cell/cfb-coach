@@ -592,6 +592,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     active = _active_after_prep(db, oid, pid)
     cpu = is_cpu_opponent(oid)
     human_ml_control = bool(getattr(args, "ml_human_control", False)) and not cpu
+    human_defense_ml = bool(getattr(args, "ml_defense_control", False)) and not cpu
     if human_ml_control:
         from cfb_coach.madden.model import inference as ml_inference
         from cfb_coach.madden.model.schema import CoachingMode
@@ -599,7 +600,19 @@ def cmd_play(args: argparse.Namespace) -> int:
         if ml_inference.resolve_mode(db) is not CoachingMode.EXPERIMENTAL:
             print(
                 "Human offensive ML requires experimental mode. Run "
-                "`python -m cfb_coach ml experimental --retrain` first.",
+                "`python -m cfb_coach ml experimental` only when offense.json is already installed.",
+                file=sys.stderr,
+            )
+            db.close()
+            return 2
+    if human_defense_ml:
+        from cfb_coach.madden.model import defense_coordinator as defense_mode
+
+        if defense_mode.mode(db) != "experimental":
+            print(
+                "Human defensive ML requires experimental defense mode. "
+                "Run `python -m cfb_coach ml defense-experimental --enable --db <absolute>` "
+                "only when a trained defense artifact is already installed.",
                 file=sys.stderr,
             )
             db.close()
@@ -613,6 +626,13 @@ def cmd_play(args: argparse.Namespace) -> int:
         print("  Instant rollback for next call: python -m cfb_coach ml heuristic")
     elif not cpu:
         print("HUMAN OFFENSE ML PILOT: OFF (heuristic offense; use --ml-human-control to opt in).")
+    if human_defense_ml:
+        print("HUMAN DEFENSE PILOT: ON for this play session only (opt-in).")
+        print("  A human must confirm each call: accepted stays unknown until verify is touched.")
+        print("  Instant rollback for the next defensive call: "
+              "python -m cfb_coach ml defense-experimental --disable --db \"$CFB_COACH_MADDEN_DB\"")
+    elif not cpu:
+        print("HUMAN DEFENSE PILOT: OFF (established defensive caller; use --ml-defense-control to opt in).")
     print(_profile_header(pid))
     print(doctrine_line(profile_config(pid)["team"]))
     from cfb_coach.madden.playbook import NoActivePlaybook, active_books, load_pending
@@ -672,6 +692,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         call = make_call(
             sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
             allow_human_ml=human_ml_control,
+            allow_human_defense_ml=human_defense_ml,
         )
         _maybe_shadow(db, sit, call, oid)
         print(call.headline())
@@ -693,6 +714,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             kwargs.setdefault("live_macros", macros_on)
             kwargs.setdefault("active_macros", _active_now())
             kwargs.setdefault("allow_human_ml", human_ml_control)
+            kwargs.setdefault("allow_human_defense_ml", human_defense_ml)
             return make_call(sit, oid, db, **kwargs)
 
         def _learn():
@@ -842,6 +864,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             call = make_call(
                 sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
                 allow_human_ml=human_ml_control,
+                allow_human_defense_ml=human_defense_ml,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )
