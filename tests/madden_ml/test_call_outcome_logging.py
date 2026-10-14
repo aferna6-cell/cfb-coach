@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 from cfb_coach.db import CoachDB
-from cfb_coach.live_server import LivePlayController
+from cfb_coach.live_server import LivePlayController, render_live_html
 from cfb_coach.madden.model.call_outcome_log import (
     LINKED,
     NO_SNAP_RECORDED,
@@ -745,6 +745,7 @@ def test_live_loop_confirmed_adjustment_is_logged(tmp_path: Path) -> None:
             score_set=True,
             executed_status="used_recommended",
             applied_recommended_action=True,
+            verify_touched=True,
         )
         assert logged["ok"]
         snap, outcome = _pair(db)
@@ -752,7 +753,7 @@ def test_live_loop_confirmed_adjustment_is_logged(tmp_path: Path) -> None:
             assert row["accepted"] == "true"
             assert row["recommended_adjustment_id"] == "SLIDE"
             assert row["executed_adjustment_id"] == "SLIDE"
-            assert row["drive_id"] == "1"
+            assert row["drive_id"] is None
             assert row["game_clock"] == "12:00"
         assert resolve_mode(db) is CoachingMode.HEURISTIC
     finally:
@@ -776,7 +777,7 @@ def test_live_loop_unconfirmed_adjustment_stays_a_recommendation(tmp_path: Path)
             assert row["accepted"] == "unknown"
             assert row["recommended_adjustment_id"] == "SLIDE"
             assert row["executed_adjustment_id"] is None
-            assert row["drive_id"] == "1"
+            assert row["drive_id"] is None
             assert row["game_clock"] == "9:00"
     finally:
         db.close()
@@ -792,6 +793,7 @@ def test_live_loop_without_a_recommendation_leaves_execution_empty(tmp_path: Pat
             quarter=3,
             executed_status="used_recommended",
             applied_recommended_action=True,
+            verify_touched=True,
         )
         assert logged["ok"]
         snap, outcome = _pair(db)
@@ -799,7 +801,7 @@ def test_live_loop_without_a_recommendation_leaves_execution_empty(tmp_path: Pat
             assert row["recommended_adjustment_id"] is None
             assert row["executed_adjustment_id"] is None
             assert row["accepted"] == "true"
-            assert row["drive_id"] == "1"
+            assert row["drive_id"] is None
             assert row["game_clock"] == "5:15"
     finally:
         db.close()
@@ -827,6 +829,7 @@ def test_live_loop_fills_snap_and_outcome_fields(tmp_path: Path) -> None:
             score_set=True,
             executed_status="used_recommended",
             applied_recommended_action=True,
+            verify_touched=True,
         )
         second = ctrl.result_and_call(
             outcome="+4",
@@ -838,6 +841,7 @@ def test_live_loop_fills_snap_and_outcome_fields(tmp_path: Path) -> None:
             score_set=True,
             executed_status="used_recommended",
             applied_recommended_action=True,
+            verify_touched=True,
         )
         assert first["ok"] and second["ok"]
         rows = db.conn.execute(
@@ -863,15 +867,80 @@ def test_live_loop_fills_snap_and_outcome_fields(tmp_path: Path) -> None:
             assert row["outcome_recommended"] == "HOT"
             assert row["executed_adjustment_id"] == "HOT"
             assert row["outcome_executed"] == "HOT"
-            assert row["drive_id"]
             assert row["game_clock"]
             assert row["outcome_drive"] == row["drive_id"]
             assert row["outcome_clock"] == row["game_clock"]
-        assert rows[0]["drive_id"] == "1"
+        assert rows[0]["drive_id"] is None
+        assert rows[0]["outcome_drive"] is None
         assert rows[0]["game_clock"] == "8:00"
-        assert rows[1]["drive_id"] == "2"
+        assert rows[1]["drive_id"] is None
+        assert rows[1]["outcome_drive"] is None
         assert rows[1]["game_clock"] == "6:30"
         assert resolve_mode(db) is CoachingMode.HEURISTIC
         assert ML_LATENCY_BUDGET_MS == 150
+    finally:
+        db.close()
+
+
+def test_live_loop_without_an_explicit_drive_stores_null(tmp_path: Path) -> None:
+    db, ctrl = _live(tmp_path, "HOT")
+    try:
+        ctrl.call_only("1&10 my 25", game_clock="12:00", quarter=1)
+        missing = ctrl.result_and_call(
+            outcome="+4",
+            sit_raw="2&6 my 29 drive id 4",
+            quarter=1,
+            game_clock="11:00",
+            executed_status="used_recommended",
+            verify_touched=True,
+        )
+        explicit = ctrl.result_and_call(
+            outcome="+2",
+            sit_raw="3&4 my 31",
+            quarter=1,
+            executed_status="unknown",
+        )
+        assert missing["ok"] and explicit["ok"]
+        rows = db.conn.execute(
+            """
+            SELECT s.drive_id, o.drive_id AS outcome_drive
+            FROM snaps s
+            JOIN ml_outcomes o ON o.snap_id = s.ml_snap_id
+            ORDER BY s.id
+            """
+        ).fetchall()
+        assert len(rows) == 2
+        assert rows[0]["drive_id"] is None
+        assert rows[0]["outcome_drive"] is None
+        assert rows[1]["drive_id"] == "4"
+        assert rows[1]["outcome_drive"] == "4"
+    finally:
+        db.close()
+
+
+def test_plain_submit_without_touching_verify_stores_unknown(tmp_path: Path) -> None:
+    db, ctrl = _live(tmp_path, "SLIDE")
+    try:
+        html = render_live_html(ctrl)
+        assert 'value="used_recommended"' in html
+        assert 'value="used_recommended" checked' not in html
+        assert "let execVerifyTouched = false;" in html
+        assert 'const exec = execVerifyTouched && checked ? checked.value : "unknown";' in html
+        assert "verify_touched: execVerifyTouched" in html
+        ctrl.call_only("1&10 my 25", game_clock="8:00", quarter=2)
+        logged = ctrl.result_and_call(
+            outcome="+5",
+            sit_raw="2&5 my 30",
+            quarter=2,
+            executed_status="used_recommended",
+            applied_recommended_action=False,
+            verify_touched=False,
+        )
+        assert logged["ok"]
+        snap, outcome = _pair(db)
+        for row in (snap, outcome):
+            assert row["accepted"] == "unknown"
+            assert row["recommended_adjustment_id"] == "SLIDE"
+            assert row["executed_adjustment_id"] is None
     finally:
         db.close()

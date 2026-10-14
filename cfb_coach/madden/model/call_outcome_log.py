@@ -96,7 +96,6 @@ _NOT_A_RECOMMENDATION = frozenset({
     "no adj",
     "no adjustment",
 })
-_DRIVE_END_TEXT = re.compile(r"\b(?:punt|safety|field\s*goal|fg)\b", re.I)
 _CLOCK_TEXT = re.compile(r"^(\d{1,2}):(\d{2})$")
 
 
@@ -314,13 +313,16 @@ def acceptance_for_log(
     executed_play: str | None = None,
     recommended_play: str | None = None,
     explicit: str | None = None,
+    touched: bool = False,
 ) -> str:
-    """``unknown`` until the user confirms the recommended play.
+    """``unknown`` until the user touches the verify control.
 
-    Displaying a call does not accept it. ``true`` means they confirmed that
-    play. ``false`` means they confirmed a different play. The value is stored
-    either way, including ``unknown``.
+    Displaying a call does not accept it, and neither does a pre-checked
+    radio. ``touched`` is the explicit action. ``true`` means they confirmed
+    that play. ``false`` means they confirmed a different play.
     """
+    if not touched:
+        return "unknown"
     token = _text(explicit)
     if token is not None:
         lowered = token.lower()
@@ -336,18 +338,6 @@ def acceptance_for_log(
     if status == "identified" and played and shown:
         return "true" if played == shown else "false"
     return "unknown"
-
-
-def result_ends_drive(result: str | None, note: str | None = None) -> bool:
-    """A score, turnover, punt, or failed fourth down starts the next drive."""
-    if note and "turnover on downs" in note.lower():
-        return True
-    text = (result or "").strip()
-    if not text:
-        return False
-    if parse_outcome(text).kind in {"td", "int", "fumble"}:
-        return True
-    return _DRIVE_END_TEXT.search(text) is not None
 
 
 def executed_adjustment_for_log(

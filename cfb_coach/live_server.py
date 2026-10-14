@@ -582,6 +582,7 @@ class LivePlayController:
         executed_macro: str | None = None,
         applied_recommended_action: bool = False,
         confirmed_no_adjustment: bool = False,
+        verify_touched: bool = False,
     ) -> dict[str, Any] | None:
         """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
@@ -618,6 +619,7 @@ class LivePlayController:
                 applied_recommended_action
                 if str(self.brand).lower().startswith("madden") else None
             ),
+            verify_touched=verify_touched,
         )
         if closed is None:
             return None
@@ -658,6 +660,7 @@ class LivePlayController:
                     executed_status=closed.get("executed_status"),
                     executed_play=closed.get("executed_play"),
                     recommended_play=getattr(self.last_call, "play", None),
+                    touched=verify_touched,
                 )
                 executed_id = executed_adjustment_for_log(
                     recommended, confirmed=confirmed_adjustment
@@ -853,6 +856,7 @@ class LivePlayController:
         request_key: str | None = None,
         opp_look: Any = _OMITTED_LOOK,
         game_clock: str | None = None,
+        verify_touched: bool = False,
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -874,6 +878,7 @@ class LivePlayController:
                     executed_macro=executed_macro,
                     applied_recommended_action=applied_recommended_action,
                     confirmed_no_adjustment=confirmed_no_adjustment,
+                    verify_touched=verify_touched,
                 )
             elif self.last_call is not None and not (outcome or "").strip():
                 # Allow first snap without prior outcome
@@ -1139,9 +1144,9 @@ def render_live_html(ctrl: LivePlayController) -> str:
       <input class="wide" id="their" placeholder="cover 6 · A-gap blitz · cross wheels · mesh"/>
     </div>
     <div id="exec-verify" hidden>
-      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(change only when you ran something else)</span></h2>
+      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional — leave this alone and the snap stays unknown)</span></h2>
       <div class="row" id="exec-radios" style="gap:.75rem;flex-wrap:wrap">
-        <label style="font-weight:600"><input type="radio" name="exec" value="used_recommended" checked/> used recommended</label>
+        <label style="font-weight:600"><input type="radio" name="exec" value="used_recommended"/> used recommended</label>
         <label><input type="radio" name="exec" value="used_different"/> used different</label>
         <label><input type="radio" name="exec" value="unknown"/> unknown</label>
       </div>
@@ -1255,6 +1260,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
 const $ = (id) => document.getElementById(id);
 const compactMadden = {str(compact_madden).lower()};
 let outcomeChoice = "";
+let execVerifyTouched = false;
 
 function setErr(msg) {{ $("err").textContent = msg || ""; }}
 
@@ -1385,12 +1391,14 @@ function renderState(st) {{
 
 function currentExecSelection() {{
   const el = document.querySelector('input[name="exec"]:checked');
-  return el ? el.value : "used_recommended";
+  return el ? el.value : "";
 }}
 
 function setExecSelection(value) {{
-  const target = value || "used_recommended";
-  const radio = document.querySelector('input[name="exec"][value="' + target + '"]');
+  document.querySelectorAll('input[name="exec"]').forEach(r => {{ r.checked = false; }});
+  const radio = value
+    ? document.querySelector('input[name="exec"][value="' + value + '"]')
+    : null;
   if (radio) radio.checked = true;
   syncExecDiffVisibility();
 }}
@@ -1402,9 +1410,9 @@ function syncExecDiffVisibility() {{
 }}
 
 function restoreExecDefaultAfterSubmit() {{
-  // Default stays used_recommended after each submit so unknown does not reappear.
-  // Clearing formation/play only — do not leave a stale used_different form visible.
-  setExecSelection("used_recommended");
+  // A submit does not select a radio. The next snap stays unknown until touched.
+  execVerifyTouched = false;
+  setExecSelection("");
   if ($("exec-formation")) $("exec-formation").value = "";
   if ($("exec-play")) $("exec-play").value = "";
 }}
@@ -1610,11 +1618,13 @@ $("btn-submit").addEventListener("click", async () => {{
     const data = await withUiLock(async () => {{
       const out = currentOutcome();
       const sit = buildSit();
-      const exec = (document.querySelector('input[name="exec"]:checked') || {{}}).value || "unknown";
+      const checked = document.querySelector('input[name="exec"]:checked');
+      const exec = execVerifyTouched && checked ? checked.value : "unknown";
       const body = {{
         outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value,
         their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value,
         executed_status: exec,
+        verify_touched: execVerifyTouched,
         executed_formation: ($("exec-formation").value || "").trim() || null,
         executed_play: ($("exec-play").value || "").trim() || null,
         applied_recommended_action: !!($("action-applied") && $("action-applied").checked),
@@ -1640,6 +1650,7 @@ $("btn-submit").addEventListener("click", async () => {{
 
 document.querySelectorAll('input[name="exec"]').forEach(r => {{
   r.addEventListener("change", () => {{
+    execVerifyTouched = true;
     syncExecDiffVisibility();
   }});
 }});
@@ -1843,6 +1854,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             request_key=body.get("idempotency_key") or body.get("request_key"),
                             opp_look=_posted_opp_look(body),
                             game_clock=body.get("game_clock"),
+                            verify_touched=body.get("verify_touched") is True,
                         ),
                     )
                     return
