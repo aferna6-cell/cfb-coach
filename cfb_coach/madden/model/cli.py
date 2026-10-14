@@ -946,13 +946,28 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
             if not installed:
                 print("Cannot enable: no physically confirmed defensive playbook", file=sys.stderr)
                 return 2
-            if not defense.load_model(db.get_meta(defense.MODEL_META) or None):
-                from cfb_coach.madden.model.dataset import build_rows
-                art = defense.train_defense(build_rows(db=db))
-                dest = defense.save_model(art, defense._data_path())
-                db.set_meta(defense.MODEL_META, str(dest))
+            raw_path = db.get_meta(defense.MODEL_META)
+            model = defense.load_model(raw_path) if raw_path else None
+            snaps = int((model or {}).get("supervised_defensive_snaps") or 0)
+            if model is None or snaps < 1:
+                print(
+                    "Cannot enable: missing defense artifact or zero verified snaps. "
+                    "Train with --retrain --out PATH first. Heuristic stays active.",
+                    file=sys.stderr,
+                )
+                result = {
+                    "defense_mode": defense.mode(db),
+                    "enabled": False,
+                    "refused": True,
+                    "reason": "missing_or_empty_verified_training",
+                    "offense_mode_unchanged": True,
+                    "auto_trained": False,
+                }
+                print(json.dumps(result, indent=2))
+                return 2
             defense.set_mode(db, "experimental")
-        model = defense.load_model(db.get_meta(defense.MODEL_META) or None)
+        raw_path = db.get_meta(defense.MODEL_META)
+        model = defense.load_model(raw_path) if raw_path else None
         result = {
             "defense_mode": defense.mode(db),
             "offense_mode_unchanged": True,
@@ -960,12 +975,65 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
             "model": {
                 "quality": (model or {}).get("evidence_quality", "not_trained"),
                 "verified_defensive_snaps": (model or {}).get("supervised_defensive_snaps", 0),
+                "artifact_version": (model or {}).get("artifact_version"),
+                "objective": (model or {}).get("objective"),
             },
             "actual_xbox_controls": "user_operated_only",
             "note": "Opt-in human defense pilot. No verified data means prior-driven, not empirical.",
         }
         print(json.dumps(result, indent=2))
         return 0
+    finally:
+        db.close()
+
+
+def cmd_ml_audit_defense(args: argparse.Namespace) -> int:
+    """Read-only defensive training-data audit. Does not train or enable."""
+    from cfb_coach.madden.model.defense_audit import (
+        audit_defensive_rows,
+        go_nogo_from_audit,
+        reconcile_interceptions,
+    )
+    from cfb_coach.madden.model.dataset import build_rows
+
+    path = _require_db(args, "audit-defense")
+    db = open_explicit_madden_db(path, read_only=True)
+    try:
+        rows = build_rows(db=db)
+        audit = audit_defensive_rows(rows)
+        payload = {
+            **audit,
+            "gate": go_nogo_from_audit(audit),
+            "interceptions": reconcile_interceptions(rows),
+        }
+        print(json.dumps(payload, indent=2, default=str))
+        return 0 if audit["supervised_play_specific"] >= 1 else 2
+    finally:
+        db.close()
+
+
+def cmd_ml_compare_defense(args: argparse.Namespace) -> int:
+    """Offline model versus heuristic comparison. Does not enable live mode."""
+    from cfb_coach.madden import playbook
+    from cfb_coach.madden.model import defense_coordinator as defense
+    from cfb_coach.madden.model.dataset import build_rows
+    from cfb_coach.madden.model.defense_eval import compare_defense
+
+    path = _require_db(args, "compare-defense")
+    db = open_explicit_madden_db(path, read_only=True)
+    try:
+        book = (playbook.load_books(db).get("defense") or {}).get("formations") or {}
+        if not book:
+            print("Cannot compare: no physically confirmed defensive playbook", file=sys.stderr)
+            return 2
+        model = None
+        if getattr(args, "model", None):
+            model = defense.load_model(args.model)
+        else:
+            model = defense.load_model(db.get_meta(defense.MODEL_META) or None)
+        report = compare_defense(build_rows(db=db), book, model, opponent_id=args.opponent or "")
+        print(json.dumps(report, indent=2, default=str))
+        return 0 if report.get("promote_ok") else 2
     finally:
         db.close()
 
@@ -2085,6 +2153,30 @@ def build_ml_subparser(sub: Any) -> None:
         help="Artifact path for --retrain. Required so the model is not saved under the home data dir.",
     )
     p_dx.set_defaults(func=cmd_ml_defense_experimental, cli_parser=p_dx)
+
+    p_audit_d = ml_sub.add_parser(
+        "audit-defense",
+        help="Read-only audit of candidate vs verified defensive training snaps",
+    )
+    p_audit_d.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required so the audit does not create a home database.",
+    )
+    p_audit_d.set_defaults(func=cmd_ml_audit_defense, cli_parser=p_audit_d)
+
+    p_cmp_d = ml_sub.add_parser(
+        "compare-defense",
+        help="Offline defensive model versus heuristic evaluation (does not enable live mode)",
+    )
+    p_cmp_d.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required.",
+    )
+    p_cmp_d.add_argument("--model", default=None, help="Defense artifact JSON to evaluate")
+    p_cmp_d.add_argument("-o", "--opponent", default="")
+    p_cmp_d.set_defaults(func=cmd_ml_compare_defense, cli_parser=p_cmp_d)
 
     p_coord = ml_sub.add_parser(
         "offense-coordinator",

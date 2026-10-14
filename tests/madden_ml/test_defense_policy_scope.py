@@ -43,7 +43,7 @@ from cfb_coach.situation import Situation
 
 ROOT = Path(__file__).resolve().parents[2]
 BOTH_NULL_SNAPSHOT = Path(__file__).with_name("fixtures") / "both_null_defense_rank_2b372e2.json"
-_RANK_KEYS_ADDED_AFTER_BASE = ("personnel", "verified_knowledge", "opponent_profile", "why")
+_RANK_KEYS_ADDED_AFTER_BASE = ("personnel", "verified_knowledge", "opponent_profile", "why", "utility")
 KNOWLEDGE = "tests/madden_ml/test_defense_knowledge_policy.py"
 SCOPE = "tests/madden_ml/test_defense_policy_scope.py"
 

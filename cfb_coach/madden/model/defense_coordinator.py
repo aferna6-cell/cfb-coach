@@ -62,42 +62,56 @@ def _bucket(down: Any, distance: Any, *, red_zone: bool = False, goal_line: bool
 
 def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Fit shrinkage stop rates, exclusively from verified defensive executions."""
+    from cfb_coach.madden.model.defense_audit import audit_defensive_rows
     from cfb_coach.madden.model.defense_intelligence import (
         verified_human_rows, fit_opponent_offense, fit_opponent_outcome_risks,
     )
     from cfb_coach.madden.model.defense_knowledge import fit_opponent_profiles
-    stats: dict[str, list[int]] = {}
-    context: dict[str, list[int]] = {}
-    plays: dict[str, list[int]] = {}
-    n = 0
+    from cfb_coach.madden.model.defense_shrinkage import fit_shrinkage
+
+    audit = audit_defensive_rows(rows)
+    shrinkage = fit_shrinkage(rows)
     verified = [r for r in verified_human_rows(rows) if str(r.get("side") or "") == "defense"]
-    for row in verified:
-        if str(row.get("side") or "").lower() != "defense":
-            continue
-        play = str(row.get("executed_play") or row.get("action_play") or "")
-        fam = call_family(play)
-        if fam not in FAMILIES or str(row.get("success") or "").lower() not in ("true", "false"):
-            continue
-        ok = int(str(row["success"]).lower() == "true")
-        key = _bucket(row.get("down"), row.get("distance"),
-                      red_zone=bool(row.get("red_zone")), goal_line=bool(row.get("goal_line")))
-        for dest, tag in ((stats, fam), (context, key + "|" + fam), (plays, play)):
-            count = dest.setdefault(tag, [0, 0])
-            count[0] += ok
-            count[1] += 1
-        n += 1
+    n = int(shrinkage.get("supervised_defensive_snaps") or 0)
     return {
         "schema": SCHEMA, "type": "defense_stop_model",
         "verification_policy": "strict_human_verified_execution.v1",
         "supervised_defensive_snaps": n,
-        "evidence_quality": "empirical" if n >= 40 else ("limited" if n >= 10 else "prior_driven"),
-        "families": stats, "contexts": context, "plays": plays,
+        "evidence_quality": shrinkage.get("evidence_quality", "prior_driven"),
+        "families": shrinkage.get("families") or {},
+        "contexts": shrinkage.get("contexts") or {},
+        "plays": shrinkage.get("plays") or {},
+        "family_utility": shrinkage.get("family_utility") or {},
+        "context_utility": shrinkage.get("context_utility") or {},
+        "play_utility": shrinkage.get("play_utility") or {},
+        "personnel_utility": shrinkage.get("personnel_utility") or {},
+        "opp_formation_utility": shrinkage.get("opp_formation_utility") or {},
+        "opponent_family_utility": shrinkage.get("opponent_family_utility") or {},
+        "supervised_by_game": shrinkage.get("supervised_by_game") or {},
+        "model_kind": shrinkage.get("model_kind"),
+        "objective": shrinkage.get("objective"),
+        "artifact_version": shrinkage.get("artifact_version"),
+        "utility_labeled_snaps": shrinkage.get("utility_labeled_snaps") or 0,
+        "explosive_allowed": shrinkage.get("explosive_allowed") or 0,
+        "touchdowns_allowed": shrinkage.get("touchdowns_allowed") or 0,
+        "training_audit": {
+            "candidate_defensive_snaps": audit["candidate_defensive_snaps"],
+            "supervised_play_specific": audit["supervised_play_specific"],
+            "excluded": audit["excluded"],
+            "by_game": audit["by_game"],
+            "john_supervised": audit["john_supervised"],
+            "non_john_supervised": audit["non_john_supervised"],
+        },
         "opponent_tendencies": fit_opponent_offense(verified),
         "opponent_outcome_risks": fit_opponent_outcome_risks(rows),
         "opponent_profiles": fit_opponent_profiles(verified),
         "verified_human_games": len({str(r["game_id"]) for r in verified}),
         "observational_only": True,
-        "note": "Stop outcomes are observations, not proven counterfactual effects.",
+        "independent_of_offense_artifact": True,
+        "post_snap_not_used_as_live": True,
+        "note": shrinkage.get("note") or (
+            "Stop outcomes are observations, not proven counterfactual effects."
+        ),
     }
 
 
@@ -222,6 +236,7 @@ def _score(
         score -= 0.04
     from cfb_coach.madden.model.defense_intelligence import score_defensive_knowledge
     from cfb_coach.madden.model.defense_knowledge import explain_call, live_verified_adjustment
+    from cfb_coach.madden.model.defense_shrinkage import utility_delta
     intel = score_defensive_knowledge(
         family=family, sit=sit, opponent_id=opponent_id,
         tendencies=(model or {}).get("opponent_tendencies"),
@@ -229,7 +244,9 @@ def _score(
     )
     verified = live_verified_adjustment(sit, play)
     personnel = personnel_features(sit)
+    utility = utility_delta(model, play, sit, opponent_id=opponent_id)
     score += intel["delta"] + float(verified["delta"]) + personnel["delta"]
+    score += float(utility.get("delta") or 0.0)
     profiles = ((model or {}).get("opponent_profiles") or {}).get("opponents") or {}
     profile = profiles.get(opponent_id) or {
         "ready": False, "current_snap_known": False, "live_score_delta": 0.0,
@@ -244,6 +261,7 @@ def _score(
         "verified_knowledge": verified,
         "opponent_profile": profile,
         "personnel": personnel,
+        "utility": utility,
         "why": explain_call(sit, formation, play, family, verified),
     }
 
@@ -1001,22 +1019,23 @@ def maybe_apply_defense(
         game_id = extras.get("game_id")
     except Exception:
         return call
-    if extras.get("require_trained_defense_artifact"):
-        # A prior-only or missing file is not a trained defense model. Do not
-        # fit one here. The established caller is the legal play.
-        model = load_model(db.get_meta(MODEL_META) or None) if db is not None else None
-        snaps = int((model or {}).get("supervised_defensive_snaps") or 0)
-        if model is None or snaps < 1:
-            try:
-                from cfb_coach.madden.model.schema import MLStatus
-                _stamp_decision(call, _fallback_decision(
-                    book=book, call=call, status=MLStatus.MODEL_MISSING, elapsed_ms=0.0,
-                    session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
-                    detail="missing defense artifact or zero verified snaps",
-                ), db, extras)
-            except Exception:
-                pass
-            return call
+    # Experimental mode does not go live on an empty or prior-only file.
+    # Do not fit a model here. The established caller is the legal play.
+    # Unset MODEL_META is missing even if a default JSON happens to exist.
+    art_path = db.get_meta(MODEL_META) if db is not None else None
+    model = load_model(art_path) if art_path else None
+    snaps = int((model or {}).get("supervised_defensive_snaps") or 0)
+    if model is None or snaps < 1:
+        try:
+            from cfb_coach.madden.model.schema import MLStatus
+            _stamp_decision(call, _fallback_decision(
+                book=book, call=call, status=MLStatus.MODEL_MISSING, elapsed_ms=0.0,
+                session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+                detail="missing defense artifact or zero verified snaps",
+            ), db, extras)
+        except Exception:
+            pass
+        return call
     # Existing researched active macro/adjustment triggers are not yet jointly
     # calibrated against this new defensive model. Keep the established
     # caller's already-armed action instead of silently discarding it.

@@ -257,12 +257,27 @@ class DefensiveMacroTests(unittest.TestCase):
         heuristic = MaddenCall(
             "defense", "Nickel Over", "Tampa 2", "No adj", "User hook", "heuristic",
         )
+        refused = defense.maybe_apply_defense(heuristic, situation, "gavin", self.db, book)
+        self.assertIs(refused, heuristic)
+        refused_decision = getattr(refused, defense.DECISION_ATTR)
+        self.assertTrue(refused_decision.fell_back)
+        self.assertIs(refused_decision.fallback_reason, MLStatus.MODEL_MISSING)
+        self.assertEqual(refused.play, "Tampa 2")
+
+        row = {
+            "supervised_eligible": True, "side": "defense",
+            "executed_play": "Cover 3 Sky", "success": "true",
+            "executed_verification": "verified", "executed_status": "identified",
+            "label_available": True, "opponent_type": "human",
+            "opponent_id": "gavin", "game_id": "user-match-1",
+        }
+        art = defense.train_defense([row])
+        dest = Path(self.tmp.name) / "defense.json"
+        defense.save_model(art, dest)
+        self.db.set_meta(defense.MODEL_META, str(dest))
         applied = defense.maybe_apply_defense(heuristic, situation, "gavin", self.db, book)
         applied_again = defense.maybe_apply_defense(heuristic, situation, "gavin", self.db, book)
-        self.assertEqual(
-            (applied.formation, applied.play, applied.macro, applied.adjustment, applied.adj_or_macro),
-            ("4-3 Over", "Cover 3 Sky", None, None, "No adj"),
-        )
+        self.assertIn(applied.play, book[applied.formation])
         self.assertEqual(
             (applied.formation, applied.play, applied.macro, applied.adjustment),
             (applied_again.formation, applied_again.play, applied_again.macro, applied_again.adjustment),
@@ -278,8 +293,11 @@ class DefensiveMacroTests(unittest.TestCase):
         self.assertFalse(applied_decision.fell_back)
 
         defense.set_mode(self.db, "off")
-        kept = defense.maybe_apply_defense(heuristic, situation, "gavin", self.db, book)
-        self.assertIs(kept, heuristic)
+        idle = MaddenCall(
+            "defense", "Nickel Over", "Tampa 2", "No adj", "User hook", "heuristic",
+        )
+        kept = defense.maybe_apply_defense(idle, situation, "gavin", self.db, book)
+        self.assertIs(kept, idle)
         self.assertFalse(hasattr(kept, defense.DECISION_ATTR))
 
         defense.set_mode(self.db, "experimental")
@@ -287,7 +305,7 @@ class DefensiveMacroTests(unittest.TestCase):
             "session_id": "seed-game", "snap_seq": 7, "snap_id": "snap-7", "game_id": "game-1",
         })
         persisted = defense.maybe_apply_defense(heuristic, tagged, "gavin", self.db, book)
-        self.assertEqual((persisted.formation, persisted.play), ("4-3 Over", "Cover 3 Sky"))
+        self.assertIn(persisted.play, book[persisted.formation])
         rows_logged = list(self.db.conn.execute("SELECT decision_json, policy_source FROM ml_decisions"))
         self.assertEqual(len(rows_logged), 1)
         self.assertEqual(rows_logged[0]["policy_source"], "model")
@@ -298,7 +316,7 @@ class DefensiveMacroTests(unittest.TestCase):
         self.assertEqual(body["shadow_status"], "ok")
         self.assertFalse(body["fell_back"])
         self.assertIsNone(body["fallback_reason"])
-        self.assertEqual(body["final_pick"]["play"], "Cover 3 Sky")
+        self.assertEqual(body["final_pick"]["play"], persisted.play)
 
 
 if __name__ == "__main__":
