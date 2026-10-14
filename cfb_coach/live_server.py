@@ -599,6 +599,7 @@ class LivePlayController:
         executed_macro: str | None = None,
         applied_recommended_action: bool = False,
         confirmed_no_adjustment: bool = False,
+        verify_touched: bool = False,
     ) -> dict[str, Any] | None:
         """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
@@ -635,6 +636,7 @@ class LivePlayController:
                 applied_recommended_action
                 if str(self.brand).lower().startswith("madden") else None
             ),
+            verify_touched=verify_touched,
         )
         if closed is None:
             return None
@@ -658,20 +660,28 @@ class LivePlayController:
 
                 parsed = parse_outcome(closed.get("result") or outcome_raw)
                 from cfb_coach.madden.model.call_outcome_log import (
+                    acceptance_for_log,
                     context_from_situation,
+                    executed_adjustment_for_log,
                     recommended_from_call,
                 )
 
                 ctx = context_from_situation(self.last_sit)
+                recommended = recommended_from_call(self.last_call)
                 confirmed_adjustment = bool(
                     applied_recommended_action
                     and (closed.get("executed_status") or "") == "identified"
                     and (closed.get("executed_play") or "") == getattr(self.last_call, "play", None)
                 )
-                shown_adjustment = None
-                adjustment = getattr(self.last_call, "adjustment", None)
-                if isinstance(adjustment, dict):
-                    shown_adjustment = adjustment.get("id")
+                accepted = acceptance_for_log(
+                    executed_status=closed.get("executed_status"),
+                    executed_play=closed.get("executed_play"),
+                    recommended_play=getattr(self.last_call, "play", None),
+                    touched=verify_touched,
+                )
+                executed_id = executed_adjustment_for_log(
+                    recommended, confirmed=confirmed_adjustment
+                )
                 self.db.log_ml_outcome(
                     snap_id=ml_snap_id,
                     game_id=self.session_id or None,
@@ -692,8 +702,9 @@ class LivePlayController:
                     game_clock=ctx.get("game_clock"),
                     score_for=ctx.get("score_for"),
                     score_against=ctx.get("score_against"),
-                    recommended_adjustment_id=recommended_from_call(self.last_call),
-                    executed_adjustment_id=shown_adjustment if confirmed_adjustment else None,
+                    accepted=accepted,
+                    recommended_adjustment_id=recommended,
+                    executed_adjustment_id=recommended,
                     adjustment_confirmed=confirmed_adjustment,
                     outcome={
                         "result": closed.get("result"),
@@ -702,13 +713,7 @@ class LivePlayController:
                         "coverage_seen": book.coverage,
                         "concept_seen": book.concept,
                         "executed_macro": closed.get("executed_macro"),
-                        "executed_adjustment_id": (
-                            (getattr(self.last_call, "adjustment", None) or {}).get("id")
-                            if applied_recommended_action
-                            and (closed.get("executed_status") or "") == "identified"
-                            and (closed.get("executed_play") or "") == getattr(self.last_call, "play", None)
-                            else None
-                        ),
+                        "executed_adjustment_id": executed_id,
                         "offense_action_explicitly_confirmed": bool(
                             applied_recommended_action
                             and (closed.get("executed_status") or "") == "identified"
@@ -796,6 +801,7 @@ class LivePlayController:
         score_set: bool = False,
         request_key: str | None = None,
         opp_look: Any = _OMITTED_LOOK,
+        game_clock: str | None = None,
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -818,6 +824,7 @@ class LivePlayController:
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
+            self._stamp_live_context(sit, game_clock)
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             self._book().remember_call(
@@ -833,6 +840,18 @@ class LivePlayController:
             self.default_side = sit.side
             out = {"ok": True, "call_text": self.call_text, "heard": heard, "state": self.state()}
             return self._idempotency_put(request_key, "/api/call", out)
+
+    def _stamp_live_context(self, sit: Any, game_clock: str | None) -> None:
+        """Drive and clock for the snap about to be logged. The call is already made."""
+        from cfb_coach.madden.model.call_outcome_log import normalize_game_clock
+
+        self._book().assign_drive(sit)
+        token = normalize_game_clock(game_clock)
+        if token is None:
+            return
+        extras = getattr(sit, "extras", None)
+        if isinstance(extras, dict):
+            extras["game_clock"] = token
 
     def result_and_call(
         self,
@@ -853,6 +872,8 @@ class LivePlayController:
         confirmed_no_adjustment: bool = False,
         request_key: str | None = None,
         opp_look: Any = _OMITTED_LOOK,
+        game_clock: str | None = None,
+        verify_touched: bool = False,
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -874,6 +895,7 @@ class LivePlayController:
                     executed_macro=executed_macro,
                     applied_recommended_action=applied_recommended_action,
                     confirmed_no_adjustment=confirmed_no_adjustment,
+                    verify_touched=verify_touched,
                 )
             elif self.last_call is not None and not (outcome or "").strip():
                 # Allow first snap without prior outcome
@@ -906,6 +928,7 @@ class LivePlayController:
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
+            self._stamp_live_context(sit, game_clock)
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             book.remember_call(
@@ -1152,9 +1175,9 @@ def render_live_html(ctrl: LivePlayController) -> str:
       <input class="wide" id="their" placeholder="cover 6 · A-gap blitz · cross wheels · mesh"/>
     </div>
     <div id="exec-verify" hidden>
-      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(change only when you ran something else)</span></h2>
+      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional — leave this alone and the snap stays unknown)</span></h2>
       <div class="row" id="exec-radios" style="gap:.75rem;flex-wrap:wrap">
-        <label style="font-weight:600"><input type="radio" name="exec" value="used_recommended" checked/> used recommended</label>
+        <label style="font-weight:600"><input type="radio" name="exec" value="used_recommended"/> used recommended</label>
         <label><input type="radio" name="exec" value="used_different"/> used different</label>
         <label><input type="radio" name="exec" value="unknown"/> unknown</label>
       </div>
@@ -1185,6 +1208,8 @@ def render_live_html(ctrl: LivePlayController) -> str:
         <option value="4">4th</option>
         <option value="5">OT</option>
       </select>
+      <label title="Game clock for this snap. Blank stays unknown.">clock</label>
+      <input id="game-clock" placeholder="12:00" inputmode="numeric" style="width:4.5rem"/>
       <label title="Our score. Sticks until you change it. Us-them, not the final winner-first score.">us</label>
       <input type="number" id="score-us" min="0" max="99" placeholder="—" value="{_esc(us_v)}"/>
       <label title="Their score">them</label>
@@ -1266,6 +1291,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
 const $ = (id) => document.getElementById(id);
 const compactMadden = {str(compact_madden).lower()};
 let outcomeChoice = "";
+let execVerifyTouched = false;
 
 function setErr(msg) {{ $("err").textContent = msg || ""; }}
 
@@ -1396,12 +1422,14 @@ function renderState(st) {{
 
 function currentExecSelection() {{
   const el = document.querySelector('input[name="exec"]:checked');
-  return el ? el.value : "used_recommended";
+  return el ? el.value : "";
 }}
 
 function setExecSelection(value) {{
-  const target = value || "used_recommended";
-  const radio = document.querySelector('input[name="exec"][value="' + target + '"]');
+  document.querySelectorAll('input[name="exec"]').forEach(r => {{ r.checked = false; }});
+  const radio = value
+    ? document.querySelector('input[name="exec"][value="' + value + '"]')
+    : null;
   if (radio) radio.checked = true;
   syncExecDiffVisibility();
 }}
@@ -1413,9 +1441,9 @@ function syncExecDiffVisibility() {{
 }}
 
 function restoreExecDefaultAfterSubmit() {{
-  // Default stays used_recommended after each submit so unknown does not reappear.
-  // Clearing formation/play only — do not leave a stale used_different form visible.
-  setExecSelection("used_recommended");
+  // A submit does not select a radio. The next snap stays unknown until touched.
+  execVerifyTouched = false;
+  setExecSelection("");
   if ($("exec-formation")) $("exec-formation").value = "";
   if ($("exec-play")) $("exec-play").value = "";
 }}
@@ -1621,16 +1649,19 @@ $("btn-submit").addEventListener("click", async () => {{
     const data = await withUiLock(async () => {{
       const out = currentOutcome();
       const sit = buildSit();
-      const exec = (document.querySelector('input[name="exec"]:checked') || {{}}).value || "unknown";
+      const checked = document.querySelector('input[name="exec"]:checked');
+      const exec = execVerifyTouched && checked ? checked.value : "unknown";
       const body = {{
         outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value,
         their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value,
         executed_status: exec,
+        verify_touched: execVerifyTouched,
         executed_formation: ($("exec-formation").value || "").trim() || null,
         executed_play: ($("exec-play").value || "").trim() || null,
         applied_recommended_action: !!($("action-applied") && $("action-applied").checked),
         confirmed_no_adjustment: !!($("no-action-confirmed") && $("no-action-confirmed").checked),
         opp_look: opponentLook(),
+        game_clock: ($("game-clock").value || "").trim() || null,
       }};
       return await apiAction("/api/result_call", body);
     }});
@@ -1650,6 +1681,7 @@ $("btn-submit").addEventListener("click", async () => {{
 
 document.querySelectorAll('input[name="exec"]').forEach(r => {{
   r.addEventListener("change", () => {{
+    execVerifyTouched = true;
     syncExecDiffVisibility();
   }});
 }});
@@ -1671,6 +1703,7 @@ $("btn-call-only").addEventListener("click", async () => {{
       sit: buildSit(), side: $("side").value, quarter: $("quarter").value,
       score_us: $("score-us").value, score_them: $("score-them").value,
       opp_look: opponentLook(),
+      game_clock: ($("game-clock").value || "").trim() || null,
     }}));
     if (!data) return;
     if ($("action-applied")) $("action-applied").checked = false;
@@ -1816,6 +1849,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                         score_set=("score_us" in body or "score_them" in body),
                         request_key=body.get("idempotency_key") or body.get("request_key"),
                         opp_look=_posted_opp_look(body),
+                        game_clock=body.get("game_clock"),
                     ))
                     return
                 if path == "/api/undo":
@@ -1850,6 +1884,8 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             confirmed_no_adjustment=body.get("confirmed_no_adjustment") is True,
                             request_key=body.get("idempotency_key") or body.get("request_key"),
                             opp_look=_posted_opp_look(body),
+                            game_clock=body.get("game_clock"),
+                            verify_touched=body.get("verify_touched") is True,
                         ),
                     )
                     return

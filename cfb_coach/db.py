@@ -628,6 +628,8 @@ class CoachDB:
         self.conn.commit()
 
     def update_snap(self, snap_id: int, **fields: Any) -> None:
+        # ``executed_adjustment_id`` stays off this list. Only
+        # ``executed_adjustment_for_log(confirmed=True)`` may write it.
         allowed = (
             "result",
             "coverage_seen",
@@ -653,7 +655,6 @@ class CoachDB:
             "yards",
             "accepted",
             "recommended_adjustment_id",
-            "executed_adjustment_id",
         )
         if "ml_decision_id" in fields:
             # A later correction must not put a stale decision back on a snap
