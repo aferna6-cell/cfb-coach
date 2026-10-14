@@ -706,8 +706,31 @@ def cmd_play(args: argparse.Namespace) -> int:
     last_cov: str | None = None
     last_concept: str | None = None
     from cfb_coach.last_snap import LastSnapBook
+    from cfb_coach.session import (
+        arm_session_exit,
+        close_armed_sessions,
+        recover_unclosed_sessions,
+        start_session,
+    )
 
-    snap_book = LastSnapBook(db, oid, parse_madden_situation)
+    try:
+        recover_unclosed_sessions(db)
+    except Exception:  # noqa: BLE001 — a failed recovery must not block the new game
+        pass
+    term_sess = start_session(oid, dynasty=pid, db=db, notes="terminal-live")
+    try:
+        arm_session_exit(db, term_sess.session_id)
+    except Exception:  # noqa: BLE001 — the typed loop still runs if the handler cannot arm
+        pass
+    try:
+        from cfb_coach.madden.model.call_outcome_log import record_session_run_config
+
+        record_session_run_config(db, term_sess.session_id)
+    except Exception:  # noqa: BLE001 — logging must not break live coaching
+        pass
+    snap_book = LastSnapBook(
+        db, oid, parse_madden_situation, session_id=term_sess.session_id,
+    )
     if live_ctx.score is not None:
         snap_book.spot.score_us = live_ctx.score.us
         snap_book.spot.score_them = live_ctx.score.them
@@ -786,7 +809,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                 last_concept=last_concept if sit.side == "defense" else None,
             )
             snap_book.assign_drive(sit)
-            _maybe_shadow(db, sit, call, oid)
+            _maybe_shadow(db, sit, call, oid, session_id=term_sess.session_id)
             print(call.headline())
             print(call.format())
             _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
@@ -797,5 +820,9 @@ def cmd_play(args: argparse.Namespace) -> int:
             if sit.concept_hint and sit.side == "defense":
                 last_concept = sit.concept_hint
     finally:
+        try:
+            close_armed_sessions(term_sess.session_id)
+        except Exception:  # noqa: BLE001 — still close the database
+            pass
         db.close()
     return 0

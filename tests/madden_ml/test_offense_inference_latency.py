@@ -186,6 +186,8 @@ class OffenseInferenceLatencyTests(unittest.TestCase):
                     and decision.fallback_reason.value == "timeout"
                 )
                 self.assertEqual(info["timed_out"], timed_out)
+                self.assertFalse(info["timed_out"])
+                self.assertFalse(timed_out)
                 if index == 0:
                     continue
                 self.assertIsNotNone(decision.latency_ms_model)
@@ -196,10 +198,56 @@ class OffenseInferenceLatencyTests(unittest.TestCase):
         self.assertEqual(len(messages), 21)
         for line in messages:
             self.assertIn("latency_ms=", line)
-            self.assertIn("timed_out=", line)
+            self.assertIn("timed_out=false", line)
             self.assertIn("slowest_stage=", line)
         p95 = _p95(samples)
         self.assertLess(p95, _GENEROUS_P95_MS)
+
+
+class ModelCacheKeyTests(unittest.TestCase):
+    def test_inode_changes_the_cache_key_when_mtime_and_size_do_not(self) -> None:
+        from cfb_coach.madden.model.inference import (
+            cached_parsed_model,
+            clear_parsed_model_cache,
+            file_revision,
+        )
+
+        clear_parsed_model_cache()
+        tmp = tempfile.TemporaryDirectory()
+        try:
+            path = Path(tmp.name) / "model.json"
+            path.write_text('{"v":1}', encoding="utf-8")
+            before = path.stat()
+            first = file_revision(path)
+            self.assertIsNotNone(first)
+            self.assertEqual(len(first[0]), 4)
+            self.assertEqual(first[0][3], before.st_ino)
+            loads = {"n": 0}
+
+            def loader() -> str:
+                loads["n"] += 1
+                return path.read_text(encoding="utf-8")
+
+            self.assertEqual(cached_parsed_model(("synthetic",) + first, loader), '{"v":1}')
+            self.assertEqual(cached_parsed_model(("synthetic",) + first, loader), '{"v":1}')
+            self.assertEqual(loads["n"], 1)
+            replacement = Path(tmp.name) / "model-next.json"
+            replacement.write_text('{"v":2}', encoding="utf-8")
+            os.replace(replacement, path)
+            os.utime(path, ns=(before.st_mtime_ns, before.st_mtime_ns))
+            after = path.stat()
+            second = file_revision(path)
+            self.assertEqual(after.st_mtime_ns, before.st_mtime_ns)
+            self.assertEqual(after.st_size, before.st_size)
+            self.assertNotEqual(after.st_ino, before.st_ino)
+            self.assertNotEqual(first, second)
+            self.assertEqual(cached_parsed_model(("synthetic",) + second, loader), '{"v":2}')
+            self.assertEqual(loads["n"], 2)
+            self.assertEqual(cached_parsed_model(("synthetic",) + first, loader), '{"v":1}')
+            self.assertEqual(loads["n"], 2)
+        finally:
+            clear_parsed_model_cache()
+            tmp.cleanup()
 
 
 if __name__ == "__main__":

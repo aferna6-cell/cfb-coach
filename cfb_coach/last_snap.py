@@ -208,6 +208,9 @@ class _Undo:
     prev_ml_outcome: dict[str, Any] | None = None
 
 
+_KEEP = object()
+
+
 @dataclass
 class LastSnapBook:
     """The call waiting on its result, and the ball spot after that result."""
@@ -264,7 +267,7 @@ class LastSnapBook:
         *,
         ml_snap_id: str | None = None,
         snap_seq: int | None = None,
-        ml_decision_id: int | None = None,
+        ml_decision_id: Any = _KEEP,
         opp_look: Any = None,
     ) -> None:
         from cfb_coach.madden.model.inference import UNSET_OPP_LOOK, normalize_opp_look
@@ -285,7 +288,9 @@ class LastSnapBook:
             self.ml_snap_id = ml_snap_id
         if snap_seq is not None:
             self.snap_seq = snap_seq
-        if ml_decision_id is not None:
+        # An explicit None clears a previous call's id. Omitting the argument
+        # leaves the pending id alone.
+        if ml_decision_id is not _KEEP:
             self.ml_decision_id = ml_decision_id
         # The call they just asked for is where the ball is until a result moves it.
         if getattr(sit, "down", None):
