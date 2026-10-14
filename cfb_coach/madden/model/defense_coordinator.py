@@ -24,6 +24,12 @@ from cfb_coach.opponents import is_cpu_opponent
 SCHEMA = "madden.defense.coordinator.v1"
 MODE_META = "ml_defense_coordinator_mode.v1"
 MODEL_META = "ml_defense_coordinator_artifact.v1"
+LEGACY_VERIFICATION_POLICY = "strict_human_verified_execution.v1"
+VERIFIED_SNAP_POLICY = "verified_defensive_snaps.v1"
+ACCEPTED_VERIFICATION_POLICIES = frozenset({
+    LEGACY_VERIFICATION_POLICY,
+    VERIFIED_SNAP_POLICY,
+})
 MAX_FORMATIONS = 15
 LATENCY_MS = 150.0
 PRIOR_STRENGTH = 8.0
@@ -60,8 +66,15 @@ def _bucket(down: Any, distance: Any, *, red_zone: bool = False, goal_line: bool
     return "early"
 
 
-def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Fit shrinkage stop rates, exclusively from verified defensive executions."""
+def train_defense(
+    rows: Sequence[Mapping[str, Any]], *, preverified: bool = False,
+) -> dict[str, Any]:
+    """Fit shrinkage stop rates, exclusively from verified defensive executions.
+
+    ``preverified`` means the caller already applied
+    ``defense_verified.VERIFIED_DEFINITION`` and passed only those snaps.
+    The default path still uses ``verified_human_rows``.
+    """
     from cfb_coach.madden.model.defense_intelligence import (
         verified_human_rows, fit_opponent_offense, fit_opponent_outcome_risks,
     )
@@ -70,7 +83,12 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     context: dict[str, list[int]] = {}
     plays: dict[str, list[int]] = {}
     n = 0
-    verified = [r for r in verified_human_rows(rows) if str(r.get("side") or "") == "defense"]
+    if preverified:
+        verified = [dict(r) for r in rows if str(r.get("side") or "defense").lower() in ("defense", "d")]
+        policy = VERIFIED_SNAP_POLICY
+    else:
+        verified = [r for r in verified_human_rows(rows) if str(r.get("side") or "") == "defense"]
+        policy = LEGACY_VERIFICATION_POLICY
     for row in verified:
         if str(row.get("side") or "").lower() != "defense":
             continue
@@ -88,7 +106,7 @@ def train_defense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         n += 1
     return {
         "schema": SCHEMA, "type": "defense_stop_model",
-        "verification_policy": "strict_human_verified_execution.v1",
+        "verification_policy": policy,
         "supervised_defensive_snaps": n,
         "evidence_quality": "empirical" if n >= 40 else ("limited" if n >= 10 else "prior_driven"),
         "families": stats, "contexts": context, "plays": plays,
@@ -116,7 +134,7 @@ def load_model(path: str | Path | None = None) -> dict[str, Any] | None:
     return raw if (
         raw.get("schema") == SCHEMA
         and raw.get("type") == "defense_stop_model"
-        and raw.get("verification_policy") == "strict_human_verified_execution.v1"
+        and raw.get("verification_policy") in ACCEPTED_VERIFICATION_POLICIES
     ) else None
 
 

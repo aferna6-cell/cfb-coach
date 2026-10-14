@@ -946,11 +946,17 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
             if not installed:
                 print("Cannot enable: no physically confirmed defensive playbook", file=sys.stderr)
                 return 2
-            if not defense.load_model(db.get_meta(defense.MODEL_META) or None):
-                from cfb_coach.madden.model.dataset import build_rows
-                art = defense.train_defense(build_rows(db=db))
-                dest = defense.save_model(art, defense._data_path())
-                db.set_meta(defense.MODEL_META, str(dest))
+            # Enabling never trains and never promotes from a missing report.
+            # The established caller stays the default until this gate passes.
+            model = defense.load_model(db.get_meta(defense.MODEL_META) or None)
+            from cfb_coach.madden.model.defense_verified import report_allows_enable
+
+            allowed, why = report_allows_enable(model)
+            if not allowed:
+                print(f"Cannot enable: {why}", file=sys.stderr)
+                print("defense_mode: off", file=sys.stderr)
+                print("auto_promote: false")
+                return 1
             defense.set_mode(db, "experimental")
         model = defense.load_model(db.get_meta(defense.MODEL_META) or None)
         result = {
@@ -968,6 +974,110 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
         return 0
     finally:
         db.close()
+
+
+def _defense_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
+    """JSONL paths plus an explicit database. No home-directory default."""
+    from cfb_coach.madden.model.defense_verified import load_jsonl, rows_from_db
+
+    rows = load_jsonl(list(getattr(args, "path", None) or []))
+    raw_db = getattr(args, "db", None)
+    if raw_db:
+        db = open_explicit_madden_db(Path(raw_db), read_only=True)
+        try:
+            rows.extend(rows_from_db(db))
+        finally:
+            db.close()
+    return rows
+
+
+def _print_adjustment_report(report: dict[str, Any]) -> None:
+    for warning in report.get("warnings") or []:
+        print(warning)
+    for side, block in (report.get("sides") or {}).items():
+        print(
+            f"side {side}: recommended={block['recommended']} "
+            f"applied={block['applied']} outcome={block['outcome']} "
+            f"ci95={block['ci95']}"
+        )
+    print(json.dumps(report, indent=2, default=str))
+
+
+def cmd_ml_train_defense(args: argparse.Namespace) -> int:
+    """Fit a defense artifact from verified snaps. Does not enable it."""
+    from cfb_coach.madden.model import defense_coordinator as defense
+    from cfb_coach.madden.model.defense_verified import (
+        evaluate_defense, format_verified_counts, partition_verified,
+        training_view, verified_counts,
+    )
+
+    if not getattr(args, "out", None):
+        _parser_error(args, "--out is required for train-defense")
+    rows = _defense_rows(args)
+    counts = verified_counts(rows)
+    print(format_verified_counts(counts))
+    if counts["total"] == 0:
+        print("error: refusing to train on zero verified snaps", file=sys.stderr)
+        return 1
+    parts = partition_verified(rows)
+    verified = [training_view(row) for row in parts["live"] + parts["vod"]]
+    art = defense.train_defense(verified, preverified=True)
+    art["verified_definition"] = format_verified_counts(counts).split("\n", 1)[0].split(": ", 1)[1]
+    art["verified_by_source"] = {"live": counts["live"], "vod": counts["vod"]}
+    art["verified_snaps"] = counts["total"]
+    art["eval_report"] = evaluate_defense(verified, seed=int(args.seed))
+    art["auto_promote"] = False
+    dest = defense.save_model(art, args.out)
+    print(f"gate: {art['eval_report']['gate']}")
+    print(f"artifact: {dest}")
+    print("defense_mode: off")
+    print("auto_promote: false")
+    return 0
+
+
+def cmd_ml_eval_defense(args: argparse.Namespace) -> int:
+    """Hold out verified snaps by match. Does not enable the artifact."""
+    from cfb_coach.madden.model import defense_coordinator as defense
+    from cfb_coach.madden.model.defense_verified import (
+        evaluate_defense, format_verified_counts, partition_verified,
+        training_view, verified_counts,
+    )
+
+    if not getattr(args, "model", None):
+        _parser_error(args, "--model is required for eval-defense")
+    rows = _defense_rows(args)
+    counts = verified_counts(rows)
+    print(format_verified_counts(counts))
+    if counts["total"] == 0:
+        print("error: refusing to evaluate zero verified snaps", file=sys.stderr)
+        return 1
+    parts = partition_verified(rows)
+    verified = [training_view(row) for row in parts["live"] + parts["vod"]]
+    report = evaluate_defense(verified, seed=int(args.seed))
+    model = defense.load_model(args.model)
+    if model is None:
+        print("error: --model is not an installed defense artifact", file=sys.stderr)
+        return 1
+    model["eval_report"] = report
+    model["auto_promote"] = False
+    defense.save_model(model, args.model)
+    print(f"gate: {report['gate']}")
+    print(f"diff: {report['diff']}")
+    print(f"ci95: {report['ci95']}")
+    print(f"p95_ms: {report['p95_ms']}")
+    print("auto_promote: false")
+    print(json.dumps(report, indent=2, default=str))
+    return 0
+
+
+def cmd_ml_eval_adjustments(args: argparse.Namespace) -> int:
+    """Recommended vs applied vs outcome. Does not change either caller."""
+    from cfb_coach.madden.model.defense_verified import evaluate_adjustments
+
+    rows = _defense_rows(args)
+    report = evaluate_adjustments(rows, seed=int(args.seed))
+    _print_adjustment_report(report)
+    return 0
 
 
 def cmd_ml_offense_coordinator(args: argparse.Namespace) -> int:
@@ -2085,6 +2195,35 @@ def build_ml_subparser(sub: Any) -> None:
         help="Artifact path for --retrain. Required so the model is not saved under the home data dir.",
     )
     p_dx.set_defaults(func=cmd_ml_defense_experimental, cli_parser=p_dx)
+
+    p_td = ml_sub.add_parser(
+        "train-defense",
+        help="Train from verified live and VOD defensive snaps. Does not enable the caller",
+    )
+    p_td.add_argument("--path", action="append", default=[], help="JSONL of snaps. Synthetic fixtures are fine")
+    p_td.add_argument("--db", default=None, help="Optional Madden SQLite path. Not a home-directory default")
+    p_td.add_argument("--out", required=True, help="Artifact path. Required so nothing is written under the home data dir")
+    p_td.add_argument("--seed", type=int, default=7)
+    p_td.set_defaults(func=cmd_ml_train_defense, cli_parser=p_td)
+
+    p_ed = ml_sub.add_parser(
+        "eval-defense",
+        help="Match holdout vs the situation baseline. Writes the report onto --model and does not enable",
+    )
+    p_ed.add_argument("--path", action="append", default=[], help="JSONL of snaps")
+    p_ed.add_argument("--db", default=None, help="Optional Madden SQLite path")
+    p_ed.add_argument("--model", required=True, help="Installed defense artifact to attach the eval report to")
+    p_ed.add_argument("--seed", type=int, default=7)
+    p_ed.set_defaults(func=cmd_ml_eval_defense, cli_parser=p_ed)
+
+    p_ea = ml_sub.add_parser(
+        "eval-adjustments",
+        help="Recommended vs executed/accepted vs outcome, per side, with bootstrap CIs",
+    )
+    p_ea.add_argument("--path", action="append", default=[], help="JSONL of adjustment rows")
+    p_ea.add_argument("--db", default=None, help="Optional Madden SQLite path")
+    p_ea.add_argument("--seed", type=int, default=7)
+    p_ea.set_defaults(func=cmd_ml_eval_adjustments, cli_parser=p_ea)
 
     p_coord = ml_sub.add_parser(
         "offense-coordinator",
