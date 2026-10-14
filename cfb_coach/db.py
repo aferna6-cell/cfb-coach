@@ -624,6 +624,7 @@ class CoachDB:
             if value is not None:
                 values[key] = value
         self._set_columns("snaps", row_id, values)
+        self._fill_known_snap_context(row_id)
         self._link_decision(ml_snap_id, ml_decision_id)
         self.conn.commit()
 
@@ -670,14 +671,23 @@ class CoachDB:
             if owned is not None:
                 fields["ml_decision_id"] = owned
         present = self._table_columns("snaps")
-        cols = [(k, fields[k]) for k in allowed if k in fields and k in present]
-        if not cols:
-            return
-        sets = ", ".join(f"{k} = ?" for k, _ in cols)
-        self.conn.execute(
-            f"UPDATE snaps SET {sets} WHERE id = ?",
-            [v for _, v in cols] + [snap_id],
-        )
+        # A missing drive or clock must not wipe one already stored. Fill from
+        # the situation text (and the sealed decision's clock) when still empty.
+        keep_known = {"drive_id", "game_clock"}
+        cols = []
+        for key in allowed:
+            if key not in fields or key not in present:
+                continue
+            if key in keep_known and fields[key] is None:
+                continue
+            cols.append((key, fields[key]))
+        if cols:
+            sets = ", ".join(f"{k} = ?" for k, _ in cols)
+            self.conn.execute(
+                f"UPDATE snaps SET {sets} WHERE id = ?",
+                [v for _, v in cols] + [snap_id],
+            )
+        self._fill_known_snap_context(snap_id)
         if "ml_decision_id" in fields or "executed_play" in fields:
             self._record_play_mismatch(snap_id)
         self.conn.commit()
@@ -2019,6 +2029,78 @@ class CoachDB:
             self.reconcile_call_links(session_id)
         except sqlite3.Error:
             pass
+        self._record_session_close(session_id, score=score, result_wl=result_wl)
+
+    def _record_session_close(
+        self,
+        session_id: str,
+        *,
+        score: str | None,
+        result_wl: str | None,
+    ) -> None:
+        """Final score on the snap log, then this opponent's verified tendencies only."""
+        from cfb_coach.madden.model.opponent_learning import fold_verified_session_tendencies
+        from cfb_coach.session import record_final_score_snap
+
+        record_final_score_snap(self, session_id, score=score, result_wl=result_wl)
+        fold_verified_session_tendencies(self, session_id)
+
+    def _decision_game_clock(self, ml_snap_id: str | None) -> str | None:
+        if not ml_snap_id or "game_clock" not in self._table_columns("ml_decisions"):
+            return None
+        found = self.conn.execute(
+            "SELECT game_clock FROM ml_decisions WHERE snap_id = ?",
+            (ml_snap_id,),
+        ).fetchone()
+        if found is None:
+            return None
+        text = found["game_clock"] if hasattr(found, "keys") else found[0]
+        if text is None or not str(text).strip():
+            return None
+        return str(text).strip()
+
+    def _fill_known_snap_context(self, row_id: int) -> None:
+        """Write drive_id and game_clock when the snap text or sealed call already has them.
+
+        Drive id comes only from an explicit drive id in the situation text, so a
+        play named Drive and a neighboring snap cannot invent one. A clock may
+        also be copied from the sealed decision for this snap id.
+        """
+        from cfb_coach.madden.model.call_outcome_log import drive_id_from_text, format_game_clock
+        from cfb_coach.situation import parse_clock_seconds
+
+        self._migrate_madden_call_outcome()
+        cols = self._table_columns("snaps")
+        if "situation_raw" not in cols:
+            return
+        wanted = [
+            name
+            for name in ("situation_raw", "drive_id", "game_clock", "ml_snap_id")
+            if name in cols
+        ]
+        row = self.conn.execute(
+            f"SELECT {', '.join(wanted)} FROM snaps WHERE id = ?",
+            (row_id,),
+        ).fetchone()
+        if row is None:
+            return
+        data = {key: row[key] for key in row.keys()} if hasattr(row, "keys") else {}
+        if not data and wanted:
+            data = dict(zip(wanted, row))
+        raw = str(data.get("situation_raw") or "")
+        updates: dict[str, Any] = {}
+        if "drive_id" in cols and not str(data.get("drive_id") or "").strip():
+            parsed = drive_id_from_text(raw)
+            if parsed:
+                updates["drive_id"] = parsed
+        if "game_clock" in cols and not str(data.get("game_clock") or "").strip():
+            clock = format_game_clock(parse_clock_seconds(raw))
+            if clock is None:
+                clock = self._decision_game_clock(data.get("ml_snap_id"))
+            if clock:
+                updates["game_clock"] = clock
+        if updates:
+            self._set_columns("snaps", row_id, updates)
 
     def get_session_snaps(self, session_id: str, *, limit: int = 500) -> list[sqlite3.Row]:
         return list(

@@ -882,3 +882,102 @@ def build_opponent_context(
         seeded_from_key=seed_key,
         seed_shrink_weight=seed_weight,
     )
+
+
+PROFILE_TENDENCY_KEY = "verified_session_tendencies"
+
+
+def fold_verified_session_tendencies(db: Any, session_id: str) -> dict[str, Any]:
+    """Fold one closed session into that opponent's profile and nowhere else.
+
+    Only snaps whose ``executed_verification`` is ``verified`` and whose
+    ``opponent_id`` is the session's opponent are counted. Counts and the
+    execution status are kept. A second fold of the same session replaces that
+    session's rows instead of adding them again.
+    """
+    import json
+
+    if db is None or not session_id:
+        return {"opponent_id": None, "folded": 0}
+    session = db.conn.execute(
+        "SELECT opponent_id FROM game_sessions WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()
+    if session is None or not session[0]:
+        return {"opponent_id": None, "folded": 0}
+    opponent_id = str(session[0])
+    snap_cols = {row[1] for row in db.conn.execute("PRAGMA table_info(snaps)")}
+    if "executed_verification" not in snap_cols or "opponent_id" not in snap_cols:
+        return {"opponent_id": opponent_id, "folded": 0}
+    snaps = db.conn.execute(
+        "SELECT * FROM snaps WHERE session_id = ? AND opponent_id = ?",
+        (session_id, opponent_id),
+    ).fetchall()
+    grouped: dict[tuple[str, str, str], int] = {}
+    for snap in snaps:
+        row = dict(snap)
+        if str(row.get("executed_verification") or "").strip().lower() != "verified":
+            continue
+        if str(row.get("data_source") or "") == "session_close":
+            continue
+        status = str(row.get("executed_status") or "unknown").strip().lower() or "unknown"
+        fields = (
+            ("executed_play", row.get("executed_play")),
+            ("their_coverage", row.get("coverage_seen")),
+            ("offense_concept", row.get("concept_seen")),
+        )
+        for bucket, raw in fields:
+            text = "" if raw is None else str(raw).strip()
+            if not text:
+                continue
+            key = (bucket, text, status)
+            grouped[key] = grouped.get(key, 0) + 1
+    entries = [
+        {
+            "session_id": session_id,
+            "bucket": bucket,
+            "key": key,
+            "count": count,
+            "executed_status": status,
+            "executed_verification": "verified",
+        }
+        for (bucket, key, status), count in sorted(grouped.items())
+    ]
+    profile = db.get_opponent(opponent_id)
+    if profile is None:
+        profile = {"id": opponent_id, "display_name": opponent_id}
+        inserted = True
+    else:
+        profile = dict(profile)
+        inserted = False
+    profile["id"] = opponent_id
+    prior = [
+        item
+        for item in (profile.get(PROFILE_TENDENCY_KEY) or [])
+        if isinstance(item, dict) and item.get("session_id") != session_id
+    ]
+    profile[PROFILE_TENDENCY_KEY] = prior + entries
+    payload = json.dumps(profile, sort_keys=True)
+    if inserted:
+        db.conn.execute(
+            """
+            INSERT INTO opponents
+                (id, display_name, team_now, skill, confidence, profile_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                opponent_id,
+                profile.get("display_name") or opponent_id,
+                profile.get("team_now"),
+                profile.get("skill"),
+                profile.get("confidence"),
+                payload,
+            ),
+        )
+    else:
+        db.conn.execute(
+            "UPDATE opponents SET profile_json = ? WHERE id = ?",
+            (payload, opponent_id),
+        )
+    db.conn.commit()
+    return {"opponent_id": opponent_id, "folded": len(entries)}

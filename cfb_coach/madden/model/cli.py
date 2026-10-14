@@ -612,6 +612,88 @@ def cmd_ml_recover_game_execution(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_source_counts(counts: dict[str, int]) -> None:
+    for name in ("live_human", "live_cpu", "vod"):
+        print(f"training_rows {name}: {int(counts.get(name) or 0)}")
+
+
+def _offense_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
+    """Rows for train-offense / eval-offense. No --db and no --path reads nothing."""
+    paths = list(getattr(args, "path", None) or [])
+    db_path = getattr(args, "db_path", None)
+    if not db_path and not paths:
+        return []
+    if db_path:
+        return _load_rows(args)
+    return dataset_mod.build_rows(db=None, extra_paths=paths)
+
+
+def cmd_ml_train_offense(args: argparse.Namespace) -> int:
+    """Fit a shadow situation×call offense artifact. Never promotes it."""
+    from cfb_coach.madden.model.offense_shadow import (
+        default_artifact_path,
+        fit_artifact,
+        save_artifact,
+        select_training_rows,
+    )
+
+    rows = _offense_rows(args)
+    _chosen, counts = select_training_rows(rows)
+    _print_source_counts(counts)
+    total = sum(counts.values())
+    if total == 0:
+        print("error: zero verified offense rows", file=sys.stderr)
+        return 1
+    artifact = fit_artifact(rows)
+    dest = Path(args.out) if getattr(args, "out", None) else default_artifact_path()
+    try:
+        written = save_artifact(artifact, dest)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"artifact: {written}")
+    print("shadow_only: true")
+    print("auto_promoted: false")
+    print("heuristic_remains_default: true")
+    return 0
+
+
+def cmd_ml_eval_offense(args: argparse.Namespace) -> int:
+    """Holdout report for the shadow offense artifact. Does not promote."""
+    from cfb_coach.madden.model.offense_shadow import (
+        evaluate_offense,
+        load_artifact,
+        select_training_rows,
+        write_eval_report,
+    )
+
+    if not getattr(args, "out", None):
+        _parser_error(args, "--out is required for eval-offense")
+    rows = _offense_rows(args)
+    _chosen, counts = select_training_rows(rows)
+    _print_source_counts(counts)
+    if sum(counts.values()) == 0:
+        print("error: zero verified offense rows", file=sys.stderr)
+        return 1
+    artifact = None
+    artifact_path = getattr(args, "artifact", None)
+    if artifact_path:
+        try:
+            artifact = load_artifact(artifact_path)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+    report = evaluate_offense(rows, seed=int(args.seed), artifact=artifact)
+    json_path, md_path = write_eval_report(report, args.out)
+    gate = report["promotion_gate"]
+    print(f"report_json: {json_path}")
+    print(f"report_md: {md_path}")
+    print(f"promotion_gate: {gate['passed']}")
+    print(f"auto_promoted: {gate['auto_promoted']}")
+    print("heuristic_remains_default: true")
+    return 0
+
+
 def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
     """Train the hierarchical shrinkage experimental model (no promotion gate)."""
     from cfb_coach.madden.model import experimental_live as exp_live
@@ -1990,6 +2072,41 @@ def build_ml_subparser(sub: Any) -> None:
         help="Madden SQLite path. Required with --install.",
     )
     p_te.set_defaults(func=cmd_ml_train_experimental, cli_parser=p_te)
+
+    p_to = ml_sub.add_parser(
+        "train-offense",
+        help="Train a shadow situation×call offense artifact (no promotion)",
+    )
+    p_to.add_argument("--seed", type=int, default=7)
+    p_to.add_argument("--path", action="append", default=[], help="Extra JSONL/CSV/SQLite rows")
+    p_to.add_argument(
+        "--out",
+        default=None,
+        help="Artifact path outside the repo (default: data_dir/madden_ml_offense/offense.json)",
+    )
+    p_to.add_argument(
+        "--db",
+        dest="db_path",
+        default=None,
+        help="Madden SQLite path. Omit to train from --path only.",
+    )
+    p_to.set_defaults(func=cmd_ml_train_offense, cli_parser=p_to, db=True)
+
+    p_eo = ml_sub.add_parser(
+        "eval-offense",
+        help="Holdout eval of the shadow offense artifact (writes JSON and Markdown; no promotion)",
+    )
+    p_eo.add_argument("--seed", type=int, required=True)
+    p_eo.add_argument("--path", action="append", default=[], help="Extra JSONL/CSV/SQLite rows")
+    p_eo.add_argument("--out", required=True, help="Report directory or .json/.md path")
+    p_eo.add_argument("--artifact", default=None, help="Saved offense artifact to score for latency")
+    p_eo.add_argument(
+        "--db",
+        dest="db_path",
+        default=None,
+        help="Madden SQLite path. Omit to evaluate --path only.",
+    )
+    p_eo.set_defaults(func=cmd_ml_eval_offense, cli_parser=p_eo, db=True)
 
     p_learn = ml_sub.add_parser(
         "offense-action-learn",
