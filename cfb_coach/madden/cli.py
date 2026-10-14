@@ -21,7 +21,8 @@ from cfb_coach.madden.franchise import (
 )
 from cfb_coach.madden.playcaller import active_pivot, make_call
 from cfb_coach.madden.situation import format_heard, parse_madden_situation
-from cfb_coach.opponents import is_cpu_opponent, resolve_opponent
+from cfb_coach.madden.human_opponents import ensure_madden_opponent, resolve_madden_opponent
+from cfb_coach.opponents import is_cpu_opponent
 
 PROFILE = GAMES[MADDEN27]
 
@@ -152,12 +153,24 @@ def open_db(explicit: str | None = None) -> CoachDB:
     return db
 
 
-def _require_opponent(raw: str) -> str:
-    oid = resolve_opponent(raw)
+def _require_opponent(raw: str, db: Any = None) -> str:
+    oid = resolve_madden_opponent(raw, db)
     if not oid:
         print(f"Unknown opponent: {raw!r}\n\n{format_opponents()}", file=sys.stderr)
         raise SystemExit(2)
     return oid
+
+
+def _open_opponent(args: argparse.Namespace) -> tuple[str, CoachDB]:
+    """Resolve the opponent, open the DB, and register a missing cold start."""
+    db = open_db(getattr(args, "db", None))
+    try:
+        oid = _require_opponent(args.opponent, db)
+    except SystemExit:
+        db.close()
+        raise
+    ensure_madden_opponent(db, oid)
+    return oid, db
 
 
 def _profile_arg(args: argparse.Namespace, db: CoachDB) -> str:
@@ -213,13 +226,38 @@ def format_opponents() -> str:
             f"{o['persona_confidence']:<9}{o['confidence']}"
         )
     lines.append("")
+    from cfb_coach.madden.human_opponents import builtin_profiles
+
+    lines.append("Madden-only cold start (no shared film, neutral priors):")
+    for oid, profile in builtin_profiles():
+        lines.append(
+            f"{oid:<12}{profile['display_name']:<15}{'unknown':<23}{'none':<9}none"
+        )
+    lines.append("")
     lines.append("CPU = offense-only (adjustments). User personas = O + D (8 offense + 8 defense).")
+    lines.append("Cold-start humans learn in game. They do not borrow another profile.")
     return "\n".join(lines)
 
 
 def cmd_opponents(_args: argparse.Namespace) -> int:
     print(format_opponents())
     return 0
+
+
+def cmd_preflight(args: argparse.Namespace) -> int:
+    """Human-mode gate. Does not change coaching mode or the locked book."""
+    from cfb_coach.madden.preflight import format_preflight, run_human_preflight
+
+    if getattr(args, "mode", None) != "human":
+        print("preflight requires --mode human.", file=sys.stderr)
+        return 2
+    db = open_db(getattr(args, "db", None))
+    try:
+        report = run_human_preflight(db, args.opponent)
+        print(format_preflight(report))
+        return 0 if report.get("ok") else 2
+    finally:
+        db.close()
 
 
 def _session_live_macros(args: argparse.Namespace) -> bool:
@@ -371,9 +409,10 @@ def cmd_prep(args: argparse.Namespace) -> int:
         parse_choice("defense", args.d_book)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
-    oid = _require_opponent(args.opponent)
     db = open_db()
     try:
+        oid = _require_opponent(args.opponent, db)
+        ensure_madden_opponent(db, oid)
         pid = _profile_arg(args, db)
         if getattr(args, "text", False):
             plan = build_prep_plan(
@@ -442,8 +481,7 @@ def cmd_prep(args: argparse.Namespace) -> int:
 
 
 def cmd_call(args: argparse.Namespace) -> int:
-    oid = _require_opponent(args.opponent)
-    db = open_db(getattr(args, "db", None))
+    oid, db = _open_opponent(args)
     try:
         pid = get_session_profile(db)
         sit = parse_madden_situation(args.situation, default_side=args.side or "offense")
@@ -498,8 +536,7 @@ def cmd_playbook(args: argparse.Namespace) -> int:
 def cmd_postgame(args: argparse.Namespace) -> int:
     from cfb_coach.madden.postgame import summary
 
-    oid = _require_opponent(args.opponent)
-    db = open_db()
+    oid, db = _open_opponent(args)
     try:
         pid = _profile_arg(args, db)
         print(summary(db, oid, pid))
@@ -550,8 +587,7 @@ def _write_overlay(path: Path | None, text: str, short: str) -> None:
 
 
 def cmd_play(args: argparse.Namespace) -> int:
-    oid = _require_opponent(args.opponent)
-    db = open_db(getattr(args, "db", None))
+    oid, db = _open_opponent(args)
     pid = _profile_arg(args, db)
     active = _active_after_prep(db, oid, pid)
     cpu = is_cpu_opponent(oid)
@@ -573,6 +609,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     print(f"LIVE PLAY — Madden 27 Franchise vs {oid}  (db: {db.path})")
     if human_ml_control:
         print("HUMAN OFFENSE ML PILOT: ON for this play session only (opt-in).")
+        print("  A human must confirm each call: accepted stays unknown until verify is touched.")
         print("  Instant rollback for next call: python -m cfb_coach ml heuristic")
     elif not cpu:
         print("HUMAN OFFENSE ML PILOT: OFF (heuristic offense; use --ml-human-control to opt in).")

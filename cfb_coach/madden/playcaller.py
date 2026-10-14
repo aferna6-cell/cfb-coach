@@ -974,13 +974,18 @@ def make_call(
         sel["offense"] = [mid for mid in sel["offense"] if pairs_in_book(mid, offense_book, cap=1)]
     if sit.side == "defense":
         call = _pick_defense(sit, opp, bl, db, rng, sel["defense"], books["defense"])
-        # Explicit, defense-only opt-in. Never auto-change offense or CPU mode.
-        # This function fails closed to the established defensive caller.
-        try:
-            from cfb_coach.madden.model.defense_coordinator import maybe_apply_defense
-            call = maybe_apply_defense(call, sit, opponent_id, db, books["defense"])
-        except Exception:  # noqa: BLE001 — safe legacy defense fallback
-            pass
+        # A cold-start human (John) keeps the established caller. Experimental
+        # defense cannot replace that call, even when the persistent flag is on.
+        from cfb_coach.madden.human_opponents import is_cold_start_opponent
+
+        if not is_cold_start_opponent(opponent_id, db):
+            # Explicit, defense-only opt-in. Never auto-change offense or CPU mode.
+            # This function fails closed to the established defensive caller.
+            try:
+                from cfb_coach.madden.model.defense_coordinator import maybe_apply_defense
+                call = maybe_apply_defense(call, sit, opponent_id, db, books["defense"])
+            except Exception:  # noqa: BLE001 — safe legacy defense fallback
+                pass
     else:
         call = _pick_offense(sit, opp, bl, db, rng, sel["offense"], books["offense"], audibles=audibles)
         # Opt-in experimental ML: sealed rebuild of reads/macros when ML selects.
