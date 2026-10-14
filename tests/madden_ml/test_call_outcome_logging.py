@@ -7,28 +7,34 @@ a real game, a database file, or an audit row.
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
 
 from cfb_coach.db import CoachDB
+from cfb_coach.live_server import LivePlayController
+from cfb_coach.madden.model import inference
 from cfb_coach.madden.model.call_outcome_log import (
     LINKED,
+    NO_RESULT,
     NO_SNAP_RECORDED,
     POST_SNAP_LOG_FIELDS,
     SCHEMA_META_KEY,
     SCHEMA_VERSION,
+    SUPERSEDED,
     apply_seal_logging,
     playbook_version_of,
     record_session_run_config,
     yards_for_log,
 )
+from cfb_coach.madden.model.schema import ML_LATENCY_BUDGET_MS, CoachingMode
 from cfb_coach.madden.model.data_layer import SHADOW_FEATURE_FIELDS
 from cfb_coach.madden.model.features import pre_snap_feature_names
 from cfb_coach.madden.model.identity import LiveDecisionTracker
 from cfb_coach.outcome import parse_outcome
-from cfb_coach.situation import Situation
+from cfb_coach.situation import Situation, parse_situation
 from cfb_coach.vod_model.flags import use_cli_flags
 
 SESSION = "synthetic-cpu-001"
@@ -388,6 +394,24 @@ def test_fifty_seven_calls_and_forty_two_snaps_leave_no_orphans(tmp_path: Path) 
         assert counts[LINKED] == 42
         assert counts[NO_SNAP_RECORDED] == 15
         assert None not in counts
+        reasons = dict(
+            db.conn.execute(
+                "SELECT orphan_reason, COUNT(*) FROM ml_decisions WHERE session_id = ? "
+                "AND snap_link = ? GROUP BY orphan_reason",
+                (SESSION, NO_SNAP_RECORDED),
+            ).fetchall()
+        )
+        assert reasons == {SUPERSEDED: 14, NO_RESULT: 1}
+        linked_without_decision = db.conn.execute(
+            """
+            SELECT d.id FROM ml_decisions d
+            WHERE d.session_id = ?
+              AND NOT EXISTS (SELECT 1 FROM snaps s WHERE s.ml_decision_id = d.id)
+              AND d.snap_link = ?
+            """,
+            (SESSION, LINKED),
+        ).fetchall()
+        assert linked_without_decision == []
         orphans = db.conn.execute(
             """
             SELECT d.id
@@ -581,7 +605,7 @@ def test_superseded_call_without_a_snap_is_marked(tmp_path: Path) -> None:
             db, tracker, decision_id=second_id, sit=sit, call=_Call(), is_new=True,
         )
         first = db.conn.execute(
-            "SELECT snap_link FROM ml_decisions WHERE id = ?", (first_id,)
+            "SELECT snap_link, orphan_reason FROM ml_decisions WHERE id = ?", (first_id,)
         ).fetchone()
         second = db.conn.execute(
             "SELECT snap_link, drive_id, quarter, game_clock, score_for, score_against, "
@@ -589,6 +613,7 @@ def test_superseded_call_without_a_snap_is_marked(tmp_path: Path) -> None:
             (second_id,),
         ).fetchone()
         assert first["snap_link"] == NO_SNAP_RECORDED
+        assert first["orphan_reason"] == SUPERSEDED
         assert second["drive_id"] == "4"
         assert second["quarter"] == 2
         assert second["game_clock"] == "1:30"
@@ -645,5 +670,430 @@ def test_run_config_logs_mode_model_flags_commit_and_playbook(tmp_path: Path) ->
         assert row["playbook_version"] == playbook_version_of(db)
         assert "rev3" in row["playbook_version"]
         assert "rev2" in row["playbook_version"]
+    finally:
+        db.close()
+
+
+class _SyntheticCall:
+    side = "offense"
+    formation = "Gun Bunch"
+    play = "Mesh"
+    macro = None
+    adj_or_macro = "base"
+    rationale = "synthetic"
+    reads = ()
+    adjustments = ()
+
+    def format(self) -> str:
+        return "Gun Bunch — Mesh"
+
+    def headline(self) -> str:
+        return self.format()
+
+
+def _shadow_hook(db: CoachDB):
+    def hook(sit, call, *, game_id, snap_id, snap_seq, session_id, is_new):
+        _decision, row_id = inference.evaluate_live_shadow(
+            db=db,
+            situation=sit,
+            call=call,
+            opponent_id="cpu",
+            game_id=game_id,
+            snap_id=snap_id,
+            snap_seq=snap_seq,
+            session_id=session_id,
+            formations={"Gun Bunch": ["Mesh", "Flood"]},
+            run=is_new,
+        )
+        return row_id
+
+    return hook
+
+
+def _live(db: CoachDB) -> LivePlayController:
+    inference.set_mode(db, CoachingMode.SHADOW)
+    ctrl = LivePlayController(
+        db=db,
+        opponent_id="cpu",
+        make_call=lambda sit, **_kwargs: _SyntheticCall(),
+        parse_situation=parse_situation,
+        learn_summary=lambda: "synthetic",
+        brand="Madden 27 Franchise",
+        play_cmd="x",
+        cpu_only=True,
+        shadow_evaluate=_shadow_hook(db),
+        enable_execution_verify=True,
+    )
+    ctrl.start()
+    return ctrl
+
+
+def _lines(count: int) -> list[str]:
+    return [f"{(i % 4) + 1}&{10 - (i % 9)} my {25 + (i % 40)}" for i in range(count)]
+
+
+def _decision_audit(db: CoachDB, session_id: str) -> list:
+    return db.conn.execute(
+        """
+        SELECT d.id, d.snap_seq, d.orphan_reason, d.snap_link,
+               (SELECT s.id FROM snaps s WHERE s.ml_decision_id = d.id) AS snap_row
+        FROM ml_decisions d
+        WHERE d.session_id = ? OR d.game_id = ?
+        ORDER BY d.snap_seq, d.id
+        """,
+        (session_id, session_id),
+    ).fetchall()
+
+
+def _play_game(ctrl: LivePlayController, snaps: int, rerequests: int) -> None:
+    """Seal ``snaps`` results. Re-request the first ``rerequests`` before the result.
+
+    An idempotent replay of the opening call must not add a second decision.
+    """
+    lines = _lines(snaps + 1)
+    key = f"seal-{ctrl.session_id}"
+    opened = ctrl.call_only(lines[0], request_key=key)
+    assert opened["ok"] is True
+    replay = ctrl.call_only(lines[0], request_key=key)
+    assert replay.get("idempotent_replay") is True
+    for index in range(snaps):
+        if index < rerequests:
+            revised = ctrl.call_only(lines[index] + " showing cover 3")
+            assert revised["ok"] is True
+        logged = ctrl.result_and_call(
+            outcome="+6" if index % 2 == 0 else "incomplete",
+            sit_raw=lines[index + 1],
+            side="offense",
+        )
+        assert logged["ok"] is True
+        assert logged["logged"] is not None
+
+
+def test_rerequested_calls_have_no_snap_until_marked(tmp_path: Path) -> None:
+    """Two synthetic games: 14 of 63 and 15 of 57 decisions have no matching snap.
+
+    A call is logged when it is sealed. The snap is written only when a result
+    arrives, and only for the call still pending. Repeating call-only with a
+    new situation supersedes the previous decision. The last sealed call has
+    no result. Neither row is deleted. Each one stores why it has no snap.
+    The default mode stays heuristic and the model budget stays 150 ms.
+    """
+    assert ML_LATENCY_BUDGET_MS == 150
+    path = tmp_path / "madden27.db"
+    default = _open(path)
+    try:
+        assert inference.resolve_mode(default) is CoachingMode.HEURISTIC
+    finally:
+        default.close()
+
+    db = _open(path)
+    try:
+        shapes = (
+            {"decisions": 63, "snaps": 49, "superseded": 13},
+            {"decisions": 57, "snaps": 42, "superseded": 14},
+        )
+        for shape in shapes:
+            ctrl = _live(db)
+            _play_game(ctrl, shape["snaps"], shape["superseded"])
+            session_id = ctrl.session_id
+            before = _decision_audit(db, session_id)
+            assert len(before) == shape["decisions"]
+            unmatched = [row for row in before if row["snap_row"] is None]
+            assert len(unmatched) == shape["superseded"] + 1
+            assert sum(row["orphan_reason"] == SUPERSEDED for row in unmatched) == shape["superseded"]
+            assert sum(row["orphan_reason"] is None for row in unmatched) == 1
+            kept = [row["id"] for row in before]
+            ended = ctrl.end_game(result_wl="win", score="1-0")
+            assert ended["ok"] is True
+            after = _decision_audit(db, session_id)
+            assert [row["id"] for row in after] == kept
+            unmatched = [row for row in after if row["snap_row"] is None]
+            assert len(unmatched) == shape["superseded"] + 1
+            assert sum(row["orphan_reason"] == SUPERSEDED for row in unmatched) == shape["superseded"]
+            assert sum(row["orphan_reason"] == NO_RESULT for row in unmatched) == 1
+            assert all(row["snap_link"] == NO_SNAP_RECORDED for row in unmatched)
+            executed = [row for row in after if row["snap_row"] is not None]
+            assert len(executed) == shape["snaps"]
+            assert all(
+                row["snap_link"] == LINKED and row["orphan_reason"] is None for row in executed
+            )
+            silent = [
+                row["id"]
+                for row in after
+                if row["snap_row"] is None and row["orphan_reason"] not in {SUPERSEDED, NO_RESULT}
+            ]
+            assert silent == []
+        untouched = _open(tmp_path / "untouched.db")
+        try:
+            assert inference.resolve_mode(untouched) is CoachingMode.HEURISTIC
+        finally:
+            untouched.close()
+        assert ML_LATENCY_BUDGET_MS == 150
+    finally:
+        db.close()
+
+
+def test_timeout_call_is_kept_and_an_executed_one_gets_the_snap(tmp_path: Path) -> None:
+    """A timeout does not drop the row or skip the 150 ms fallback.
+
+    The executed timeout is the sealed call, so its snap points at that
+    decision. A timeout that was replaced by a later call stays in the log
+    as superseded. A second log of the same snap id updates that row.
+    """
+    assert ML_LATENCY_BUDGET_MS == 150
+    db = _open(tmp_path / "madden27.db")
+    try:
+        assert inference.resolve_mode(db) is CoachingMode.HEURISTIC
+
+        def decision(seq: int, status: str) -> int:
+            return db.log_ml_decision(
+                {
+                    "decision_ts": "t",
+                    "game_id": SESSION,
+                    "session_id": SESSION,
+                    "snap_id": f"{SESSION}-{seq:04d}",
+                    "snap_seq": seq,
+                    "mode": "heuristic",
+                    "shadow_status": status,
+                    "final_pick": {"formation": "Gun Bunch", "play": "Mesh"},
+                }
+            )
+
+        timed_out = decision(1, "timeout")
+        followed = decision(2, "ok")
+        db.log_snap(
+            opponent_id="cpu",
+            side="offense",
+            situation_raw="2nd and 7",
+            our_call="Gun Bunch — Mesh",
+            result="+4",
+            session_id=SESSION,
+            ml_snap_id=f"{SESSION}-0002",
+            snap_seq=2,
+            ml_decision_id=timed_out,
+        )
+        executed_timeout = decision(3, "timeout")
+        db.log_snap(
+            opponent_id="cpu",
+            side="offense",
+            situation_raw="1st and 10",
+            our_call="Gun Bunch — Mesh",
+            result="incomplete",
+            session_id=SESSION,
+            ml_snap_id=f"{SESSION}-0003",
+            snap_seq=3,
+        )
+        retry = decision(3, "timeout")
+        assert retry == executed_timeout
+        snap_two = db.conn.execute(
+            "SELECT ml_decision_id FROM snaps WHERE ml_snap_id = ?",
+            (f"{SESSION}-0002",),
+        ).fetchone()
+        snap_three = db.conn.execute(
+            "SELECT ml_decision_id FROM snaps WHERE ml_snap_id = ?",
+            (f"{SESSION}-0003",),
+        ).fetchone()
+        assert snap_two["ml_decision_id"] == followed
+        assert snap_three["ml_decision_id"] == executed_timeout
+        before = [
+            row[0]
+            for row in db.conn.execute("SELECT id FROM ml_decisions ORDER BY id")
+        ]
+        stats = db.reconcile_call_links(SESSION)
+        after = [
+            row[0]
+            for row in db.conn.execute("SELECT id FROM ml_decisions ORDER BY id")
+        ]
+        assert before == after
+        assert len(after) == 3
+        assert stats["orphans"] == 0
+        replaced = db.conn.execute(
+            "SELECT snap_link, orphan_reason FROM ml_decisions WHERE id = ?",
+            (timed_out,),
+        ).fetchone()
+        kept = db.conn.execute(
+            "SELECT snap_link, orphan_reason FROM ml_decisions WHERE id = ?",
+            (executed_timeout,),
+        ).fetchone()
+        assert replaced["snap_link"] == NO_SNAP_RECORDED
+        assert replaced["orphan_reason"] == SUPERSEDED
+        assert kept["snap_link"] == LINKED
+        assert kept["orphan_reason"] is None
+        assert ML_LATENCY_BUDGET_MS == 150
+        assert inference.resolve_mode(db) is CoachingMode.HEURISTIC
+    finally:
+        db.close()
+
+
+def test_update_snap_does_not_restore_a_stale_decision_id(tmp_path: Path) -> None:
+    """A later update_snap cannot put a stale decision back on an owned snap.
+
+    The snap id's sealed decision wins, including when the caller passes None.
+    A snap that has no sealed owner still stores the id it was given.
+    """
+    db = _open(tmp_path / "madden27.db")
+    try:
+
+        def decision(seq: int, play: str) -> int:
+            return db.log_ml_decision(
+                {
+                    "decision_ts": "t",
+                    "game_id": SESSION,
+                    "session_id": SESSION,
+                    "snap_id": f"{SESSION}-{seq:04d}",
+                    "snap_seq": seq,
+                    "mode": "heuristic",
+                    "final_pick": {"formation": "Gun Bunch", "play": play},
+                }
+            )
+
+        owner = decision(1, "Mesh")
+        stale = decision(2, "Flood")
+        row = db.log_snap(
+            opponent_id="cpu",
+            side="offense",
+            situation_raw="1st and 10",
+            our_call="Gun Bunch — Mesh",
+            result="+4",
+            session_id=SESSION,
+            ml_snap_id=f"{SESSION}-0001",
+            snap_seq=1,
+            executed_play="Mesh",
+            ml_decision_id=stale,
+        )
+        db.update_snap(row, ml_decision_id=stale)
+        linked = db.conn.execute(
+            "SELECT ml_decision_id FROM snaps WHERE id = ?", (row,)
+        ).fetchone()
+        assert linked["ml_decision_id"] == owner
+        db.update_snap(row, ml_decision_id=None)
+        cleared = db.conn.execute(
+            "SELECT ml_decision_id FROM snaps WHERE id = ?", (row,)
+        ).fetchone()
+        assert cleared["ml_decision_id"] == owner
+
+        loose = db.log_snap(
+            opponent_id="cpu",
+            side="offense",
+            situation_raw="2nd and 7",
+            our_call="Gun Bunch — Flood",
+            result="incomplete",
+            session_id=SESSION,
+            ml_snap_id=f"{SESSION}-0099",
+            snap_seq=99,
+        )
+        db.update_snap(loose, ml_decision_id=stale)
+        accepted = db.conn.execute(
+            "SELECT ml_decision_id FROM snaps WHERE id = ?", (loose,)
+        ).fetchone()
+        assert accepted["ml_decision_id"] == stale
+    finally:
+        db.close()
+
+
+def test_repoint_flags_executed_play_that_differs_from_final_play(
+    tmp_path: Path, caplog
+) -> None:
+    """A repointed snap whose executed play differs from final_play is flagged.
+
+    The comparison uses the sealed owner, not the stale id that was passed.
+    An unknown executed play is not a mismatch. A later correction clears the flag.
+    """
+    caplog.set_level(logging.WARNING, logger="cfb_coach.db")
+    db = _open(tmp_path / "madden27.db")
+    try:
+        owner = db.log_ml_decision(
+            {
+                "decision_ts": "t",
+                "game_id": SESSION,
+                "session_id": SESSION,
+                "snap_id": f"{SESSION}-0001",
+                "snap_seq": 1,
+                "mode": "heuristic",
+                "final_pick": {"formation": "Gun Bunch", "play": "Mesh"},
+            }
+        )
+        stale = db.log_ml_decision(
+            {
+                "decision_ts": "t",
+                "game_id": SESSION,
+                "session_id": SESSION,
+                "snap_id": f"{SESSION}-0002",
+                "snap_seq": 2,
+                "mode": "heuristic",
+                "final_pick": {"formation": "Gun Bunch", "play": "Flood"},
+            }
+        )
+        row = db.log_snap(
+            opponent_id="cpu",
+            side="offense",
+            situation_raw="1st and 10",
+            our_call="Gun Bunch — Mesh",
+            result="+4",
+            session_id=SESSION,
+            ml_snap_id=f"{SESSION}-0001",
+            snap_seq=1,
+            executed_play="Flood",
+            ml_decision_id=stale,
+        )
+        flagged = db.conn.execute(
+            "SELECT ml_decision_id, executed_play, play_mismatch FROM snaps WHERE id = ?",
+            (row,),
+        ).fetchone()
+        assert flagged["ml_decision_id"] == owner
+        assert flagged["executed_play"] == "Flood"
+        assert flagged["play_mismatch"] == 1
+        warnings = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "cfb_coach.db" and record.levelno == logging.WARNING
+        ]
+        assert len(warnings) == 1
+        assert "play mismatch" in warnings[0]
+        assert "executed_play=Flood" in warnings[0]
+        assert "final_play=Mesh" in warnings[0]
+
+        db.update_snap(row, executed_play="Mesh")
+        matched = db.conn.execute(
+            "SELECT play_mismatch FROM snaps WHERE id = ?", (row,)
+        ).fetchone()
+        assert matched["play_mismatch"] == 0
+        assert len(warnings) == 1
+
+        unknown_owner = db.log_ml_decision(
+            {
+                "decision_ts": "t",
+                "game_id": SESSION,
+                "session_id": SESSION,
+                "snap_id": f"{SESSION}-0003",
+                "snap_seq": 3,
+                "mode": "heuristic",
+                "final_pick": {"formation": "Gun Bunch", "play": "Mesh"},
+            }
+        )
+        unknown = db.log_snap(
+            opponent_id="cpu",
+            side="offense",
+            situation_raw="3rd and 4",
+            our_call="Gun Bunch — Mesh",
+            result="incomplete",
+            session_id=SESSION,
+            ml_snap_id=f"{SESSION}-0003",
+            snap_seq=3,
+            ml_decision_id=unknown_owner,
+        )
+        blank = db.conn.execute(
+            "SELECT ml_decision_id, executed_play, play_mismatch FROM snaps WHERE id = ?",
+            (unknown,),
+        ).fetchone()
+        assert blank["ml_decision_id"] == unknown_owner
+        assert blank["executed_play"] is None
+        assert blank["play_mismatch"] is None
+        still = [
+            record.getMessage()
+            for record in caplog.records
+            if record.name == "cfb_coach.db" and record.levelno == logging.WARNING
+        ]
+        assert still == warnings
     finally:
         db.close()

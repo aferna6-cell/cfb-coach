@@ -91,7 +91,8 @@ class LiveDecisionTracker:
 
         A new seal while a different call is still pending records that
         earlier decision on ``abandoned_decision_row_id``. Logging uses that
-        id to mark the call ``no_snap_recorded`` when no snap was written.
+        id to mark the call ``no_snap_recorded`` with reason ``superseded``
+        when no snap was written. The row is kept.
         """
         self.abandoned_decision_row_id = None
         # If we already have a pending unlogged outcome for this exact call, reuse.
