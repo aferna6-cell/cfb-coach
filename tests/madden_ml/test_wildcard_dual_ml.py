@@ -9,6 +9,7 @@ import json
 import os
 import random
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -521,11 +522,14 @@ fi
 python3 -m cfb_coach play --game madden27 -o john --once "d 1&10" --no-overlay --terminal --no-vod-prior --db "$CFB_COACH_MADDEN_DB"
 """
             self.assertNotIn("--retrain", script)
+            repo = Path(__file__).resolve().parents[2]
             env = os.environ.copy()
             env["HOME"] = str(home)
             env["CFB_COACH_MADDEN_DB"] = str(db_path)
+            prior = env.get("PYTHONPATH")
+            env["PYTHONPATH"] = str(repo) if not prior else str(repo) + os.pathsep + prior
             proc = subprocess.run(
-                ["bash", "-lc", script], cwd="/workspace", env=env,
+                ["bash", "-lc", script], cwd=tmp, env=env,
                 text=True, capture_output=True, check=False,
             )
             combined = proc.stdout + proc.stderr
@@ -553,6 +557,62 @@ python3 -m cfb_coach play --game madden27 -o john --once "d 1&10" --no-overlay -
                 self.assertEqual(profile.get("offense") or {}, {})
             finally:
                 checked.close()
+
+    def test_ml_experimental_refuses_without_artifact_unless_retrain(self) -> None:
+        repo = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            db_path = home / "madden27.db"
+            db = CoachDB(db_path, seed=mdata.load_seed())
+            try:
+                inference.set_mode(db, CoachingMode.HEURISTIC)
+            finally:
+                db.close()
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["CFB_COACH_MADDEN_DB"] = str(db_path)
+            prior = env.get("PYTHONPATH")
+            env["PYTHONPATH"] = str(repo) if not prior else str(repo) + os.pathsep + prior
+            env.pop("CFB_COACH_DB", None)
+            refused = subprocess.run(
+                [sys.executable, "-m", "cfb_coach", "ml", "experimental"],
+                cwd=home,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            refused_out = refused.stdout + refused.stderr
+            self.assertEqual(refused.returncode, 2, refused_out)
+            self.assertIn("no offense artifact", refused_out)
+            self.assertNotIn("trained:", refused_out)
+            self.assertNotIn("mode: experimental", refused_out)
+            default_artifact = home / ".cfb-coach" / "madden_ml_experimental" / "offense.json"
+            self.assertFalse(default_artifact.exists())
+            checked = CoachDB(db_path, seed=mdata.load_seed())
+            try:
+                self.assertIs(inference.resolve_mode(checked), CoachingMode.HEURISTIC)
+            finally:
+                checked.close()
+
+            trained = subprocess.run(
+                [sys.executable, "-m", "cfb_coach", "ml", "experimental", "--retrain"],
+                cwd=home,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            trained_out = trained.stdout + trained.stderr
+            self.assertEqual(trained.returncode, 0, trained_out)
+            self.assertIn("trained:", trained_out)
+            self.assertIn("mode: experimental", trained_out)
+            self.assertTrue(default_artifact.is_file())
+            enabled = CoachDB(db_path, seed=mdata.load_seed())
+            try:
+                self.assertIs(inference.resolve_mode(enabled), CoachingMode.EXPERIMENTAL)
+            finally:
+                enabled.close()
 
 
 if __name__ == "__main__":

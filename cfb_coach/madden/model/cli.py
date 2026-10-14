@@ -381,9 +381,19 @@ def cmd_ml_experimental(args: argparse.Namespace) -> int:
         from cfb_coach.madden.model import experimental_model as exp_mod
         from cfb_coach.madden.model import dataset as ds
 
-        # Ensure an artifact exists (prior-driven is fine with empty verified data).
+        # Train only when the operator passes --retrain. A missing file must not
+        # write offense.json or flip the mode.
         art_path = exp_live.resolve_artifact_path(db)
-        if art_path is None or getattr(args, "retrain", False):
+        retrain = bool(getattr(args, "retrain", False))
+        if art_path is None and not retrain:
+            print(
+                "error: no offense artifact installed. "
+                "ml experimental refuses to enable experimental mode and refuses to train. "
+                "Pass --retrain to train explicitly.",
+                file=sys.stderr,
+            )
+            return 2
+        if retrain:
             rows = ds.build_rows(db=db)
             art = exp_mod.train_experimental(rows, side="offense")
             from cfb_coach.games import data_dir

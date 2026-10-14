@@ -6,7 +6,7 @@
 
 This does not authorize a merge to `main`. The pull request targets `madden-ml/coordinators`.
 
-Base: `madden-ml/coordinators` at `510ba67f079bdd62db9e3e3d9a07c9297ded810a`. Branch: `madden-ml/wildcard-dual-ml`. Tested code SHA: `7b6884ecc804fe0003d4af712a88d542113e1693`. The two full-suite runs below were executed on that tree. This sentence is the only later edit. No franchise database and no real game rows are in the commit.
+Base: `madden-ml/coordinators` at `510ba67f079bdd62db9e3e3d9a07c9297ded810a`. Branch: `madden-ml/wildcard-dual-ml`. The 24-situation Lions calls below were produced on `7b6884ecc804fe0003d4af712a88d542113e1693`. The live play path is unchanged by the later CLI refuse. The full-suite SHA is the head recorded in Regression. No franchise database and no real game rows are in the commit.
 
 John stays a Madden-only cold start (`unknown` / `none`, empty offense, empty coverages, no borrowed film). He learns from observations logged against his id. `accepted` stays `unknown` until verify is touched. `ML_LATENCY_BUDGET_MS` stays 150.
 
@@ -26,7 +26,7 @@ The two mode keys already failed separately. What John lacked was a defense sess
 
 - `--ml-defense-control` is the defense session switch. It does not change the offense mode. `--ml-human-control` does not change the defense mode.
 - John reaches experimental defense only when that flag is on, the defense mode is `experimental`, and the installed artifact has `supervised_defensive_snaps` greater than 0. Otherwise the established caller is shown and labeled `HEURISTIC`.
-- A missing offense artifact, a timeout, an exception, an illegal play, or an invalid adjustment returns the heuristic call immediately. The decision records `fallback_reason` and `fallback_source` (`heuristic_offense` or `select_defense`). The live call does not train either side.
+- A missing offense artifact, a timeout, an exception, an illegal play, or an invalid adjustment returns the heuristic call immediately. The decision records `fallback_reason` and `fallback_source` (`heuristic_offense` or `select_defense`). The live call does not train either side. `ml experimental` with no installed artifact exits 2 and does not write `offense.json` or change the mode. It trains only when `--retrain` is passed. Launch commands do not pass `--retrain`.
 - A macro is shown only when it is installed, armed, and executable (catalog loadout, or a defense lab sheet that is `verified_armed`). An invented, draft, or unarmed sheet fails the call closed to the heuristic.
 - Every `make_call` line ends with `LABEL: EXPERIMENTAL` or `LABEL: HEURISTIC`. A fallback is never labeled experimental.
 - `ml heuristic` rolls offense back on the next snap. `ml defense-experimental --disable --db "$CFB_COACH_MADDEN_DB"` rolls defense back. Neither deletes snaps, `ml_decisions`, or the open session. Final score and session close still go through `end_game`.
@@ -125,7 +125,9 @@ Formations used: 4-3 Over, Nickel 3-3 Over, Dime 2-3. Every play is in the Lions
 
 ## Verdicts
 
-**Offense — CONDITIONAL GO.** The human session flag, the 150 ms budget, truthful labels, and the Lions-book guard all held, and all 24 snaps were in-book model picks. The artifact scored here has zero supervised rows. It is prior-driven. It is not a claim that Franchise history trained it, and it is not playtested. Use it only when `offense.json` is already installed. Confirm each call. If that file is missing, leave the mode heuristic and do not start the pilot.
+**Offense — CONDITIONAL GO.** The human session flag, the 150 ms budget, truthful labels, and the Lions-book guard all held, and all 24 snaps were in-book model picks. The artifact scored here has zero supervised rows. It is prior-driven. It is not a claim that Franchise history trained it, and it is not playtested. Use it only when `offense.json` is already installed. Confirm each call. If that file is missing, `ml experimental` exits 2 and does not train. Leave the mode heuristic and do not start the pilot.
+
+Aidan's real offense artifact will call different plays than the prior-driven file used in validation. The code path is the same and QA validated it with an empirical artifact.
 
 **Defense — NO-GO.** No valid defense artifact with real training is installed. The coordinator was not activated and was not trained on zero snaps to produce a passing number. With the defense flag on and the mode experimental, all 24 snaps fell back to the established caller and were labeled `HEURISTIC`. Do not pass `--ml-defense-control`. Do not run `ml defense-experimental --enable`.
 
@@ -142,17 +144,21 @@ Collected **909** tests (baseline 902, plus 7 in `tests/madden_ml/test_wildcard_
 
 ## Laptop commands
 
-One shell. Absolute paths only. A leading `~` is rejected by `ml backup-db`. Do not pass `--opp-team`. Do not pass `--retrain`. Export `CFB_COACH_MADDEN_DB` before the backup and use that same path everywhere. `ml backup-db`, `preflight`, `ml defense-experimental --disable`, and `play` take `--db`. `ml experimental`, `ml heuristic`, and `ml defense-experimental` with no write flag read `CFB_COACH_MADDEN_DB`.
+One shell for the whole launch. Absolute paths only. A leading `~` is rejected by `ml backup-db`. Do not pass `--opp-team`. Do not pass `--retrain`. Export `CFB_COACH_MADDEN_DB` before the backup and use that same path everywhere. Every bash fence below starts with `: "${CFB_COACH_MADDEN_DB:?export CFB_COACH_MADDEN_DB first}"` (the first fence exports, then guards). A later fence pasted into a new shell stops before it opens a database. `ml backup-db`, `preflight`, `ml defense-experimental --disable`, and `play` take `--db`. `ml experimental`, `ml heuristic`, and `ml defense-experimental` with no write flag read `CFB_COACH_MADDEN_DB`.
 
-`tests/madden_ml/test_wildcard_dual_ml.py::DualCliTests::test_commands_exist_in_one_shell_without_retrain` runs this sequence against an isolated database: backup, defense status, defense disable, preflight PASS, `ml experimental` with an already installed offense file, one experimental offense snap, `ml heuristic`, a refused `--ml-human-control` start, a heuristic offense snap, a defense snap that stays `HEURISTIC` when no trained artifact exists, defense disable, and a refused `--ml-defense-control` start. `ml_decisions` from the experimental snap were still present afterward.
+Checkout stays on `madden-ml/coordinators`. #74 is merged into that branch before these commands run. `git rev-parse HEAD` must print that merge commit. It must not print `510ba67f079bdd62db9e3e3d9a07c9297ded810a`. If `HEAD` is still `510ba67`, #74 is not merged. Stop.
+
+`tests/madden_ml/test_wildcard_dual_ml.py::DualCliTests::test_commands_exist_in_one_shell_without_retrain` runs this sequence against an isolated database, with the repo root taken from `__file__` and the process cwd set to a temp directory: backup, defense status, defense disable, preflight PASS, `ml experimental` with an already installed offense file, one experimental offense snap, `ml heuristic`, a refused `--ml-human-control` start, a heuristic offense snap, a defense snap that stays `HEURISTIC` when no trained artifact exists, defense disable, and a refused `--ml-defense-control` start. `ml_decisions` from the experimental snap were still present afterward.
 
 ```bash
 export CFB_COACH_MADDEN_DB=/ABSOLUTE/PATH/madden27.db
+: "${CFB_COACH_MADDEN_DB:?export CFB_COACH_MADDEN_DB first}"
 python3 -m cfb_coach ml backup-db --db "$CFB_COACH_MADDEN_DB" --out /ABSOLUTE/PATH/backups
 
 git fetch origin madden-ml/coordinators
 git checkout madden-ml/coordinators
 git pull origin madden-ml/coordinators
+git rev-parse HEAD
 python3 -m pip install -e .
 
 python3 -m cfb_coach ml defense-experimental
@@ -165,17 +171,18 @@ python3 -m cfb_coach prep --game madden27 -o john --franchise primary --no-vod-p
 python3 -m cfb_coach prep --game madden27 -o john --franchise primary --no-vod-prior --mark-applied
 ```
 
-If the offense artifact is missing, stay heuristic. Do not run `ml experimental` in that case: with no file, that command trains.
+If the offense artifact is missing, `ml experimental` exits 2 and does not train. Stay on `ml heuristic` and play without `--ml-human-control`.
 
 ```bash
+: "${CFB_COACH_MADDEN_DB:?export CFB_COACH_MADDEN_DB first}"
 python3 -m cfb_coach ml heuristic
 python3 -m cfb_coach play --game madden27 -o john --franchise primary --no-vod-prior --db "$CFB_COACH_MADDEN_DB"
 ```
 
-If `offense.json` is already installed:
+If `offense.json` is already installed, `ml experimental` enables that file and does not train:
 
 ```bash
-ls "$(python3 -c 'from cfb_coach.games import data_dir; print(data_dir() / "madden_ml_experimental" / "offense.json")')"
+: "${CFB_COACH_MADDEN_DB:?export CFB_COACH_MADDEN_DB first}"
 python3 -m cfb_coach ml experimental
 python3 -m cfb_coach play --game madden27 -o john --franchise primary --ml-human-control --no-vod-prior --db "$CFB_COACH_MADDEN_DB"
 ```
@@ -184,17 +191,19 @@ Defense stays off. Do not add `--ml-defense-control`.
 
 ### Per-side rollback
 
-From another terminal, with the same `CFB_COACH_MADDEN_DB`, while the play session is still open. The next snap on that side follows the new mode. The other side is left alone. Snaps, decisions, and the session row stay.
+From another terminal, with the same `CFB_COACH_MADDEN_DB`, while the play session is still open. The next snap on that side follows the new mode. The other side is left alone. Snaps, decisions, and the session row stay. The guard below is the first line so this terminal fails closed when the variable was not exported.
 
 Offense only:
 
 ```bash
+: "${CFB_COACH_MADDEN_DB:?export CFB_COACH_MADDEN_DB first}"
 python3 -m cfb_coach ml heuristic
 ```
 
 Defense only:
 
 ```bash
+: "${CFB_COACH_MADDEN_DB:?export CFB_COACH_MADDEN_DB first}"
 python3 -m cfb_coach ml defense-experimental --disable --db "$CFB_COACH_MADDEN_DB"
 ```
 
