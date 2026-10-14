@@ -31,7 +31,16 @@ Synthetic data only. No franchise database and no real game rows are in this com
 | Invented, unarmed, DRAFT, and INSTALLED-but-not-armed adjustments | rejected |
 | Three synthetic games vs John | sessions closed; `decision_json.macro` is `O-RUN` when a catalog macro qualifies; `orphan_reason` is `superseded` and `no_result`; `accepted` is `unknown` unless verify is touched; `drive_id` is set only from an explicit `drive id` |
 
-Collected test ids after these tests: **902** (baseline 894, plus 8). The Playwright browser test remains a skip when Playwright is not installed. The two full-suite runs are recorded in the pull request after they finish. None of the baseline ids were removed.
+Collected test ids: **902** (baseline 894, plus 8). None of the baseline ids were removed.
+
+`python3 -m pytest -q` was run twice on this branch:
+
+| Run | Result |
+| --- | --- |
+| 1 | 901 passed, 1 skipped, 71.49s |
+| 2 | 901 passed, 1 skipped, 68.93s |
+
+The skip is `tests/madden_ml/test_browser_idempotency_playwright.py` (`playwright not installed`).
 
 ### Latency (three synthetic games, 27 experimental decisions)
 
