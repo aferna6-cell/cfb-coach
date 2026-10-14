@@ -17,6 +17,24 @@ from pathlib import Path
 from cfb_coach.vod_model.adapter import VodModel, load_version_dir
 
 _VERSION = re.compile(r"v\d+(?:\.\d+)*\Z")
+_MODEL_CACHE: dict[tuple, VodModel] = {}
+
+
+def _file_stamp(path: Path) -> tuple[str, int | None, int | None]:
+    try:
+        st = path.stat()
+    except OSError:
+        return (str(path), None, None)
+    return (str(path), int(st.st_mtime_ns), int(st.st_size))
+
+
+def _model_revision(root: Path, chosen: Path) -> tuple:
+    return (
+        _file_stamp(chosen / "beaters.json"),
+        _file_stamp(chosen / "model_params.json"),
+        _file_stamp(chosen / "manifest.json"),
+        _file_stamp(root / "LAST_TRAINED.json"),
+    )
 
 
 def models_dir() -> Path | None:
@@ -70,6 +88,13 @@ def load_model(root: Path | None = None) -> VodModel | None:
         chosen = version_dir(base)
         if chosen is None:
             return None
-        return load_version_dir(chosen)
+        revision = _model_revision(base, chosen)
+        if revision in _MODEL_CACHE:
+            return _MODEL_CACHE[revision]
+        model = load_version_dir(chosen)
     except Exception:  # noqa: BLE001 — missing/corrupt model is a no-op
         return None
+    if len(_MODEL_CACHE) >= 4:
+        _MODEL_CACHE.clear()
+    _MODEL_CACHE[revision] = model
+    return model

@@ -3,24 +3,99 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
 from cfb_coach.seed import load_seed
 
+_UNSET = object()
+
 
 def resolve_db_path_from_env() -> Path | None:
     raw = os.environ.get("CFB_COACH_DB")
     return Path(raw) if raw else None
 
+
+def _madden_db_filename() -> str:
+    from cfb_coach.games import GAMES, MADDEN27
+
+    return GAMES[MADDEN27].db_filename
+
+
+def _nonempty_env(name: str) -> str | None:
+    raw = os.environ.get(name)
+    return raw if raw else None
+
+
+def madden_db_path() -> Path:
+    """Resolve the Madden database path.
+
+    A non-empty ``CFB_COACH_MADDEN_DB`` wins. Otherwise a non-empty
+    ``CFB_COACH_DB`` selects ``<its parent>/madden27.db`` and does not call
+    ``Path.home()`` or create ``~/.cfb-coach``. Otherwise the path is
+    ``~/.cfb-coach/madden27.db``. Empty strings count as unset. Whenever
+    ``CFB_COACH_DB`` is set, a ``UserWarning`` names both variables if the
+    resolved Madden path is that same file. The warning also fires when
+    ``CFB_COACH_MADDEN_DB`` names the sibling ``madden27.db``.
+    """
+    filename = _madden_db_filename()
+    madden_raw = _nonempty_env("CFB_COACH_MADDEN_DB")
+    cfb_raw = _nonempty_env("CFB_COACH_DB")
+    sibling = Path(cfb_raw).parent / filename if cfb_raw else None
+
+    def _warn_if_same_file(chosen: Path) -> None:
+        if not cfb_raw:
+            return
+        resolved = chosen.resolve()
+        same = resolved == Path(cfb_raw).resolve()
+        if madden_raw and sibling is not None and resolved == sibling.resolve():
+            same = True
+        if same:
+            warnings.warn(
+                "CFB_COACH_MADDEN_DB and CFB_COACH_DB resolve to the same file "
+                f"({chosen})",
+                UserWarning,
+                stacklevel=3,
+            )
+
+    if madden_raw:
+        chosen = Path(madden_raw)
+        _warn_if_same_file(chosen)
+        parent = chosen.parent
+        if not parent.exists():
+            parent.mkdir()
+        return chosen
+    if sibling is not None:
+        _warn_if_same_file(sibling)
+        return sibling
+    try:
+        home = Path.home() / ".cfb-coach" / filename
+        home.parent.mkdir(parents=True, exist_ok=True)
+        return home
+    except OSError:
+        fallback = Path("/workspace/cfb-coach/data") / filename
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
 def default_db_path() -> Path:
-    """Prefer CFB_COACH_DB, then ~/.cfb-coach/coach.db, then package data/."""
+    """Prefer CFB_COACH_DB, then ~/.cfb-coach/coach.db, then package data/.
+
+    A non-empty ``CFB_COACH_DB`` is returned as given. This branch does not
+    call ``Path.home()`` and does not create ``~/.cfb-coach``. Only the parent
+    of the given path is created, and only when that parent is missing. An
+    empty value is treated as unset.
+    """
     env = resolve_db_path_from_env()
     if env is not None:
-        env.parent.mkdir(parents=True, exist_ok=True)
+        parent = env.parent
+        if not parent.exists():
+            parent.mkdir()
         return env
     home = Path.home() / ".cfb-coach" / "coach.db"
     try:
@@ -388,8 +463,24 @@ class CoachDB:
         executed_verification: str | None = None,
         ml_decision_id: int | None = None,
         data_source: str | None = None,
+        drive_id: str | None = None,
+        game_clock: str | None = None,
+        score_for: int | None = None,
+        score_against: int | None = None,
+        penalty: str | None = None,
+        yards: Any = _UNSET,
+        accepted: str | None = None,
+        recommended_adjustment_id: str | None = None,
+        executed_adjustment_id: str | None = None,
+        adjustment_confirmed: bool = False,
     ) -> int:
         self._migrate_ml_snap_columns()
+        self._migrate_madden_call_outcome()
+        # The decision sealed for this snap id owns the row. A stale id from an
+        # earlier call must not stay on the snap that was actually run.
+        owned = self._decision_id_for_snap(ml_snap_id)
+        if owned is not None:
+            ml_decision_id = owned
         # Idempotent on ml_snap_id: corrections / retries update the same logical snap.
         if ml_snap_id:
             existing = self.conn.execute(
@@ -397,21 +488,39 @@ class CoachDB:
             ).fetchone()
             if existing:
                 row_id = int(existing["id"] if hasattr(existing, "keys") else existing[0])
-                self.update_snap(
+                fields: dict[str, Any] = {
+                    "result": result,
+                    "coverage_seen": coverage_seen,
+                    "concept_seen": concept_seen,
+                    "notes": notes,
+                    "executed_status": executed_status,
+                    "executed_formation": executed_formation,
+                    "executed_play": executed_play,
+                    "executed_macro": executed_macro,
+                    "executed_verification": executed_verification,
+                    "formation": formation,
+                    "play": play,
+                    "macro": macro,
+                }
+                # None must not wipe a decision id already stored on this snap.
+                if ml_decision_id is not None:
+                    fields["ml_decision_id"] = ml_decision_id
+                self.update_snap(row_id, **fields)
+                self._finish_snap_log(
                     row_id,
                     result=result,
-                    coverage_seen=coverage_seen,
-                    concept_seen=concept_seen,
-                    notes=notes,
-                    executed_status=executed_status,
-                    executed_formation=executed_formation,
-                    executed_play=executed_play,
-                    executed_macro=executed_macro,
-                    executed_verification=executed_verification,
+                    ml_snap_id=ml_snap_id,
                     ml_decision_id=ml_decision_id,
-                    formation=formation,
-                    play=play,
-                    macro=macro,
+                    drive_id=drive_id,
+                    game_clock=game_clock,
+                    score_for=score_for,
+                    score_against=score_against,
+                    penalty=penalty,
+                    yards=yards,
+                    accepted=accepted,
+                    recommended_adjustment_id=recommended_adjustment_id,
+                    executed_adjustment_id=executed_adjustment_id,
+                    adjustment_confirmed=adjustment_confirmed,
                 )
                 return row_id
         cur = self.conn.execute(
@@ -454,10 +563,73 @@ class CoachDB:
                 data_source or "live",
             ),
         )
+        row_id = int(cur.lastrowid)
+        self._finish_snap_log(
+            row_id,
+            result=result,
+            ml_snap_id=ml_snap_id,
+            ml_decision_id=ml_decision_id,
+            drive_id=drive_id,
+            game_clock=game_clock,
+            score_for=score_for,
+            score_against=score_against,
+            penalty=penalty,
+            yards=yards,
+            accepted=accepted,
+            recommended_adjustment_id=recommended_adjustment_id,
+            executed_adjustment_id=executed_adjustment_id,
+            adjustment_confirmed=adjustment_confirmed,
+        )
+        return row_id
+
+    def _finish_snap_log(
+        self,
+        row_id: int,
+        *,
+        result: str | None,
+        ml_snap_id: str | None,
+        ml_decision_id: int | None,
+        drive_id: str | None,
+        game_clock: str | None,
+        score_for: int | None,
+        score_against: int | None,
+        penalty: str | None,
+        yards: Any,
+        accepted: str | None,
+        recommended_adjustment_id: str | None,
+        executed_adjustment_id: str | None,
+        adjustment_confirmed: bool,
+    ) -> None:
+        from cfb_coach.madden.model.call_outcome_log import (
+            coerce_logged_yards,
+            executed_adjustment_for_log,
+            penalty_for_log,
+        )
+
+        values: dict[str, Any] = {
+            "yards": coerce_logged_yards(result, None if yards is _UNSET else yards),
+            "penalty": penalty_for_log(result, penalty),
+            "executed_adjustment_id": executed_adjustment_for_log(
+                executed_adjustment_id, confirmed=adjustment_confirmed
+            ),
+        }
+        for key, value in (
+            ("drive_id", drive_id),
+            ("game_clock", game_clock),
+            ("score_for", score_for),
+            ("score_against", score_against),
+            ("accepted", accepted),
+            ("recommended_adjustment_id", recommended_adjustment_id),
+        ):
+            if value is not None:
+                values[key] = value
+        self._set_columns("snaps", row_id, values)
+        self._link_decision(ml_snap_id, ml_decision_id)
         self.conn.commit()
-        return int(cur.lastrowid)
 
     def update_snap(self, snap_id: int, **fields: Any) -> None:
+        # ``executed_adjustment_id`` stays off this list. Only
+        # ``executed_adjustment_for_log(confirmed=True)`` may write it.
         allowed = (
             "result",
             "coverage_seen",
@@ -475,8 +647,30 @@ class CoachDB:
             "play",
             "macro",
             "data_source",
+            "drive_id",
+            "game_clock",
+            "score_for",
+            "score_against",
+            "penalty",
+            "yards",
+            "accepted",
+            "recommended_adjustment_id",
         )
-        cols = [(k, fields[k]) for k in allowed if k in fields]
+        if "ml_decision_id" in fields:
+            # A later correction must not put a stale decision back on a snap
+            # whose snap id already has a sealed owner.
+            ml_snap_id = fields.get("ml_snap_id")
+            if not ml_snap_id and "ml_snap_id" in self._table_columns("snaps"):
+                current = self.conn.execute(
+                    "SELECT ml_snap_id FROM snaps WHERE id = ?", (snap_id,)
+                ).fetchone()
+                if current is not None:
+                    ml_snap_id = current["ml_snap_id"] if hasattr(current, "keys") else current[0]
+            owned = self._decision_id_for_snap(ml_snap_id)
+            if owned is not None:
+                fields["ml_decision_id"] = owned
+        present = self._table_columns("snaps")
+        cols = [(k, fields[k]) for k in allowed if k in fields and k in present]
         if not cols:
             return
         sets = ", ".join(f"{k} = ?" for k, _ in cols)
@@ -484,6 +678,8 @@ class CoachDB:
             f"UPDATE snaps SET {sets} WHERE id = ?",
             [v for _, v in cols] + [snap_id],
         )
+        if "ml_decision_id" in fields or "executed_play" in fields:
+            self._record_play_mismatch(snap_id)
         self.conn.commit()
 
     def delete_snap(self, snap_id: int) -> None:
@@ -848,6 +1044,26 @@ class CoachDB:
                     self.conn.commit()
                 except sqlite3.Error:
                     pass
+            if "recovered" not in gs_cols:
+                try:
+                    self.conn.execute(
+                        "ALTER TABLE game_sessions ADD COLUMN recovered INTEGER NOT NULL DEFAULT 0"
+                    )
+                    self.conn.commit()
+                except sqlite3.Error:
+                    pass
+            if "owner_pid" not in gs_cols:
+                try:
+                    self.conn.execute("ALTER TABLE game_sessions ADD COLUMN owner_pid INTEGER")
+                    self.conn.commit()
+                except sqlite3.Error:
+                    pass
+            if "heartbeat_ts" not in gs_cols:
+                try:
+                    self.conn.execute("ALTER TABLE game_sessions ADD COLUMN heartbeat_ts TEXT")
+                    self.conn.commit()
+                except sqlite3.Error:
+                    pass
 
     def _migrate_ml_tables(self) -> None:
         """Additive Madden ML decision/outcome tables. Safe to run repeatedly."""
@@ -965,6 +1181,438 @@ class CoachDB:
                 self.conn.commit()
             except sqlite3.Error:
                 pass
+        self._migrate_madden_call_outcome()
+
+    def _table_columns(self, table: str) -> set[str]:
+        try:
+            return {row[1] for row in self.conn.execute(f"PRAGMA table_info({table})")}
+        except sqlite3.Error:
+            return set()
+
+    def _add_columns(self, table: str, additions: dict[str, str]) -> None:
+        present = self._table_columns(table)
+        if not present:
+            return
+        for name, typ in additions.items():
+            if name in present:
+                continue
+            self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {typ}")
+        self.conn.commit()
+
+    def _set_columns(self, table: str, row_id: int, values: dict[str, Any]) -> None:
+        """Update columns that exist. Missing keys and missing columns are skipped."""
+        present = self._table_columns(table)
+        pairs = [(key, value) for key, value in values.items() if key in present]
+        if not pairs:
+            return
+        assignments = ", ".join(f"{key} = ?" for key, _value in pairs)
+        self.conn.execute(
+            f"UPDATE {table} SET {assignments} WHERE id = ?",
+            [value for _key, value in pairs] + [row_id],
+        )
+
+    def _migrate_madden_call_outcome(self) -> None:
+        """Additive Madden call/outcome columns. Safe to run more than once.
+
+        Older databases keep every existing row. New columns are NULL until a
+        later log writes them. This does not copy a recommendation into an
+        executed adjustment, and it does not change coaching defaults.
+        """
+        from cfb_coach.madden.model.call_outcome_log import (
+            DECISION_COLUMNS,
+            OUTCOME_COLUMNS,
+            SCHEMA_META_KEY,
+            SCHEMA_VERSION,
+            SNAP_COLUMNS,
+        )
+
+        tables = {
+            row[0]
+            for row in self.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        if "ml_decisions" in tables:
+            self._add_columns("ml_decisions", DECISION_COLUMNS)
+        if "ml_outcomes" in tables:
+            self._add_columns("ml_outcomes", OUTCOME_COLUMNS)
+        if "snaps" in tables:
+            self._add_columns("snaps", SNAP_COLUMNS)
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ml_run_config (
+                session_id TEXT PRIMARY KEY,
+                recorded_ts TEXT NOT NULL,
+                mode TEXT,
+                model_id TEXT,
+                flags_json TEXT,
+                git_commit TEXT,
+                git_branch TEXT,
+                playbook_version TEXT
+            )
+            """
+        )
+        if "meta" in tables or "meta" in {
+            row[0]
+            for row in self.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }:
+            self.conn.execute(
+                """
+                INSERT INTO meta (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (SCHEMA_META_KEY, SCHEMA_VERSION),
+            )
+        self.conn.commit()
+
+    def _record_play_mismatch(self, snap_row_id: int) -> None:
+        """Flag a snap whose executed play differs from the linked decision.
+
+        An unknown executed play is not a mismatch. A real disagreement is
+        stored on ``play_mismatch`` and logged. It is never left unmarked.
+        """
+        if "play_mismatch" not in self._table_columns("snaps"):
+            return
+        if "final_play" not in self._table_columns("ml_decisions"):
+            return
+        snap = self.conn.execute(
+            "SELECT ml_decision_id, executed_play FROM snaps WHERE id = ?",
+            (snap_row_id,),
+        ).fetchone()
+        if snap is None:
+            return
+        decision_id = snap["ml_decision_id"] if hasattr(snap, "keys") else snap[0]
+        executed = snap["executed_play"] if hasattr(snap, "keys") else snap[1]
+        executed_text = "" if executed is None else str(executed).strip()
+        flag = None
+        final_text = ""
+        if decision_id is not None and executed_text:
+            decision = self.conn.execute(
+                "SELECT final_play FROM ml_decisions WHERE id = ?",
+                (int(decision_id),),
+            ).fetchone()
+            final = None if decision is None else (
+                decision["final_play"] if hasattr(decision, "keys") else decision[0]
+            )
+            final_text = "" if final is None else str(final).strip()
+            if final_text:
+                flag = 0 if executed_text == final_text else 1
+        self.conn.execute(
+            "UPDATE snaps SET play_mismatch = ? WHERE id = ?",
+            (flag, snap_row_id),
+        )
+        if flag == 1:
+            logging.getLogger(__name__).warning(
+                "play mismatch snap_row=%s decision_id=%s executed_play=%s final_play=%s",
+                snap_row_id,
+                decision_id,
+                executed_text,
+                final_text,
+            )
+
+    def _decision_id_for_snap(self, snap_id: str | None) -> int | None:
+        """The decision sealed for ``snap_id``, if one was logged."""
+        if not snap_id or "snap_id" not in self._table_columns("ml_decisions"):
+            return None
+        row = self.conn.execute(
+            "SELECT id FROM ml_decisions WHERE snap_id = ? ORDER BY id DESC LIMIT 1",
+            (snap_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return int(row["id"] if hasattr(row, "keys") else row[0])
+
+    def _attach_snap_decision(self, snap_id: str | None, decision_id: int | None) -> None:
+        """Point the snap for ``snap_id`` at the decision that was sealed for it."""
+        if not snap_id or decision_id is None:
+            return
+        if "ml_decision_id" not in self._table_columns("snaps"):
+            return
+        self.conn.execute(
+            """
+            UPDATE snaps
+            SET ml_decision_id = ?
+            WHERE ml_snap_id = ?
+              AND (ml_decision_id IS NULL OR ml_decision_id != ?)
+            """,
+            (int(decision_id), snap_id, int(decision_id)),
+        )
+        row = self.conn.execute(
+            "SELECT id FROM snaps WHERE ml_snap_id = ?", (snap_id,)
+        ).fetchone()
+        if row is not None:
+            self._record_play_mismatch(int(row["id"] if hasattr(row, "keys") else row[0]))
+
+    def _link_decision(self, snap_id: str | None, decision_id: int | None) -> None:
+        columns = self._table_columns("ml_decisions")
+        if "snap_link" not in columns:
+            return
+        if "orphan_reason" in columns:
+            assignment = "snap_link = ?, orphan_reason = NULL"
+        else:
+            assignment = "snap_link = ?"
+        if decision_id is not None:
+            self._attach_snap_decision(snap_id, int(decision_id))
+            self.conn.execute(
+                f"UPDATE ml_decisions SET {assignment} WHERE id = ?",
+                ("linked", int(decision_id)),
+            )
+        elif snap_id:
+            owner = self._decision_id_for_snap(snap_id)
+            if owner is not None:
+                self._attach_snap_decision(snap_id, owner)
+            self.conn.execute(
+                f"UPDATE ml_decisions SET {assignment} WHERE snap_id = ?",
+                ("linked", snap_id),
+            )
+        self.conn.commit()
+
+    def mark_call_no_snap(self, decision_id: int | None, *, reason: str = "no_result") -> bool:
+        """Mark one call that still has no snap or outcome, and keep the row.
+
+        ``reason`` is ``superseded`` when a later call replaced this one, or
+        ``no_result`` when the result never arrived. A call that already has a
+        snap or outcome row is linked instead, and its reason is cleared.
+        """
+        from cfb_coach.madden.model.call_outcome_log import NO_RESULT, SUPERSEDED
+
+        if decision_id is None:
+            return False
+        stored_reason = SUPERSEDED if reason == SUPERSEDED else NO_RESULT
+        self._migrate_madden_call_outcome()
+        row = self.conn.execute(
+            "SELECT id, snap_id FROM ml_decisions WHERE id = ?",
+            (int(decision_id),),
+        ).fetchone()
+        if row is None:
+            return False
+        snap_id = row["snap_id"] if hasattr(row, "keys") else row[1]
+        if self._call_has_snap_or_outcome(snap_id, int(decision_id)):
+            self._link_decision(snap_id, int(decision_id))
+            return False
+        columns = self._table_columns("ml_decisions")
+        if "orphan_reason" in columns:
+            self.conn.execute(
+                "UPDATE ml_decisions SET snap_link = ?, orphan_reason = ? WHERE id = ?",
+                ("no_snap_recorded", stored_reason, int(decision_id)),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE ml_decisions SET snap_link = ? WHERE id = ?",
+                ("no_snap_recorded", int(decision_id)),
+            )
+        self.conn.commit()
+        return True
+
+    def _call_has_snap_or_outcome(self, snap_id: str | None, decision_id: int | None) -> bool:
+        if snap_id and "ml_snap_id" in self._table_columns("snaps"):
+            found = self.conn.execute(
+                "SELECT 1 FROM snaps WHERE ml_snap_id = ? LIMIT 1",
+                (snap_id,),
+            ).fetchone()
+            if found is not None:
+                return True
+        if snap_id and "ml_outcomes" in {
+            row[0]
+            for row in self.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }:
+            found = self.conn.execute(
+                "SELECT 1 FROM ml_outcomes WHERE snap_id = ? LIMIT 1",
+                (snap_id,),
+            ).fetchone()
+            if found is not None:
+                return True
+        if decision_id is not None and "decision_id" in self._table_columns("ml_outcomes"):
+            found = self.conn.execute(
+                "SELECT 1 FROM ml_outcomes WHERE decision_id = ? LIMIT 1",
+                (int(decision_id),),
+            ).fetchone()
+            if found is not None:
+                return True
+        return False
+
+    def _same_logged_game(self, left: Any, right: Any) -> bool:
+        def keys(row: Any) -> set[str]:
+            found = set()
+            for name in ("session_id", "game_id"):
+                value = row[name] if hasattr(row, "keys") else None
+                if value:
+                    found.add(str(value))
+            return found
+
+        return bool(keys(left) & keys(right))
+
+    def _later_sealed_call(self, row: Any, rows: list[Any]) -> bool:
+        """True when a later call in the same game was sealed after ``row``."""
+        this_id = int(row["id"])
+        this_seq = row["snap_seq"]
+        for other in rows:
+            other_id = int(other["id"])
+            if other_id == this_id or not self._same_logged_game(row, other):
+                continue
+            other_seq = other["snap_seq"]
+            if this_seq is not None and other_seq is not None and other_seq != this_seq:
+                if int(other_seq) > int(this_seq):
+                    return True
+                continue
+            if other_id > this_id:
+                return True
+        return False
+
+    def reconcile_call_links(self, session_id: str | None = None) -> dict[str, int]:
+        """Link every executed call to its snap, or record why it has none.
+
+        A snap whose ``ml_snap_id`` matches a decision gets that decision's id.
+        A call with no snap is ``superseded`` when a later call in the game was
+        sealed, and ``no_result`` when the result never arrived. Rows are not
+        deleted. Idempotent. A second call leaves the same statuses in place.
+        """
+        from cfb_coach.madden.model.call_outcome_log import NO_RESULT, SUPERSEDED
+
+        self._migrate_madden_call_outcome()
+        sql = "SELECT id, snap_id, snap_seq, session_id, game_id FROM ml_decisions"
+        params: list[Any] = []
+        if session_id:
+            sql += " WHERE session_id = ? OR game_id = ?"
+            params = [session_id, session_id]
+        rows = list(self.conn.execute(sql, params))
+        for row in rows:
+            decision_id = int(row["id"])
+            snap_id = row["snap_id"]
+            if snap_id:
+                self._attach_snap_decision(snap_id, decision_id)
+        linked = 0
+        closed = 0
+        has_reason = "orphan_reason" in self._table_columns("ml_decisions")
+        for row in rows:
+            decision_id = int(row["id"])
+            snap_id = row["snap_id"]
+            if self._call_has_snap_or_outcome(snap_id, decision_id):
+                if has_reason:
+                    self.conn.execute(
+                        "UPDATE ml_decisions SET snap_link = ?, orphan_reason = NULL WHERE id = ?",
+                        ("linked", decision_id),
+                    )
+                else:
+                    self.conn.execute(
+                        "UPDATE ml_decisions SET snap_link = ? WHERE id = ?",
+                        ("linked", decision_id),
+                    )
+                linked += 1
+            else:
+                reason = SUPERSEDED if self._later_sealed_call(row, rows) else NO_RESULT
+                if has_reason:
+                    self.conn.execute(
+                        "UPDATE ml_decisions SET snap_link = ?, orphan_reason = ? WHERE id = ?",
+                        ("no_snap_recorded", reason, decision_id),
+                    )
+                else:
+                    self.conn.execute(
+                        "UPDATE ml_decisions SET snap_link = ? WHERE id = ?",
+                        ("no_snap_recorded", decision_id),
+                    )
+                closed += 1
+        self.conn.commit()
+        return {
+            "calls": len(rows),
+            "linked": linked,
+            "no_snap_recorded": closed,
+            "orphans": len(self.orphan_call_rows(session_id)),
+        }
+
+    def orphan_call_rows(self, session_id: str | None = None) -> list[sqlite3.Row]:
+        """Calls with neither a snap/outcome link nor ``no_snap_recorded``."""
+        if "snap_link" not in self._table_columns("ml_decisions"):
+            sql = "SELECT id, snap_id, session_id, game_id FROM ml_decisions"
+            params: list[Any] = []
+            if session_id:
+                sql += " WHERE session_id = ? OR game_id = ?"
+                params = [session_id, session_id]
+            return list(self.conn.execute(sql, params))
+        columns = self._table_columns("ml_decisions")
+        closed = "d.snap_link = 'no_snap_recorded'"
+        if "orphan_reason" in columns:
+            closed += " AND d.orphan_reason IN ('superseded', 'no_result')"
+        sql = (
+            "SELECT d.id, d.snap_id, d.snap_link, d.session_id, d.game_id "
+            "FROM ml_decisions d WHERE NOT ("
+            f"({closed} "
+            "AND NOT EXISTS (SELECT 1 FROM snaps s WHERE s.ml_snap_id = d.snap_id) "
+            "AND NOT EXISTS (SELECT 1 FROM snaps s WHERE s.ml_decision_id = d.id) "
+            "AND NOT EXISTS (SELECT 1 FROM ml_outcomes o WHERE o.snap_id = d.snap_id "
+            "OR o.decision_id = d.id)) "
+            "OR d.snap_link = 'linked' AND ("
+            "EXISTS (SELECT 1 FROM snaps s WHERE s.ml_decision_id = d.id) "
+            "OR EXISTS (SELECT 1 FROM snaps s WHERE s.ml_snap_id = d.snap_id "
+            "AND (s.ml_decision_id IS NULL OR s.ml_decision_id = d.id)) "
+            "OR EXISTS (SELECT 1 FROM ml_outcomes o WHERE o.snap_id = d.snap_id "
+            "OR o.decision_id = d.id))"
+            ")"
+        )
+        params = []
+        if session_id:
+            sql += " AND (d.session_id = ? OR d.game_id = ?)"
+            params = [session_id, session_id]
+        return list(self.conn.execute(sql, params))
+
+    def stamp_call_context(
+        self,
+        decision_id: int,
+        context: dict[str, Any] | None = None,
+        *,
+        recommended_adjustment_id: str | None = None,
+    ) -> None:
+        """Write pre-snap context onto a decision. Does not set an execution."""
+        self._migrate_madden_call_outcome()
+        values: dict[str, Any] = {}
+        for key in ("drive_id", "quarter", "game_clock", "score_for", "score_against"):
+            if context and key in context and context[key] is not None:
+                values[key] = context[key]
+        if recommended_adjustment_id:
+            values["recommended_adjustment_id"] = recommended_adjustment_id
+        if not values:
+            return
+        self._set_columns("ml_decisions", int(decision_id), values)
+        self.conn.commit()
+
+    def log_ml_run_config(
+        self,
+        session_id: str,
+        *,
+        mode: str | None,
+        model_id: str | None,
+        flags: dict[str, Any] | None,
+        git_commit: str | None,
+        git_branch: str | None,
+        playbook_version: str | None,
+    ) -> None:
+        """Record the session's run config once. A repeat keeps the first row."""
+        self._migrate_madden_call_outcome()
+        now = datetime.now(timezone.utc).isoformat()
+        self.conn.execute(
+            """
+            INSERT INTO ml_run_config (
+                session_id, recorded_ts, mode, model_id, flags_json,
+                git_commit, git_branch, playbook_version
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_id) DO NOTHING
+            """,
+            (
+                session_id,
+                now,
+                mode,
+                model_id,
+                json.dumps(flags or {}, sort_keys=True),
+                git_commit,
+                git_branch,
+                playbook_version,
+            ),
+        )
+        self.conn.commit()
 
     def _migrate_ml_snap_columns(self) -> None:
         """Additive snap columns for ML identity and execution verification."""
@@ -1047,7 +1695,7 @@ class CoachDB:
                         row_id,
                     ),
                 )
-                self.conn.commit()
+                self._finish_decision_log(row_id, d)
                 return row_id
         cur = self.conn.execute(
             """
@@ -1084,8 +1732,23 @@ class CoachDB:
                 now,
             ),
         )
+        row_id = int(cur.lastrowid)
+        self._finish_decision_log(row_id, d)
+        return row_id
+
+    def _finish_decision_log(self, row_id: int, decision: dict[str, Any]) -> None:
+        from cfb_coach.madden.model.call_outcome_log import decision_log_values
+
+        values = decision_log_values(decision)
+        for key in ("drive_id", "quarter", "game_clock", "score_for", "score_against"):
+            if key in decision and decision[key] is not None:
+                values[key] = decision[key]
+        self._set_columns("ml_decisions", row_id, values)
+        snap_id = decision.get("snap_id")
+        if self._call_has_snap_or_outcome(snap_id, row_id):
+            self._attach_snap_decision(snap_id, row_id)
+            self._link_decision(snap_id, row_id)
         self.conn.commit()
-        return int(cur.lastrowid)
 
     def log_ml_outcome(
         self,
@@ -1099,6 +1762,17 @@ class CoachDB:
         executed_verification: str = "unknown",
         outcome: Any = None,
         replace: bool = True,
+        yards: Any = _UNSET,
+        penalty: str | None = None,
+        drive_id: str | None = None,
+        quarter: int | None = None,
+        game_clock: str | None = None,
+        score_for: int | None = None,
+        score_against: int | None = None,
+        accepted: str | None = None,
+        recommended_adjustment_id: str | None = None,
+        executed_adjustment_id: str | None = None,
+        adjustment_confirmed: bool = False,
     ) -> int:
         """Store a verified (or explicitly unknown) execution for one snap.
 
@@ -1143,7 +1817,23 @@ class CoachDB:
                         row_id,
                     ),
                 )
-                self.conn.commit()
+                self._finish_outcome_log(
+                    row_id,
+                    snap_id=snap_id,
+                    decision_id=decision_id,
+                    outcome=outcome,
+                    yards=yards,
+                    penalty=penalty,
+                    drive_id=drive_id,
+                    quarter=quarter,
+                    game_clock=game_clock,
+                    score_for=score_for,
+                    score_against=score_against,
+                    accepted=accepted,
+                    recommended_adjustment_id=recommended_adjustment_id,
+                    executed_adjustment_id=executed_adjustment_id,
+                    adjustment_confirmed=adjustment_confirmed,
+                )
                 return row_id
         cur = self.conn.execute(
             """
@@ -1165,8 +1855,87 @@ class CoachDB:
                 now,
             ),
         )
+        row_id = int(cur.lastrowid)
+        self._finish_outcome_log(
+            row_id,
+            snap_id=snap_id,
+            decision_id=decision_id,
+            outcome=outcome,
+            yards=yards,
+            penalty=penalty,
+            drive_id=drive_id,
+            quarter=quarter,
+            game_clock=game_clock,
+            score_for=score_for,
+            score_against=score_against,
+            accepted=accepted,
+            recommended_adjustment_id=recommended_adjustment_id,
+            executed_adjustment_id=executed_adjustment_id,
+            adjustment_confirmed=adjustment_confirmed,
+        )
+        return row_id
+
+    def _finish_outcome_log(
+        self,
+        row_id: int,
+        *,
+        snap_id: str,
+        decision_id: int | None,
+        outcome: Any,
+        yards: Any,
+        penalty: str | None,
+        drive_id: str | None,
+        quarter: int | None,
+        game_clock: str | None,
+        score_for: int | None,
+        score_against: int | None,
+        accepted: str | None,
+        recommended_adjustment_id: str | None,
+        executed_adjustment_id: str | None,
+        adjustment_confirmed: bool,
+    ) -> None:
+        from cfb_coach.madden.model.call_outcome_log import (
+            coerce_logged_yards,
+            executed_adjustment_for_log,
+            penalty_for_log,
+        )
+
+        result_text = None
+        if isinstance(outcome, dict):
+            result_text = outcome.get("result")
+        elif outcome is not None and hasattr(outcome, "raw"):
+            result_text = getattr(outcome, "raw", None)
+        result = None if result_text is None else str(result_text)
+        explicit = None if yards is _UNSET else yards
+        values: dict[str, Any] = {
+            "yards": coerce_logged_yards(result, explicit),
+            "penalty": penalty_for_log(result, penalty),
+            "executed_adjustment_id": executed_adjustment_for_log(
+                executed_adjustment_id, confirmed=adjustment_confirmed
+            ),
+        }
+        for key, value in (
+            ("drive_id", drive_id),
+            ("quarter", quarter),
+            ("game_clock", game_clock),
+            ("score_for", score_for),
+            ("score_against", score_against),
+            ("accepted", accepted),
+            ("recommended_adjustment_id", recommended_adjustment_id),
+        ):
+            if value is not None:
+                values[key] = value
+        self._set_columns("ml_outcomes", row_id, values)
+        self._link_decision(snap_id, decision_id)
+        if snap_id and "yards" in self._table_columns("snaps"):
+            snap = self.conn.execute(
+                "SELECT id FROM snaps WHERE ml_snap_id = ?",
+                (snap_id,),
+            ).fetchone()
+            if snap is not None:
+                snap_row = int(snap["id"] if hasattr(snap, "keys") else snap[0])
+                self._set_columns("snaps", snap_row, values)
         self.conn.commit()
-        return int(cur.lastrowid)
 
     def list_ml_decisions(self, *, limit: int = 100) -> list[sqlite3.Row]:
         return list(
@@ -1204,6 +1973,7 @@ class CoachDB:
         play_count: int | None = None,
         result_wl: str | None = None,
         score: str | None = None,
+        recovered: bool | None = None,
     ) -> None:
         ended = datetime.now(timezone.utc).isoformat()
         # Ensure optional columns exist (older DBs)
@@ -1218,6 +1988,13 @@ class CoachDB:
                 self.conn.execute("ALTER TABLE game_sessions ADD COLUMN score TEXT")
             except sqlite3.Error:
                 pass
+        if "recovered" not in cols:
+            try:
+                self.conn.execute(
+                    "ALTER TABLE game_sessions ADD COLUMN recovered INTEGER NOT NULL DEFAULT 0"
+                )
+            except sqlite3.Error:
+                pass
         sets = ["ended_ts = ?"]
         params: list[Any] = [ended]
         if play_count is not None:
@@ -1229,12 +2006,19 @@ class CoachDB:
         if score is not None:
             sets.append("score = ?")
             params.append(str(score).strip())
+        if recovered is not None:
+            sets.append("recovered = ?")
+            params.append(1 if recovered else 0)
         params.append(session_id)
         self.conn.execute(
             f"UPDATE game_sessions SET {', '.join(sets)} WHERE session_id = ?",
             params,
         )
         self.conn.commit()
+        try:
+            self.reconcile_call_links(session_id)
+        except sqlite3.Error:
+            pass
 
     def get_session_snaps(self, session_id: str, *, limit: int = 500) -> list[sqlite3.Row]:
         return list(

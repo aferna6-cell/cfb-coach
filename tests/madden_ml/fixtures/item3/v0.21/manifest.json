@@ -1,0 +1,6 @@
+{
+  "label_version": "v0.21",
+  "model_version": "v0.21",
+  "fixture": "trimmed",
+  "note": "Trimmed test fixture with the v0.21 file schema. Load the full artifact with --model-params."
+}

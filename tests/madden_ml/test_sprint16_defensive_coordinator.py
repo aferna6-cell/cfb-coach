@@ -11,6 +11,13 @@ from cfb_coach.db import CoachDB
 from cfb_coach.madden import playbook
 from cfb_coach.madden.model import defense_coordinator as defense
 from cfb_coach.madden.model import defense_macro_lab as macros
+from cfb_coach.madden.model.schema import (
+    CoachingMode,
+    MLStatus,
+    PolicySource,
+    PropensityMethod,
+)
+from cfb_coach.madden.playcaller import MaddenCall
 
 CATALOG = {
     "49ers": {
@@ -192,14 +199,106 @@ class DefensiveMacroTests(unittest.TestCase):
                 plan = defense.stage_design(self.db, max_formations=2)
                 self.assertEqual(plan["status"], "staged_only")
                 self.assertEqual(playbook.load_books(self.db)["defense"]["name"], "49ers")
-                with self.assertRaises(ValueError):
-                    defense.confirm_design(self.db, plan["proposal_id"], "yes")
+                preview = defense.confirm_design(self.db, plan["proposal_id"], "yes")
+                self.assertFalse(preview["wrote_book"])
+                self.assertTrue(preview["diff"])
+                self.assertTrue(preview["install_instructions"])
+                self.assertEqual(preview["generated_macros_armed"], 0)
                 confirmed = defense.confirm_design(
                     self.db, plan["proposal_id"],
                     "All defensive formations and every source play have been installed and tested in Madden."
                 )
-                self.assertTrue(confirmed["confirmed"])
+                self.assertFalse(confirmed["wrote_book"])
+                self.assertFalse(confirmed["confirmed"])
                 self.assertEqual(confirmed["generated_macros_armed"], 0)
+                self.assertEqual(playbook.load_books(self.db)["defense"]["name"], "49ers")
+
+    def test_seeded_pick_unchanged_when_decision_is_logged(self):
+        """The propensity log names the same call the selector already returned.
+
+        Recorded before the log was added, on this catalog with no trained model:
+        session ``seed-game`` snap 7 draws Nickel Over / Cover 3 Sky from the
+        two-play near tie, and the applied joint sort shows 4-3 Over / Cover 3 Sky.
+        """
+        book = self.book
+        situation = sit(extras={"session_id": "seed-game", "snap_seq": 7})
+        rows = defense.rank_defense(situation, book)
+        drawn = defense._stable_choice(rows, "seed-game", 7)
+        drawn_again = defense._stable_choice(rows, "seed-game", 7)
+        self.assertEqual(
+            (drawn["formation"], drawn["play"]),
+            (drawn_again["formation"], drawn_again["play"]),
+        )
+        self.assertEqual((drawn["formation"], drawn["play"]), ("Nickel Over", "Cover 3 Sky"))
+        other = defense._stable_choice(rows, "seed-game", 1)
+        self.assertEqual((other["formation"], other["play"]), ("4-3 Over", "Cover 3 Sky"))
+
+        defense.set_mode(self.db, "experimental")
+        logged = defense.live_pick(
+            situation, self.db, "gavin", book, session_id="seed-game", snap_seq=7,
+        )
+        self.assertEqual(
+            (logged["selected"]["formation"], logged["selected"]["play"]),
+            (drawn["formation"], drawn["play"]),
+        )
+        decision = logged["decision"]
+        self.assertEqual(decision.final_pick.formation, "Nickel Over")
+        self.assertEqual(decision.final_pick.play, "Cover 3 Sky")
+        self.assertIs(decision.policy_source, PolicySource.MODEL)
+        self.assertIs(decision.propensity_method, PropensityMethod.EXACT)
+        self.assertAlmostEqual(decision.behavior_propensity, 0.5)
+        self.assertFalse(decision.propensity_override)
+        self.assertIsNone(decision.propensity_override_reason)
+        self.assertIs(decision.shadow_status, MLStatus.OK)
+        self.assertFalse(decision.fell_back)
+        self.assertIsNone(decision.fallback_reason)
+        self.assertIs(decision.mode, CoachingMode.EXPERIMENTAL)
+
+        heuristic = MaddenCall(
+            "defense", "Nickel Over", "Tampa 2", "No adj", "User hook", "heuristic",
+        )
+        applied = defense.maybe_apply_defense(heuristic, situation, "gavin", self.db, book)
+        applied_again = defense.maybe_apply_defense(heuristic, situation, "gavin", self.db, book)
+        self.assertEqual(
+            (applied.formation, applied.play, applied.macro, applied.adjustment, applied.adj_or_macro),
+            ("4-3 Over", "Cover 3 Sky", None, None, "No adj"),
+        )
+        self.assertEqual(
+            (applied.formation, applied.play, applied.macro, applied.adjustment),
+            (applied_again.formation, applied_again.play, applied_again.macro, applied_again.adjustment),
+        )
+        applied_decision = getattr(applied, defense.DECISION_ATTR)
+        self.assertEqual(applied_decision.final_pick.formation, applied.formation)
+        self.assertEqual(applied_decision.final_pick.play, applied.play)
+        self.assertEqual(applied_decision.heuristic_pick.play, "Tampa 2")
+        self.assertIs(applied_decision.policy_source, PolicySource.MODEL)
+        self.assertIs(applied_decision.propensity_method, PropensityMethod.DETERMINISTIC)
+        self.assertEqual(applied_decision.behavior_propensity, 1.0)
+        self.assertIs(applied_decision.shadow_status, MLStatus.OK)
+        self.assertFalse(applied_decision.fell_back)
+
+        defense.set_mode(self.db, "off")
+        kept = defense.maybe_apply_defense(heuristic, situation, "gavin", self.db, book)
+        self.assertIs(kept, heuristic)
+        self.assertFalse(hasattr(kept, defense.DECISION_ATTR))
+
+        defense.set_mode(self.db, "experimental")
+        tagged = sit(extras={
+            "session_id": "seed-game", "snap_seq": 7, "snap_id": "snap-7", "game_id": "game-1",
+        })
+        persisted = defense.maybe_apply_defense(heuristic, tagged, "gavin", self.db, book)
+        self.assertEqual((persisted.formation, persisted.play), ("4-3 Over", "Cover 3 Sky"))
+        rows_logged = list(self.db.conn.execute("SELECT decision_json, policy_source FROM ml_decisions"))
+        self.assertEqual(len(rows_logged), 1)
+        self.assertEqual(rows_logged[0]["policy_source"], "model")
+        import json
+        body = json.loads(rows_logged[0]["decision_json"])
+        self.assertEqual(body["propensity_method"], "deterministic")
+        self.assertEqual(body["behavior_propensity"], 1.0)
+        self.assertEqual(body["shadow_status"], "ok")
+        self.assertFalse(body["fell_back"])
+        self.assertIsNone(body["fallback_reason"])
+        self.assertEqual(body["final_pick"]["play"], "Cover 3 Sky")
 
 
 if __name__ == "__main__":

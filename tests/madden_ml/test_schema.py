@@ -16,6 +16,8 @@ from cfb_coach.madden.model import policy
 from cfb_coach.madden.model.schema import (
     CONTRACT_VERSION,
     CSV_UNKNOWN,
+    MACRO_SCHEMA_VERSION,
+    MACRO_TYPES,
     ML_LATENCY_BUDGET_MS,
     ML_LOW_CONFIDENCE,
     PROVISIONAL_SCHEMA_VERSION,
@@ -23,6 +25,7 @@ from cfb_coach.madden.model.schema import (
     RANKING_STATUSES,
     SCHEMA_RECORD_TYPES,
     YARDS_MAX,
+    AdjustmentPrimitive,
     AdjustmentRef,
     AppliedPlaybookRef,
     CandidatePlay,
@@ -32,6 +35,8 @@ from cfb_coach.madden.model.schema import (
     MLStatus,
     DataHash,
     DecisionStage,
+    EditorFieldAssignment,
+    EditorFieldSource,
     ExecutedPlay,
     ExecutedStatus,
     FeatureValue,
@@ -39,6 +44,11 @@ from cfb_coach.madden.model.schema import (
     GameState,
     MetricRecord,
     MLConfig,
+    MacroCandidate,
+    MacroConflict,
+    MacroJointFeatures,
+    MacroSide,
+    MacroState,
     ModelRegistryEntry,
     ObservedLook,
     OpponentContext,
@@ -65,9 +75,12 @@ from cfb_coach.madden.model.schema import (
     TendencyCount,
     Tri,
     Verification,
+    adapt_macro_state,
     candidate_in_book,
     csv_cell,
+    defensive_editor_field_names,
     from_dict,
+    is_live_selectable,
     legal_candidates,
     parse_csv_cell,
     pre_snap_field_names,
@@ -95,6 +108,115 @@ class SchemaRoundTripTest(unittest.TestCase):
                 again = _round_trip(obj)
                 self.assertEqual(again, obj)
                 self.assertEqual(to_dict(again), to_dict(obj))
+
+    def test_macro_contract_round_trip_and_legacy_states(self) -> None:
+        self.assertEqual(MACRO_SCHEMA_VERSION, "madden-ml.macro.1")
+        self.assertEqual(
+            MACRO_TYPES,
+            (
+                EditorFieldAssignment,
+                AdjustmentPrimitive,
+                MacroConflict,
+                MacroJointFeatures,
+                MacroCandidate,
+            ),
+        )
+        names = defensive_editor_field_names()
+        self.assertEqual(len(names), 51)
+        self.assertEqual(len(names), len(set(names)))
+        sheet = {
+            name: EditorFieldAssignment(value="Default", source=EditorFieldSource.DEFAULT)
+            for name in names
+        }
+        sheet["Coverage Shading"] = EditorFieldAssignment(
+            value="Inside",
+            source=EditorFieldSource.RESEARCHED,
+            provenance="civil-def-macros",
+            confidence=0.8,
+        )
+        draft = MacroCandidate(
+            macro_id="ML-D-1",
+            version="1",
+            side="def",
+            state="draft",
+            formation="Nickel Over",
+            play="Cover 3 Sky",
+            adjustment_primitives=({"name": "shell", "value": "Cover 3", "source": "researched"},),
+            editor_fields=sheet,
+            tactical_purpose="answer crossers",
+            situations=("long",),
+            conflicts=(),
+            is_no_adjustment=False,
+            joint={"compatibility": 0.2, "situation": 1.0, "action_count": 2, "uncertainty": 0.4},
+        )
+        self.assertIs(draft.state, MacroState.DRAFT)
+        self.assertIs(draft.side, MacroSide.DEF)
+        self.assertFalse(is_live_selectable(draft.state))
+        again = _round_trip(draft)
+        self.assertEqual(again, draft)
+        self.assertEqual(to_dict(draft)["__schema__"], MACRO_SCHEMA_VERSION)
+        self.assertIsNone(to_dict(MacroCandidate())["editor_fields"])
+
+        legacy = to_dict(draft)
+        legacy["state"] = "verified"
+        editor_verified = from_dict(legacy)
+        self.assertIs(editor_verified.state, MacroState.EDITOR_VERIFIED)
+        self.assertFalse(is_live_selectable("verified"))
+        legacy["state"] = "armed"
+        armed = from_dict(legacy)
+        self.assertIs(armed.state, MacroState.ARMED)
+        self.assertTrue(is_live_selectable("armed"))
+        self.assertTrue(is_live_selectable(MacroState.ELIGIBLE))
+        self.assertTrue(is_live_selectable(MacroState.EVALUATED))
+        self.assertFalse(is_live_selectable(MacroState.INSTALLED))
+        self.assertFalse(is_live_selectable(MacroState.RETIRED))
+        self.assertFalse(is_live_selectable(None))
+        self.assertIs(adapt_macro_state("DRAFT_NEEDS_IN_GAME_VERIFICATION"), MacroState.DRAFT)
+
+        missing = dict(sheet)
+        missing.pop("QB Contain")
+        with self.assertRaises(ValueError):
+            MacroCandidate(side=MacroSide.DEF, state=MacroState.DRAFT, editor_fields=missing)
+        extra = dict(sheet)
+        extra["Invented Hot Coverage"] = EditorFieldAssignment(value="Yes", source=EditorFieldSource.DEFAULT)
+        with self.assertRaises(ValueError):
+            MacroCandidate(side=MacroSide.DEF, state=MacroState.DRAFT, editor_fields=extra)
+        unknown_source = dict(sheet)
+        unknown_source["QB Contain"] = EditorFieldAssignment(value="Both", source=EditorFieldSource.UNKNOWN)
+        with self.assertRaises(ValueError):
+            MacroCandidate(side=MacroSide.DEF, state=MacroState.DRAFT, editor_fields=unknown_source)
+        with self.assertRaises(ValueError):
+            MacroCandidate(
+                side=MacroSide.DEF,
+                state=MacroState.ARMED,
+                editor_fields=sheet,
+                conflicts=(MacroConflict(field="Coverage Shading", other="Coverage Shell", reason="clash"),),
+            )
+        no_adj = MacroCandidate(is_no_adjustment=True, state=MacroState.UNKNOWN)
+        self.assertIsNone(_round_trip(no_adj).editor_fields)
+        with self.assertRaises(ValueError):
+            MacroCandidate(is_no_adjustment=True, editor_fields=sheet)
+
+    def test_design_record_id_round_trip_and_legacy_payload(self) -> None:
+        linked = MacroCandidate(macro_id="ML-D-1", design_record_id="DSN-ML-D-1")
+        self.assertEqual(linked.design_record_id, "DSN-ML-D-1")
+        raw = json.dumps(to_dict(linked))
+        again = from_dict(json.loads(raw))
+        self.assertEqual(again, linked)
+        self.assertEqual(again.design_record_id, "DSN-ML-D-1")
+        self.assertEqual(to_dict(again)["__schema__"], "madden-ml.macro.1")
+
+        legacy = json.loads(raw)
+        legacy.pop("design_record_id")
+        self.assertNotIn("design_record_id", legacy)
+        loaded = from_dict(legacy)
+        self.assertIsNone(loaded.design_record_id)
+        self.assertEqual(loaded.macro_id, "ML-D-1")
+        self.assertEqual(loaded, MacroCandidate(macro_id="ML-D-1"))
+        self.assertEqual(to_dict(loaded)["__schema__"], MACRO_SCHEMA_VERSION)
+        self.assertIsNone(MacroCandidate().design_record_id)
+        with self.assertRaises(ValueError):
+            MacroCandidate(macro_id="ML-D-1", design_record_id="ML-D-1")
 
     def test_provisional_types_use_their_own_version(self) -> None:
         self.assertEqual(PROVISIONAL_TYPES, (PlayRanking, OpponentContext))
@@ -619,6 +741,35 @@ def _samples() -> dict[type, list[object]]:
         MetricRecord: [MetricRecord(name="log_loss"), MetricRecord(name="log_loss", value=0.5, split="held_out", n=10)],
         ModelRegistryEntry: [ModelRegistryEntry(), ModelRegistryEntry(model_version="none", gate=__import__("cfb_coach.madden.model.schema", fromlist=["GateResult"]).GateResult.NOT_RUN, seed=1)],
         MLConfig: [MLConfig(), MLConfig(mode=CoachingMode.SHADOW, seed=1)],
+        EditorFieldAssignment: [
+            EditorFieldAssignment(),
+            EditorFieldAssignment(value="Inside", source=EditorFieldSource.RESEARCHED, provenance="sheet", confidence=0.5),
+        ],
+        AdjustmentPrimitive: [AdjustmentPrimitive(), AdjustmentPrimitive(name="shell", value="Cover 3", source=EditorFieldSource.DEFAULT)],
+        MacroConflict: [MacroConflict(), MacroConflict(field="Coverage Shading", other="Coverage Shell", reason="clash")],
+        MacroJointFeatures: [MacroJointFeatures(), MacroJointFeatures(compatibility=0.1, action_count=1, uncertainty=0.2)],
+        MacroCandidate: [
+            MacroCandidate(),
+            MacroCandidate(is_no_adjustment=True),
+            MacroCandidate(
+                macro_id="ML-D-1",
+                design_record_id="DSN-ML-D-1",
+                version="1",
+                side=MacroSide.DEF,
+                state=MacroState.DRAFT,
+                formation="Nickel Over",
+                play="Cover 3 Sky",
+                adjustment_primitives=(AdjustmentPrimitive(name="shell", value="Cover 3"),),
+                editor_fields={
+                    name: EditorFieldAssignment(value="Default", source=EditorFieldSource.DEFAULT)
+                    for name in defensive_editor_field_names()
+                },
+                tactical_purpose="answer crossers",
+                situations=("long",),
+                conflicts=(),
+                joint=MacroJointFeatures(action_count=0, uncertainty=1.0),
+            ),
+        ],
         Situation: [Situation(raw=""), Situation(raw="1&10", down=1, distance=10, side="offense")],
         GameScore: [GameScore(us=0, them=0), GameScore(us=7, them=3)],
         ParsedOutcome: [ParsedOutcome(raw="", kind="unknown"), ParsedOutcomeType(raw="gain 6", kind="gain", yards=6, success=True, label="+6")],

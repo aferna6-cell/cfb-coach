@@ -9,8 +9,9 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
-from cfb_coach.db import CoachDB, resolve_db_path_from_env
+from cfb_coach.db import CoachDB, default_db_path
 from cfb_coach.opponents import format_opponent_list, resolve_opponent
 from cfb_coach.playcaller import make_call
 from cfb_coach.situation import parse_situation, format_heard
@@ -23,8 +24,26 @@ from cfb_coach.dynasty import (
 )
 
 
-def _db() -> CoachDB:
-    return CoachDB(resolve_db_path_from_env())
+def _db(explicit: str | None = None) -> CoachDB:
+    """Open the CLI database.
+
+    ``--db`` names the file. Otherwise the path is ``default_db_path()``.
+    """
+    if explicit:
+        return CoachDB(Path(explicit).expanduser())
+    return CoachDB(default_db_path())
+
+
+def _call_db(explicit: str | None = None) -> CoachDB:
+    """Open the database for ``call`` and ``play``.
+
+    ``--db`` names the file. Otherwise the path is ``madden_db_path()``.
+    """
+    if explicit:
+        return CoachDB(Path(explicit).expanduser())
+    from cfb_coach.games import madden_db_path
+
+    return CoachDB(madden_db_path())
 
 
 def _local_ts(ts: str) -> str:
@@ -74,6 +93,13 @@ def _madden_handler(args: argparse.Namespace, name: str):
     from cfb_coach.madden import cli as madden_cli
 
     return getattr(madden_cli, name)
+
+
+def cmd_preflight(args: argparse.Namespace) -> int:
+    handler = _madden_handler(args, "cmd_preflight")
+    if handler:
+        return handler(args)
+    raise SystemExit("preflight is Madden-only; add --game madden27")
 
 
 def cmd_opponents(args: argparse.Namespace) -> int:
@@ -378,7 +404,7 @@ def cmd_call(args: argparse.Namespace) -> int:
     if handler:
         return handler(args)
     oid = _require_opponent(args.opponent)
-    db = _db()
+    db = _call_db(getattr(args, "db", None))
     try:
         sit = parse_situation(args.situation, default_side=args.side or "offense")
         if args.side:
@@ -402,7 +428,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     if handler:
         return handler(args)
     oid = _require_opponent(args.opponent)
-    db = _db()
+    db = _call_db(getattr(args, "db", None))
     _ensure_rules(db)
     from cfb_coach.dynasty import resolve_dynasty
 
@@ -454,7 +480,7 @@ def cmd_play(args: argparse.Namespace) -> int:
 
         overlay_path = _P(overlay_arg)
     else:
-        overlay_path = default_overlay_path()  # ~/.cfb-coach/copilot_overlay.html
+        overlay_path = default_overlay_path()
 
     if getattr(args, "once", None):
         # Non-interactive: still refresh overlay file if enabled, but do not auto-open
@@ -632,6 +658,10 @@ def cmd_play(args: argparse.Namespace) -> int:
                 continue
 
             sit = parse_situation(raw, default_side=default_side)
+            from cfb_coach.madden.model.inference import bind_opp_look
+
+            bind_opp_look(sit, raw=raw)
+            logged_look = (sit.extras or {}).get("opp_look")
             snap_book.stamp_situation(sit)
             absorb_and_stamp(sit, live_ctx)
             heard = format_heard(sit)
@@ -648,7 +678,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             print(call.format())
             _refresh_overlay(call, sit, heard)
             last_call, last_sit = call, sit
-            snap_book.remember_call(call, sit)
+            snap_book.remember_call(call, sit, opp_look=logged_look)
             # If this sit itself named a live/last coverage or concept, remember for NEXT snap
             if sit.coverage_hint and sit.side == "offense":
                 last_coverage = sit.coverage_hint
@@ -880,6 +910,13 @@ def build_parser() -> argparse.ArgumentParser:
              "Off by default; requires `ml experimental`; heuristic rollback: `ml heuristic`.",
     )
     p_play.add_argument(
+        "--ml-defense-control",
+        action="store_true",
+        help="Madden only: allow EXPERIMENTAL defensive ML calls during this human-opponent play session. "
+             "Off by default; requires `ml defense-experimental` already enabled with a trained artifact. "
+             "Does not train. Rollback: `ml defense-experimental --disable --db <absolute>`.",
+    )
+    p_play.add_argument(
         "--score",
         default=None,
         metavar="US-THEM",
@@ -938,6 +975,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="This session may use VOD to pick an in-book play, and will not edit the book.",
     )
     p_play.add_argument(
+        "--db",
+        default=None,
+        help="Database file for this session. Default is madden_db_path().",
+    )
+    p_play.add_argument(
         "--html-port",
         type=int,
         default=None,
@@ -946,6 +988,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_game_args(p_play)
     p_play.set_defaults(func=cmd_play)
+
+    p_preflight = sub.add_parser(
+        "preflight",
+        help="Madden human-mode playoff preflight (cold-start opponent, both sides)",
+    )
+    p_preflight.add_argument("--opponent", "-o", required=True)
+    p_preflight.add_argument(
+        "--mode",
+        choices=("human",),
+        required=True,
+        help="human: offense model only behind --ml-human-control; defense stays the established caller",
+    )
+    p_preflight.add_argument(
+        "--db",
+        default=None,
+        help="Database file for this check. Default is madden_db_path().",
+    )
+    p_preflight.add_argument(
+        "--no-vod-prior",
+        dest="no_vod_prior",
+        action="store_true",
+        help="Required for a passing human preflight. Turns the VOD prior off and freezes the book.",
+    )
+    p_preflight.add_argument(
+        "--freeze-vod-book",
+        dest="freeze_vod_book",
+        action="store_true",
+        help="Also freeze the book while a VOD prior is on. Human preflight still requires --no-vod-prior.",
+    )
+    _add_game_args(p_preflight)
+    p_preflight.set_defaults(func=cmd_preflight)
 
     p_post = sub.add_parser(
         "postgame",
@@ -983,6 +1056,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_call = sub.add_parser("call", help="One-shot call (non-interactive)")
     p_call.add_argument("--opponent", "-o", required=True)
     p_call.add_argument("--situation", "-s", required=True)
+    p_call.add_argument(
+        "--db",
+        default=None,
+        help="Database file for this call. Default is madden_db_path().",
+    )
     p_call.add_argument("--side", choices=("offense", "defense"), default=None)
     p_call.add_argument("--why", action="store_true")
     p_call.add_argument(

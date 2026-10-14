@@ -129,6 +129,7 @@ def legal_plans_for_play(
     score_phase: str | None = None,
     allow_macros: bool = True,
     learned: Mapping[str, Any] | None = None,
+    macro_index: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Every legal plan for one play, including NO ADJUSTMENT.
 
@@ -138,7 +139,7 @@ def legal_plans_for_play(
     from cfb_coach.madden.adjustments import offense_adjustment_candidates
     from cfb_coach.madden.model.offense_action_learning import score_shift
     from cfb_coach.madden.offense_macros import (
-        clean_ids, offense_detail, pairs_in_book, suggest_for_snap,
+        cached_offense_detail, clean_ids, offense_detail, pairs_in_book, suggest_for_snap,
     )
     from cfb_coach.madden.playcaller import coverage_class
 
@@ -251,24 +252,38 @@ def legal_plans_for_play(
             })
 
     if allow_macros:
-        full_cap = 1 + sum(len(ps) for ps in book.values())
-        for mid in clean_ids(list(active)):
+        full_cap = (
+            int(macro_index.get("cap") or 0)
+            if macro_index is not None
+            else 1 + sum(len(ps) for ps in book.values())
+        )
+        armed = (
+            list(macro_index.get("active") or [])
+            if macro_index is not None
+            else clean_ids(list(active))
+        )
+        for mid in armed:
             try:
                 suggestion = suggest_for_snap(
                     zone=zone, play=play, coverage=getattr(sit, "coverage_hint", None),
                     coverage_source=getattr(sit, "coverage_source", None) or "none",
                     active=[mid], down=getattr(sit, "down", None), repeated=repeated,
                     book=book, weights=dict(weights or {}), score_phase=score_phase,
-                    cooled=cooled,
+                    cooled=cooled, prepared=macro_index,
                 )
             except (TypeError, ValueError, KeyError):
                 continue
             if not suggestion or suggestion.get("id") != mid:
                 continue
             pair = f"{play} ({formation})"
-            if pair not in pairs_in_book(mid, book, cap=full_cap):
+            if macro_index is not None:
+                if pair not in (macro_index.get("pair_sets") or {}).get(mid, ()):
+                    continue
+                detail = cached_offense_detail(macro_index, mid, book)
+            elif pair not in pairs_in_book(mid, book, cap=full_cap):
                 continue
-            detail = offense_detail(mid, book)
+            else:
+                detail = offense_detail(mid, book)
             if detail.get("needs_settings") or detail.get("gaps") or not detail.get("settings"):
                 continue
             if not _verified_button_sequence(suggestion.get("buttons")):
@@ -709,6 +724,7 @@ def choose_joint_action(
     recent_calls: Sequence[Any] | None = None,
     use_opponent_learning: bool = True,
     use_expert_learning: bool = True,
+    prepared_macros: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Pick one legal (formation, play, plan) from the complete action space.
 
@@ -769,6 +785,32 @@ def choose_joint_action(
     anchor_form = str(anchor.get("formation"))
     anchor_play = str(anchor.get("play"))
     anchor_score = float(anchor.get("selection_score", anchor.get("probability", 0.0)) or 0.0)
+    macro_index = None
+    if allow_macros:
+        if prepared_macros is None:
+            from cfb_coach.madden.offense_macros import macro_book_index
+
+            macro_index = macro_book_index(book, list(active or []))
+        else:
+            macro_index = prepared_macros
+    expert_signal: Mapping[str, Any] | None = None
+    expert_personal: Mapping[str, Any] | None = None
+    expert_policy = None
+    if use_expert_learning:
+        from cfb_coach.madden.model.expert_signal import load_expert_signal
+        from cfb_coach.madden.model.personalization import load_personalization
+
+        loaded_signal = load_expert_signal(db) if db is not None else None
+        loaded_personal = load_personalization(db=db) if db is not None else None
+        # An empty mapping means "already loaded, nothing stored" so the per-play
+        # scorer does not parse the same meta JSON again.
+        expert_signal = loaded_signal if loaded_signal is not None else {}
+        expert_personal = loaded_personal if loaded_personal is not None else {}
+        path = expert_signal.get("expert_policy_path") if expert_signal else None
+        if path:
+            from cfb_coach.madden.model.expert_policy import load_expert_policy
+
+            expert_policy = load_expert_policy(path=path)
     summaries: list[dict[str, Any]] = []
     representatives: list[dict[str, Any]] = []
     plays_seen = 0
@@ -816,6 +858,9 @@ def choose_joint_action(
             expert_adj = expert_learning_adjustment(
                 play, sit, db=db, opponent_type=opponent_type,
                 book=book, formation=form,
+                expert_policy=expert_policy,
+                personalization=expert_personal,
+                signal=expert_signal,
             )
         base += float(knowledge.get("delta") or 0.0)
         base += float(strategy_adj.get("delta") or 0.0)
@@ -827,6 +872,7 @@ def choose_joint_action(
             audibles=audibles, db=db, opponent_id=opponent_id,
             evaluation=evaluation, weights=weights, cooled=cooled,
             score_phase=score_phase, allow_macros=allow_macros, learned=learned,
+            macro_index=macro_index,
         )
         unchanged = next(plan for plan in plans if plan["plan_id"] == "NO_ADJUSTMENT")
         unchanged_joint = base + float(unchanged.get("influence") or 0.0)

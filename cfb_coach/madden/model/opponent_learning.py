@@ -6,7 +6,6 @@ Video observations are not accepted here.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -32,15 +31,23 @@ _QUICK = frozenset({
 _PASSING_DOWNS = frozenset({3, 4})
 
 
-def readonly_madden_db_path() -> Path:
-    """Locate the Madden log without creating directories or the file."""
-    raw = os.environ.get("CFB_COACH_MADDEN_DB")
-    if raw:
-        return Path(raw).expanduser()
-    env = os.environ.get("CFB_COACH_DB")
-    if env:
-        return Path(env).expanduser().resolve().parent / "madden27.db"
-    return Path.home() / ".cfb-coach" / "madden27.db"
+def readonly_madden_db_path(path: Path | str | None = None) -> Path:
+    """Path for a read-only Madden log.
+
+    An explicit ``path`` is used as given. With no argument, the path is
+    ``db.madden_db_path()``, which honors ``CFB_COACH_MADDEN_DB``. That is
+    the Madden database, not ``coach.db`` from ``CFB_COACH_DB``.
+    """
+    if path is not None and str(path).strip():
+        return Path(path)
+    from cfb_coach import db as coach_db
+
+    # Data's db.madden_db_path is not on this tree until #46 lands.
+    # games.madden_db_path already honors CFB_COACH_MADDEN_DB.
+    madden_db_path = getattr(coach_db, "madden_db_path", None)
+    if madden_db_path is None:
+        from cfb_coach.games import madden_db_path
+    return madden_db_path()
 
 
 def _shrink(successes: float, n: int) -> float:
@@ -772,3 +779,106 @@ def opponent_learning_report(
         "win_rate_claim": False,
         "note": model["note"],
     }
+
+
+def build_opponent_context(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    opponent_id: str,
+    seed_shrink_weight: float,
+    seeded_from_key: Any = None,
+    patch_id: str | None = None,
+    roster_snapshot_id: str | None = None,
+    table_version: str | None = None,
+) -> Any:
+    """Build one OpponentContext. ``seed_shrink_weight`` has no default.
+
+    Weight 0 stores both seed fields as null. A weight in ``(0, 1]`` requires
+    ``seeded_from_key``. Estimators see only this opponent's verified human
+    defensive executions. CPU rows, other opponents, and recommendation-only
+    rows are dropped. ``coverage_seen`` is removed before the fit, and
+    ``recommended_play`` is never copied into ``executed_play``.
+
+    Tendency rows are published only at ``MIN_OPPONENT_N``. Below that the
+    tendency list is empty and ``tendencies_known`` is false. The context
+    shrinkage weight is ``n / (n + PRIOR_N)`` when ``n`` is positive.
+    """
+    import math
+
+    from cfb_coach.madden.model.defense_intelligence import (
+        MIN_OPPONENT_N,
+        PRIOR_N,
+        fit_opponent_offense,
+        fit_opponent_outcome_risks,
+        is_counted_defensive_snap,
+    )
+    from cfb_coach.madden.model.schema import (
+        OpponentContext,
+        OpponentKind,
+        TendencyCount,
+        Tri,
+    )
+
+    if isinstance(seed_shrink_weight, bool) or not isinstance(seed_shrink_weight, (int, float)):
+        raise TypeError("seed_shrink_weight must be a real number")
+    weight = float(seed_shrink_weight)
+    if not math.isfinite(weight) or weight < 0.0 or weight > 1.0:
+        raise ValueError("seed_shrink_weight must be between 0 and 1")
+    if weight == 0.0:
+        seed_key = None
+        seed_weight = None
+    else:
+        if seeded_from_key is None:
+            raise ValueError("seed_shrink_weight above 0 requires seeded_from_key")
+        seed_key = seeded_from_key
+        seed_weight = weight
+
+    copies: list[dict[str, Any]] = []
+    for row in rows:
+        if str(row.get("opponent_id") or "") != opponent_id:
+            continue
+        if not is_counted_defensive_snap(row):
+            continue
+        copied = {key: value for key, value in row.items() if key != "coverage_seen"}
+        copied.pop("recommended_play", None)
+        if not copied.get("executed_play"):
+            copied.pop("executed_play", None)
+        copies.append(copied)
+
+    offense = fit_opponent_offense(copies)
+    fit_opponent_outcome_risks(copies)
+    n = len(copies)
+    counts = (
+        (((offense.get("opponents") or {}).get(opponent_id) or {}).get("contexts") or {}).get("all")
+        or {}
+    )
+    concept_n = sum(int(value) for value in counts.values())
+    tendencies: tuple[Any, ...] = ()
+    known = Tri.FALSE
+    if n >= MIN_OPPONENT_N and concept_n > 0:
+        known = Tri.TRUE
+        share = concept_n / (concept_n + PRIOR_N)
+        tendencies = tuple(
+            TendencyCount(
+                bucket="all",
+                key=str(family),
+                count=int(count),
+                sample_size=concept_n,
+                shrinkage_weight=share,
+            )
+            for family, count in sorted(counts.items())
+        )
+    return OpponentContext(
+        opponent_id=opponent_id,
+        patch_id=patch_id,
+        roster_snapshot_id=roster_snapshot_id,
+        table_version=table_version,
+        opponent_type=OpponentKind.HUMAN if n else OpponentKind.UNKNOWN,
+        n_snaps=n,
+        tendencies_known=known,
+        tendencies=tendencies,
+        sample_size=n,
+        shrinkage_weight=None if n == 0 else n / (n + PRIOR_N),
+        seeded_from_key=seed_key,
+        seed_shrink_weight=seed_weight,
+    )

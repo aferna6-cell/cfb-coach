@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from cfb_coach.db import CoachDB
-from cfb_coach.games import GAMES, MADDEN27, madden_db_path
+from cfb_coach.games import GAMES, MADDEN27
 from cfb_coach.madden.data import load_seed
 from cfb_coach.madden.franchise import (
     doctrine_line,
@@ -21,7 +21,8 @@ from cfb_coach.madden.franchise import (
 )
 from cfb_coach.madden.playcaller import active_pivot, make_call
 from cfb_coach.madden.situation import format_heard, parse_madden_situation
-from cfb_coach.opponents import is_cpu_opponent, resolve_opponent
+from cfb_coach.madden.human_opponents import ensure_madden_opponent, resolve_madden_opponent
+from cfb_coach.opponents import is_cpu_opponent
 
 PROFILE = GAMES[MADDEN27]
 
@@ -59,6 +60,12 @@ def _maybe_shadow(
         if not gid:
             sess = start_session(opponent_id, dynasty=get_session_profile(db), db=db, notes="ml-oneshot")
             gid = sess.session_id
+        try:
+            from cfb_coach.madden.model.call_outcome_log import record_session_run_config
+
+            record_session_run_config(db, gid)
+        except Exception:  # noqa: BLE001 — logging must not break live coaching
+            pass
         tr = tracker or LiveDecisionTracker.from_session(gid, next_seq=next_seq_from_db(db, gid))
         snap_id, seq, _key, is_new = tr.seal_call(
             side=getattr(call, "side", "offense") or "offense",
@@ -91,6 +98,14 @@ def _maybe_shadow(
                 run=is_new,
             )
         tr.bind_decision_row(row_id)
+        try:
+            from cfb_coach.madden.model.call_outcome_log import apply_seal_logging
+
+            apply_seal_logging(
+                db, tr, decision_id=row_id, sit=sit, call=call, is_new=is_new,
+            )
+        except Exception:  # noqa: BLE001 — logging must not break live coaching
+            pass
         return row_id
     except Exception:  # noqa: BLE001 — ML must never break live coaching
         return None
@@ -118,8 +133,17 @@ def _html_shadow_hook(db: CoachDB, opponent_id: str):
     return _hook
 
 
-def open_db() -> CoachDB:
-    db = CoachDB(madden_db_path(), seed=load_seed())
+def open_db(explicit: str | None = None) -> CoachDB:
+    """Open the Madden database for the CLI and the live server.
+
+    ``--db`` names the file. Otherwise the path is ``madden_db_path()``
+    (``CFB_COACH_MADDEN_DB``, else ``madden27.db``). Madden rows are not
+    written to ``coach.db``.
+    """
+    from cfb_coach.madden.model.inference import resolve_live_db_path
+
+    path = resolve_live_db_path(explicit)
+    db = CoachDB(path, seed=load_seed())
     try:  # stored Active 8 selections migrate in place; the live loadout is 8 offense + 8 defense
         from cfb_coach.madden.macros import migrate_all_selections
 
@@ -129,12 +153,24 @@ def open_db() -> CoachDB:
     return db
 
 
-def _require_opponent(raw: str) -> str:
-    oid = resolve_opponent(raw)
+def _require_opponent(raw: str, db: Any = None) -> str:
+    oid = resolve_madden_opponent(raw, db)
     if not oid:
         print(f"Unknown opponent: {raw!r}\n\n{format_opponents()}", file=sys.stderr)
         raise SystemExit(2)
     return oid
+
+
+def _open_opponent(args: argparse.Namespace) -> tuple[str, CoachDB]:
+    """Resolve the opponent, open the DB, and register a missing cold start."""
+    db = open_db(getattr(args, "db", None))
+    try:
+        oid = _require_opponent(args.opponent, db)
+    except SystemExit:
+        db.close()
+        raise
+    ensure_madden_opponent(db, oid)
+    return oid, db
 
 
 def _profile_arg(args: argparse.Namespace, db: CoachDB) -> str:
@@ -190,13 +226,38 @@ def format_opponents() -> str:
             f"{o['persona_confidence']:<9}{o['confidence']}"
         )
     lines.append("")
+    from cfb_coach.madden.human_opponents import builtin_profiles
+
+    lines.append("Madden-only cold start (no shared film, neutral priors):")
+    for oid, profile in builtin_profiles():
+        lines.append(
+            f"{oid:<12}{profile['display_name']:<15}{'unknown':<23}{'none':<9}none"
+        )
+    lines.append("")
     lines.append("CPU = offense-only (adjustments). User personas = O + D (8 offense + 8 defense).")
+    lines.append("Cold-start humans learn in game. They do not borrow another profile.")
     return "\n".join(lines)
 
 
 def cmd_opponents(_args: argparse.Namespace) -> int:
     print(format_opponents())
     return 0
+
+
+def cmd_preflight(args: argparse.Namespace) -> int:
+    """Human-mode gate. Does not change coaching mode or the locked book."""
+    from cfb_coach.madden.preflight import format_preflight, run_human_preflight
+
+    if getattr(args, "mode", None) != "human":
+        print("preflight requires --mode human.", file=sys.stderr)
+        return 2
+    db = open_db(getattr(args, "db", None))
+    try:
+        report = run_human_preflight(db, args.opponent)
+        print(format_preflight(report))
+        return 0 if report.get("ok") else 2
+    finally:
+        db.close()
 
 
 def _session_live_macros(args: argparse.Namespace) -> bool:
@@ -348,9 +409,10 @@ def cmd_prep(args: argparse.Namespace) -> int:
         parse_choice("defense", args.d_book)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
-    oid = _require_opponent(args.opponent)
     db = open_db()
     try:
+        oid = _require_opponent(args.opponent, db)
+        ensure_madden_opponent(db, oid)
         pid = _profile_arg(args, db)
         if getattr(args, "text", False):
             plan = build_prep_plan(
@@ -419,13 +481,15 @@ def cmd_prep(args: argparse.Namespace) -> int:
 
 
 def cmd_call(args: argparse.Namespace) -> int:
-    oid = _require_opponent(args.opponent)
-    db = open_db()
+    oid, db = _open_opponent(args)
     try:
         pid = get_session_profile(db)
         sit = parse_madden_situation(args.situation, default_side=args.side or "offense")
         if args.side:
             sit.side = args.side
+        from cfb_coach.madden.model.inference import bind_opp_look
+
+        bind_opp_look(sit, raw=args.situation)
         from cfb_coach.game_score import absorb_and_stamp, context_from_args
 
         absorb_and_stamp(sit, context_from_args(args))
@@ -472,8 +536,7 @@ def cmd_playbook(args: argparse.Namespace) -> int:
 def cmd_postgame(args: argparse.Namespace) -> int:
     from cfb_coach.madden.postgame import summary
 
-    oid = _require_opponent(args.opponent)
-    db = open_db()
+    oid, db = _open_opponent(args)
     try:
         pid = _profile_arg(args, db)
         print(summary(db, oid, pid))
@@ -524,12 +587,12 @@ def _write_overlay(path: Path | None, text: str, short: str) -> None:
 
 
 def cmd_play(args: argparse.Namespace) -> int:
-    oid = _require_opponent(args.opponent)
-    db = open_db()
+    oid, db = _open_opponent(args)
     pid = _profile_arg(args, db)
     active = _active_after_prep(db, oid, pid)
     cpu = is_cpu_opponent(oid)
     human_ml_control = bool(getattr(args, "ml_human_control", False)) and not cpu
+    human_defense_ml = bool(getattr(args, "ml_defense_control", False)) and not cpu
     if human_ml_control:
         from cfb_coach.madden.model import inference as ml_inference
         from cfb_coach.madden.model.schema import CoachingMode
@@ -537,7 +600,19 @@ def cmd_play(args: argparse.Namespace) -> int:
         if ml_inference.resolve_mode(db) is not CoachingMode.EXPERIMENTAL:
             print(
                 "Human offensive ML requires experimental mode. Run "
-                "`python -m cfb_coach ml experimental --retrain` first.",
+                "`python -m cfb_coach ml experimental` only when offense.json is already installed.",
+                file=sys.stderr,
+            )
+            db.close()
+            return 2
+    if human_defense_ml:
+        from cfb_coach.madden.model import defense_coordinator as defense_mode
+
+        if defense_mode.mode(db) != "experimental":
+            print(
+                "Human defensive ML requires experimental defense mode. "
+                "Run `python -m cfb_coach ml defense-experimental --enable --db <absolute>` "
+                "only when a trained defense artifact is already installed.",
                 file=sys.stderr,
             )
             db.close()
@@ -547,9 +622,17 @@ def cmd_play(args: argparse.Namespace) -> int:
     print(f"LIVE PLAY — Madden 27 Franchise vs {oid}  (db: {db.path})")
     if human_ml_control:
         print("HUMAN OFFENSE ML PILOT: ON for this play session only (opt-in).")
+        print("  A human must confirm each call: accepted stays unknown until verify is touched.")
         print("  Instant rollback for next call: python -m cfb_coach ml heuristic")
     elif not cpu:
         print("HUMAN OFFENSE ML PILOT: OFF (heuristic offense; use --ml-human-control to opt in).")
+    if human_defense_ml:
+        print("HUMAN DEFENSE PILOT: ON for this play session only (opt-in).")
+        print("  A human must confirm each call: accepted stays unknown until verify is touched.")
+        print("  Instant rollback for the next defensive call: "
+              "python -m cfb_coach ml defense-experimental --disable --db \"$CFB_COACH_MADDEN_DB\"")
+    elif not cpu:
+        print("HUMAN DEFENSE PILOT: OFF (established defensive caller; use --ml-defense-control to opt in).")
     print(_profile_header(pid))
     print(doctrine_line(profile_config(pid)["team"]))
     from cfb_coach.madden.playbook import NoActivePlaybook, active_books, load_pending
@@ -577,7 +660,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     print("  Live look only with: showing / live / pre-snap / aligned (e.g. 'showing cover 2 man')")
     print("  A play or result with no down (mesh, 4 verts, cover 2, +7, td, int) is the last snap, not a new call. undo removes it.")
     print("  Score (optional, us-them): --score 21-14, or `score 21-14` / `score clear` mid-game.")
-    print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. Close early games stay neutral.")
+    print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. `clock 12:00` is stored on the snap.")
     macros_on = _session_live_macros(args)
 
     def _active_now() -> dict:
@@ -600,12 +683,16 @@ def cmd_play(args: argparse.Namespace) -> int:
 
     if getattr(args, "once", None):
         sit = parse_madden_situation(args.once, default_side="offense")
+        from cfb_coach.madden.model.inference import bind_opp_look
+
+        bind_opp_look(sit, raw=args.once)
         absorb_and_stamp(sit, live_ctx)
         heard = format_heard(sit)
         print(heard)
         call = make_call(
             sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
             allow_human_ml=human_ml_control,
+            allow_human_defense_ml=human_defense_ml,
         )
         _maybe_shadow(db, sit, call, oid)
         print(call.headline())
@@ -627,6 +714,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             kwargs.setdefault("live_macros", macros_on)
             kwargs.setdefault("active_macros", _active_now())
             kwargs.setdefault("allow_human_ml", human_ml_control)
+            kwargs.setdefault("allow_human_defense_ml", human_defense_ml)
             return make_call(sit, oid, db, **kwargs)
 
         def _learn():
@@ -677,8 +765,31 @@ def cmd_play(args: argparse.Namespace) -> int:
     last_cov: str | None = None
     last_concept: str | None = None
     from cfb_coach.last_snap import LastSnapBook
+    from cfb_coach.session import (
+        arm_session_exit,
+        close_armed_sessions,
+        recover_unclosed_sessions,
+        start_session,
+    )
 
-    snap_book = LastSnapBook(db, oid, parse_madden_situation)
+    try:
+        recover_unclosed_sessions(db)
+    except Exception:  # noqa: BLE001 — a failed recovery must not block the new game
+        pass
+    term_sess = start_session(oid, dynasty=pid, db=db, notes="terminal-live")
+    try:
+        arm_session_exit(db, term_sess.session_id)
+    except Exception:  # noqa: BLE001 — the typed loop still runs if the handler cannot arm
+        pass
+    try:
+        from cfb_coach.madden.model.call_outcome_log import record_session_run_config
+
+        record_session_run_config(db, term_sess.session_id)
+    except Exception:  # noqa: BLE001 — logging must not break live coaching
+        pass
+    snap_book = LastSnapBook(
+        db, oid, parse_madden_situation, session_id=term_sess.session_id,
+    )
     if live_ctx.score is not None:
         snap_book.spot.score_us = live_ctx.score.us
         snap_book.spot.score_them = live_ctx.score.them
@@ -742,6 +853,10 @@ def cmd_play(args: argparse.Namespace) -> int:
                 continue
 
             sit = parse_madden_situation(raw, default_side=side)
+            from cfb_coach.madden.model.inference import bind_opp_look
+
+            bind_opp_look(sit, raw=raw)
+            logged_look = (sit.extras or {}).get("opp_look")
             snap_book.stamp_situation(sit)
             absorb_and_stamp(sit, live_ctx)
             heard = format_heard(sit)
@@ -749,19 +864,25 @@ def cmd_play(args: argparse.Namespace) -> int:
             call = make_call(
                 sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
                 allow_human_ml=human_ml_control,
+                allow_human_defense_ml=human_defense_ml,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )
-            _maybe_shadow(db, sit, call, oid)
+            snap_book.assign_drive(sit)
+            _maybe_shadow(db, sit, call, oid, session_id=term_sess.session_id)
             print(call.headline())
             print(call.format())
             _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
             last_call, last_sit = call, sit
-            snap_book.remember_call(call, sit)
+            snap_book.remember_call(call, sit, opp_look=logged_look)
             if sit.coverage_hint and sit.side == "offense":
                 last_cov = sit.coverage_hint
             if sit.concept_hint and sit.side == "defense":
                 last_concept = sit.concept_hint
     finally:
+        try:
+            close_armed_sessions(term_sess.session_id)
+        except Exception:  # noqa: BLE001 — still close the database
+            pass
         db.close()
     return 0

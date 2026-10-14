@@ -341,8 +341,10 @@ class HtmlDefaultTests(unittest.TestCase):
                     enable_execution_verify=True,
                 )
                 html = render_live_html(ctrl)
-                self.assertIn('value="used_recommended" checked', html)
+                self.assertIn('value="used_recommended"', html)
+                self.assertNotIn('value="used_recommended" checked', html)
                 self.assertNotIn('value="unknown" checked', html)
+                self.assertIn("execVerifyTouched", html)
                 self.assertIn("restoreExecDefaultAfterSubmit", html)
                 self.assertIn("setExecSelection", html)
             finally:

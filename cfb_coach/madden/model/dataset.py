@@ -51,6 +51,15 @@ SUPERVISED_ELIGIBLE = frozenset(
     {ELIGIBILITY_VERIFIED_EXECUTION, ELIGIBILITY_TRUSTED_VOD}
 )
 
+# VOD training opt-in. Default eligibility stays reviewed rows with trainable
+# true. ``include_unreviewed_permitted`` adds only the allowlisted statuses
+# ``unreviewed`` and ``auto``, and only when permitted_use is training.
+# The blocked source never trains.
+EXCLUDED_VOD_SOURCE = "F8Hm324SMtg"
+REVIEWED_STATUSES = frozenset({"reviewed", "confirmed", "corrected"})
+UNREVIEWED_PERMITTED_STATUSES = frozenset({"unreviewed", "auto"})
+PERMITTED_USE_TRAINING = "training"
+
 
 def classify_eligibility(row: Mapping[str, Any]) -> str:
     """Classify one row for supervised play-specific training eligibility."""
@@ -633,6 +642,181 @@ def export_jsonl(rows: Sequence[Mapping[str, Any]], path: str) -> None:
         for row in rows:
             fh.write(json.dumps(dict(row), sort_keys=True, default=str))
             fh.write("\n")
+
+
+def _vod_source_text(row: Mapping[str, Any]) -> str:
+    parts = [
+        row.get("source"),
+        row.get("vod_id"),
+        row.get("video_id"),
+        row.get("youtube_id"),
+        row.get("source_id"),
+        row.get("url"),
+        row.get("provenance"),
+    ]
+    return " ".join(str(part) for part in parts if part not in (None, ""))
+
+
+def vod_source_excluded(row: Mapping[str, Any]) -> bool:
+    """True when the row is the blocked Noah/Sebatron source."""
+    return EXCLUDED_VOD_SOURCE in _vod_source_text(row)
+
+
+def vod_permitted_for_training(row: Mapping[str, Any]) -> bool:
+    """Training permission is exact. An explicit unpermitted flag also blocks."""
+    if row.get("permitted") is False:
+        return False
+    return row.get("permitted_use") == PERMITTED_USE_TRAINING
+
+
+def _reviewed_status(row: Mapping[str, Any]) -> bool:
+    return str(row.get("review_status") or "") in REVIEWED_STATUSES
+
+
+def _trainable_true(row: Mapping[str, Any]) -> bool:
+    return row.get("trainable") is True
+
+
+def vod_training_eligible(
+    row: Mapping[str, Any],
+    *,
+    include_unreviewed_permitted: bool = False,
+) -> bool:
+    """Whether one VOD row may enter a training export.
+
+    Off (default): reviewed and ``trainable is True`` only, and only when
+    ``permitted_use`` is ``training``. On: ``review_status`` of exactly
+    ``unreviewed`` or ``auto`` with that same permission is added. The match
+    is case-sensitive and is not normalized. ``Auto``, ``None``, and any other
+    status stay out. ``F8Hm324SMtg`` and any unpermitted row stay out.
+    Does not rewrite ``review_status`` or ``trainable``.
+    """
+    if vod_source_excluded(row) or not vod_permitted_for_training(row):
+        return False
+    if _reviewed_status(row):
+        return _trainable_true(row)
+    status = row.get("review_status")
+    return bool(
+        include_unreviewed_permitted and status in UNREVIEWED_PERMITTED_STATUSES
+    )
+
+
+def select_vod_training_rows(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    include_unreviewed_permitted: bool = False,
+) -> list[dict[str, Any]]:
+    """Copy eligible VOD rows. ``review_status`` and ``trainable`` are not rewritten."""
+    selected: list[dict[str, Any]] = []
+    for row in rows:
+        if not vod_training_eligible(
+            row, include_unreviewed_permitted=include_unreviewed_permitted
+        ):
+            continue
+        selected.append({key: row[key] for key in row})
+    return selected
+
+
+def _vod_game(row: Mapping[str, Any]) -> str:
+    raw = str(row.get("game") or row.get("title") or "").strip().lower()
+    if raw.startswith("madden"):
+        return "madden"
+    if raw.startswith("cfb"):
+        return "cfb"
+    return raw or "unknown"
+
+
+def _vod_opponent(row: Mapping[str, Any]) -> str:
+    raw = str(row.get("opponent_type") or row.get("mode") or "").strip().lower()
+    if raw == "cpu":
+        return "cpu"
+    if raw == "h2h":
+        return "h2h"
+    return raw or "unknown"
+
+
+def _vod_group_id(row: Mapping[str, Any]) -> str:
+    for key in ("vod_id", "match_id", "game_id"):
+        value = row.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return "unknown"
+
+
+def assign_vod_splits(
+    rows: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Split by VOD/match inside each game and opponent stratum.
+
+    CPU and H2H are separate pools, as are Madden and CFB. Every row of a
+    group stays on one side of the split. With two or more groups in a
+    stratum, the last sorted group id is the held-out group.
+    """
+    strata_rows: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
+    for row in rows:
+        strata_rows.setdefault((_vod_game(row), _vod_opponent(row)), []).append(row)
+
+    train: list[Mapping[str, Any]] = []
+    held_out: list[Mapping[str, Any]] = []
+    strata: dict[tuple[str, str], dict[str, list[Mapping[str, Any]]]] = {}
+    for key in sorted(strata_rows):
+        by_group: dict[str, list[Mapping[str, Any]]] = {}
+        for row in strata_rows[key]:
+            by_group.setdefault(_vod_group_id(row), []).append(row)
+        group_ids = sorted(by_group)
+        held_ids = {group_ids[-1]} if len(group_ids) >= 2 else set()
+        stratum_train: list[Mapping[str, Any]] = []
+        stratum_held: list[Mapping[str, Any]] = []
+        for group_id in group_ids:
+            target = stratum_held if group_id in held_ids else stratum_train
+            target.extend(by_group[group_id])
+        strata[key] = {"train": stratum_train, "held_out": stratum_held}
+        train.extend(stratum_train)
+        held_out.extend(stratum_held)
+    return {"train": train, "held_out": held_out, "strata": strata}
+
+
+def reviewed_only_subset(
+    rows: Sequence[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    """Held-out rows that stay reviewed and trainable, without rewriting them.
+
+    Training can score the full held-out list and this reviewed-only subset.
+    """
+    return [row for row in rows if _reviewed_status(row) and _trainable_true(row)]
+
+
+def export_vod_training_dataset(
+    rows: Sequence[Mapping[str, Any]],
+    out_dir: str | Path,
+    *,
+    include_unreviewed_permitted: bool = False,
+) -> dict[str, Any]:
+    """Write eligible VOD rows as JSONL and return train / held-out splits.
+
+    ``include_unreviewed_permitted`` defaults off. The file is the same JSONL
+    ``export_jsonl`` writes for the eligible copies, so a default export does
+    not add or rewrite ``review_status`` or ``trainable``.
+    """
+    selected = select_vod_training_rows(
+        rows, include_unreviewed_permitted=include_unreviewed_permitted
+    )
+    folder = Path(out_dir)
+    folder.mkdir(parents=True, exist_ok=True)
+    dataset_path = folder / "dataset.jsonl"
+    export_jsonl(selected, str(dataset_path))
+    splits = assign_vod_splits(selected)
+    held_out = splits["held_out"]
+    return {
+        "dataset": str(dataset_path),
+        "files": [str(dataset_path)],
+        "rows": selected,
+        "include_unreviewed_permitted": include_unreviewed_permitted,
+        "train": splits["train"],
+        "held_out": held_out,
+        "strata": splits["strata"],
+        "held_out_reviewed_only": reviewed_only_subset(held_out),
+    }
 
 
 _SANITIZE_DROP = frozenset(

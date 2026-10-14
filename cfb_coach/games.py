@@ -7,7 +7,6 @@ namespace next to it so the two never share tendencies or prep state.
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -89,10 +88,10 @@ def data_dir() -> Path:
 
 
 def madden_db_path() -> Path:
-    """$CFB_COACH_MADDEN_DB, else <data dir>/madden27.db (sibling of coach.db)."""
-    raw = os.environ.get("CFB_COACH_MADDEN_DB")
-    if raw:
-        p = Path(raw).expanduser()
-        p.parent.mkdir(parents=True, exist_ok=True)
-        return p
-    return data_dir() / GAMES[MADDEN27].db_filename
+    """``CFB_COACH_MADDEN_DB``, else beside ``CFB_COACH_DB``, else ``~/.cfb-coach``.
+
+    The implementation lives in ``cfb_coach.db.madden_db_path``.
+    """
+    from cfb_coach.db import madden_db_path as resolve
+
+    return resolve()

@@ -80,6 +80,9 @@ class MaddenCall:
             line += f"\n  {self.macro_line()}"
         if self.adjustment_line():
             line += f"\n  {self.adjustment_line()}"
+        label = getattr(self, "call_label", None)
+        if label in ("EXPERIMENTAL", "HEURISTIC"):
+            line += f"\n  LABEL: {label}"
         return line
 
 
@@ -910,6 +913,7 @@ def make_call(
     playbook: dict[str, dict[str, list[str]]] | None = None,
     live_macros: bool | None = None,
     allow_human_ml: bool = False,
+    allow_human_defense_ml: bool = False,
 ) -> MaddenCall:
     """One call. `playbook` = {side: {formation: [plays]}} locked by prep; defaults to the
     DB's locked (applied) books. Raises NoActivePlaybook when the needed side has no
@@ -974,13 +978,30 @@ def make_call(
         sel["offense"] = [mid for mid in sel["offense"] if pairs_in_book(mid, offense_book, cap=1)]
     if sit.side == "defense":
         call = _pick_defense(sit, opp, bl, db, rng, sel["defense"], books["defense"])
-        # Explicit, defense-only opt-in. Never auto-change offense or CPU mode.
-        # This function fails closed to the established defensive caller.
-        try:
-            from cfb_coach.madden.model.defense_coordinator import maybe_apply_defense
-            call = maybe_apply_defense(call, sit, opponent_id, db, books["defense"])
-        except Exception:  # noqa: BLE001 — safe legacy defense fallback
-            pass
+        # A cold-start human (John) keeps the established caller unless this
+        # session opted into defense ML. Offense mode is not consulted.
+        from cfb_coach.madden.human_opponents import is_cold_start_opponent
+
+        cold = is_cold_start_opponent(opponent_id, db)
+        if isinstance(sit.extras, dict):
+            sit.extras["defense_armed_ids"] = list(sel.get("defense") or [])
+        if allow_human_defense_ml and isinstance(sit.extras, dict):
+            sit.extras["require_trained_defense_artifact"] = True
+        if (not cold) or allow_human_defense_ml:
+            # Explicit, defense-only opt-in. Never auto-change offense or CPU mode.
+            # This function fails closed to the established defensive caller.
+            try:
+                from cfb_coach.madden.model.defense_coordinator import maybe_apply_defense
+                call = maybe_apply_defense(call, sit, opponent_id, db, books["defense"])
+            except Exception:  # noqa: BLE001 — safe legacy defense fallback
+                try:
+                    call.ml_defense_fallback = {
+                        "fell_back": True,
+                        "fallback_reason": "exception",
+                        "fallback_source": "select_defense",
+                    }
+                except Exception:  # noqa: BLE001
+                    pass
     else:
         call = _pick_offense(sit, opp, bl, db, rng, sel["offense"], books["offense"], audibles=audibles)
         # Opt-in experimental ML: sealed rebuild of reads/macros when ML selects.
@@ -999,7 +1020,20 @@ def make_call(
                 allow_human_ml=allow_human_ml,
             )
         except Exception:  # noqa: BLE001 — never break live coaching
-            pass
+            try:
+                if not isinstance(getattr(call, "ml_experimental", None), dict):
+                    call.ml_experimental = {
+                        "fell_back": True,
+                        "fallback_reason": "exception",
+                        "fallback_source": "heuristic_offense",
+                        "heuristic_formation": call.formation,
+                        "heuristic_play": call.play,
+                        "final_formation": call.formation,
+                        "final_play": call.play,
+                        "explanation": "experimental fallback → heuristic (exception)",
+                    }
+            except Exception:  # noqa: BLE001
+                pass
     stamp = _sit_stamp(sit)
     call.rationale = note + call.rationale + (f" | {stamp}" if stamp else "")
     from cfb_coach.game_score import score_call_note
@@ -1007,4 +1041,17 @@ def make_call(
     snote = score_call_note(sit)
     if snote:
         call.rationale += f" | {snote}"
+    # Clear the opponent look after the call exists. The call object stays as built.
+    try:
+        from cfb_coach.madden.model.inference import finish_live_snap
+
+        finish_live_snap(sit, db)
+    except Exception:  # noqa: BLE001 — a hook failure must not change the call
+        pass
+    try:
+        from cfb_coach.madden.model.dual_control import stamp_displayed_label
+
+        stamp_displayed_label(call)
+    except Exception:  # noqa: BLE001 — the label must not change the play
+        pass
     return call
