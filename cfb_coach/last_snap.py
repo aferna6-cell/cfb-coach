@@ -538,6 +538,22 @@ class LastSnapBook:
         """
         if not self.ml_snap_id or not hasattr(self.db, "log_ml_outcome"):
             return
+        outcome_payload = None
+        if result:
+            parsed = parse_outcome(result)
+            extras = {}
+            sit = getattr(self, "sit", None)
+            if sit is not None and isinstance(getattr(sit, "extras", None), dict):
+                extras = sit.extras
+            attribution = extras.get("outcome_attribution")
+            if attribution not in ("playcall", "execution", "unknown"):
+                attribution = "unknown"
+            outcome_payload = {
+                "result": result,
+                "kind": parsed.kind,
+                "yards": parsed.yards,
+                "attribution": attribution,
+            }
         self.db.log_ml_outcome(
             snap_id=self.ml_snap_id,
             game_id=self.session_id,
@@ -546,7 +562,7 @@ class LastSnapBook:
             executed_formation=executed_formation,
             executed_play=executed_play,
             executed_verification=executed_verification,
-            outcome={"result": result} if result else None,
+            outcome=outcome_payload,
             yards=logged_yards,
             penalty=logged_penalty,
             drive_id=ctx.get("drive_id"),

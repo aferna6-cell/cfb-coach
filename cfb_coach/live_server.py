@@ -142,6 +142,7 @@ class LivePlayController:
     # Durable HTTP idempotency: request_key -> last response (also persisted in DB).
     _idempotency_mem: dict[str, dict[str, Any]] = field(default_factory=dict)
     pending_opp_look: str | None = None
+    last_game_clock: str | None = None
 
     def book_state(self) -> dict[str, Any] | None:
         if self.book_info is None:
@@ -170,6 +171,7 @@ class LivePlayController:
             self.opponent_id, dynasty=self.dynasty, db=self.db, notes="html-live"
         )
         self.session_id = sess.session_id
+        self.last_game_clock = None
         try:
             arm_session_exit(self.db, self.session_id)
         except Exception:  # noqa: BLE001 — live play still runs if the handler cannot arm
@@ -720,6 +722,7 @@ class LivePlayController:
                         "result": closed.get("result"),
                         "yards": parsed.yards,
                         "kind": parsed.kind,
+                        "attribution": "unknown",
                         "coverage_seen": book.coverage,
                         "concept_seen": book.concept,
                         "executed_macro": closed.get("executed_macro"),
@@ -853,14 +856,32 @@ class LivePlayController:
 
     def _stamp_live_context(self, sit: Any, game_clock: str | None) -> None:
         """Drive and clock for the snap about to be logged. The call is already made."""
-        from cfb_coach.madden.model.call_outcome_log import normalize_game_clock
+        from cfb_coach.madden.model.call_outcome_log import (
+            format_game_clock,
+            normalize_game_clock,
+        )
 
         self._book().assign_drive(sit)
-        token = normalize_game_clock(game_clock)
-        if token is None:
-            return
         extras = getattr(sit, "extras", None)
-        if isinstance(extras, dict):
+        if not isinstance(extras, dict):
+            extras = {}
+            try:
+                sit.extras = extras
+            except Exception:
+                extras = None
+        token = normalize_game_clock(game_clock)
+        if token is None and extras:
+            existing = extras.get("game_clock")
+            if existing:
+                token = normalize_game_clock(str(existing))
+            elif extras.get("clock_seconds") is not None:
+                token = format_game_clock(extras.get("clock_seconds"))
+        if token is None:
+            token = self.last_game_clock
+        if not token:
+            return
+        self.last_game_clock = token
+        if extras is not None:
             extras["game_clock"] = token
 
     def result_and_call(
