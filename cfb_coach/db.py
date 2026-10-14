@@ -1020,6 +1020,14 @@ class CoachDB:
                     self.conn.commit()
                 except sqlite3.Error:
                     pass
+            if "recovered" not in gs_cols:
+                try:
+                    self.conn.execute(
+                        "ALTER TABLE game_sessions ADD COLUMN recovered INTEGER NOT NULL DEFAULT 0"
+                    )
+                    self.conn.commit()
+                except sqlite3.Error:
+                    pass
 
     def _migrate_ml_tables(self) -> None:
         """Additive Madden ML decision/outcome tables. Safe to run repeatedly."""
@@ -1767,6 +1775,7 @@ class CoachDB:
         play_count: int | None = None,
         result_wl: str | None = None,
         score: str | None = None,
+        recovered: bool | None = None,
     ) -> None:
         ended = datetime.now(timezone.utc).isoformat()
         # Ensure optional columns exist (older DBs)
@@ -1781,6 +1790,13 @@ class CoachDB:
                 self.conn.execute("ALTER TABLE game_sessions ADD COLUMN score TEXT")
             except sqlite3.Error:
                 pass
+        if "recovered" not in cols:
+            try:
+                self.conn.execute(
+                    "ALTER TABLE game_sessions ADD COLUMN recovered INTEGER NOT NULL DEFAULT 0"
+                )
+            except sqlite3.Error:
+                pass
         sets = ["ended_ts = ?"]
         params: list[Any] = [ended]
         if play_count is not None:
@@ -1792,6 +1808,9 @@ class CoachDB:
         if score is not None:
             sets.append("score = ?")
             params.append(str(score).strip())
+        if recovered is not None:
+            sets.append("recovered = ?")
+            params.append(1 if recovered else 0)
         params.append(session_id)
         self.conn.execute(
             f"UPDATE game_sessions SET {', '.join(sets)} WHERE session_id = ?",
