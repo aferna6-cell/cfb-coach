@@ -755,6 +755,6 @@ def test_train_records_the_defense_book_and_restores_it():
     report = train(rows, workers=1, hp_grid=TINY_HP, lambda_cxs_grid=TINY_LAMBDA, n_boot=0, min_groups=2,
                    defense_book=book)
     assert report["feature_module"]["defense_book"] == book.describe()
-    assert set(report["feature_module"]["defense_family_rows"]) == {"override", "book", "pattern", "other", "none"}
+    assert set(report["feature_module"]["defense_family_rows"]) == {"book", "pattern", "other", "none"}
     assert sf.active_defense_book() is before
     assert "--defense-book" in build_parser().format_help()

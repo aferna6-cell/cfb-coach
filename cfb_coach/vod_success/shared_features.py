@@ -256,7 +256,10 @@ def kneel_clock_rule(
 
 # --- look family and pressure ---------------------------------------------------
 
-PRESSURE = r"(blitz|fire|dog|sting|crash|edge|overload|\bsim\b|pinch|zero|mug|shoot|pressure|gaps|lurk|buck)"
+PRESSURE = (
+    r"(blitz|fire|dog|sting|crash|edge|overload|\bsim\b|pinch|zero|mug|shoot|pressure|gaps|lurk|buck|"
+    r"loop|storm|smoke|thunder|safety go)"
+)
 _PRESSURE_RE = re.compile(PRESSURE)
 
 
@@ -320,7 +323,14 @@ def _family_with_tokens(name: Any) -> tuple[str, set[int], list[str]]:
     m = re.search(r"robber|hole", text)
     if m:
         return "cover_1", from_text(m), tokens
-    m1 = re.search(r"\b(buzz|cloud|sky)\b", text)
+    m1 = re.search(r"\bcloud\b", text)
+    if m1:
+        # Cloud: a 3 anywhere in the name ("Roll 23 Cloud") is a Cover 3 rotation; no 3 is Cover 2.
+        threes = {i for i, tok in enumerate(tokens) if "3" in tok}
+        if threes:
+            return "cover_3", from_text(m1) | threes, tokens
+        return "cover_2", from_text(m1), tokens
+    m1 = re.search(r"\b(buzz|sky)\b", text)
     m2 = re.search(r"\b3\b", text)
     if m1 and m2:
         return "cover_3", from_text(m1) | from_text(m2), tokens
@@ -332,6 +342,10 @@ def _family_with_tokens(name: Any) -> tuple[str, set[int], list[str]]:
     if m and m.group(1) in "012345679":
         family = "cover_0" if m.group(1) == "0" else f"cover_{m.group(1)}"
         return family, from_text(m), tokens
+    m = re.search(r"\bbracket\b", text)
+    if m:
+        # Bracket coverage is a man family, never pressure on its own.
+        return "man_other", from_text(m), tokens
     m = re.search(r"\bman\b", text)
     if m:
         return "man_other", from_text(m), tokens
@@ -391,27 +405,15 @@ def _book_names(source: Any) -> list[str]:
     return names
 
 
-# Named family overrides: exact names whose text pattern is wrong. Checked
-# before the book and the pattern; the path is ``override``. Keep this table
-# tiny and named; every entry needs a test.
-FAMILY_OVERRIDES: dict[str, tuple[str, bool]] = {
-    # "23" is not a single-digit shell, so the pattern gives other; it is a Cover 3 rotation.
-    "roll 23 cloud": ("cover_3", False),
-}
-
-
 def pattern_family(name: Any) -> tuple[str, bool, str | None]:
-    """Text pattern plus the named overrides: (family, pressure, path).
+    """Text pattern alone: (family, pressure, path).
 
-    ``path`` is ``override`` for a named override, ``pattern`` when the
-    pattern resolves the name, ``other`` when it does not, ``None`` when blank.
+    ``path`` is ``pattern`` when the pattern resolves the name, ``other`` when
+    it does not, ``None`` when blank. There are no named exceptions (addendum 3).
     """
     key = norm_key(name)
     if not key:
         return "none", False, None
-    if key in FAMILY_OVERRIDES:
-        family, pressure = FAMILY_OVERRIDES[key]
-        return family, pressure, "override"
     family, pressure = family_and_pressure(key)
     if family == "other":
         return "other", False, "other"
@@ -446,8 +448,7 @@ class DefenseBook:
     def lookup(self, name: Any) -> tuple[str, bool, str | None]:
         """(family, pressure, path), addendum 3.
 
-        A named override (:data:`FAMILY_OVERRIDES`) wins (path ``override``).
-        Then book: an exact book name gets its book family (path ``book``).
+        Book first: an exact book name gets its book family (path ``book``).
         An off-book name gets the text-pattern family (path ``pattern``); a
         name neither step resolves is ``other`` (path ``other``). A blank name
         is ``("none", False, None)``. Glued calls are blanked upstream by the
@@ -457,9 +458,6 @@ class DefenseBook:
         key = norm_key(name)
         if not key:
             return "none", False, None
-        if key in FAMILY_OVERRIDES:
-            family, pressure = FAMILY_OVERRIDES[key]
-            return family, pressure, "override"
         hit = self.table.get(key)
         if hit is not None:
             return hit[0], hit[1], "book"
@@ -520,7 +518,7 @@ def defense_family_path(name: Any, book: DefenseBook | Any | None = None) -> tup
     The one function training, scoring, eval labels and live use. ``book`` is a
     :class:`DefenseBook`, any playbook shape :func:`DefenseBook.from_playbook`
     reads, or ``None`` for the active book (catalog unless one was set).
-    ``path`` is ``override``, ``book``, ``pattern`` or ``other``; ``None`` for a blank name.
+    ``path`` is ``book``, ``pattern`` or ``other``; ``None`` for a blank name.
     """
     return _resolve_book(book).lookup(name)
 

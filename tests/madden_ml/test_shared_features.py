@@ -219,20 +219,98 @@ def test_db_fire_2_family_regression():
     assert sf.family_and_pressure("Cover 3 Sky") == ("cover_3", False)
 
 
-def test_is_pressure_seven_blitz_plays(capsys):
+_PRESSURE_11 = {
+    **_BLITZ_7,
+    "DT Mike Loop 3": "cover_3",
+    "DBL Safety Go": "pressure_other",
+    "Thunder Smoke": "pressure_other",
+    "Over Storm Brave": "pressure_other",
+}
+# The 12 book plays the Strategist checked (Meta Researcher play art + Gameplan Coach):
+# the 7 that resolved to other at 1b85600, and the 5 defense_select.call_family disagreements.
+_STRATEGIST_TABLE = {
+    "Bracket Switch Willie": ("man_other", False),
+    "DBL Safety Go": ("pressure_other", False),
+    "Double Bracket": ("man_other", False),
+    "Double Bracket Switch": ("man_other", False),
+    "Over Storm Brave": ("pressure_other", False),
+    "Roll 23 Cloud": ("cover_3", False),
+    "Thunder Smoke": ("pressure_other", False),
+    "Cover 3 Lock": ("cover_3", False),
+    "Cover 4 Press": ("cover_4", False),
+    "DT Mike Loop 3": ("cover_3", True),
+    "Okie Eagle 3": ("cover_3", False),
+    "Okie Roll 2": ("cover_2", False),
+}
+
+
+def test_is_pressure_eleven_confirmed_plays_by_name(capsys):
     lines = []
-    for play, family in _BLITZ_7.items():
+    for play, family in _PRESSURE_11.items():
         got_family, flag = sf.family_and_pressure(play)
         assert got_family == family, play
         assert sf.is_pressure(got_family, flag) is True, play
         lines.append(f"{play}: {got_family} (pressure flag {'on' if flag else 'off'})")
+    assert len(_PRESSURE_11) == 11
+    # Among the 12 Strategist-checked plays, exactly the 4 new pressure plays are pressure.
+    checked_pressure = {p for p in _STRATEGIST_TABLE if sf.is_pressure(*sf.family_and_pressure(p))}
+    assert checked_pressure == {"DT Mike Loop 3", "DBL Safety Go", "Thunder Smoke", "Over Storm Brave"}
     assert sf.is_pressure("cover_3", False) is False
     assert sf.is_pressure("cover_2", True) is True
     assert sf.is_pressure("none", None) is False
-    assert policy.blitz_share(list(_BLITZ_7)) == 1.0
+    assert policy.blitz_share(list(_PRESSURE_11)) == 1.0
+    assert policy.blitz_share(list(_PRESSURE_11) + ["Cover 3 Lock", "Cover 4 Press", "Okie Eagle 3",
+                                                     "Okie Roll 2", "Double Bracket"]) == pytest.approx(11 / 16)
     assert policy.blitz_share(["Cover 3 Sky", "Free Fire"]) == 0.5
     with capsys.disabled():
         print("\n[is_pressure] " + "; ".join(lines))
+
+
+def test_strategist_table_by_name_through_book_and_pattern():
+    book = sf.DefenseBook(list(_STRATEGIST_TABLE))
+    for play, (family, pressure) in _STRATEGIST_TABLE.items():
+        assert sf.defense_family_path(play, book) == (family, pressure, "book"), play
+        assert sf.pattern_family(play) == (family, pressure, "pattern"), play
+        assert play in sf.catalog_defense_book()
+
+
+def test_bracket_and_new_pressure_words_are_general_rules():
+    assert sf.family_and_pressure("Bracket Cover Lock") == ("man_other", False)
+    assert sf.family_and_pressure("Nickel Smoke") == ("pressure_other", False)
+    assert sf.family_and_pressure("Storm 3") == ("cover_3", True)
+    assert sf.family_and_pressure("Safety Go Weak") == ("pressure_other", False)
+    assert sf.family_and_pressure("Thunder 1") == ("cover_1", True)
+
+
+def test_cloud_rule_three_is_cover_3_else_cover_2():
+    assert sf.pattern_family("Roll 23 Cloud") == ("cover_3", False, "pattern")
+    assert sf.defense_family_path("Roll 23 Cloud", sf.DefenseBook(["Roll 23 Cloud"])) == ("cover_3", False, "book")
+    assert sf.defense_family_path("Roll 23 Cloud", sf.catalog_defense_book()) == ("cover_3", False, "book")
+    assert sf.family_and_pressure("Cover 3 Cloud") == ("cover_3", False)
+    assert sf.family_and_pressure("Nickel Cloud") == ("cover_2", False)
+    assert sf.family_and_pressure("Cloud Str") == ("cover_2", False)
+    assert sf.family_and_pressure("Cover 4 Cloud") == ("cover_4", False)  # an explicit shell wins
+
+
+def test_no_override_path_is_ever_returned():
+    names = list(sf.catalog_defense_book().table) + list(_SYNTH_DEFENSE_BOOK) + list(_GLUED) + [_NONSENSE, "", None]
+    for book in (sf.catalog_defense_book(), sf.DefenseBook([])):
+        assert {sf.defense_family_path(n, book)[2] for n in names} <= {"book", "pattern", "other", None}
+
+
+@pytest.mark.skipif(not __import__("os").environ.get("CFB_COACH_DEFENSE_BOOK_JSON"),
+                    reason="box-only: set CFB_COACH_DEFENSE_BOOK_JSON to the applied defensive book")
+def test_applied_book_agreement_no_other_and_pressure_count():
+    """Box-only: the applied 78-play book is not in the repo."""
+    import os
+
+    book = sf.DefenseBook.from_file(os.environ["CFB_COACH_DEFENSE_BOOK_JSON"])
+    assert len(book) == 78
+    assert [n for n in book.table if sf.defense_family_path(n, book)[:2] != sf.pattern_family(n)[:2]] == []
+    assert [n for n in book.table if sf.defense_family(n, book)[0] == "other"] == []
+    assert sum(sf.is_pressure(*sf.defense_family(n, book)) for n in book.table) == 34
+    for play in _PRESSURE_11:
+        assert play in book and sf.is_pressure(*sf.defense_family(play, book)), play
 
 
 def test_rpo_is_its_own_class_and_folds_only_for_binary():
@@ -408,7 +486,7 @@ def test_off_book_and_unblanked_glued_names_map_by_pattern_on_every_path():
 
 
 def test_book_lookup_matches_pattern_on_every_book_name_and_keeps_blitz_pressure():
-    assert len(sf.FAMILY_OVERRIDES) == 1
+    assert not hasattr(sf, "FAMILY_OVERRIDES")  # addendum 3: no named exceptions
     for book in (sf.DefenseBook(_SYNTH_DEFENSE_BOOK), sf.catalog_defense_book()):
         mismatches = [name for name in book.table if sf.defense_family(name, book) != sf.pattern_family(name)[:2]]
         assert mismatches == []
@@ -562,7 +640,18 @@ def test_full_book_feature_build_and_score_under_150ms(capsys):
 # Names whose family the Strategist re-checked and may differ from the 1b85600
 # snapshot. Every other catalog defensive play (a superset of the applied book)
 # must keep its 1b85600 family and pressure flag.
-_STRATEGIST_CHECKED: frozenset[str] = frozenset({"roll 23 cloud"})
+_STRATEGIST_CHECKED: frozenset[str] = frozenset(sf.norm_key(n) for n in _STRATEGIST_TABLE)
+# Catalog plays outside the 78-play book whose values move because of the general
+# loop/storm rules (not Strategist-checked). Pinned so any other drift still fails.
+_RULE_CONSEQUENCES = {
+    "1 dt lb loop": ("cover_1", True),
+    "dt loop": ("pressure_other", False),
+    "dt mike loop 1": ("cover_1", True),
+    "dt mike loop o": ("pressure_other", False),
+    "i dt lb loop": ("pressure_other", False),
+    "storm brave 1": ("cover_1", True),
+    "storm bravei": ("pressure_other", False),
+}
 
 
 def test_book_families_keep_their_1b85600_values():
@@ -577,23 +666,23 @@ def test_book_families_keep_their_1b85600_values():
     for name, (family, pressure) in snap.items():
         if name in _STRATEGIST_CHECKED:
             continue
+        if name in _RULE_CONSEQUENCES:
+            family, pressure = _RULE_CONSEQUENCES[name]
         got = sf.defense_family_path(name, book)
         if got != (family, pressure, "book"):
             drift.append((name, (family, pressure), got))
     assert drift == []
+    assert len(_STRATEGIST_CHECKED) == 12 and _STRATEGIST_CHECKED <= set(snap)
 
 
-def test_roll_23_cloud_is_cover_3_through_the_named_override():
-    assert sf.FAMILY_OVERRIDES == {"roll 23 cloud": ("cover_3", False)}
-    # The cloud pattern alone does not resolve it ("23" is not a single-digit shell).
-    assert sf.family_and_pressure("Roll 23 Cloud") == ("other", False)
-    assert sf.pattern_family("Roll 23 Cloud") == ("cover_3", False, "override")
-    for book in (sf.DefenseBook(["Roll 23 Cloud", "Cover 3 Sky"]), sf.catalog_defense_book(), sf.DefenseBook([])):
-        assert sf.defense_family_path("Roll 23 Cloud", book) == ("cover_3", False, "override")
-        assert sf.defense_family_path("  roll 23   CLOUD ", book) == ("cover_3", False, "override")
-    assert sf.defense_on_book("Roll 23 Cloud", sf.DefenseBook([])) is False
-    assert sf.defense_on_book("Roll 23 Cloud", sf.catalog_defense_book()) is True
-    train = sf.training_inputs(_label_row("defense", "Roll 23 Cloud"))
-    live = inference.vod_live_inputs("defense", "Roll 23 Cloud", down=1, distance=10, yardline=25)
-    for inputs in (train, live):
-        assert (inputs["look_family"], inputs["family_path"]) == ("cover_3", "override")
+def test_defense_gate_pool_counts_glued_rows_on_their_own():
+    from scripts.madden_ml import eval_scoring
+
+    base = {"side": "defense", "opponent_type": "human", "success_known": "True", "yardline": "30",
+            "yards_to_goal": ""}
+    rows = [dict(base, row=str(i), def_call="Cover 3 Sky") for i in range(5)]
+    rows += [dict(base, row="5", def_call=""), dict(base, row="6", def_call="Cover 3", yardline=""),
+             dict(base, row="7", def_call="Cover 3", opponent_type="cpu")]
+    got = eval_scoring.defense_gate_pool(rows, blank_keys=["1", "3"])
+    assert (got["scored_rows"], got["known_call_rows"], got["glued_blanked"], got["gate_pool"]) == (6, 5, 2, 3)
+    assert eval_scoring.defense_gate_pool(rows)["gate_pool"] == 5

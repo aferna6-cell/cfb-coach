@@ -1595,6 +1595,44 @@ def executed_call_label(side: Any, call: Any, *, defense_book: Any = None) -> di
     }
 
 
+def defense_gate_pool(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    blank_keys: Sequence[Any] = (),
+    key_field: str = "row",
+) -> dict[str, Any]:
+    """Addendum 2/3 defense gate pool on held-out rows, with glued rows counted on their own.
+
+    ``rows`` are held-out CSV rows. Scored rows: defense, human, a known
+    location, success known. Known-call rows also have a def_call. A row whose
+    ``key_field`` value is in ``blank_keys`` has its def_call treated as blank
+    (the frozen glued rule is applied box-side and passed in as row keys; the
+    rule and the data are not in this repo), so it leaves the pool and is
+    counted as ``glued_blanked``.
+    """
+    blanked = {str(key) for key in blank_keys}
+
+    def _blank(value: Any) -> bool:
+        return value is None or str(value).strip() == ""
+
+    scored = [
+        row for row in rows
+        if str(row.get("side")) == "defense" and str(row.get("opponent_type")) == "human"
+        and str(row.get("success_known")) == "True"
+        and (not _blank(row.get("yardline")) or not _blank(row.get("yards_to_goal")))
+    ]
+    known = [row for row in scored if not _blank(row.get("def_call"))]
+    glued = [row for row in known if str(row.get(key_field)) in blanked]
+    pool = [row for row in known if str(row.get(key_field)) not in blanked]
+    return {
+        "scored_rows": len(scored),
+        "known_call_rows": len(known),
+        "glued_blanked": len(glued),
+        "gate_pool": len(pool),
+        "rows": pool,
+    }
+
+
 def model_fallback(
     side: Any,
     opp_look: Any,

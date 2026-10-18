@@ -1079,7 +1079,7 @@ def _train(
     not_trained: dict[str, dict[str, Any]] = {}
     n_unknown_success = 0
     n_kneel_excluded = 0
-    defense_book_hits = {"override": 0, "book": 0, "pattern": 0, "other": 0, "none": 0}
+    defense_book_hits = {"book": 0, "pattern": 0, "other": 0, "none": 0}
     for raw in kept:
         prepared = prepare_row(raw)
         if prepared.get("side") == "defense":
