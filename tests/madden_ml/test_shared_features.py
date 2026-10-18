@@ -770,6 +770,12 @@ def test_digit_cleanup_is_only_for_the_named_plays():
     assert sf.family_and_pressure("LB Cross O") == ("other", False)
     assert sf.family_and_pressure("LB Sting I") == ("pressure_other", False)
     assert sf.family_and_pressure("Will Sam I") == ("other", False)
+    # Pinned: unchanged by the narrow cleanup.
+    assert sf.family_and_pressure("Pinch 0") == ("cover_0", False)
+    assert sf.family_and_pressure("LB Pop O") == ("other", False)
+    assert sf.family_and_pressure("Sam Crash I") == ("pressure_other", False)
+    for name in ("Pinch 0", "LB Pop O", "Sam Crash I"):
+        assert name in sf.catalog_defense_book()
 
 
 # Public 49ers defense names nothing resolves yet (not Strategist-ruled). Pinned so
@@ -817,11 +823,20 @@ def test_applied_book_pattern_matches_the_strategist_truth():
     assert len(rows) == len(truth) == len(book) == 78
     assert set(truth) == set(book.table)
     assert [n for n, r in truth.items() if r.get("source_tag") not in _TRUTH_SOURCE_TAGS] == []
-    wrong = [(n, (r["family"], r["is_pressure"]), _pattern_truth(n)) for n, r in sorted(truth.items())
-             if (r["family"], bool(r["is_pressure"])) != _pattern_truth(n)]
+    # is_pressure: True / False compared explicitly; a null stays unknown and is never coerced.
+    assert [n for n, r in truth.items() if r["is_pressure"] is None] == []
+    wrong = []
+    for n, r in sorted(truth.items()):
+        family, pressure = _pattern_truth(n)
+        if r["family"] != family:
+            wrong.append((n, "family", r["family"], family))
+        if r["is_pressure"] is True and pressure is not True:
+            wrong.append((n, "is_pressure", True, pressure))
+        if r["is_pressure"] is False and pressure is not False:
+            wrong.append((n, "is_pressure", False, pressure))
     assert wrong == []
     assert [n for n in book.table if sf.defense_family(n, book)[0] != _pattern_truth(n)[0]] == []
-    assert sum(bool(r["is_pressure"]) for r in rows) == 34
-    assert sum(sf.is_pressure(*sf.defense_family(n, book)) for n in book.table) == 34
+    assert sum(1 for r in rows if r["is_pressure"] is True) == 34
+    assert sum(1 for n in book.table if sf.is_pressure(*sf.defense_family(n, book)) is True) == 34
     assert _family_changed_vs_1b85600(book) == _FAMILY_CHANGED_VS_1B85600
     assert _is_pressure_changed_vs_1b85600(book) == _IS_PRESSURE_CHANGED_VS_1B85600
