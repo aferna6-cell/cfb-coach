@@ -647,10 +647,12 @@ _RULE_CONSEQUENCES = {
     "1 dt lb loop": ("cover_1", True),
     "dt loop": ("pressure_other", False),
     "dt mike loop 1": ("cover_1", True),
-    "dt mike loop o": ("pressure_other", False),
     "i dt lb loop": ("pressure_other", False),
     "storm brave 1": ("cover_1", True),
     "storm bravei": ("pressure_other", False),
+    # Book-source digit cleanup (letter O = 0, letter I = 1) for named plays only.
+    "dt mike loop o": ("cover_0", True),
+    "fs fire i": ("cover_1", True),
 }
 
 
@@ -686,3 +688,33 @@ def test_defense_gate_pool_counts_glued_rows_on_their_own():
     got = eval_scoring.defense_gate_pool(rows, blank_keys=["1", "3"])
     assert (got["scored_rows"], got["known_call_rows"], got["glued_blanked"], got["gate_pool"]) == (6, 5, 2, 3)
     assert eval_scoring.defense_gate_pool(rows)["gate_pool"] == 5
+
+
+# (name, family, pressure flag, is_pressure) for the book-source digit cleanup.
+_DIGIT_CLEANUP_PLAYS = [
+    ("Pinch Buck O", "cover_0", True, True),
+    ("Free Fire O", "cover_0", False, True),
+    ("DT Mike Loop O", "cover_0", True, True),
+    ("DT Mike Loop 1", "cover_1", True, True),
+    ("FS Fire I", "cover_1", True, True),
+]
+
+
+@pytest.mark.parametrize("name,family,flag,pressure", _DIGIT_CLEANUP_PLAYS)
+def test_book_source_letter_o_and_i_read_as_digits_by_name(name, family, flag, pressure):
+    book = sf.catalog_defense_book()
+    assert name in book
+    for got in (sf.defense_family(name, book), sf.pattern_family(name)[:2], sf.family_and_pressure(name),
+                sf.defense_family(name, sf.DefenseBook([], source="empty"))):
+        assert got == (family, flag)
+        assert sf.is_pressure(*got) is pressure
+    # The letter form and the digit form agree.
+    assert sf.family_and_pressure(name) == sf.family_and_pressure(name[:-1] + {"O": "0", "I": "1"}.get(name[-1], name[-1]))
+
+
+def test_digit_cleanup_is_only_for_the_named_plays():
+    assert set(sf.BOOK_DIGIT_CLEANUP) == {"pinch buck o", "free fire o", "dt mike loop o", "fs fire i"}
+    # Other catalog plays ending in a lone O or I are not read as digits.
+    assert sf.family_and_pressure("LB Cross O") == ("other", False)
+    assert sf.family_and_pressure("LB Sting I") == ("pressure_other", False)
+    assert sf.family_and_pressure("Will Sam I") == ("other", False)

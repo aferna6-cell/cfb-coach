@@ -261,6 +261,17 @@ PRESSURE = (
     r"loop|storm|smoke|thunder|safety go)"
 )
 _PRESSURE_RE = re.compile(PRESSURE)
+# The book source (Huddle.gg playbooks.json) writes the digit 0 as the letter O
+# and 1 as the letter I in some names. Only these named plays are cleaned before
+# the family and pressure patterns run: a general last-word O/I rule would also
+# move other catalog plays (LB Cross O, LB Pop O, LB Sting I, Sam Crash I,
+# Will Sam I), so the Strategist's decision rule keeps the cleanup to this list.
+BOOK_DIGIT_CLEANUP = {
+    "pinch buck o": "pinch buck 0",
+    "free fire o": "free fire 0",
+    "dt mike loop o": "dt mike loop 0",
+    "fs fire i": "fs fire 1",
+}
 
 
 def _tokens(text: str) -> tuple[str, list[tuple[int, int]]]:
@@ -277,6 +288,7 @@ def _family_with_tokens(name: Any) -> tuple[str, set[int], list[str]]:
     raw = norm_key(name)
     if not raw:
         return "none", set(), []
+    raw = BOOK_DIGIT_CLEANUP.get(raw, raw)
     text = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", raw)).strip()
     if not text:
         return "other", set(), []
@@ -305,7 +317,7 @@ def _family_with_tokens(name: Any) -> tuple[str, set[int], list[str]]:
     m = re.search(r"cov(er)?0|zero|blitz0\b", compact)
     if m:
         return "cover_0", from_compact(m), tokens
-    m = re.search(r"\b(blitz|buck|pinch|fire) ?[0o]$", text)
+    m = re.search(r"\b(blitz|buck|pinch|fire) ?0$", text)
     if m:
         return "cover_0", from_text(m), tokens
     m = re.search(r"cov(er)?2man", compact)
