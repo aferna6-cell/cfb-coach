@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""VOD play-call success model v6.
+"""VOD play-call success model v6, on the v0.24 shared feature module.
 
-Keeps the v5 prep() path and feature groups, and adds three call-by-situation
-groups (call_x_down, call_x_dist, call_x_zone) with their own L2 penalty.
-A key is built only when the training fold has at least five rows for that
-call and bucket. Held-out rows never contribute to the count.
+Every feature is built by ``cfb_coach.vod_success.shared_features``, the same
+module the scorer and the live path (``inference.vod_candidate_features``)
+use, so training and scoring cannot drift apart (gate v2.2 G6). The groups are
+the v0.24 recipe's: candidate-by-situation keys (offense ``call_x_*``,
+defense ``look_x_*``) built only when the training fold has at least five rows
+for that key, dense class/family back-off groups, and no score, off_adj or
+def_adj. Held-out rows never contribute to a key count. ``enable_cxs=False``
+fits the same groups without the keyed and back-off terms.
 
 This module does not read ``/workspace/vod_data``, does not write coach.db,
 and does not change live or hybrid coaching defaults. Rows are tagged
@@ -32,10 +36,11 @@ for _blas_var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", 
 import numpy as np
 
 from cfb_coach.madden.model.dataset import EXCLUDED_VOD_SOURCE, vod_source_excluded
+from cfb_coach.vod_success import shared_features as sf
 
 SCRIPT_VERSION = "train_vod_model.v6"
-CONF_MIN = 0.5
-MIN_CXS_ROWS = 5
+CONF_MIN = sf.CONF_MIN
+MIN_CXS_ROWS = sf.MIN_KEYED_ROWS
 N_BINS = 10
 EPS = 1e-6
 N_BOOT = 1000
@@ -43,10 +48,10 @@ EXCLUDED_VODS = frozenset({EXCLUDED_VOD_SOURCE})
 GAMES = ("madden27", "cfb27")
 TRAIN_TYPES = ("cpu", "human")
 SIDES = ("offense", "defense")
-SIT_GROUPS = ("down", "dist", "zone", "time", "score", "side")
-CXS_GROUPS = ("call_x_down", "call_x_dist", "call_x_zone")
+SIT_GROUPS = sf.SITUATION_GROUPS
+CXS_GROUPS = sf.KEYED_GROUPS
 PERSONNEL_LOOK_KEYS = frozenset({"nickel", "base", "dime", "empty"})
-LAMBDA_CXS_GRID = (64.0, 256.0, 1024.0, 4096.0)
+LAMBDA_CXS_GRID = sf.LAMBDA_KEYED_GRID
 DEFAULT_LAMBDA_CXS = 256.0
 DEFAULT_HP = (2.0, 16.0, 64.0)
 DEFAULT_HP_GRID = tuple(
@@ -61,24 +66,14 @@ PASS_RULE = (
     "is entirely below 0 on both the match holdout and the player holdout"
 )
 KEYS_NOTE = (
-    "A call|bucket key survives only when that training scope has at least "
+    "A candidate|bucket key survives only when that training scope has at least "
     "5 rows for it. Stratum counts use every row in the stratum. Each fold "
     "count uses that fold's training rows and leaves the held-out match or "
     "player out. Held-out rows never increment a key."
 )
 
-RUN_WORDS = (
-    r"\b(hb|fb|qb sneak|qb power|qb draw|dive|zone|power|counter|stretch|iso|slam|"
-    r"toss|sweep|draw|trap|option|sneak|lead|pitch|base|duo|wham|split|outside|inside)\b"
-)
-PASS_WORDS = (
-    r"\b(screen|pa|flat|verts?|verticals|post|dig|curl|slant|mesh|smash|stick|corner|"
-    r"out|outs|seam|cross|drive|wheel|flood|spacing|dagger|levels|shallow|hitch|pivot|"
-    r"bench|comeback|streak|fade|rpo|bubble|spot|angle|texas|under|sail|choice|strike|"
-    r"cross|y-?cross|swirl|tare|double|go|cobra|scissors|switch|snag|whip|jet|pass|"
-    r"hail mary|deep)\b"
-)
-PRESSURE = r"(blitz|fire|dog|sting|crash|edge|overload|\bsim\b|pinch|zero|mug|shoot|pressure|gaps|lurk|buck)"
+# Feature derivation lives in shared_features. These names stay for callers.
+PRESSURE = sf.PRESSURE
 PICK_AXES = (
     ("down", "down", ("1", "2", "3", "4")),
     ("distance", "dist", ("short", "medium", "long", "xlong")),
@@ -87,11 +82,7 @@ PICK_AXES = (
 _POOL: dict[str, Any] = {}
 
 
-def norm_key(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = re.sub(r"\s+", " ", str(value)).strip().lower()
-    return text or None
+norm_key = sf.norm_key
 
 
 def offense_success(down: Any, distance: Any, yardline: Any, kind: Any, yards: Any) -> bool | None:
@@ -111,100 +102,11 @@ def offense_success(down: Any, distance: Any, yardline: Any, kind: Any, yards: A
     return gained >= max(need, 0.5)
 
 
-def call_class(play: Any) -> str:
-    text = norm_key(play)
-    if not text:
-        return "none"
-    if re.search(PASS_WORDS, text):
-        return "pass"
-    if re.search(RUN_WORDS, text):
-        return "run"
-    return "unknown"
-
-
-def look_family(name: Any) -> str | None:
-    """Coverage shell family. Same heuristic as v5."""
-    text = norm_key(name)
-    if not text:
-        return None
-    text = re.sub(r"[^a-z0-9 ]", " ", text)
-    compact = text.replace(" ", "")
-    if "tampa" in text:
-        return "tampa_2"
-    if re.search(r"cov(er)?0|zero|blitz0\b", compact) or re.search(r"\b(blitz|buck|pinch|fire) ?[0o]$", text):
-        return "cover_0"
-    if re.search(r"cov(er)?2man|\b2 man\b", compact + " " + text):
-        return "cover_2_man"
-    matched = re.search(r"cov(er)?(\d)", compact)
-    if matched:
-        return f"cover_{matched.group(2)}"
-    if "quarters" in text or "palms" in text:
-        return "cover_4"
-    if "robber" in text or "hole" in text:
-        return "cover_1"
-    if re.search(r"\b(buzz|cloud|sky)\b", text) and re.search(r"\b3\b", text):
-        return "cover_3"
-    if "invert" in text and re.search(r"\b2\b", text):
-        return "cover_2"
-    digit = re.search(r"\b([0-9])\b", text)
-    if digit and digit.group(1) in "012345679":
-        return "cover_0" if digit.group(1) == "0" else f"cover_{digit.group(1)}"
-    if re.search(r"\bman\b", text):
-        return "man_other"
-    if re.search(PRESSURE, text):
-        return "pressure_other"
-    return "other"
-
-
-def dist_bucket(distance: Any) -> str:
-    if distance in (None, ""):
-        return "unk"
-    yards = int(distance)
-    if yards <= 2:
-        return "short"
-    if yards <= 6:
-        return "medium"
-    if yards <= 10:
-        return "long"
-    return "xlong"
-
-
-def zone_bucket(yardline: Any) -> str:
-    if yardline in (None, ""):
-        return "unk"
-    spot = float(yardline)
-    if spot < 20:
-        return "own_deep"
-    if spot < 50:
-        return "own"
-    if spot < 80:
-        return "opp"
-    return "red_zone"
-
-
-def clock_secs(clock: Any) -> int | None:
-    matched = re.fullmatch(r"(\d{1,2}):(\d{2})", str(clock or "").strip())
-    if not matched:
-        return None
-    return int(matched.group(1)) * 60 + int(matched.group(2))
-
-
-def time_bucket(quarter: Any, clock: Any) -> str:
-    if quarter in (None, "") or not str(quarter).isdigit():
-        return "unk"
-    quarter_n = int(quarter)
-    secs = clock_secs(clock)
-    if quarter_n in (2, 4) and secs is not None and secs <= 120:
-        return "late_half"
-    if quarter_n >= 5:
-        return "ot"
-    return "normal"
-
-
-def score_bucket(left: Any, right: Any) -> str:
-    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
-        return "close" if abs(left - right) <= 8 else "not_close"
-    return "unk"
+call_class = sf.call_class
+look_family = sf.look_family
+dist_bucket = sf.dist_bucket
+zone_bucket = sf.zone_bucket
+time_bucket = sf.two_minute_flag
 
 
 def is_personnel_look(value: Any) -> bool:
@@ -212,24 +114,15 @@ def is_personnel_look(value: Any) -> bool:
     return norm_key(value) in PERSONNEL_LOOK_KEYS
 
 
-def select_look(defense_look: Mapping[str, Any], conf: Mapping[str, Any]) -> tuple[Any, str | None]:
-    """Exact look: defensive call, then coverage seen, then overlay."""
-    for field in ("def_call", "coverage_seen", "def_overlay"):
-        if defense_look.get(field) and conf.get(field, 0) >= CONF_MIN:
-            return defense_look[field], field
-    return None, None
-
-
-def select_look_family(defense_look: Mapping[str, Any], conf: Mapping[str, Any]) -> tuple[str | None, str | None]:
-    """Shell family: coverage seen first, then the defensive call, then overlay."""
-    for field in ("coverage_seen", "def_call", "def_overlay"):
-        if defense_look.get(field) and conf.get(field, 0) >= CONF_MIN:
-            return look_family(defense_look[field]), field
-    return None, None
+def candidate_of(prepared: Mapping[str, Any]) -> str | None:
+    """The ranked candidate: our offense call, or our defensive call (the look)."""
+    if prepared.get("side") == "defense":
+        return prepared.get("look")
+    return prepared.get("call")
 
 
 def prep(row: Mapping[str, Any]) -> dict[str, Any]:
-    """v5 prep. Look and look_family come only from the defensive-look fields."""
+    """Label row to model inputs. Features come only from shared_features.training_inputs."""
     conf = row.get("conf") or {}
     if "success" in row:
         success = row["success"]
@@ -243,57 +136,36 @@ def prep(row: Mapping[str, Any]) -> dict[str, Any]:
             row.get("yards"),
         )
         source = "fallback_rule"
+    inputs = sf.training_inputs(row)
     offense_call = row.get("offense_call") or {}
-    defense_look = row.get("defense_look") or {}
-    play = offense_call.get("play") if conf.get("play", 0) >= CONF_MIN else None
-    look_raw, look_src = select_look(defense_look, conf)
-    family, family_src = select_look_family(defense_look, conf)
-    pressure = bool(
-        defense_look.get("def_call")
-        and conf.get("def_call", 0) >= CONF_MIN
-        and re.search(PRESSURE, str(defense_look["def_call"]).lower())
-    )
-    adjustments = row.get("adjustments") or {}
-    off_adj = [
-        key
-        for key in ("audible", "hot_routes", "off_macros")
-        if (adjustments.get(key) or {}).get("value")
-    ]
-    def_adj = bool((adjustments.get("def_adjustments") or {}).get("value"))
-    down = row.get("down")
-    return {
+    family_src = inputs["family_src"]
+    if family_src == "candidate":
+        conf_look = float(conf.get("def_call", 0) or 0)
+    elif family_src:
+        conf_look = float(conf.get(family_src, 0) or 0)
+    else:
+        conf_look = 0.0
+    prepared = {
         "snap_id": row.get("snap_id"),
         "vod": row["video_id"],
         "game": row.get("game"),
         "otype": row.get("opponent_type") or "unknown",
         "otype_src": row.get("opponent_type_source"),
-        "side": row.get("side") or "unknown",
         "scrimmage": (row.get("side") != "special_teams" and not row.get("is_kickoff")),
         "y": None if success is None else int(bool(success)),
         "success_src": source,
         "conf_success": float(conf.get("success", 0) or 0),
         "clean": bool(row.get("clean_pair")),
-        "call": norm_key(play),
-        "call_disp": play,
-        "call_class": call_class(play),
-        "off_adj": bool(off_adj),
-        "off_adj_kinds": off_adj,
-        "look": norm_key(look_raw),
-        "look_disp": look_raw,
-        "look_src": look_src,
-        "look_family": family or "none",
-        "look_family_src": family_src,
-        "pressure": pressure,
-        "def_adj": def_adj,
-        "down": str(down) if down not in (None, "") else "unk",
-        "dist": dist_bucket(row.get("distance")),
-        "zone": zone_bucket(row.get("yardline")),
-        "time": time_bucket(row.get("quarter"), row.get("clock")),
-        "score": score_bucket(row.get("score_left"), row.get("score_right")),
+        "call_disp": offense_call.get("play") if inputs["call"] else None,
         "conf_play": float(conf.get("play", 0) or 0),
-        "conf_look": float(conf.get(look_src, 0) or 0) if look_src else 0.0,
+        "conf_look": conf_look,
         "quality_flags": row.get("quality_flags") or [],
     }
+    prepared.update(inputs)
+    prepared["side"] = row.get("side") or "unknown"
+    prepared["look_src"] = family_src
+    prepared["look_family_src"] = family_src
+    return prepared
 
 
 def match_id_of(row: Mapping[str, Any]) -> str:
@@ -327,70 +199,24 @@ def row_features(
     enable_cxs: bool = False,
     allowed_cxs: Mapping[str, set[str]] | None = None,
 ) -> list[tuple[str, str]]:
-    """Active (group, level) indicators. v5 groups, plus call-by-situation keys when enabled."""
-    features = [(group, prepared[group]) for group in SIT_GROUPS]
-    features.append(("down_x_dist", f"{prepared['down']}|{prepared['dist']}"))
-    if situation_only:
-        return features
-    features.append(("call_class", prepared["call_class"]))
-    if prepared["call"]:
-        features.append(("call", prepared["call"]))
-    if prepared["off_adj"]:
-        features.append(("off_adj", "yes"))
-    features.append(("look_family", prepared["look_family"]))
-    if prepared["pressure"]:
-        features.append(("pressure", "yes"))
-    if prepared["def_adj"]:
-        features.append(("def_adj", "yes"))
-    if prepared["look"]:
-        features.append(("look", prepared["look"]))
-    features.append(("class_x_family", f"{prepared['call_class']}|{prepared['look_family']}"))
-    if prepared["call"] and prepared["look_family"] != "none":
-        features.append(("call_x_family", f"{prepared['call']}|{prepared['look_family']}"))
-    if enable_cxs and prepared.get("call"):
-        pairs = (
-            ("call_x_down", prepared["down"]),
-            ("call_x_dist", prepared["dist"]),
-            ("call_x_zone", prepared["zone"]),
-        )
-        for group, bucket in pairs:
-            key = f"{prepared['call']}|{bucket}"
-            if allowed_cxs is not None and key not in allowed_cxs.get(group, ()):
-                continue
-            features.append((group, key))
-    return features
+    """Active (group, level) indicators, from shared_features.feature_levels."""
+    levels = sf.feature_levels(
+        prepared,
+        situation_only=situation_only,
+        enable_keyed=enable_cxs,
+        allowed_keys=allowed_cxs if allowed_cxs is not None else {group: set() for group in CXS_GROUPS},
+    )
+    return list(levels.items())
 
 
 def group_penalty(group: str, hp: Sequence[float], lambda_cxs: float | None = None) -> float:
-    """v5 group penalties. The three new groups use lambda_cxs, not lambda_interaction."""
-    lam_sit, lam_entity, lam_inter = hp
-    if group in CXS_GROUPS:
-        if lambda_cxs is None:
-            raise ValueError("lambda_cxs is required for call-by-situation groups")
-        return float(lambda_cxs)
-    if group in SIT_GROUPS:
-        return float(lam_sit)
-    if group in ("down_x_dist", "call_class", "look_family", "pressure", "class_x_family"):
-        return float(2 * lam_sit)
-    if group in ("call", "look", "off_adj", "def_adj"):
-        return float(lam_entity)
-    return float(lam_inter)
+    """Shared penalties. Keyed groups use lambda_cxs; back-off groups 2 x lambda_situation."""
+    return sf.group_penalty(group, hp, lambda_cxs)
 
 
 def allowed_cxs_keys(rows: Sequence[Mapping[str, Any]], min_rows: int = MIN_CXS_ROWS) -> dict[str, set[str]]:
     """Keys with at least ``min_rows`` rows. ``rows`` must be the training fold only."""
-    counts = {group: collections.Counter() for group in CXS_GROUPS}
-    for prepared in rows:
-        call = prepared.get("call")
-        if not call:
-            continue
-        counts["call_x_down"][f"{call}|{prepared['down']}"] += 1
-        counts["call_x_dist"][f"{call}|{prepared['dist']}"] += 1
-        counts["call_x_zone"][f"{call}|{prepared['zone']}"] += 1
-    return {
-        group: {key for key, count in counts[group].items() if count >= min_rows}
-        for group in CXS_GROUPS
-    }
+    return sf.allowed_keys(rows, min_rows)
 
 
 def cxs_keys_survived(rows: Sequence[Mapping[str, Any]], min_rows: int = MIN_CXS_ROWS) -> dict[str, list[str]]:
@@ -617,11 +443,12 @@ def constant_pick_check(
     raw_rows: Sequence[Mapping[str, Any]],
     candidates: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """How often the argmax call changes with down, distance, or zone inside one look.
+    """How often the argmax candidate changes with down, distance, or zone inside one look.
 
-    Look and look_family are built by prep()/select_look()/select_look_family().
-    Personnel tokens (nickel, base, dime, empty) are never look keys. Package and
-    personnel fields on the raw row are not read.
+    Look and look_family come from prep() (shared_features). Candidates are
+    swapped with ``shared_features.swap_candidate``, so a swapped candidate gets
+    the same derived class/family the scorer would give it. Personnel tokens
+    (nickel, base, dime, empty) are never look keys.
     """
     paired = [(raw, prep(raw)) for raw in raw_rows]
     by_look: dict[str, dict[str, Any]] = {}
@@ -636,15 +463,10 @@ def constant_pick_check(
             continue
         by_look.setdefault(look, prepared)
     if candidates is None:
-        candidate_keys = sorted({prepared["call"] for _raw, prepared in paired if prepared.get("call")})
+        candidate_keys = sorted({candidate_of(prepared) for _raw, prepared in paired if candidate_of(prepared)})
     else:
         candidate_keys = sorted({key for key in (norm_key(call) for call in candidates) if key})
-    class_of: dict[str, str] = {}
-    for _raw, prepared in paired:
-        if prepared.get("call") and prepared["call"] not in class_of:
-            class_of[prepared["call"]] = prepared["call_class"]
-    for call in candidate_keys:
-        class_of.setdefault(call, call_class(call))
+    candidate_keys = [key for key in candidate_keys if not sf.is_kneel(key)]
     looks: list[dict[str, Any]] = []
     if candidate_keys and by_look:
         for look in sorted(by_look):
@@ -661,9 +483,7 @@ def constant_pick_check(
                 for level in levels:
                     variants = []
                     for call in candidate_keys:
-                        variant = dict(template)
-                        variant["call"] = call
-                        variant["call_class"] = class_of[call]
+                        variant = sf.swap_candidate(template, call)
                         variant[field] = level
                         variants.append(variant)
                     preds = np.asarray(model.predict(variants), dtype=float)
@@ -880,7 +700,7 @@ def fit_fold(
             raise RuntimeError("fitted call-by-situation keys do not match the training-fold counts")
     else:
         survived = {group: [] for group in CXS_GROUPS}
-    candidates = sorted({row["call"] for row in train if row.get("call")})
+    candidates = sorted({candidate_of(row) for row in train if candidate_of(row)})
     pick = constant_pick_check(v6, train_raw, candidates=candidates)
     return {
         "held_out": held,
@@ -1050,6 +870,10 @@ def evaluate_holdout(
             "down": row["down"],
             "dist": row["dist"],
             "zone": row["zone"],
+            "time": row["time"],
+            "scored_family": row["look_family"],
+            "family_src": row["family_src"],
+            "location_missing": bool(row["location_missing"]),
             "v6": _round(pred["v6"][i]),
             "v5_refit": _round(pred["v5_refit"][i]),
             "situation_only": _round(pred["situation_only"][i]),
@@ -1097,7 +921,7 @@ def _final_fit(
         survived = {group: sorted(model.allowed_cxs[group]) for group in CXS_GROUPS}
     else:
         survived = {group: [] for group in CXS_GROUPS}
-    candidates = sorted({row["call"] for row in prepped if row.get("call")})
+    candidates = sorted({candidate_of(row) for row in prepped if candidate_of(row)})
     return {
         "hp": [float(value) for value in hp],
         "lambda_cxs": None if lam is None else float(lam),
@@ -1222,8 +1046,13 @@ def train(
     prepped_by_key: dict[str, list[dict[str, Any]]] = {}
     not_trained: dict[str, dict[str, Any]] = {}
     n_unknown_success = 0
+    n_kneel_excluded = 0
     for raw in kept:
         prepared = prepare_row(raw)
+        if prepared["kneel"]:
+            # QB Kneel is a clock rule, never a training target (Q6).
+            n_kneel_excluded += 1
+            continue
         if prepared["y"] is None or not prepared["scrimmage"]:
             n_unknown_success += 0 if prepared["y"] is not None else 1
             continue
@@ -1270,6 +1099,15 @@ def train(
         "excluded": excluded,
         "not_trained": not_trained,
         "n_unknown_success": n_unknown_success,
+        "n_kneel_excluded": n_kneel_excluded,
+        "feature_module": {
+            "module": "cfb_coach.vod_success.shared_features",
+            "version": sf.FEATURE_MODULE_VERSION,
+            "recipe_sha256": sf.RECIPE_SHA256,
+            "gate_sha256": sf.GATE_SHA256,
+            "dropped_groups": {side: list(groups) for side, groups in sf.DROPPED_GROUPS.items()},
+            "notes": list(sf.MANIFEST_NOTES),
+        },
         "strata": strata,
     }
     return _jsonable(report)

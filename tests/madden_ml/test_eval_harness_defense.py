@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from cfb_coach.vod_success.features import feature_map, snap_from_row
+from cfb_coach.vod_success import shared_features as sf
 from scripts.madden_ml import eval_harness
 from scripts.madden_ml.eval_harness import score_offline_model
 
@@ -80,7 +80,8 @@ def _assert_call_empty(row: dict, play: str) -> None:
     groups = row["features"]["groups"]
     assert groups["call"]["key"] is None
     assert groups["call_x_family"]["key"] is None
-    assert groups["call_class"]["key"] == "none"
+    # call_class is dropped on defense (recipe D2), so it is not built at all.
+    assert groups["call_class"]["key"] is None
     folded = play.casefold()
     for name in _CALL_DERIVED:
         key = groups[name]["key"] or ""
@@ -159,23 +160,18 @@ def test_defense_rows_leave_call_and_call_x_family_empty(tmp_path: Path, defense
         _assert_call_empty(row, play)
         assert row["features"]["groups"]["call"]["key"] is None
         assert row["features"]["groups"]["call_x_family"]["key"] is None
-    trainer = feature_map(snap_from_row({
-        "game": "madden27",
-        "opponent_type": "human",
+    # Training side: a defense label row whose own call (def_call) is Cover 2.
+    trainer = sf.feature_levels(sf.training_inputs({
         "side": "defense",
-        "play": "",
-        "formation": "Nickel",
+        "offense_call": {"play": "HB Dive"},
+        "defense_look": {"def_call": "Cover 2", "coverage_seen": "Cover 4"},
+        "conf": {"play": 1.0, "def_call": 1.0, "coverage_seen": 1.0},
         "down": 1,
         "distance": 10,
-        "look": "Cover 2",
-        "coverage_seen": "",
-        "situation_raw": "1st and 10",
-        "success": None,
     }))
-    assert "call" not in trainer
-    assert "call_x_family" not in trainer
-    assert trainer["call_class"] == "none"
+    for dropped in ("call", "call_x_family", "call_class", "class_x_family"):
+        assert dropped not in trainer
     low = rows[0]
-    assert low["features"]["groups"]["look_family"]["key"] == trainer["look_family"]
-    assert low["features"]["groups"]["class_x_family"]["key"] == trainer["class_x_family"]
-    assert trainer["class_x_family"] == "none|cover_2"
+    assert low["features"]["groups"]["look_family"]["key"] == trainer["look_family"] == "cover_2"
+    assert low["features"]["groups"]["look"]["key"] == trainer["look"] == "cover 2"
+    assert low["features"]["groups"]["class_x_family"]["key"] is None

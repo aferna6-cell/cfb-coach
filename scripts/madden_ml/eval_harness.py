@@ -706,6 +706,9 @@ def _offline_context(
         row["quarter"] = quarter
     if clock_text:
         row["clock"] = clock_text
+    touched = _field(source, "yardline_touched", extras.get("yardline_touched"))
+    if isinstance(touched, bool):
+        row["yardline_touched"] = touched
     if look is not None:
         row["look"] = look
         row["coverage_seen"] = look
@@ -737,40 +740,39 @@ def _offline_context(
     return {"row": row, "raw": raw, "coerced": coerced}
 
 
-def _candidate_feature_map(row: dict[str, Any], *, formation: str, play: str, side: str) -> dict[str, str]:
-    """One level per group, from the same builder the trainer uses."""
-    from cfb_coach.vod_success.features import feature_map, snap_from_row
+def _live_feature_kwargs(row: Mapping[str, Any]) -> dict[str, Any]:
+    """The situation fields the live path supplies. No def_call, no coverage_seen."""
+    return {
+        "down": row.get("down"),
+        "distance": row.get("distance"),
+        "yardline": row.get("yardline"),
+        "yardline_touched": row.get("yardline_touched"),
+        "quarter": row.get("quarter"),
+        "clock": row.get("clock"),
+    }
 
-    built = dict(row)
-    built["formation"] = formation
-    built["play"] = play
-    built["side"] = side
-    return feature_map(snap_from_row(built))
+
+def _candidate_feature_map(row: dict[str, Any], *, formation: str, play: str, side: str) -> dict[str, str]:
+    """Offense candidate. Same function inference.py uses live (shared feature module)."""
+    from cfb_coach.madden.model.inference import vod_candidate_features
+
+    del formation  # not a model input
+    return vod_candidate_features(
+        side, play, opp_look=row.get("look"), **_live_feature_kwargs(row),
+    )
 
 
 def _defense_feature_map(row: dict[str, Any], *, formation: str, play: str, side: str) -> dict[str, str]:
-    """Defensive candidate as the look. The offense call stays empty.
+    """Defensive candidate as the look. The offense call is not a defense input.
 
-    Defense models estimate P(offense succeeds | offense play, our look,
-    situation). ``call`` is the offense play, which this hook does not have,
-    so ``feature_map`` does not build ``call``, ``call_x_family``, or a
-    ``call_class`` from our defensive play name. Look, look family, and the
-    other keys ``feature_map`` derives from that look are the trainer's.
+    Defense models estimate P(offense succeeds | our defensive call, situation).
+    The family, look and pressure come from our own candidate play; the typed
+    opponent look and any def_call/coverage_seen column are never read.
     """
-    from cfb_coach.vod_success.features import feature_map, snap_from_row
+    from cfb_coach.madden.model.inference import vod_candidate_features
 
-    built = dict(row)
-    built["formation"] = formation
-    built["play"] = ""
-    built["call"] = ""
-    built["our_call"] = ""
-    built["side"] = side
-    # On a defense snap the trainer reads ``coverage_seen`` as the call when
-    # the play is blank. Clear it so the offense call stays empty, and put
-    # our defensive play in ``look``, which ``_look_text`` still reads.
-    built["coverage_seen"] = ""
-    built["look"] = play
-    return feature_map(snap_from_row(built))
+    del formation  # not a model input
+    return vod_candidate_features(side, play, **_live_feature_kwargs(row))
 
 
 def _candidate_logit(
@@ -783,7 +785,7 @@ def _candidate_logit(
     ``{call}|{family}``, ``down_x_dist`` is ``{down}|{dist}``). A group the
     builder omitted, or a key absent from ``coef``, contributes 0.
     """
-    from cfb_coach.vod_success.features import ALL_GROUPS
+    from cfb_coach.vod_success.shared_features import ALL_GROUPS
 
     intercepts = [float(model.get("intercept") or 0.0) for model in models]
     intercept = sum(intercepts) / float(len(intercepts))

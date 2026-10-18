@@ -41,6 +41,7 @@ from cfb_coach.madden.model.schema import (
     to_dict,
 )
 from cfb_coach.madden.model.train import load_artifact
+from cfb_coach.vod_success import shared_features as vod_features
 
 logger = logging.getLogger(__name__)
 
@@ -750,6 +751,76 @@ class OppLookSession:
 
     def finish_snap(self) -> None:
         self.current = None
+
+
+def vod_live_inputs(
+    side: Any,
+    candidate: Any,
+    *,
+    opp_look: Any = None,
+    down: Any = None,
+    distance: Any = None,
+    yardline: Any = None,
+    yardline_touched: Any = None,
+    quarter: Any = None,
+    clock: Any = None,
+) -> dict[str, Any]:
+    """Live-shaped VOD model inputs for one candidate.
+
+    Only what the live path carries: our candidate, the typed ``opp_look``
+    (offense family source), and the situation fields. ``def_call`` and
+    ``coverage_seen`` are never read. ``yardline_touched=False`` (a yardline
+    nobody edited, so the own-25 default) maps to the missing-location bucket.
+    """
+    return vod_features.live_inputs(
+        side,
+        candidate,
+        opp_look=normalize_opp_look(opp_look),
+        down=down,
+        distance=distance,
+        yardline=yardline,
+        yardline_touched=yardline_touched,
+        quarter=quarter,
+        clock=clock,
+    )
+
+
+def vod_candidate_features(
+    side: Any,
+    candidate: Any,
+    *,
+    opp_look: Any = None,
+    down: Any = None,
+    distance: Any = None,
+    yardline: Any = None,
+    yardline_touched: Any = None,
+    quarter: Any = None,
+    clock: Any = None,
+    enable_keyed: bool = True,
+) -> dict[str, str]:
+    """VOD model feature levels for one live candidate (gate v2.2 G6 scoring side).
+
+    The offline scorer and the parity test call this same function. Training
+    builds the same levels from label rows through
+    ``shared_features.training_inputs`` and ``shared_features.feature_levels``.
+    """
+    inputs = vod_live_inputs(
+        side,
+        candidate,
+        opp_look=opp_look,
+        down=down,
+        distance=distance,
+        yardline=yardline,
+        yardline_touched=yardline_touched,
+        quarter=quarter,
+        clock=clock,
+    )
+    return vod_features.feature_levels(inputs, enable_keyed=enable_keyed)
+
+
+def vod_fallback_reason(opp_look: Any, margin: float | None) -> str | None:
+    """``blank_look`` or ``tie`` (top-two margin < 0.01) sends the snap to HEURISTIC."""
+    return vod_features.heuristic_fallback(normalize_opp_look(opp_look), margin)
 
 
 @dataclass(frozen=True)

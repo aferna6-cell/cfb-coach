@@ -31,7 +31,6 @@ from cfb_coach.vod_success.train_vod_model_v6 import (
     prep,
     prepare_row,
     row_features,
-    score_bucket,
     select_lambda_cxs,
     split_excluded,
     time_bucket,
@@ -286,7 +285,7 @@ def test_report_fold_counts_ignore_held_out_rows(v6_report):
     assert player_folds["p2"]["keys_survived"] == manual_p2
 
 
-def test_disable_flag_uses_v5_feature_set():
+def test_disable_flag_drops_keyed_groups_on_v024_features():
     raw = _row(
         down=1,
         distance=10,
@@ -303,33 +302,27 @@ def test_disable_flag_uses_v5_feature_set():
         },
     )
     prepared = prep(raw)
+    # def_call never feeds the look; score/off_adj/def_adj are dropped (recipe O2, O4).
     expected = [
         ("down", "1"),
         ("dist", "long"),
         ("zone", "own"),
-        ("time", "normal"),
-        ("score", "close"),
-        ("side", "offense"),
         ("down_x_dist", "1|long"),
+        ("side", "offense"),
+        ("time", "off"),
+        ("look", "cover 2"),
+        ("look_family", "cover_2"),
         ("call_class", "pass"),
         ("call", "mesh"),
-        ("off_adj", "yes"),
-        ("look_family", "cover_2"),
-        ("pressure", "yes"),
-        ("def_adj", "yes"),
-        ("look", "cover 3 blitz"),
-        ("class_x_family", "pass|cover_2"),
         ("call_x_family", "mesh|cover_2"),
+        ("class_x_family", "pass|cover_2"),
     ]
     assert row_features(prepared, enable_cxs=False) == expected
-    assert SIT_GROUPS == ("down", "dist", "zone", "time", "score", "side")
+    assert SIT_GROUPS == ("side", "down", "dist", "zone", "time", "down_x_dist")
     situation = [
         ("down", "1"),
         ("dist", "long"),
         ("zone", "own"),
-        ("time", "normal"),
-        ("score", "close"),
-        ("side", "offense"),
         ("down_x_dist", "1|long"),
     ]
     allowed = {
@@ -339,25 +332,32 @@ def test_disable_flag_uses_v5_feature_set():
     }
     assert row_features(prepared, situation_only=True, enable_cxs=True, allowed_cxs=allowed) == situation
     with_cxs = expected + [
+        ("class_x_down_x_dist", "pass|1|long"),
+        ("class_x_zone", "pass|own"),
         ("call_x_down", "mesh|1"),
         ("call_x_dist", "mesh|long"),
         ("call_x_zone", "mesh|own"),
     ]
     assert row_features(prepared, enable_cxs=True, allowed_cxs=allowed) == with_cxs
+    groups = {group for group, _level in row_features(prepared, enable_cxs=True, allowed_cxs=allowed)}
+    assert groups.isdisjoint({"score", "off_adj", "def_adj"})
     copies = [prepare_row(_row(snap_id=f"c{i}", success=i % 2 == 0)) for i in range(5)]
     disabled = GroupLR(DEFAULT_HP, enable_cxs=False, lambda_cxs=64).fit(copies)
     enabled = GroupLR(DEFAULT_HP, enable_cxs=True, lambda_cxs=256).fit(copies)
     assert set(CXS_GROUPS).isdisjoint(disabled.groups())
-    assert set(CXS_GROUPS) <= set(enabled.groups())
+    assert {"call_x_down", "call_x_dist", "call_x_zone"} <= set(enabled.groups())
     assert set(enabled.vocab) - set(disabled.vocab) == {
         ("call_x_down", "mesh|1"),
         ("call_x_dist", "mesh|long"),
         ("call_x_zone", "mesh|own"),
+        ("class_x_down_x_dist", "pass|1|long"),
+        ("class_x_zone", "pass|own"),
     }
     assert disabled.penalty_by_group["call_x_family"] == DEFAULT_HP[2]
     assert "call_x_down" not in disabled.penalty_by_group
     assert enabled.penalty_by_group["call_x_down"] == 256
     assert enabled.penalty_by_group["call_x_family"] == DEFAULT_HP[2]
+    assert enabled.penalty_by_group["class_x_down_x_dist"] == 2 * DEFAULT_HP[0]
     hp = (1.0, 4.0, 16.0)
     assert group_penalty("down", hp, 64) == 1
     assert group_penalty("down_x_dist", hp, 64) == 2
@@ -366,9 +366,41 @@ def test_disable_flag_uses_v5_feature_set():
     assert group_penalty("call_x_down", hp, 64) == 64
     assert group_penalty("call_x_dist", hp, 1024) == 1024
     assert group_penalty("call_x_zone", hp, 4096) == 4096
+    assert group_penalty("look_x_zone", hp, 4096) == 4096
+    assert group_penalty("class_x_zone", hp, 4096) == 2
+    assert group_penalty("family_x_down_x_dist", hp, 4096) == 2
 
 
-def test_cxs_key_format_and_v5_buckets():
+def test_defense_rows_use_our_candidate_and_drop_offense_call():
+    raw = _row(
+        side="defense",
+        offense_call={"play": "HB Dive"},
+        defense_look={"def_call": "DB Fire 2", "coverage_seen": "Cover 1", "def_overlay": ""},
+        down=3,
+        distance=2,
+        yardline=None,
+        yards_to_goal=None,
+    )
+    prepared = prep(raw)
+    feats = dict(row_features(prepared, enable_cxs=True, allowed_cxs={
+        "look_x_down": {"db fire 2|3"}, "look_x_dist": {"db fire 2|short"}, "look_x_zone": set(),
+    }))
+    assert prepared["look"] == "db fire 2"
+    assert prepared["look_family"] == "cover_2"
+    assert prepared["family_src"] == "candidate"
+    assert feats["pressure"] == "yes"
+    assert feats["zone"] == "unk"
+    assert prepared["location_missing"] is True
+    for dropped in ("call", "call_x_family", "call_class", "class_x_family", "score", "off_adj", "def_adj"):
+        assert dropped not in feats
+    assert feats["look_x_down"] == "db fire 2|3"
+    assert feats["look_x_dist"] == "db fire 2|short"
+    assert "look_x_zone" not in feats and "family_x_zone" not in feats
+    assert feats["family_x_down_x_dist"] == "cover_2|3|short"
+    assert feats["pressure_x_down_x_dist"] == "yes|3|short"
+
+
+def test_cxs_key_format_and_shared_buckets():
     assert dist_bucket(None) == "unk"
     assert dist_bucket(2) == "short"
     assert dist_bucket(3) == "medium"
@@ -384,13 +416,13 @@ def test_cxs_key_format_and_v5_buckets():
     assert zone_bucket(50) == "opp"
     assert zone_bucket(79) == "opp"
     assert zone_bucket(80) == "red_zone"
-    assert time_bucket(2, "1:30") == "late_half"
-    assert time_bucket(2, "3:00") == "normal"
-    assert time_bucket(5, "1:00") == "ot"
-    assert time_bucket("", "1:00") == "unk"
-    assert score_bucket(14, 7) == "close"
-    assert score_bucket(20, 0) == "not_close"
-    assert score_bucket(None, 0) == "unk"
+    assert zone_bucket(None, 15) == "red_zone"
+    assert zone_bucket(25, yardline_touched=False) == "unk"
+    assert time_bucket(2, "1:30") == "on"
+    assert time_bucket(2, "3:00") == "off"
+    assert time_bucket(5, "1:00") == "off"
+    assert time_bucket("", "1:00") == "unknown"
+    assert time_bucket(4, "") == "unknown"
     prepared = prepare_row(_row(
         offense_call={"play": "Mesh"},
         down=1,
@@ -428,7 +460,7 @@ class _DownSwitch:
         return out
 
 
-def test_constant_pick_uses_prep_look_order():
+def test_constant_pick_uses_shared_look_order():
     assert CONF_MIN == 0.5
     primary = _row(
         snap_id="primary",
@@ -443,78 +475,70 @@ def test_constant_pick_uses_prep_look_order():
         base="base",
         empty="empty",
     )
-    from_coverage = _row(
-        snap_id="from-coverage",
+    low_coverage = _row(
+        snap_id="low-coverage",
         offense_call={"play": "HB Dive"},
         defense_look={"def_call": "Cover 0", "coverage_seen": "Cover 4", "def_overlay": "Cover 6"},
-        conf=_conf(def_call=0.1, coverage_seen=0.9, def_overlay=0.9),
-    )
-    family_from_call = _row(
-        snap_id="family-from-call",
-        offense_call={"play": "Mesh"},
-        defense_look={"def_call": "Cover 1", "coverage_seen": "Cover 4", "def_overlay": "Cover 6"},
         conf=_conf(def_call=0.9, coverage_seen=0.1, def_overlay=0.9),
     )
-    overlay_only = _row(
-        snap_id="overlay-only",
+    call_only = _row(
+        snap_id="call-only",
         offense_call={"play": "Mesh"},
-        defense_look={"def_call": "Nickel", "coverage_seen": "Dime", "def_overlay": "Cover 6"},
-        conf=_conf(def_call=0.2, coverage_seen=0.2, def_overlay=0.9),
+        defense_look={"def_call": "Cover 1", "coverage_seen": "", "def_overlay": ""},
+        conf=_conf(def_call=0.9, coverage_seen=0.0, def_overlay=0.0),
     )
     personnel_rows = [
         _row(
             snap_id=f"personnel-{token}",
             offense_call={"play": "Mesh"},
-            defense_look={"def_call": token, "coverage_seen": "Cover 3", "def_overlay": "Cover 4"},
+            defense_look={"def_call": "Cover 3", "coverage_seen": token, "def_overlay": "Cover 4"},
             conf=_conf(),
         )
         for token in ("Nickel", "Base", "Dime", "Empty")
     ]
     prepared = prep(primary)
-    assert prepared["look"] == "cover 3"
-    assert prepared["look_src"] == "def_call"
+    assert prepared["look"] == "cover 2 man"
+    assert prepared["look_src"] == "coverage_seen"
     assert prepared["look_family"] == "cover_2_man"
     assert prepared["look_family_src"] == "coverage_seen"
-    assert prepared["look"] not in {"nickel", "base", "dime", "empty"}
+    assert prep(call_only)["look"] is None
+    assert prep(call_only)["look_family"] == "none"
     report = constant_pick_check(
         _DownSwitch(),
-        [primary, from_coverage, family_from_call, overlay_only, *personnel_rows],
+        [primary, low_coverage, call_only, *personnel_rows],
     )
     by_look = {row["look"]: row for row in report["looks"]}
-    assert set(by_look) == {"cover 3", "cover 4", "cover 1", "cover 6"}
-    assert by_look["cover 3"]["look_src"] == "def_call"
-    assert by_look["cover 3"]["look_family"] == "cover_2_man"
-    assert by_look["cover 3"]["look_family_src"] == "coverage_seen"
-    assert by_look["cover 3"]["look_src"] == prep(primary)["look_src"]
-    assert by_look["cover 4"]["look_src"] == "coverage_seen"
-    assert by_look["cover 4"]["look_family_src"] == "coverage_seen"
-    assert by_look["cover 4"]["look_family"] == "cover_4"
-    assert by_look["cover 1"]["look_src"] == "def_call"
-    assert by_look["cover 1"]["look_family_src"] == "def_call"
-    assert by_look["cover 1"]["look_family"] == "cover_1"
+    assert set(by_look) == {"cover 2 man", "cover 6"}
     assert by_look["cover 6"]["look_src"] == "def_overlay"
-    assert by_look["cover 6"]["look_family_src"] == "def_overlay"
+    assert by_look["cover 6"]["look_family"] == "cover_6"
     assert report["skipped_personnel_looks"] == ["base", "dime", "empty", "nickel"]
     for token in ("nickel", "base", "dime", "empty"):
         assert token not in by_look
-    assert by_look["cover 3"]["changed_down"] is True
-    assert by_look["cover 3"]["picks_down"] == ["mesh", "hb dive", "hb dive", "hb dive"]
-    assert by_look["cover 3"]["changed_distance"] is False
-    assert by_look["cover 3"]["changed_zone"] is False
-    assert report["rate_changed_down"] == 1
-    assert report["rate_changed_distance"] == 0
-    assert report["rate_changed_zone"] == 0
+    assert by_look["cover 2 man"]["changed_down"] is True
+    assert by_look["cover 2 man"]["picks_down"] == ["mesh", "hb dive", "hb dive", "hb dive"]
+    assert by_look["cover 2 man"]["changed_distance"] is False
+    assert by_look["cover 2 man"]["changed_zone"] is False
     half = prep(_row(
-        defense_look={"def_call": "Cover 3", "coverage_seen": "", "def_overlay": ""},
-        conf=_conf(def_call=0.5, coverage_seen=0.0, def_overlay=0.0),
+        defense_look={"def_call": "Cover 3", "coverage_seen": "Cover 3", "def_overlay": ""},
+        conf=_conf(def_call=0.0, coverage_seen=0.5, def_overlay=0.0),
     ))
     below = prep(_row(
-        defense_look={"def_call": "Cover 3", "coverage_seen": "", "def_overlay": ""},
-        conf=_conf(def_call=0.49, coverage_seen=0.0, def_overlay=0.0),
+        defense_look={"def_call": "Cover 3", "coverage_seen": "Cover 3", "def_overlay": ""},
+        conf=_conf(def_call=0.9, coverage_seen=0.49, def_overlay=0.0),
     ))
-    assert half["look_src"] == "def_call"
+    assert half["look_src"] == "coverage_seen"
     assert half["look"] == "cover 3"
     assert below["look"] is None
+
+
+def test_kneel_rows_are_never_training_targets():
+    rows = [_row(snap_id=f"k{i}", match_id=f"m{i % 2}", offense_call={"play": "QB Kneel"}) for i in range(3)]
+    rows += [_row(snap_id=f"r{i}", match_id=f"m{i % 2}", success=i % 2 == 0) for i in range(6)]
+    report = train(rows, workers=1, hp_grid=TINY_HP, lambda_cxs_grid=TINY_LAMBDA, n_boot=0, min_groups=2)
+    assert report["n_kneel_excluded"] == 3
+    assert report["strata"]["madden27/cpu/offense"]["n_rows"] == 6
+    assert report["feature_module"]["recipe_sha256"].startswith("f7c17d16")
+    assert report["feature_module"]["gate_sha256"].startswith("4d4234aa")
 
 
 def test_excludes_blocked_vod_and_audit_games():
@@ -610,8 +634,8 @@ def test_holdout_report_metrics_pass_rule_and_scored_on(v6_report):
     player_ci = stratum["holdouts"]["player"]["logloss_diff_v6_minus_v5"]["ci95"]
     assert stratum["v6_better"] is v6_beats_v5(match_ci, player_ci)
     look = stratum["final_constant_pick"]["looks"][0]
-    assert look["look"] == "cover 3"
-    assert look["look_src"] == "def_call"
+    assert look["look"] == "cover 2"
+    assert look["look_src"] == "coverage_seen"
     assert look["look_family"] == "cover_2"
     assert look["look_family_src"] == "coverage_seen"
     json.dumps(v6_report)

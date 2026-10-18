@@ -34,8 +34,14 @@ if str(_ROOT) not in sys.path:
 
 from cfb_coach.madden.catalog import is_deep, is_run
 from cfb_coach.madden.model.schema import MLStatus, is_live_selectable
-from cfb_coach.vod_success.features import _look_family, _norm
+from cfb_coach.vod_success.shared_features import look_family as _look_family
+from cfb_coach.vod_success.shared_features import norm_key as _norm_key
 from cfb_coach.zones import field_zone
+
+
+def _norm(value: Any) -> str:
+    return _norm_key(value) or ""
+
 
 DISCLAIMER = (
     "These are decision-quality checks only. They are not effectiveness claims."
@@ -63,9 +69,11 @@ HEURISTIC_SEED_CHANGE = (
 )
 # First key present on the seed-0 heuristic (then any later seed) wins.
 _HEURISTIC_WEIGHT_KEYS = ("candidate_probabilities", "sampling_weights", "weights")
-# Trainer look text is def_call, then coverage_seen, then def_overlay.
-# Family is coverage_seen first, mapped by the trainer's own _look_family.
+# Look text and family follow the shared feature module (recipe f7c17d16 O4,
+# live-shaped): coverage_seen, then def_overlay. def_call has no live source and
+# is never a look or family source; it is still recorded as a present column.
 _COVERAGE_FIELDS = ("def_call", "coverage_seen", "def_overlay")
+_LOOK_FIELDS = ("coverage_seen", "def_overlay")
 # These are personnel packages. They are not trained look or look_family keys.
 _PACKAGE_TOKENS = frozenset(
     {
@@ -1109,9 +1117,9 @@ def _raise_if_coverage_dropped(*, columns_present: bool, nonblank: bool, look: s
 
 
 def build_prep_look(sit: Any, opp_look: Any = None) -> dict[str, Any]:
-    """Look from def_call, then coverage_seen, then def_overlay.
+    """Look from coverage_seen, then def_overlay. def_call is never read.
 
-    ``look_family`` uses coverage_seen first and the trainer's ``_look_family``.
+    ``look_family`` is ``shared_features.look_family`` of that same look.
     A source with none of those columns is no look (``None``), not a failure.
     A personnel package is not a coverage column.
     """
@@ -1128,16 +1136,11 @@ def build_prep_look(sit: Any, opp_look: Any = None) -> dict[str, Any]:
             raws["coverage_seen"] = opp_look
             columns_present = True
     nonblank = any(
-        _raw_coverage_nonblank(raws[field]) for field in _COVERAGE_FIELDS if field in raws
+        _raw_coverage_nonblank(raws[field]) for field in _LOOK_FIELDS if field in raws
     )
-    look = (
-        _trainer_text(raws.get("def_call"))
-        or _trainer_text(raws.get("coverage_seen"))
-        or _trainer_text(raws.get("def_overlay"))
-    )
+    look = _trainer_text(raws.get("coverage_seen")) or _trainer_text(raws.get("def_overlay"))
     _raise_if_coverage_dropped(columns_present=columns_present, nonblank=nonblank, look=look)
-    family_source = _trainer_text(raws.get("coverage_seen")) or look
-    family = _look_family(family_source or "")
+    family = _look_family(look or "")
     if not columns_present:
         status = "no_coverage_in_source"
     elif look is None:
