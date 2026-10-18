@@ -706,6 +706,9 @@ def _offline_context(
         row["quarter"] = quarter
     if clock_text:
         row["clock"] = clock_text
+    touched = _field(source, "yardline_touched", extras.get("yardline_touched"))
+    if isinstance(touched, bool):
+        row["yardline_touched"] = touched
     if look is not None:
         row["look"] = look
         row["coverage_seen"] = look
@@ -737,40 +740,64 @@ def _offline_context(
     return {"row": row, "raw": raw, "coerced": coerced}
 
 
+def _live_feature_kwargs(row: Mapping[str, Any]) -> dict[str, Any]:
+    """The situation fields the live path supplies. No def_call, no coverage_seen."""
+    return {
+        "down": row.get("down"),
+        "distance": row.get("distance"),
+        "yardline": row.get("yardline"),
+        "yardline_touched": row.get("yardline_touched"),
+        "quarter": row.get("quarter"),
+        "clock": row.get("clock"),
+    }
+
+
 def _candidate_feature_map(row: dict[str, Any], *, formation: str, play: str, side: str) -> dict[str, str]:
-    """One level per group, from the same builder the trainer uses."""
-    from cfb_coach.vod_success.features import feature_map, snap_from_row
+    """Offense candidate. Same function inference.py uses live (shared feature module)."""
+    from cfb_coach.madden.model.inference import vod_candidate_features
 
-    built = dict(row)
-    built["formation"] = formation
-    built["play"] = play
-    built["side"] = side
-    return feature_map(snap_from_row(built))
+    del formation  # not a model input
+    return vod_candidate_features(
+        side, play, opp_look=row.get("look"), **_live_feature_kwargs(row),
+    )
 
 
-def _defense_feature_map(row: dict[str, Any], *, formation: str, play: str, side: str) -> dict[str, str]:
-    """Defensive candidate as the look. The offense call stays empty.
+def _defense_feature_map(
+    row: dict[str, Any], *, formation: str, play: str, side: str, defense_book: Any = None,
+) -> dict[str, str]:
+    """Defensive candidate as the look. The offense call is not a defense input.
 
-    Defense models estimate P(offense succeeds | offense play, our look,
-    situation). ``call`` is the offense play, which this hook does not have,
-    so ``feature_map`` does not build ``call``, ``call_x_family``, or a
-    ``call_class`` from our defensive play name. Look, look family, and the
-    other keys ``feature_map`` derives from that look are the trainer's.
+    Defense models estimate P(offense succeeds | our defensive call, situation).
+    The family, look and pressure come from our own candidate play; the typed
+    opponent look and any def_call/coverage_seen column are never read.
+    The family is the book-then-pattern lookup of ``play`` in ``defense_book``
+    (the installed book when the ranker passes it), the same lookup training uses.
     """
-    from cfb_coach.vod_success.features import feature_map, snap_from_row
+    from cfb_coach.madden.model.inference import vod_candidate_features
 
-    built = dict(row)
-    built["formation"] = formation
-    built["play"] = ""
-    built["call"] = ""
-    built["our_call"] = ""
-    built["side"] = side
-    # On a defense snap the trainer reads ``coverage_seen`` as the call when
-    # the play is blank. Clear it so the offense call stays empty, and put
-    # our defensive play in ``look``, which ``_look_text`` still reads.
-    built["coverage_seen"] = ""
-    built["look"] = play
-    return feature_map(snap_from_row(built))
+    del formation  # not a model input
+    return vod_candidate_features(side, play, defense_book=defense_book, **_live_feature_kwargs(row))
+
+
+def _vod_fallback(
+    side: str,
+    context: dict[str, Any],
+    scored: Sequence[tuple[str, float]],
+    pick: str,
+) -> dict[str, Any]:
+    """Heuristic-fallback reason for a ranked book, recorded next to the raw pick.
+
+    The raw pick is not changed (G4a/G4d use the raw ranking). The margin is
+    ``shared_features.top_two_margin`` over (play, preference) pairs, so the
+    same play in two formations is not a tie with itself.
+    """
+    from cfb_coach.madden.model.inference import vod_fallback_reason
+    from cfb_coach.vod_success.shared_features import top_two_margin
+
+    margin = top_two_margin(scored)
+    look = (context.get("row") or {}).get("look")
+    reason = vod_fallback_reason(look, margin, side=side, candidate=pick)
+    return {"top_two_margin": margin, "vod_fallback": reason}
 
 
 def _candidate_logit(
@@ -783,7 +810,7 @@ def _candidate_logit(
     ``{call}|{family}``, ``down_x_dist`` is ``{down}|{dist}``). A group the
     builder omitted, or a key absent from ``coef``, contributes 0.
     """
-    from cfb_coach.vod_success.features import ALL_GROUPS
+    from cfb_coach.vod_success.shared_features import ALL_GROUPS
 
     intercepts = [float(model.get("intercept") or 0.0) for model in models]
     intercept = sum(intercepts) / float(len(intercepts))
@@ -903,11 +930,15 @@ def _rank_defense_book(
     context: dict[str, Any],
 ) -> tuple[str, str, dict[str, Any]]:
     """Lowest predicted offense success. The offense path does not use this."""
+    from cfb_coach.vod_success.shared_features import DefenseBook
+
+    defense_book = DefenseBook.from_playbook(book, label="installed")
     ranked: list[tuple[float, str, str, dict[str, Any]]] = []
     for formation, plays in book.items():
         for play in plays:
             feats = _defense_feature_map(
                 context["row"], formation=str(formation), play=str(play), side=side,
+                defense_book=defense_book,
             )
             score, detail = _candidate_logit(models, feats)
             ranked.append((score, str(formation), str(play), detail))
@@ -921,6 +952,8 @@ def _rank_defense_book(
         "coerced": context["coerced"],
         "call_matches": [],
         "ranking": "min_offense_success",
+        # Preference is P(offense fails): higher is better for us.
+        **_vod_fallback(side, context, [(p, 1.0 - _sigmoid(s)) for s, _f, p, _d in ranked], play),
     }
     return formation, play, features
 
@@ -958,8 +991,13 @@ def _rank_installed_book(
         "raw": context["raw"],
         "coerced": context["coerced"],
         "call_matches": call_matches,
+        **_vod_fallback(side, context, [(p, _sigmoid(s)) for s, _f, p, _d, _m in ranked], play),
     }
     return formation, play, features
+
+
+def _sigmoid(logit: float) -> float:
+    return 1.0 / (1.0 + math.exp(-max(-60.0, min(60.0, float(logit)))))
 
 
 def _offline_call(side: str, formation: str, play: str) -> Any:

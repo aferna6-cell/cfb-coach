@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from cfb_coach.vod_success.features import feature_map, snap_from_row
+from cfb_coach.vod_success import shared_features as sf
 from scripts.madden_ml import eval_harness
 from scripts.madden_ml.eval_harness import score_offline_model
 
@@ -15,24 +15,12 @@ pytestmark = pytest.mark.filterwarnings(
     "error:CFB_COACH_MADDEN_DB and CFB_COACH_DB resolve to the same file:UserWarning"
 )
 
-_GROUPS = (
-    "call",
-    "call_class",
-    "look",
-    "look_family",
-    "call_x_family",
-    "class_x_family",
-    "down",
-    "dist",
-    "down_x_dist",
-    "zone",
-    "score",
-    "time",
-    "side",
-    "pressure",
-    "off_adj",
-    "def_adj",
-)
+_GROUPS = sf.ALL_GROUPS
+
+
+def _trained(row: dict) -> dict[str, str]:
+    """Training-side features from a synthetic label row (shared module)."""
+    return sf.feature_levels(sf.training_inputs(row))
 
 
 @pytest.fixture(autouse=True)
@@ -175,20 +163,15 @@ def test_real_key_format_strings_and_csv_coercion(tmp_path: Path, tiny_book) -> 
     )
     trap = _score(model, "1st and 10 own 25", opp_look="Cover 3")
     mesh = _score(model, "1st and 10 own 25", opp_look="Cover 2")
-    trainer = feature_map(snap_from_row({
-        "game": "madden27",
-        "opponent_type": "human",
+    trainer = _trained({
         "side": "offense",
-        "play": "0 1 Trap",
-        "formation": "Gun",
+        "offense_call": {"play": "0 1 Trap"},
+        "defense_look": {"coverage_seen": "Cover 3"},
+        "conf": {"play": 1.0, "coverage_seen": 1.0},
         "down": 1,
         "distance": 10,
         "yardline": 25,
-        "look": "Cover 3",
-        "coverage_seen": "Cover 3",
-        "situation_raw": "1st and 10 own 25",
-        "success": None,
-    }))
+    })
     groups = trap["features"]["groups"]
     assert trap["play"] == "0 1 Trap"
     assert groups["call"]["key"] == "0 1 trap" == trainer["call"]
@@ -225,7 +208,7 @@ def test_real_key_format_strings_and_csv_coercion(tmp_path: Path, tiny_book) -> 
     assert csv["features"]["groups"]["pressure"] == {"key": None, "matched": False, "weight": 0.0}
 
 
-def test_trainer_builds_pressure_and_adjustment_keys(tmp_path: Path, tiny_book) -> None:
+def test_pressure_is_deduplicated_and_adjustments_are_never_built(tmp_path: Path, tiny_book) -> None:
     del tiny_book
     model = _write_model(
         tmp_path / "model",
@@ -235,29 +218,23 @@ def test_trainer_builds_pressure_and_adjustment_keys(tmp_path: Path, tiny_book) 
             "def_adj": {"yes": 1.0},
         },
     )
-    pressed = _score(model, "1st and 10", opp_look="Fire Blitz")
-    trainer = feature_map(snap_from_row({
-        "game": "madden27",
-        "opponent_type": "human",
+    # A pressure_other family never also sets pressure (recipe O3 / D3).
+    pure = _score(model, "1st and 10", opp_look="Fire Blitz")
+    assert pure["features"]["groups"]["look_family"]["key"] == "pressure_other"
+    assert pure["features"]["groups"]["pressure"] == {"key": None, "matched": False, "weight": 0.0}
+    # A shell plus a leftover pressure word sets both, one token each.
+    pressed = _score(model, "1st and 10", opp_look="Cover 3 Fire")
+    trainer = _trained({
         "side": "offense",
-        "play": pressed["play"],
-        "formation": pressed["formation"],
+        "offense_call": {"play": pressed["play"]},
+        "defense_look": {"coverage_seen": "Cover 3 Fire", "def_call": "Cover 0"},
+        "conf": {"play": 1.0, "coverage_seen": 1.0, "def_call": 1.0},
         "down": 1,
         "distance": 10,
-        "look": "Fire Blitz",
-        "coverage_seen": "Fire Blitz",
-        "situation_raw": "1st and 10",
-        "success": None,
-    }))
-    assert pressed["features"]["groups"]["pressure"] == {
-        "key": "yes",
-        "matched": True,
-        "weight": 1.0,
-    }
+    })
+    assert pressed["features"]["groups"]["pressure"] == {"key": "yes", "matched": True, "weight": 1.0}
     assert pressed["features"]["groups"]["pressure"]["key"] == trainer["pressure"]
-    assert pressed["features"]["groups"]["look_family"]["key"] == trainer["look_family"] == "pressure_other"
-    assert pressed["features"]["groups"]["off_adj"]["key"] is None
-    assert pressed["features"]["groups"]["def_adj"]["key"] is None
+    assert pressed["features"]["groups"]["look_family"]["key"] == trainer["look_family"] == "cover_3"
 
     flagged = _score(
         model,
@@ -270,41 +247,15 @@ def test_trainer_builds_pressure_and_adjustment_keys(tmp_path: Path, tiny_book) 
         },
         opp_look="Cover 3",
     )
-    assert flagged["features"]["groups"]["off_adj"] == {"key": "yes", "matched": True, "weight": 1.0}
-    assert flagged["features"]["groups"]["def_adj"] == {"key": "yes", "matched": True, "weight": 1.0}
-    assert flagged["features"]["groups"]["pressure"]["key"] is None
+    # off_adj / def_adj are dropped from v0.24 (no live field); raw inputs are still recorded.
+    for dropped in ("off_adj", "def_adj", "score"):
+        assert dropped not in flagged["features"]["groups"]
     assert flagged["features"]["raw"]["off_adj"] == {"value": "yes", "type": "str"}
     assert flagged["features"]["raw"]["def_adjustment"] == {"value": "1", "type": "str"}
     assert flagged["side"] == "offense"
-    shared = feature_map(snap_from_row({
-        "game": "madden27",
-        "opponent_type": "human",
-        "side": "offense",
-        "play": flagged["play"],
-        "formation": flagged["formation"],
-        "down": "1",
-        "distance": "10",
-        "look": "Cover 3",
-        "coverage_seen": "Cover 3",
-        "off_adj": "yes",
-        "def_adjustment": "1",
-        "situation_raw": "1&10",
-        "success": None,
-    }))
-    assert flagged["features"]["groups"]["off_adj"]["key"] == shared["off_adj"]
-    assert flagged["features"]["groups"]["def_adj"]["key"] == shared["def_adj"]
-
-    blank = _score(
-        model,
-        {"down": "1", "distance": "10", "off_adj": "  ", "def_adj": "none"},
-        opp_look="Cover 3",
-    )
-    assert blank["features"]["groups"]["off_adj"]["key"] is None
-    assert blank["features"]["groups"]["def_adj"]["key"] is None
 
     defense = _score(model, "d 1st and 10", side="defense", opp_look="Cover 3")
     assert defense["side"] == "defense"
     assert defense["features"]["groups"]["side"]["key"] == "defense"
-    assert defense["features"]["groups"]["off_adj"]["key"] is None
-    assert defense["features"]["groups"]["def_adj"]["key"] is None
-    assert defense["features"]["groups"]["pressure"]["key"] is None
+    for dropped in ("off_adj", "def_adj", "score", "call", "call_x_family", "class_x_family"):
+        assert defense["features"]["groups"].get(dropped, {}).get("key") is None

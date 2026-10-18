@@ -955,11 +955,11 @@ class ShadowTests(unittest.TestCase):
         self.assertTrue(any(str(row_id).endswith("__empty__madden27/cpu/offense") for row_id in without["row_ids"]))
 
         cover = cpu("sit-cover", "cover")
-        self.assertEqual(cover["hook_look"], "nickel double mug")
-        self.assertEqual(cover["prep_look"], "nickel double mug")
+        self.assertEqual(cover["hook_look"], "cover 3")
+        self.assertEqual(cover["prep_look"], "cover 3")
         self.assertEqual(cover["prep_look_family"], "cover_3")
-        self.assertEqual(cover["features"]["groups"]["look_family"]["key"], "pressure_other")
-        self.assertFalse(cover["features"]["groups"]["look_family"]["matched"])
+        self.assertEqual(cover["features"]["groups"]["look_family"]["key"], "cover_3")
+        self.assertTrue(cover["features"]["groups"]["look_family"]["matched"])
         self.assertFalse(cover["look_key_matched"])
         self.assertTrue(cover["look_family_key_matched"])
         self.assertFalse(cover["no_coverage_in_source"])
@@ -1375,8 +1375,12 @@ class LookConstructionTests(unittest.TestCase):
             },
             {"opp_personnel": "11", "opp_set": "nickel"},
         )
-        self.assertEqual(prep["look"], "nickel double mug")
+        # def_call is never a look or family source (recipe f7c17d16 addendum).
+        self.assertEqual(prep["look"], "cover 3")
         self.assertEqual(prep["family"], "cover_3")
+        call_only = scoring.build_prep_look({"def_call": "Cover 1", "coverage_seen": ""}, None)
+        self.assertIsNone(call_only["look"])
+        self.assertEqual(call_only["status"], "blank_coverage")
         self.assertEqual(prep["status"], "coverage")
         seen_only = scoring.build_prep_look({"coverage_seen": "Cover 3"}, None)
         self.assertEqual(seen_only["look"], "cover 3")

@@ -34,8 +34,15 @@ if str(_ROOT) not in sys.path:
 
 from cfb_coach.madden.catalog import is_deep, is_run
 from cfb_coach.madden.model.schema import MLStatus, is_live_selectable
-from cfb_coach.vod_success.features import _look_family, _norm
+from cfb_coach.vod_success import shared_features as _sf
+from cfb_coach.vod_success.shared_features import look_family as _look_family
+from cfb_coach.vod_success.shared_features import norm_key as _norm_key
 from cfb_coach.zones import field_zone
+
+
+def _norm(value: Any) -> str:
+    return _norm_key(value) or ""
+
 
 DISCLAIMER = (
     "These are decision-quality checks only. They are not effectiveness claims."
@@ -63,9 +70,11 @@ HEURISTIC_SEED_CHANGE = (
 )
 # First key present on the seed-0 heuristic (then any later seed) wins.
 _HEURISTIC_WEIGHT_KEYS = ("candidate_probabilities", "sampling_weights", "weights")
-# Trainer look text is def_call, then coverage_seen, then def_overlay.
-# Family is coverage_seen first, mapped by the trainer's own _look_family.
+# Look text and family follow the shared feature module (recipe f7c17d16 O4,
+# live-shaped): coverage_seen, then def_overlay. def_call has no live source and
+# is never a look or family source; it is still recorded as a present column.
 _COVERAGE_FIELDS = ("def_call", "coverage_seen", "def_overlay")
+_LOOK_FIELDS = ("coverage_seen", "def_overlay")
 # These are personnel packages. They are not trained look or look_family keys.
 _PACKAGE_TOKENS = frozenset(
     {
@@ -1109,9 +1118,9 @@ def _raise_if_coverage_dropped(*, columns_present: bool, nonblank: bool, look: s
 
 
 def build_prep_look(sit: Any, opp_look: Any = None) -> dict[str, Any]:
-    """Look from def_call, then coverage_seen, then def_overlay.
+    """Look from coverage_seen, then def_overlay. def_call is never read.
 
-    ``look_family`` uses coverage_seen first and the trainer's ``_look_family``.
+    ``look_family`` is ``shared_features.look_family`` of that same look.
     A source with none of those columns is no look (``None``), not a failure.
     A personnel package is not a coverage column.
     """
@@ -1128,16 +1137,11 @@ def build_prep_look(sit: Any, opp_look: Any = None) -> dict[str, Any]:
             raws["coverage_seen"] = opp_look
             columns_present = True
     nonblank = any(
-        _raw_coverage_nonblank(raws[field]) for field in _COVERAGE_FIELDS if field in raws
+        _raw_coverage_nonblank(raws[field]) for field in _LOOK_FIELDS if field in raws
     )
-    look = (
-        _trainer_text(raws.get("def_call"))
-        or _trainer_text(raws.get("coverage_seen"))
-        or _trainer_text(raws.get("def_overlay"))
-    )
+    look = _trainer_text(raws.get("coverage_seen")) or _trainer_text(raws.get("def_overlay"))
     _raise_if_coverage_dropped(columns_present=columns_present, nonblank=nonblank, look=look)
-    family_source = _trainer_text(raws.get("coverage_seen")) or look
-    family = _look_family(family_source or "")
+    family = _look_family(look or "")
     if not columns_present:
         status = "no_coverage_in_source"
     elif look is None:
@@ -1558,6 +1562,96 @@ def _paired_columns(
         "evaluable": evaluable,
         "evaluable_reason": reason,
         "heuristic_tie_break": HEURISTIC_TIE_BREAK,
+    }
+
+
+def executed_call_label(side: Any, call: Any, *, defense_book: Any = None) -> dict[str, Any]:
+    """Label a held-out row's executed call with the shared feature rules.
+
+    Defense: family and pressure through ``shared_features.defense_family``,
+    the same book-then-pattern lookup training and live use (addendum 3). Offense: ``shared_features.call_class``. Held-out CSVs carry
+    no confidence columns, so no confidence filter applies here. A blank call
+    is not a scored row (addendum 2) and comes back with ``scored=False``.
+    """
+    text = _norm_key(call)
+    side_n = _sf._side(side)
+    if side_n == "defense":
+        family, pressure, path = _sf.defense_family_path(text, defense_book)
+        return {
+            "side": side_n,
+            "call": text,
+            "scored": text is not None,
+            "family": family,
+            "pressure": bool(pressure),
+            "is_pressure": _sf.is_pressure(family, pressure),
+            "family_path": path,
+        }
+    return {
+        "side": side_n,
+        "call": text,
+        "scored": text is not None,
+        "call_class": _sf.call_class(text),
+        "kneel": bool(text and _sf.is_kneel(text)),
+    }
+
+
+def defense_gate_pool(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    blank_keys: Sequence[Any] = (),
+    key_field: str = "row",
+) -> dict[str, Any]:
+    """Addendum 2/3 defense gate pool on held-out rows, with glued rows counted on their own.
+
+    ``rows`` are held-out CSV rows. Scored rows: defense, human, a known
+    location, success known. Known-call rows also have a def_call. A row whose
+    ``key_field`` value is in ``blank_keys`` has its def_call treated as blank
+    (the frozen glued rule is applied box-side and passed in as row keys; the
+    rule and the data are not in this repo), so it leaves the pool and is
+    counted as ``glued_blanked``.
+    """
+    blanked = {str(key) for key in blank_keys}
+
+    def _blank(value: Any) -> bool:
+        return value is None or str(value).strip() == ""
+
+    scored = [
+        row for row in rows
+        if str(row.get("side")) == "defense" and str(row.get("opponent_type")) == "human"
+        and str(row.get("success_known")) == "True"
+        and (not _blank(row.get("yardline")) or not _blank(row.get("yards_to_goal")))
+    ]
+    known = [row for row in scored if not _blank(row.get("def_call"))]
+    glued = [row for row in known if str(row.get(key_field)) in blanked]
+    pool = [row for row in known if str(row.get(key_field)) not in blanked]
+    return {
+        "scored_rows": len(scored),
+        "known_call_rows": len(known),
+        "glued_blanked": len(glued),
+        "gate_pool": len(pool),
+        "rows": pool,
+    }
+
+
+def model_fallback(
+    side: Any,
+    opp_look: Any,
+    scored: Any,
+    *,
+    candidate: Any = None,
+) -> dict[str, Any]:
+    """Fallback reason for one ranked row: deduped top-two margin, side-aware blank look.
+
+    ``scored`` is ``(play, score)`` pairs or ``{play: score}`` (higher is
+    better). The same play in two formations counts once. Same function as
+    live: ``inference.vod_fallback_reason``.
+    """
+    from cfb_coach.madden.model.inference import vod_fallback_reason
+
+    margin = _sf.top_two_margin(scored)
+    return {
+        "top_two_margin": margin,
+        "vod_fallback": vod_fallback_reason(opp_look, margin, side=_sf._side(side), candidate=candidate),
     }
 
 

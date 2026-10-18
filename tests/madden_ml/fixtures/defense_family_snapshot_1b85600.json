@@ -1,0 +1,1335 @@
+{
+ "plays": {
+  "1 contain press": [
+   "cover_1",
+   false
+  ],
+  "1 double buzz": [
+   "cover_1",
+   false
+  ],
+  "1 double slot": [
+   "cover_1",
+   false
+  ],
+  "1 double te": [
+   "cover_1",
+   false
+  ],
+  "1 double wr1": [
+   "cover_1",
+   false
+  ],
+  "1 double wr2": [
+   "cover_1",
+   false
+  ],
+  "1 dt lb loop": [
+   "cover_1",
+   false
+  ],
+  "1 fs fire": [
+   "cover_1",
+   true
+  ],
+  "1 hole press": [
+   "cover_1",
+   false
+  ],
+  "1 lb cross games": [
+   "cover_1",
+   false
+  ],
+  "1 lb dog": [
+   "cover_1",
+   true
+  ],
+  "1 pirate spy": [
+   "cover_1",
+   false
+  ],
+  "1 robber press": [
+   "cover_1",
+   false
+  ],
+  "1 sam ss blitz": [
+   "cover_1",
+   true
+  ],
+  "1 slant crash": [
+   "cover_1",
+   true
+  ],
+  "1 sting tex": [
+   "cover_1",
+   true
+  ],
+  "2 invert hard flat": [
+   "cover_2",
+   false
+  ],
+  "2 invert lurk": [
+   "cover_2",
+   true
+  ],
+  "2 sim tex": [
+   "cover_2",
+   true
+  ],
+  "3 buzz match wk": [
+   "cover_3",
+   false
+  ],
+  "3 deep blitz": [
+   "cover_3",
+   true
+  ],
+  "3 double buzz": [
+   "cover_3",
+   false
+  ],
+  "3 double cloud": [
+   "cover_3",
+   false
+  ],
+  "3 double sky": [
+   "cover_3",
+   false
+  ],
+  "3 sim tex": [
+   "cover_3",
+   true
+  ],
+  "60 base": [
+   "other",
+   false
+  ],
+  "60 half out": [
+   "other",
+   false
+  ],
+  "60 out": [
+   "other",
+   false
+  ],
+  "60 out jacks": [
+   "other",
+   false
+  ],
+  "60 pinch": [
+   "pressure_other",
+   false
+  ],
+  "ag mid blitz": [
+   "pressure_other",
+   false
+  ],
+  "base": [
+   "other",
+   false
+  ],
+  "blitz dt pop": [
+   "pressure_other",
+   false
+  ],
+  "blitz lb lurk 1": [
+   "cover_1",
+   true
+  ],
+  "blitz loop 0": [
+   "cover_0",
+   true
+  ],
+  "blitz loop 3": [
+   "cover_3",
+   true
+  ],
+  "blitz loop sim 3": [
+   "cover_3",
+   true
+  ],
+  "blitz tex 3": [
+   "cover_3",
+   true
+  ],
+  "blitz tex 3 sim 3": [
+   "cover_3",
+   true
+  ],
+  "boca blitz 2": [
+   "cover_2",
+   true
+  ],
+  "bracket 9 switch": [
+   "cover_9",
+   false
+  ],
+  "bracket switch willie": [
+   "other",
+   false
+  ],
+  "buck slant 3": [
+   "cover_3",
+   true
+  ],
+  "buck zone blitz": [
+   "pressure_other",
+   false
+  ],
+  "casino blitz": [
+   "pressure_other",
+   false
+  ],
+  "cb bench blitz": [
+   "pressure_other",
+   false
+  ],
+  "cb bench sim 2": [
+   "cover_2",
+   true
+  ],
+  "cb tex sim 2": [
+   "cover_2",
+   true
+  ],
+  "cb zone blitz": [
+   "pressure_other",
+   false
+  ],
+  "coffee house 3 seam": [
+   "cover_3",
+   false
+  ],
+  "corner blitz 3": [
+   "cover_3",
+   true
+  ],
+  "cov 1 robber press": [
+   "cover_1",
+   false
+  ],
+  "cov 2 invert hard flat": [
+   "cover_2",
+   false
+  ],
+  "cov 3 buzz match": [
+   "cover_3",
+   false
+  ],
+  "cov 3 buzz match wk": [
+   "cover_3",
+   false
+  ],
+  "cov 3 buzz show 1": [
+   "cover_3",
+   false
+  ],
+  "cover 1": [
+   "cover_1",
+   false
+  ],
+  "cover 1 contain": [
+   "cover_1",
+   false
+  ],
+  "cover 1 contain spy": [
+   "cover_1",
+   false
+  ],
+  "cover 1 fs fire": [
+   "cover_1",
+   true
+  ],
+  "cover 1 games": [
+   "cover_1",
+   false
+  ],
+  "cover 1 hole": [
+   "cover_1",
+   false
+  ],
+  "cover 1 hole wk": [
+   "cover_1",
+   false
+  ],
+  "cover 1 lb blitz": [
+   "cover_1",
+   true
+  ],
+  "cover 1 mlb blitz": [
+   "cover_1",
+   true
+  ],
+  "cover 1 qb spy": [
+   "cover_1",
+   false
+  ],
+  "cover 1 robber": [
+   "cover_1",
+   false
+  ],
+  "cover 1 robber press": [
+   "cover_1",
+   false
+  ],
+  "cover 1 spy": [
+   "cover_1",
+   false
+  ],
+  "cover 1 ss blitz": [
+   "cover_1",
+   true
+  ],
+  "cover 1 sting": [
+   "cover_1",
+   true
+  ],
+  "cover 2": [
+   "cover_2",
+   false
+  ],
+  "cover 2 contain": [
+   "cover_2",
+   false
+  ],
+  "cover 2 drop": [
+   "cover_2",
+   false
+  ],
+  "cover 2 hard flat": [
+   "cover_2",
+   false
+  ],
+  "cover 2 invert": [
+   "cover_2",
+   false
+  ],
+  "cover 2 lurk": [
+   "cover_2",
+   true
+  ],
+  "cover 2 man": [
+   "cover_2_man",
+   false
+  ],
+  "cover 2 match": [
+   "cover_2",
+   false
+  ],
+  "cover 2 roll": [
+   "cover_2",
+   false
+  ],
+  "cover 3": [
+   "cover_3",
+   false
+  ],
+  "cover 3 buzz": [
+   "cover_3",
+   false
+  ],
+  "cover 3 buzz match": [
+   "cover_3",
+   false
+  ],
+  "cover 3 buzz match wk": [
+   "cover_3",
+   false
+  ],
+  "cover 3 buzz mike": [
+   "cover_3",
+   false
+  ],
+  "cover 3 buzz press": [
+   "cover_3",
+   false
+  ],
+  "cover 3 buzz seam": [
+   "cover_3",
+   false
+  ],
+  "cover 3 cloud": [
+   "cover_3",
+   false
+  ],
+  "cover 3 cloud show 2": [
+   "cover_3",
+   false
+  ],
+  "cover 3 cloud stir": [
+   "cover_3",
+   false
+  ],
+  "cover 3 cloud str": [
+   "cover_3",
+   false
+  ],
+  "cover 3 hard flat": [
+   "cover_3",
+   false
+  ],
+  "cover 3 lock": [
+   "cover_3",
+   false
+  ],
+  "cover 3 match": [
+   "cover_3",
+   false
+  ],
+  "cover 3 sammie": [
+   "cover_3",
+   false
+  ],
+  "cover 3 seam": [
+   "cover_3",
+   false
+  ],
+  "cover 3 sim pressure": [
+   "cover_3",
+   true
+  ],
+  "cover 3 sky": [
+   "cover_3",
+   false
+  ],
+  "cover 3 sky press": [
+   "cover_3",
+   false
+  ],
+  "cover 3 sky wk": [
+   "cover_3",
+   false
+  ],
+  "cover 3 skywk": [
+   "cover_3",
+   false
+  ],
+  "cover 3 zone": [
+   "cover_3",
+   false
+  ],
+  "cover 4 drop": [
+   "cover_4",
+   false
+  ],
+  "cover 4 drop field": [
+   "cover_4",
+   false
+  ],
+  "cover 4 palms": [
+   "cover_4",
+   false
+  ],
+  "cover 4 press": [
+   "cover_4",
+   false
+  ],
+  "cover 4 quarters": [
+   "cover_4",
+   false
+  ],
+  "cover 4 show 2": [
+   "cover_4",
+   false
+  ],
+  "cover 4 zone": [
+   "cover_4",
+   false
+  ],
+  "cover 6": [
+   "cover_6",
+   false
+  ],
+  "cover 6 invert": [
+   "cover_6",
+   false
+  ],
+  "cover 6 press": [
+   "cover_6",
+   false
+  ],
+  "cover 6 show 2": [
+   "cover_6",
+   false
+  ],
+  "cover 6 trap": [
+   "cover_6",
+   false
+  ],
+  "cover 6 willie": [
+   "cover_6",
+   false
+  ],
+  "cover 6 zone": [
+   "cover_6",
+   false
+  ],
+  "cover 9 show 2": [
+   "cover_9",
+   false
+  ],
+  "cover 9 zone": [
+   "cover_9",
+   false
+  ],
+  "cover i lb blitz": [
+   "pressure_other",
+   false
+  ],
+  "cover i spy": [
+   "other",
+   false
+  ],
+  "cover isting": [
+   "pressure_other",
+   false
+  ],
+  "cover mlb blitz": [
+   "pressure_other",
+   false
+  ],
+  "cover spy": [
+   "other",
+   false
+  ],
+  "cover sting": [
+   "pressure_other",
+   false
+  ],
+  "covers": [
+   "other",
+   false
+  ],
+  "covers sammie": [
+   "other",
+   false
+  ],
+  "crash 3": [
+   "cover_3",
+   true
+  ],
+  "cross 3 fire": [
+   "cover_3",
+   true
+  ],
+  "cross fire 3": [
+   "cover_3",
+   true
+  ],
+  "cross sim 2": [
+   "cover_2",
+   true
+  ],
+  "db blitz": [
+   "pressure_other",
+   false
+  ],
+  "db blitz 0": [
+   "cover_0",
+   false
+  ],
+  "db blitz 1": [
+   "cover_1",
+   true
+  ],
+  "db blitz 3": [
+   "cover_3",
+   true
+  ],
+  "db blitz tex 3": [
+   "cover_3",
+   true
+  ],
+  "db fire 2": [
+   "cover_2",
+   true
+  ],
+  "db sting": [
+   "pressure_other",
+   false
+  ],
+  "db sting 2 buzz": [
+   "cover_2",
+   true
+  ],
+  "dbl safety blitz": [
+   "pressure_other",
+   false
+  ],
+  "dbl safety go": [
+   "other",
+   false
+  ],
+  "dime blitz 2": [
+   "cover_2",
+   true
+  ],
+  "dime blitz 3": [
+   "cover_3",
+   true
+  ],
+  "double bracket": [
+   "other",
+   false
+  ],
+  "double bracket switch": [
+   "other",
+   false
+  ],
+  "double cb blitz": [
+   "pressure_other",
+   false
+  ],
+  "double te": [
+   "other",
+   false
+  ],
+  "dt loop": [
+   "other",
+   false
+  ],
+  "dt mike loop 1": [
+   "cover_1",
+   false
+  ],
+  "dt mike loop 3": [
+   "cover_3",
+   false
+  ],
+  "dt mike loop o": [
+   "other",
+   false
+  ],
+  "edge blitz 0": [
+   "cover_0",
+   true
+  ],
+  "edge blitz 1": [
+   "cover_1",
+   true
+  ],
+  "edge blitz 2": [
+   "cover_2",
+   true
+  ],
+  "edge blitz 3": [
+   "cover_3",
+   true
+  ],
+  "engage eight": [
+   "other",
+   false
+  ],
+  "field blitz 3": [
+   "cover_3",
+   true
+  ],
+  "field sim 3": [
+   "cover_3",
+   true
+  ],
+  "fire man": [
+   "man_other",
+   true
+  ],
+  "fire zone 2": [
+   "cover_2",
+   true
+  ],
+  "fox fire zone press": [
+   "pressure_other",
+   false
+  ],
+  "free fire": [
+   "pressure_other",
+   false
+  ],
+  "free fire 3": [
+   "cover_3",
+   true
+  ],
+  "free fire o": [
+   "cover_0",
+   false
+  ],
+  "fs blitz": [
+   "pressure_other",
+   false
+  ],
+  "fs fire 1": [
+   "cover_1",
+   true
+  ],
+  "fs fire 3": [
+   "cover_3",
+   true
+  ],
+  "fs fire i": [
+   "pressure_other",
+   false
+  ],
+  "fs middle blitz 3": [
+   "cover_3",
+   true
+  ],
+  "fs slant 3": [
+   "cover_3",
+   false
+  ],
+  "fs will blitz 0": [
+   "cover_0",
+   false
+  ],
+  "fs zone blitz": [
+   "pressure_other",
+   false
+  ],
+  "gap press": [
+   "other",
+   false
+  ],
+  "gaps a b": [
+   "pressure_other",
+   false
+  ],
+  "gaps ab": [
+   "pressure_other",
+   false
+  ],
+  "gaps all": [
+   "pressure_other",
+   false
+  ],
+  "gaps all lb": [
+   "pressure_other",
+   false
+  ],
+  "gaps b": [
+   "pressure_other",
+   false
+  ],
+  "gl man": [
+   "man_other",
+   false
+  ],
+  "guard key sim 2": [
+   "cover_2",
+   true
+  ],
+  "guts": [
+   "other",
+   false
+  ],
+  "hammer 0 blast": [
+   "cover_0",
+   false
+  ],
+  "hammer oblast": [
+   "other",
+   false
+  ],
+  "hammero blast": [
+   "other",
+   false
+  ],
+  "hot blitz 3": [
+   "cover_3",
+   true
+  ],
+  "hot blitz bail": [
+   "pressure_other",
+   false
+  ],
+  "i dt lb loop": [
+   "other",
+   false
+  ],
+  "i lb blitz": [
+   "pressure_other",
+   false
+  ],
+  "i sam ss blitz": [
+   "pressure_other",
+   false
+  ],
+  "invert 2 sim": [
+   "cover_2",
+   true
+  ],
+  "lb 3 seam games": [
+   "cover_3",
+   false
+  ],
+  "lb blitz": [
+   "pressure_other",
+   false
+  ],
+  "lb blitz 0": [
+   "cover_0",
+   false
+  ],
+  "lb blitz 1": [
+   "cover_1",
+   true
+  ],
+  "lb blitz 3": [
+   "cover_3",
+   true
+  ],
+  "lb blitz 6": [
+   "cover_6",
+   true
+  ],
+  "lb cross 3 show 2": [
+   "cover_3",
+   false
+  ],
+  "lb cross o": [
+   "other",
+   false
+  ],
+  "lb de twist 3": [
+   "cover_3",
+   false
+  ],
+  "lb dogs": [
+   "pressure_other",
+   false
+  ],
+  "lb dogs 3": [
+   "cover_3",
+   true
+  ],
+  "lb fire": [
+   "pressure_other",
+   false
+  ],
+  "lb pop o": [
+   "other",
+   false
+  ],
+  "lb sting 1": [
+   "cover_1",
+   true
+  ],
+  "lb sting i": [
+   "pressure_other",
+   false
+  ],
+  "man 3 deep": [
+   "cover_3",
+   false
+  ],
+  "mid blitz": [
+   "pressure_other",
+   false
+  ],
+  "mid blitz 0": [
+   "cover_0",
+   false
+  ],
+  "mike blitz 0": [
+   "cover_0",
+   false
+  ],
+  "mike sam crash press": [
+   "pressure_other",
+   false
+  ],
+  "mike sam cross 3": [
+   "cover_3",
+   false
+  ],
+  "mike scrape 3 press": [
+   "cover_3",
+   false
+  ],
+  "mike sim 2": [
+   "cover_2",
+   true
+  ],
+  "mike ss 3": [
+   "cover_3",
+   false
+  ],
+  "mike ss1 dog": [
+   "pressure_other",
+   false
+  ],
+  "mike ss3 seam": [
+   "other",
+   false
+  ],
+  "mike will blitz": [
+   "pressure_other",
+   false
+  ],
+  "mikesam cross 3": [
+   "cover_3",
+   false
+  ],
+  "mlb cross fire 3": [
+   "cover_3",
+   true
+  ],
+  "mlb gap a": [
+   "other",
+   false
+  ],
+  "monster green": [
+   "other",
+   false
+  ],
+  "mug blitz tex 3": [
+   "cover_3",
+   true
+  ],
+  "mug dt loop 1": [
+   "cover_1",
+   true
+  ],
+  "mug sim pressure": [
+   "pressure_other",
+   false
+  ],
+  "nickel 2 trap": [
+   "cover_2",
+   false
+  ],
+  "nickel blitz": [
+   "pressure_other",
+   false
+  ],
+  "nickel blitz 0": [
+   "cover_0",
+   false
+  ],
+  "nickel blitz 1": [
+   "cover_1",
+   true
+  ],
+  "nickel blitz 2": [
+   "cover_2",
+   true
+  ],
+  "nickel blitz 3": [
+   "cover_3",
+   true
+  ],
+  "nickel dog 3 buzz": [
+   "cover_3",
+   true
+  ],
+  "nickel dog meg": [
+   "pressure_other",
+   false
+  ],
+  "nickel overload 3": [
+   "cover_3",
+   true
+  ],
+  "nickel sim 2": [
+   "cover_2",
+   true
+  ],
+  "nickel sim 3": [
+   "cover_3",
+   true
+  ],
+  "o lb cross games": [
+   "other",
+   false
+  ],
+  "okie eagle 3": [
+   "cover_3",
+   false
+  ],
+  "okie roll 2": [
+   "cover_2",
+   false
+  ],
+  "okieroll 2": [
+   "cover_2",
+   false
+  ],
+  "olb blitz": [
+   "pressure_other",
+   false
+  ],
+  "olb blitz 1": [
+   "cover_1",
+   true
+  ],
+  "olb fire 2": [
+   "cover_2",
+   true
+  ],
+  "olb fire man": [
+   "man_other",
+   true
+  ],
+  "over 3 sting": [
+   "cover_3",
+   true
+  ],
+  "over storm brave": [
+   "other",
+   false
+  ],
+  "overload 3 press": [
+   "cover_3",
+   true
+  ],
+  "overload 3 seam": [
+   "cover_3",
+   true
+  ],
+  "overload 3 seam press": [
+   "cover_3",
+   true
+  ],
+  "overload 3 show 2": [
+   "cover_3",
+   true
+  ],
+  "overload blitz": [
+   "pressure_other",
+   false
+  ],
+  "pinch": [
+   "pressure_other",
+   false
+  ],
+  "pinch 0": [
+   "cover_0",
+   false
+  ],
+  "pinch blitz": [
+   "pressure_other",
+   false
+  ],
+  "pinch blitz 3": [
+   "cover_3",
+   true
+  ],
+  "pinch buck o": [
+   "cover_0",
+   true
+  ],
+  "pinch dog 2 press": [
+   "cover_2",
+   true
+  ],
+  "prevent": [
+   "other",
+   false
+  ],
+  "re": [
+   "other",
+   false
+  ],
+  "redzone dt drop": [
+   "other",
+   false
+  ],
+  "roll 23 cloud": [
+   "other",
+   false
+  ],
+  "roll cover 2 invert": [
+   "cover_2",
+   false
+  ],
+  "roll cover 3 cloud": [
+   "cover_3",
+   false
+  ],
+  "safety blitz": [
+   "pressure_other",
+   false
+  ],
+  "safety fire": [
+   "pressure_other",
+   false
+  ],
+  "safety strong 3": [
+   "cover_3",
+   false
+  ],
+  "sam blitz 2": [
+   "cover_2",
+   true
+  ],
+  "sam blitz 3": [
+   "cover_3",
+   true
+  ],
+  "sam crash 1": [
+   "cover_1",
+   true
+  ],
+  "sam crash 3": [
+   "cover_3",
+   true
+  ],
+  "sam crash i": [
+   "pressure_other",
+   false
+  ],
+  "sam crashi": [
+   "pressure_other",
+   false
+  ],
+  "sam edge 3": [
+   "cover_3",
+   true
+  ],
+  "sam i sting": [
+   "pressure_other",
+   false
+  ],
+  "sam isting": [
+   "pressure_other",
+   false
+  ],
+  "sam mike 1": [
+   "cover_1",
+   false
+  ],
+  "sam mike 3 press": [
+   "cover_3",
+   false
+  ],
+  "sam ss blitz 3": [
+   "cover_3",
+   true
+  ],
+  "sam will blitz": [
+   "pressure_other",
+   false
+  ],
+  "sam will blitz 3": [
+   "cover_3",
+   true
+  ],
+  "saw 0 blast": [
+   "cover_0",
+   false
+  ],
+  "saw blitz 0": [
+   "cover_0",
+   false
+  ],
+  "saw blitz 1": [
+   "cover_1",
+   true
+  ],
+  "saw blitz 2": [
+   "cover_2",
+   true
+  ],
+  "saw blitz 3": [
+   "cover_3",
+   true
+  ],
+  "saw oblast": [
+   "other",
+   false
+  ],
+  "show ss sim 2": [
+   "cover_2",
+   true
+  ],
+  "side blitz": [
+   "pressure_other",
+   false
+  ],
+  "silver shoot pinch": [
+   "pressure_other",
+   false
+  ],
+  "sim pressure 3": [
+   "cover_3",
+   true
+  ],
+  "slant weak": [
+   "other",
+   false
+  ],
+  "slant weak 3": [
+   "cover_3",
+   false
+  ],
+  "spinner dog 3": [
+   "cover_3",
+   true
+  ],
+  "ss": [
+   "other",
+   false
+  ],
+  "ss 2 trap": [
+   "cover_2",
+   false
+  ],
+  "ss blitz": [
+   "pressure_other",
+   false
+  ],
+  "ss blitz 0": [
+   "cover_0",
+   false
+  ],
+  "ss blitz 1": [
+   "cover_1",
+   true
+  ],
+  "ss blitz 2": [
+   "cover_2",
+   true
+  ],
+  "ss blitz 3": [
+   "cover_3",
+   true
+  ],
+  "ss dog 3": [
+   "cover_3",
+   true
+  ],
+  "ss lb blitz": [
+   "pressure_other",
+   false
+  ],
+  "ss mid blitz 0": [
+   "cover_0",
+   false
+  ],
+  "ss mid blitz 3": [
+   "cover_3",
+   true
+  ],
+  "ss overload 3": [
+   "cover_3",
+   true
+  ],
+  "ss sam crash press": [
+   "pressure_other",
+   false
+  ],
+  "ss sim 2": [
+   "cover_2",
+   true
+  ],
+  "ss sim pressure 3": [
+   "cover_3",
+   true
+  ],
+  "ss tex sim 2": [
+   "cover_2",
+   true
+  ],
+  "ss zone blitz": [
+   "pressure_other",
+   false
+  ],
+  "sting pinch": [
+   "pressure_other",
+   false
+  ],
+  "storm brave 1": [
+   "cover_1",
+   false
+  ],
+  "storm bravei": [
+   "other",
+   false
+  ],
+  "str eagle slant 3": [
+   "cover_3",
+   false
+  ],
+  "strg corner 2 fire": [
+   "cover_2",
+   true
+  ],
+  "tampa 2": [
+   "tampa_2",
+   false
+  ],
+  "tampa 2 contain": [
+   "tampa_2",
+   false
+  ],
+  "tampa 2 drop": [
+   "tampa_2",
+   false
+  ],
+  "tampa sim pressure": [
+   "tampa_2",
+   true
+  ],
+  "thunder smoke": [
+   "other",
+   false
+  ],
+  "trio sky zone": [
+   "other",
+   false
+  ],
+  "wall stunt": [
+   "other",
+   false
+  ],
+  "weak blitz 1": [
+   "cover_1",
+   true
+  ],
+  "weak blitz 3": [
+   "cover_3",
+   true
+  ],
+  "will blitz 3": [
+   "cover_3",
+   true
+  ],
+  "will buck 3 press": [
+   "cover_3",
+   true
+  ],
+  "will fire 3 seam": [
+   "cover_3",
+   true
+  ],
+  "will go fire 3": [
+   "cover_3",
+   true
+  ],
+  "will sam i": [
+   "other",
+   false
+  ],
+  "wk corner blitz": [
+   "pressure_other",
+   false
+  ],
+  "ws blitz 1": [
+   "cover_1",
+   true
+  ],
+  "ws blitz 2": [
+   "cover_2",
+   true
+  ],
+  "ws blitz 3": [
+   "cover_3",
+   true
+  ],
+  "zero blitz": [
+   "cover_0",
+   true
+  ]
+ },
+ "rule": "shared_features at 1b85600: family and pressure flag of each book name",
+ "sha256_names": "5bb68dc711552f807d4e1e5ba57bacc4658457ac98f2a36a01c46d844b0be308",
+ "source": "public repo catalog cfb_coach/data/madden27/playbooks.json, every defensive play"
+}
