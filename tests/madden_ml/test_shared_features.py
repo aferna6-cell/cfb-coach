@@ -311,6 +311,19 @@ def test_applied_book_agreement_no_other_and_pressure_count():
     assert sum(sf.is_pressure(*sf.defense_family(n, book)) for n in book.table) == 34
     for play in _PRESSURE_11:
         assert play in book and sf.is_pressure(*sf.defense_family(play, book)), play
+    assert _is_pressure_changed_vs_1b85600(book) == _IS_PRESSURE_CHANGED_VS_1B85600
+
+
+def _is_pressure_changed_vs_1b85600(book):
+    import json
+
+    snap = json.loads((_ROOT / "tests" / "madden_ml" / "fixtures" / "defense_family_snapshot_1b85600.json")
+                      .read_text(encoding="utf-8"))["plays"]
+    return sorted(n for n in book.table if sf.is_pressure(*snap[n]) != sf.is_pressure(*sf.defense_family(n, book)))
+
+
+# The only applied-book plays whose is_pressure changed since 1b85600 (Strategist table).
+_IS_PRESSURE_CHANGED_VS_1B85600 = ["dbl safety go", "dt mike loop 3", "over storm brave", "thunder smoke"]
 
 
 def test_rpo_is_its_own_class_and_folds_only_for_binary():
@@ -653,6 +666,8 @@ _RULE_CONSEQUENCES = {
     # Book-source digit cleanup (letter O = 0, letter I = 1) for named plays only.
     "dt mike loop o": ("cover_0", True),
     "fs fire i": ("cover_1", True),
+    # Strategist ruling: bracket comes before the bare-digit rule.
+    "bracket 9 switch": ("man_other", False),
 }
 
 
@@ -718,3 +733,61 @@ def test_digit_cleanup_is_only_for_the_named_plays():
     assert sf.family_and_pressure("LB Cross O") == ("other", False)
     assert sf.family_and_pressure("LB Sting I") == ("pressure_other", False)
     assert sf.family_and_pressure("Will Sam I") == ("other", False)
+
+
+# Formation names of the five applied 49ers defense formations (names only; the
+# plays come from the committed public playbooks.json, not from any database).
+_APPLIED_49ERS_DEFENSE_FORMATIONS = ("Dime 3-2 Odd", "Nickel Single Mug", "4-3 Over", "Nickel Over", "Nickel Double Mug")
+
+
+def test_public_49ers_applied_formations_book_matches_pattern_and_nothing_is_other():
+    """Runs by default (no env var). A missing file, team or formation fails the test."""
+    import json
+
+    path = _ROOT / "cfb_coach" / "data" / "madden27" / "playbooks.json"
+    assert path.is_file(), f"missing {path}"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    formations = data["books"]["defense"]["49ers"]["formations"]
+    missing = [f for f in _APPLIED_49ERS_DEFENSE_FORMATIONS if f not in formations]
+    assert missing == [], f"formations missing from the public 49ers defense: {missing}"
+    names = [n for f in _APPLIED_49ERS_DEFENSE_FORMATIONS for n in sf._book_names(formations[f])]
+    book = sf.DefenseBook(names, source="public-49ers-applied-formations")
+    assert len(book) == 78
+    mismatches = [(n, sf.defense_family(n, book), sf.pattern_family(n)[:2]) for n in book.table
+                  if sf.defense_family(n, book) != sf.pattern_family(n)[:2]]
+    assert mismatches == []
+    assert [n for n in book.table if sf.pattern_family(n)[0] == "other"] == []
+    assert all(sf.defense_family_path(n, book)[2] == "book" for n in book.table)
+    # The 11 confirmed pressure plays are all in these formations.
+    assert all(sf.is_pressure(*sf.defense_family(n, book)) for n in _PRESSURE_11)
+    assert sum(sf.is_pressure(*sf.defense_family(n, book)) for n in book.table) == 34
+    assert _is_pressure_changed_vs_1b85600(book) == _IS_PRESSURE_CHANGED_VS_1B85600
+
+
+# Public 49ers defense names nothing resolves yet (not Strategist-ruled). Pinned so
+# any change to the full-book result shows up; none is in the applied formations.
+_PUBLIC_49ERS_OTHER = [
+    "60 base", "60 half out", "cover spy", "hammer oblast", "mlb gap a", "o lb cross games",
+    "prevent", "re", "redzone dt drop", "saw oblast", "trio sky zone",
+]
+
+
+def test_full_public_49ers_defense_book_matches_pattern():
+    """Runs by default. A missing file or team fails the test."""
+    import json
+
+    path = _ROOT / "cfb_coach" / "data" / "madden27" / "playbooks.json"
+    assert path.is_file(), f"missing {path}"
+    defense = json.loads(path.read_text(encoding="utf-8"))["books"]["defense"]["49ers"]
+    book = sf.DefenseBook(sf._book_names(defense), source="public-49ers")
+    assert len(book) == 175
+    assert [n for n in book.table if sf.defense_family(n, book) != sf.pattern_family(n)[:2]] == []
+    assert all(sf.defense_family_path(n, book)[2] == "book" for n in book.table)
+    assert sorted(n for n in book.table if sf.pattern_family(n)[0] == "other") == _PUBLIC_49ERS_OTHER
+
+
+def test_bracket_comes_before_the_bare_digit_rule():
+    for name in ("Bracket 9 Switch", "Bracket Switch Willie", "Double Bracket", "Double Bracket Switch"):
+        assert sf.family_and_pressure(name) == ("man_other", False)
+        assert sf.defense_family(name, sf.catalog_defense_book()) == ("man_other", False)
+        assert not sf.is_pressure(*sf.family_and_pressure(name))

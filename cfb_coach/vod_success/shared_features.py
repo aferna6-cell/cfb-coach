@@ -350,14 +350,15 @@ def _family_with_tokens(name: Any) -> tuple[str, set[int], list[str]]:
     m2 = re.search(r"\b2\b", text)
     if m1 and m2:
         return "cover_2", from_text(m1) | from_text(m2), tokens
+    m = re.search(r"\bbracket\b", text)
+    if m:
+        # Bracket coverage is a man family, never pressure on its own. It comes
+        # before the bare-digit rule ("Bracket 9 Switch" is man_other, not cover_9).
+        return "man_other", from_text(m), tokens
     m = re.search(r"\b([0-9])\b", text)
     if m and m.group(1) in "012345679":
         family = "cover_0" if m.group(1) == "0" else f"cover_{m.group(1)}"
         return family, from_text(m), tokens
-    m = re.search(r"\bbracket\b", text)
-    if m:
-        # Bracket coverage is a man family, never pressure on its own.
-        return "man_other", from_text(m), tokens
     m = re.search(r"\bman\b", text)
     if m:
         return "man_other", from_text(m), tokens
