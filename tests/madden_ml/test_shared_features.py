@@ -300,8 +300,9 @@ def test_no_override_path_is_ever_returned():
 
 @pytest.mark.skipif(not __import__("os").environ.get("CFB_COACH_DEFENSE_BOOK_JSON"),
                     reason="box-only: set CFB_COACH_DEFENSE_BOOK_JSON to the applied defensive book")
-def test_applied_book_agreement_no_other_and_pressure_count():
-    """Box-only: the applied 78-play book is not in the repo."""
+def test_applied_book_crash_and_no_other_check():
+    """Box-only (the applied 78-play book is not in the repo). Book families are built from the pattern, so book == pattern here is a crash / no-other
+    check only, not a family-correctness check (that is the box-only Strategist-truth test)."""
     import os
 
     book = sf.DefenseBook.from_file(os.environ["CFB_COACH_DEFENSE_BOOK_JSON"])
@@ -312,6 +313,7 @@ def test_applied_book_agreement_no_other_and_pressure_count():
     for play in _PRESSURE_11:
         assert play in book and sf.is_pressure(*sf.defense_family(play, book)), play
     assert _is_pressure_changed_vs_1b85600(book) == _IS_PRESSURE_CHANGED_VS_1B85600
+    assert _family_changed_vs_1b85600(book) == _FAMILY_CHANGED_VS_1B85600
 
 
 def _is_pressure_changed_vs_1b85600(book):
@@ -324,6 +326,38 @@ def _is_pressure_changed_vs_1b85600(book):
 
 # The only applied-book plays whose is_pressure changed since 1b85600 (Strategist table).
 _IS_PRESSURE_CHANGED_VS_1B85600 = ["dbl safety go", "dt mike loop 3", "over storm brave", "thunder smoke"]
+# QA's allowed applied-book family changes since 1b85600: other -> the Strategist
+# table family for the named addendum-3 fixes, nothing else.
+_FAMILY_CHANGED_VS_1B85600 = {
+    "bracket switch willie": ("other", "man_other"),
+    "dbl safety go": ("other", "pressure_other"),
+    "double bracket": ("other", "man_other"),
+    "double bracket switch": ("other", "man_other"),
+    "over storm brave": ("other", "pressure_other"),
+    "roll 23 cloud": ("other", "cover_3"),
+    "thunder smoke": ("other", "pressure_other"),
+}
+
+
+def _family_changed_vs_1b85600(book):
+    import json
+
+    snap = json.loads((_ROOT / "tests" / "madden_ml" / "fixtures" / "defense_family_snapshot_1b85600.json")
+                      .read_text(encoding="utf-8"))["plays"]
+    return {n: (snap[n][0], sf.defense_family(n, book)[0]) for n in book.table
+            if snap[n][0] != sf.defense_family(n, book)[0]}
+
+
+# Hand-labelled truth for the applied book, from the Strategist (independent of
+# this module: never generated from the pattern code). It lists the applied
+# plays, so it stays box-only and is read through CFB_COACH_DEFENSE_TRUTH_JSON.
+# Test-only: runtime keeps the book-first lookup through the installed book.
+_TRUTH_SOURCE_TAGS = {"table/art", "name"}
+
+
+def _pattern_truth(name):
+    family, flag = sf.family_and_pressure(name)
+    return family, sf.is_pressure(family, flag)
 
 
 def test_rpo_is_its_own_class_and_folds_only_for_binary():
@@ -459,6 +493,7 @@ _NONSENSE = "Zzyzx Qwerty Plonk"
 
 
 def test_defense_family_book_then_pattern_then_other():
+    """Path-order check (book, then pattern, then other) on a synthetic book."""
     book = sf.DefenseBook(_SYNTH_DEFENSE_BOOK, source="synthetic")
     assert sf.defense_family_path("Cover 3 Sky", book) == ("cover_3", False, "book")
     assert sf.defense_family_path("  cover 3   SKY ", book) == ("cover_3", False, "book")  # case/space only
@@ -498,7 +533,9 @@ def test_off_book_and_unblanked_glued_names_map_by_pattern_on_every_path():
     assert sf.defense_family_path("Cover Hole1 Rpo Stretch Slant", book)[::2] == ("cover_1", "pattern")
 
 
-def test_book_lookup_matches_pattern_on_every_book_name_and_keeps_blitz_pressure():
+def test_book_lookup_crash_and_no_other_check_on_every_book_name():
+    """Book families are built from the pattern, so book == pattern here is a crash / no-other
+    check only, not a family-correctness check (that is the box-only Strategist-truth test)."""
     assert not hasattr(sf, "FAMILY_OVERRIDES")  # addendum 3: no named exceptions
     for book in (sf.DefenseBook(_SYNTH_DEFENSE_BOOK), sf.catalog_defense_book()):
         mismatches = [name for name in book.table if sf.defense_family(name, book) != sf.pattern_family(name)[:2]]
@@ -735,35 +772,6 @@ def test_digit_cleanup_is_only_for_the_named_plays():
     assert sf.family_and_pressure("Will Sam I") == ("other", False)
 
 
-# Formation names of the five applied 49ers defense formations (names only; the
-# plays come from the committed public playbooks.json, not from any database).
-_APPLIED_49ERS_DEFENSE_FORMATIONS = ("Dime 3-2 Odd", "Nickel Single Mug", "4-3 Over", "Nickel Over", "Nickel Double Mug")
-
-
-def test_public_49ers_applied_formations_book_matches_pattern_and_nothing_is_other():
-    """Runs by default (no env var). A missing file, team or formation fails the test."""
-    import json
-
-    path = _ROOT / "cfb_coach" / "data" / "madden27" / "playbooks.json"
-    assert path.is_file(), f"missing {path}"
-    data = json.loads(path.read_text(encoding="utf-8"))
-    formations = data["books"]["defense"]["49ers"]["formations"]
-    missing = [f for f in _APPLIED_49ERS_DEFENSE_FORMATIONS if f not in formations]
-    assert missing == [], f"formations missing from the public 49ers defense: {missing}"
-    names = [n for f in _APPLIED_49ERS_DEFENSE_FORMATIONS for n in sf._book_names(formations[f])]
-    book = sf.DefenseBook(names, source="public-49ers-applied-formations")
-    assert len(book) == 78
-    mismatches = [(n, sf.defense_family(n, book), sf.pattern_family(n)[:2]) for n in book.table
-                  if sf.defense_family(n, book) != sf.pattern_family(n)[:2]]
-    assert mismatches == []
-    assert [n for n in book.table if sf.pattern_family(n)[0] == "other"] == []
-    assert all(sf.defense_family_path(n, book)[2] == "book" for n in book.table)
-    # The 11 confirmed pressure plays are all in these formations.
-    assert all(sf.is_pressure(*sf.defense_family(n, book)) for n in _PRESSURE_11)
-    assert sum(sf.is_pressure(*sf.defense_family(n, book)) for n in book.table) == 34
-    assert _is_pressure_changed_vs_1b85600(book) == _IS_PRESSURE_CHANGED_VS_1B85600
-
-
 # Public 49ers defense names nothing resolves yet (not Strategist-ruled). Pinned so
 # any change to the full-book result shows up; none is in the applied formations.
 _PUBLIC_49ERS_OTHER = [
@@ -772,8 +780,9 @@ _PUBLIC_49ERS_OTHER = [
 ]
 
 
-def test_full_public_49ers_defense_book_matches_pattern():
-    """Runs by default. A missing file or team fails the test."""
+def test_full_public_49ers_defense_crash_and_no_other_check():
+    """Runs by default; a missing file or team fails the test. Book families are built from the pattern, so book == pattern here is a crash / no-other
+    check only, not a family-correctness check (that is the box-only Strategist-truth test)."""
     import json
 
     path = _ROOT / "cfb_coach" / "data" / "madden27" / "playbooks.json"
@@ -791,3 +800,28 @@ def test_bracket_comes_before_the_bare_digit_rule():
         assert sf.family_and_pressure(name) == ("man_other", False)
         assert sf.defense_family(name, sf.catalog_defense_book()) == ("man_other", False)
         assert not sf.is_pressure(*sf.family_and_pressure(name))
+
+
+@pytest.mark.skipif(not (__import__("os").environ.get("CFB_COACH_DEFENSE_TRUTH_JSON")
+                         and __import__("os").environ.get("CFB_COACH_DEFENSE_BOOK_JSON")),
+                    reason="box-only: set CFB_COACH_DEFENSE_TRUTH_JSON and CFB_COACH_DEFENSE_BOOK_JSON")
+def test_applied_book_pattern_matches_the_strategist_truth():
+    """Box-only family-correctness check: pattern family and is_pressure equal the Strategist's
+    hand-labelled truth for every applied play (independent of this module)."""
+    import json
+    import os
+
+    book = sf.DefenseBook.from_file(os.environ["CFB_COACH_DEFENSE_BOOK_JSON"])
+    rows = json.loads(Path(os.environ["CFB_COACH_DEFENSE_TRUTH_JSON"]).read_text(encoding="utf-8"))["rows"]
+    truth = {sf.norm_key(r["name"]): r for r in rows}
+    assert len(rows) == len(truth) == len(book) == 78
+    assert set(truth) == set(book.table)
+    assert [n for n, r in truth.items() if r.get("source_tag") not in _TRUTH_SOURCE_TAGS] == []
+    wrong = [(n, (r["family"], r["is_pressure"]), _pattern_truth(n)) for n, r in sorted(truth.items())
+             if (r["family"], bool(r["is_pressure"])) != _pattern_truth(n)]
+    assert wrong == []
+    assert [n for n in book.table if sf.defense_family(n, book)[0] != _pattern_truth(n)[0]] == []
+    assert sum(bool(r["is_pressure"]) for r in rows) == 34
+    assert sum(sf.is_pressure(*sf.defense_family(n, book)) for n in book.table) == 34
+    assert _family_changed_vs_1b85600(book) == _FAMILY_CHANGED_VS_1B85600
+    assert _is_pressure_changed_vs_1b85600(book) == _IS_PRESSURE_CHANGED_VS_1B85600
