@@ -20,14 +20,19 @@ Rules (recipe f7c17d16, gate v2.2 4d4234aa):
   ("DB Fire 2" -> cover_2). Each look token feeds one group at most: tokens
   the family used are removed before the pressure test, and a
   ``pressure_other`` family never also sets ``pressure``.
-* Run/pass class: one word list, RPO and pass words checked before run
-  words, word boundaries. RPO is its own class and folds into pass only in
+* Run/pass class: one word list, word boundaries. RPO first, then pass
+  concepts, then run concepts, then formation/motion tags (jet, switch,
+  bunch, double) that only mean pass when no concept word is present. RPO is its own class and folds into pass only in
   :func:`binary_run_pass`. QB Kneel has no class; it is a clock rule
   (:func:`kneel_clock_rule`) and never a candidate or training target.
 * Distance: short <= 2, medium <= 6, long <= 10, xlong. Zone from yardline,
   else 100 - yards_to_goal: own_deep < 20, own < 50, opp < 80, red_zone.
   No location (or an untouched live yardline) is zone ``unk`` with
   ``location_missing`` set. No zone-keyed interaction is built for ``unk``.
+* Defense family (addendum 1): exact lookup of our candidate's name in the
+  defensive book (:class:`DefenseBook`). A book play gets the family of its
+  book name; a blank name is ``none``; an off-book or glued name is
+  ``other`` with no pressure, never a pattern guess.
 * Two-minute flag (group ``time``): ``on`` when clock <= 2:00 in Q2 or Q4,
   ``unknown`` when quarter or clock is blank (never ``off``), else ``off``.
   Situation term only; no clock interactions.
@@ -36,10 +41,13 @@ Rules (recipe f7c17d16, gate v2.2 4d4234aa):
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-FEATURE_MODULE_VERSION = "vod_shared_features.v0.24.1"
+FEATURE_MODULE_VERSION = "vod_shared_features.v0.24.2"
 RECIPE_SHA256 = "f7c17d16245116adad0cd30b3b2ab010b58cc3eb189aa6eb552abc5e85a28699"
 GATE_SHA256 = "4d4234aae34894a005333f5e07845d516c57e12124f8cf55e16dddde93757ba8"
 
@@ -65,6 +73,10 @@ MANIFEST_NOTES = (
     "Dropped on defense: call, call_x_family, call_class, class_x_family "
     "(the offense call is not known before the snap; written choice: not used).",
     "def_call is never a family source.",
+    "Defense family is an exact lookup of our candidate's name in the defensive "
+    "book (DefenseBook); an off-book or glued name is 'other'. The report records "
+    "the book's source, size and sha256. Default book: the public repo catalog; "
+    "pass --defense-book for the applied book.",
 )
 
 # --- groups -----------------------------------------------------------------
@@ -154,11 +166,15 @@ PASS_WORDS = (
     r"\b(screens?|pa|flat|verts?|verticals|posts?|dig|curls?|slants?|mesh|smash|stick|corners?|"
     r"out|outs|seam|cross|drive|wheel|flood|spacing|dagger|levels|shallow|hitch|pivot|"
     r"bench|comebacks?|streak|fades?|bubble|spot|angle|texas|unders?|sail|choice|strike|"
-    r"y-?cross|swirl|tare|double|gos?|cobra|scissors|switch|snag|whip|jet|pass|"
-    r"hail mary|deep|swing|rub|salem|zig|sluggo|drags?|ohio|boot|bunch|clear|y-?wheel|"
+    r"y-?cross|swirl|tare|gos?|cobra|scissors|snag|whip|pass|"
+    r"hail mary|flea flicker|flicker|shovel|sprint|deep|swing|rub|salem|zig|sluggo|drags?|ohio|boot|clear|y-?wheel|"
     r"leak|trail|shake|glance|in n up|corndog|sit|ins|traffic|hi lo|replace|attack|divide|"
     r"mills|escape)\b"
 )
+# Formation, motion and tag words that also appear in run names ("Jet Sweep",
+# "Switch HB Dive", "Bunch HB Draw", "Double Wing Power"). They mean pass only
+# when the name has no pass concept and no run concept.
+WEAK_PASS_WORDS = r"\b(jet|switch|bunch|double)\b"
 RUN_WORDS = (
     r"\b(hb|fb|qb sneak|qb power|qb draw|dive|zone|power|counter|stretch|iso|slam|"
     r"toss|sweep|draw|trap|option|sneak|lead|pitch|base|duo|wham|split|outside|inside|"
@@ -166,6 +182,7 @@ RUN_WORDS = (
 )
 _PASS_RE = re.compile(PASS_WORDS)
 _RUN_RE = re.compile(RUN_WORDS)
+_WEAK_PASS_RE = re.compile(WEAK_PASS_WORDS)
 
 
 def is_kneel(play: Any) -> bool:
@@ -185,6 +202,8 @@ def call_class(play: Any) -> str:
         return "pass"
     if _RUN_RE.search(text):
         return "run"
+    if _WEAK_PASS_RE.search(text):
+        return "pass"
     return "unknown"
 
 
@@ -337,6 +356,135 @@ def is_pressure(family: str | None, flag: bool | None) -> bool:
     return bool(flag) or (family in PRESSURE_FAMILIES)
 
 
+# --- defensive book lookup -----------------------------------------------------
+
+_CATALOG_PATH = Path(__file__).resolve().parent.parent / "data" / "madden27" / "playbooks.json"
+
+
+def _book_names(source: Any) -> list[str]:
+    """Play names from a list, a ``{"formations": {...}}`` side, a ``{"defense": ...}``
+    playbook, or an ``active_playbook_json`` blob (``{"applied": {"defense": ...}}``)."""
+    if source is None:
+        return []
+    if isinstance(source, (str, bytes)):
+        return [source] if isinstance(source, str) else []
+    if isinstance(source, Mapping):
+        if "applied" in source:
+            return _book_names(source.get("applied"))
+        if "defense" in source:
+            return _book_names(source.get("defense"))
+        if "formations" in source:
+            return _book_names(source.get("formations"))
+        if "plays" in source:
+            return _book_names(source.get("plays"))
+        names: list[str] = []
+        for value in source.values():
+            names.extend(_book_names(value))
+        return names
+    names = []
+    for item in source:
+        names.extend(_book_names(item))
+    return names
+
+
+class DefenseBook:
+    """Exact (case- and space-normalized) name lookup in a defensive book.
+
+    Each book play's family and pressure come from its own book name, once,
+    when the book is built. Lookups never pattern-match the queried text.
+    """
+
+    def __init__(self, names: Iterable[Any], *, source: str = "custom") -> None:
+        table: dict[str, tuple[str, bool]] = {}
+        for name in names:
+            key = norm_key(name)
+            if key and key not in table:
+                table[key] = family_and_pressure(key)
+        self.table = table
+        self.source = source
+        self.sha256 = hashlib.sha256("\n".join(sorted(table)).encode("utf-8")).hexdigest()
+
+    def __len__(self) -> int:
+        return len(self.table)
+
+    def __contains__(self, name: Any) -> bool:
+        key = norm_key(name)
+        return bool(key) and key in self.table
+
+    def lookup(self, name: Any) -> tuple[str, bool, bool | None]:
+        """(family, pressure, on_book). Blank -> ("none", False, None); off-book -> ("other", False, False)."""
+        key = norm_key(name)
+        if not key:
+            return "none", False, None
+        hit = self.table.get(key)
+        if hit is None:
+            return "other", False, False
+        return hit[0], hit[1], True
+
+    def describe(self) -> dict[str, Any]:
+        return {"source": self.source, "plays": len(self.table), "sha256": self.sha256}
+
+    @classmethod
+    def from_playbook(cls, source: Any, *, label: str = "playbook") -> "DefenseBook":
+        return cls(_book_names(source), source=label)
+
+    @classmethod
+    def from_file(cls, path: str | Path) -> "DefenseBook":
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return cls(_book_names(data), source=f"file:{Path(path).name}")
+
+
+_CATALOG_BOOK: DefenseBook | None = None
+_ACTIVE_BOOK: DefenseBook | None = None
+
+
+def catalog_defense_book() -> DefenseBook:
+    """Every defensive play in the public repo catalog (data/madden27/playbooks.json)."""
+    global _CATALOG_BOOK
+    if _CATALOG_BOOK is None:
+        data = json.loads(_CATALOG_PATH.read_text(encoding="utf-8"))
+        books = (data.get("books") or {}).get("defense") or {}
+        _CATALOG_BOOK = DefenseBook(_book_names(books), source="catalog:madden27/playbooks.json")
+    return _CATALOG_BOOK
+
+
+def set_defense_book(book: DefenseBook | Any | None) -> DefenseBook | None:
+    """Set the process-wide defensive book (``None`` goes back to the catalog)."""
+    global _ACTIVE_BOOK
+    if book is None or isinstance(book, DefenseBook):
+        _ACTIVE_BOOK = book
+    else:
+        _ACTIVE_BOOK = DefenseBook.from_playbook(book)
+    return _ACTIVE_BOOK
+
+
+def active_defense_book() -> DefenseBook:
+    return _ACTIVE_BOOK if _ACTIVE_BOOK is not None else catalog_defense_book()
+
+
+def _resolve_book(book: DefenseBook | Any | None) -> DefenseBook:
+    if book is None:
+        return active_defense_book()
+    if isinstance(book, DefenseBook):
+        return book
+    return DefenseBook.from_playbook(book)
+
+
+def defense_family(name: Any, book: DefenseBook | Any | None = None) -> tuple[str, bool]:
+    """Defense candidate family and pressure through the book lookup (addendum 1).
+
+    The one function training, scoring, eval labels and live use. ``book`` is a
+    :class:`DefenseBook`, any playbook shape :func:`DefenseBook.from_playbook`
+    reads, or ``None`` for the active book (catalog unless one was set).
+    """
+    family, pressure, _on_book = _resolve_book(book).lookup(name)
+    return family, pressure
+
+
+def defense_on_book(name: Any, book: DefenseBook | Any | None = None) -> bool | None:
+    return _resolve_book(book).lookup(name)[2]
+
+
 def look_text_and_source(defense_look: Mapping[str, Any] | None, conf: Mapping[str, Any] | None) -> tuple[str | None, str | None]:
     """Observed look in a label row: coverage_seen, then def_overlay. Never def_call."""
     look = defense_look or {}
@@ -453,23 +601,27 @@ def derive(
     quarter: Any = None,
     clock: Any = None,
     family_src: str | None = None,
+    defense_book: DefenseBook | Any | None = None,
 ) -> dict[str, Any]:
     """The single derivation both paths use.
 
     Offense: ``candidate`` is our play; family/look come from ``observed_look``.
-    Defense: ``candidate`` is our defensive play and is the family/look source.
+    Defense: ``candidate`` is our defensive play and is the family/look source,
+    through the exact book lookup (:func:`defense_family`).
     """
     side_n = _side(side)
     cand_text = norm_key(candidate)
+    on_book = None
     if side_n == "defense":
         look_raw = cand_text
         src = "candidate" if cand_text else None
         call = None
+        family, pressure, on_book = _resolve_book(defense_book).lookup(cand_text)
     else:
         look_raw = norm_key(observed_look)
         src = (family_src or "opp_look") if look_raw else None
         call = cand_text
-    family, pressure = family_and_pressure(look_raw)
+        family, pressure = family_and_pressure(look_raw)
     spot = location(yardline, yards_to_goal, yardline_touched)
     return {
         "side": side_n,
@@ -481,6 +633,7 @@ def derive(
         "look": look_raw,
         "look_family": family,
         "family_src": src,
+        "on_book": on_book,
         "pressure": bool(pressure),
         "down": down_level(down),
         "dist": dist_bucket(distance),
@@ -490,7 +643,7 @@ def derive(
     }
 
 
-def training_inputs(row: Mapping[str, Any]) -> dict[str, Any]:
+def training_inputs(row: Mapping[str, Any], *, defense_book: DefenseBook | Any | None = None) -> dict[str, Any]:
     """Label-row adapter (v0.24 rows: offense_call / defense_look / conf)."""
     conf = row.get("conf") or {}
     side = _side(row.get("side"))
@@ -516,6 +669,7 @@ def training_inputs(row: Mapping[str, Any]) -> dict[str, Any]:
         quarter=row.get("quarter"),
         clock=row.get("clock"),
         family_src=src,
+        defense_book=defense_book,
     )
 
 
@@ -530,6 +684,7 @@ def live_inputs(
     yardline_touched: Any = None,
     quarter: Any = None,
     clock: Any = None,
+    defense_book: DefenseBook | Any | None = None,
 ) -> dict[str, Any]:
     """Live adapter: what GameState and opp_look carry. No def_call, no coverage_seen."""
     return derive(
@@ -542,18 +697,21 @@ def live_inputs(
         yardline_touched=yardline_touched,
         quarter=quarter,
         clock=clock,
+        defense_book=defense_book,
     )
 
 
-def swap_candidate(inputs: Mapping[str, Any], candidate: Any) -> dict[str, Any]:
+def swap_candidate(
+    inputs: Mapping[str, Any], candidate: Any, *, defense_book: DefenseBook | Any | None = None,
+) -> dict[str, Any]:
     """Same situation and look, a different candidate (ranking, constant-pick checks)."""
     out = dict(inputs)
     cand_text = norm_key(candidate)
     out["candidate_text"] = cand_text
     out["kneel"] = bool(cand_text and is_kneel(cand_text))
     if inputs.get("side") == "defense":
-        family, pressure = family_and_pressure(cand_text)
-        out.update(look=cand_text, look_family=family, pressure=bool(pressure),
+        family, pressure, on_book = _resolve_book(defense_book).lookup(cand_text)
+        out.update(look=cand_text, look_family=family, pressure=bool(pressure), on_book=on_book,
                    family_src="candidate" if cand_text else None)
     else:
         out["call"] = None if (cand_text is None or is_kneel(cand_text)) else cand_text
@@ -658,17 +816,51 @@ def allowed_keys(rows: Iterable[Mapping[str, Any]], min_rows: int = MIN_KEYED_RO
 
 # --- ranking helpers -------------------------------------------------------------
 
-def top_two_margin(probabilities: Sequence[float]) -> float | None:
-    """Top probability minus the best different candidate's. None with < 2 candidates."""
-    ordered = sorted((float(p) for p in probabilities), reverse=True)
+def top_two_margin(probabilities: Sequence[float] | Mapping[Any, float] | Iterable[tuple[Any, float]]) -> float | None:
+    """Top score minus the best *different play's* score. None with < 2 plays.
+
+    Pass ``(play, score)`` pairs or a ``{play: score}`` map so the same play
+    listed in two formations counts once (its best score); otherwise a book
+    that repeats a play would always look like a tie. A bare list of numbers
+    is treated as distinct candidates.
+    """
+    best: dict[Any, float] = {}
+    if isinstance(probabilities, Mapping):
+        items: Iterable[Any] = probabilities.items()
+    else:
+        items = probabilities
+    for index, item in enumerate(items):
+        if isinstance(item, (tuple, list)) and len(item) == 2:
+            name, score = item
+            key = norm_key(name) or f"#{index}"
+        else:
+            key, score = f"#{index}", item
+        value = float(score)
+        if key not in best or value > best[key]:
+            best[key] = value
+    ordered = sorted(best.values(), reverse=True)
     if len(ordered) < 2:
         return None
     return ordered[0] - ordered[1]
 
 
-def heuristic_fallback(observed_look: Any, margin: float | None) -> str | None:
-    """Q4/Q5: ``blank_look`` or ``tie`` sends the snap to the heuristic; else None."""
-    if not norm_key(observed_look):
+def heuristic_fallback(
+    observed_look: Any,
+    margin: float | None,
+    *,
+    side: str = "offense",
+    candidate: Any = None,
+) -> str | None:
+    """Q4/Q5: ``blank_look`` or ``tie`` sends the snap to the heuristic; else None.
+
+    Offense needs an observed look. Defense ranks our own calls, so it never
+    reads ``opp_look``; it is ``blank_look`` only when it has no candidate to
+    score (``candidate`` given and blank). A margin under 0.01 is ``tie``.
+    """
+    if _side(side) == "defense":
+        if candidate is not None and not norm_key(candidate):
+            return "blank_look"
+    elif not norm_key(observed_look):
         return "blank_look"
     if margin is None or margin < TIE_MARGIN:
         return "tie"

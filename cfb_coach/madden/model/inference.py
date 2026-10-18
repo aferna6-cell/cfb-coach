@@ -764,6 +764,7 @@ def vod_live_inputs(
     yardline_touched: Any = None,
     quarter: Any = None,
     clock: Any = None,
+    defense_book: Any = None,
 ) -> dict[str, Any]:
     """Live-shaped VOD model inputs for one candidate.
 
@@ -771,6 +772,9 @@ def vod_live_inputs(
     (offense family source), and the situation fields. ``def_call`` and
     ``coverage_seen`` are never read. ``yardline_touched=False`` (a yardline
     nobody edited, so the own-25 default) maps to the missing-location bucket.
+    ``defense_book`` is the defensive book for the exact family lookup (a
+    ``shared_features.DefenseBook`` or a playbook blob; ``None`` uses the
+    active book). Pass the installed book so off-book names map to ``other``.
     """
     return vod_features.live_inputs(
         side,
@@ -782,6 +786,7 @@ def vod_live_inputs(
         yardline_touched=yardline_touched,
         quarter=quarter,
         clock=clock,
+        defense_book=defense_book,
     )
 
 
@@ -797,6 +802,7 @@ def vod_candidate_features(
     quarter: Any = None,
     clock: Any = None,
     enable_keyed: bool = True,
+    defense_book: Any = None,
 ) -> dict[str, str]:
     """VOD model feature levels for one live candidate (gate v2.2 G6 scoring side).
 
@@ -814,13 +820,31 @@ def vod_candidate_features(
         yardline_touched=yardline_touched,
         quarter=quarter,
         clock=clock,
+        defense_book=defense_book,
     )
     return vod_features.feature_levels(inputs, enable_keyed=enable_keyed)
 
 
-def vod_fallback_reason(opp_look: Any, margin: float | None) -> str | None:
-    """``blank_look`` or ``tie`` (top-two margin < 0.01) sends the snap to HEURISTIC."""
-    return vod_features.heuristic_fallback(normalize_opp_look(opp_look), margin)
+def vod_fallback_reason(
+    opp_look: Any,
+    margin: float | None,
+    *,
+    side: str,
+    candidate: Any = None,
+) -> str | None:
+    """``blank_look`` or ``tie`` (top-two margin < 0.01) sends the snap to HEURISTIC.
+
+    ``side`` is ``offense`` or ``defense``. Offense needs a typed look. Defense
+    ranks our own calls and never reads ``opp_look``: it is ``blank_look``
+    only when ``candidate`` is given and blank. ``margin`` must come from
+    ``shared_features.top_two_margin`` over ``(play, score)`` pairs, so a play
+    listed in two formations is not a tie with itself.
+    """
+    if vod_features._side(side) not in ("offense", "defense"):
+        raise ValueError(f"side must be 'offense' or 'defense', got {side!r}")
+    return vod_features.heuristic_fallback(
+        normalize_opp_look(opp_look), margin, side=side, candidate=candidate,
+    )
 
 
 @dataclass(frozen=True)

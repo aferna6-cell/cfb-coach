@@ -1031,12 +1031,44 @@ def train(
     min_cxs_rows: int = MIN_CXS_ROWS,
     min_groups: int = 2,
     seed: int = 7,
+    defense_book: Any = None,
 ) -> dict[str, Any]:
     """Fit each Madden/CFB x CPU/human x offense/defense stratum on its own.
+
+    ``defense_book`` (a ``shared_features.DefenseBook`` or playbook blob) is the
+    book for the exact defense family lookup. ``None`` keeps the active book
+    (the public catalog unless one was set). The report records which book.
 
     ``enable_cxs=False`` drops the three new groups so the same code refits the
     v5 architecture. ``audit_game_ids`` are dropped along with F8Hm324SMtg.
     """
+    previous_book = sf._ACTIVE_BOOK
+    if defense_book is not None:
+        sf.set_defense_book(defense_book)
+    try:
+        return _train(
+            rows, enable_cxs=enable_cxs, audit_game_ids=audit_game_ids, workers=workers, nice=nice,
+            hp_grid=hp_grid, lambda_cxs_grid=lambda_cxs_grid, n_boot=n_boot, min_cxs_rows=min_cxs_rows,
+            min_groups=min_groups, seed=seed,
+        )
+    finally:
+        sf.set_defense_book(previous_book)
+
+
+def _train(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    enable_cxs: bool,
+    audit_game_ids: Sequence[Any],
+    workers: int | None,
+    nice: int | None,
+    hp_grid: Sequence[Sequence[float]] | None,
+    lambda_cxs_grid: Sequence[float] | None,
+    n_boot: int,
+    min_cxs_rows: int,
+    min_groups: int,
+    seed: int,
+) -> dict[str, Any]:
     nice_applied = apply_nice(nice)
     n_workers = resolve_workers(workers)
     grid = tuple(tuple(float(value) for value in hp) for hp in (hp_grid or DEFAULT_HP_GRID))
@@ -1047,8 +1079,12 @@ def train(
     not_trained: dict[str, dict[str, Any]] = {}
     n_unknown_success = 0
     n_kneel_excluded = 0
+    defense_book_hits = {"on_book": 0, "off_book_other": 0, "blank": 0}
     for raw in kept:
         prepared = prepare_row(raw)
+        if prepared.get("side") == "defense":
+            hit = prepared.get("on_book")
+            defense_book_hits["on_book" if hit else ("blank" if hit is None else "off_book_other")] += 1
         if prepared["kneel"]:
             # QB Kneel is a clock rule, never a training target (Q6).
             n_kneel_excluded += 1
@@ -1107,6 +1143,8 @@ def train(
             "gate_sha256": sf.GATE_SHA256,
             "dropped_groups": {side: list(groups) for side, groups in sf.DROPPED_GROUPS.items()},
             "notes": list(sf.MANIFEST_NOTES),
+            "defense_book": sf.active_defense_book().describe(),
+            "defense_family_rows": defense_book_hits,
         },
         "strata": strata,
     }
@@ -1162,6 +1200,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--hp-grid",
         help="v5 penalty grid as ls,le,lx triples separated by semicolons. Defaults to the v5 grid.",
     )
+    parser.add_argument(
+        "--defense-book",
+        help=(
+            "JSON defensive book for the exact family lookup (a list of play names, a "
+            "{formations: {...}} side, or an active_playbook_json blob). Defaults to the repo catalog."
+        ),
+    )
     return parser
 
 
@@ -1180,6 +1225,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         nice=args.nice,
         hp_grid=parse_hp_grid(args.hp_grid),
         n_boot=args.n_boot,
+        defense_book=sf.DefenseBook.from_file(args.defense_book) if args.defense_book else None,
     )
     payload = json.dumps(report, indent=1, sort_keys=True)
     if args.out:

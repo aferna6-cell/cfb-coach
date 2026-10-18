@@ -285,13 +285,186 @@ def test_no_score_or_adjustment_features_and_defense_drops():
 
 
 def test_ties_and_blank_looks_go_to_heuristic():
-    assert inference.vod_fallback_reason(None, 0.2) == "blank_look"
-    assert inference.vod_fallback_reason("   ", 0.2) == "blank_look"
-    assert inference.vod_fallback_reason("Cover 3", 0.0099) == "tie"
-    assert inference.vod_fallback_reason("Cover 3", None) == "tie"
-    assert inference.vod_fallback_reason("Cover 3", 0.01) is None
+    assert inference.vod_fallback_reason(None, 0.2, side="offense") == "blank_look"
+    assert inference.vod_fallback_reason("   ", 0.2, side="offense") == "blank_look"
+    assert inference.vod_fallback_reason("Cover 3", 0.0099, side="offense") == "tie"
+    assert inference.vod_fallback_reason("Cover 3", None, side="offense") == "tie"
+    assert inference.vod_fallback_reason("Cover 3", 0.01, side="offense") is None
     assert sf.top_two_margin([0.61, 0.6, 0.2]) == pytest.approx(0.01)
     assert sf.top_two_margin([0.5]) is None
+
+
+def test_defense_fallback_checks_its_own_input_not_opp_look():
+    # Defense ranks our own calls: an empty opp_look is not a blank look.
+    assert inference.vod_fallback_reason(None, 0.2, side="defense") is None
+    assert inference.vod_fallback_reason("", 0.2, side="defense", candidate="Cover 3 Sky") is None
+    assert inference.vod_fallback_reason("Cover 2", 0.2, side="defense", candidate="") == "blank_look"
+    assert inference.vod_fallback_reason(None, 0.005, side="defense", candidate="Cover 3 Sky") == "tie"
+    assert inference.vod_fallback_reason(None, None, side="defense", candidate="Cover 3 Sky") == "tie"
+    with pytest.raises(ValueError):
+        inference.vod_fallback_reason("Cover 3", 0.2, side="special_teams")
+    with pytest.raises(TypeError):
+        inference.vod_fallback_reason("Cover 3", 0.2)  # side is required
+
+
+def test_top_two_margin_dedupes_the_same_play_across_formations():
+    # Same play in two formations scores the same: it must not be a tie with itself.
+    pairs = [("Mesh", 0.62), ("mesh ", 0.62), ("Flood", 0.50), ("HB Dive", 0.40)]
+    assert sf.top_two_margin(pairs) == pytest.approx(0.12)
+    assert sf.top_two_margin({"Mesh": 0.62, "Flood": 0.5}) == pytest.approx(0.12)
+    assert inference.vod_fallback_reason("Cover 3", sf.top_two_margin(pairs), side="offense") is None
+    # Keeps the best score per play name.
+    assert sf.top_two_margin([("Mesh", 0.3), ("Mesh", 0.7), ("Flood", 0.6)]) == pytest.approx(0.1)
+    # Only one distinct play: no margin, so a tie.
+    assert sf.top_two_margin([("Mesh", 0.6), ("Mesh", 0.6)]) is None
+    assert inference.vod_fallback_reason("Cover 3", None, side="offense") == "tie"
+    # A real near-tie between two different plays stays a tie.
+    assert sf.top_two_margin([("Mesh", 0.605), ("Flood", 0.6)]) == pytest.approx(0.005)
+    # Bare numbers are still distinct candidates.
+    assert sf.top_two_margin([0.6, 0.6]) == pytest.approx(0.0)
+
+
+def test_eval_fallback_uses_deduped_margin_and_side():
+    from scripts.madden_ml import eval_harness, eval_scoring
+
+    ctx = {"row": {"look": None}}
+    dup = [("Cover 3 Sky", 0.7), ("Cover 3 Sky", 0.7), ("Tampa 2", 0.6)]
+    got = eval_harness._vod_fallback("defense", ctx, dup, "Cover 3 Sky")
+    assert got["vod_fallback"] is None and got["top_two_margin"] == pytest.approx(0.1)
+    got = eval_harness._vod_fallback("offense", ctx, [("Mesh", 0.7), ("Mesh", 0.7), ("Flood", 0.6)], "Mesh")
+    assert got["vod_fallback"] == "blank_look"
+    got = eval_harness._vod_fallback("offense", {"row": {"look": "Cover 3"}},
+                                     [("Mesh", 0.7), ("Mesh", 0.7), ("Flood", 0.6)], "Mesh")
+    assert got["vod_fallback"] is None
+    got = eval_scoring.model_fallback("defense", None, {"Cover 3 Sky": 0.7, "Tampa 2": 0.695}, candidate="Cover 3 Sky")
+    assert got["vod_fallback"] == "tie"
+
+
+@pytest.mark.parametrize("play,cls", [
+    ("Jet Sweep", "run"), ("Jet Toss", "run"), ("Bunch HB Draw", "run"),
+    ("Double Wing Power", "run"), ("Switch HB Dive", "run"), ("Flea Flicker", "pass"),
+    # Formation/motion tags still mean pass next to a pass concept, or alone.
+    ("PA Jet Sweep", "pass"), ("Spacing Switch", "pass"), ("Double Post", "pass"),
+    ("Bunch Mesh", "pass"), ("Jet HB Screen", "pass"), ("Switch", "pass"),
+    ("FK Jet HB Shovel", "pass"), ("RPO Jet Sweep", "rpo"),
+])
+def test_run_pass_formation_tags_do_not_override_run_concepts(play, cls):
+    assert sf.call_class(play) == cls
+
+
+_GLUED = ("Cover Hole1 Rpo Stretch Slant", "Cover 1 Hole Mid Blitz 0", "Cover 3 Sky Tampa 2")
+
+
+def test_defense_family_is_an_exact_book_lookup():
+    book = sf.DefenseBook(_SYNTH_DEFENSE_BOOK, source="synthetic")
+    assert sf.defense_family("Cover 3 Sky", book) == ("cover_3", False)
+    assert sf.defense_family("  cover 3   SKY ", book) == ("cover_3", False)  # case/space only
+    assert sf.defense_family("DB Fire 2", book) == ("cover_2", True)
+    for name in _GLUED + ("Cover 3 Sky Wk", "Cover 1 Hole", "Robber"):
+        assert sf.defense_family(name, book) == ("other", False), name
+        assert sf.defense_on_book(name, book) is False
+        assert sf.is_pressure(*sf.defense_family(name, book)) is False
+    assert sf.defense_family("", book) == ("none", False)
+    assert sf.defense_family(None, book) == ("none", False)
+    assert sf.defense_on_book(None, book) is None
+
+
+def test_glued_or_off_book_defense_names_are_other_on_every_path():
+    book = sf.DefenseBook(_SYNTH_DEFENSE_BOOK, source="synthetic")
+    for name in _GLUED:
+        train = sf.training_inputs(_label_row("defense", name), defense_book=book)
+        live = inference.vod_live_inputs("defense", name, down=1, distance=10, yardline=25, defense_book=book)
+        for inputs in (train, live):
+            assert inputs["look_family"] == "other", name
+            assert inputs["pressure"] is False
+            assert inputs["on_book"] is False
+        assert sf.feature_levels(train) == inference.vod_candidate_features(
+            "defense", name, down=1, distance=10, yardline=25, quarter=1, clock="12:00", defense_book=book,
+        )
+        swapped = sf.swap_candidate(sf.training_inputs(_label_row("defense", "Cover 3 Sky"), defense_book=book),
+                                    name, defense_book=book)
+        assert swapped["look_family"] == "other"
+    # The public catalog default gives the same answer for glued names.
+    for name in _GLUED:
+        assert sf.defense_family(name) == ("other", False)
+
+
+def test_book_lookup_matches_pattern_on_every_book_name_and_keeps_blitz_pressure():
+    for book in (sf.DefenseBook(_SYNTH_DEFENSE_BOOK), sf.catalog_defense_book()):
+        mismatches = [name for name in book.table if sf.defense_family(name, book) != sf.family_and_pressure(name)]
+        assert mismatches == []
+    book = sf.DefenseBook(_BLITZ_7)
+    for play, family in _BLITZ_7.items():
+        got_family, flag = sf.defense_family(play, book)
+        assert got_family == family, play
+        assert sf.is_pressure(got_family, flag) is True, play
+    for play in _BLITZ_7:
+        assert play in sf.catalog_defense_book()
+
+
+def test_defense_book_reads_playbook_shapes(tmp_path):
+    side = {"formations": {"Nickel 2-4": ["Cover 3 Sky", "Free Fire"], "Dime": ["Cover 3 Sky"]}}
+    blob = {"applied": {"offense": {"formations": {"Gun": ["Mesh"]}}, "defense": side}}
+    for source in (side, blob, ["Cover 3 Sky", "Free Fire"]):
+        book = sf.DefenseBook.from_playbook(source)
+        assert sorted(book.table) == ["cover 3 sky", "free fire"]
+    path = tmp_path / "book.json"
+    path.write_text(__import__("json").dumps(blob))
+    book = sf.DefenseBook.from_file(path)
+    assert len(book) == 2 and "mesh" not in book
+    assert book.describe()["plays"] == 2
+    previous = sf._ACTIVE_BOOK
+    try:
+        sf.set_defense_book(book)
+        assert sf.defense_family("Cover 2 Invert") == ("other", False)
+        assert sf.defense_family("Free Fire") == ("pressure_other", False)
+    finally:
+        sf.set_defense_book(previous)
+    assert sf.defense_family("Cover 2 Invert") == ("cover_2", False)
+
+
+def test_eval_labels_executed_def_call_through_the_book_lookup():
+    from scripts.madden_ml import eval_scoring
+
+    book = sf.DefenseBook(_SYNTH_DEFENSE_BOOK)
+    got = eval_scoring.executed_call_label("defense", "Cover Hole1 Rpo Stretch", defense_book=book)
+    assert got["family"] == "other" and got["on_book"] is False and got["is_pressure"] is False
+    got = eval_scoring.executed_call_label("defense", "Free Fire", defense_book=book)
+    assert got["family"] == "pressure_other" and got["is_pressure"] is True
+    assert eval_scoring.executed_call_label("defense", "", defense_book=book)["scored"] is False
+    assert eval_scoring.executed_call_label("offense", "Jet Sweep")["call_class"] == "run"
+
+
+def test_trainer_prep_and_row_features_match_inference(capsys):
+    """G6 through the trainer's own path: prep() + row_features() vs vod_candidate_features."""
+    pytest.importorskip("numpy")
+    from cfb_coach.vod_success import train_vod_model_v6 as v6
+
+    book = sf.DefenseBook(_SYNTH_DEFENSE_BOOK, source="synthetic")
+    previous = sf._ACTIVE_BOOK
+    n = 0
+    mismatches = []
+    try:
+        sf.set_defense_book(book)
+        for row in list(_cases()) + [_label_row("defense", name) for name in _GLUED]:
+            row = dict(row, video_id="synthetic")
+            prepared = v6.prep(row)
+            allowed = v6.allowed_cxs_keys([prepared], min_rows=1)
+            cand = row["defense_look"]["def_call"] if row["side"] == "defense" else row["offense_call"]["play"]
+            for keyed in (True, False):
+                trained = dict(v6.row_features(prepared, enable_cxs=keyed, allowed_cxs=allowed))
+                live = inference.vod_candidate_features(
+                    row["side"], cand, enable_keyed=keyed, defense_book=book, **_live_kwargs(row),
+                )
+                n += 1
+                if trained != live:
+                    mismatches.append((row["side"], cand, keyed))
+    finally:
+        sf.set_defense_book(previous)
+    with capsys.disabled():
+        print(f"\n[parity-trainer] prep+row_features rows={n} mismatches={len(mismatches)}")
+    assert n > 1000
+    assert mismatches == []
 
 
 def test_shared_module_is_stdlib_only():

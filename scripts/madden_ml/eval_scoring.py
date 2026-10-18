@@ -34,6 +34,7 @@ if str(_ROOT) not in sys.path:
 
 from cfb_coach.madden.catalog import is_deep, is_run
 from cfb_coach.madden.model.schema import MLStatus, is_live_selectable
+from cfb_coach.vod_success import shared_features as _sf
 from cfb_coach.vod_success.shared_features import look_family as _look_family
 from cfb_coach.vod_success.shared_features import norm_key as _norm_key
 from cfb_coach.zones import field_zone
@@ -1561,6 +1562,59 @@ def _paired_columns(
         "evaluable": evaluable,
         "evaluable_reason": reason,
         "heuristic_tie_break": HEURISTIC_TIE_BREAK,
+    }
+
+
+def executed_call_label(side: Any, call: Any, *, defense_book: Any = None) -> dict[str, Any]:
+    """Label a held-out row's executed call with the shared feature rules.
+
+    Defense: family and pressure through ``shared_features.defense_family``,
+    the exact book lookup training and live use (off-book or glued names are
+    ``other``). Offense: ``shared_features.call_class``. Held-out CSVs carry
+    no confidence columns, so no confidence filter applies here. A blank call
+    is not a scored row (addendum 2) and comes back with ``scored=False``.
+    """
+    text = _norm_key(call)
+    side_n = _sf._side(side)
+    if side_n == "defense":
+        family, pressure = _sf.defense_family(text, defense_book)
+        return {
+            "side": side_n,
+            "call": text,
+            "scored": text is not None,
+            "family": family,
+            "pressure": bool(pressure),
+            "is_pressure": _sf.is_pressure(family, pressure),
+            "on_book": _sf.defense_on_book(text, defense_book),
+        }
+    return {
+        "side": side_n,
+        "call": text,
+        "scored": text is not None,
+        "call_class": _sf.call_class(text),
+        "kneel": bool(text and _sf.is_kneel(text)),
+    }
+
+
+def model_fallback(
+    side: Any,
+    opp_look: Any,
+    scored: Any,
+    *,
+    candidate: Any = None,
+) -> dict[str, Any]:
+    """Fallback reason for one ranked row: deduped top-two margin, side-aware blank look.
+
+    ``scored`` is ``(play, score)`` pairs or ``{play: score}`` (higher is
+    better). The same play in two formations counts once. Same function as
+    live: ``inference.vod_fallback_reason``.
+    """
+    from cfb_coach.madden.model.inference import vod_fallback_reason
+
+    margin = _sf.top_two_margin(scored)
+    return {
+        "top_two_margin": margin,
+        "vod_fallback": vod_fallback_reason(opp_look, margin, side=_sf._side(side), candidate=candidate),
     }
 
 

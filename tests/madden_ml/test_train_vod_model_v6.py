@@ -518,6 +518,11 @@ def test_constant_pick_uses_shared_look_order():
     assert by_look["cover 2 man"]["picks_down"] == ["mesh", "hb dive", "hb dive", "hb dive"]
     assert by_look["cover 2 man"]["changed_distance"] is False
     assert by_look["cover 2 man"]["changed_zone"] is False
+    assert by_look["cover 6"]["changed_down"] is True
+    assert report["n_looks"] == 2
+    assert report["rate_changed_down"] == 1
+    assert report["rate_changed_distance"] == 0
+    assert report["rate_changed_zone"] == 0
     half = prep(_row(
         defense_look={"def_call": "Cover 3", "coverage_seen": "Cover 3", "def_overlay": ""},
         conf=_conf(def_call=0.0, coverage_seen=0.5, def_overlay=0.0),
@@ -739,3 +744,17 @@ def test_workers_and_nice(monkeypatch):
 def test_cli_refuses_vod_data_path():
     with pytest.raises(SystemExit, match="vod_data"):
         main(["--rows", "/workspace/vod_data/labels.json", "--workers", "1"])
+
+
+def test_train_records_the_defense_book_and_restores_it():
+    from cfb_coach.vod_success import shared_features as sf
+
+    rows = [_row(snap_id=f"r{i}", match_id=f"m{i % 2}", success=i % 2 == 0) for i in range(6)]
+    book = sf.DefenseBook(["Cover 3 Sky", "Free Fire"], source="synthetic")
+    before = sf.active_defense_book()
+    report = train(rows, workers=1, hp_grid=TINY_HP, lambda_cxs_grid=TINY_LAMBDA, n_boot=0, min_groups=2,
+                   defense_book=book)
+    assert report["feature_module"]["defense_book"] == book.describe()
+    assert set(report["feature_module"]["defense_family_rows"]) == {"on_book", "off_book_other", "blank"}
+    assert sf.active_defense_book() is before
+    assert "--defense-book" in build_parser().format_help()

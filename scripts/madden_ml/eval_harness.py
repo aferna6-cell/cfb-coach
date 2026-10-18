@@ -762,17 +762,42 @@ def _candidate_feature_map(row: dict[str, Any], *, formation: str, play: str, si
     )
 
 
-def _defense_feature_map(row: dict[str, Any], *, formation: str, play: str, side: str) -> dict[str, str]:
+def _defense_feature_map(
+    row: dict[str, Any], *, formation: str, play: str, side: str, defense_book: Any = None,
+) -> dict[str, str]:
     """Defensive candidate as the look. The offense call is not a defense input.
 
     Defense models estimate P(offense succeeds | our defensive call, situation).
     The family, look and pressure come from our own candidate play; the typed
     opponent look and any def_call/coverage_seen column are never read.
+    The family is the exact lookup of ``play`` in ``defense_book`` (the
+    installed book when the ranker passes it), the same lookup training uses.
     """
     from cfb_coach.madden.model.inference import vod_candidate_features
 
     del formation  # not a model input
-    return vod_candidate_features(side, play, **_live_feature_kwargs(row))
+    return vod_candidate_features(side, play, defense_book=defense_book, **_live_feature_kwargs(row))
+
+
+def _vod_fallback(
+    side: str,
+    context: dict[str, Any],
+    scored: Sequence[tuple[str, float]],
+    pick: str,
+) -> dict[str, Any]:
+    """Heuristic-fallback reason for a ranked book, recorded next to the raw pick.
+
+    The raw pick is not changed (G4a/G4d use the raw ranking). The margin is
+    ``shared_features.top_two_margin`` over (play, preference) pairs, so the
+    same play in two formations is not a tie with itself.
+    """
+    from cfb_coach.madden.model.inference import vod_fallback_reason
+    from cfb_coach.vod_success.shared_features import top_two_margin
+
+    margin = top_two_margin(scored)
+    look = (context.get("row") or {}).get("look")
+    reason = vod_fallback_reason(look, margin, side=side, candidate=pick)
+    return {"top_two_margin": margin, "vod_fallback": reason}
 
 
 def _candidate_logit(
@@ -905,11 +930,15 @@ def _rank_defense_book(
     context: dict[str, Any],
 ) -> tuple[str, str, dict[str, Any]]:
     """Lowest predicted offense success. The offense path does not use this."""
+    from cfb_coach.vod_success.shared_features import DefenseBook
+
+    defense_book = DefenseBook.from_playbook(book, label="installed")
     ranked: list[tuple[float, str, str, dict[str, Any]]] = []
     for formation, plays in book.items():
         for play in plays:
             feats = _defense_feature_map(
                 context["row"], formation=str(formation), play=str(play), side=side,
+                defense_book=defense_book,
             )
             score, detail = _candidate_logit(models, feats)
             ranked.append((score, str(formation), str(play), detail))
@@ -923,6 +952,8 @@ def _rank_defense_book(
         "coerced": context["coerced"],
         "call_matches": [],
         "ranking": "min_offense_success",
+        # Preference is P(offense fails): higher is better for us.
+        **_vod_fallback(side, context, [(p, 1.0 - _sigmoid(s)) for s, _f, p, _d in ranked], play),
     }
     return formation, play, features
 
@@ -960,8 +991,13 @@ def _rank_installed_book(
         "raw": context["raw"],
         "coerced": context["coerced"],
         "call_matches": call_matches,
+        **_vod_fallback(side, context, [(p, _sigmoid(s)) for s, _f, p, _d, _m in ranked], play),
     }
     return formation, play, features
+
+
+def _sigmoid(logit: float) -> float:
+    return 1.0 / (1.0 + math.exp(-max(-60.0, min(60.0, float(logit)))))
 
 
 def _offline_call(side: str, formation: str, play: str) -> Any:
