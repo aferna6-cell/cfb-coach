@@ -774,7 +774,7 @@ def vod_live_inputs(
     nobody edited, so the own-25 default) maps to the missing-location bucket.
     ``defense_book`` is the defensive book for the exact family lookup (a
     ``shared_features.DefenseBook`` or a playbook blob; ``None`` uses the
-    active book). Pass the installed book so off-book names map to ``other``.
+    active book). Book first, then the text pattern for off-book names.
     """
     return vod_features.live_inputs(
         side,

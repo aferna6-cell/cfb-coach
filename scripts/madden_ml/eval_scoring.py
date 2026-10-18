@@ -1569,15 +1569,14 @@ def executed_call_label(side: Any, call: Any, *, defense_book: Any = None) -> di
     """Label a held-out row's executed call with the shared feature rules.
 
     Defense: family and pressure through ``shared_features.defense_family``,
-    the exact book lookup training and live use (off-book or glued names are
-    ``other``). Offense: ``shared_features.call_class``. Held-out CSVs carry
+    the same book-then-pattern lookup training and live use (addendum 3). Offense: ``shared_features.call_class``. Held-out CSVs carry
     no confidence columns, so no confidence filter applies here. A blank call
     is not a scored row (addendum 2) and comes back with ``scored=False``.
     """
     text = _norm_key(call)
     side_n = _sf._side(side)
     if side_n == "defense":
-        family, pressure = _sf.defense_family(text, defense_book)
+        family, pressure, path = _sf.defense_family_path(text, defense_book)
         return {
             "side": side_n,
             "call": text,
@@ -1585,7 +1584,7 @@ def executed_call_label(side: Any, call: Any, *, defense_book: Any = None) -> di
             "family": family,
             "pressure": bool(pressure),
             "is_pressure": _sf.is_pressure(family, pressure),
-            "on_book": _sf.defense_on_book(text, defense_book),
+            "family_path": path,
         }
     return {
         "side": side_n,

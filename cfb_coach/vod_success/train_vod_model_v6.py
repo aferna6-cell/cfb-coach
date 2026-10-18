@@ -1079,12 +1079,11 @@ def _train(
     not_trained: dict[str, dict[str, Any]] = {}
     n_unknown_success = 0
     n_kneel_excluded = 0
-    defense_book_hits = {"on_book": 0, "off_book_other": 0, "blank": 0}
+    defense_book_hits = {"override": 0, "book": 0, "pattern": 0, "other": 0, "none": 0}
     for raw in kept:
         prepared = prepare_row(raw)
         if prepared.get("side") == "defense":
-            hit = prepared.get("on_book")
-            defense_book_hits["on_book" if hit else ("blank" if hit is None else "off_book_other")] += 1
+            defense_book_hits[prepared.get("family_path") or "none"] += 1
         if prepared["kneel"]:
             # QB Kneel is a clock rule, never a training target (Q6).
             n_kneel_excluded += 1

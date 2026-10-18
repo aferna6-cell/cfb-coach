@@ -347,6 +347,15 @@ def test_eval_fallback_uses_deduped_margin_and_side():
     ("PA Jet Sweep", "pass"), ("Spacing Switch", "pass"), ("Double Post", "pass"),
     ("Bunch Mesh", "pass"), ("Jet HB Screen", "pass"), ("Switch", "pass"),
     ("FK Jet HB Shovel", "pass"), ("RPO Jet Sweep", "rpo"),
+    # Run-concept words override jet/motion/formation tags.
+    ("FK Jet Inside Zone", "run"), ("Mtn Jet HB Zone", "run"), ("End Around", "run"),
+    ("Slash FK End Arnd", "run"), ("QB Blast", "run"), ("Mtn QB Blast", "run"), ("Blast Rt", "run"),
+    ("QB Wrap", "run"), ("Tush Push", "run"),
+    ("Crossers", "pass"), ("Clearout", "pass"), ("Clearout Crosser", "pass"), ("Tight Crosses", "pass"),
+    ("Empty Vertical", "pass"), ("TE Hook", "pass"), ("TE In", "pass"),
+    ("PA End Around Sift", "pass"), ("Dash Flood", "pass"),
+    # Glued names stay unknown (not special-cased).
+    ("Mtn Paboot Lt", "unknown"), ("Mtn Paslide", "unknown"), ("Ystick", "unknown"), ("Wrdig", "unknown"),
 ])
 def test_run_pass_formation_tags_do_not_override_run_concepts(play, cls):
     assert sf.call_class(play) == cls
@@ -355,43 +364,53 @@ def test_run_pass_formation_tags_do_not_override_run_concepts(play, cls):
 _GLUED = ("Cover Hole1 Rpo Stretch Slant", "Cover 1 Hole Mid Blitz 0", "Cover 3 Sky Tampa 2")
 
 
-def test_defense_family_is_an_exact_book_lookup():
+_NONSENSE = "Zzyzx Qwerty Plonk"
+
+
+def test_defense_family_book_then_pattern_then_other():
     book = sf.DefenseBook(_SYNTH_DEFENSE_BOOK, source="synthetic")
-    assert sf.defense_family("Cover 3 Sky", book) == ("cover_3", False)
-    assert sf.defense_family("  cover 3   SKY ", book) == ("cover_3", False)  # case/space only
-    assert sf.defense_family("DB Fire 2", book) == ("cover_2", True)
-    for name in _GLUED + ("Cover 3 Sky Wk", "Cover 1 Hole", "Robber"):
-        assert sf.defense_family(name, book) == ("other", False), name
-        assert sf.defense_on_book(name, book) is False
-        assert sf.is_pressure(*sf.defense_family(name, book)) is False
-    assert sf.defense_family("", book) == ("none", False)
+    assert sf.defense_family_path("Cover 3 Sky", book) == ("cover_3", False, "book")
+    assert sf.defense_family_path("  cover 3   SKY ", book) == ("cover_3", False, "book")  # case/space only
+    assert sf.defense_family_path("DB Fire 2", book) == ("cover_2", True, "book")
+    # Off-book names fall back to the text pattern (addendum 3).
+    assert sf.defense_family_path("Cover 3 Sky Wk", book) == ("cover_3", False, "pattern")
+    assert sf.defense_family_path("Cover 1 Hole", book) == ("cover_1", False, "pattern")
+    assert sf.defense_family_path("Nickel Fire Zone", book) == ("pressure_other", False, "pattern")
+    assert sf.defense_on_book("Cover 1 Hole", book) is False
+    # Only a name neither step resolves is other.
+    assert sf.defense_family_path(_NONSENSE, book) == ("other", False, "other")
+    assert sf.is_pressure(*sf.defense_family(_NONSENSE, book)) is False
+    assert sf.defense_family_path("", book) == ("none", False, None)
     assert sf.defense_family(None, book) == ("none", False)
     assert sf.defense_on_book(None, book) is None
 
 
-def test_glued_or_off_book_defense_names_are_other_on_every_path():
+def test_off_book_and_unblanked_glued_names_map_by_pattern_on_every_path():
+    """No glued special case: the trainer's frozen filter blanks glued calls upstream.
+    A glued name that reaches the module unblanked maps by pattern like any other."""
     book = sf.DefenseBook(_SYNTH_DEFENSE_BOOK, source="synthetic")
-    for name in _GLUED:
+    for name in _GLUED + ("Cover 3 Sky Wk", _NONSENSE):
+        expected = sf.family_and_pressure(name)
+        path = "other" if expected[0] == "other" else "pattern"
         train = sf.training_inputs(_label_row("defense", name), defense_book=book)
         live = inference.vod_live_inputs("defense", name, down=1, distance=10, yardline=25, defense_book=book)
         for inputs in (train, live):
-            assert inputs["look_family"] == "other", name
-            assert inputs["pressure"] is False
-            assert inputs["on_book"] is False
+            assert (inputs["look_family"], inputs["pressure"]) == expected, name
+            assert inputs["family_path"] == path, name
         assert sf.feature_levels(train) == inference.vod_candidate_features(
             "defense", name, down=1, distance=10, yardline=25, quarter=1, clock="12:00", defense_book=book,
         )
         swapped = sf.swap_candidate(sf.training_inputs(_label_row("defense", "Cover 3 Sky"), defense_book=book),
                                     name, defense_book=book)
-        assert swapped["look_family"] == "other"
-    # The public catalog default gives the same answer for glued names.
-    for name in _GLUED:
-        assert sf.defense_family(name) == ("other", False)
+        assert (swapped["look_family"], swapped["family_path"]) == (expected[0], path)
+        assert sf.defense_family(name) == expected  # catalog default: same answer
+    assert sf.defense_family_path("Cover Hole1 Rpo Stretch Slant", book)[::2] == ("cover_1", "pattern")
 
 
 def test_book_lookup_matches_pattern_on_every_book_name_and_keeps_blitz_pressure():
+    assert len(sf.FAMILY_OVERRIDES) == 1
     for book in (sf.DefenseBook(_SYNTH_DEFENSE_BOOK), sf.catalog_defense_book()):
-        mismatches = [name for name in book.table if sf.defense_family(name, book) != sf.family_and_pressure(name)]
+        mismatches = [name for name in book.table if sf.defense_family(name, book) != sf.pattern_family(name)[:2]]
         assert mismatches == []
     book = sf.DefenseBook(_BLITZ_7)
     for play, family in _BLITZ_7.items():
@@ -416,21 +435,23 @@ def test_defense_book_reads_playbook_shapes(tmp_path):
     previous = sf._ACTIVE_BOOK
     try:
         sf.set_defense_book(book)
-        assert sf.defense_family("Cover 2 Invert") == ("other", False)
-        assert sf.defense_family("Free Fire") == ("pressure_other", False)
+        assert sf.defense_family_path("Cover 2 Invert") == ("cover_2", False, "pattern")
+        assert sf.defense_family_path("Free Fire") == ("pressure_other", False, "book")
     finally:
         sf.set_defense_book(previous)
-    assert sf.defense_family("Cover 2 Invert") == ("cover_2", False)
+    assert sf.defense_family_path("Cover 2 Invert") == ("cover_2", False, "book")
 
 
 def test_eval_labels_executed_def_call_through_the_book_lookup():
     from scripts.madden_ml import eval_scoring
 
     book = sf.DefenseBook(_SYNTH_DEFENSE_BOOK)
-    got = eval_scoring.executed_call_label("defense", "Cover Hole1 Rpo Stretch", defense_book=book)
-    assert got["family"] == "other" and got["on_book"] is False and got["is_pressure"] is False
+    got = eval_scoring.executed_call_label("defense", "Cover 1 Hole", defense_book=book)
+    assert got["family"] == "cover_1" and got["family_path"] == "pattern" and got["is_pressure"] is False
+    got = eval_scoring.executed_call_label("defense", _NONSENSE, defense_book=book)
+    assert got["family"] == "other" and got["family_path"] == "other"
     got = eval_scoring.executed_call_label("defense", "Free Fire", defense_book=book)
-    assert got["family"] == "pressure_other" and got["is_pressure"] is True
+    assert got["family"] == "pressure_other" and got["is_pressure"] is True and got["family_path"] == "book"
     assert eval_scoring.executed_call_label("defense", "", defense_book=book)["scored"] is False
     assert eval_scoring.executed_call_label("offense", "Jet Sweep")["call_class"] == "run"
 
@@ -510,18 +531,69 @@ def test_full_book_feature_build_and_score_under_150ms(capsys):
                 scores.append(sum(coef.get(g, {}).get(k, 0.0) for g, k in feats.items()))
             assert len(scores) == len(book)
 
-    start = time.perf_counter()
+    # Budget is asserted on CPU time (time.process_time), so other jobs on a
+    # loaded box can't fail it. Wall-clock is printed as a diagnostic only.
+    wall0, cpu0 = time.perf_counter(), time.process_time()
     snap()
-    cold_ms = (time.perf_counter() - start) * 1000.0
-    runs = []
+    cold_cpu = (time.process_time() - cpu0) * 1000.0
+    cold_wall = (time.perf_counter() - wall0) * 1000.0
+    cpu_runs, wall_runs = [], []
     for _ in range(30):
-        start = time.perf_counter()
+        wall0, cpu0 = time.perf_counter(), time.process_time()
         snap()
-        runs.append((time.perf_counter() - start) * 1000.0)
-    runs.sort()
-    p50, p95 = runs[len(runs) // 2], runs[int(len(runs) * 0.95) - 1]
+        cpu_runs.append((time.process_time() - cpu0) * 1000.0)
+        wall_runs.append((time.perf_counter() - wall0) * 1000.0)
+    cpu_runs.sort()
+    wall_runs.sort()
+
+    def pct(runs):
+        return runs[len(runs) // 2], runs[int(len(runs) * 0.95) - 1]
+
+    p50, p95 = pct(cpu_runs)
+    w50, w95 = pct(wall_runs)
     with capsys.disabled():
-        print(f"\n[latency] 93 offense + 78 defense candidates: cold={cold_ms:.2f}ms "
-              f"p50={p50:.2f}ms p95={p95:.2f}ms max={runs[-1]:.2f}ms (budget 150ms)")
+        print(f"\n[latency] 93 offense + 78 defense candidates (CPU, asserted): cold={cold_cpu:.2f}ms "
+              f"p50={p50:.2f}ms p95={p95:.2f}ms max={cpu_runs[-1]:.2f}ms (budget 150ms); "
+              f"wall diagnostic: cold={cold_wall:.2f}ms p50={w50:.2f}ms p95={w95:.2f}ms max={wall_runs[-1]:.2f}ms")
     assert p95 < 150.0
-    assert cold_ms < 150.0
+    assert cold_cpu < 150.0
+
+
+# Names whose family the Strategist re-checked and may differ from the 1b85600
+# snapshot. Every other catalog defensive play (a superset of the applied book)
+# must keep its 1b85600 family and pressure flag.
+_STRATEGIST_CHECKED: frozenset[str] = frozenset({"roll 23 cloud"})
+
+
+def test_book_families_keep_their_1b85600_values():
+    """Negative test: no book play's family or pressure flag drifts from the 1b85600 snapshot."""
+    import json
+
+    snap = json.loads((_ROOT / "tests" / "madden_ml" / "fixtures" / "defense_family_snapshot_1b85600.json")
+                      .read_text(encoding="utf-8"))["plays"]
+    book = sf.catalog_defense_book()
+    assert len(snap) == len(book) == 332
+    drift = []
+    for name, (family, pressure) in snap.items():
+        if name in _STRATEGIST_CHECKED:
+            continue
+        got = sf.defense_family_path(name, book)
+        if got != (family, pressure, "book"):
+            drift.append((name, (family, pressure), got))
+    assert drift == []
+
+
+def test_roll_23_cloud_is_cover_3_through_the_named_override():
+    assert sf.FAMILY_OVERRIDES == {"roll 23 cloud": ("cover_3", False)}
+    # The cloud pattern alone does not resolve it ("23" is not a single-digit shell).
+    assert sf.family_and_pressure("Roll 23 Cloud") == ("other", False)
+    assert sf.pattern_family("Roll 23 Cloud") == ("cover_3", False, "override")
+    for book in (sf.DefenseBook(["Roll 23 Cloud", "Cover 3 Sky"]), sf.catalog_defense_book(), sf.DefenseBook([])):
+        assert sf.defense_family_path("Roll 23 Cloud", book) == ("cover_3", False, "override")
+        assert sf.defense_family_path("  roll 23   CLOUD ", book) == ("cover_3", False, "override")
+    assert sf.defense_on_book("Roll 23 Cloud", sf.DefenseBook([])) is False
+    assert sf.defense_on_book("Roll 23 Cloud", sf.catalog_defense_book()) is True
+    train = sf.training_inputs(_label_row("defense", "Roll 23 Cloud"))
+    live = inference.vod_live_inputs("defense", "Roll 23 Cloud", down=1, distance=10, yardline=25)
+    for inputs in (train, live):
+        assert (inputs["look_family"], inputs["family_path"]) == ("cover_3", "override")

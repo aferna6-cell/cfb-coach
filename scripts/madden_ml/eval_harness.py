@@ -770,8 +770,8 @@ def _defense_feature_map(
     Defense models estimate P(offense succeeds | our defensive call, situation).
     The family, look and pressure come from our own candidate play; the typed
     opponent look and any def_call/coverage_seen column are never read.
-    The family is the exact lookup of ``play`` in ``defense_book`` (the
-    installed book when the ranker passes it), the same lookup training uses.
+    The family is the book-then-pattern lookup of ``play`` in ``defense_book``
+    (the installed book when the ranker passes it), the same lookup training uses.
     """
     from cfb_coach.madden.model.inference import vod_candidate_features
 
