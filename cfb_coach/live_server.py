@@ -708,6 +708,8 @@ class LivePlayController:
                         )
                     ),
                     drive_id=ctx.get("drive_id"),
+                    drive_id_source=ctx.get("drive_id_source"),
+                    game_clock_null_reason=ctx.get("game_clock_null_reason"),
                     quarter=ctx.get("quarter"),
                     game_clock=ctx.get("game_clock"),
                     score_for=ctx.get("score_for"),
@@ -812,6 +814,7 @@ class LivePlayController:
         request_key: str | None = None,
         opp_look: Any = _OMITTED_LOOK,
         game_clock: str | None = None,
+        game_clock_fresh: bool | None = None,
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -834,7 +837,7 @@ class LivePlayController:
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
-            self._stamp_live_context(sit, game_clock)
+            self._stamp_live_context(sit, game_clock, fresh=game_clock_fresh)
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             self._book().remember_call(
@@ -851,28 +854,42 @@ class LivePlayController:
             out = {"ok": True, "call_text": self.call_text, "heard": heard, "state": self.state()}
             return self._idempotency_put(request_key, "/api/call", out)
 
-    def _stamp_live_context(self, sit: Any, game_clock: str | None) -> None:
+    def _stamp_live_context(
+        self, sit: Any, game_clock: str | None, *, fresh: bool | None = None,
+    ) -> None:
         """Drive and clock for the snap about to be logged. The call is already made."""
         from cfb_coach.madden.model.call_outcome_log import normalize_game_clock
 
         self._book().assign_drive(sit)
         extras = getattr(sit, "extras", None)
-        token = fresh_game_clock(
-            normalize_game_clock(game_clock),
-            quarter=(extras or {}).get("quarter") if isinstance(extras, dict) else None,
-            previous=getattr(self, "_last_posted_clock", None),
-        )
+        q = (extras or {}).get("quarter") if isinstance(extras, dict) else None
         posted = normalize_game_clock(game_clock)
-        if posted is not None:
-            q = (extras or {}).get("quarter") if isinstance(extras, dict) else None
-            self._last_posted_clock = (q, posted)
+        token, reason = check_game_clock(
+            posted,
+            quarter=q,
+            previous=getattr(self, "_last_posted_clock", None),
+            fresh=fresh,
+        )
+        suspect = None
+        if token is None and reason == "clock_went_up" and fresh is True:
+            # A freshly typed clock is never dropped for going up: it may fix a
+            # typo or mark a missed quarter rollover. Keep it, flag it suspect.
+            token, reason, suspect = posted, None, "clock_went_up"
+        if token is not None:
+            # Every stored clock (suspect or not) is the reference for the next snap.
+            self._last_posted_clock = (q, token)
         if isinstance(extras, dict):
+            extras.pop("game_clock_null_reason", None)
+            extras.pop("game_clock_suspect_reason", None)
             if token is None:
-                # A stale or missing clock is unknown. Never carry an old value.
+                # A stale, backwards or missing clock is unknown. Never carry an old value.
                 extras.pop("game_clock", None)
                 if posted is not None:
-                    extras["game_clock_stale"] = True
+                    extras["game_clock_stale"] = reason == "stale_resubmit"
+                    extras["game_clock_null_reason"] = reason
                 return
+            if suspect is not None:
+                extras["game_clock_suspect_reason"] = suspect
             extras["game_clock"] = token
 
     def result_and_call(
@@ -895,6 +912,7 @@ class LivePlayController:
         request_key: str | None = None,
         opp_look: Any = _OMITTED_LOOK,
         game_clock: str | None = None,
+        game_clock_fresh: bool | None = None,
         verify_touched: bool = False,
     ) -> dict[str, Any]:
         with self.lock:
@@ -950,7 +968,7 @@ class LivePlayController:
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
-            self._stamp_live_context(sit, game_clock)
+            self._stamp_live_context(sit, game_clock, fresh=game_clock_fresh)
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             book.remember_call(
@@ -1118,22 +1136,65 @@ class LivePlayController:
             return self._idempotency_put(request_key, "/api/end_game", out)
 
 
-def fresh_game_clock(
-    token: str | None, *, quarter: Any, previous: tuple[Any, str] | None,
-) -> str | None:
-    """The posted clock, or None when it repeats the last snap's clock.
+def _clock_seconds(token: str) -> int | None:
+    try:
+        minutes, seconds = token.split(":")
+        return int(minutes) * 60 + int(seconds)
+    except (ValueError, AttributeError):
+        return None
 
-    The clock box is not a live feed. A value left in the box from an earlier
-    snap would be logged again on every later snap, so the same m:ss in the
-    same quarter on a new snap is treated as stale. Unknown stays None.
+
+def check_game_clock(
+    token: str | None,
+    *,
+    quarter: Any,
+    previous: tuple[Any, str] | None,
+    fresh: bool | None = None,
+) -> tuple[str | None, str | None]:
+    """``(clock, None)`` when the posted clock is kept, else ``(None, reason)``.
+
+    ``fresh`` is the page's per-submit flag: True when the clock box was typed
+    in since the last submit, False when the value was sent without a new
+    entry. An equal m:ss alone is never stale, because the clock really does
+    stop after an incompletion, out of bounds or a timeout. It is dropped only
+    when it equals the last accepted clock in the same quarter AND the page
+    says it was not freshly entered (``stale_resubmit``). Within a quarter the
+    clock only counts down, so a higher clock than the last accepted one is
+    dropped (``clock_went_up``); the live server keeps a freshly typed one
+    instead, flagged ``game_clock_suspect_reason``. A new quarter or OT resets both checks. An
+    unknown quarter skips the checks. Unknown stays None.
     """
     if token is None:
-        return None
-    if previous is not None:
-        prev_q, prev_token = previous
-        if prev_token == token and str(prev_q) == str(quarter):
-            return None
-    return token
+        return None, None
+    if previous is None:
+        return token, None
+    prev_q, prev_token = previous
+    if quarter is None or str(prev_q) != str(quarter):
+        return token, None
+    if prev_token == token:
+        if fresh is False:
+            return None, "stale_resubmit"
+        return token, None
+    now_s, prev_s = _clock_seconds(token), _clock_seconds(prev_token)
+    if now_s is not None and prev_s is not None and now_s > prev_s:
+        return None, "clock_went_up"
+    return token, None
+
+
+def fresh_game_clock(
+    token: str | None,
+    *,
+    quarter: Any,
+    previous: tuple[Any, str] | None,
+    fresh: bool | None = None,
+) -> str | None:
+    """The posted clock, or None when :func:`check_game_clock` drops it."""
+    return check_game_clock(token, quarter=quarter, previous=previous, fresh=fresh)[0]
+
+
+def _fresh_flag(value: Any) -> bool | None:
+    """The page's clock-was-typed flag. Anything but a real bool is unknown."""
+    return value if isinstance(value, bool) else None
 
 
 def _esc(s: Any) -> str:
@@ -1381,6 +1442,10 @@ const $ = (id) => document.getElementById(id);
 const compactMadden = {str(compact_madden).lower()};
 let outcomeChoice = "";
 let execVerifyTouched = false;
+// True once the clock box is typed in for this snap. Sent with the submit so the
+// server can tell a real repeated clock from a value that was never re-entered.
+let clockTyped = false;
+$("game-clock").addEventListener("input", () => {{ clockTyped = true; }});
 
 function setErr(msg) {{ $("err").textContent = msg || ""; }}
 
@@ -1757,6 +1822,7 @@ $("btn-submit").addEventListener("click", async () => {{
         confirmed_no_adjustment: !!($("no-action-confirmed") && $("no-action-confirmed").checked),
         opp_look: opponentLook(),
         game_clock: ($("game-clock").value || "").trim() || null,
+        game_clock_fresh: clockTyped,
       }};
       return await apiAction("/api/result_call", body);
     }});
@@ -1764,6 +1830,7 @@ $("btn-submit").addEventListener("click", async () => {{
     outcomeChoice = "";
     $("outcome-text").value = "";
     $("game-clock").value = "";
+    clockTyped = false;
     $("their").value = "";
     $("look").value = "";
     $("live-mark").checked = false;
@@ -1800,9 +1867,11 @@ $("btn-call-only").addEventListener("click", async () => {{
       score_us: $("score-us").value, score_them: $("score-them").value,
       opp_look: opponentLook(),
       game_clock: ($("game-clock").value || "").trim() || null,
+      game_clock_fresh: clockTyped,
     }}));
     if (!data) return;
     $("game-clock").value = "";
+    clockTyped = false;
     if ($("action-applied")) $("action-applied").checked = false;
     if ($("no-action-confirmed")) $("no-action-confirmed").checked = false;
     renderState(data.state);
@@ -1948,6 +2017,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                         request_key=body.get("idempotency_key") or body.get("request_key"),
                         opp_look=_posted_opp_look(body),
                         game_clock=body.get("game_clock"),
+                        game_clock_fresh=_fresh_flag(body.get("game_clock_fresh")),
                     ))
                     return
                 if path == "/api/undo":
@@ -1983,6 +2053,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             request_key=body.get("idempotency_key") or body.get("request_key"),
                             opp_look=_posted_opp_look(body),
                             game_clock=body.get("game_clock"),
+                            game_clock_fresh=_fresh_flag(body.get("game_clock_fresh")),
                             verify_touched=body.get("verify_touched") is True,
                         ),
                     )

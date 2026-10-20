@@ -88,7 +88,7 @@ def session_diagnostics(conn: Any, session_id: str) -> dict[str, Any]:
         return {"session_id": session_id, "error": "snaps has no session_id"}
     want = [c for c in (
         "id", "side", "down", "distance", "yardline", "quarter", "result", "formation",
-        "play", "coverage_seen", "ml_decision_id", "drive_id", "game_clock",
+        "play", "coverage_seen", "ml_decision_id", "drive_id", "drive_id_source", "game_clock",
     ) if c in cols]
     rows = [
         dict(zip(want, r)) for r in conn.execute(
