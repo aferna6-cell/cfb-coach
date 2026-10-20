@@ -22,7 +22,8 @@ from tests.madden_ml.test_cpu_audit_fixes import _ctrl, _seed
 
 def _rows(db: CoachDB):
     return db.conn.execute(
-        "SELECT drive_id, drive_id_source, game_clock, game_clock_null_reason "
+        "SELECT drive_id, drive_id_source, game_clock, game_clock_null_reason, "
+        "game_clock_suspect_reason "
         "FROM snaps ORDER BY id"
     ).fetchall()
 
@@ -64,7 +65,7 @@ def test_live_loop_keeps_legit_repeat_and_nulls_stale_and_backwards(tmp_path: Pa
         # Same value sent with no new entry: stale.
         ctrl.result_and_call(outcome="+4", sit_raw="3&6 my 29", quarter=2,
                              game_clock="5:00", game_clock_fresh=False)
-        # Clock went up within the quarter: rejected.
+        # Freshly typed clock went up within the quarter: stored, flagged suspect.
         ctrl.result_and_call(outcome="+7", sit_raw="1&10 my 36", quarter=2,
                              game_clock="6:10", game_clock_fresh=True)
         ctrl.result_and_call(outcome="+3", sit_raw="2&7 my 39", quarter=2,
@@ -73,14 +74,15 @@ def test_live_loop_keeps_legit_repeat_and_nulls_stale_and_backwards(tmp_path: Pa
         ctrl.result_and_call(outcome="+2", sit_raw="1&10 my 25", quarter=3,
                              game_clock="15:00", game_clock_fresh=True)
         ctrl.result_and_call(outcome="+1", sit_raw="2&9 my 26", quarter=3)
-        got = [(r["game_clock"], r["game_clock_null_reason"]) for r in _rows(db)]
+        got = [(r["game_clock"], r["game_clock_null_reason"], r["game_clock_suspect_reason"])
+               for r in _rows(db)]
         assert got == [
-            ("5:00", None),
-            ("5:00", None),
-            (None, "stale_resubmit"),
-            (None, "clock_went_up"),
-            ("4:40", None),
-            ("15:00", None),
+            ("5:00", None, None),
+            ("5:00", None, None),
+            (None, "stale_resubmit", None),
+            ("6:10", None, "clock_went_up"),
+            ("4:40", None, None),
+            ("15:00", None, None),
         ]
     finally:
         db.close()
@@ -155,4 +157,76 @@ def test_migration_is_additive_and_older_rows_stay_null(tmp_path: Path) -> None:
     db = CoachDB(path, seed=_seed())  # reopening re-runs the migration: idempotent
     db.close()
     cols = {r[1] for r in sqlite3.connect(path).execute("PRAGMA table_info(snaps)")}
-    assert {"drive_id_source", "game_clock_null_reason"} <= cols
+    assert {"drive_id_source", "game_clock_null_reason", "game_clock_suspect_reason"} <= cols
+    for table in ("ml_decisions", "ml_outcomes"):
+        tcols = {r[1] for r in sqlite3.connect(path).execute(f"PRAGMA table_info({table})")}
+        if tcols:
+            assert "game_clock_suspect_reason" in tcols
+
+
+def _clocks(db: CoachDB):
+    return [(r["game_clock"], r["game_clock_null_reason"], r["game_clock_suspect_reason"])
+            for r in _rows(db)]
+
+
+def test_typo_low_clock_does_not_lock_out_quarter(tmp_path: Path) -> None:
+    """QA HOLD-1: 1:12 typed for 11:12, then real clocks are all kept."""
+    db, ctrl = _ctrl(tmp_path)
+    try:
+        ctrl.call_only("1&10 my 25", quarter=2, game_clock="11:30", game_clock_fresh=True)
+        ctrl.result_and_call(outcome="+4", sit_raw="2&6 my 29", quarter=2,
+                             game_clock="1:12", game_clock_fresh=True)
+        for i, clk in enumerate(("10:50", "10:30", "10:05")):
+            ctrl.result_and_call(outcome="+3", sit_raw=f"1&10 my {40 + i * 5}", quarter=2,
+                                 game_clock=clk, game_clock_fresh=True)
+        ctrl.result_and_call(outcome="+1", sit_raw="2&9 my 60", quarter=2)
+        assert _clocks(db) == [
+            ("11:30", None, None),
+            ("1:12", None, None),
+            ("10:50", None, "clock_went_up"),
+            ("10:30", None, None),
+            ("10:05", None, None),
+        ]
+    finally:
+        db.close()
+
+
+def test_missed_quarter_rollover_keeps_new_quarter_clocks(tmp_path: Path) -> None:
+    """QA HOLD-2: 15:00 after 0:20 with the quarter not updated."""
+    db, ctrl = _ctrl(tmp_path)
+    try:
+        ctrl.call_only("1&10 my 25", quarter=1, game_clock="0:20", game_clock_fresh=True)
+        ctrl.result_and_call(outcome="+4", sit_raw="2&6 my 29", quarter=1,
+                             game_clock="15:00", game_clock_fresh=True)
+        ctrl.result_and_call(outcome="+4", sit_raw="3&2 my 33", quarter=1,
+                             game_clock="14:31", game_clock_fresh=True)
+        ctrl.result_and_call(outcome="+4", sit_raw="1&10 my 37", quarter=1,
+                             game_clock="14:02", game_clock_fresh=True)
+        ctrl.result_and_call(outcome="+1", sit_raw="2&9 my 38", quarter=1)
+        assert _clocks(db) == [
+            ("0:20", None, None),
+            ("15:00", None, "clock_went_up"),
+            ("14:31", None, None),
+            ("14:02", None, None),
+        ]
+    finally:
+        db.close()
+
+
+def test_stale_resubmit_and_unknown_flag_keep_old_behavior(tmp_path: Path) -> None:
+    db, ctrl = _ctrl(tmp_path)
+    try:
+        ctrl.call_only("1&10 my 25", quarter=2, game_clock="5:00", game_clock_fresh=True)
+        ctrl.result_and_call(outcome="+4", sit_raw="2&6 my 29", quarter=2,
+                             game_clock="5:00", game_clock_fresh=False)
+        # Outside client with no flag: a higher clock is still dropped.
+        ctrl.result_and_call(outcome="+4", sit_raw="3&2 my 33", quarter=2,
+                             game_clock="6:00")
+        ctrl.result_and_call(outcome="+1", sit_raw="1&10 my 40", quarter=2)
+        assert _clocks(db) == [
+            ("5:00", None, None),
+            (None, "stale_resubmit", None),
+            (None, "clock_went_up", None),
+        ]
+    finally:
+        db.close()

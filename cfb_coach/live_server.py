@@ -870,11 +870,17 @@ class LivePlayController:
             previous=getattr(self, "_last_posted_clock", None),
             fresh=fresh,
         )
+        suspect = None
+        if token is None and reason == "clock_went_up" and fresh is True:
+            # A freshly typed clock is never dropped for going up: it may fix a
+            # typo or mark a missed quarter rollover. Keep it, flag it suspect.
+            token, reason, suspect = posted, None, "clock_went_up"
         if token is not None:
-            # Only an accepted clock is the reference for the next snap.
+            # Every stored clock (suspect or not) is the reference for the next snap.
             self._last_posted_clock = (q, token)
         if isinstance(extras, dict):
             extras.pop("game_clock_null_reason", None)
+            extras.pop("game_clock_suspect_reason", None)
             if token is None:
                 # A stale, backwards or missing clock is unknown. Never carry an old value.
                 extras.pop("game_clock", None)
@@ -882,6 +888,8 @@ class LivePlayController:
                     extras["game_clock_stale"] = reason == "stale_resubmit"
                     extras["game_clock_null_reason"] = reason
                 return
+            if suspect is not None:
+                extras["game_clock_suspect_reason"] = suspect
             extras["game_clock"] = token
 
     def result_and_call(
@@ -1152,7 +1160,8 @@ def check_game_clock(
     when it equals the last accepted clock in the same quarter AND the page
     says it was not freshly entered (``stale_resubmit``). Within a quarter the
     clock only counts down, so a higher clock than the last accepted one is
-    dropped (``clock_went_up``). A new quarter or OT resets both checks. An
+    dropped (``clock_went_up``); the live server keeps a freshly typed one
+    instead, flagged ``game_clock_suspect_reason``. A new quarter or OT resets both checks. An
     unknown quarter skips the checks. Unknown stays None.
     """
     if token is None:

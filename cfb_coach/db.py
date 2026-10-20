@@ -466,6 +466,7 @@ class CoachDB:
         drive_id: str | None = None,
         drive_id_source: str | None = None,
         game_clock_null_reason: str | None = None,
+        game_clock_suspect_reason: str | None = None,
         game_clock: str | None = None,
         score_for: int | None = None,
         score_against: int | None = None,
@@ -516,6 +517,7 @@ class CoachDB:
                     drive_id=drive_id,
                     drive_id_source=drive_id_source,
                     game_clock_null_reason=game_clock_null_reason,
+                    game_clock_suspect_reason=game_clock_suspect_reason,
                     game_clock=game_clock,
                     score_for=score_for,
                     score_against=score_against,
@@ -576,6 +578,7 @@ class CoachDB:
             drive_id=drive_id,
             drive_id_source=drive_id_source,
             game_clock_null_reason=game_clock_null_reason,
+            game_clock_suspect_reason=game_clock_suspect_reason,
             game_clock=game_clock,
             score_for=score_for,
             score_against=score_against,
@@ -598,6 +601,7 @@ class CoachDB:
         drive_id: str | None,
         drive_id_source: str | None = None,
         game_clock_null_reason: str | None = None,
+        game_clock_suspect_reason: str | None = None,
         game_clock: str | None,
         score_for: int | None,
         score_against: int | None,
@@ -625,6 +629,7 @@ class CoachDB:
             ("drive_id", drive_id),
             ("drive_id_source", drive_id_source),
             ("game_clock_null_reason", game_clock_null_reason),
+            ("game_clock_suspect_reason", game_clock_suspect_reason),
             ("game_clock", game_clock),
             ("score_for", score_for),
             ("score_against", score_against),
@@ -661,6 +666,7 @@ class CoachDB:
             "drive_id_source",
             "game_clock",
             "game_clock_null_reason",
+            "game_clock_suspect_reason",
             "score_for",
             "score_against",
             "penalty",
@@ -1582,7 +1588,7 @@ class CoachDB:
         self._migrate_madden_call_outcome()
         values: dict[str, Any] = {}
         for key in (
-            "drive_id", "drive_id_source", "quarter", "game_clock", "game_clock_null_reason",
+            "drive_id", "drive_id_source", "quarter", "game_clock", "game_clock_null_reason", "game_clock_suspect_reason",
             "score_for", "score_against",
         ):
             if context and key in context and context[key] is not None:
@@ -1756,7 +1762,7 @@ class CoachDB:
 
         values = decision_log_values(decision)
         for key in (
-            "drive_id", "drive_id_source", "quarter", "game_clock", "game_clock_null_reason",
+            "drive_id", "drive_id_source", "quarter", "game_clock", "game_clock_null_reason", "game_clock_suspect_reason",
             "score_for", "score_against",
         ):
             if key in decision and decision[key] is not None:
@@ -1785,6 +1791,7 @@ class CoachDB:
         drive_id: str | None = None,
         drive_id_source: str | None = None,
         game_clock_null_reason: str | None = None,
+        game_clock_suspect_reason: str | None = None,
         quarter: int | None = None,
         game_clock: str | None = None,
         score_for: int | None = None,
@@ -1847,6 +1854,7 @@ class CoachDB:
                     drive_id=drive_id,
                     drive_id_source=drive_id_source,
                     game_clock_null_reason=game_clock_null_reason,
+                    game_clock_suspect_reason=game_clock_suspect_reason,
                     quarter=quarter,
                     game_clock=game_clock,
                     score_for=score_for,
@@ -1888,6 +1896,7 @@ class CoachDB:
             drive_id=drive_id,
             drive_id_source=drive_id_source,
             game_clock_null_reason=game_clock_null_reason,
+            game_clock_suspect_reason=game_clock_suspect_reason,
             quarter=quarter,
             game_clock=game_clock,
             score_for=score_for,
@@ -1911,6 +1920,7 @@ class CoachDB:
         drive_id: str | None,
         drive_id_source: str | None = None,
         game_clock_null_reason: str | None = None,
+        game_clock_suspect_reason: str | None = None,
         quarter: int | None,
         game_clock: str | None,
         score_for: int | None,
@@ -1944,6 +1954,7 @@ class CoachDB:
             ("drive_id", drive_id),
             ("drive_id_source", drive_id_source),
             ("game_clock_null_reason", game_clock_null_reason),
+            ("game_clock_suspect_reason", game_clock_suspect_reason),
             ("quarter", quarter),
             ("game_clock", game_clock),
             ("score_for", score_for),
