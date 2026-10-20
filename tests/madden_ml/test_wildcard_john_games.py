@@ -195,12 +195,14 @@ class WildcardJohnGamesTest(unittest.TestCase):
 
         snaps = list(self.db.conn.execute("SELECT accepted, drive_id, situation_raw FROM snaps"))
         self.assertGreater(len(snaps), 0)
-        explicit = [row for row in snaps if row["drive_id"]]
+        explicit = [row for row in snaps if row["drive_id"] and not str(row["drive_id"]).startswith("auto-d")]
         plain = [row for row in snaps if not row["drive_id"]]
+        inferred = [row for row in snaps if str(row["drive_id"] or "").startswith("auto-d")]
+        self.assertTrue(inferred or plain)
         self.assertTrue(explicit)
         self.assertTrue(all("drive id" in (row["situation_raw"] or "").lower() for row in explicit))
-        self.assertTrue(plain)
         self.assertTrue(all(row["drive_id"] is None for row in plain))
+        # Inferred ids carry the auto- prefix and never pose as explicit ones.
         outcomes = list(self.db.conn.execute("SELECT accepted FROM ml_outcomes"))
         accepted = [row["accepted"] for row in outcomes]
         self.assertIn("unknown", accepted)

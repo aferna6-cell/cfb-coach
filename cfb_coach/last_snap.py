@@ -164,6 +164,37 @@ def advance_ball(sit: Any, result: str, side: str, spot: BallSpot) -> tuple[Ball
     return new, f"now {new.down}&{new.distance}{where}"
 
 
+INFERRED_DRIVE_PREFIX = "auto-d"
+_DRIVE_END = re.compile(
+    r"\b(td|touchdown|int|interception|pick|fumble\s+lost|turnover|punt|fg|field\s+goal|safety)\b",
+    re.I,
+)
+
+
+def _quarter_of(sit: Any) -> int | None:
+    extras = getattr(sit, "extras", None) or {}
+    raw = extras.get("quarter") if isinstance(extras, dict) else None
+    if raw is None:
+        raw = getattr(sit, "quarter", None)
+    try:
+        return int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def drive_ended(result: str | None, note: str = "") -> bool:
+    """True when a logged result ends the possession. Unknown is False."""
+    text = (result or "").strip()
+    if not text:
+        return False
+    if (note or "").lower().startswith(("turnover", "td")):
+        return True
+    oc = parse_outcome(text)
+    if oc.kind in ("td", "int", "fumble"):
+        return True
+    return bool(_DRIVE_END.search(text))
+
+
 def shown_macro(call: Any) -> str:
     """The Custom Adjustment this call puts on screen, or ``none``."""
     if call is None:
@@ -206,6 +237,7 @@ class _Undo:
     ml_snap_id: str | None = None
     ml_decision_id: int | None = None
     prev_ml_outcome: dict[str, Any] | None = None
+    drive_break: bool | None = None
 
 
 _KEEP = object()
@@ -233,12 +265,65 @@ class LastSnapBook:
     data_source: str = "live"
     opp_look: str | None = None
     _undos: list[_Undo] = field(default_factory=list)
+    # Inferred drive counter. ``_drive_break`` is True when the next snap must
+    # start a new drive (first snap, or the last logged result ended one).
+    drive_n: int = 0
+    _drive_break: bool = True
+    _drive_side: str | None = None
+    _drive_quarter: int | None = None
+    _drive_against: int | None = None
+
+    def _new_drive_needed(self, sit: Any) -> bool:
+        """A possession change the logger can see before this snap."""
+        if self._drive_break or self.drive_n == 0:
+            return True
+        side = str(getattr(sit, "side", None) or "offense").lower()[:1]
+        if self._drive_side is not None and side != self._drive_side:
+            return True
+        raw = str(getattr(sit, "raw", "") or "").lower()
+        if re.search(r"\b(kickoff|kick\s*off|after\s+punt|touchback)\b", raw):
+            return True
+        quarter = _quarter_of(sit)
+        if (
+            quarter is not None and self._drive_quarter is not None
+            and quarter != self._drive_quarter and quarter in (3, 5)
+        ):
+            return True  # second-half kickoff, overtime
+        against = getattr(sit, "score_them", None) if side == "o" else getattr(sit, "score_us", None)
+        if (
+            against is not None and self._drive_against is not None
+            and int(against) != int(self._drive_against)
+        ):
+            return True  # the other team scored in between, so we got the ball back
+        return False
+
+    def _infer_drive(self, sit: Any) -> str:
+        if self._new_drive_needed(sit):
+            self.drive_n += 1
+            self._drive_break = False
+        side = str(getattr(sit, "side", None) or "offense").lower()[:1]
+        self._drive_side = side
+        quarter = _quarter_of(sit)
+        if quarter is not None:
+            self._drive_quarter = quarter
+        against = getattr(sit, "score_them", None) if side == "o" else getattr(sit, "score_us", None)
+        if against is not None:
+            self._drive_against = int(against)
+        return f"{INFERRED_DRIVE_PREFIX}{self.drive_n:02d}"
+
+    def note_drive_result(self, result: str | None, note: str = "") -> None:
+        """Mark the drive over after a result that changes possession."""
+        if drive_ended(result, note):
+            self._drive_break = True
 
     def assign_drive(self, sit: Any) -> str | None:
-        """Copy an explicit drive id onto ``sit``. Anything else stays unknown.
+        """Drive id for ``sit``: an explicit id, else an inferred ``auto-dNN``.
 
-        A missing drive is NULL on the snap. This does not count drives, and
-        it does not invent an id when the source has none.
+        Inferred ids start a new drive on the first snap, after a TD, turnover,
+        punt, field goal, safety or turnover on downs, on a side change, a
+        typed kickoff, the start of Q3 or OT, or when the other team's score
+        moved. Inferred ids carry the ``auto-`` prefix so they are never
+        mistaken for a verified id. An id already on ``sit`` is kept.
         """
         if sit is None:
             return None
@@ -255,9 +340,13 @@ class LastSnapBook:
         if explicit is None or (isinstance(explicit, str) and not explicit.strip()):
             explicit = drive_id_from_text(str(getattr(sit, "raw", "") or ""))
         if explicit is None or not str(explicit).strip():
-            return None
+            token = self._infer_drive(sit)
+            extras["drive_id"] = token
+            extras["drive_id_source"] = "inferred"
+            return token
         token = str(explicit).strip()
         extras["drive_id"] = token
+        extras.setdefault("drive_id_source", "explicit")
         return token
 
     def remember_call(
@@ -468,6 +557,8 @@ class LastSnapBook:
         self.concept = frame.concept
         self.coverage = frame.coverage
         self.spot = frame.spot
+        if frame.drive_break is not None:
+            self._drive_break = frame.drive_break
         self.wrote = False
         return f"  undo: removed the last snap note (id {frame.snap_id})"
 
@@ -569,6 +660,7 @@ class LastSnapBook:
 
         prev_result, prev_concept, prev_coverage = self.result, self.concept, self.coverage
         prev_spot = replace(self.spot)
+        prev_break = self._drive_break
         from cfb_coach.madden.model.inference import normalize_opp_look
 
         result = spec.get("result") or self.result
@@ -705,6 +797,9 @@ class LastSnapBook:
         note = ""
         if spec.get("result"):
             self.spot, note = advance_ball(sit, spec["result"], side, self.spot)
+            self._drive_break = drive_ended(spec["result"], note) or drive_ended(
+                str(spec.get("raw") or "")
+            )
         prev_ml_outcome = None
         if not inserted and self.ml_snap_id:
             try:
@@ -745,6 +840,7 @@ class LastSnapBook:
             ml_snap_id=self.ml_snap_id,
             ml_decision_id=self.ml_decision_id,
             prev_ml_outcome=prev_ml_outcome,
+            drive_break=prev_break,
         ))
         self._log_live_outcome(
             result=result,

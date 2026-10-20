@@ -1966,6 +1966,30 @@ class CoachDB:
         self.conn.commit()
         return str(d["session_id"])
 
+    def record_score_reconcile(self, session_id: str, rec: dict[str, Any]) -> None:
+        """Store the snap-log vs session score gap. Additive columns only."""
+        self._add_columns(
+            "game_sessions",
+            {
+                "snaplog_score": "TEXT",
+                "score_gap_for": "INTEGER",
+                "score_gap_against": "INTEGER",
+                "score_reconcile": "TEXT",
+            },
+        )
+        self.conn.execute(
+            "UPDATE game_sessions SET snaplog_score = ?, score_gap_for = ?, "
+            "score_gap_against = ?, score_reconcile = ? WHERE session_id = ?",
+            (
+                rec.get("snaplog_score"),
+                rec.get("gap_for"),
+                rec.get("gap_against"),
+                rec.get("status") or "unknown",
+                session_id,
+            ),
+        )
+        self.conn.commit()
+
     def end_game_session(
         self,
         session_id: str,
