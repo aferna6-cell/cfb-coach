@@ -207,6 +207,132 @@ def _score_from_row(row: Any, columns: set[str]) -> tuple[str, str] | None:
     return f"{us}-{them}", _wl_for(us, them)
 
 
+def _closing_play(db: Any, session_id: str) -> tuple[str | None, str | None, str | None, str | None]:
+    """Play, formation, drive, and clock from the call that ended with no result.
+
+    The snap written for the final score does not reuse that call's snap id, so
+    the decision stays ``no_result``.
+    """
+    columns = _columns(db, "ml_decisions")
+    if "orphan_reason" not in columns:
+        return None, None, None, None
+    wanted = ["id"]
+    for name in (
+        "final_play",
+        "final_formation",
+        "heuristic_play",
+        "heuristic_formation",
+        "drive_id",
+        "game_clock",
+    ):
+        if name in columns:
+            wanted.append(name)
+    row = db.conn.execute(
+        f"SELECT {', '.join(wanted)} FROM ml_decisions "
+        "WHERE (session_id = ? OR game_id = ?) AND orphan_reason = ? "
+        "ORDER BY id DESC LIMIT 1",
+        (session_id, session_id, "no_result"),
+    ).fetchone()
+    if row is None:
+        return None, None, None, None
+
+    def cell(name: str) -> str | None:
+        if name not in wanted:
+            return None
+        value = row[name]
+        if value is None or not str(value).strip():
+            return None
+        return str(value).strip()
+
+    play = cell("final_play") or cell("heuristic_play")
+    formation = cell("final_formation") or cell("heuristic_formation")
+    return play, formation, cell("drive_id"), cell("game_clock")
+
+
+def record_final_score_snap(
+    db: Any,
+    session_id: str,
+    *,
+    score: str | None,
+    result_wl: str | None,
+) -> int | None:
+    """Put the final score on the snap log when no snap already has it.
+
+    The row names the unlogged closing play when one exists. ``result`` is
+    ``final``, which learning does not grade, and the row is not linked to the
+    sealed decision. ``play_count`` is left as the caller already stored it.
+    """
+    if db is None or not session_id or score is None or not str(score).strip():
+        return None
+    from cfb_coach.learning import parse_score
+
+    parsed = parse_score(str(score), result_wl)
+    if parsed is None:
+        return None
+    ours, theirs = int(parsed["ours"]), int(parsed["theirs"])
+    target = f"{ours}-{theirs}"
+    logged, _wl = last_logged_score(db, session_id)
+    columns = _columns(db, "snaps")
+    existing_id = None
+    if "data_source" in columns and "session_id" in columns:
+        found = db.conn.execute(
+            "SELECT id FROM snaps WHERE session_id = ? AND data_source = ? ORDER BY id DESC LIMIT 1",
+            (session_id, "session_close"),
+        ).fetchone()
+        if found is not None:
+            existing_id = int(found[0])
+    if logged == target:
+        return existing_id
+    notes = f"score_us={ours} score_them={theirs}"
+    if existing_id is not None:
+        assignments = ["notes = ?"]
+        params: list[Any] = [notes]
+        if "score_for" in columns and "score_against" in columns:
+            assignments[0:0] = ["score_for = ?", "score_against = ?"]
+            params[0:0] = [ours, theirs]
+        params.append(existing_id)
+        db.conn.execute(
+            f"UPDATE snaps SET {', '.join(assignments)} WHERE id = ?",
+            params,
+        )
+        db.conn.commit()
+        return existing_id
+    opponent = None
+    if "opponent_id" in _columns(db, "game_sessions"):
+        session = db.conn.execute(
+            "SELECT opponent_id FROM game_sessions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        if session is not None and session[0]:
+            opponent = str(session[0])
+    if not opponent:
+        return None
+    play, formation, drive_id, game_clock = _closing_play(db, session_id)
+    raw = "final"
+    if drive_id:
+        raw += f" drive id {drive_id}"
+    if game_clock:
+        raw += f" clock {game_clock}"
+    return int(db.log_snap(
+        opponent_id=opponent,
+        side="offense",
+        situation_raw=raw,
+        our_call=play or "final",
+        formation=formation,
+        play=play,
+        result="final",
+        notes=notes,
+        session_id=session_id,
+        data_source="session_close",
+        drive_id=drive_id,
+        game_clock=game_clock,
+        score_for=ours,
+        score_against=theirs,
+        executed_status="unknown",
+        executed_verification="unknown",
+    ))
+
+
 def last_logged_score(db: Any, session_id: str) -> tuple[str | None, str | None]:
     """Latest us-them score stored on a snap, and the win/loss/tie it implies.
 
