@@ -708,3 +708,38 @@ def arm_session_exit(db: Any, session_id: str) -> None:
     _claim_owner(db, session_id)
     _ARMED[session_id] = db
     _install_exit_handlers()
+
+
+_SCORE_PAIR = re.compile(r"^\s*(\d{1,3})\s*[-–:]\s*(\d{1,3})\s*$")
+
+
+def parse_score_pair(text: Any) -> tuple[int, int] | None:
+    """``us-them`` from text like ``31-14``. Anything else is None."""
+    match = _SCORE_PAIR.match(str(text or ""))
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def score_reconcile(
+    session_score: Any, snaplog_score: tuple[int, int] | None,
+) -> dict[str, Any]:
+    """Gap between the session's final score and what the snap log reached.
+
+    ``snaplog_score`` is the score after the last logged result. Nothing is
+    invented: a missing side gives ``status='unknown'`` and null gaps.
+    """
+    final = parse_score_pair(session_score)
+    out: dict[str, Any] = {
+        "session_score": None if final is None else f"{final[0]}-{final[1]}",
+        "snaplog_score": None if snaplog_score is None else f"{snaplog_score[0]}-{snaplog_score[1]}",
+        "gap_for": None,
+        "gap_against": None,
+        "status": "unknown",
+    }
+    if final is None or snaplog_score is None:
+        return out
+    out["gap_for"] = final[0] - int(snaplog_score[0])
+    out["gap_against"] = final[1] - int(snaplog_score[1])
+    out["status"] = "match" if out["gap_for"] == 0 and out["gap_against"] == 0 else "gap"
+    return out

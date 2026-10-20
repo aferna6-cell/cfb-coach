@@ -856,11 +856,23 @@ class LivePlayController:
         from cfb_coach.madden.model.call_outcome_log import normalize_game_clock
 
         self._book().assign_drive(sit)
-        token = normalize_game_clock(game_clock)
-        if token is None:
-            return
         extras = getattr(sit, "extras", None)
+        token = fresh_game_clock(
+            normalize_game_clock(game_clock),
+            quarter=(extras or {}).get("quarter") if isinstance(extras, dict) else None,
+            previous=getattr(self, "_last_posted_clock", None),
+        )
+        posted = normalize_game_clock(game_clock)
+        if posted is not None:
+            q = (extras or {}).get("quarter") if isinstance(extras, dict) else None
+            self._last_posted_clock = (q, posted)
         if isinstance(extras, dict):
+            if token is None:
+                # A stale or missing clock is unknown. Never carry an old value.
+                extras.pop("game_clock", None)
+                if posted is not None:
+                    extras["game_clock_stale"] = True
+                return
             extras["game_clock"] = token
 
     def result_and_call(
@@ -963,7 +975,12 @@ class LivePlayController:
             return self._idempotency_put(request_key, "/api/result_call", out)
 
     def end_game(
-        self, *, result_wl: str, score: str = "", request_key: str | None = None
+        self,
+        *,
+        result_wl: str,
+        score: str = "",
+        request_key: str | None = None,
+        last_outcome: str = "",
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -980,6 +997,14 @@ class LivePlayController:
                 wl = "loss"
             self.result_wl = wl
             self.score = (score or "").strip()
+            typed_score = bool(self.score)
+            # A result typed for the pending call (often the scoring play) is a
+            # real outcome. Log it before closing so the snap log keeps it.
+            if (last_outcome or "").strip() and self.last_call is not None:
+                try:
+                    self._log_pending_result(last_outcome.strip())
+                except Exception:  # noqa: BLE001
+                    pass
             # The call still waiting on a result is not given a snap. Ending
             # the session records that row as no_result instead of deleting it.
             play_count = len(self.log)
@@ -1005,6 +1030,21 @@ class LivePlayController:
                 disarm_session_exit(self.session_id)
             except Exception:
                 pass
+            reconcile: dict[str, Any] = {}
+            try:
+                from cfb_coach.session import score_reconcile
+
+                spot = self._book().spot
+                snaplog = (
+                    (int(spot.score_us), int(spot.score_them or 0))
+                    if spot.score_us is not None else None
+                )
+                reconcile = score_reconcile(self.score if typed_score else None, snaplog)
+                if hasattr(self.db, "record_score_reconcile"):
+                    self.db.record_score_reconcile(self.session_id, reconcile)
+            except Exception:  # noqa: BLE001
+                reconcile = {}
+            self.score_reconcile = reconcile
             # Persist W/L note in meta too
             try:
                 self.db.set_meta(
@@ -1042,8 +1082,29 @@ class LivePlayController:
                 + (f"  {self.score}" if self.score else "")
                 + f"\nvs {self.opponent_id} · session {self.session_id} · {play_count} snaps\n"
                 f"## This game — play vs coverage/look\n{grade_block}\n"
+                + (
+                    f"snap log reached {reconcile.get('snaplog_score')}; "
+                    f"{reconcile.get('gap_for')}-{reconcile.get('gap_against')} "
+                    "of the final score is not in the snap log\n"
+                    if reconcile.get("status") == "gap" else ""
+                )
             )
-            self.retrain_summary = header + "\n" + (learn_txt or "")
+            diag_txt = ""
+            if str(self.brand).lower().startswith("madden"):
+                try:
+                    from cfb_coach.madden.model.postgame_diagnostics import (
+                        format_diagnostics,
+                        session_diagnostics,
+                    )
+
+                    diag_txt = format_diagnostics(
+                        session_diagnostics(self.db.conn, self.session_id)
+                    )
+                except Exception:  # noqa: BLE001 — diagnostics never block the close
+                    diag_txt = ""
+            self.retrain_summary = header + "\n" + (learn_txt or "") + (
+                "\n" + diag_txt if diag_txt else ""
+            )
             self.ended = True
             self.call_text = f"GAME OVER — {wl.upper()}" + (
                 f"  {self.score}" if self.score else ""
@@ -1055,6 +1116,24 @@ class LivePlayController:
                 "state": self.state(),
             }
             return self._idempotency_put(request_key, "/api/end_game", out)
+
+
+def fresh_game_clock(
+    token: str | None, *, quarter: Any, previous: tuple[Any, str] | None,
+) -> str | None:
+    """The posted clock, or None when it repeats the last snap's clock.
+
+    The clock box is not a live feed. A value left in the box from an earlier
+    snap would be logged again on every later snap, so the same m:ss in the
+    same quarter on a new snap is treated as stale. Unknown stays None.
+    """
+    if token is None:
+        return None
+    if previous is not None:
+        prev_q, prev_token = previous
+        if prev_token == token and str(prev_q) == str(quarter):
+            return None
+    return token
 
 
 def _esc(s: Any) -> str:
@@ -1684,6 +1763,7 @@ $("btn-submit").addEventListener("click", async () => {{
     if (!data) return; // double-click ignored
     outcomeChoice = "";
     $("outcome-text").value = "";
+    $("game-clock").value = "";
     $("their").value = "";
     $("look").value = "";
     $("live-mark").checked = false;
@@ -1722,6 +1802,7 @@ $("btn-call-only").addEventListener("click", async () => {{
       game_clock: ($("game-clock").value || "").trim() || null,
     }}));
     if (!data) return;
+    $("game-clock").value = "";
     if ($("action-applied")) $("action-applied").checked = false;
     if ($("no-action-confirmed")) $("no-action-confirmed").checked = false;
     renderState(data.state);
@@ -1735,6 +1816,7 @@ $("btn-end").addEventListener("click", async () => {{
     const data = await withUiLock(async () => apiAction("/api/end_game", {{
       result_wl: $("wl").value,
       score: $("score").value || "",
+      last_outcome: currentOutcome() || "",
     }}));
     if (!data) return;
     renderState(data.state);
@@ -1917,6 +1999,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             result_wl=body.get("result_wl") or body.get("result") or "",
                             score=body.get("score") or "",
                             request_key=body.get("idempotency_key") or body.get("request_key"),
+                            last_outcome=str(body.get("last_outcome") or ""),
                         ),
                     )
                     return
