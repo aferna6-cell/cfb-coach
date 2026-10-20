@@ -48,6 +48,8 @@ DECISION_COLUMNS = {
     "snap_link": "TEXT",
     "orphan_reason": "TEXT",
     "drive_id": "TEXT",
+    "drive_id_source": "TEXT",
+    "game_clock_null_reason": "TEXT",
     "quarter": "INTEGER",
     "game_clock": "TEXT",
     "score_for": "INTEGER",
@@ -63,6 +65,8 @@ OUTCOME_COLUMNS = {
     "yards": "INTEGER",
     "penalty": "TEXT",
     "drive_id": "TEXT",
+    "drive_id_source": "TEXT",
+    "game_clock_null_reason": "TEXT",
     "quarter": "INTEGER",
     "game_clock": "TEXT",
     "score_for": "INTEGER",
@@ -73,6 +77,8 @@ OUTCOME_COLUMNS = {
 }
 SNAP_COLUMNS = {
     "drive_id": "TEXT",
+    "drive_id_source": "TEXT",
+    "game_clock_null_reason": "TEXT",
     "game_clock": "TEXT",
     "score_for": "INTEGER",
     "score_against": "INTEGER",
@@ -198,6 +204,29 @@ def drive_id_from_text(text: str | None) -> str | None:
     return match.group(1)
 
 
+DRIVE_ID_SOURCES = frozenset({"explicit", "inferred"})
+
+
+def drive_id_source_for_log(source: Any) -> str:
+    """'inferred' only when the coach made the id up. Anything else typed is explicit.
+
+    A typed id that happens to look like ``auto-d03`` is still explicit. The
+    prefix is never used to decide the source.
+    """
+    return "inferred" if str(source or "").strip().lower() == "inferred" else "explicit"
+
+
+def drive_id_is_verified(drive_id: Any, source: Any) -> bool:
+    """Training helper: an inferred drive id is never a verified one.
+
+    Rows stored before ``drive_id_source`` existed have a null source and are
+    treated as not verified, since the coach may have inferred them.
+    """
+    if _blank(drive_id):
+        return False
+    return str(source or "").strip().lower() == "explicit"
+
+
 def format_game_clock(seconds: int | None, raw: str | None = None) -> str | None:
     if not _blank(raw):
         return str(raw).strip()
@@ -217,8 +246,10 @@ def context_from_situation(sit: Any) -> dict[str, Any]:
     if sit is None:
         return {
             "drive_id": None,
+            "drive_id_source": None,
             "quarter": None,
             "game_clock": None,
+            "game_clock_null_reason": None,
             "score_for": None,
             "score_against": None,
         }
@@ -226,13 +257,22 @@ def context_from_situation(sit: Any) -> dict[str, Any]:
     if not isinstance(extras, dict):
         extras = {}
     raw = getattr(sit, "raw", None)
-    drive = _text(extras.get("drive_id")) or drive_id_from_text(str(raw or ""))
+    drive = _text(extras.get("drive_id"))
+    drive_source = None
+    if drive is not None:
+        drive_source = drive_id_source_for_log(extras.get("drive_id_source"))
+    else:
+        drive = drive_id_from_text(str(raw or ""))
+        if drive is not None:
+            drive_source = "explicit"
     clock_seconds = extras.get("clock_seconds")
     quarter = _int_or_none(extras.get("quarter"))
     return {
         "drive_id": drive,
+        "drive_id_source": drive_source,
         "quarter": quarter,
         "game_clock": format_game_clock(clock_seconds if isinstance(clock_seconds, int) else _int_or_none(clock_seconds), extras.get("game_clock")),
+        "game_clock_null_reason": _text(extras.get("game_clock_null_reason")),
         "score_for": _int_or_none(getattr(sit, "score_us", None)),
         "score_against": _int_or_none(getattr(sit, "score_them", None)),
     }

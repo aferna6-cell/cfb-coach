@@ -146,7 +146,7 @@ def test_undo_restores_drive_break(tmp_path: Path) -> None:
 # --- game clock -----------------------------------------------------------
 
 def test_clock_repeat_in_same_quarter_is_stale() -> None:
-    assert fresh_game_clock("0:36", quarter=2, previous=(2, "0:36")) is None
+    assert fresh_game_clock("0:36", quarter=2, previous=(2, "0:36"), fresh=False) is None
     assert fresh_game_clock("0:36", quarter=3, previous=(2, "0:36")) == "0:36"
     assert fresh_game_clock("0:30", quarter=2, previous=(2, "0:36")) == "0:30"
     assert fresh_game_clock(None, quarter=2, previous=(2, "0:36")) is None
@@ -157,7 +157,8 @@ def test_live_loop_never_logs_a_stale_clock(tmp_path: Path) -> None:
     try:
         ctrl.call_only("1&10 my 25", quarter=2, game_clock="0:36")
         for raw in ("2&5 my 30", "3&1 my 34", "1&10 my 40"):
-            ctrl.result_and_call(outcome="+5", sit_raw=raw, quarter=2, game_clock="0:36")
+            ctrl.result_and_call(outcome="+5", sit_raw=raw, quarter=2, game_clock="0:36",
+                                 game_clock_fresh=False)
         ctrl.result_and_call(outcome="+5", sit_raw="2&5 my 45", quarter=2, game_clock="0:20")
         clocks = [r["game_clock"] for r in _snaps(db)]
         assert clocks == ["0:36", None, None, None]
