@@ -739,6 +739,10 @@ def cmd_play(args: argparse.Namespace) -> int:
             quarter=live_ctx.quarter,
             shadow_evaluate=_html_shadow_hook(db, oid),
             enable_execution_verify=True,
+            # Owner's standing commitment: completed, reported snaps follow
+            # the final recommended formation/play and any displayed action.
+            # An explicit per-snap deviation always overrides this assumption.
+            standing_execution_attestation=True,
         )
         print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
         try:
