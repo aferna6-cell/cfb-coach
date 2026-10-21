@@ -927,9 +927,21 @@ def choose_joint_action(
             representatives, session_id=session_id, snap_seq=snap_seq,
             sit=sit, opponent_type=opponent_type, concentration=concentration,
         )
+        from cfb_coach.madden.model.joint_override_guard import review_override
+
+        chosen, override_audit = review_override(
+            chosen=chosen, anchor=anchor, representatives=representatives,
+        )
         best_plan = dict(chosen["plan"])
         best_key = (str(chosen["formation"]), str(chosen["play"]))
     else:
+        override_audit = {
+            "anchor": [anchor_form, anchor_play],
+            "unrestricted": [anchor_form, anchor_play],
+            "selected": [anchor_form, anchor_play],
+            "reason": "no legal joint representatives",
+            "guard_kept_anchor": False,
+        }
         best_plan = {
             "plan_id": "NO_ADJUSTMENT", "kind": "none", "parts": [],
             "reason": "no legal play was available",
@@ -957,6 +969,7 @@ def choose_joint_action(
         best_plan, formation=best_key[0], play=best_key[1], anchor=anchor,
         candidates=shown, evaluation=evaluation, learned_mode=learned_mode,
     )
+    decision["override_audit"] = override_audit
     decision["plays_considered"] = plays_seen
     decision["eligible_play_count"] = plays_seen
     decision["plans_compared"] = len(summaries)
