@@ -921,6 +921,18 @@ def import_path(path: str) -> list[dict[str, Any]]:
     return _import_jsonl(p)
 
 
+_ROW_IDENTITY = ("label_version", "vod_label_version", "player_id", "match_id", "vod_id", "source_id")
+
+def _keep_row_identity(raw: Mapping[str, Any], out: dict[str, Any]) -> dict[str, Any]:
+    """Preserve group/version identifiers required for safe shadow evaluation."""
+    for key in _ROW_IDENTITY:
+        if raw.get(key) not in (None, "") and not out.get(key):
+            out[key] = raw[key]
+    if raw.get("player") not in (None, "") and not out.get("player_id"):
+        out["player_id"] = raw["player"]
+    return out
+
+
 def _import_csv(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with path.open(newline="", encoding="utf-8") as fh:
@@ -931,7 +943,7 @@ def _import_csv(path: Path) -> list[dict[str, Any]]:
                 for k, v in raw.items()
             }
             cleaned["source_path"] = str(path)
-            rows.append(_normalize_row(cleaned, provenance=f"csv:{path.name}"))
+            rows.append(_keep_row_identity(cleaned, _normalize_row(cleaned, provenance=f"csv:{path.name}")))
     return rows
 
 
@@ -946,7 +958,7 @@ def _import_jsonl(path: Path) -> list[dict[str, Any]]:
             if not isinstance(raw, dict):
                 continue
             raw["source_path"] = str(path)
-            rows.append(_normalize_row(raw, provenance=f"jsonl:{path.name}"))
+            rows.append(_keep_row_identity(raw, _normalize_row(raw, provenance=f"jsonl:{path.name}")))
     return rows
 
 
@@ -962,7 +974,7 @@ def _import_json(path: Path) -> list[dict[str, Any]]:
             continue
         raw = dict(raw)
         raw["source_path"] = str(path)
-        rows.append(_normalize_row(raw, provenance=f"json:{path.name}"))
+        rows.append(_keep_row_identity(raw, _normalize_row(raw, provenance=f"json:{path.name}")))
     return rows
 
 
