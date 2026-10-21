@@ -45,8 +45,10 @@ INDIFFERENCE_BAND = 0.012
 
 
 def _clock_blocks(evaluation: Mapping[str, Any], n_actions: int) -> str | None:
-    clock = evaluation.get("clock_seconds")
-    if clock is not None and int(clock) < 10 and n_actions:
+    # The live clock field is the GAME clock. Never mistake it for the
+    # 30-second play clock when deciding whether an adjustment is executable.
+    play_clock = evaluation.get("play_clock_seconds")
+    if play_clock is not None and int(play_clock) < 10 and n_actions:
         return "play clock is too short for a pre-snap adjustment"
     if evaluation.get("two_minute") and n_actions > 2:
         return "two-minute offense cannot complete more than two sourced adjustments"
