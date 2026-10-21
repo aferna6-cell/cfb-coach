@@ -77,3 +77,48 @@ def test_joint_audit_is_attached_to_model_record() -> None:
     assert 'decision["override_audit"] = override_audit' in joint_source
     applied = inspect.getsource(experimental_live.apply_experimental_offense)
     assert '"joint_override_audit": joint.get("override_audit")' in applied
+
+
+def test_historical_joint_report_keeps_unseen_scores_unknown() -> None:
+    import json
+    import sqlite3
+
+    from scripts.madden_ml.review_joint_history import summarize
+
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE ml_decisions (session_id TEXT, model_version TEXT, "
+        "decision_json TEXT, policy_source TEXT, id INTEGER PRIMARY KEY)"
+    )
+    def item(candidates):
+        return json.dumps({
+            "experimental_offense": {
+                "selection_audit": {"top_selected": ["Gun", "Mesh"]},
+                "offense_action": {
+                    "kind": "none",
+                    "joint": {"formation": "Gun", "play": "Draw"},
+                    "candidates": candidates,
+                },
+            }
+        })
+    conn.execute(
+        "INSERT INTO ml_decisions (session_id,model_version,policy_source,decision_json) "
+        "VALUES (?,?,?,?)",
+        ("game-one", "offense.52.empirical", "model", item([
+            {"formation": "Gun", "play": "Mesh", "id": "NO_ADJUSTMENT", "score": 0.55},
+            {"formation": "Gun", "play": "Draw", "id": "NO_ADJUSTMENT", "score": 0.56},
+        ])),
+    )
+    conn.execute(
+        "INSERT INTO ml_decisions (session_id,model_version,policy_source,decision_json) "
+        "VALUES (?,?,?,?)",
+        ("game-two", "offense.52.empirical", "model", item([])),
+    )
+    report = summarize(conn)
+    counts = report["counts"]
+    assert counts["inspectable"] == 2
+    assert counts["no_adjustment_changed_play"] == 2
+    assert counts["score_pair_retained"] == 1
+    assert counts["score_pair_not_retained"] == 1
+    assert counts["below_new_margin_with_retained_scores"] == 1
+    assert len(report["examples"]) == 1
