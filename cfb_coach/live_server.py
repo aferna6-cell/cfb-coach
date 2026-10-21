@@ -836,8 +836,9 @@ class LivePlayController:
                 heard = format_heard(sit)
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
-            call = self._make(sit)
+            # Game-clock evidence must arrive BEFORE inference, not after the call.
             self._stamp_live_context(sit, game_clock, fresh=game_clock_fresh)
+            call = self._make(sit)
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             self._book().remember_call(
@@ -884,6 +885,7 @@ class LivePlayController:
             if token is None:
                 # A stale, backwards or missing clock is unknown. Never carry an old value.
                 extras.pop("game_clock", None)
+                extras.pop("clock_seconds", None)
                 if posted is not None:
                     extras["game_clock_stale"] = reason == "stale_resubmit"
                     extras["game_clock_null_reason"] = reason
@@ -891,6 +893,13 @@ class LivePlayController:
             if suspect is not None:
                 extras["game_clock_suspect_reason"] = suspect
             extras["game_clock"] = token
+            # This is GAME time (not the play clock). The evaluation and
+            # provenance audit must read the same current-snap clock.
+            seconds = _clock_seconds(token)
+            if seconds is not None:
+                extras["clock_seconds"] = seconds
+            else:
+                extras.pop("clock_seconds", None)
 
     def result_and_call(
         self,
@@ -967,8 +976,9 @@ class LivePlayController:
                 heard = format_heard(sit)
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
-            call = self._make(sit)
+            # Game-clock evidence must arrive BEFORE inference, not after the call.
             self._stamp_live_context(sit, game_clock, fresh=game_clock_fresh)
+            call = self._make(sit)
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             book.remember_call(
