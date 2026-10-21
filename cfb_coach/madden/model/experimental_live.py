@@ -968,6 +968,7 @@ def apply_experimental_offense(
             "offense_action": getattr(call, "ml_offense_action", None),
             "joint_decision": (getattr(call, "ml_offense_action", None) or {}).get("joint"),
             "joint_exploration": joint.get("exploration"),
+            "joint_override_audit": joint.get("override_audit"),
             "input_audit": joint.get("input_audit"),
             "football_intelligence": joint.get("football_intelligence"),
             "football_reason": (joint.get("football_intelligence") or {}).get("summary"),
