@@ -1,0 +1,28 @@
+name: Madden Week 3 priorities (draft gate)
+
+on:
+  push:
+    branches:
+      - madden-ml/experimental-five-priorities-20261020
+  workflow_dispatch:
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e '.[dev]'
+      - name: Week 3 focused regression (synthetic, no real DB)
+        run: |
+          PYTHONPATH=. python -m pytest -q \
+            tests/madden_ml/test_week3_priorities.py \
+            tests/madden_ml/test_short_yardage_compete.py \
+            tests/madden_ml/test_offense_shadow.py \
+            tests/madden_ml/test_cpu_audit_fixes.py \
+            tests/madden_ml/test_cpu_audit_fixes_2.py \
+            tests/madden_ml/test_wildcard_dual_ml.py \
+            tests/madden_ml/test_sprint9_situational_actions.py
