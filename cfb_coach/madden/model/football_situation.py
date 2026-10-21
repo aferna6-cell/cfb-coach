@@ -12,8 +12,13 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+import re
+
 from cfb_coach.madden.catalog import is_deep, is_run
-from cfb_coach.madden.model.experimental_model import _play_family
+from cfb_coach.madden.model.experimental_model import _play_family, _play_concept
+
+_PA_RE = re.compile(r"\bpa\b|play[\s-]*action", re.I)
+_RPO_RE = re.compile(r"\brpo\b", re.I)
 
 # Situation families the pregame portfolio must be able to discuss.
 SITUATION_NAMES: tuple[str, ...] = (
@@ -48,6 +53,21 @@ SELECTION_PRIORS: dict[str, dict[str, Any]] = {
     "short_yardage_run": {
         "delta": 0.025,
         "reason": "short-yardage run option",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_quick_pass": {
+        "delta": 0.022,
+        "reason": "quick pass competes to convert on 3rd/4th-and-short",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_pa": {
+        "delta": 0.020,
+        "reason": "play action competes on 3rd/4th-and-short",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_rpo": {
+        "delta": 0.021,
+        "reason": "RPO competes on 3rd/4th-and-short",
         "claim": "conversion_proxy_not_expected_points",
     },
     "short_yardage_deep": {
@@ -430,9 +450,22 @@ def _selection_parts(play: str, sit: Any) -> list[dict[str, Any]]:
             parts.append({"id": "third_long_screen", **SELECTION_PRIORS["third_long_screen"]})
         if not run and not screen and deep:
             parts.append({"id": "third_long_reachable", **SELECTION_PRIORS["third_long_reachable"]})
-    elif d in (3, 4) and yards <= 2:
-        if run:
-            parts.append({"id": "short_yardage_run", **SELECTION_PRIORS["short_yardage_run"]})
+    elif d in (3, 4) and yards <= 3:
+        # Do not force a run: let quick game, PA and RPO win on their merits.
+        # No quota and no fabricated counterfactual conversion labels.
+        fam = _play_family(play)
+        if _RPO_RE.search(play) or fam == "rpo":
+            key = "short_yardage_rpo"
+        elif _PA_RE.search(play) or _play_concept(play) == "pa":
+            key = "short_yardage_pa"
+        elif run:
+            key = "short_yardage_run"
+        elif not deep:
+            key = "short_yardage_quick_pass"
+        else:
+            key = None
+        if key:
+            parts.append({"id": key, **SELECTION_PRIORS[key]})
         if deep:
             parts.append({"id": "short_yardage_deep", **SELECTION_PRIORS["short_yardage_deep"]})
     if bool(getattr(sit, "two_minute", False)) and yards >= 4 and run:
