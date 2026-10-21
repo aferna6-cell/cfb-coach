@@ -612,6 +612,73 @@ def cmd_ml_recover_game_execution(args: argparse.Namespace) -> int:
     return 0
 
 
+def _offense_shadow_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
+    """No implicit database: call training/evaluation only on explicit sources."""
+    paths = list(getattr(args, "path", None) or [])
+    db_path = getattr(args, "db_path", None)
+    if not db_path and not paths:
+        return []
+    if db_path:
+        return _load_rows(args)
+    return dataset_mod.build_rows(db=None, extra_paths=paths)
+
+
+def _print_offense_counts(counts: dict[str, int]) -> None:
+    for source in ("live_human", "live_cpu", "vod"):
+        print(f"training_rows {source}: {int(counts.get(source, 0))}")
+
+
+def cmd_ml_train_offense(args: argparse.Namespace) -> int:
+    """Verified-only shadow fit. No changes to ml_mode or installed artifact."""
+    from cfb_coach.madden.model.offense_shadow import (
+        select_training_rows, fit_artifact, default_artifact_path, save_artifact,
+    )
+    rows = _offense_shadow_rows(args)
+    _chosen, counts = select_training_rows(rows)
+    _print_offense_counts(counts)
+    if not sum(counts.values()):
+        print("error: zero verified offense rows", file=sys.stderr)
+        return 1
+    try:
+        target = args.out or default_artifact_path()
+        dest = save_artifact(fit_artifact(rows), target)
+    except (ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"artifact: {dest}")
+    print("shadow_only: true")
+    print("auto_promoted: false")
+    print("heuristic_remains_default: true")
+    return 0
+
+
+def cmd_ml_eval_offense(args: argparse.Namespace) -> int:
+    """Hold out whole matches/players, report against the incumbent baseline."""
+    from cfb_coach.madden.model.offense_shadow import (
+        select_training_rows, evaluate_offense, load_artifact, write_eval_report,
+    )
+    rows = _offense_shadow_rows(args)
+    _chosen, counts = select_training_rows(rows)
+    _print_offense_counts(counts)
+    if not sum(counts.values()):
+        print("error: zero verified offense rows", file=sys.stderr)
+        return 1
+    try:
+        artifact = load_artifact(args.artifact) if args.artifact else None
+        report = evaluate_offense(rows, seed=int(args.seed), artifact=artifact)
+        json_path, md_path = write_eval_report(report, args.out)
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    gate = report["promotion_gate"]
+    print(f"report_json: {json_path}")
+    print(f"report_md: {md_path}")
+    print(f"promotion_gate: {gate['passed']}")
+    print(f"auto_promoted: {gate['auto_promoted']}")
+    print("heuristic_remains_default: true")
+    return 0
+
+
 def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
     """Train the hierarchical shrinkage experimental model (no promotion gate)."""
     from cfb_coach.madden.model import experimental_live as exp_live
@@ -1990,6 +2057,29 @@ def build_ml_subparser(sub: Any) -> None:
         help="Madden SQLite path. Required with --install.",
     )
     p_te.set_defaults(func=cmd_ml_train_experimental, cli_parser=p_te)
+
+    p_to = ml_sub.add_parser(
+        "train-offense",
+        help="Train verified-only situation×call challenger (shadow, no promotion)",
+    )
+    p_to.add_argument("--seed", type=int, default=7)
+    p_to.add_argument("--path", action="append", default=[])
+    p_to.add_argument("--out", default=None)
+    p_to.add_argument("--db", dest="db_path", default=None)
+    p_to.set_defaults(func=cmd_ml_train_offense, cli_parser=p_to, db=True)
+
+    p_eo = ml_sub.add_parser(
+        "eval-offense",
+        help="Compare shadow challenger against held-out baselines (no promotion)",
+    )
+    p_eo.add_argument("--seed", type=int, required=True)
+    p_eo.add_argument("--path", action="append", default=[])
+    p_eo.add_argument("--out", required=True)
+    p_eo.add_argument("--artifact", default=None)
+    p_eo.add_argument("--db", dest="db_path", default=None)
+    p_eo.set_defaults(func=cmd_ml_eval_offense, cli_parser=p_eo, db=True)
+
+
 
     p_learn = ml_sub.add_parser(
         "offense-action-learn",

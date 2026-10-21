@@ -45,8 +45,10 @@ INDIFFERENCE_BAND = 0.012
 
 
 def _clock_blocks(evaluation: Mapping[str, Any], n_actions: int) -> str | None:
-    clock = evaluation.get("clock_seconds")
-    if clock is not None and int(clock) < 10 and n_actions:
+    # The live clock field is the GAME clock. Never mistake it for the
+    # 30-second play clock when deciding whether an adjustment is executable.
+    play_clock = evaluation.get("play_clock_seconds")
+    if play_clock is not None and int(play_clock) < 10 and n_actions:
         return "play clock is too short for a pre-snap adjustment"
     if evaluation.get("two_minute") and n_actions > 2:
         return "two-minute offense cannot complete more than two sourced adjustments"
@@ -912,6 +914,15 @@ def choose_joint_action(
             "learning": learning_adj,
             "expert_learning": expert_adj,
             "selection_score": float(row.get("selection_score", row.get("probability", 0.0)) or 0.0),
+            "score_components": {
+                "selection": float(row.get("selection_score", row.get("probability", 0.0)) or 0.0),
+                "football_fit": float(fit.get("coordinator_delta") or 0.0),
+                "knowledge": float(knowledge.get("delta") or 0.0),
+                "strategy": float(strategy_adj.get("delta") or 0.0),
+                "opponent_learning": float(learning_adj.get("delta") or 0.0),
+                "expert": float(expert_adj.get("delta") or 0.0),
+                "action": float(best.get("influence") or 0.0),
+            },
         })
     from cfb_coach.madden.model.offense_diversity import concentration_stats
 
@@ -925,9 +936,21 @@ def choose_joint_action(
             representatives, session_id=session_id, snap_seq=snap_seq,
             sit=sit, opponent_type=opponent_type, concentration=concentration,
         )
+        from cfb_coach.madden.model.joint_override_guard import review_override
+
+        chosen, override_audit = review_override(
+            chosen=chosen, anchor=anchor, representatives=representatives,
+        )
         best_plan = dict(chosen["plan"])
         best_key = (str(chosen["formation"]), str(chosen["play"]))
     else:
+        override_audit = {
+            "anchor": [anchor_form, anchor_play],
+            "unrestricted": [anchor_form, anchor_play],
+            "selected": [anchor_form, anchor_play],
+            "reason": "no legal joint representatives",
+            "guard_kept_anchor": False,
+        }
         best_plan = {
             "plan_id": "NO_ADJUSTMENT", "kind": "none", "parts": [],
             "reason": "no legal play was available",
@@ -955,6 +978,7 @@ def choose_joint_action(
         best_plan, formation=best_key[0], play=best_key[1], anchor=anchor,
         candidates=shown, evaluation=evaluation, learned_mode=learned_mode,
     )
+    decision["override_audit"] = override_audit
     decision["plays_considered"] = plays_seen
     decision["eligible_play_count"] = plays_seen
     decision["plans_compared"] = len(summaries)
