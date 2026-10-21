@@ -20,6 +20,15 @@ Previously, it could choose a different play even when its best action was `NO_A
 
 Gate before promotion: offline replay against the **same situations** from all seven substantial empirical/prior games; report override counts and winner changes. Do not claim causal yardage or win-rate improvement for unexecuted alternatives.
 
+Read-only historical triage (the archived top-12 comparison is **not** a complete rerun):
+
+```bash
+python3 scripts/madden_ml/review_joint_history.py "$DB"
+```
+
+For the provided October 20 backup, 280 empirical decisions preserve both stages; 276 changed plays, 271 with no action. Only 41 play-score pairs were retained, and 39 of those would meet the new 0.025 proxy margin. The unretained pairs are unknown; these figures are an audit of old scores, not a replay or performance uplift estimate.
+
+
 ## 3. Verified execution with one tap
 
 In the minimal Madden live page, **Ran call ✓** explicitly sets `used_recommended`. **Changed play** reveals the execution fields. Merely seeing a call does not count. Untouched submissions remain unknown. Tapping `Ran call ✓` in a no-action situation also confirms no adjustment; it does **not** confirm an optional hot route or macro automatically. Fields reset after submit. Completed snaps continue to be recorded by the existing idempotent server path.
