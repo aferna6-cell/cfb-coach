@@ -914,6 +914,15 @@ def choose_joint_action(
             "learning": learning_adj,
             "expert_learning": expert_adj,
             "selection_score": float(row.get("selection_score", row.get("probability", 0.0)) or 0.0),
+            "score_components": {
+                "selection": float(row.get("selection_score", row.get("probability", 0.0)) or 0.0),
+                "football_fit": float(fit.get("coordinator_delta") or 0.0),
+                "knowledge": float(knowledge.get("delta") or 0.0),
+                "strategy": float(strategy_adj.get("delta") or 0.0),
+                "opponent_learning": float(learning_adj.get("delta") or 0.0),
+                "expert": float(expert_adj.get("delta") or 0.0),
+                "action": float(best.get("influence") or 0.0),
+            },
         })
     from cfb_coach.madden.model.offense_diversity import concentration_stats
 
