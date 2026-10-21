@@ -19,10 +19,6 @@ from cfb_coach.madden.model import offense_shadow
 from cfb_coach.madden.model.call_outcome_log import NO_RESULT, NO_SNAP_RECORDED
 from cfb_coach.madden.model.dataset import EXCLUDED_VOD_SOURCE
 from cfb_coach.madden.model.inference import resolve_mode
-from cfb_coach.madden.model.opponent_learning import (
-    PROFILE_TENDENCY_KEY,
-    fold_verified_session_tendencies,
-)
 from cfb_coach.madden.model.schema import CoachingMode
 from cfb_coach.session import start_session
 
