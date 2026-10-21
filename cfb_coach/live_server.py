@@ -138,6 +138,10 @@ class LivePlayController:
     # Signature: (sit, call, *, game_id, snap_id, snap_seq, session_id, is_new) -> row_id|None
     shadow_evaluate: Callable[..., int | None] | None = None
     enable_execution_verify: bool = False
+    # Explicit standing user commitment: completed offense outcomes are
+    # self-attested as following the final recommendation unless overridden.
+    # This is user-reported evidence, NOT independently observed controller input.
+    standing_execution_attestation: bool = False
     ml_tracker: Any | None = None
     # Durable HTTP idempotency: request_key -> last response (also persisted in DB).
     _idempotency_mem: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -214,6 +218,7 @@ class LivePlayController:
             "benched": self.benched_state(),
             "ball": self._book().spot.as_dict(),
             "execution_verify": bool(self.enable_execution_verify),
+            "standing_execution_attestation": bool(self.standing_execution_attestation),
             "pending_recommendation": self._pending_recommendation(),
             "pending_offense_action": self._pending_offense_action(),
             "ml_experimental": self._ml_experimental_state(),
@@ -614,6 +619,22 @@ class LivePlayController:
         """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
             return None
+        # The owner has provided a standing, prospective attestation that they
+        # execute every recommended play and optional action. This applies only
+        # to an actual submitted outcome, never to a displayed/pending call.
+        # A touched per-snap override always takes precedence.
+        standing_attested = bool(
+            self.standing_execution_attestation
+            and not verify_touched
+            and str(executed_status or "unknown").strip().lower() == "unknown"
+            and str(getattr(self.last_call, "side", "")).startswith("o")
+        )
+        if standing_attested:
+            executed_status = "used_recommended"
+            verify_touched = True
+            applied_recommended_action = self._pending_offense_action() is not None
+            confirmed_no_adjustment = not applied_recommended_action
+
         # Only an action actually offered with the final call can be
         # explicitly confirmed. A stale hidden checkbox must not fabricate it.
         applied_recommended_action = bool(
@@ -729,6 +750,12 @@ class LivePlayController:
                         "offense_action_explicitly_confirmed": bool(
                             applied_recommended_action
                             and (closed.get("executed_status") or "") == "identified"
+                        ),
+                        "execution_attestation_source": (
+                            "standing_user_attestation" if standing_attested else (
+                                "per_snap_user_confirmation" if verify_touched
+                                else "unknown"
+                            )
                         ),
                         "no_adjustment_explicitly_confirmed": bool(
                             confirmed_no_adjustment
@@ -1521,7 +1548,7 @@ function renderState(st) {{
       $("offense-action-buttons").textContent = act.why || act.buttons || "";
     }}
   }}
-  if (actionConfirmRow) actionConfirmRow.hidden = !act;
+  if (actionConfirmRow) actionConfirmRow.hidden = !act || !!st.standing_execution_attestation;
   const football = $("football-reason");
   const footballBody = $("football-reason-body");
   if (football && footballBody) {{
@@ -1532,7 +1559,8 @@ function renderState(st) {{
   const noActionRow = $("no-action-confirm-row");
   if (noActionRow) {{
     noActionRow.hidden = !!act || !st.pending_recommendation
-      || !String(st.pending_recommendation.side || "").startsWith("o");
+      || !String(st.pending_recommendation.side || "").startsWith("o")
+      || !!st.standing_execution_attestation;
   }}
   $("heard").textContent = st.heard || ("vs " + (st.opponent_id || ""));
   const log = $("log");
@@ -1587,7 +1615,10 @@ function renderState(st) {{
     $("side-label").style.display = "";
   }}
   const ev = $("exec-verify");
-  if (ev) ev.hidden = !st.execution_verify;
+  if (ev) ev.hidden = !st.execution_verify
+    || (!!st.standing_execution_attestation && !execVerifyTouched);
+  // In auto-follow mode there is nothing to tap unless the play changed.
+  $("btn-ran-recommended").hidden = !!st.standing_execution_attestation;
   // Never rewrite an explicit used_different selection on state refresh.
   syncExecDiffVisibility();
 }}
