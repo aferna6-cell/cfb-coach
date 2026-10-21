@@ -1398,6 +1398,8 @@ def render_live_html(ctrl: LivePlayController) -> str:
     </div>
     <div class="row">
       <button type="button" class="primary" id="btn-submit">Submit → log + new PLAY</button>
+      <button type="button" id="btn-ran-recommended" title="Explicitly verify that you ran the shown formation and play">Ran call ✓</button>
+      <button type="button" id="btn-ran-different" title="Show the executed-play fields when you changed the call">Changed play</button>
       <button type="button" id="btn-undo">Undo last snap</button>
       <button type="button" id="btn-call-only">Call only (no log)</button>
     </div>
@@ -1614,6 +1616,9 @@ function restoreExecDefaultAfterSubmit() {{
   // A submit does not select a radio. The next snap stays unknown until touched.
   execVerifyTouched = false;
   setExecSelection("");
+  $("btn-ran-recommended").style.outline = "";
+  $("btn-ran-different").style.outline = "";
+  $("exec-verify").hidden = compactMadden;
   if ($("exec-formation")) $("exec-formation").value = "";
   if ($("exec-play")) $("exec-play").value = "";
 }}
@@ -1670,7 +1675,7 @@ function renderBook(b) {{
 
 /* ---- Idempotency for browser actions (durable across retries / refresh) ---- */
 const IDEM_STORE = "cfb_coach_live_idempotency_v1";
-const ACTION_BTN_IDS = ["btn-submit", "btn-undo", "btn-call-only", "btn-end", "btn-book-apply"];
+const ACTION_BTN_IDS = ["btn-submit", "btn-undo", "btn-call-only", "btn-end", "btn-book-apply", "btn-ran-recommended", "btn-ran-different"];
 let uiLocked = false;
 
 function newIdempotencyKey() {{
@@ -1857,6 +1862,24 @@ document.querySelectorAll('input[name="exec"]').forEach(r => {{
     execVerifyTouched = true;
     syncExecDiffVisibility();
   }});
+}});
+$("btn-ran-recommended").addEventListener("click", () => {{
+  // Only an explicit tap verifies execution; displaying a call never does.
+  execVerifyTouched = true;
+  setExecSelection("used_recommended");
+  $("exec-verify").hidden = true;
+  $("btn-ran-recommended").style.outline = "2px solid #3fb950";
+  $("btn-ran-different").style.outline = "";
+  const noAction = $("no-action-confirmed");
+  if (noAction && !$("no-action-confirm-row").hidden) noAction.checked = true;
+}});
+$("btn-ran-different").addEventListener("click", () => {{
+  execVerifyTouched = true;
+  setExecSelection("used_different");
+  $("exec-verify").hidden = false;
+  $("btn-ran-recommended").style.outline = "";
+  $("btn-ran-different").style.outline = "2px solid #e3b341";
+  if ($("no-action-confirmed")) $("no-action-confirmed").checked = false;
 }});
 syncExecDiffVisibility();
 
