@@ -979,6 +979,35 @@ def choose_joint_action(
         candidates=shown, evaluation=evaluation, learned_mode=learned_mode,
     )
     decision["override_audit"] = override_audit
+    # Explain why the legal joint space contained no adjustment choices.
+    # Never generate an unsourced hot route just to diversify the output.
+    available_actions = sum(
+        1 for candidate in summaries
+        if candidate.get("id") != "NO_ADJUSTMENT"
+    )
+    observed_look = (evaluation.get("coverage") or {}).get("state") == "observed"
+    armed_count = (
+        len((macro_index or {}).get("active") or [])
+        if macro_index is not None else (len(active or []) if allow_macros else 0)
+    )
+    if not available_actions:
+        if not observed_look and not armed_count:
+            action_reason = "no_current_coverage_and_no_armed_macro"
+        elif not observed_look:
+            action_reason = "no_live_coverage_or_eligible_situation_macro"
+        else:
+            action_reason = "no_supported_action_passed_legality_and_risk_gates"
+    elif best_plan.get("plan_id") == "NO_ADJUSTMENT":
+        action_reason = "legal_actions_scored_below_unchanged"
+    else:
+        action_reason = "supported_adjustment_selected"
+    decision["action_availability"] = {
+        "sourced_action_candidates": available_actions,
+        "observed_current_coverage": observed_look,
+        "armed_macro_count": armed_count,
+        "reason": action_reason,
+        "no_unsupported_action_invented": True,
+    }
     decision["plays_considered"] = plays_seen
     decision["eligible_play_count"] = plays_seen
     decision["plans_compared"] = len(summaries)

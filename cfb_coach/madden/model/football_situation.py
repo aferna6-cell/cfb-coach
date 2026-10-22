@@ -70,6 +70,11 @@ SELECTION_PRIORS: dict[str, dict[str, Any]] = {
         "reason": "RPO competes on 3rd/4th-and-short",
         "claim": "conversion_proxy_not_expected_points",
     },
+    "red_zone_medium_run": {
+        "delta": -0.065,
+        "reason": "third/fourth-and-4-to-6 in scoring range needs sticks; run is not the default",
+        "claim": "conversion_proxy_not_expected_points",
+    },
     "short_yardage_deep": {
         "delta": -0.035,
         "reason": "long-developing route on short yardage",
@@ -468,6 +473,19 @@ def _selection_parts(play: str, sit: Any) -> list[dict[str, Any]]:
             parts.append({"id": key, **SELECTION_PRIORS[key]})
         if deep:
             parts.append({"id": "short_yardage_deep", **SELECTION_PRIORS["short_yardage_deep"]})
+    elif d in (3, 4) and 4 <= yards <= 6 and run:
+        # Week 3 exposed a 3rd-and-6 goal-to-go draw. Penalize the run
+        # only inside scoring territory; do not disable sound short-yard runs.
+        try:
+            inside_twenty = int(getattr(sit, "yardline", 0) or 0) >= 80
+        except (TypeError, ValueError):
+            inside_twenty = False
+        if inside_twenty or bool(
+            getattr(sit, "red_zone", False) or getattr(sit, "goal_line", False)
+        ):
+            parts.append({
+                "id": "red_zone_medium_run", **SELECTION_PRIORS["red_zone_medium_run"]
+            })
     if bool(getattr(sit, "two_minute", False)) and yards >= 4 and run:
         score_us, score_them = getattr(sit, "score_us", None), getattr(sit, "score_them", None)
         if score_us is not None and score_them is not None:
@@ -505,7 +523,14 @@ def coordinator_components(
     deep = is_deep(play)
     parts: list[dict[str, Any]] = []
     if evaluation.get("goal_line"):
-        if run:
+        # Goal-line spacing favors a run only while reaching the sticks is
+        # plausible. Do not reward runs automatically on 3rd/4th-and-4+.
+        distance = evaluation.get("distance")
+        down = evaluation.get("down")
+        credible_goal_run = not (
+            down in (3, 4) and distance is not None and distance >= 4
+        )
+        if run and credible_goal_run:
             parts.append({"id": "goal_line_run", **COORDINATOR_PRIORS["goal_line_run"]})
         if deep:
             parts.append({"id": "goal_line_deep", **COORDINATOR_PRIORS["goal_line_deep"]})
