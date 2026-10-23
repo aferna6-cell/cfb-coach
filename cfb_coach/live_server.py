@@ -258,6 +258,39 @@ class LivePlayController:
             }
         return None
 
+    def _pending_defense_action(self) -> dict[str, Any] | None:
+        """Defensive macro or adjustment, same shape as the offense action.
+
+        Absent when the call is not defense or nothing was shown. Recording
+        still defaults to unknown until the caller opts in.
+        """
+        call = self.last_call
+        if call is None or self.ended or not str(getattr(call, "side", "")).startswith("d"):
+            return None
+        info = getattr(call, "macro_info", None)
+        macro = getattr(call, "macro", None)
+        if macro:
+            label = macro
+            buttons = ""
+            why = ""
+            if isinstance(info, dict):
+                label = info.get("name") or info.get("id") or macro
+                buttons = info.get("buttons") or ""
+                why = info.get("why") or ""
+            return {
+                "kind": "macro", "id": macro, "label": label,
+                "buttons": buttons, "why": why,
+            }
+        adj = getattr(call, "adjustment", None)
+        if isinstance(adj, dict) and adj.get("id"):
+            return {
+                "kind": "adjustment", "id": adj["id"],
+                "label": adj.get("label") or adj["id"],
+                "buttons": adj.get("buttons") or "",
+                "why": adj.get("why") or "",
+            }
+        return None
+
     def _ml_experimental_state(self) -> dict[str, Any] | None:
         """Heuristic vs ML explanation when experimental mode produced the call."""
         call = self.last_call
@@ -637,10 +670,11 @@ class LivePlayController:
 
         # Only an action actually offered with the final call can be
         # explicitly confirmed. A stale hidden checkbox must not fabricate it.
+        pending_action = self._pending_offense_action() or self._pending_defense_action()
         applied_recommended_action = bool(
             applied_recommended_action
             and executed_status == "used_recommended"
-            and self._pending_offense_action()
+            and pending_action
         )
         # A control requires an explicit, separate confirmation that the
         # recommended play was executed with NO pre-snap adjustment.

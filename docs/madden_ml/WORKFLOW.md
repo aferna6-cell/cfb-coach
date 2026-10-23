@@ -98,6 +98,23 @@ python -m cfb_coach ml evaluate --seed 7 --registry /tmp/madden_ml_registry_smok
 | `recommendation_only` | No | None |
 | `unlabeled` / `excluded` | No | None |
 
+## Defense train and eval
+
+A defensive snap is verified when it is an executed/accepted live row, or it has a `concept_seen` label, `review_status` is in the reviewed set (`reviewed`, `confirmed`, `corrected`) or `trainable` is true, `excluded_from_training` is not true, and `concept_seen_confidence` is at least `MIN_CONCEPT_SEEN_CONFIDENCE` (0.5). `permitted_use` is a rights field and does not verify a row. An auto-labelled, non-trainable row at confidence 0.3 is not verified. Live defense rows and VOD observed-defense rows are counted separately. A live defense row stays unverified until accept/execute is recorded; that recording is optional and defaults to `unknown`. Zero verified snaps refuses the command and does not train. The established defense caller stays the default. `train-defense` and `eval-defense` do not enable it.
+
+`eval-defense` holds out by match, compares the model with the situation baseline, and prints bootstrap 95% CIs, a per-situation breakdown, and a gate verdict. It also prints how many verified rows were dropped as unlabelled and why. Each situation bucket includes `n_model_used` and `n_baseline_fallback`, so a fallback to the situation rate is visible when the diff is 0. The gate passes only when the CI lies entirely above 0 and scoring p95 is under 150 ms.
+
+`ml defense-experimental --enable` refuses unless the installed artifact already carries that passing report. It does not train.
+
+`ml eval-adjustments` reports recommended vs applied (executed or accepted) vs outcome on each side, with bootstrap CIs. A side with fewer than 8 snaps prints a small-n warning. When application was not recorded the applied count is `unknown`, not zero.
+
+```bash
+python3 -m cfb_coach ml train-defense --out /tmp/defense.json --path snaps.jsonl --seed 7
+python3 -m cfb_coach ml eval-defense --model /tmp/defense.json --path snaps.jsonl --seed 7
+python3 -m cfb_coach ml defense-experimental --enable --db "$CFB_COACH_MADDEN_DB"
+python3 -m cfb_coach ml eval-adjustments --path adjustments.jsonl --seed 7
+```
+
 ## Sealed pipeline
 
 Disabled. See `docs/madden_ml/SEALED_PIPELINE.md`. Do not set `CFB_COACH_SEALED_PIPELINE=1` during real games.
