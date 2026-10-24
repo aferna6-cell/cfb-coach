@@ -306,7 +306,11 @@ def evaluate_situation(
         names.append("backed_up")
     if two_minute:
         names.append("two_minute")
-    if phase in ("protect_lead", "trailing") and (two_minute or (quarter or 0) >= 4):
+    # Quarter alone is not game-clock evidence. Do not mark this as a clock
+    # management snap when the operator never provided the game clock.
+    if phase in ("protect_lead", "trailing") and (
+        two_minute or ((quarter or 0) >= 4 and clock is not None)
+    ):
         names.append("clock_management")
     return {
         "down": down,
@@ -545,7 +549,14 @@ def coordinator_components(
             parts.append({"id": "second_short_explosive", **COORDINATOR_PRIORS["second_short_explosive"]})
     quarter = evaluation.get("quarter")
     phase = evaluation.get("score_phase")
-    if quarter is not None and int(quarter) >= 4 and not evaluation.get("two_minute"):
+    # A fourth-quarter score is not proof that burning clock is useful.
+    # Week 4 supplied no game-clock readings; keep the late-game priors off
+    # rather than silently assuming the offense was in a clock-killing phase.
+    if (
+        quarter is not None and int(quarter) >= 4
+        and evaluation.get("clock_seconds") is not None
+        and not evaluation.get("two_minute")
+    ):
         if phase == "protect_lead" and run:
             parts.append({"id": "late_lead_run", **COORDINATOR_PRIORS["late_lead_run"]})
         if phase == "trailing" and not run and (evaluation.get("distance") or 0) >= 4:
