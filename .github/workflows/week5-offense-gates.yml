@@ -1,0 +1,37 @@
+name: Week 5 offense gates
+
+on:
+  push:
+    branches:
+      - madden-ml/week5-clock-evidence
+  workflow_dispatch:
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e '.[dev]'
+      - name: Week 5 offense and prior live regressions
+        run: |
+          PYTHONPATH=. python -m pytest -q \
+            tests/madden_ml/test_week5_clock_evidence.py \
+            tests/madden_ml/test_week4_redzone_actions.py \
+            tests/madden_ml/test_week3_priorities.py \
+            tests/madden_ml/test_short_yardage_compete.py \
+            tests/madden_ml/test_sprint7_context_variety.py \
+            tests/madden_ml/test_sprint12_football_intelligence.py \
+            tests/madden_ml/test_sprint12_playcall_diversity.py \
+            tests/madden_ml/test_standing_execution_attestation.py \
+            tests/madden_ml/test_offense_shadow.py \
+            tests/madden_ml/test_html_idempotency.py \
+            tests/madden_ml/test_cpu_audit_fixes.py \
+            tests/madden_ml/test_cpu_audit_fixes_2.py \
+            tests/madden_ml/test_wildcard_john_games.py \
+            tests/madden_ml/test_sprint42_execution_recovery.py \
+            tests/madden_ml/test_sprint9_situational_actions.py \
+            tests/madden_ml/test_sprint10_action_learning.py
