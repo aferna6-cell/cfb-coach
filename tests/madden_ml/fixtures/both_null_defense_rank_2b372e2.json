@@ -1,0 +1,1302 @@
+{
+  "book": {
+    "4-3 Over": [
+      "Cover 3 Sky",
+      "Cover 1 Hole"
+    ],
+    "Nickel Over": [
+      "Cover 3 Sky",
+      "Tampa 2",
+      "Cover 1 Robber"
+    ]
+  },
+  "cases": [
+    {
+      "displayed": {
+        "current_offensive_concept_used": null,
+        "family": "single_high",
+        "football_intelligence": {
+          "delta": 0.0,
+          "evidence": {
+            "counterfactual_success_claim": false,
+            "exact_route_assignments_verified": false,
+            "historical_tendency": false,
+            "live": false
+          },
+          "live_concept": null,
+          "opponent_outcome_risk": {
+            "delta": 0.0,
+            "n": 0,
+            "ready": false
+          },
+          "opponent_tendency": {
+            "confidence": 0.0,
+            "family": null,
+            "n": 0,
+            "ready": false
+          },
+          "principle": "Maintain assignment integrity."
+        },
+        "formation": "4-3 Over",
+        "play": "Cover 3 Sky",
+        "prior_share": 0.3,
+        "score": -0.240795,
+        "verified_context_n": 0,
+        "verified_family_n": 0,
+        "verified_play_n": 0
+      },
+      "label": "early",
+      "ranks": [
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.3,
+          "score": -0.240795,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.3,
+          "score": -0.240795,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "cover2",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Tampa 2",
+          "prior_share": 0.15,
+          "score": -0.379424,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 1 Hole",
+          "prior_share": 0.1,
+          "score": -0.460517,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 1 Robber",
+          "prior_share": 0.1,
+          "score": -0.460517,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        }
+      ],
+      "situation": {
+        "distance": 10,
+        "down": 1,
+        "goal_line": false,
+        "raw": "1st and 10",
+        "red_zone": false,
+        "side": "defense",
+        "two_minute": false,
+        "yardline": 35
+      },
+      "snap_seq": 0
+    },
+    {
+      "displayed": {
+        "current_offensive_concept_used": null,
+        "family": "single_high",
+        "football_intelligence": {
+          "delta": 0.0,
+          "evidence": {
+            "counterfactual_success_claim": false,
+            "exact_route_assignments_verified": false,
+            "historical_tendency": false,
+            "live": false
+          },
+          "live_concept": null,
+          "opponent_outcome_risk": {
+            "delta": 0.0,
+            "n": 0,
+            "ready": false
+          },
+          "opponent_tendency": {
+            "confidence": 0.0,
+            "family": null,
+            "n": 0,
+            "ready": false
+          },
+          "principle": "Maintain assignment integrity."
+        },
+        "formation": "4-3 Over",
+        "play": "Cover 3 Sky",
+        "prior_share": 0.3,
+        "score": -0.240795,
+        "verified_context_n": 0,
+        "verified_family_n": 0,
+        "verified_play_n": 0
+      },
+      "label": "short",
+      "ranks": [
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.3,
+          "score": -0.240795,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 1 Hole",
+          "prior_share": 0.25,
+          "score": -0.277259,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.3,
+          "score": -0.420795,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 1 Robber",
+          "prior_share": 0.25,
+          "score": -0.457259,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "cover2",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Tampa 2",
+          "prior_share": 0.1,
+          "score": -0.640517,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        }
+      ],
+      "situation": {
+        "distance": 2,
+        "down": 2,
+        "goal_line": false,
+        "raw": "2nd and 2",
+        "red_zone": false,
+        "side": "defense",
+        "two_minute": false,
+        "yardline": 40
+      },
+      "snap_seq": 1
+    },
+    {
+      "displayed": {
+        "current_offensive_concept_used": null,
+        "family": "cover2",
+        "football_intelligence": {
+          "delta": 0.0,
+          "evidence": {
+            "counterfactual_success_claim": false,
+            "exact_route_assignments_verified": false,
+            "historical_tendency": false,
+            "live": false
+          },
+          "live_concept": null,
+          "opponent_outcome_risk": {
+            "delta": 0.0,
+            "n": 0,
+            "ready": false
+          },
+          "opponent_tendency": {
+            "confidence": 0.0,
+            "family": null,
+            "n": 0,
+            "ready": false
+          },
+          "principle": "Maintain assignment integrity."
+        },
+        "formation": "Nickel Over",
+        "play": "Tampa 2",
+        "prior_share": 0.25,
+        "score": -0.277259,
+        "verified_context_n": 0,
+        "verified_family_n": 0,
+        "verified_play_n": 0
+      },
+      "label": "long",
+      "ranks": [
+        {
+          "current_offensive_concept_used": null,
+          "family": "cover2",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Tampa 2",
+          "prior_share": 0.25,
+          "score": -0.277259,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.15,
+          "score": -0.379424,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 1 Robber",
+          "prior_share": 0.1,
+          "score": -0.460517,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.15,
+          "score": -0.559424,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 1 Hole",
+          "prior_share": 0.1,
+          "score": -0.640517,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        }
+      ],
+      "situation": {
+        "distance": 12,
+        "down": 3,
+        "goal_line": false,
+        "raw": "3rd and 12",
+        "red_zone": false,
+        "side": "defense",
+        "two_minute": false,
+        "yardline": 45
+      },
+      "snap_seq": 2
+    },
+    {
+      "displayed": {
+        "current_offensive_concept_used": null,
+        "family": "man",
+        "football_intelligence": {
+          "delta": 0.0,
+          "evidence": {
+            "counterfactual_success_claim": false,
+            "exact_route_assignments_verified": false,
+            "historical_tendency": false,
+            "live": false
+          },
+          "live_concept": null,
+          "opponent_outcome_risk": {
+            "delta": 0.0,
+            "n": 0,
+            "ready": false
+          },
+          "opponent_tendency": {
+            "confidence": 0.0,
+            "family": null,
+            "n": 0,
+            "ready": false
+          },
+          "principle": "Maintain assignment integrity."
+        },
+        "formation": "4-3 Over",
+        "play": "Cover 1 Hole",
+        "prior_share": 0.3,
+        "score": -0.240795,
+        "verified_context_n": 0,
+        "verified_family_n": 0,
+        "verified_play_n": 0
+      },
+      "label": "red zone",
+      "ranks": [
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 1 Hole",
+          "prior_share": 0.3,
+          "score": -0.240795,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 1 Robber",
+          "prior_share": 0.3,
+          "score": -0.240795,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.25,
+          "score": -0.277259,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.25,
+          "score": -0.277259,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "cover2",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Tampa 2",
+          "prior_share": 0.15,
+          "score": -0.379424,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        }
+      ],
+      "situation": {
+        "distance": 10,
+        "down": 1,
+        "goal_line": false,
+        "raw": "1st and 10 red zone",
+        "red_zone": true,
+        "side": "defense",
+        "two_minute": false,
+        "yardline": 15
+      },
+      "snap_seq": 3
+    },
+    {
+      "displayed": {
+        "current_offensive_concept_used": null,
+        "family": "man",
+        "football_intelligence": {
+          "delta": 0.0,
+          "evidence": {
+            "counterfactual_success_claim": false,
+            "exact_route_assignments_verified": false,
+            "historical_tendency": false,
+            "live": false
+          },
+          "live_concept": null,
+          "opponent_outcome_risk": {
+            "delta": 0.0,
+            "n": 0,
+            "ready": false
+          },
+          "opponent_tendency": {
+            "confidence": 0.0,
+            "family": null,
+            "n": 0,
+            "ready": false
+          },
+          "principle": "Maintain assignment integrity."
+        },
+        "formation": "4-3 Over",
+        "play": "Cover 1 Hole",
+        "prior_share": 0.4,
+        "score": -0.183258,
+        "verified_context_n": 0,
+        "verified_family_n": 0,
+        "verified_play_n": 0
+      },
+      "label": "goal line",
+      "ranks": [
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 1 Hole",
+          "prior_share": 0.4,
+          "score": -0.183258,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.25,
+          "score": -0.277259,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 1 Robber",
+          "prior_share": 0.4,
+          "score": -0.363258,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.25,
+          "score": -0.457259,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "cover2",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Tampa 2",
+          "prior_share": 0.025,
+          "score": -0.917776,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        }
+      ],
+      "situation": {
+        "distance": 1,
+        "down": 1,
+        "goal_line": true,
+        "raw": "1st and goal",
+        "red_zone": false,
+        "side": "defense",
+        "two_minute": false,
+        "yardline": 1
+      },
+      "snap_seq": 4
+    },
+    {
+      "displayed": {
+        "current_offensive_concept_used": null,
+        "family": "cover2",
+        "football_intelligence": {
+          "delta": 0.0,
+          "evidence": {
+            "counterfactual_success_claim": false,
+            "exact_route_assignments_verified": false,
+            "historical_tendency": false,
+            "live": false
+          },
+          "live_concept": null,
+          "opponent_outcome_risk": {
+            "delta": 0.0,
+            "n": 0,
+            "ready": false
+          },
+          "opponent_tendency": {
+            "confidence": 0.0,
+            "family": null,
+            "n": 0,
+            "ready": false
+          },
+          "principle": "Maintain assignment integrity."
+        },
+        "formation": "Nickel Over",
+        "play": "Tampa 2",
+        "prior_share": 0.3,
+        "score": -0.240795,
+        "verified_context_n": 0,
+        "verified_family_n": 0,
+        "verified_play_n": 0
+      },
+      "label": "two minute",
+      "ranks": [
+        {
+          "current_offensive_concept_used": null,
+          "family": "cover2",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Tampa 2",
+          "prior_share": 0.3,
+          "score": -0.240795,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.2,
+          "score": -0.321888,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "single_high",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 3 Sky",
+          "prior_share": 0.2,
+          "score": -0.501888,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "Nickel Over",
+          "play": "Cover 1 Robber",
+          "prior_share": 0.05,
+          "score": -0.599146,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        },
+        {
+          "current_offensive_concept_used": null,
+          "family": "man",
+          "football_intelligence": {
+            "delta": 0.0,
+            "evidence": {
+              "counterfactual_success_claim": false,
+              "exact_route_assignments_verified": false,
+              "historical_tendency": false,
+              "live": false
+            },
+            "live_concept": null,
+            "opponent_outcome_risk": {
+              "delta": 0.0,
+              "n": 0,
+              "ready": false
+            },
+            "opponent_tendency": {
+              "confidence": 0.0,
+              "family": null,
+              "n": 0,
+              "ready": false
+            },
+            "principle": "Maintain assignment integrity."
+          },
+          "formation": "4-3 Over",
+          "play": "Cover 1 Hole",
+          "prior_share": 0.05,
+          "score": -0.779146,
+          "verified_context_n": 0,
+          "verified_family_n": 0,
+          "verified_play_n": 0
+        }
+      ],
+      "situation": {
+        "distance": 8,
+        "down": 3,
+        "goal_line": false,
+        "raw": "two minute",
+        "red_zone": false,
+        "side": "defense",
+        "two_minute": true,
+        "yardline": 55
+      },
+      "snap_seq": 5
+    }
+  ],
+  "opponent_id": "gavin",
+  "session_id": "both-null-20261011",
+  "source_commit": "2b372e2"
+}

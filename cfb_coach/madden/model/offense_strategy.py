@@ -65,6 +65,9 @@ def _objective(sit: Any, diagnosis: Mapping[str, Any], memory: Mapping[str, Any]
     quarter = _int(getattr(sit, "quarter", None)) if sit is not None else None
     if quarter is None and sit is not None:
         quarter = _int((getattr(sit, "extras", None) or {}).get("quarter"))
+    clock = _int(getattr(sit, "clock_seconds", None)) if sit is not None else None
+    if clock is None and sit is not None:
+        clock = _int((getattr(sit, "extras", None) or {}).get("clock_seconds"))
     score_us = getattr(sit, "score_us", None) if sit is not None else None
     score_them = getattr(sit, "score_them", None) if sit is not None else None
     two_minute = bool(getattr(sit, "two_minute", False)) if sit is not None else False
@@ -72,6 +75,10 @@ def _objective(sit: Any, diagnosis: Mapping[str, Any], memory: Mapping[str, Any]
     if goal_line or (down in (3, 4) and distance is not None and distance <= 2):
         return "convert_critical_first_down"
     if down in (3, 4) and distance is not None and distance >= 7:
+        return "convert_critical_first_down"
+    # Medium third/fourth downs still need the sticks. A Q4 lead with an
+    # unknown game clock is not evidence to downgrade conversion priority.
+    if down in (3, 4) and distance is not None and 4 <= distance <= 6:
         return "convert_critical_first_down"
     trailing = (
         score_us is not None and score_them is not None and int(score_us) < int(score_them)
@@ -85,9 +92,9 @@ def _objective(sit: Any, diagnosis: Mapping[str, Any], memory: Mapping[str, Any]
         return "create_explosive"
     if two_minute and leading:
         return "protect_late_lead"
-    if quarter is not None and quarter >= 4 and leading:
+    if quarter is not None and quarter >= 4 and clock is not None and leading:
         return "protect_late_lead"
-    if quarter is not None and quarter >= 4 and trailing and not two_minute:
+    if quarter is not None and quarter >= 4 and clock is not None and trailing and not two_minute:
         return "conserve_clock_while_trailing"
     observed = diagnosis.get("observed") or {}
     if diagnosis.get("state") == "observed" and observed.get("pressure"):

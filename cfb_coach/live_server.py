@@ -18,7 +18,16 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from cfb_coach.browser_open import open_url
-from cfb_coach.session import start_session
+from cfb_coach.session import (
+    arm_session_exit,
+    clear_recovered_note,
+    close_armed_sessions,
+    disarm_session_exit,
+    last_logged_score,
+    logged_play_count,
+    recover_unclosed_sessions,
+    start_session,
+)
 
 
 MakeCallFn = Callable[..., Any]
@@ -31,7 +40,7 @@ class LogRow:
     formation: str
     play: str
     result: str
-    look: str = ""
+    look: str | None = None
     call_text: str = ""
     side: str = "offense"
 
@@ -53,6 +62,7 @@ _RAW_DOWN = re.compile(
     r"\b([1-4])(?:st|nd|rd|th)?\s*(?:&|and)\s*(?:\d+|goal|g|inches)\b",
     re.I,
 )
+_OMITTED_LOOK = object()
 _RAW_SPOT = re.compile(
     r"\b(?:(?:my|our|own|opp(?:onent)?s?|their)\s*(?:yl|yard\s*line)?\s*\d{1,2}"
     r"|(?:yl|yardline)\s*\d{1,2})\b",
@@ -128,9 +138,14 @@ class LivePlayController:
     # Signature: (sit, call, *, game_id, snap_id, snap_seq, session_id, is_new) -> row_id|None
     shadow_evaluate: Callable[..., int | None] | None = None
     enable_execution_verify: bool = False
+    # Explicit standing user commitment: completed offense outcomes are
+    # self-attested as following the final recommendation unless overridden.
+    # This is user-reported evidence, NOT independently observed controller input.
+    standing_execution_attestation: bool = False
     ml_tracker: Any | None = None
     # Durable HTTP idempotency: request_key -> last response (also persisted in DB).
     _idempotency_mem: dict[str, dict[str, Any]] = field(default_factory=dict)
+    pending_opp_look: str | None = None
 
     def book_state(self) -> dict[str, Any] | None:
         if self.book_info is None:
@@ -151,10 +166,25 @@ class LivePlayController:
         return {"ok": True, "applied_rev": rec.get("rev"), "dynasty": self.dynasty, "state": self.state()}
 
     def start(self) -> None:
+        try:
+            recover_unclosed_sessions(self.db)
+        except Exception:  # noqa: BLE001 — a failed recovery must not block the new game
+            pass
         sess = start_session(
             self.opponent_id, dynasty=self.dynasty, db=self.db, notes="html-live"
         )
         self.session_id = sess.session_id
+        try:
+            arm_session_exit(self.db, self.session_id)
+        except Exception:  # noqa: BLE001 — live play still runs if the handler cannot arm
+            pass
+        if str(self.brand).lower().startswith("madden"):
+            try:
+                from cfb_coach.madden.model.call_outcome_log import record_session_run_config
+
+                record_session_run_config(self.db, self.session_id)
+            except Exception:  # noqa: BLE001 — logging must not break live play
+                pass
 
     def state(self) -> dict[str, Any]:
         return {
@@ -188,6 +218,7 @@ class LivePlayController:
             "benched": self.benched_state(),
             "ball": self._book().spot.as_dict(),
             "execution_verify": bool(self.enable_execution_verify),
+            "standing_execution_attestation": bool(self.standing_execution_attestation),
             "pending_recommendation": self._pending_recommendation(),
             "pending_offense_action": self._pending_offense_action(),
             "ml_experimental": self._ml_experimental_state(),
@@ -246,6 +277,9 @@ class LivePlayController:
             "data_version": info.get("data_version"),
             "probability": info.get("probability"),
             "fell_back": bool(info.get("fell_back")),
+            "fallback_reason": info.get("fallback_reason"),
+            "fallback_source": info.get("fallback_source"),
+            "scored_on": info.get("scored_on") or "unknown",
             "input_audit": (info.get("pre_snap_action_context") or {}).get("input_audit")
             or info.get("input_audit"),
             "football_reason": info.get("football_reason"),
@@ -257,12 +291,22 @@ class LivePlayController:
         text = call.format() if hasattr(call, "format") else str(call)
         info = getattr(call, "ml_experimental", None)
         if isinstance(info, dict) and info.get("explanation"):
-            eq = info.get("evidence_quality") or "unknown"
-            text += (
-                f"\n  ML experimental [{eq}]: {info['explanation']}"
-                f"\n  heuristic kept visible: {info.get('heuristic_formation')}/{info.get('heuristic_play')}"
-                f"\n  (opt-in pilot — not a validated competitive model)"
-            )
+            if info.get("fell_back"):
+                reason = info.get("fallback_reason") or "fallback"
+                source = info.get("fallback_source") or "heuristic_offense"
+                text += (
+                    f"\n  fallback_reason: {reason}"
+                    f"\n  fallback_source: {source}"
+                )
+            else:
+                eq = info.get("evidence_quality") or "unknown"
+                scored = info.get("scored_on") or "unknown"
+                text += (
+                    f"\n  ML experimental [{eq}]: {info['explanation']}"
+                    f"\n  model scored_on {scored}"
+                    f"\n  heuristic kept visible: {info.get('heuristic_formation')}/{info.get('heuristic_play')}"
+                    f"\n  (opt-in pilot — not a validated competitive model)"
+                )
         return text
 
     def _ensure_tracker(self) -> Any:
@@ -343,6 +387,19 @@ class LivePlayController:
             except Exception:  # noqa: BLE001 — never break live play
                 row_id = None
             tracker.bind_decision_row(row_id)
+        try:
+            from cfb_coach.madden.model.call_outcome_log import apply_seal_logging
+
+            apply_seal_logging(
+                self.db,
+                tracker,
+                decision_id=row_id,
+                sit=sit,
+                call=call,
+                is_new=is_new,
+            )
+        except Exception:  # noqa: BLE001 — logging must not break live play
+            pass
         return snap_id, seq, row_id
 
     def benched_state(self) -> dict[str, list[str]]:
@@ -557,10 +614,27 @@ class LivePlayController:
         executed_macro: str | None = None,
         applied_recommended_action: bool = False,
         confirmed_no_adjustment: bool = False,
+        verify_touched: bool = False,
     ) -> dict[str, Any] | None:
         """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
             return None
+        # The owner has provided a standing, prospective attestation that they
+        # execute every recommended play and optional action. This applies only
+        # to an actual submitted outcome, never to a displayed/pending call.
+        # A touched per-snap override always takes precedence.
+        standing_attested = bool(
+            self.standing_execution_attestation
+            and not verify_touched
+            and str(executed_status or "unknown").strip().lower() == "unknown"
+            and str(getattr(self.last_call, "side", "")).startswith("o")
+        )
+        if standing_attested:
+            executed_status = "used_recommended"
+            verify_touched = True
+            applied_recommended_action = self._pending_offense_action() is not None
+            confirmed_no_adjustment = not applied_recommended_action
+
         # Only an action actually offered with the final call can be
         # explicitly confirmed. A stale hidden checkbox must not fabricate it.
         applied_recommended_action = bool(
@@ -578,7 +652,9 @@ class LivePlayController:
         )
         book = self._book()
         if book.call is None:
-            book.remember_call(self.last_call, self.last_sit)
+            book.remember_call(
+                self.last_call, self.last_sit, opp_look=self.pending_opp_look,
+            )
         closed = book.close_from_form(
             outcome_raw,
             their=their,
@@ -591,6 +667,7 @@ class LivePlayController:
                 applied_recommended_action
                 if str(self.brand).lower().startswith("madden") else None
             ),
+            verify_touched=verify_touched,
         )
         if closed is None:
             return None
@@ -613,6 +690,29 @@ class LivePlayController:
                 from cfb_coach.outcome import parse_outcome
 
                 parsed = parse_outcome(closed.get("result") or outcome_raw)
+                from cfb_coach.madden.model.call_outcome_log import (
+                    acceptance_for_log,
+                    context_from_situation,
+                    executed_adjustment_for_log,
+                    recommended_from_call,
+                )
+
+                ctx = context_from_situation(self.last_sit)
+                recommended = recommended_from_call(self.last_call)
+                confirmed_adjustment = bool(
+                    applied_recommended_action
+                    and (closed.get("executed_status") or "") == "identified"
+                    and (closed.get("executed_play") or "") == getattr(self.last_call, "play", None)
+                )
+                accepted = acceptance_for_log(
+                    executed_status=closed.get("executed_status"),
+                    executed_play=closed.get("executed_play"),
+                    recommended_play=getattr(self.last_call, "play", None),
+                    touched=verify_touched,
+                )
+                executed_id = executed_adjustment_for_log(
+                    recommended, confirmed=confirmed_adjustment
+                )
                 self.db.log_ml_outcome(
                     snap_id=ml_snap_id,
                     game_id=self.session_id or None,
@@ -628,6 +728,17 @@ class LivePlayController:
                             else "unknown"
                         )
                     ),
+                    drive_id=ctx.get("drive_id"),
+                    drive_id_source=ctx.get("drive_id_source"),
+                    game_clock_null_reason=ctx.get("game_clock_null_reason"),
+                    quarter=ctx.get("quarter"),
+                    game_clock=ctx.get("game_clock"),
+                    score_for=ctx.get("score_for"),
+                    score_against=ctx.get("score_against"),
+                    accepted=accepted,
+                    recommended_adjustment_id=recommended,
+                    executed_adjustment_id=recommended,
+                    adjustment_confirmed=confirmed_adjustment,
                     outcome={
                         "result": closed.get("result"),
                         "yards": parsed.yards,
@@ -635,16 +746,16 @@ class LivePlayController:
                         "coverage_seen": book.coverage,
                         "concept_seen": book.concept,
                         "executed_macro": closed.get("executed_macro"),
-                        "executed_adjustment_id": (
-                            (getattr(self.last_call, "adjustment", None) or {}).get("id")
-                            if applied_recommended_action
-                            and (closed.get("executed_status") or "") == "identified"
-                            and (closed.get("executed_play") or "") == getattr(self.last_call, "play", None)
-                            else None
-                        ),
+                        "executed_adjustment_id": executed_id,
                         "offense_action_explicitly_confirmed": bool(
                             applied_recommended_action
                             and (closed.get("executed_status") or "") == "identified"
+                        ),
+                        "execution_attestation_source": (
+                            "standing_user_attestation" if standing_attested else (
+                                "per_snap_user_confirmation" if verify_touched
+                                else "unknown"
+                            )
                         ),
                         "no_adjustment_explicitly_confirmed": bool(
                             confirmed_no_adjustment
@@ -698,6 +809,14 @@ class LivePlayController:
         out["executed_play"] = closed.get("executed_play")
         return out
 
+    def _bind_posted_look(self, sit: Any, sit_raw: str, opp_look: Any) -> None:
+        """Normalize a posted look before ``make_call`` sees the situation."""
+        from cfb_coach.madden.model.inference import UNSET_OPP_LOOK, bind_opp_look
+
+        posted = UNSET_OPP_LOOK if opp_look is _OMITTED_LOOK else opp_look
+        bind_opp_look(sit, posted, raw=sit_raw)
+        self.pending_opp_look = (sit.extras or {}).get("opp_look")
+
     def _make(self, sit: Any) -> Any:
         kwargs: dict[str, Any] = {}
         # CFB + Madden accept last_coverage / last_concept
@@ -720,6 +839,9 @@ class LivePlayController:
         score_them: Any = None,
         score_set: bool = False,
         request_key: str | None = None,
+        opp_look: Any = _OMITTED_LOOK,
+        game_clock: str | None = None,
+        game_clock_fresh: bool | None = None,
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -733,6 +855,7 @@ class LivePlayController:
             if self.cpu_only:
                 side_use = "offense"
             sit = self._stamp(self.parse_situation(sit_raw, default_side=side_use))
+            self._bind_posted_look(sit, sit_raw, opp_look)
             self._book().stamp_situation(sit)
             from cfb_coach.situation import format_heard
 
@@ -740,11 +863,14 @@ class LivePlayController:
                 heard = format_heard(sit)
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
+            # Game-clock evidence must arrive BEFORE inference, not after the call.
+            self._stamp_live_context(sit, game_clock, fresh=game_clock_fresh)
             call = self._make(sit)
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             self._book().remember_call(
-                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row
+                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row,
+                opp_look=self.pending_opp_look,
             )
             self.call_text = self._format_call_text(call)
             self.heard = heard
@@ -755,6 +881,52 @@ class LivePlayController:
             self.default_side = sit.side
             out = {"ok": True, "call_text": self.call_text, "heard": heard, "state": self.state()}
             return self._idempotency_put(request_key, "/api/call", out)
+
+    def _stamp_live_context(
+        self, sit: Any, game_clock: str | None, *, fresh: bool | None = None,
+    ) -> None:
+        """Drive and clock for the snap about to be logged. The call is already made."""
+        from cfb_coach.madden.model.call_outcome_log import normalize_game_clock
+
+        self._book().assign_drive(sit)
+        extras = getattr(sit, "extras", None)
+        q = (extras or {}).get("quarter") if isinstance(extras, dict) else None
+        posted = normalize_game_clock(game_clock)
+        token, reason = check_game_clock(
+            posted,
+            quarter=q,
+            previous=getattr(self, "_last_posted_clock", None),
+            fresh=fresh,
+        )
+        suspect = None
+        if token is None and reason == "clock_went_up" and fresh is True:
+            # A freshly typed clock is never dropped for going up: it may fix a
+            # typo or mark a missed quarter rollover. Keep it, flag it suspect.
+            token, reason, suspect = posted, None, "clock_went_up"
+        if token is not None:
+            # Every stored clock (suspect or not) is the reference for the next snap.
+            self._last_posted_clock = (q, token)
+        if isinstance(extras, dict):
+            extras.pop("game_clock_null_reason", None)
+            extras.pop("game_clock_suspect_reason", None)
+            if token is None:
+                # A stale, backwards or missing clock is unknown. Never carry an old value.
+                extras.pop("game_clock", None)
+                extras.pop("clock_seconds", None)
+                if posted is not None:
+                    extras["game_clock_stale"] = reason == "stale_resubmit"
+                    extras["game_clock_null_reason"] = reason
+                return
+            if suspect is not None:
+                extras["game_clock_suspect_reason"] = suspect
+            extras["game_clock"] = token
+            # This is GAME time (not the play clock). The evaluation and
+            # provenance audit must read the same current-snap clock.
+            seconds = _clock_seconds(token)
+            if seconds is not None:
+                extras["clock_seconds"] = seconds
+            else:
+                extras.pop("clock_seconds", None)
 
     def result_and_call(
         self,
@@ -774,6 +946,10 @@ class LivePlayController:
         applied_recommended_action: bool = False,
         confirmed_no_adjustment: bool = False,
         request_key: str | None = None,
+        opp_look: Any = _OMITTED_LOOK,
+        game_clock: str | None = None,
+        game_clock_fresh: bool | None = None,
+        verify_touched: bool = False,
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -795,6 +971,7 @@ class LivePlayController:
                     executed_macro=executed_macro,
                     applied_recommended_action=applied_recommended_action,
                     confirmed_no_adjustment=confirmed_no_adjustment,
+                    verify_touched=verify_touched,
                 )
             elif self.last_call is not None and not (outcome or "").strip():
                 # Allow first snap without prior outcome
@@ -807,6 +984,7 @@ class LivePlayController:
             if self.cpu_only:
                 side_use = "offense"
             sit = self._stamp(self.parse_situation(sit_raw, default_side=side_use))
+            self._bind_posted_look(sit, sit_raw, opp_look)
             book = self._book()
             book.stamp_situation(sit)
             # The down boxes still describe the snap we just logged — the result moved the ball.
@@ -825,11 +1003,14 @@ class LivePlayController:
                 heard = format_heard(sit)
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
+            # Game-clock evidence must arrive BEFORE inference, not after the call.
+            self._stamp_live_context(sit, game_clock, fresh=game_clock_fresh)
             call = self._make(sit)
             self.last_call, self.last_sit = call, sit
             ml_snap_id, snap_seq, decision_row = self._seal_and_shadow(sit, call)
             book.remember_call(
-                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row
+                call, sit, ml_snap_id=ml_snap_id, snap_seq=snap_seq, ml_decision_id=decision_row,
+                opp_look=self.pending_opp_look,
             )
             self._push_score()
             self.call_text = self._format_call_text(call)
@@ -849,7 +1030,12 @@ class LivePlayController:
             return self._idempotency_put(request_key, "/api/result_call", out)
 
     def end_game(
-        self, *, result_wl: str, score: str = "", request_key: str | None = None
+        self,
+        *,
+        result_wl: str,
+        score: str = "",
+        request_key: str | None = None,
+        last_outcome: str = "",
     ) -> dict[str, Any]:
         with self.lock:
             cached = self._idempotency_get(request_key)
@@ -866,17 +1052,54 @@ class LivePlayController:
                 wl = "loss"
             self.result_wl = wl
             self.score = (score or "").strip()
-            # Flush dangling call without outcome? leave unlogged.
+            typed_score = bool(self.score)
+            # A result typed for the pending call (often the scoring play) is a
+            # real outcome. Log it before closing so the snap log keeps it.
+            if (last_outcome or "").strip() and self.last_call is not None:
+                try:
+                    self._log_pending_result(last_outcome.strip())
+                except Exception:  # noqa: BLE001
+                    pass
+            # The call still waiting on a result is not given a snap. Ending
+            # the session records that row as no_result instead of deleting it.
             play_count = len(self.log)
+            try:
+                play_count = max(play_count, logged_play_count(self.db, self.session_id))
+                if not self.score:
+                    logged_score, _inferred = last_logged_score(self.db, self.session_id)
+                    if logged_score:
+                        self.score = logged_score
+            except Exception:
+                pass
             try:
                 self.db.end_game_session(
                     self.session_id,
                     play_count=play_count,
                     result_wl=wl,
                     score=self.score,
+                    recovered=False,
                 )
+                # A premature recovery may already have set ended_ts. This write
+                # replaces that row; drop the recovered flag so the real close wins.
+                clear_recovered_note(self.db, self.session_id)
+                disarm_session_exit(self.session_id)
             except Exception:
                 pass
+            reconcile: dict[str, Any] = {}
+            try:
+                from cfb_coach.session import score_reconcile
+
+                spot = self._book().spot
+                snaplog = (
+                    (int(spot.score_us), int(spot.score_them or 0))
+                    if spot.score_us is not None else None
+                )
+                reconcile = score_reconcile(self.score if typed_score else None, snaplog)
+                if hasattr(self.db, "record_score_reconcile"):
+                    self.db.record_score_reconcile(self.session_id, reconcile)
+            except Exception:  # noqa: BLE001
+                reconcile = {}
+            self.score_reconcile = reconcile
             # Persist W/L note in meta too
             try:
                 self.db.set_meta(
@@ -914,8 +1137,29 @@ class LivePlayController:
                 + (f"  {self.score}" if self.score else "")
                 + f"\nvs {self.opponent_id} · session {self.session_id} · {play_count} snaps\n"
                 f"## This game — play vs coverage/look\n{grade_block}\n"
+                + (
+                    f"snap log reached {reconcile.get('snaplog_score')}; "
+                    f"{reconcile.get('gap_for')}-{reconcile.get('gap_against')} "
+                    "of the final score is not in the snap log\n"
+                    if reconcile.get("status") == "gap" else ""
+                )
             )
-            self.retrain_summary = header + "\n" + (learn_txt or "")
+            diag_txt = ""
+            if str(self.brand).lower().startswith("madden"):
+                try:
+                    from cfb_coach.madden.model.postgame_diagnostics import (
+                        format_diagnostics,
+                        session_diagnostics,
+                    )
+
+                    diag_txt = format_diagnostics(
+                        session_diagnostics(self.db.conn, self.session_id)
+                    )
+                except Exception:  # noqa: BLE001 — diagnostics never block the close
+                    diag_txt = ""
+            self.retrain_summary = header + "\n" + (learn_txt or "") + (
+                "\n" + diag_txt if diag_txt else ""
+            )
             self.ended = True
             self.call_text = f"GAME OVER — {wl.upper()}" + (
                 f"  {self.score}" if self.score else ""
@@ -927,6 +1171,67 @@ class LivePlayController:
                 "state": self.state(),
             }
             return self._idempotency_put(request_key, "/api/end_game", out)
+
+
+def _clock_seconds(token: str) -> int | None:
+    try:
+        minutes, seconds = token.split(":")
+        return int(minutes) * 60 + int(seconds)
+    except (ValueError, AttributeError):
+        return None
+
+
+def check_game_clock(
+    token: str | None,
+    *,
+    quarter: Any,
+    previous: tuple[Any, str] | None,
+    fresh: bool | None = None,
+) -> tuple[str | None, str | None]:
+    """``(clock, None)`` when the posted clock is kept, else ``(None, reason)``.
+
+    ``fresh`` is the page's per-submit flag: True when the clock box was typed
+    in since the last submit, False when the value was sent without a new
+    entry. An equal m:ss alone is never stale, because the clock really does
+    stop after an incompletion, out of bounds or a timeout. It is dropped only
+    when it equals the last accepted clock in the same quarter AND the page
+    says it was not freshly entered (``stale_resubmit``). Within a quarter the
+    clock only counts down, so a higher clock than the last accepted one is
+    dropped (``clock_went_up``); the live server keeps a freshly typed one
+    instead, flagged ``game_clock_suspect_reason``. A new quarter or OT resets both checks. An
+    unknown quarter skips the checks. Unknown stays None.
+    """
+    if token is None:
+        return None, None
+    if previous is None:
+        return token, None
+    prev_q, prev_token = previous
+    if quarter is None or str(prev_q) != str(quarter):
+        return token, None
+    if prev_token == token:
+        if fresh is False:
+            return None, "stale_resubmit"
+        return token, None
+    now_s, prev_s = _clock_seconds(token), _clock_seconds(prev_token)
+    if now_s is not None and prev_s is not None and now_s > prev_s:
+        return None, "clock_went_up"
+    return token, None
+
+
+def fresh_game_clock(
+    token: str | None,
+    *,
+    quarter: Any,
+    previous: tuple[Any, str] | None,
+    fresh: bool | None = None,
+) -> str | None:
+    """The posted clock, or None when :func:`check_game_clock` drops it."""
+    return check_game_clock(token, quarter=quarter, previous=previous, fresh=fresh)[0]
+
+
+def _fresh_flag(value: Any) -> bool | None:
+    """The page's clock-was-typed flag. Anything but a real bool is unknown."""
+    return value if isinstance(value, bool) else None
 
 
 def _esc(s: Any) -> str:
@@ -1057,9 +1362,9 @@ def render_live_html(ctrl: LivePlayController) -> str:
       <input class="wide" id="their" placeholder="cover 6 · A-gap blitz · cross wheels · mesh"/>
     </div>
     <div id="exec-verify" hidden>
-      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(change only when you ran something else)</span></h2>
+      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional — leave this alone and the snap stays unknown)</span></h2>
       <div class="row" id="exec-radios" style="gap:.75rem;flex-wrap:wrap">
-        <label style="font-weight:600"><input type="radio" name="exec" value="used_recommended" checked/> used recommended</label>
+        <label style="font-weight:600"><input type="radio" name="exec" value="used_recommended"/> used recommended</label>
         <label><input type="radio" name="exec" value="used_different"/> used different</label>
         <label><input type="radio" name="exec" value="unknown"/> unknown</label>
       </div>
@@ -1090,6 +1395,8 @@ def render_live_html(ctrl: LivePlayController) -> str:
         <option value="4">4th</option>
         <option value="5">OT</option>
       </select>
+      <label title="Game clock for this snap. Blank stays unknown.">clock</label>
+      <input id="game-clock" placeholder="12:00" inputmode="numeric" style="width:4.5rem"/>
       <label title="Our score. Sticks until you change it. Us-them, not the final winner-first score.">us</label>
       <input type="number" id="score-us" min="0" max="99" placeholder="—" value="{_esc(us_v)}"/>
       <label title="Their score">them</label>
@@ -1118,6 +1425,8 @@ def render_live_html(ctrl: LivePlayController) -> str:
     </div>
     <div class="row">
       <button type="button" class="primary" id="btn-submit">Submit → log + new PLAY</button>
+      <button type="button" id="btn-ran-recommended" title="Explicitly verify that you ran the shown formation and play">Ran call ✓</button>
+      <button type="button" id="btn-ran-different" title="Show the executed-play fields when you changed the call">Changed play</button>
       <button type="button" id="btn-undo">Undo last snap</button>
       <button type="button" id="btn-call-only">Call only (no log)</button>
     </div>
@@ -1171,6 +1480,11 @@ def render_live_html(ctrl: LivePlayController) -> str:
 const $ = (id) => document.getElementById(id);
 const compactMadden = {str(compact_madden).lower()};
 let outcomeChoice = "";
+let execVerifyTouched = false;
+// True once the clock box is typed in for this snap. Sent with the submit so the
+// server can tell a real repeated clock from a value that was never re-entered.
+let clockTyped = false;
+$("game-clock").addEventListener("input", () => {{ clockTyped = true; }});
 
 function setErr(msg) {{ $("err").textContent = msg || ""; }}
 
@@ -1193,11 +1507,18 @@ function renderState(st) {{
     if (mlBox) {{
       if (st.ml_experimental && st.ml_experimental.explanation) {{
         mlBox.hidden = false;
-        mlBox.textContent = "ML experimental [" + (st.ml_experimental.evidence_quality || "?") + "] · "
+        if (st.ml_experimental.fell_back) {{
+          mlBox.textContent = "LABEL: HEURISTIC · fallback_reason "
+            + (st.ml_experimental.fallback_reason || "fallback")
+            + " · fallback_source " + (st.ml_experimental.fallback_source || "heuristic_offense");
+        }} else {{
+        mlBox.textContent = "LABEL: EXPERIMENTAL · ML experimental [" + (st.ml_experimental.evidence_quality || "?") + "] · "
           + "heuristic " + (st.ml_experimental.heuristic || "") + " · "
           + "ML " + (st.ml_experimental.ml || "") + " · "
           + "shown " + (st.ml_experimental.final || "") + " · "
+          + "scored_on " + (st.ml_experimental.scored_on || "unknown") + " · "
           + (st.ml_experimental.explanation || "");
+        }}
         const audit = st.ml_experimental.input_audit;
         if (audit) {{
           mlBox.textContent += " · known " + ((audit.known || []).join(", ") || "none")
@@ -1227,7 +1548,7 @@ function renderState(st) {{
       $("offense-action-buttons").textContent = act.why || act.buttons || "";
     }}
   }}
-  if (actionConfirmRow) actionConfirmRow.hidden = !act;
+  if (actionConfirmRow) actionConfirmRow.hidden = !act || !!st.standing_execution_attestation;
   const football = $("football-reason");
   const footballBody = $("football-reason-body");
   if (football && footballBody) {{
@@ -1238,7 +1559,8 @@ function renderState(st) {{
   const noActionRow = $("no-action-confirm-row");
   if (noActionRow) {{
     noActionRow.hidden = !!act || !st.pending_recommendation
-      || !String(st.pending_recommendation.side || "").startsWith("o");
+      || !String(st.pending_recommendation.side || "").startsWith("o")
+      || !!st.standing_execution_attestation;
   }}
   $("heard").textContent = st.heard || ("vs " + (st.opponent_id || ""));
   const log = $("log");
@@ -1293,19 +1615,24 @@ function renderState(st) {{
     $("side-label").style.display = "";
   }}
   const ev = $("exec-verify");
-  if (ev) ev.hidden = !st.execution_verify;
+  if (ev) ev.hidden = !st.execution_verify
+    || (!!st.standing_execution_attestation && !execVerifyTouched);
+  // In auto-follow mode there is nothing to tap unless the play changed.
+  $("btn-ran-recommended").hidden = !!st.standing_execution_attestation;
   // Never rewrite an explicit used_different selection on state refresh.
   syncExecDiffVisibility();
 }}
 
 function currentExecSelection() {{
   const el = document.querySelector('input[name="exec"]:checked');
-  return el ? el.value : "used_recommended";
+  return el ? el.value : "";
 }}
 
 function setExecSelection(value) {{
-  const target = value || "used_recommended";
-  const radio = document.querySelector('input[name="exec"][value="' + target + '"]');
+  document.querySelectorAll('input[name="exec"]').forEach(r => {{ r.checked = false; }});
+  const radio = value
+    ? document.querySelector('input[name="exec"][value="' + value + '"]')
+    : null;
   if (radio) radio.checked = true;
   syncExecDiffVisibility();
 }}
@@ -1317,9 +1644,12 @@ function syncExecDiffVisibility() {{
 }}
 
 function restoreExecDefaultAfterSubmit() {{
-  // Default stays used_recommended after each submit so unknown does not reappear.
-  // Clearing formation/play only — do not leave a stale used_different form visible.
-  setExecSelection("used_recommended");
+  // A submit does not select a radio. The next snap stays unknown until touched.
+  execVerifyTouched = false;
+  setExecSelection("");
+  $("btn-ran-recommended").style.outline = "";
+  $("btn-ran-different").style.outline = "";
+  $("exec-verify").hidden = compactMadden;
   if ($("exec-formation")) $("exec-formation").value = "";
   if ($("exec-play")) $("exec-play").value = "";
 }}
@@ -1376,7 +1706,7 @@ function renderBook(b) {{
 
 /* ---- Idempotency for browser actions (durable across retries / refresh) ---- */
 const IDEM_STORE = "cfb_coach_live_idempotency_v1";
-const ACTION_BTN_IDS = ["btn-submit", "btn-undo", "btn-call-only", "btn-end", "btn-book-apply"];
+const ACTION_BTN_IDS = ["btn-submit", "btn-undo", "btn-call-only", "btn-end", "btn-book-apply", "btn-ran-recommended", "btn-ran-different"];
 let uiLocked = false;
 
 function newIdempotencyKey() {{
@@ -1481,18 +1811,24 @@ async function withUiLock(fn) {{
   }}
 }}
 
+function opponentLook() {{
+  const raw = ($("look").value || "").trim();
+  return raw ? raw : null;
+}}
+
 function buildSit() {{
   const d = $("down").value || "1";
   const dist = $("distance").value || "10";
   const ylSide = $("yl-side").value;
   const yl = $("yl").value || "";
-  let look = ($("look").value || "").trim();
-  if (look && $("live-mark").checked && !/^\\s*(showing|live|pre-snap|aligned)\\b/i.test(look)) {{
-    look = "showing " + look;
+  const look = opponentLook();
+  let phrase = look;
+  if (phrase && $("live-mark").checked && !/^\\s*(showing|live|pre-snap|aligned)\\b/i.test(phrase)) {{
+    phrase = "showing " + phrase;
   }}
   const parts = [d + "&" + dist];
   if (yl) parts.push(ylSide + " " + yl);
-  if (look) parts.push(look);
+  if (phrase) parts.push(phrase);
   return parts.join(" ");
 }}
 
@@ -1519,21 +1855,28 @@ $("btn-submit").addEventListener("click", async () => {{
     const data = await withUiLock(async () => {{
       const out = currentOutcome();
       const sit = buildSit();
-      const exec = (document.querySelector('input[name="exec"]:checked') || {{}}).value || "unknown";
+      const checked = document.querySelector('input[name="exec"]:checked');
+      const exec = execVerifyTouched && checked ? checked.value : "unknown";
       const body = {{
         outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value,
         their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value,
         executed_status: exec,
+        verify_touched: execVerifyTouched,
         executed_formation: ($("exec-formation").value || "").trim() || null,
         executed_play: ($("exec-play").value || "").trim() || null,
         applied_recommended_action: !!($("action-applied") && $("action-applied").checked),
         confirmed_no_adjustment: !!($("no-action-confirmed") && $("no-action-confirmed").checked),
+        opp_look: opponentLook(),
+        game_clock: ($("game-clock").value || "").trim() || null,
+        game_clock_fresh: clockTyped,
       }};
       return await apiAction("/api/result_call", body);
     }});
     if (!data) return; // double-click ignored
     outcomeChoice = "";
     $("outcome-text").value = "";
+    $("game-clock").value = "";
+    clockTyped = false;
     $("their").value = "";
     $("look").value = "";
     $("live-mark").checked = false;
@@ -1547,8 +1890,27 @@ $("btn-submit").addEventListener("click", async () => {{
 
 document.querySelectorAll('input[name="exec"]').forEach(r => {{
   r.addEventListener("change", () => {{
+    execVerifyTouched = true;
     syncExecDiffVisibility();
   }});
+}});
+$("btn-ran-recommended").addEventListener("click", () => {{
+  // Only an explicit tap verifies execution; displaying a call never does.
+  execVerifyTouched = true;
+  setExecSelection("used_recommended");
+  $("exec-verify").hidden = true;
+  $("btn-ran-recommended").style.outline = "2px solid #3fb950";
+  $("btn-ran-different").style.outline = "";
+  const noAction = $("no-action-confirmed");
+  if (noAction && !$("no-action-confirm-row").hidden) noAction.checked = true;
+}});
+$("btn-ran-different").addEventListener("click", () => {{
+  execVerifyTouched = true;
+  setExecSelection("used_different");
+  $("exec-verify").hidden = false;
+  $("btn-ran-recommended").style.outline = "";
+  $("btn-ran-different").style.outline = "2px solid #e3b341";
+  if ($("no-action-confirmed")) $("no-action-confirmed").checked = false;
 }});
 syncExecDiffVisibility();
 
@@ -1567,8 +1929,13 @@ $("btn-call-only").addEventListener("click", async () => {{
     const data = await withUiLock(async () => apiAction("/api/call", {{
       sit: buildSit(), side: $("side").value, quarter: $("quarter").value,
       score_us: $("score-us").value, score_them: $("score-them").value,
+      opp_look: opponentLook(),
+      game_clock: ($("game-clock").value || "").trim() || null,
+      game_clock_fresh: clockTyped,
     }}));
     if (!data) return;
+    $("game-clock").value = "";
+    clockTyped = false;
     if ($("action-applied")) $("action-applied").checked = false;
     if ($("no-action-confirmed")) $("no-action-confirmed").checked = false;
     renderState(data.state);
@@ -1582,6 +1949,7 @@ $("btn-end").addEventListener("click", async () => {{
     const data = await withUiLock(async () => apiAction("/api/end_game", {{
       result_wl: $("wl").value,
       score: $("score").value || "",
+      last_outcome: currentOutcome() || "",
     }}));
     if (!data) return;
     renderState(data.state);
@@ -1711,6 +2079,9 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                         score_us=body.get("score_us"), score_them=body.get("score_them"),
                         score_set=("score_us" in body or "score_them" in body),
                         request_key=body.get("idempotency_key") or body.get("request_key"),
+                        opp_look=_posted_opp_look(body),
+                        game_clock=body.get("game_clock"),
+                        game_clock_fresh=_fresh_flag(body.get("game_clock_fresh")),
                     ))
                     return
                 if path == "/api/undo":
@@ -1744,6 +2115,10 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             applied_recommended_action=body.get("applied_recommended_action") is True,
                             confirmed_no_adjustment=body.get("confirmed_no_adjustment") is True,
                             request_key=body.get("idempotency_key") or body.get("request_key"),
+                            opp_look=_posted_opp_look(body),
+                            game_clock=body.get("game_clock"),
+                            game_clock_fresh=_fresh_flag(body.get("game_clock_fresh")),
+                            verify_touched=body.get("verify_touched") is True,
                         ),
                     )
                     return
@@ -1759,6 +2134,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             result_wl=body.get("result_wl") or body.get("result") or "",
                             score=body.get("score") or "",
                             request_key=body.get("idempotency_key") or body.get("request_key"),
+                            last_outcome=str(body.get("last_outcome") or ""),
                         ),
                     )
                     return
@@ -1776,7 +2152,9 @@ class ContextThreadingHTTPServer(ThreadingHTTPServer):
     server handles each request on a worker, so ``--no-vod-prior`` and
     ``--freeze-vod-book`` set on the command thread never reached ``make_call``.
     The snapshot is taken at construction, which is the flagged thread in
-    ``run_live_server``, and each worker enters that snapshot before the handler.
+    ``run_live_server``. A ``Context`` can be entered by only one thread at a
+    time, and the next request can start before the previous worker leaves
+    ``run``. Each worker therefore enters its own copy of that snapshot.
     """
 
     def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
@@ -1784,7 +2162,16 @@ class ContextThreadingHTTPServer(ThreadingHTTPServer):
         self._request_context = contextvars.copy_context()
 
     def process_request_thread(self, request, client_address):
-        self._request_context.run(super().process_request_thread, request, client_address)
+        self._request_context.copy().run(
+            super().process_request_thread, request, client_address
+        )
+
+
+def _posted_opp_look(body: dict[str, Any]) -> Any:
+    """JSON look field. A missing key is omitted. Blank and whitespace are kept for normalization."""
+    if "opp_look" not in body:
+        return _OMITTED_LOOK
+    return body.get("opp_look")
 
 
 def pick_port(host: str = "127.0.0.1", preferred: int = 8765) -> int:
@@ -1824,6 +2211,10 @@ def run_live_server(
     except KeyboardInterrupt:
         print("\nStopping live server…")
     finally:
+        try:
+            close_armed_sessions(ctrl.session_id)
+        except Exception:  # noqa: BLE001 — shutdown still has to release the port
+            pass
         server.shutdown()
         server.server_close()
     return 0

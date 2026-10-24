@@ -18,6 +18,7 @@ Defense is never selected by this mode. CPU remains offense-only.
 from __future__ import annotations
 
 import json
+import logging
 import time
 import traceback
 from dataclasses import replace
@@ -39,10 +40,57 @@ from cfb_coach.madden.model.schema import (
 )
 from cfb_coach.opponents import is_cpu_opponent
 
+logger = logging.getLogger(__name__)
+
 META_ARTIFACT = "ml_experimental_artifact"
 META_KNOWLEDGE = "ml_knowledge_version"
 META_DATA_VERSION = "ml_data_version"
 PENDING_ATTR = "_pending_ml_decision"
+
+
+def _cached_experimental_artifact(path: Path) -> tuple[Any, str]:
+    """Load the offense artifact once per file revision.
+
+    The live path used to read and parse the same JSON on every snap, then
+    parse it a second time for ``scored_on``. A missing path still calls the
+    loader so tests can replace it.
+    """
+    from cfb_coach.madden.model.inference import (
+        cached_parsed_model,
+        file_revision,
+        read_scored_on,
+    )
+
+    def _read() -> tuple[Any, str]:
+        artifact = exp_mod.load_artifact(path)
+        scored = "unknown"
+        try:
+            scored = read_scored_on(json.loads(Path(path).read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError, TypeError):
+            scored = "unknown"
+        return artifact, scored
+
+    revision = file_revision(path)
+    if revision is None:
+        return _read()
+    return cached_parsed_model(("experimental-offense",) + revision, _read)
+
+
+def _inference_trace(clock: Any, latency: float | None, timed_out: bool) -> dict[str, Any]:
+    from cfb_coach.madden.model.inference import log_offense_inference
+
+    clock.end()
+    slowest = clock.slowest()
+    log_offense_inference(
+        latency_ms=latency,
+        timed_out=timed_out,
+        slowest_stage=slowest,
+    )
+    return {
+        "latency_ms": None if latency is None else round(float(latency), 3),
+        "timed_out": bool(timed_out),
+        "slowest_stage": slowest,
+    }
 
 
 def resolve_artifact_path(db: Any = None) -> Path | None:
@@ -155,6 +203,230 @@ def _pre_snap_context(sit: Any, audit: Mapping[str, Any] | None) -> dict[str, An
     }
 
 
+def _catalog_macro(macro: Any) -> dict[str, Any] | None:
+    """A Custom Adjustment id Aidan actually confirmed. Unknown names are not macros."""
+    from cfb_coach.madden.offense_macros import known
+
+    if not isinstance(macro, dict):
+        return None
+    mid = str(macro.get("id") or "").strip()
+    if not mid or not known(mid):
+        return None
+    return macro
+
+
+def _verified_created_macro(macro: Any) -> dict[str, Any] | None:
+    """A user-attested created macro the action policy already accepted.
+
+    A bare invented id does not qualify. Settings and sources are required,
+    the same gate the joint policy uses before it will offer one.
+    """
+    if not isinstance(macro, dict) or macro.get("verified_armed") is not True:
+        return None
+    if not macro.get("settings") or not macro.get("source_ids"):
+        return None
+    if not str(macro.get("id") or "").strip():
+        return None
+    return macro
+
+
+def _heuristic_catalog_macro(
+    *,
+    sit: Any,
+    zone: str,
+    play: str,
+    coverage: str | None,
+    coverage_source: str,
+    active: Sequence[str],
+    repeated: bool,
+    book: dict[str, list[str]],
+    weights: dict[str, float],
+    score_phase: str | None,
+    cooled: set[str],
+    prepared: Mapping[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """The catalog macro the heuristic caller would arm for this play, or None.
+
+    Same fire rules, same active list, same ``suggest_for_snap`` winner.
+    ``prepared`` is the book index the joint scorer already built, so this
+    lookup does not scan the book again. ``--no-macros`` withholds it. A
+    name that is not in the catalog is ignored.
+    """
+    if (getattr(sit, "extras", None) or {}).get("live_macros", True) is False:
+        return None
+    try:
+        from cfb_coach.madden.offense_macros import known, suggest_for_snap
+
+        info = suggest_for_snap(
+            zone=zone,
+            play=play,
+            coverage=coverage,
+            coverage_source=coverage_source,
+            active=list(active),
+            down=getattr(sit, "down", None),
+            repeated=repeated,
+            book=book,
+            weights=weights,
+            score_phase=score_phase,
+            cooled=cooled,
+            prepared=prepared,
+        )
+    except Exception:  # noqa: BLE001 — a macro lookup must not blank the play
+        return None
+    if not isinstance(info, dict) or not known(str(info.get("id") or "")):
+        return None
+    return info
+
+
+def _weights_armed_count(db: Any, opponent_id: str) -> str:
+    """How many learned rows for this opponent have ``macro_weights.armed``.
+
+    Learning inserts every row with ``armed=0`` and the caller does not read
+    that column. The count is for the log only. A missing table stays
+    ``unknown`` and does not change the call.
+    """
+    if db is None or not opponent_id or not hasattr(db, "conn"):
+        return "unknown"
+    try:
+        row = db.conn.execute(
+            "SELECT COALESCE(SUM(armed), 0) FROM macro_weights WHERE opponent_id = ?",
+            (opponent_id,),
+        ).fetchone()
+    except Exception:  # noqa: BLE001 — the log must not blank the call
+        return "unknown"
+    if row is None or row[0] is None:
+        return "0"
+    return str(int(row[0]))
+
+
+def _log_model_catalog_macro(
+    *,
+    result: str,
+    reason: str,
+    active: int,
+    db: Any,
+    opponent_id: str,
+) -> None:
+    logger.info(
+        "model_catalog_macro result=%s reason=%s active=%s weights_armed=%s",
+        result,
+        reason,
+        active,
+        _weights_armed_count(db, opponent_id),
+    )
+
+
+def _catalog_decision_macro(macro_id: Any) -> Any:
+    """An AdjustmentRef for a confirmed catalog id.
+
+    ``known()`` is the same gate as the call. An invented name does not
+    become a decision macro.
+    """
+    from cfb_coach.madden.model.schema import AdjustmentRef, Possession
+    from cfb_coach.madden.offense_macros import known
+
+    mid = str(macro_id or "").strip()
+    if not mid or not known(mid):
+        return None
+    return AdjustmentRef(side=Possession.OFFENSE, macro_id=mid)
+
+
+def _resolve_model_adjustment(
+    decision: Mapping[str, Any] | None,
+    *,
+    sit: Any,
+    zone: str,
+    play: str,
+    coverage: str | None,
+    coverage_source: str,
+    active: Sequence[str],
+    repeated: bool,
+    book: dict[str, list[str]],
+    weights: dict[str, float],
+    score_phase: str | None,
+    cooled: set[str],
+    prepared: Mapping[str, Any] | None = None,
+    db: Any = None,
+    opponent_id: str = "",
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, Any]]:
+    """Pair a model-selected play with the heuristic's catalog macro.
+
+    The success model returns a formation and a play. The joint action score
+    then often keeps ``NO_ADJUSTMENT`` after its execution-cost penalty, so
+    the rebuilt call used to ship with no macro. Timeout fallback was the
+    only path that still ran ``suggest_for_snap``. This uses that same
+    compatibility winner whenever it arms one. An invented macro name is
+    dropped. A verified created macro stays only when no catalog macro fits.
+
+    ``macro_weights.armed`` is not this gate. An empty prep loadout stays
+    empty: this does not promote unarmed weight rows into the active list.
+    The log line names which branch ran.
+    """
+    from cfb_coach.madden.offense_macros import clean_ids
+
+    resolved = dict(decision or {})
+    kind = str(resolved.get("kind") or "none")
+    macros_on = (getattr(sit, "extras", None) or {}).get("live_macros", True) is not False
+    active_ids = clean_ids(list(active))
+    policy_macro = resolved.get("macro") if kind == "macro" and macros_on else None
+    catalog = _catalog_macro(policy_macro)
+    paired = _heuristic_catalog_macro(
+        sit=sit, zone=zone, play=play, coverage=coverage,
+        coverage_source=coverage_source, active=active, repeated=repeated,
+        book=book, weights=weights, score_phase=score_phase, cooled=cooled,
+        prepared=prepared,
+    )
+    if paired is not None:
+        macro: dict[str, Any] | None = paired
+        adjustment: dict[str, Any] | None = None
+        if kind != "macro" or resolved.get("id") != paired.get("id"):
+            resolved["kind"] = "macro"
+            resolved["id"] = paired["id"]
+            resolved["macro"] = paired
+            resolved["adjustment"] = None
+            resolved["reason"] = paired.get("why") or resolved.get("reason") or ""
+        result, reason = str(paired.get("id") or "none"), "catalog"
+    elif catalog is not None:
+        macro, adjustment = catalog, None
+        result, reason = str(catalog.get("id") or "none"), "catalog"
+    else:
+        created = _verified_created_macro(policy_macro)
+        if created is not None:
+            macro, adjustment = created, None
+            result, reason = str(created.get("id") or "none"), "verified_created"
+        else:
+            macro = None
+            raw_adj = resolved.get("adjustment")
+            adjustment = raw_adj if kind == "adjustment" and isinstance(raw_adj, dict) else None
+            if not macros_on:
+                reason = "macros_withheld"
+            elif not active_ids:
+                reason = "no_macros_armed"
+            elif kind == "macro":
+                reason = "invented_rejected"
+            else:
+                reason = "qualification"
+            result = "none"
+            if kind == "macro":
+                resolved["kind"] = "none"
+                resolved["id"] = None
+                resolved["macro"] = None
+                resolved["adjustment"] = None
+                resolved["reason"] = (
+                    "macros withheld"
+                    if not macros_on
+                    else "invented macro name is not in the catalog"
+                )
+    _log_model_catalog_macro(
+        result=result,
+        reason=reason,
+        active=len(active_ids),
+        db=db,
+        opponent_id=opponent_id,
+    )
+    return macro, adjustment, resolved
+
+
 def rebuild_offense_attachments(
     *,
     formation: str,
@@ -169,6 +441,7 @@ def rebuild_offense_attachments(
     model_action_policy: bool = False,
     play_prediction: dict[str, Any] | None = None,
     preset_decision: dict[str, Any] | None = None,
+    macro_index: Mapping[str, Any] | None = None,
 ) -> Any:
     """Build reads / macro / adjustment for an already-chosen in-book play."""
     from cfb_coach.madden.data import reads_for
@@ -223,17 +496,35 @@ def rebuild_offense_attachments(
             db=db,
             opponent_id=opponent_id,
         )
-        chosen_macro = decision.get("macro")
-        chosen_adj = decision.get("adjustment")
+        # The model pick is formation + play. Arm the same catalog macro the
+        # heuristic would, instead of leaving the live line on "No adj".
+        # Reuse the joint path's book index when the caller already built it.
+        prepared = macro_index
+        macros_on = (getattr(sit, "extras", None) or {}).get("live_macros", True) is not False
+        if prepared is None and macros_on:
+            from cfb_coach.madden.offense_macros import macro_book_index
+
+            prepared = macro_book_index(book, list(active))
+        chosen_macro, chosen_adj, decision = _resolve_model_adjustment(
+            decision,
+            sit=sit, zone=zone, play=play, coverage=cov, coverage_source=src,
+            active=list(active), repeated=repeated, book=book, weights=weights,
+            score_phase=score_phase, cooled=cooled, prepared=prepared,
+            db=db, opponent_id=opponent_id,
+        )
+        macro_id = str(chosen_macro.get("id")).strip() if chosen_macro else ""
         call = MaddenCall(
             "offense", formation, play,
             chosen_adj["label"] if chosen_adj else "No adj",
             reads_for(play),
             rationale + f" | ACTION {decision['kind']}: {decision['reason']}",
-            macro=chosen_macro["id"] if chosen_macro else None,
+            macro=macro_id or None,
             macro_info=chosen_macro,
             adjustment=chosen_adj,
         )
+        if macro_id:
+            # Armed for this snap. The exact live line prints the id only then.
+            call.macro_state = "armed"
         call.ml_offense_action = {
             key: value for key, value in decision.items()
             if key not in ("macro", "adjustment")
@@ -323,10 +614,14 @@ def apply_experimental_offense(
     is attached to the call for later :func:`commit_experimental_decision`
     after seal — never an anonymous DB row.
     """
+    from cfb_coach.madden.model.inference import StageClock
     from cfb_coach.madden.model.schema import Possession
 
     decision_ts = datetime.now(timezone.utc).isoformat()
+    clock = StageClock()
+    traced = False
     budget = float(ML_LATENCY_BUDGET_MS if budget_ms is None else budget_ms)
+    scored_on = "unknown"
     if commit is None:
         commit = bool(snap_id)
     heur_form = getattr(heuristic_call, "formation", None)
@@ -351,7 +646,23 @@ def apply_experimental_offense(
             except Exception:  # noqa: BLE001
                 pass
 
-    def _fallback(status: MLStatus, latency: float | None = None) -> tuple[Any, CoachingDecision]:
+    def _mark(latency: float | None, timed_out: bool) -> dict[str, Any]:
+        nonlocal traced
+        if traced:
+            return {}
+        traced = True
+        return _inference_trace(clock, latency, timed_out)
+
+    def _fallback(
+        status: MLStatus,
+        latency: float | None = None,
+        detail: str | None = None,
+    ) -> tuple[Any, CoachingDecision]:
+        trace = _mark(latency, status is MLStatus.TIMEOUT)
+        source = "heuristic_offense"
+        note = f"fallback_source={source}"
+        if detail:
+            note = f"{note}; {detail}"
         dec = CoachingDecision(
             decision_ts=decision_ts,
             latency_ms=latency,
@@ -373,6 +684,7 @@ def apply_experimental_offense(
             fallback_reason=status,
             propensity_method=PropensityMethod.UNKNOWN,
             accepted=Tri.UNKNOWN,
+            ml_status_detail=note,
         )
         info = {
             "heuristic_formation": heur_form,
@@ -383,7 +695,14 @@ def apply_experimental_offense(
             "final_play": heur_play,
             "evidence_quality": "fallback",
             "explanation": f"experimental fallback → heuristic ({status.value})",
+            "scored_on": scored_on,
             "fell_back": True,
+            "fallback_reason": status.value,
+            "fallback_source": source,
+            "fallback_detail": detail,
+            "latency_ms": trace.get("latency_ms"),
+            "timed_out": trace.get("timed_out", False),
+            "slowest_stage": trace.get("slowest_stage"),
         }
         _attach(heuristic_call, dec, info)
         if commit and db is not None and snap_id:
@@ -396,6 +715,7 @@ def apply_experimental_offense(
     if str(getattr(heuristic_call, "side", "offense") or "offense").startswith("d"):
         return _fallback(MLStatus.CIRCUIT_OPEN)
 
+    clock.begin("candidates")
     pairs, bonuses = situational_offense_candidates(
         sit, book, db=db, opponent_id=opponent_id
     )
@@ -425,23 +745,17 @@ def apply_experimental_offense(
             pass
 
     artifact_path = resolve_artifact_path(db)
+    clock.begin("load_model")
     started = time.perf_counter()
     try:
         if artifact_path is None:
-            from cfb_coach.madden.model import dataset as dataset_mod
-            from cfb_coach.games import data_dir
-
-            rows = dataset_mod.build_rows(db=db) if db is not None else []
-            art = exp_mod.train_experimental(rows, side="offense")
-            dest = Path(data_dir()) / "madden_ml_experimental" / "offense.json"
-            exp_mod.save_artifact(art, dest)
-            if db is not None:
-                set_artifact_path(db, dest)
-                db.set_meta(META_KNOWLEDGE, art.knowledge_version)
-                db.set_meta(META_DATA_VERSION, art.data_version)
-            artifact = art
-        else:
-            artifact = exp_mod.load_artifact(artifact_path)
+            # Do not train from the live call. A missing file is a heuristic snap.
+            return _fallback(
+                MLStatus.MODEL_MISSING,
+                (time.perf_counter() - started) * 1000.0,
+                detail="missing offense artifact",
+            )
+        artifact, scored_on = _cached_experimental_artifact(artifact_path)
 
         elapsed = (time.perf_counter() - started) * 1000.0
         if elapsed > budget:
@@ -455,6 +769,7 @@ def apply_experimental_offense(
             cov_src = "none"
 
         opp_type = "cpu" if is_cpu_opponent(opponent_id) else "human"
+        clock.begin("rank")
         ranked = exp_mod.rank_candidates(
             artifact,
             pairs,
@@ -480,6 +795,7 @@ def apply_experimental_offense(
         # screen exposure before choosing its next in-book candidate.
         from cfb_coach.madden.model.offense_selection_policy import select_from_database
 
+        clock.begin("select")
         ranked, selection_audit = select_from_database(
             ranked, db=db, opponent_id=opponent_id,
             sit=sit, opponent_type=opp_type,
@@ -501,8 +817,17 @@ def apply_experimental_offense(
             JOINT_POLICY, choose_joint_action,
         )
 
+        clock.begin("joint")
         memory = None
         strategy_previous = None
+        allow_macros = (getattr(sit, "extras", None) or {}).get(
+            "live_macros", True
+        ) is not False
+        prepared_macros = None
+        if allow_macros:
+            from cfb_coach.madden.offense_macros import macro_book_index
+
+            prepared_macros = macro_book_index(book, list(active or []))
         if db is not None:
             try:
                 memory = pre_snap_context(
@@ -524,10 +849,9 @@ def apply_experimental_offense(
             session_id=session_id or game_id,
             snap_seq=snap_seq,
             opponent_type=opp_type,
-            allow_macros=(getattr(sit, "extras", None) or {}).get(
-                "live_macros", True
-            ) is not False,
+            allow_macros=allow_macros,
             strategy_previous=strategy_previous,
+            prepared_macros=prepared_macros,
         )
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
@@ -585,6 +909,7 @@ def apply_experimental_offense(
 
         # Always build the model-selected call, even when the play name agrees
         # with the heuristic. Accessories must never be inherited by accident.
+        clock.begin("rebuild")
         call = rebuild_offense_attachments(
             formation=ml_form,
             play=ml_play,
@@ -598,11 +923,20 @@ def apply_experimental_offense(
             model_action_policy=True,
             play_prediction=top,
             preset_decision=joint,
+            macro_index=prepared_macros,
         )
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
+        from cfb_coach.madden.model.dual_control import adjustment_block_reason
 
+        blocked = adjustment_block_reason(
+            call, side="offense", armed=list(active or []), db=db, opponent_id=opponent_id,
+        )
+        if blocked:
+            return _fallback(MLStatus.INVALID_OUTPUT, latency, detail=blocked)
+
+        trace = _mark(latency, False)
         info = {
             "heuristic_formation": heur_form,
             "heuristic_play": heur_play,
@@ -612,6 +946,7 @@ def apply_experimental_offense(
             "final_play": call.play,
             "evidence_quality": quality,
             "explanation": explanation,
+            "scored_on": scored_on,
             "model_version": artifact.model_version,
             "knowledge_version": artifact.knowledge_version,
             "knowledge_origin": artifact.knowledge_origin,
@@ -633,6 +968,7 @@ def apply_experimental_offense(
             "offense_action": getattr(call, "ml_offense_action", None),
             "joint_decision": (getattr(call, "ml_offense_action", None) or {}).get("joint"),
             "joint_exploration": joint.get("exploration"),
+            "joint_override_audit": joint.get("override_audit"),
             "input_audit": joint.get("input_audit"),
             "football_intelligence": joint.get("football_intelligence"),
             "football_reason": (joint.get("football_intelligence") or {}).get("summary"),
@@ -640,6 +976,9 @@ def apply_experimental_offense(
             # coverage as a training feature for which action to fire.
             # Quarter lives on extras, not as a Situation attribute.
             "pre_snap_action_context": _pre_snap_context(sit, joint.get("input_audit")),
+            "latency_ms": trace.get("latency_ms"),
+            "timed_out": trace.get("timed_out", False),
+            "slowest_stage": trace.get("slowest_stage"),
         }
 
         if db is not None and (session_id or game_id):
@@ -679,6 +1018,7 @@ def apply_experimental_offense(
             fell_back=False,
             propensity_method=PropensityMethod.DETERMINISTIC,
             accepted=Tri.UNKNOWN,
+            macro=_catalog_decision_macro(getattr(call, "macro", None)),
         )
         _attach(call, dec, info)
         if commit and db is not None and snap_id:
@@ -761,6 +1101,9 @@ def commit_experimental_decision(
                 "joint_exploration": info.get("joint_exploration"),
                 "joint_policy": info.get("joint_policy"),
                 "football_reason": info.get("football_reason"),
+                "latency_ms": info.get("latency_ms"),
+                "timed_out": info.get("timed_out"),
+                "slowest_stage": info.get("slowest_stage"),
             }
             db.conn.execute(
                 "UPDATE ml_decisions SET decision_json=? WHERE id=?",
@@ -854,6 +1197,20 @@ def maybe_apply_experimental(
         )
         return new_call
     except Exception:  # noqa: BLE001
+        try:
+            if not isinstance(getattr(call, "ml_experimental", None), dict):
+                call.ml_experimental = {
+                    "fell_back": True,
+                    "fallback_reason": "exception",
+                    "fallback_source": "heuristic_offense",
+                    "heuristic_formation": getattr(call, "formation", None),
+                    "heuristic_play": getattr(call, "play", None),
+                    "final_formation": getattr(call, "formation", None),
+                    "final_play": getattr(call, "play", None),
+                    "explanation": "experimental fallback → heuristic (exception)",
+                }
+        except Exception:  # noqa: BLE001
+            pass
         return call
 
 

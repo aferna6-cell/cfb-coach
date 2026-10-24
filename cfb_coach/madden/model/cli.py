@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +18,11 @@ from cfb_coach.madden.model import evaluate as evaluate_mod
 from cfb_coach.madden.model import inference as inference_mod
 from cfb_coach.madden.model import registry as registry_mod
 from cfb_coach.madden.model import train as train_mod
+from cfb_coach.madden.model.data_layer import (
+    backup_database,
+    export_shadow,
+    migrate_database,
+)
 from cfb_coach.madden.model.schema import CoachingMode, MLStatus, to_dict
 
 
@@ -26,6 +31,51 @@ def open_madden_db(*, read_only: bool = False) -> CoachDB:
     if read_only:
         return CoachDB.open_read_only(path)
     return CoachDB(path, seed=load_seed())
+
+
+def _parser_error(args: argparse.Namespace, message: str) -> None:
+    """argparse failure (exit 2) before any database or artifact path is opened."""
+    parser = getattr(args, "cli_parser", None)
+    if isinstance(parser, argparse.ArgumentParser):
+        parser.error(message)
+    print(f"error: {message}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def _require_db(args: argparse.Namespace, mode: str) -> Path:
+    raw = getattr(args, "db", None)
+    if not raw:
+        _parser_error(args, f"--db is required for {mode}")
+    return Path(raw)
+
+
+def open_explicit_madden_db(path: Path, *, read_only: bool) -> CoachDB:
+    """Open a caller-supplied Madden DB. Read-only uses sqlite ``file:...?mode=ro``."""
+    if read_only:
+        # CoachDB.open_read_only connects with uri=True and mode=ro, so writes fail.
+        return CoachDB.open_read_only(path)
+    return CoachDB(path, seed=load_seed())
+
+
+def _resolved_madden_db_path() -> Path:
+    """Path ``madden_db_path()`` would open, without creating directories."""
+    from cfb_coach.games import GAMES, MADDEN27
+
+    raw = os.environ.get("CFB_COACH_MADDEN_DB")
+    if raw:
+        return Path(raw).expanduser()
+    name = GAMES[MADDEN27].db_filename
+    db_env = os.environ.get("CFB_COACH_DB")
+    if db_env:
+        return Path(db_env).expanduser().resolve().parent / name
+    return Path.home() / ".cfb-coach" / name
+
+
+def _announce_db() -> Path:
+    """Print the resolved DB path before any mode-switch write."""
+    path = _resolved_madden_db_path()
+    print(f"Using DB: {path}")
+    return path
 
 
 def default_registry() -> Path:
@@ -47,24 +97,26 @@ def cmd_ml_find_db(args: argparse.Namespace) -> int:
 
 
 def cmd_ml_backup(args: argparse.Namespace) -> int:
-    """Consistent SQLite backup via the backup API. Never modifies the source."""
-    src = madden_db_path()
-    if not src.is_file():
-        print(f"no database at {src}", file=sys.stderr)
-        return 1
-    dest_dir = Path(args.out or (src.parent / "backups"))
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    dest = dest_dir / f"{src.stem}.backup.{stamp}{src.suffix}"
-    # Prefer read-only source connection so inspect/backup never migrates.
-    db = CoachDB.open_read_only(src)
+    """Consistent SQLite backup via the backup API. Never modifies the source.
+
+    ``--db`` and ``--out`` are required. This command does not consult
+    ``madden_db_path()`` or any other default path.
+    """
+    explicit = getattr(args, "db", None)
+    out = getattr(args, "out", None)
+    if not explicit or not out:
+        print("ml backup-db requires --db and --out.", file=sys.stderr)
+        return 2
+    src = Path(explicit)
+    dest_dir = Path(out)
     try:
-        db.backup_to(dest)
-    finally:
-        db.close()
+        dest = backup_database(src, dest_dir)
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     print(f"source: {src}")
     print(f"backup: {dest}")
-    print(f"method: sqlite3.Connection.backup")
+    print("method: sqlite3.Connection.backup")
     print(f"size_bytes: {dest.stat().st_size}")
     return 0
 
@@ -144,28 +196,42 @@ def cmd_ml_export(args: argparse.Namespace) -> int:
 
 
 def cmd_ml_migrate(args: argparse.Namespace) -> int:
-    """Explicit migration of a Madden DB. Requires a prior verified backup path."""
-    src = madden_db_path()
-    backup = Path(args.backup) if args.backup else None
-    if not src.is_file():
-        print(f"no database at {src}", file=sys.stderr)
-        return 1
-    if backup is None or not backup.is_file():
+    """Explicit migration of a Madden DB. Requires ``--db`` and ``--backup``.
+
+    This command does not consult ``madden_db_path()`` or any other default path.
+    """
+    explicit = getattr(args, "db", None)
+    if not explicit:
+        print("ml migrate-db requires --db.", file=sys.stderr)
+        return 2
+    src = Path(explicit)
+    backup = Path(args.backup) if getattr(args, "backup", None) else None
+    if backup is None:
         print(
             "Refusing to migrate without --backup pointing at an existing verified backup.",
             file=sys.stderr,
         )
         print(
-            "Run: python -m cfb_coach ml backup-db && python -m cfb_coach ml migrate-db --backup <path>",
+            "Run: python -m cfb_coach ml backup-db --db <db> --out <dir> "
+            "&& python -m cfb_coach ml migrate-db --db <db> --backup <path>",
             file=sys.stderr,
         )
         return 2
-    db = CoachDB(src, seed=load_seed(), read_only=False, migrate=True)
     try:
-        print(f"migrated: {src}")
-        print(f"backup_ref: {backup}")
-    finally:
-        db.close()
+        migrate_database(src, backup)
+    except FileNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        print(
+            "Run: python -m cfb_coach ml backup-db --db <db> --out <dir> "
+            "&& python -m cfb_coach ml migrate-db --db <db> --backup <path>",
+            file=sys.stderr,
+        )
+        return 2
+    print(f"migrated: {src}")
+    print(f"backup_ref: {backup}")
     return 0
 
 
@@ -262,7 +328,8 @@ def cmd_ml_status(args: argparse.Namespace) -> int:
 
 
 def cmd_ml_shadow(args: argparse.Namespace) -> int:
-    db = open_madden_db()
+    path = _announce_db()
+    db = open_explicit_madden_db(path, read_only=False)
     try:
         if args.off:
             inference_mod.set_mode(db, CoachingMode.HEURISTIC)
@@ -290,7 +357,8 @@ def cmd_ml_shadow(args: argparse.Namespace) -> int:
 
 def cmd_ml_heuristic(args: argparse.Namespace) -> int:
     del args
-    db = open_madden_db()
+    path = _announce_db()
+    db = open_explicit_madden_db(path, read_only=False)
     try:
         inference_mod.set_mode(db, CoachingMode.HEURISTIC)
         print("mode: heuristic")
@@ -302,7 +370,8 @@ def cmd_ml_heuristic(args: argparse.Namespace) -> int:
 
 def cmd_ml_experimental(args: argparse.Namespace) -> int:
     """Enable opt-in experimental ML offense selection (not competitive hybrid)."""
-    db = open_madden_db()
+    path = _announce_db()
+    db = open_explicit_madden_db(path, read_only=False)
     try:
         if args.off:
             inference_mod.set_mode(db, CoachingMode.HEURISTIC)
@@ -312,9 +381,19 @@ def cmd_ml_experimental(args: argparse.Namespace) -> int:
         from cfb_coach.madden.model import experimental_model as exp_mod
         from cfb_coach.madden.model import dataset as ds
 
-        # Ensure an artifact exists (prior-driven is fine with empty verified data).
+        # Train only when the operator passes --retrain. A missing file must not
+        # write offense.json or flip the mode.
         art_path = exp_live.resolve_artifact_path(db)
-        if art_path is None or getattr(args, "retrain", False):
+        retrain = bool(getattr(args, "retrain", False))
+        if art_path is None and not retrain:
+            print(
+                "error: no offense artifact installed. "
+                "ml experimental refuses to enable experimental mode and refuses to train. "
+                "Pass --retrain to train explicitly.",
+                file=sys.stderr,
+            )
+            return 2
+        if retrain:
             rows = ds.build_rows(db=db)
             art = exp_mod.train_experimental(rows, side="offense")
             from cfb_coach.games import data_dir
@@ -376,10 +455,11 @@ def cmd_ml_experimental_preflight(args: argparse.Namespace) -> int:
     Never invents historical games.
     """
     del args
+    path = _announce_db()
     print("=== Madden ML experimental preflight ===")
     print("--- find-db ---")
     cmd_ml_find_db(argparse.Namespace())
-    src = madden_db_path()
+    src = path
     if not src.is_file():
         print("STOP: no madden DB found. Set CFB_COACH_MADDEN_DB or run Franchise logging first.")
         return 2
@@ -398,6 +478,7 @@ def cmd_ml_experimental_preflight(args: argparse.Namespace) -> int:
             out=None,
             install=True,
             db=True,
+            db_path=str(path),
         )
     )
     if rc != 0:
@@ -405,7 +486,7 @@ def cmd_ml_experimental_preflight(args: argparse.Namespace) -> int:
     from cfb_coach.madden.model import experimental_live as exp_live
     from cfb_coach.madden.model import experimental_model as exp_mod
 
-    db = open_madden_db()
+    db = open_explicit_madden_db(path, read_only=False)
     try:
         # Preflight must not silently activate experimental mode.
         inference_mod.set_mode(db, CoachingMode.HEURISTIC)
@@ -464,7 +545,8 @@ def cmd_ml_confirm_execution(args: argparse.Namespace) -> int:
     """Retrospectively verify an executed play from user evidence."""
     from cfb_coach.madden.model import historical as hist
 
-    db = open_madden_db()
+    path = _require_db(args, "confirm-execution")
+    db = open_explicit_madden_db(path, read_only=False)
     try:
         out = hist.confirm_execution(
             db,
@@ -492,7 +574,8 @@ def cmd_ml_recover_game_execution(args: argparse.Namespace) -> int:
     apply = bool(getattr(args, "apply", False))
     backup = getattr(args, "backup", None)
 
-    db = open_madden_db()
+    path = _require_db(args, "recover-game-execution")
+    db = open_explicit_madden_db(path, read_only=False)
     try:
         if apply:
             report = recovery.apply_recovery(
@@ -529,11 +612,80 @@ def cmd_ml_recover_game_execution(args: argparse.Namespace) -> int:
     return 0
 
 
+def _offense_shadow_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
+    """No implicit database: call training/evaluation only on explicit sources."""
+    paths = list(getattr(args, "path", None) or [])
+    db_path = getattr(args, "db_path", None)
+    if not db_path and not paths:
+        return []
+    if db_path:
+        return _load_rows(args)
+    return dataset_mod.build_rows(db=None, extra_paths=paths)
+
+
+def _print_offense_counts(counts: dict[str, int]) -> None:
+    for source in ("live_human", "live_cpu", "vod"):
+        print(f"training_rows {source}: {int(counts.get(source, 0))}")
+
+
+def cmd_ml_train_offense(args: argparse.Namespace) -> int:
+    """Verified-only shadow fit. No changes to ml_mode or installed artifact."""
+    from cfb_coach.madden.model.offense_shadow import (
+        select_training_rows, fit_artifact, default_artifact_path, save_artifact,
+    )
+    rows = _offense_shadow_rows(args)
+    _chosen, counts = select_training_rows(rows)
+    _print_offense_counts(counts)
+    if not sum(counts.values()):
+        print("error: zero verified offense rows", file=sys.stderr)
+        return 1
+    try:
+        target = args.out or default_artifact_path()
+        dest = save_artifact(fit_artifact(rows), target)
+    except (ValueError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"artifact: {dest}")
+    print("shadow_only: true")
+    print("auto_promoted: false")
+    print("heuristic_remains_default: true")
+    return 0
+
+
+def cmd_ml_eval_offense(args: argparse.Namespace) -> int:
+    """Hold out whole matches/players, report against the incumbent baseline."""
+    from cfb_coach.madden.model.offense_shadow import (
+        select_training_rows, evaluate_offense, load_artifact, write_eval_report,
+    )
+    rows = _offense_shadow_rows(args)
+    _chosen, counts = select_training_rows(rows)
+    _print_offense_counts(counts)
+    if not sum(counts.values()):
+        print("error: zero verified offense rows", file=sys.stderr)
+        return 1
+    try:
+        artifact = load_artifact(args.artifact) if args.artifact else None
+        report = evaluate_offense(rows, seed=int(args.seed), artifact=artifact)
+        json_path, md_path = write_eval_report(report, args.out)
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    gate = report["promotion_gate"]
+    print(f"report_json: {json_path}")
+    print(f"report_md: {md_path}")
+    print(f"promotion_gate: {gate['passed']}")
+    print(f"auto_promoted: {gate['auto_promoted']}")
+    print("heuristic_remains_default: true")
+    return 0
+
+
 def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
     """Train the hierarchical shrinkage experimental model (no promotion gate)."""
     from cfb_coach.madden.model import experimental_live as exp_live
     from cfb_coach.madden.model import experimental_model as exp_mod
 
+    if getattr(args, "install", False) and not getattr(args, "db_path", None):
+        _parser_error(args, "--db is required for train-experimental --install")
     rows = _load_rows(args)
     art = exp_mod.train_experimental(rows, side=str(args.side or "offense"))
     dest = Path(args.out or (Path(data_dir()) / "madden_ml_experimental" / f"{art.side}.json"))
@@ -588,7 +740,7 @@ def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
     print(f"artifact: {dest}")
     print(json.dumps(comparison, indent=2, default=str))
     if getattr(args, "install", False):
-        db = open_madden_db()
+        db = open_explicit_madden_db(Path(args.db_path), read_only=False)
         try:
             exp_live.set_artifact_path(db, dest)
             db.set_meta(exp_live.META_KNOWLEDGE, art.knowledge_version)
@@ -645,8 +797,11 @@ def cmd_ml_offense_macro_lab(args: argparse.Namespace) -> int:
     """Stage draft macro ideas. This never arms a slot or edits Madden."""
     from cfb_coach.madden.model.offense_macro_lab import propose_variants, stage_variants
 
-    mutate = bool(args.stage)
-    db = open_madden_db(read_only=not mutate)
+    if args.stage:
+        path = _require_db(args, "offense-macro-lab --stage")
+        db = open_explicit_madden_db(path, read_only=False)
+    else:
+        db = open_madden_db(read_only=True)
     try:
         try:
             report = stage_variants(db, limit=args.limit) if mutate else propose_variants(db, limit=args.limit)
@@ -662,10 +817,45 @@ def cmd_ml_offense_macro_lab(args: argparse.Namespace) -> int:
 
 
 
+def cmd_ml_shadow_export(args: argparse.Namespace) -> int:
+    """Export shadow artifacts. ``--db`` and ``--out`` are required absolute paths."""
+    try:
+        report = export_shadow(args.db, args.out, max_games=int(args.games))
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps(report, indent=2, default=str))
+    return 0
+
+
 def cmd_ml_four_user_games(args: argparse.Namespace) -> int:
     """Read local Madden history; fit isolated four-user-game shadow artifacts."""
     from cfb_coach.madden.model import dataset
     from cfb_coach.madden.model import user_game_learning as history
+
+    explicit = getattr(args, "db", None)
+    if explicit:
+        if args.train and not args.out:
+            print("shadow export with --db requires --out", file=sys.stderr)
+            return 1
+        try:
+            if args.train:
+                report = export_shadow(explicit, args.out, max_games=args.games)
+            else:
+                db = CoachDB.open_read_only(Path(explicit))
+                try:
+                    rows = dataset.build_rows(db=db)
+                finally:
+                    db.close()
+                report = history.model_diagnostics(
+                    history.select_recent_human_games(rows, max_games=args.games)
+                )
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(json.dumps(report, indent=2, default=str))
+        return 0
+
     db = open_madden_db(read_only=True)
     try:
         rows = dataset.build_rows(db=db)
@@ -730,8 +920,12 @@ def cmd_ml_macro_create(args: argparse.Namespace) -> int:
 def cmd_ml_defense_design(args: argparse.Namespace) -> int:
     """Preview, stage or confirm a source-book constrained defensive portfolio."""
     from cfb_coach.madden.model import defense_coordinator as defense
-    mutate = bool(args.stage or args.confirm_installed)
-    db = open_madden_db(read_only=not mutate)
+    if args.stage or args.confirm_installed:
+        path = _require_db(args, "defense-design --stage and --confirm-installed")
+        # --confirm-installed attests an in-game install. It must not write the DB.
+        db = open_explicit_madden_db(path, read_only=bool(args.confirm_installed))
+    else:
+        db = open_madden_db(read_only=True)
     try:
         try:
             if args.confirm_installed:
@@ -759,8 +953,11 @@ def cmd_ml_defense_design(args: argparse.Namespace) -> int:
 def cmd_ml_defense_macro_lab(args: argparse.Namespace) -> int:
     """Create original source-grounded defensive macro drafts, never silently arm."""
     from cfb_coach.madden.model import defense_macro_lab as lab
-    mutate = bool(args.stage or args.verify or args.unverify)
-    db = open_madden_db(read_only=not mutate)
+    if args.stage or args.verify or args.unverify:
+        path = _require_db(args, "defense-macro-lab --stage, --verify, and --unverify")
+        db = open_explicit_madden_db(path, read_only=False)
+    else:
+        db = open_madden_db(read_only=True)
     try:
         try:
             if args.verify:
@@ -794,15 +991,22 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
     """Independent opt-in defensive ML, no effect on offense or CPU offense-only."""
     from cfb_coach.madden.model import defense_coordinator as defense
     from cfb_coach.madden import playbook
-    mutate = bool(args.enable or args.disable or args.retrain)
-    db = open_madden_db(read_only=not mutate)
+    writing = bool(args.enable or args.disable or args.retrain)
+    if writing:
+        path = _require_db(args, "defense-experimental --enable, --disable, and --retrain")
+    if args.retrain and not getattr(args, "out", None):
+        _parser_error(args, "--out is required for defense-experimental --retrain")
+    if writing:
+        db = open_explicit_madden_db(path, read_only=False)
+    else:
+        db = open_madden_db(read_only=True)
     try:
         if args.disable:
             defense.set_mode(db, "off")
         if args.retrain:
             from cfb_coach.madden.model.dataset import build_rows
             art = defense.train_defense(build_rows(db=db))
-            dest = defense.save_model(art, defense._data_path())
+            dest = defense.save_model(art, args.out)
             db.set_meta(defense.MODEL_META, str(dest))
         if args.enable:
             installed = (playbook.load_books(db).get("defense") or {}).get("formations") or {}
@@ -912,8 +1116,19 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
     text_mode = bool(getattr(args, "text", False))
     open_browser = not (text_mode or getattr(args, "no_open", False))
     write_browser = not text_mode
-    read_only = not bool(args.stage or args.confirm_installed or args.verify_macro or args.unverify_macro or args.rollback_design)
-    db = open_madden_db(read_only=read_only)
+    writing = bool(
+        args.stage or args.confirm_installed or args.verify_macro
+        or args.unverify_macro or args.rollback_design
+    )
+    if writing:
+        path = _require_db(
+            args,
+            "offense-design --stage, --confirm-installed, --verify-macro, "
+            "--unverify-macro, and --rollback-design",
+        )
+        db = open_explicit_madden_db(path, read_only=False)
+    else:
+        db = open_madden_db(read_only=True)
 
     def display(payload: dict[str, Any] | None, mode: str) -> None:
         if text_mode or payload is None:
@@ -1218,6 +1433,18 @@ def cmd_ml_expert_film_import(args: argparse.Namespace) -> int:
     return 0 if report.get("ok") else 2
 
 
+def cmd_ml_expert_vod_catalog(args: argparse.Namespace) -> int:
+    """Register researched remote VOD candidates. Does not download media."""
+    from cfb_coach.madden.model.expert_film import catalog_remote_candidates
+
+    report = catalog_remote_candidates(
+        args.manifest,
+        store=_expert_film_store(args),
+    )
+    print(json.dumps(report, indent=2, default=str))
+    return 0 if report.get("ok") else 2
+
+
 def cmd_ml_expert_annotate(args: argparse.Namespace) -> int:
     """Apply one human-reviewed expert snap annotation from a JSON labels file."""
     from cfb_coach.madden.model.expert_film import annotate_expert_snap
@@ -1367,9 +1594,13 @@ def cmd_ml_learning_eval(args: argparse.Namespace) -> int:
         promote_expert_signal, register_shadow_artifacts, rollback_expert_signal,
     )
 
+    if getattr(args, "rollback", False) or getattr(args, "promote", False):
+        path = _require_db(args, "learning-eval --promote and --rollback")
+    else:
+        path = None
     store = _learning_store(args)
     if getattr(args, "rollback", False):
-        db = open_madden_db()
+        db = open_explicit_madden_db(path, read_only=False)
         try:
             result = rollback_expert_signal(db)
             print(json.dumps(result, indent=2, default=str))
@@ -1378,7 +1609,7 @@ def cmd_ml_learning_eval(args: argparse.Namespace) -> int:
             db.close()
     report = shadow_evaluation(store)
     if getattr(args, "promote", False):
-        db = open_madden_db()
+        db = open_explicit_madden_db(path, read_only=False)
         try:
             from cfb_coach.madden.model.expert_policy import load_expert_policy
             from cfb_coach.madden.model.personalization import load_personalization
@@ -1622,12 +1853,16 @@ def _load_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     paths = list(args.path or [])
     db = None
     try:
-        if getattr(args, "db", True):
+        explicit = getattr(args, "db_path", None)
+        if explicit:
+            src = Path(explicit)
+        elif getattr(args, "db", True):
             src = madden_db_path()
-            if src.is_file():
-                db = CoachDB.open_read_only(src)
-                return dataset_mod.build_rows(db=db, extra_paths=paths)
+        else:
             return dataset_mod.build_rows(db=None, extra_paths=paths)
+        if src.is_file():
+            db = CoachDB.open_read_only(src)
+            return dataset_mod.build_rows(db=db, extra_paths=paths)
         return dataset_mod.build_rows(db=None, extra_paths=paths)
     finally:
         if db is not None:
@@ -1652,15 +1887,25 @@ def build_ml_subparser(sub: Any) -> None:
         help="Consistent SQLite backup via backup API (source untouched, WAL-safe)",
     )
     p_bak.add_argument(
+        "--db",
+        required=True,
+        help="Absolute source database path. Required; no home-directory default.",
+    )
+    p_bak.add_argument(
         "--out",
-        default=None,
-        help="Backup directory (default: <data_dir>/backups)",
+        required=True,
+        help="Backup directory. Required; no default path.",
     )
     p_bak.set_defaults(func=cmd_ml_backup)
 
     p_mig = ml_sub.add_parser(
         "migrate-db",
-        help="Explicit schema migration (requires --backup of a verified copy)",
+        help="Explicit schema migration (requires --db and --backup)",
+    )
+    p_mig.add_argument(
+        "--db",
+        required=True,
+        help="Absolute database path to migrate. Required; no home-directory default.",
     )
     p_mig.add_argument(
         "--backup",
@@ -1754,7 +1999,8 @@ def build_ml_subparser(sub: Any) -> None:
     p_ce.add_argument("--play", required=True)
     p_ce.add_argument("--evidence", required=True, help="Recording note / recollection")
     p_ce.add_argument("--macro", default=None)
-    p_ce.set_defaults(func=cmd_ml_confirm_execution)
+    p_ce.add_argument("--db", default=None, help="Madden SQLite path. Required.")
+    p_ce.set_defaults(func=cmd_ml_confirm_execution, cli_parser=p_ce)
 
     p_rec = ml_sub.add_parser(
         "recover-game-execution",
@@ -1783,7 +2029,12 @@ def build_ml_subparser(sub: Any) -> None:
         default=None,
         help="Backup destination path (default: <db_dir>/backups/...)",
     )
-    p_rec.set_defaults(func=cmd_ml_recover_game_execution)
+    p_rec.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required for dry-run and --apply.",
+    )
+    p_rec.set_defaults(func=cmd_ml_recover_game_execution, cli_parser=p_rec)
 
     p_te = ml_sub.add_parser(
         "train-experimental",
@@ -1799,7 +2050,36 @@ def build_ml_subparser(sub: Any) -> None:
         help="Write artifact path into DB meta (does not enable experimental mode)",
     )
     p_te.add_argument("--no-db", dest="db", action="store_false", default=True)
-    p_te.set_defaults(func=cmd_ml_train_experimental)
+    p_te.add_argument(
+        "--db",
+        dest="db_path",
+        default=None,
+        help="Madden SQLite path. Required with --install.",
+    )
+    p_te.set_defaults(func=cmd_ml_train_experimental, cli_parser=p_te)
+
+    p_to = ml_sub.add_parser(
+        "train-offense",
+        help="Train verified-only situation×call challenger (shadow, no promotion)",
+    )
+    p_to.add_argument("--seed", type=int, default=7)
+    p_to.add_argument("--path", action="append", default=[])
+    p_to.add_argument("--out", default=None)
+    p_to.add_argument("--db", dest="db_path", default=None)
+    p_to.set_defaults(func=cmd_ml_train_offense, cli_parser=p_to, db=True)
+
+    p_eo = ml_sub.add_parser(
+        "eval-offense",
+        help="Compare shadow challenger against held-out baselines (no promotion)",
+    )
+    p_eo.add_argument("--seed", type=int, required=True)
+    p_eo.add_argument("--path", action="append", default=[])
+    p_eo.add_argument("--out", required=True)
+    p_eo.add_argument("--artifact", default=None)
+    p_eo.add_argument("--db", dest="db_path", default=None)
+    p_eo.set_defaults(func=cmd_ml_eval_offense, cli_parser=p_eo, db=True)
+
+
 
     p_learn = ml_sub.add_parser(
         "offense-action-learn",
@@ -1822,13 +2102,28 @@ def build_ml_subparser(sub: Any) -> None:
     p_lab.add_argument("--stage", action="store_true",
                        help="Append drafts to the blueprint registry. Does not verify or arm them.")
     p_lab.add_argument("--limit", type=int, default=6)
-    p_lab.set_defaults(func=cmd_ml_offense_macro_lab)
+    p_lab.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required for --stage.",
+    )
+    p_lab.set_defaults(func=cmd_ml_offense_macro_lab, cli_parser=p_lab)
 
     p_four = ml_sub.add_parser("four-user-games", help="Audit/train SHADOW models from latest four locally logged human Madden games")
+    p_four.add_argument("--db", default=None, help="Absolute source database. Omit only to use the configured Madden DB.")
     p_four.add_argument("--games", type=int, default=4)
     p_four.add_argument("--train", action="store_true", help="Write isolated offline shadow artifacts (does not activate)")
-    p_four.add_argument("--out", default=None)
+    p_four.add_argument("--out", default=None, help="Absolute shadow output directory when --db is set")
     p_four.set_defaults(func=cmd_ml_four_user_games)
+
+    p_shadow_export = ml_sub.add_parser(
+        "shadow-export",
+        help="Read one database and write shadow artifacts. Both paths are required; no home default.",
+    )
+    p_shadow_export.add_argument("--db", required=True, help="Absolute source database path")
+    p_shadow_export.add_argument("--out", required=True, help="Absolute shadow output directory")
+    p_shadow_export.add_argument("--games", type=int, default=4)
+    p_shadow_export.set_defaults(func=cmd_ml_shadow_export)
 
     p_create = ml_sub.add_parser("macro-create", help="Generate original offense/defense macro compositions (draft only)")
     p_create.add_argument("--side", choices=("offense", "defense", "both"), default="both")
@@ -1842,7 +2137,12 @@ def build_ml_subparser(sub: Any) -> None:
     p_dd.add_argument("--show", action="store_true")
     p_dd.add_argument("--confirm-installed", metavar="PROPOSAL_ID", default=None)
     p_dd.add_argument("--attest", default=None)
-    p_dd.set_defaults(func=cmd_ml_defense_design)
+    p_dd.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required for --stage and --confirm-installed.",
+    )
+    p_dd.set_defaults(func=cmd_ml_defense_design, cli_parser=p_dd)
 
     p_dm = ml_sub.add_parser("defense-macro-lab", help="Compose original draft defensive Custom Adjustments")
     p_dm.add_argument("-o", "--opponent", default="cpu")
@@ -1853,13 +2153,28 @@ def build_ml_subparser(sub: Any) -> None:
     p_dm.add_argument("--unverify", metavar="NAME", default=None)
     p_dm.add_argument("--retire-existing", default=None)
     p_dm.add_argument("--attest", default=None)
-    p_dm.set_defaults(func=cmd_ml_defense_macro_lab)
+    p_dm.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required for --stage, --verify, and --unverify.",
+    )
+    p_dm.set_defaults(func=cmd_ml_defense_macro_lab, cli_parser=p_dm)
 
     p_dx = ml_sub.add_parser("defense-experimental", help="Opt in to defense model-primary calling in human games")
     p_dx.add_argument("--enable", action="store_true")
     p_dx.add_argument("--disable", action="store_true")
     p_dx.add_argument("--retrain", action="store_true")
-    p_dx.set_defaults(func=cmd_ml_defense_experimental)
+    p_dx.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required for --enable, --disable, and --retrain.",
+    )
+    p_dx.add_argument(
+        "--out",
+        default=None,
+        help="Artifact path for --retrain. Required so the model is not saved under the home data dir.",
+    )
+    p_dx.set_defaults(func=cmd_ml_defense_experimental, cli_parser=p_dx)
 
     p_coord = ml_sub.add_parser(
         "offense-coordinator",
@@ -1917,7 +2232,12 @@ def build_ml_subparser(sub: Any) -> None:
                       help="Verify a generated macro was built and armed in Madden")
     p_od.add_argument("--retire-existing", metavar="ID", default=None,
                       help="Explicitly replace an existing active offense macro in the eight-slot loadout")
-    p_od.set_defaults(func=cmd_ml_offense_design)
+    p_od.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required for stage, confirm, verify, unverify, and rollback.",
+    )
+    p_od.set_defaults(func=cmd_ml_offense_design, cli_parser=p_od)
 
     p_or = ml_sub.add_parser(
         "offense-report",
@@ -2033,6 +2353,18 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_efi.set_defaults(func=cmd_ml_expert_film_import)
 
+    p_evc = ml_sub.add_parser(
+        "expert-vod-catalog",
+        help="Register researched remote expert VOD candidates without downloading",
+    )
+    p_evc.add_argument(
+        "--manifest",
+        default="research/elite_vods/candidate_manifest.json",
+        help="Path to elite VOD candidate manifest JSON",
+    )
+    p_evc.add_argument("--store", default=expert_store_default)
+    p_evc.set_defaults(func=cmd_ml_expert_vod_catalog)
+
     p_ea = ml_sub.add_parser(
         "expert-annotate",
         help="Apply a human-reviewed expert snap label JSON; invisible fields stay unknown",
@@ -2107,7 +2439,12 @@ def build_ml_subparser(sub: Any) -> None:
                       help="Explicitly promote gated artifacts to bounded live influence")
     p_le.add_argument("--rollback", action="store_true",
                       help="Roll promoted expert signal back to shadow")
-    p_le.set_defaults(func=cmd_ml_learning_eval)
+    p_le.add_argument(
+        "--db",
+        default=None,
+        help="Madden SQLite path. Required for --promote and --rollback.",
+    )
+    p_le.set_defaults(func=cmd_ml_learning_eval, cli_parser=p_le)
 
     p_pg = ml_sub.add_parser(
         "postgame-experimental",

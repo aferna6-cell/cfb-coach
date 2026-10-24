@@ -1,0 +1,28 @@
+name: Standing follow execution validation
+
+on:
+  push:
+    branches: [madden-ml/standing-follow-attestation]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e '.[dev]'
+      - name: Verification and live logging regression
+        run: |
+          PYTHONPATH=. python -m pytest -q \
+            tests/madden_ml/test_standing_execution_attestation.py \
+            tests/madden_ml/test_html_idempotency.py \
+            tests/madden_ml/test_cpu_audit_fixes.py \
+            tests/madden_ml/test_cpu_audit_fixes_2.py \
+            tests/madden_ml/test_wildcard_john_games.py \
+            tests/madden_ml/test_sprint42_execution_recovery.py \
+            tests/madden_ml/test_sprint10_action_learning.py \
+            tests/madden_ml/test_week3_priorities.py

@@ -38,6 +38,8 @@ class _Isolated(unittest.TestCase):
         self._td.cleanup()
 
     def play(self, argv: list[str], lines: list[str]) -> tuple[int, str]:
+        if "--db" not in argv and "--game" not in argv:
+            argv = [*argv, "--db", str(self.dir / "coach.db")]
         feed = iter(lines)
 
         def _input(*_a, **_k):

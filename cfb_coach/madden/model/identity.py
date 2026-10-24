@@ -48,6 +48,7 @@ class LiveDecisionTracker:
     pending_snap_id: str | None = None
     pending_decision_key: str | None = None
     pending_ml_decision_row_id: int | None = None
+    abandoned_decision_row_id: int | None = None
     sealed_keys: set[str] = field(default_factory=set)
 
     @classmethod
@@ -87,7 +88,13 @@ class LiveDecisionTracker:
 
         ``is_new`` is False when this exact pending seal was already recorded
         (HTML retry / double-submit), so shadow must not run again.
+
+        A new seal while a different call is still pending records that
+        earlier decision on ``abandoned_decision_row_id``. Logging uses that
+        id to mark the call ``no_snap_recorded`` with reason ``superseded``
+        when no snap was written. The row is kept.
         """
+        self.abandoned_decision_row_id = None
         # If we already have a pending unlogged outcome for this exact call, reuse.
         if self.pending_snap_id and self.pending_decision_key:
             key = self.decision_key(
@@ -113,6 +120,8 @@ class LiveDecisionTracker:
             # Duplicate submission after seal — keep pending identity.
             return self.pending_snap_id, parse_snap_seq(self.pending_snap_id) or seq, key, False
 
+        if self.pending_snap_id and self.pending_ml_decision_row_id is not None:
+            self.abandoned_decision_row_id = self.pending_ml_decision_row_id
         self.pending_snap_id = snap_id
         self.pending_decision_key = key
         self.pending_ml_decision_row_id = None
