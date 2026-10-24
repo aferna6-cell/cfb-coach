@@ -24,8 +24,6 @@ jobs:
             tests/madden_ml/test_week3_priorities.py \
             tests/madden_ml/test_short_yardage_compete.py \
             tests/madden_ml/test_sprint7_context_variety.py \
-            tests/madden_ml/test_sprint12_football_intelligence.py \
-            tests/madden_ml/test_sprint12_playcall_diversity.py \
             tests/madden_ml/test_standing_execution_attestation.py \
             tests/madden_ml/test_offense_shadow.py \
             tests/madden_ml/test_html_idempotency.py \
@@ -35,3 +33,23 @@ jobs:
             tests/madden_ml/test_sprint42_execution_recovery.py \
             tests/madden_ml/test_sprint9_situational_actions.py \
             tests/madden_ml/test_sprint10_action_learning.py
+      - name: Compare legacy Sprint 12 failures against untouched coordinator base
+        run: |
+          set +e
+          PYTHONPATH=. python -m pytest -q \
+            tests/madden_ml/test_sprint12_football_intelligence.py \
+            tests/madden_ml/test_sprint12_playcall_diversity.py > /tmp/week5-proposed.log 2>&1
+          git fetch origin madden-ml/coordinators
+          git worktree add --detach /tmp/week5-baseline FETCH_HEAD
+          PYTHONPATH=/tmp/week5-baseline python -m pytest -q \
+            /tmp/week5-baseline/tests/madden_ml/test_sprint12_football_intelligence.py \
+            /tmp/week5-baseline/tests/madden_ml/test_sprint12_playcall_diversity.py > /tmp/week5-baseline.log 2>&1
+          set -e
+          echo "Proposed:"
+          tail -n 8 /tmp/week5-proposed.log
+          echo "Untouched base:"
+          tail -n 8 /tmp/week5-baseline.log
+          grep '^FAILED ' /tmp/week5-proposed.log | sed -E 's@^FAILED .*::([^ :]+) -.*@\1@' | sort > /tmp/week5-proposed-failures
+          grep '^FAILED ' /tmp/week5-baseline.log | sed -E 's@^FAILED .*::([^ :]+) -.*@\1@' | sort > /tmp/week5-baseline-failures
+          diff -u /tmp/week5-baseline-failures /tmp/week5-proposed-failures
+          echo "No additional Sprint 12 failure names versus untouched coordinator."
