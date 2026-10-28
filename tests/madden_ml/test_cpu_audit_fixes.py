@@ -190,6 +190,42 @@ def test_score_reconcile_records_gap() -> None:
     assert unknown["status"] == "unknown" and unknown["gap_for"] is None
 
 
+
+def test_loss_final_score_is_winner_first_but_snaplog_is_us_them() -> None:
+    # Week 5 regression: a 20-17 loss with 17-17 logged must show the CPU's
+    # unlogged winning FG, not three fictional points for our offense.
+    rec = score_reconcile("20-17", (17, 17), result_wl="loss")
+    assert rec == {
+        "session_score": "20-17",
+        "snaplog_score": "17-17",
+        "gap_for": 0,
+        "gap_against": 3,
+        "status": "gap",
+    }
+    assert score_reconcile("42-14", (41, 14), result_wl="win")["gap_for"] == 1
+    assert score_reconcile("17-20", (17, 17), result_wl=None)["gap_against"] == 3
+
+
+def test_end_game_loss_reconciles_opponent_score(tmp_path: Path) -> None:
+    db, ctrl = _ctrl(tmp_path)
+    try:
+        ctrl.call_only("1&10 my 25", quarter=4, score_us=17, score_them=17, score_set=True)
+        ctrl.result_and_call(outcome="+5", sit_raw="2&5 my 30", quarter=4)
+        out = ctrl.end_game(result_wl="loss", score="20-17")
+        assert out["ok"]
+        row = db.conn.execute(
+            "SELECT score, snaplog_score, score_gap_for, score_gap_against, score_reconcile "
+            "FROM game_sessions WHERE session_id = ?", (ctrl.session_id,),
+        ).fetchone()
+        assert row["score"] == "20-17"
+        assert row["snaplog_score"] == "17-17"
+        assert (row["score_gap_for"], row["score_gap_against"]) == (0, 3)
+        assert row["score_reconcile"] == "gap"
+        assert "0-3 of the final score" in out["retrain_summary"]
+    finally:
+        db.close()
+
+
 def test_end_game_reconciles_snap_log_against_session(tmp_path: Path) -> None:
     db, ctrl = _ctrl(tmp_path)
     try:
