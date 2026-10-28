@@ -45,8 +45,10 @@ INDIFFERENCE_BAND = 0.012
 
 
 def _clock_blocks(evaluation: Mapping[str, Any], n_actions: int) -> str | None:
-    clock = evaluation.get("clock_seconds")
-    if clock is not None and int(clock) < 10 and n_actions:
+    # The live clock field is the GAME clock. Never mistake it for the
+    # 30-second play clock when deciding whether an adjustment is executable.
+    play_clock = evaluation.get("play_clock_seconds")
+    if play_clock is not None and int(play_clock) < 10 and n_actions:
         return "play clock is too short for a pre-snap adjustment"
     if evaluation.get("two_minute") and n_actions > 2:
         return "two-minute offense cannot complete more than two sourced adjustments"
@@ -129,6 +131,7 @@ def legal_plans_for_play(
     score_phase: str | None = None,
     allow_macros: bool = True,
     learned: Mapping[str, Any] | None = None,
+    macro_index: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Every legal plan for one play, including NO ADJUSTMENT.
 
@@ -138,7 +141,7 @@ def legal_plans_for_play(
     from cfb_coach.madden.adjustments import offense_adjustment_candidates
     from cfb_coach.madden.model.offense_action_learning import score_shift
     from cfb_coach.madden.offense_macros import (
-        clean_ids, offense_detail, pairs_in_book, suggest_for_snap,
+        cached_offense_detail, clean_ids, offense_detail, pairs_in_book, suggest_for_snap,
     )
     from cfb_coach.madden.playcaller import coverage_class
 
@@ -251,24 +254,38 @@ def legal_plans_for_play(
             })
 
     if allow_macros:
-        full_cap = 1 + sum(len(ps) for ps in book.values())
-        for mid in clean_ids(list(active)):
+        full_cap = (
+            int(macro_index.get("cap") or 0)
+            if macro_index is not None
+            else 1 + sum(len(ps) for ps in book.values())
+        )
+        armed = (
+            list(macro_index.get("active") or [])
+            if macro_index is not None
+            else clean_ids(list(active))
+        )
+        for mid in armed:
             try:
                 suggestion = suggest_for_snap(
                     zone=zone, play=play, coverage=getattr(sit, "coverage_hint", None),
                     coverage_source=getattr(sit, "coverage_source", None) or "none",
                     active=[mid], down=getattr(sit, "down", None), repeated=repeated,
                     book=book, weights=dict(weights or {}), score_phase=score_phase,
-                    cooled=cooled,
+                    cooled=cooled, prepared=macro_index,
                 )
             except (TypeError, ValueError, KeyError):
                 continue
             if not suggestion or suggestion.get("id") != mid:
                 continue
             pair = f"{play} ({formation})"
-            if pair not in pairs_in_book(mid, book, cap=full_cap):
+            if macro_index is not None:
+                if pair not in (macro_index.get("pair_sets") or {}).get(mid, ()):
+                    continue
+                detail = cached_offense_detail(macro_index, mid, book)
+            elif pair not in pairs_in_book(mid, book, cap=full_cap):
                 continue
-            detail = offense_detail(mid, book)
+            else:
+                detail = offense_detail(mid, book)
             if detail.get("needs_settings") or detail.get("gaps") or not detail.get("settings"):
                 continue
             if not _verified_button_sequence(suggestion.get("buttons")):
@@ -709,6 +726,7 @@ def choose_joint_action(
     recent_calls: Sequence[Any] | None = None,
     use_opponent_learning: bool = True,
     use_expert_learning: bool = True,
+    prepared_macros: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Pick one legal (formation, play, plan) from the complete action space.
 
@@ -769,6 +787,32 @@ def choose_joint_action(
     anchor_form = str(anchor.get("formation"))
     anchor_play = str(anchor.get("play"))
     anchor_score = float(anchor.get("selection_score", anchor.get("probability", 0.0)) or 0.0)
+    macro_index = None
+    if allow_macros:
+        if prepared_macros is None:
+            from cfb_coach.madden.offense_macros import macro_book_index
+
+            macro_index = macro_book_index(book, list(active or []))
+        else:
+            macro_index = prepared_macros
+    expert_signal: Mapping[str, Any] | None = None
+    expert_personal: Mapping[str, Any] | None = None
+    expert_policy = None
+    if use_expert_learning:
+        from cfb_coach.madden.model.expert_signal import load_expert_signal
+        from cfb_coach.madden.model.personalization import load_personalization
+
+        loaded_signal = load_expert_signal(db) if db is not None else None
+        loaded_personal = load_personalization(db=db) if db is not None else None
+        # An empty mapping means "already loaded, nothing stored" so the per-play
+        # scorer does not parse the same meta JSON again.
+        expert_signal = loaded_signal if loaded_signal is not None else {}
+        expert_personal = loaded_personal if loaded_personal is not None else {}
+        path = expert_signal.get("expert_policy_path") if expert_signal else None
+        if path:
+            from cfb_coach.madden.model.expert_policy import load_expert_policy
+
+            expert_policy = load_expert_policy(path=path)
     summaries: list[dict[str, Any]] = []
     representatives: list[dict[str, Any]] = []
     plays_seen = 0
@@ -816,6 +860,9 @@ def choose_joint_action(
             expert_adj = expert_learning_adjustment(
                 play, sit, db=db, opponent_type=opponent_type,
                 book=book, formation=form,
+                expert_policy=expert_policy,
+                personalization=expert_personal,
+                signal=expert_signal,
             )
         base += float(knowledge.get("delta") or 0.0)
         base += float(strategy_adj.get("delta") or 0.0)
@@ -827,6 +874,7 @@ def choose_joint_action(
             audibles=audibles, db=db, opponent_id=opponent_id,
             evaluation=evaluation, weights=weights, cooled=cooled,
             score_phase=score_phase, allow_macros=allow_macros, learned=learned,
+            macro_index=macro_index,
         )
         unchanged = next(plan for plan in plans if plan["plan_id"] == "NO_ADJUSTMENT")
         unchanged_joint = base + float(unchanged.get("influence") or 0.0)
@@ -866,6 +914,15 @@ def choose_joint_action(
             "learning": learning_adj,
             "expert_learning": expert_adj,
             "selection_score": float(row.get("selection_score", row.get("probability", 0.0)) or 0.0),
+            "score_components": {
+                "selection": float(row.get("selection_score", row.get("probability", 0.0)) or 0.0),
+                "football_fit": float(fit.get("coordinator_delta") or 0.0),
+                "knowledge": float(knowledge.get("delta") or 0.0),
+                "strategy": float(strategy_adj.get("delta") or 0.0),
+                "opponent_learning": float(learning_adj.get("delta") or 0.0),
+                "expert": float(expert_adj.get("delta") or 0.0),
+                "action": float(best.get("influence") or 0.0),
+            },
         })
     from cfb_coach.madden.model.offense_diversity import concentration_stats
 
@@ -879,9 +936,21 @@ def choose_joint_action(
             representatives, session_id=session_id, snap_seq=snap_seq,
             sit=sit, opponent_type=opponent_type, concentration=concentration,
         )
+        from cfb_coach.madden.model.joint_override_guard import review_override
+
+        chosen, override_audit = review_override(
+            chosen=chosen, anchor=anchor, representatives=representatives,
+        )
         best_plan = dict(chosen["plan"])
         best_key = (str(chosen["formation"]), str(chosen["play"]))
     else:
+        override_audit = {
+            "anchor": [anchor_form, anchor_play],
+            "unrestricted": [anchor_form, anchor_play],
+            "selected": [anchor_form, anchor_play],
+            "reason": "no legal joint representatives",
+            "guard_kept_anchor": False,
+        }
         best_plan = {
             "plan_id": "NO_ADJUSTMENT", "kind": "none", "parts": [],
             "reason": "no legal play was available",
@@ -909,6 +978,36 @@ def choose_joint_action(
         best_plan, formation=best_key[0], play=best_key[1], anchor=anchor,
         candidates=shown, evaluation=evaluation, learned_mode=learned_mode,
     )
+    decision["override_audit"] = override_audit
+    # Explain why the legal joint space contained no adjustment choices.
+    # Never generate an unsourced hot route just to diversify the output.
+    available_actions = sum(
+        1 for candidate in summaries
+        if candidate.get("id") != "NO_ADJUSTMENT"
+    )
+    observed_look = (evaluation.get("coverage") or {}).get("state") == "observed"
+    armed_count = (
+        len((macro_index or {}).get("active") or [])
+        if macro_index is not None else (len(active or []) if allow_macros else 0)
+    )
+    if not available_actions:
+        if not observed_look and not armed_count:
+            action_reason = "no_current_coverage_and_no_armed_macro"
+        elif not observed_look:
+            action_reason = "no_live_coverage_or_eligible_situation_macro"
+        else:
+            action_reason = "no_supported_action_passed_legality_and_risk_gates"
+    elif best_plan.get("plan_id") == "NO_ADJUSTMENT":
+        action_reason = "legal_actions_scored_below_unchanged"
+    else:
+        action_reason = "supported_adjustment_selected"
+    decision["action_availability"] = {
+        "sourced_action_candidates": available_actions,
+        "observed_current_coverage": observed_look,
+        "armed_macro_count": armed_count,
+        "reason": action_reason,
+        "no_unsupported_action_invented": True,
+    }
     decision["plays_considered"] = plays_seen
     decision["eligible_play_count"] = plays_seen
     decision["plans_compared"] = len(summaries)

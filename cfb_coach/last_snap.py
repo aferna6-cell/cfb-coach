@@ -164,6 +164,37 @@ def advance_ball(sit: Any, result: str, side: str, spot: BallSpot) -> tuple[Ball
     return new, f"now {new.down}&{new.distance}{where}"
 
 
+INFERRED_DRIVE_PREFIX = "auto-d"
+_DRIVE_END = re.compile(
+    r"\b(td|touchdown|int|interception|pick|fumble\s+lost|turnover|punt|fg|field\s+goal|safety)\b",
+    re.I,
+)
+
+
+def _quarter_of(sit: Any) -> int | None:
+    extras = getattr(sit, "extras", None) or {}
+    raw = extras.get("quarter") if isinstance(extras, dict) else None
+    if raw is None:
+        raw = getattr(sit, "quarter", None)
+    try:
+        return int(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def drive_ended(result: str | None, note: str = "") -> bool:
+    """True when a logged result ends the possession. Unknown is False."""
+    text = (result or "").strip()
+    if not text:
+        return False
+    if (note or "").lower().startswith(("turnover", "td")):
+        return True
+    oc = parse_outcome(text)
+    if oc.kind in ("td", "int", "fumble"):
+        return True
+    return bool(_DRIVE_END.search(text))
+
+
 def shown_macro(call: Any) -> str:
     """The Custom Adjustment this call puts on screen, or ``none``."""
     if call is None:
@@ -206,6 +237,10 @@ class _Undo:
     ml_snap_id: str | None = None
     ml_decision_id: int | None = None
     prev_ml_outcome: dict[str, Any] | None = None
+    drive_break: bool | None = None
+
+
+_KEEP = object()
 
 
 @dataclass
@@ -228,7 +263,91 @@ class LastSnapBook:
     snap_seq: int | None = None
     ml_decision_id: int | None = None
     data_source: str = "live"
+    opp_look: str | None = None
     _undos: list[_Undo] = field(default_factory=list)
+    # Inferred drive counter. ``_drive_break`` is True when the next snap must
+    # start a new drive (first snap, or the last logged result ended one).
+    drive_n: int = 0
+    _drive_break: bool = True
+    _drive_side: str | None = None
+    _drive_quarter: int | None = None
+    _drive_against: int | None = None
+
+    def _new_drive_needed(self, sit: Any) -> bool:
+        """A possession change the logger can see before this snap."""
+        if self._drive_break or self.drive_n == 0:
+            return True
+        side = str(getattr(sit, "side", None) or "offense").lower()[:1]
+        if self._drive_side is not None and side != self._drive_side:
+            return True
+        raw = str(getattr(sit, "raw", "") or "").lower()
+        if re.search(r"\b(kickoff|kick\s*off|after\s+punt|touchback)\b", raw):
+            return True
+        quarter = _quarter_of(sit)
+        if (
+            quarter is not None and self._drive_quarter is not None
+            and quarter != self._drive_quarter and quarter in (3, 5)
+        ):
+            return True  # second-half kickoff, overtime
+        against = getattr(sit, "score_them", None) if side == "o" else getattr(sit, "score_us", None)
+        if (
+            against is not None and self._drive_against is not None
+            and int(against) != int(self._drive_against)
+        ):
+            return True  # the other team scored in between, so we got the ball back
+        return False
+
+    def _infer_drive(self, sit: Any) -> str:
+        if self._new_drive_needed(sit):
+            self.drive_n += 1
+            self._drive_break = False
+        side = str(getattr(sit, "side", None) or "offense").lower()[:1]
+        self._drive_side = side
+        quarter = _quarter_of(sit)
+        if quarter is not None:
+            self._drive_quarter = quarter
+        against = getattr(sit, "score_them", None) if side == "o" else getattr(sit, "score_us", None)
+        if against is not None:
+            self._drive_against = int(against)
+        return f"{INFERRED_DRIVE_PREFIX}{self.drive_n:02d}"
+
+    def note_drive_result(self, result: str | None, note: str = "") -> None:
+        """Mark the drive over after a result that changes possession."""
+        if drive_ended(result, note):
+            self._drive_break = True
+
+    def assign_drive(self, sit: Any) -> str | None:
+        """Drive id for ``sit``: an explicit id, else an inferred ``auto-dNN``.
+
+        Inferred ids start a new drive on the first snap, after a TD, turnover,
+        punt, field goal, safety or turnover on downs, on a side change, a
+        typed kickoff, the start of Q3 or OT, or when the other team's score
+        moved. Inferred ids carry the ``auto-`` prefix so they are never
+        mistaken for a verified id. An id already on ``sit`` is kept.
+        """
+        if sit is None:
+            return None
+        extras = getattr(sit, "extras", None)
+        if not isinstance(extras, dict):
+            extras = {}
+            try:
+                sit.extras = extras
+            except Exception:  # noqa: BLE001
+                return None
+        from cfb_coach.madden.model.call_outcome_log import drive_id_from_text
+
+        explicit = extras.get("drive_id")
+        if explicit is None or (isinstance(explicit, str) and not explicit.strip()):
+            explicit = drive_id_from_text(str(getattr(sit, "raw", "") or ""))
+        if explicit is None or not str(explicit).strip():
+            token = self._infer_drive(sit)
+            extras["drive_id"] = token
+            extras["drive_id_source"] = "inferred"
+            return token
+        token = str(explicit).strip()
+        extras["drive_id"] = token
+        extras.setdefault("drive_id_source", "explicit")
+        return token
 
     def remember_call(
         self,
@@ -237,8 +356,11 @@ class LastSnapBook:
         *,
         ml_snap_id: str | None = None,
         snap_seq: int | None = None,
-        ml_decision_id: int | None = None,
+        ml_decision_id: Any = _KEEP,
+        opp_look: Any = None,
     ) -> None:
+        from cfb_coach.madden.model.inference import UNSET_OPP_LOOK, normalize_opp_look
+
         self.call = call
         self.sit = sit
         self.logged_id = None
@@ -246,11 +368,18 @@ class LastSnapBook:
         self.concept = None
         self.coverage = None
         self.wrote = False
+        if opp_look is UNSET_OPP_LOOK:
+            pending = (getattr(sit, "extras", None) or {}).get("opp_look")
+            self.opp_look = normalize_opp_look(pending)
+        else:
+            self.opp_look = normalize_opp_look(opp_look)
         if ml_snap_id is not None:
             self.ml_snap_id = ml_snap_id
         if snap_seq is not None:
             self.snap_seq = snap_seq
-        if ml_decision_id is not None:
+        # An explicit None clears a previous call's id. Omitting the argument
+        # leaves the pending id alone.
+        if ml_decision_id is not _KEEP:
             self.ml_decision_id = ml_decision_id
         # The call they just asked for is where the ball is until a result moves it.
         if getattr(sit, "down", None):
@@ -261,6 +390,7 @@ class LastSnapBook:
         if getattr(sit, "score_us", None) is not None:
             self.spot.score_us = sit.score_us
             self.spot.score_them = sit.score_them
+        self.assign_drive(sit)
 
     def stamp_situation(self, sit: Any) -> None:
         """Fill a new situation from the ball spot when the line left a field out."""
@@ -304,12 +434,16 @@ class LastSnapBook:
         executed_macro: str | None = None,
         executed_verification: str = "unknown",
         applied_recommended_macro: bool | None = None,
+        verify_touched: bool = False,
     ) -> dict[str, Any] | None:
         """Browser submit: outcome, optional 'they ran', and the next line's last-play field."""
         if self.call is None or self.sit is None or not (outcome or "").strip():
             return None
+        from cfb_coach.madden.model.inference import normalize_opp_look
+
         side = getattr(self.call, "side", None) or "offense"
-        cov, concept = _prev_look(self.parse_situation, their, side)
+        their_look = normalize_opp_look(their)
+        cov, concept = _prev_look(self.parse_situation, their_look or "", side)
         if next_raw and not cov and not concept:
             cov, concept = _prev_look(self.parse_situation, next_raw, side)
         canon = parse_outcome(outcome).to_result_text()
@@ -361,13 +495,19 @@ class LastSnapBook:
             "executed_macro": executed_macro,
             "executed_verification": executed_verification,
         }
-        note = self._record(spec, inherit_sit_look=next_raw is None)
+        note = self._record(
+            spec, inherit_sit_look=next_raw is None, verify_touched=verify_touched,
+        )
         call = self.call
         return {
             "formation": call.formation or "?",
             "play": call.play or "?",
             "result": self.result or "",
-            "look": self.concept or self.coverage or "",
+            "look": (
+                normalize_opp_look(self.concept)
+                or normalize_opp_look(self.coverage)
+                or normalize_opp_look(self.opp_look)
+            ),
             "call_text": call.format(),
             "side": call.side,
             "note": note,
@@ -417,21 +557,123 @@ class LastSnapBook:
         self.concept = frame.concept
         self.coverage = frame.coverage
         self.spot = frame.spot
+        if frame.drive_break is not None:
+            self._drive_break = frame.drive_break
         self.wrote = False
         return f"  undo: removed the last snap note (id {frame.snap_id})"
 
-    def _record(self, spec: dict[str, Any], *, inherit_sit_look: bool) -> str:
+    def _checked_token(self, raw: Any, allowed: tuple[str, ...]) -> str | None:
+        """A checked snap token, or NULL. Blank is NULL. ``\"\"`` is never stored."""
+        from cfb_coach.madden.model.inference import normalize_opp_look
+
+        text = normalize_opp_look(raw)
+        if text in allowed:
+            return text
+        return None
+
+    def _opponent_package(self) -> tuple[str | None, str | None]:
+        """Personnel and set for this snap.
+
+        Explicit situation fields win. Otherwise a normalized look token is
+        stored on the column whose check list contains it. ``empty`` is a set.
+        Anything outside the check lists, including a blank, is NULL.
+        """
+        from cfb_coach.madden.model.data_layer import OPP_PERSONNEL_VALUES, OPP_SET_VALUES
+
+        sit = self.sit
+        personnel = self._checked_token(getattr(sit, "opp_personnel", None), OPP_PERSONNEL_VALUES)
+        opp_set = self._checked_token(getattr(sit, "opp_set", None), OPP_SET_VALUES)
+        if personnel is None:
+            personnel = self._checked_token(self.opp_look, OPP_PERSONNEL_VALUES)
+        if opp_set is None:
+            opp_set = self._checked_token(self.opp_look, OPP_SET_VALUES)
+        return personnel, opp_set
+
+    def _store_opponent_package(self, snap_id: int | None) -> None:
+        """Write ``opp_personnel`` and ``opp_set`` when those columns exist.
+
+        Does not add a column and does not write ``opp_look``. Blank is NULL
+        and the token ``empty`` is kept on the set.
+        """
+        if snap_id is None:
+            return
+        cols = {row[1] for row in self.db.conn.execute("PRAGMA table_info(snaps)")}
+        if "opp_personnel" not in cols or "opp_set" not in cols:
+            return
+        personnel, opp_set = self._opponent_package()
+        self.db.conn.execute(
+            "UPDATE snaps SET opp_personnel = ?, opp_set = ? WHERE id = ?",
+            (personnel, opp_set, snap_id),
+        )
+        self.db.conn.commit()
+
+    def _log_live_outcome(
+        self,
+        *,
+        result: str | None,
+        executed_status: str,
+        executed_formation: str | None,
+        executed_play: str | None,
+        executed_verification: str,
+        ctx: dict[str, Any],
+        accepted: str,
+        recommended: str | None,
+        logged_yards: int | None,
+        logged_penalty: str | None,
+    ) -> None:
+        """Write the same pre-snap fields onto the outcome when this snap has an id.
+
+        The adjustment is not marked executed here. ``executed_adjustment_id``
+        stays empty unless a later confirm goes through
+        ``executed_adjustment_for_log(confirmed=True)``.
+        """
+        if not self.ml_snap_id or not hasattr(self.db, "log_ml_outcome"):
+            return
+        self.db.log_ml_outcome(
+            snap_id=self.ml_snap_id,
+            game_id=self.session_id,
+            decision_id=self.ml_decision_id,
+            executed_status=executed_status,
+            executed_formation=executed_formation,
+            executed_play=executed_play,
+            executed_verification=executed_verification,
+            outcome={"result": result} if result else None,
+            yards=logged_yards,
+            penalty=logged_penalty,
+            drive_id=ctx.get("drive_id"),
+            drive_id_source=ctx.get("drive_id_source"),
+            game_clock_null_reason=ctx.get("game_clock_null_reason"),
+            game_clock_suspect_reason=ctx.get("game_clock_suspect_reason"),
+            quarter=ctx.get("quarter"),
+            game_clock=ctx.get("game_clock"),
+            score_for=ctx.get("score_for"),
+            score_against=ctx.get("score_against"),
+            accepted=accepted,
+            recommended_adjustment_id=recommended,
+            executed_adjustment_id=recommended,
+            adjustment_confirmed=False,
+            replace=True,
+        )
+
+    def _record(
+        self, spec: dict[str, Any], *, inherit_sit_look: bool, verify_touched: bool = False,
+    ) -> str:
         from cfb_coach.game_score import snap_notes_for
         from cfb_coach.tendency import mild_bump_concept, mild_bump_coverage, situation_bucket
 
         prev_result, prev_concept, prev_coverage = self.result, self.concept, self.coverage
         prev_spot = replace(self.spot)
+        prev_break = self._drive_break
+        from cfb_coach.madden.model.inference import normalize_opp_look
+
         result = spec.get("result") or self.result
-        concept = spec.get("concept") or self.concept
-        coverage = spec.get("coverage") or self.coverage
+        concept = normalize_opp_look(spec.get("concept") or self.concept)
+        coverage = normalize_opp_look(spec.get("coverage") or self.coverage)
         if inherit_sit_look and not spec.get("concept") and not spec.get("coverage"):
-            concept = concept or getattr(self.sit, "concept_hint", None)
-            coverage = coverage or getattr(self.sit, "coverage_hint", None)
+            concept = concept or normalize_opp_look(getattr(self.sit, "concept_hint", None))
+            coverage = coverage or normalize_opp_look(getattr(self.sit, "coverage_hint", None))
+        concept = normalize_opp_look(concept)
+        coverage = normalize_opp_look(coverage)
 
         side = getattr(self.call, "side", None) or "offense"
         success = bool(outcome_success(result, side))
@@ -464,6 +706,25 @@ class LastSnapBook:
         executed_macro = spec.get("executed_macro")
         executed_verification = spec.get("executed_verification") or "unknown"
 
+        from cfb_coach.madden.model.call_outcome_log import (
+            acceptance_for_log,
+            coerce_logged_yards,
+            context_from_situation,
+            penalty_for_log,
+            recommended_from_call,
+        )
+
+        self.assign_drive(sit)
+        ctx = context_from_situation(sit)
+        recommended = recommended_from_call(self.call)
+        accepted = acceptance_for_log(
+            executed_status=executed_status,
+            executed_play=executed_play,
+            recommended_play=getattr(self.call, "play", None),
+            touched=verify_touched,
+        )
+        logged_yards = coerce_logged_yards(result, None)
+        logged_penalty = penalty_for_log(result, None)
         inserted = self.logged_id is None
         prev_row = {
             "result": prev_result,
@@ -488,7 +749,7 @@ class LastSnapBook:
                 down=getattr(sit, "down", None),
                 distance=getattr(sit, "distance", None),
                 yardline=getattr(sit, "yardline", None),
-                quarter=quarter,
+                quarter=quarter if quarter is not None else ctx.get("quarter"),
                 result=result,
                 coverage_seen=coverage,
                 concept_seen=concept,
@@ -503,7 +764,19 @@ class LastSnapBook:
                 executed_verification=executed_verification,
                 ml_decision_id=self.ml_decision_id,
                 data_source=self.data_source,
+                drive_id=ctx.get("drive_id"),
+                drive_id_source=ctx.get("drive_id_source"),
+                game_clock_null_reason=ctx.get("game_clock_null_reason"),
+                game_clock_suspect_reason=ctx.get("game_clock_suspect_reason"),
+                game_clock=ctx.get("game_clock"),
+                score_for=ctx.get("score_for"),
+                score_against=ctx.get("score_against"),
+                accepted=accepted,
+                recommended_adjustment_id=recommended,
+                yards=logged_yards,
+                penalty=logged_penalty,
             )
+            self._store_opponent_package(self.logged_id)
         else:
             self.db.update_snap(
                 self.logged_id,
@@ -516,11 +789,26 @@ class LastSnapBook:
                 executed_macro=executed_macro,
                 executed_verification=executed_verification,
                 ml_decision_id=self.ml_decision_id,
+                drive_id=ctx.get("drive_id"),
+                drive_id_source=ctx.get("drive_id_source"),
+                game_clock_null_reason=ctx.get("game_clock_null_reason"),
+                game_clock_suspect_reason=ctx.get("game_clock_suspect_reason"),
+                game_clock=ctx.get("game_clock"),
+                score_for=ctx.get("score_for"),
+                score_against=ctx.get("score_against"),
+                accepted=accepted,
+                recommended_adjustment_id=recommended,
+                yards=logged_yards,
+                penalty=logged_penalty,
             )
+            self._store_opponent_package(self.logged_id)
         self.result, self.concept, self.coverage = result, concept, coverage
         note = ""
         if spec.get("result"):
             self.spot, note = advance_ball(sit, spec["result"], side, self.spot)
+            self._drive_break = drive_ended(spec["result"], note) or drive_ended(
+                str(spec.get("raw") or "")
+            )
         prev_ml_outcome = None
         if not inserted and self.ml_snap_id:
             try:
@@ -561,7 +849,20 @@ class LastSnapBook:
             ml_snap_id=self.ml_snap_id,
             ml_decision_id=self.ml_decision_id,
             prev_ml_outcome=prev_ml_outcome,
+            drive_break=prev_break,
         ))
+        self._log_live_outcome(
+            result=result,
+            executed_status=executed_status,
+            executed_formation=executed_formation,
+            executed_play=executed_play,
+            executed_verification=executed_verification,
+            ctx=ctx,
+            accepted=accepted,
+            recommended=recommended,
+            logged_yards=logged_yards,
+            logged_penalty=logged_penalty,
+        )
         self.wrote = True
         bits = [b for b in (result, concept, coverage) if b]
         head = "logged last snap: " + " | ".join(bits) if bits else "logged last snap"

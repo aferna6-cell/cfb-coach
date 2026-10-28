@@ -58,6 +58,30 @@ def verified_human_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any
     ]
 
 
+def is_counted_defensive_snap(row: Mapping[str, Any]) -> bool:
+    """A human defensive snap with a verified execution, not a recommendation.
+
+    CPU rows and recommendation-only rows are not counted. ``recommended_play``
+    is not an executed label. ``coverage_seen`` is not read. A user-entered
+    ``opp_look_verification`` is not an executed label and is not read.
+    """
+    if not isinstance(row, Mapping) or row.get("recommendation_only"):
+        return False
+    if str(row.get("opponent_type") or "").lower() != "human":
+        return False
+    if str(row.get("side") or "") != "defense":
+        return False
+    return bool(
+        str(row.get("opponent_id") or "").strip()
+        and str(row.get("game_id") or "").strip()
+        and row.get("supervised_eligible") is True
+        and str(row.get("executed_verification") or "") == "verified"
+        and str(row.get("executed_status") or "") == "identified"
+        and row.get("executed_play")
+        and row.get("label_available")
+    )
+
+
 def fit_opponent_offense(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Post-snap observed concepts -> small probabilistic *future* tendency priors.
 

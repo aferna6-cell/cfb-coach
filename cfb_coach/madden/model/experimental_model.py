@@ -103,6 +103,28 @@ def _field_bucket(yardline: int | None) -> str:
     return "mid"
 
 
+def _converted_offense(row: Mapping[str, Any]) -> bool | None:
+    """First-down conversion when yards and distance are known. Else None."""
+    kind = str(row.get("kind") or "").lower()
+    result = str(row.get("result") or "")
+    if not kind and result:
+        from cfb_coach.outcome import parse_outcome
+
+        kind = parse_outcome(result).kind
+    if kind in ("td", "convert"):
+        return True
+    if kind in ("int", "fumble", "incomplete", "sack", "stop"):
+        return False
+    try:
+        yards = row.get("yards")
+        distance = row.get("distance")
+        if yards is None or distance is None or yards == "" or distance == "":
+            return None
+        return int(yards) >= int(distance)
+    except (TypeError, ValueError):
+        return None
+
+
 def _dd_bucket(down: Any, distance: Any) -> str:
     try:
         d = int(down) if down is not None else None
@@ -156,6 +178,8 @@ class ExperimentalArtifact:
     opponent: dict[str, list[float]] = field(default_factory=dict)
     research_concept_boost: dict[str, float] = field(default_factory=dict)
     research_family_boost: dict[str, float] = field(default_factory=dict)
+    conversion_family_dd: dict[str, list[float]] = field(default_factory=dict)
+    conversion_concept_dd: dict[str, list[float]] = field(default_factory=dict)
     evidence_quality: str = "prior_driven"
     note: str = ""
 
@@ -183,6 +207,8 @@ class ExperimentalArtifact:
             "opponent": self.opponent,
             "research_concept_boost": self.research_concept_boost,
             "research_family_boost": self.research_family_boost,
+            "conversion_family_dd": self.conversion_family_dd,
+            "conversion_concept_dd": self.conversion_concept_dd,
             "evidence_quality": self.evidence_quality,
             "note": self.note,
             "baseline_rate": self.global_rate,
@@ -227,6 +253,12 @@ class ExperimentalArtifact:
             },
             research_family_boost={
                 k: float(v) for k, v in (raw.get("research_family_boost") or {}).items()
+            },
+            conversion_family_dd={
+                k: list(v) for k, v in (raw.get("conversion_family_dd") or {}).items()
+            },
+            conversion_concept_dd={
+                k: list(v) for k, v in (raw.get("conversion_concept_dd") or {}).items()
             },
             evidence_quality=str(raw.get("evidence_quality") or "prior_driven"),
             note=str(raw.get("note") or ""),
@@ -328,6 +360,8 @@ def train_experimental(
     dd: dict[str, RateBucket] = {}
     concept_dd: dict[str, RateBucket] = {}
     family_dd: dict[str, RateBucket] = {}
+    conv_fam_dd: dict[str, RateBucket] = {}
+    conv_concept_dd: dict[str, RateBucket] = {}
     field_z: dict[str, RateBucket] = {}
     ctx: dict[str, RateBucket] = {}
     opp: dict[str, RateBucket] = {}
@@ -348,6 +382,12 @@ def train_experimental(
         if dd_key != "unknown":
             concept_dd.setdefault(f"{concept}|{dd_key}", RateBucket()).add(success, weight)
             family_dd.setdefault(f"{fam}|{dd_key}", RateBucket()).add(success, weight)
+            converted = _converted_offense(row)
+            if converted is not None:
+                conv_concept_dd.setdefault(f"{concept}|{dd_key}", RateBucket()).add(
+                    converted, weight
+                )
+                conv_fam_dd.setdefault(f"{fam}|{dd_key}", RateBucket()).add(converted, weight)
         yl = row.get("yardline")
         try:
             yl_i = int(yl) if yl is not None else None
@@ -404,6 +444,8 @@ def train_experimental(
         down_distance=_bucket_map(dd),
         concept_down_distance=_bucket_map(concept_dd),
         family_down_distance=_bucket_map(family_dd),
+        conversion_family_dd=_bucket_map(conv_fam_dd),
+        conversion_concept_dd=_bucket_map(conv_concept_dd),
         field_zone=_bucket_map(field_z),
         cpu_human=_bucket_map(ctx),
         opponent=_bucket_map(opp),
@@ -493,6 +535,24 @@ def predict_success(
         if interaction is not None else p_match
     )
     p_match = 0.55 * p_match + 0.45 * p_situational
+    # Optional conversion layer. Empty on older artifacts, so rankings stay
+    # identical until a retrained file actually has conversion counts.
+    p_conversion = p_match
+    conversion_trials = 0.0
+    try:
+        down_i = int(down) if down is not None else None
+        dist_i = int(distance) if distance is not None else None
+    except (TypeError, ValueError):
+        down_i, dist_i = None, None
+    if down_i in (3, 4) and dist_i is not None and dist_i <= 3 and dd_key != "unknown":
+        conv_raw = (
+            art.conversion_concept_dd.get(f"{concept}|{dd_key}")
+            or art.conversion_family_dd.get(f"{fam}|{dd_key}")
+        )
+        if conv_raw:
+            p_conversion = _rate_from(conv_raw, p_match, CONTEXT_INTERACTION_STRENGTH)
+            conversion_trials = float(conv_raw[1])
+            p_match = 0.65 * p_match + 0.35 * p_conversion
     yl = None
     if isinstance(yardline, int):
         yl = yardline
@@ -548,6 +608,8 @@ def predict_success(
             "opponent": p_opp,
             "research_boost": boost,
             "heuristic_bonus": float(heuristic_bonus or 0.0),
+            "conversion": p_conversion,
+            "conversion_trials": conversion_trials,
         },
     }
 

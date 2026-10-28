@@ -1,0 +1,178 @@
+{
+ "schema": "madden27.defense_knowledge.v1",
+ "researched_at": "2026-10-10",
+ "patch": "1.007",
+ "book": {
+  "defense": [
+   "Dime 3-2 Odd",
+   "Nickel Double Mug",
+   "Nickel Single Mug",
+   "4-3 Over",
+   "Nickel Over"
+  ]
+ },
+ "live_scoring": true,
+ "inclusion": "label == VERIFIED-M27 and confidence == high. Provenance is the source list copied from each entry.",
+ "items": [
+  {
+   "id": "align_controls",
+   "category": "setting",
+   "claim": "CB Depth, CB Width, Safety Depth, Safety Width, Safety Midpoint (left/right/strong/weak/field/boundary)",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "smart_zones",
+   "category": "setting",
+   "claim": "Smart Zones: Aggressive, Balanced, Conservative, Ultra Aggressive, Ultra Conservative, Look For Work, Plaster, Red Zone Awareness, Focus",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "plaster",
+   "category": "setting",
+   "claim": "Plaster Off/Conservative/Aggressive; trigger Out of Pocket and Time/Out of Pocket/Time; timing Aggressive/Default/Conservative",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "roll_coverage",
+   "category": "setting",
+   "claim": "Roll Coverage: Fastest, Field, Boundary, Highest OVR, Pass Strength, WR1, WR2, WR3, TE1, TE2",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "man_stack",
+   "category": "setting",
+   "claim": "Man vs stack: Combo, Triangle, Top Hat, Lock",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "man_bunch",
+   "category": "setting",
+   "claim": "Man vs bunch: Point Combo, Point Triangle, Lock",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "match_checks",
+   "category": "setting",
+   "claim": "Checks: Box, Bingo, Triangle, Point Triangle, Skate, Skinny, Skinny Meg, Stress, Stubbie, Stump, Solo, Solo Cut, Zone It (Cover 3 Match, Quarters, Palms, Cover 6)",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "double_team",
+   "category": "control",
+   "claim": "Hold LT, select receiver, X (Xbox) to double team",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "global_cov_hub",
+   "category": "control",
+   "claim": "Hold LT: press/back off, inside/outside leverage, pass commit, Smart Zone strategy, Deep Zone Focus, per-receiver adjustments",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "gap_integrity",
+   "category": "coach_adjustment",
+   "claim": "Gap Integrity Conservative/Aggressive",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "def_aggression",
+   "category": "coach_adjustment",
+   "claim": "Defensive Aggression Conservative/Aggressive",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "custom_adj_limits",
+   "category": "custom_adjustment",
+   "claim": "20 saved per side, 10 active; LB at line; players must get set before next adjustment",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "qb_contain_fix",
+   "category": "patch",
+   "claim": "QB Contain no longer resets user hot routes (1.006)",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-nfl-27-title-update-september-16"
+   ]
+  },
+  {
+   "id": "shell_fix",
+   "category": "patch",
+   "claim": "User-set Coverage Shell now respected; Combo no longer converts to Lock when pressed (1.006)",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-nfl-27-title-update-september-16"
+   ]
+  },
+  {
+   "id": "stress_vs_4verts",
+   "category": "answer",
+   "claim": "Stress check vs all-verticals",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  },
+  {
+   "id": "leverage_press",
+   "category": "mechanic",
+   "claim": "Route-aware press: inside leverage helps vs inside breakers, outside vs outside breakers",
+   "label": "VERIFIED-M27",
+   "confidence": "high",
+   "sources": [
+    "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
+   ]
+  }
+ ]
+}

@@ -380,7 +380,7 @@ class CoachLogTests(unittest.TestCase):
                 else:
                     os.environ["CFB_COACH_MADDEN_DB"] = old
             self.assertEqual(code, 2)
-            self.assertFalse(missing.parent.exists())
+            self.assertFalse(missing.is_file())
             self.assertFalse((Path(tmp) / "nope.json").exists())
 
 

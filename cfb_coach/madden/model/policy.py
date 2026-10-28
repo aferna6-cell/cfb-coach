@@ -43,8 +43,16 @@ from cfb_coach.madden.model.schema import (
     legal_candidates,
 )
 from cfb_coach.madden.model.train import POLICY_VERSION, load_artifact, predict_proba
+from cfb_coach.vod_success import shared_features as vod_features
 
-__all__ = ["rank_plays", "set_default_artifact", "POLICY_VERSION", "load_artifact_from_path", "history_as_recent"]
+__all__ = [
+    "rank_plays",
+    "set_default_artifact",
+    "POLICY_VERSION",
+    "load_artifact_from_path",
+    "history_as_recent",
+    "blitz_share",
+]
 
 _DEFAULT_ARTIFACT: dict[str, Any] | None = None
 
@@ -100,7 +108,8 @@ def rank_plays(
     under ``policy_source``. Equal scores need a stable tie break on
     formation, play, then adjustment slot.
     """
-    legal = legal_candidates(candidate_plays)
+    # QB Kneel is a clock rule applied before ranking, never a ranked candidate (Q6).
+    legal = tuple(vod_features.drop_kneel(legal_candidates(candidate_plays)))
     artifact = model_artifact if model_artifact is not None else _DEFAULT_ARTIFACT
     model_version = None
     if artifact is not None:
@@ -243,6 +252,24 @@ def rank_plays(
         status=status,
         status_detail=detail,
     )
+
+
+def blitz_share(plays: Sequence[Any]) -> float | None:
+    """Share of defensive plays that are pressure calls, by the shared feature rule.
+
+    A play counts when its family is pressure_other or cover_0, or when its
+    pressure flag is on (``shared_features.is_pressure``). ``plays`` are names
+    or objects with a ``play`` attribute. None for an empty list.
+    """
+    names = [getattr(item, "play", item) for item in plays]
+    if not names:
+        return None
+    hits = 0
+    for name in names:
+        family, flag = vod_features.family_and_pressure(name)
+        if vod_features.is_pressure(family, flag):
+            hits += 1
+    return hits / len(names)
 
 
 def _idx_tie(item: tuple[float, RankedPlay, ShadowScore]) -> str:

@@ -1,5 +1,10 @@
 """Snap fields the v0.7 trainer reads.
 
+Legacy v0.7 path only (``glm``, ``beaters``, ``train``). The v0.24 trainer,
+the offline scorer, gate reporting and the live path build features with
+``cfb_coach.vod_success.shared_features`` instead; do not use this module's
+rules for v0.24 training or scoring.
+
 Strata are ``{game}/{opponent_type}`` and are never pooled. A blank opponent
 type stays ``unknown``. Distance, zone, and look families use the same labels
 as the box model (``medium``, ``own_deep``, ``cover_3``, and so on).

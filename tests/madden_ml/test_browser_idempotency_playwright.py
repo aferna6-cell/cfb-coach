@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -18,6 +19,54 @@ try:
     HAS_PW = True
 except ImportError:
     HAS_PW = False
+
+
+def _headless_shell_executable(chromium: Path) -> Path | None:
+    """Binary ``chromium.launch(headless=True)`` uses, when the layout is known.
+
+    Playwright's ``executable_path`` is the full Chromium build. A headless
+    launch uses the sibling ``chromium_headless_shell-<revision>`` build.
+    ``None`` means this layout is unrecognized, so the caller should not
+    invent a skip.
+    """
+    revision_dir = chromium.parent.parent
+    prefix = "chromium-"
+    if not revision_dir.name.startswith(prefix):
+        return None
+    revision = revision_dir.name[len(prefix):]
+    shell_root = revision_dir.parent / f"chromium_headless_shell-{revision}"
+    if shell_root.is_dir():
+        for candidate in shell_root.rglob("*"):
+            if candidate.is_file() and candidate.name.startswith("chrome-headless-shell"):
+                return candidate
+    return shell_root / "chrome-headless-shell"
+
+
+def _chromium_missing_reason() -> str | None:
+    """Skip reason when Playwright imports but no Chromium executable exists."""
+    if not HAS_PW:
+        return None
+    try:
+        with sync_playwright() as playwright:
+            raw = playwright.chromium.executable_path
+    except Exception as exc:
+        text = str(exc)
+        if "Executable doesn't exist" in text:
+            return (
+                "playwright is installed but no chromium executable was found: "
+                + text.splitlines()[0]
+            )
+        raise
+    if not raw or not Path(raw).is_file():
+        shown = raw or os.environ.get(
+            "PLAYWRIGHT_BROWSERS_PATH",
+            str(Path.home() / ".cache" / "ms-playwright"),
+        )
+        return f"playwright is installed but no chromium executable was found at {shown}"
+    shell = _headless_shell_executable(Path(raw))
+    if shell is not None and not shell.is_file():
+        return f"playwright is installed but no chromium executable was found at {shell}"
+    return None
 
 
 class _FakeCall:
@@ -36,6 +85,9 @@ class _FakeCall:
 @unittest.skipUnless(HAS_PW, "playwright not installed")
 class PlaywrightBrowserIdempotencyTests(unittest.TestCase):
     def setUp(self) -> None:
+        missing = _chromium_missing_reason()
+        if missing:
+            self.skipTest(missing)
         self._td = tempfile.TemporaryDirectory()
         self.db = CoachDB(
             Path(self._td.name) / "live.db",

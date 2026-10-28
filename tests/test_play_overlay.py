@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -141,9 +142,21 @@ class TestPlayOverlay(unittest.TestCase):
             self.assertNotIn("front=", html)
 
     def test_default_overlay_path(self) -> None:
-        p = default_overlay_path()
+        # Isolate HOME so the default directory is not the real ~/.cfb-coach.
+        with tempfile.TemporaryDirectory() as td:
+            previous_db = os.environ.pop("CFB_COACH_DB", None)
+            previous_madden = os.environ.pop("CFB_COACH_MADDEN_DB", None)
+            try:
+                with mock.patch.dict(os.environ, {"HOME": td}, clear=False):
+                    p = default_overlay_path()
+            finally:
+                if previous_db is not None:
+                    os.environ["CFB_COACH_DB"] = previous_db
+                if previous_madden is not None:
+                    os.environ["CFB_COACH_MADDEN_DB"] = previous_madden
         self.assertTrue(str(p).endswith("copilot_overlay.html"))
         self.assertIn(".cfb-coach", str(p))
+        self.assertTrue(str(p).startswith(td))
 
     def test_cli_play_overlay_flags(self) -> None:
         p = build_parser()

@@ -12,8 +12,13 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+import re
+
 from cfb_coach.madden.catalog import is_deep, is_run
-from cfb_coach.madden.model.experimental_model import _play_family
+from cfb_coach.madden.model.experimental_model import _play_family, _play_concept
+
+_PA_RE = re.compile(r"\bpa\b|play[\s-]*action", re.I)
+_RPO_RE = re.compile(r"\brpo\b", re.I)
 
 # Situation families the pregame portfolio must be able to discuss.
 SITUATION_NAMES: tuple[str, ...] = (
@@ -48,6 +53,26 @@ SELECTION_PRIORS: dict[str, dict[str, Any]] = {
     "short_yardage_run": {
         "delta": 0.025,
         "reason": "short-yardage run option",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_quick_pass": {
+        "delta": 0.022,
+        "reason": "quick pass competes to convert on 3rd/4th-and-short",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_pa": {
+        "delta": 0.020,
+        "reason": "play action competes on 3rd/4th-and-short",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "short_yardage_rpo": {
+        "delta": 0.021,
+        "reason": "RPO competes on 3rd/4th-and-short",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "red_zone_medium_run": {
+        "delta": -0.065,
+        "reason": "third/fourth-and-4-to-6 in scoring range needs sticks; run is not the default",
         "claim": "conversion_proxy_not_expected_points",
     },
     "short_yardage_deep": {
@@ -281,7 +306,11 @@ def evaluate_situation(
         names.append("backed_up")
     if two_minute:
         names.append("two_minute")
-    if phase in ("protect_lead", "trailing") and (two_minute or (quarter or 0) >= 4):
+    # Quarter alone is not game-clock evidence. Do not mark this as a clock
+    # management snap when the operator never provided the game clock.
+    if phase in ("protect_lead", "trailing") and (
+        two_minute or ((quarter or 0) >= 4 and clock is not None)
+    ):
         names.append("clock_management")
     return {
         "down": down,
@@ -430,11 +459,37 @@ def _selection_parts(play: str, sit: Any) -> list[dict[str, Any]]:
             parts.append({"id": "third_long_screen", **SELECTION_PRIORS["third_long_screen"]})
         if not run and not screen and deep:
             parts.append({"id": "third_long_reachable", **SELECTION_PRIORS["third_long_reachable"]})
-    elif d in (3, 4) and yards <= 2:
-        if run:
-            parts.append({"id": "short_yardage_run", **SELECTION_PRIORS["short_yardage_run"]})
+    elif d in (3, 4) and yards <= 3:
+        # Do not force a run: let quick game, PA and RPO win on their merits.
+        # No quota and no fabricated counterfactual conversion labels.
+        fam = _play_family(play)
+        if _RPO_RE.search(play) or fam == "rpo":
+            key = "short_yardage_rpo"
+        elif _PA_RE.search(play) or _play_concept(play) == "pa":
+            key = "short_yardage_pa"
+        elif run:
+            key = "short_yardage_run"
+        elif not deep:
+            key = "short_yardage_quick_pass"
+        else:
+            key = None
+        if key:
+            parts.append({"id": key, **SELECTION_PRIORS[key]})
         if deep:
             parts.append({"id": "short_yardage_deep", **SELECTION_PRIORS["short_yardage_deep"]})
+    elif d in (3, 4) and 4 <= yards <= 6 and run:
+        # Week 3 exposed a 3rd-and-6 goal-to-go draw. Penalize the run
+        # only inside scoring territory; do not disable sound short-yard runs.
+        try:
+            inside_twenty = int(getattr(sit, "yardline", 0) or 0) >= 80
+        except (TypeError, ValueError):
+            inside_twenty = False
+        if inside_twenty or bool(
+            getattr(sit, "red_zone", False) or getattr(sit, "goal_line", False)
+        ):
+            parts.append({
+                "id": "red_zone_medium_run", **SELECTION_PRIORS["red_zone_medium_run"]
+            })
     if bool(getattr(sit, "two_minute", False)) and yards >= 4 and run:
         score_us, score_them = getattr(sit, "score_us", None), getattr(sit, "score_them", None)
         if score_us is not None and score_them is not None:
@@ -472,7 +527,14 @@ def coordinator_components(
     deep = is_deep(play)
     parts: list[dict[str, Any]] = []
     if evaluation.get("goal_line"):
-        if run:
+        # Goal-line spacing favors a run only while reaching the sticks is
+        # plausible. Do not reward runs automatically on 3rd/4th-and-4+.
+        distance = evaluation.get("distance")
+        down = evaluation.get("down")
+        credible_goal_run = not (
+            down in (3, 4) and distance is not None and distance >= 4
+        )
+        if run and credible_goal_run:
             parts.append({"id": "goal_line_run", **COORDINATOR_PRIORS["goal_line_run"]})
         if deep:
             parts.append({"id": "goal_line_deep", **COORDINATOR_PRIORS["goal_line_deep"]})
@@ -487,7 +549,14 @@ def coordinator_components(
             parts.append({"id": "second_short_explosive", **COORDINATOR_PRIORS["second_short_explosive"]})
     quarter = evaluation.get("quarter")
     phase = evaluation.get("score_phase")
-    if quarter is not None and int(quarter) >= 4 and not evaluation.get("two_minute"):
+    # A fourth-quarter score is not proof that burning clock is useful.
+    # Week 4 supplied no game-clock readings; keep the late-game priors off
+    # rather than silently assuming the offense was in a clock-killing phase.
+    if (
+        quarter is not None and int(quarter) >= 4
+        and evaluation.get("clock_seconds") is not None
+        and not evaluation.get("two_minute")
+    ):
         if phase == "protect_lead" and run:
             parts.append({"id": "late_lead_run", **COORDINATOR_PRIORS["late_lead_run"]})
         if phase == "trailing" and not run and (evaluation.get("distance") or 0) >= 4:
