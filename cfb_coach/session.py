@@ -722,12 +722,18 @@ def parse_score_pair(text: Any) -> tuple[int, int] | None:
 
 
 def score_reconcile(
-    session_score: Any, snaplog_score: tuple[int, int] | None,
+    session_score: Any,
+    snaplog_score: tuple[int, int] | None,
+    *,
+    result_wl: str | None = None,
 ) -> dict[str, Any]:
-    """Gap between the session's final score and what the snap log reached.
+    """Gap between the final score and the us-them snap log.
 
-    ``snaplog_score`` is the score after the last logged result. Nothing is
-    invented: a missing side gives ``status='unknown'`` and null gaps.
+    An explicitly entered game-over score is winner-first. When we lost,
+    reverse it before comparing to the live us-them score. Without a W/L
+    argument preserve the legacy us-them interpretation for older callers.
+    The displayed session_score stays in the operator's entered order.
+    No missing points are inferred or added to the snap log.
     """
     final = parse_score_pair(session_score)
     out: dict[str, Any] = {
@@ -739,7 +745,10 @@ def score_reconcile(
     }
     if final is None or snaplog_score is None:
         return out
-    out["gap_for"] = final[0] - int(snaplog_score[0])
-    out["gap_against"] = final[1] - int(snaplog_score[1])
+    final_for, final_against = final
+    if str(result_wl or "").strip().lower() in ("loss", "l"):
+        final_for, final_against = final_against, final_for
+    out["gap_for"] = final_for - int(snaplog_score[0])
+    out["gap_against"] = final_against - int(snaplog_score[1])
     out["status"] = "match" if out["gap_for"] == 0 and out["gap_against"] == 0 else "gap"
     return out
