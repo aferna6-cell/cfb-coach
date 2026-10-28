@@ -1094,7 +1094,9 @@ class LivePlayController:
                     (int(spot.score_us), int(spot.score_them or 0))
                     if spot.score_us is not None else None
                 )
-                reconcile = score_reconcile(self.score if typed_score else None, snaplog)
+                reconcile = score_reconcile(
+                    self.score if typed_score else None, snaplog, result_wl=wl,
+                )
                 if hasattr(self.db, "record_score_reconcile"):
                     self.db.record_score_reconcile(self.session_id, reconcile)
             except Exception:  # noqa: BLE001
