@@ -80,6 +80,95 @@ def macro_is_live(
     return False
 
 
+def _catalog_macro(name: str, side: str) -> bool:
+    token = str(name or "").strip()
+    if not token:
+        return False
+    if side == "offense":
+        from cfb_coach.madden.offense_macros import known
+
+        return bool(known(token))
+    from cfb_coach.madden.macro_pool import pool_macro
+
+    return bool(pool_macro(token))
+
+
+def _macro_token(text: str) -> str:
+    head = str(text or "").split("—", 1)[0].split(" - ", 1)[0]
+    return head.split(" [", 1)[0].strip()
+
+
+def enforce_shown_adjustments(
+    call: Any,
+    *,
+    side: str,
+    armed: Iterable[str],
+    db: Any = None,
+    opponent_id: str | None = None,
+) -> list[str]:
+    """Drop a shown macro that is not armed and installed for this opponent.
+
+    The play stays. The macro slot becomes none and the reason is logged.
+    A researched non-macro sheet (hot route, contain) is not a loadout id.
+    """
+    import logging
+
+    reasons: list[str] = []
+
+    def _drop(name: str) -> None:
+        token = str(name or "").strip()
+        if not token:
+            return
+        reason = f"dropped_unarmed_macro:{token}"
+        if reason not in reasons:
+            reasons.append(reason)
+
+    macro = getattr(call, "macro", None)
+    if macro and not macro_is_live(
+        str(macro), side=side, armed_ids=armed, db=db, opponent_id=opponent_id,
+    ):
+        _drop(str(macro))
+        call.macro = None
+        call.macro_info = None
+        label = str(getattr(call, "adj_or_macro", "") or "")
+        if side == "defense" or _macro_token(label).upper() == str(macro).strip().upper():
+            call.adj_or_macro = "none" if side == "defense" else "No adj"
+    suggest = getattr(call, "suggest_macro", None)
+    if suggest:
+        token = _macro_token(str(suggest))
+        if (
+            token
+            and _catalog_macro(token, side)
+            and not macro_is_live(
+                token, side=side, armed_ids=armed, db=db, opponent_id=opponent_id,
+            )
+        ):
+            _drop(token)
+            call.suggest_macro = None
+    adjustment = getattr(call, "adjustment", None)
+    if isinstance(adjustment, dict) and adjustment.get("id"):
+        ident = str(adjustment["id"])
+        if _catalog_macro(ident, side) and not macro_is_live(
+            ident, side=side, armed_ids=armed, db=db, opponent_id=opponent_id,
+        ):
+            _drop(ident)
+            call.adjustment = None
+            if side == "offense":
+                call.adj_or_macro = "No adj"
+    if not reasons:
+        return []
+    prior = str(getattr(call, "adjustment_dropped", "") or "")
+    fresh = [reason for reason in reasons if reason not in prior]
+    if not fresh:
+        return []
+    logged = "; ".join(fresh)
+    call.adjustment_dropped = f"{prior}; {logged}".strip("; ") if prior else logged
+    rationale = str(getattr(call, "rationale", "") or "")
+    call.rationale = f"{rationale} | {logged}".strip(" |")
+    logging.getLogger("cfb_coach.madden.playcaller").info(logged)
+    return fresh
+
+
 def adjustment_block_reason(
     call: Any,
     *,
