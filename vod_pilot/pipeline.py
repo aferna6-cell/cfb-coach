@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from vod_pilot.field_coverage import coverage_report
 from vod_pilot.flags import ExtractFlags
 from vod_pilot.lexicon import Lexicon, load_lexicon
 from vod_pilot.ocr_frames import FrameOCR, green_ratio, iter_samples
@@ -58,6 +59,7 @@ def analyze_video(
         },
         "snap_count": len(snaps),
         "snaps": [snap.to_full_dict() for snap in snaps],
+        **({"field_coverage": coverage_report(snaps)} if extract.field_coverage else {}),
     }
 
 

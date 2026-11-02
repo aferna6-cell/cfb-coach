@@ -32,6 +32,36 @@ python -m vod_pilot score \
 
 A label field set to `null` means the human could not read it. Filling that field is a false fill. Recall is computed only where the human read a value.
 
+## Re-run on the box
+
+Each fix is off unless its flag is passed, so a label build can turn on one gap at a time. The JSON records the flags that were on under `source.fixes`. `--field-coverage` adds `field_coverage` (formation, play, defensive call, adjustments, plus score, yard line, and result). It does not report a book-match rate. `--book-match` fills `book_match` only on an exact name match and does not change `play`.
+
+Copy `vod_pilot/parse_hud.py` (`norm_dd`, `parse_dd_normed`, `goal_down`) and `vod_pilot/vodx_field.py` (`spot_token`) onto the box copies of `parse_hud.py` and `vodx_field.py` before the re-run. Then:
+
+```bash
+python -m vod_pilot run \
+  --video /path/to/clip.mp4 \
+  --video-id VIDEO_ID \
+  --game madden27 \
+  --channel "Channel Name" \
+  --title "Video title" \
+  --fps 1 \
+  --out vod_pilot/out/VIDEO_ID \
+  --read-defense \
+  --read-score \
+  --read-offense-formation \
+  --read-adjustments \
+  --yardline-glyphs \
+  --read-result \
+  --goal-to-go \
+  --dd-norm \
+  --presnap-clock \
+  --flag-menu \
+  --field-coverage
+```
+
+Leave `--book-match` off unless an exact packaged name should be recorded beside the raw play. Drop rows with `is_menu_or_lobby` true before training. Do not overwrite an existing label version; write a new output stem.
+
 ## What a row means
 
 `situation_raw` is a string `parse_situation` can read (`1st & 10`). `result` is a string `parse_outcome` can read (`+4`, `-8`, `incomplete`, `td`, `int`, `fumble`, `convert`, `+0`). A sack keeps `result` as the signed yards when the next down shows them, and `result_kind` (JSON only) as `sack`.

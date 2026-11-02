@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 from vod_pilot.adjustments import read_adjustments
+from vod_pilot.field_coverage import exact_book_match
 from vod_pilot.flags import ExtractFlags
 from vod_pilot.lexicon import Lexicon
 from vod_pilot.menu_flag import menu_flag
@@ -777,6 +778,7 @@ def build_snaps(
                 goal_to_go=goal_row,
                 is_menu_or_lobby=menu_row,
                 menu_confidence=menu_conf_row,
+                book_match=exact_book_match(play) if extract.book_match and play else "",
                 coverage_seen=coverage,
                 concept_seen=_concepts(call_frames + run.frames),
                 notes=notes,

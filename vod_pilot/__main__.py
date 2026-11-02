@@ -115,6 +115,16 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="set is_menu_or_lobby when a frame is a pause, lobby, splash, play-select, or replay",
     )
+    run.add_argument(
+        "--field-coverage",
+        action="store_true",
+        help="add a per-field fill report (formation, play, defensive call, adjustments) instead of book coverage",
+    )
+    run.add_argument(
+        "--book-match",
+        action="store_true",
+        help="set book_match on an exact name match; never replace the read play name",
+    )
     run.set_defaults(func=_run)
 
     score = sub.add_parser("score", help="compare predictions to a hand-check JSON")
