@@ -105,6 +105,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="accept & read as 6, misread ordinals, bare digits in the down slot, and 360p 3rd",
     )
+    run.add_argument(
+        "--presnap-clock",
+        action="store_true",
+        help="use the clock from before the snap, not the clock after the play",
+    )
     run.set_defaults(func=_run)
 
     score = sub.add_parser("score", help="compare predictions to a hand-check JSON")

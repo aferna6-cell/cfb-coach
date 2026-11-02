@@ -389,6 +389,23 @@ def _attach_play_calls(runs: list[_Run], frames: list[FrameObs]) -> dict[int, li
     return attached
 
 
+def _presnap_clock(run: _Run, frames: list[FrameObs]) -> tuple[int | None, int | None]:
+    """Clock from before the snap, not the clock after the play has run.
+
+    Candidates are a play-call frame just before the snap and the opening
+    moment of the snap. The highest clock in that window is the pre-snap one.
+    """
+    window = [
+        frame
+        for frame in frames
+        if frame.clock is not None and run.t_start - 8 <= frame.t <= run.t_start + 1.5
+    ]
+    if not window:
+        return _clock_of(run.frames, last=False)
+    best = max(window, key=lambda frame: (frame.clock or 0, -frame.t))
+    return best.quarter, best.clock
+
+
 def _clock_of(frames: list[FrameObs], *, last: bool) -> tuple[int | None, int | None]:
     ordered = frames if not last else list(reversed(frames))
     for frame in ordered:
@@ -620,7 +637,10 @@ def build_snaps(
                 coverage = back_cov
             if extract.read_offense_formation and not formation and back_off:
                 formation = back_off
-        quarter, clock = _clock_of(run.frames, last=False)
+        if extract.presnap_clock:
+            quarter, clock = _presnap_clock(run, frames)
+        else:
+            quarter, clock = _clock_of(run.frames, last=False)
         yardline = next((f.yardline for f in run.frames if f.yardline is not None), None)
         yard_phrase = next((f.yard_phrase for f in run.frames if f.yard_phrase and f.yardline is not None), "")
         if extract.yardline_glyphs:
