@@ -62,6 +62,43 @@ python -m vod_pilot run \
 
 Leave `--book-match` off unless an exact packaged name should be recorded beside the raw play. Drop rows with `is_menu_or_lobby` true before training. Do not overwrite an existing label version; write a new output stem.
 
+The box wrapper is `vodx.py`. It must call `vodx_pr88.rows_from_frames` (positioned OCR tokens plus `--fixes`) or run the cache rebuild below. Snap ids stay `video:t_start` except menu rows removed by `flag-menu`.
+
+Cumulative cache-only build, one new label version per added fix (no video decode):
+
+```bash
+FIXES=""
+for f in read-defense read-score read-offense-formation read-adjustments \
+         yardline-glyphs read-result goal-to-go dd-norm presnap-clock flag-menu; do
+  FIXES="${FIXES:+$FIXES,}$f"
+  python -m vodx_pr88 run \
+    --cache-only \
+    --cache /workspace/vod_data/cache/ocr \
+    --video-ids VIDEO_ID \
+    --game madden27 \
+    --channel "Channel Name" \
+    --fixes "${FIXES},field-coverage" \
+    --label-version "v0.97-${f}" \
+    --out "/workspace/vod_data/labels/v0.97-${f}"
+done
+```
+
+One shot with every fix:
+
+```bash
+python -m vodx_pr88 run \
+  --cache-only \
+  --cache /workspace/vod_data/cache/ocr \
+  --video-ids VIDEO_ID \
+  --game madden27 \
+  --channel "Channel Name" \
+  --fixes all \
+  --label-version v0.97 \
+  --out /workspace/vod_data/labels/v0.97
+```
+
+`source.fixes` and `field_coverage` are in both `manifest.json` and `summary.json`. A later `vodx_refine` / `vodx_field` / `vodx_score` write goes through `vodx_pr88.stage_write`; it sticks only when that stage is strictly more confident than the PR #88 reader.
+
 ## What a row means
 
 `situation_raw` is a string `parse_situation` can read (`1st & 10`). `result` is a string `parse_outcome` can read (`+4`, `-8`, `incomplete`, `td`, `int`, `fumble`, `convert`, `+0`). A sack keeps `result` as the signed yards when the next down shows them, and `result_kind` (JSON only) as `sack`.
