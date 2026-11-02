@@ -73,6 +73,155 @@ def _parse_rest(down: int, rest: str) -> tuple[int, int] | None:
     return None
 
 
+_DD_PREFIXES: list[tuple[str, int]] = [
+    ("1ST", 1), ("IST", 1), ("LST", 1), ("15T", 1), ("7ST", 1), ("75T", 1),
+    ("3RD", 3), ("3R0", 3), ("3RO", 3), ("SRD", 3), ("BRD", 3), ("3RI", 3), ("3R1", 3), ("8RD", 3),
+    ("2ND", 2), ("2NO", 2), ("2N0", 2), ("ZND", 2), ("2NB", 2),
+    ("4TH", 4), ("4TN", 4),
+    ("1T", 1), ("ST", 1), ("5T", 1), ("4M", 4),
+    ("ND", 2), ("RD", 3), ("TH", 4),
+    ("20", 2), ("30", 3),
+    ("S", 1), ("T", 1),
+]
+_DD_PREFIXES.sort(key=lambda item: len(item[0]), reverse=True)
+_NTH = {1: "1ST", 2: "2ND", 3: "3RD", 4: "4TH"}
+_GOAL_REST = {"GOAL", "G", "SGOAL", "&GOAL", "6GOAL", "8GOAL"}
+
+
+def norm_dd(text: str, bare: bool = False) -> str | None:
+    """Normalize one down-and-distance token to ``NTH&D``, ``NTH&GOAL``, or ``NTH&INCHES``.
+
+    ``bare`` is only for a token sitting in the down-and-distance slot. It is
+    what turns ``32`` into 3rd & 2. Clocks (a colon) are never a down.
+    """
+    if ":" in text:
+        return None
+    compact = re.sub(r"[^A-Z0-9&]", "", text.upper())
+    if not compact:
+        return None
+    ordinal = _ordinal_dd(compact)
+    loose = _bare_dd(compact) if bare else None
+    if ordinal and loose and ordinal != loose:
+        return None
+    return ordinal or loose
+
+
+def _ordinal_dd(compact: str) -> str | None:
+    hits = [item for item in _DD_PREFIXES if compact.startswith(item[0])]
+    if not hits:
+        return None
+    longest = max(len(item[0]) for item in hits)
+    top = [item for item in hits if len(item[0]) == longest]
+    if len({item[1] for item in top}) != 1:
+        return None
+    rest = _dd_rest(compact[longest:])
+    if rest is None:
+        return None
+    return f"{_NTH[top[0][1]]}&{rest}"
+
+
+def _dd_rest(rest: str) -> str | None:
+    if not rest:
+        return None
+    if rest in _GOAL_REST or (rest.endswith("GOAL") and rest.replace("&", "") in _GOAL_REST | {"GOAL"}):
+        return "GOAL"
+    if rest == "INCHES":
+        return "INCHES"
+    if rest[0] in "&86E" and rest[1:].isdigit() and 1 <= len(rest[1:]) <= 2:
+        dist = int(rest[1:])
+        if 1 <= dist <= 40:
+            return str(dist)
+    if rest.isdigit():
+        value = int(rest)
+        if 1 <= value <= 40:
+            return str(value)
+        if rest[0] in "68" and 1 <= int(rest[1:]) <= 40:
+            return str(int(rest[1:]))
+    return None
+
+
+def _bare_dd(compact: str) -> str | None:
+    # '1st & 10' with the ampersand dropped is '110', which is also a spot.
+    if compact == "110" or not re.fullmatch(r"[1-4][0-9&]{1,4}", compact):
+        return None
+    down = int(compact[0])
+    rest = compact[1:]
+    splits = [rest]
+    if rest.startswith("0"):
+        splits.append(rest[1:])
+    options: list[tuple[int, int]] = []
+    for mid in splits:
+        if not mid:
+            continue
+        if mid.isdigit() and 1 <= len(mid) <= 2 and 1 <= int(mid) <= 40:
+            options.append((down, int(mid)))
+        if len(mid) > 1 and mid[0] in "68&" and mid[1:].isdigit() and 1 <= len(mid[1:]) <= 2:
+            dist = int(mid[1:])
+            if 1 <= dist <= 40:
+                options.append((down, dist))
+    unique = list(dict.fromkeys(options))
+    if len(unique) != 1:
+        return None
+    return f"{_NTH[unique[0][0]]}&{unique[0][1]}"
+
+
+def parse_dd_normed(tokens: list, layout: str = "madden") -> tuple[int, int] | None:
+    """One agreed down and distance. Disagreeing tokens are not a read."""
+    from vod_pilot.tokens import as_tok
+
+    readings: list[tuple[int, int]] = []
+    for item in tokens:
+        tok = as_tok(item)
+        if ":" in tok.text:
+            continue
+        bare = _in_dd_slot(tok.x, tok.y, layout) and layout != "cfb"
+        got = norm_dd(tok.text, bare=bare)
+        parsed = _norm_pair(got)
+        if parsed is not None:
+            readings.append(parsed)
+    unique = list(dict.fromkeys(readings))
+    if len(unique) != 1:
+        return None
+    return unique[0]
+
+
+def _in_dd_slot(x: float | None, y: float | None, layout: str) -> bool:
+    if x is None or y is None:
+        return False
+    if layout == "cfb":
+        return 0.45 <= x <= 0.55 and y >= 0.88
+    return 0.83 <= x <= 0.91 and y >= 0.90
+
+
+def _norm_pair(got: str | None) -> tuple[int, int] | None:
+    if not got or "&" not in got:
+        return None
+    down_s, rest = got.split("&", 1)
+    down = int(down_s[0])
+    if rest == "GOAL" or rest == "INCHES":
+        return down, 1
+    if rest.isdigit():
+        return down, int(rest)
+    return None
+
+
+def goal_down(token: str) -> int | None:
+    """Down when the token says goal-to-go. Does not turn that into distance 1."""
+    if ":" in token:
+        return None
+    compact = re.sub(r"[^A-Z0-9&]", "", token.upper())
+    for name, down in (("1ST", 1), ("2ND", 2), ("3RD", 3), ("4TH", 4), ("IST", 1)):
+        if not compact.startswith(name):
+            continue
+        rest = compact[len(name) :]
+        if rest in {"GOAL", "G", "SGOAL", "&GOAL", "6GOAL", "8GOAL"} or rest.endswith("GOAL"):
+            return down
+    match = re.search(r"\b([1-4])(?:ST|ND|RD|TH)\s*(?:&|AND)\s*GOAL\b", token, re.I)
+    if match:
+        return int(match.group(1))
+    return None
+
+
 def parse_down_distance(texts: list[str]) -> tuple[int, int] | None:
     for token in texts:
         got = parse_down_distance_token(token)

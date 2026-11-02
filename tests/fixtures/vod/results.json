@@ -1,0 +1,32 @@
+[
+  {
+    "id": "incomplete-banner",
+    "texts": ["PASS INCOMPLETE"],
+    "markers": ["incomplete"]
+  },
+  {
+    "id": "touchdown-with-a-space",
+    "texts": ["TOUCH DOWN"],
+    "markers": ["td"]
+  },
+  {
+    "id": "interception",
+    "texts": ["INTERCEPTION"],
+    "markers": ["int"]
+  },
+  {
+    "id": "fumble",
+    "texts": ["FUMBLE"],
+    "markers": ["fumble"]
+  },
+  {
+    "id": "turnover-when-the-type-is-not-shown",
+    "texts": ["TURNOVER"],
+    "markers": ["turnover"]
+  },
+  {
+    "id": "play-name-is-not-a-result",
+    "texts": ["INSIDE ZONE"],
+    "markers": []
+  }
+]

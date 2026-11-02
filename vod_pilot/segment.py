@@ -16,7 +16,9 @@ from vod_pilot.flags import ExtractFlags
 from vod_pilot.lexicon import Lexicon
 from vod_pilot.parse_hud import (
     clocks_compatible,
+    goal_down,
     parse_clock,
+    parse_dd_normed,
     parse_down_distance,
     parse_flags,
     parse_yardline_phrase,
@@ -25,6 +27,7 @@ from vod_pilot.schema import SnapRow, result_text, situation_raw
 from vod_pilot.scorebug import ScoreRead, parse_scorebug
 from vod_pilot.screen_read import read_defensive_formation, read_offensive_formation
 from vod_pilot.tokens import token_text
+from vod_pilot.vodx_field import sided_spot
 
 _MENU_MARKERS = (
     "SELECT GAME MODE",
@@ -123,10 +126,17 @@ class FrameObs:
     score_conf: float = 0.0
     adjustments: list[str] = field(default_factory=list)
     adjustment_conf: float = 0.0
+    yard_conf: float = 0.0
+    goal_to_go: bool = False
 
     @property
     def dd(self) -> tuple[int, int] | None:
-        if self.down is None or self.distance is None:
+        if self.down is None:
+            return None
+        if self.goal_to_go and self.distance is None:
+            # Groups the snap. The stored distance stays empty, not 1.
+            return self.down, 0
+        if self.distance is None:
             return None
         return self.down, self.distance
 
@@ -137,16 +147,39 @@ def classify_frame(
     green: float,
     lexicon: Lexicon,
     extract: ExtractFlags | None = None,
+    game: str = "madden27",
 ) -> FrameObs:
     extract = extract or ExtractFlags()
     raw_tokens = list(texts)
     texts = [token_text(item) for item in raw_tokens]
     blob = " ".join(texts).upper()
     compact = blob.replace(" ", "")
-    dd = parse_down_distance(texts)
+    if extract.dd_norm:
+        layout = "cfb" if str(game).startswith("cfb") else "madden"
+        dd = parse_dd_normed(raw_tokens, layout)
+    else:
+        dd = parse_down_distance(texts)
     clock = parse_clock(texts)
     flags = parse_flags(texts)
     yardline, yard_phrase = parse_yardline_phrase(texts, dd)
+    yard_conf = 0.0
+    # CFB's scorebug has no ball spot in this geometry. Do not invent one.
+    if extract.yardline_glyphs and yardline is None and not str(game).startswith("cfb"):
+        spot = sided_spot(raw_tokens)
+        if spot is not None:
+            number, side, yard_conf = spot
+            if side == "own":
+                yardline, yard_phrase = number, f"own {number}"
+            elif side == "opp":
+                yardline, yard_phrase = max(1, min(99, 100 - number)), f"opp {number}"
+    goal = False
+    if extract.goal_to_go:
+        painted = next((goal_down(token) for token in texts if goal_down(token)), None)
+        if painted is not None or (dd is not None and dd[1] == 1):
+            goal = True
+            down_g = painted if painted is not None else dd[0]
+            ytg = max(1, min(99, 100 - yardline)) if yardline is not None else None
+            dd = (down_g, ytg)
     from vod_pilot.lexicon import _hits
 
     formation_hits = lexicon.formation_hits(texts)
@@ -264,6 +297,8 @@ def classify_frame(
         score_conf=score.confidence,
         adjustments=adjustments,
         adjustment_conf=adjustment_conf,
+        yard_conf=yard_conf,
+        goal_to_go=goal,
     )
 
 
@@ -372,48 +407,140 @@ def _score_flags(flags: set[str]) -> tuple[str, int | None, float] | None:
     return None
 
 
-def _infer_between(prev: _Run, nxt: _Run, boundary_flags: set[str]) -> tuple[str, int | None, float]:
+def _infer_between(
+    prev: _Run,
+    nxt: _Run,
+    boundary_flags: set[str],
+    extract: ExtractFlags | None = None,
+) -> tuple[str, int | None, float, str]:
+    extract = extract or ExtractFlags()
     flags = boundary_flags
     # A kickoff has no down. A score or turnover banner just before it is
     # still the result of the snap that just ended.
     if prev.frames and prev.frames[0].kind == "kickoff":
-        return "", None, 0.0
+        return "", None, 0.0, ""
     if nxt.frames and nxt.frames[0].kind == "kickoff":
         scored = _score_flags(flags)
-        return scored if scored is not None else ("", None, 0.0)
+        return (*scored, "") if scored is not None else ("", None, 0.0, "")
 
     dd0 = prev.majority_dd()
     dd1 = nxt.majority_dd()
     if not dd0 or not dd1:
         scored = _score_flags(flags)
-        return scored if scored is not None else ("", None, 0.0)
+        return (*scored, "") if scored is not None else ("", None, 0.0, "")
     q0, c0 = _clock_of(prev.frames, last=True)
     q1, c1 = _clock_of(nxt.frames, last=False)
     if not clocks_compatible(q0, c0, q1, c1):
         scored = _score_flags(flags)
-        return scored if scored is not None else ("", None, 0.0)
+        return (*scored, "") if scored is not None else ("", None, 0.0, "")
     clock_known = c0 is not None and c1 is not None
     conf = 0.72 if clock_known else 0.4
+    if extract.read_result:
+        banner = _banner_result(flags)
+        if banner is not None:
+            return banner
     scored = _score_flags(flags)
     if scored is not None:
-        return scored
+        return (*scored, "")
 
     down0, dist0 = dd0
     down1, dist1 = dd1
     if down1 == down0 + 1:
         yards = dist0 - dist1
         if "sack" in flags:
-            return "sack", yards, min(0.85, conf + 0.1)
+            return "sack", yards, min(0.85, conf + 0.1), ""
         if "incomplete" in flags and yards == 0:
-            return "incomplete", 0, 0.75
+            return "incomplete", 0, 0.75, ""
+        if extract.goal_to_go and _both_goal(prev, nxt):
+            moved = _goal_spot_yards(prev, nxt, conf)
+            if moved is not None:
+                return moved
         if yards > 0:
-            return "gain", yards, conf
+            return "gain", yards, conf, ""
         if yards < 0:
-            return "loss", yards, conf
-        return "no_gain", 0, conf - 0.15
+            return "loss", yards, conf, ""
+        if extract.read_result:
+            same, conflict = _spot_zero(prev, nxt)
+            if conflict:
+                # Distance says 0 and the spots say the ball moved. Not a +0.
+                return "unknown", None, 0.0, "result_spot_conflict"
+            if same:
+                return "no_gain", 0, max(conf, 0.8), ""
+        return "no_gain", 0, conf - 0.15, ""
     if down1 == 1 and down0 in {2, 3} and dist1 == 10:
-        return "convert", None, 0.4 if clock_known else 0.25
-    return "", None, 0.0
+        return "convert", None, 0.4 if clock_known else 0.25, ""
+    return "", None, 0.0, ""
+
+
+def _both_goal(prev: _Run, nxt: _Run) -> bool:
+    return any(frame.goal_to_go for frame in prev.frames) and any(frame.goal_to_go for frame in nxt.frames)
+
+
+def _goal_spot_yards(prev: _Run, nxt: _Run, conf: float) -> tuple[str, int | None, float, str] | None:
+    """Yards from the spots when both snaps are goal-to-go. Never a fake +0."""
+    yl0 = _single_yardline(prev.frames)
+    yl1 = _single_yardline(nxt.frames)
+    if yl0 is None or yl1 is None:
+        return "unknown", None, 0.0, "goal_no_spot"
+    yards = yl1 - yl0
+    if yards > 0:
+        return "gain", yards, max(conf, 0.75), ""
+    if yards < 0:
+        return "loss", yards, max(conf, 0.75), ""
+    return "no_gain", 0, max(conf, 0.8), ""
+
+
+def _banner_result(flags: set[str]) -> tuple[str, int | None, float, str] | None:
+    """A painted result. Incomplete is only this banner, never a guessed +0."""
+    if "int" in flags:
+        return "int", 0, 0.8, ""
+    if "fumble" in flags:
+        return "fumble", 0, 0.7, ""
+    if "td" in flags:
+        return "td", None, 0.75, ""
+    if "turnover" in flags:
+        return "turnover", None, 0.7, ""
+    if "incomplete" in flags:
+        return "incomplete", 0, 0.75, ""
+    return None
+
+
+def _spot_zero(prev: _Run, nxt: _Run) -> tuple[bool, bool]:
+    """(spots agree on zero, spots disagree). Missing spots are neither."""
+    yl0 = _single_yardline(prev.frames)
+    yl1 = _single_yardline(nxt.frames)
+    if yl0 is None or yl1 is None:
+        return False, False
+    if yl0 == yl1:
+        return True, False
+    return False, True
+
+
+def _single_yardline(frames: list[FrameObs]) -> int | None:
+    vals = {frame.yardline for frame in frames if frame.yardline is not None}
+    if len(vals) == 1:
+        return next(iter(vals))
+    return None
+
+
+def _extra_result_markers(frames: list[FrameObs]) -> set[str]:
+    import re
+
+    blob = " ".join(token for frame in frames for token in frame.texts)
+    found: set[str] = set()
+    if re.search(r"TOUCH\s*DOWN|\bTOUCHDOWN\b", blob, re.I):
+        found.add("td")
+    if re.search(r"PASS\s+INCOMPLETE|\bINCOMPLETE\b", blob, re.I):
+        found.add("incomplete")
+    if re.search(r"INTERCEPT", blob, re.I):
+        found.add("int")
+    if re.search(r"FUMBLE", blob, re.I):
+        found.add("fumble")
+    if re.search(r"\bTURNOVER\b", blob, re.I):
+        found.add("turnover")
+    if re.search(r"SACK(?!\s*THE\s*QB)", blob, re.I):
+        found.add("sack")
+    return found
 
 
 def _side(formation: str, coverage: str) -> str:
@@ -496,6 +623,10 @@ def build_snaps(
         quarter, clock = _clock_of(run.frames, last=False)
         yardline = next((f.yardline for f in run.frames if f.yardline is not None), None)
         yard_phrase = next((f.yard_phrase for f in run.frames if f.yard_phrase and f.yardline is not None), "")
+        if extract.yardline_glyphs:
+            seen = {f.yardline for f in run.frames if f.yardline is not None}
+            if len(seen) > 1:
+                yardline, yard_phrase = None, ""
         if not yard_phrase:
             yard_phrase = next((f.yard_phrase for f in run.frames if f.yard_phrase), "")
             if yard_phrase.startswith("ball on"):
@@ -517,11 +648,16 @@ def build_snaps(
                     flags.add("sack")
                 if "incomplete" in frame.flags:
                     flags.add("incomplete")
-            kind, yards, conf = _infer_between(run, nxt, flags)
+            if extract.read_result:
+                flags |= _extra_result_markers(list(run.frames[-2:]) + gap_frames)
+            kind, yards, conf, result_flag = _infer_between(run, nxt, flags, extract)
         else:
+            result_flag = ""
             flags = set()
             for frame in run.frames:
                 flags |= frame.flags
+            if extract.read_result:
+                flags |= _extra_result_markers(run.frames)
             if "sack" in flags:
                 kind, yards, conf = "sack", None, 0.55
             elif "incomplete" in flags:
@@ -530,10 +666,12 @@ def build_snaps(
                 kind, yards, conf = "int", 0, 0.7
             elif "td" in flags:
                 kind, yards, conf = "td", None, 0.6
+            elif extract.read_result and "turnover" in flags:
+                kind, yards, conf, result_flag = "turnover", None, 0.7, ""
 
         if run.frames[0].kind == "kickoff":
             play = play or "Kickoff"
-            kind, yards, conf = "", None, 0.0
+            kind, yards, conf, result_flag = "", None, 0.0, ""
 
         def_form = ""
         def_conf = 0.0
@@ -556,16 +694,26 @@ def build_snaps(
             snap_adjustments, snap_adj_conf = _agree_adjustments(call_frames + list(run.frames))
         down = dd[0] if dd else None
         distance = dd[1] if dd else None
+        if (
+            extract.goal_to_go
+            and distance == 0
+            and any(frame.goal_to_go for frame in run.frames)
+            and all(frame.distance is None for frame in run.frames)
+        ):
+            # The 0 only groups a goal snap whose yards-to-goal were not read.
+            distance = None
         agree = 0.0
         if dd:
             agree = sum(1 for f in run.frames if f.dd == dd) / len(run.frames)
         clock_text = _fmt_clock(clock)
+        goal_row = any(frame.goal_to_go for frame in run.frames) if extract.goal_to_go else False
         sit = situation_raw(
             down=down,
             distance=distance,
             quarter=quarter,
             clock=clock_text,
             yardline_phrase=yard_phrase if yardline is not None else "",
+            goal=goal_row,
         )
         channel_slug = "".join(ch.lower() if ch.isalnum() else "-" for ch in channel).strip("-") or "vod"
         notes = (
@@ -576,6 +724,8 @@ def build_snaps(
         )
         if yard_phrase and yardline is None:
             notes += f" | spot={yard_phrase} (not converted to 0-100)"
+        if result_flag:
+            notes += f" | {result_flag}"
         rows.append(
             SnapRow(
                 ts=f"vod:{video_id}:{run.t_start:.1f}",
@@ -591,6 +741,8 @@ def build_snaps(
                 play=play,
                 macro="",
                 result=result_text(kind=kind, yards=yards),
+                result_flag=result_flag,
+                goal_to_go=goal_row,
                 coverage_seen=coverage,
                 concept_seen=_concepts(call_frames + run.frames),
                 notes=notes,
@@ -625,6 +777,7 @@ def build_snaps(
                             extract, formation, call_frames, run.frames, back_off, back_off_conf
                         ),
                         adjustment_conf=snap_adj_conf,
+                        yard_conf=_yard_conf(extract, yardline, run.frames),
                     ),
                 ),
             )
@@ -768,6 +921,7 @@ def _extra_conf(
     score_conf: float = 0.0,
     formation_conf: float = 0.0,
     adjustment_conf: float = 0.0,
+    yard_conf: float = 0.0,
 ) -> dict[str, float] | None:
     extra: dict[str, float] = {}
     if extract.read_defense:
@@ -778,7 +932,16 @@ def _extra_conf(
         extra["formation"] = formation_conf
     if extract.read_adjustments:
         extra["adjustments"] = adjustment_conf
+    if extract.yardline_glyphs and yard_conf:
+        extra["yardline"] = yard_conf
     return extra or None
+
+
+def _yard_conf(extract: ExtractFlags, yardline: int | None, frames: list[FrameObs]) -> float:
+    if not extract.yardline_glyphs or yardline is None:
+        return 0.0
+    confs = [frame.yard_conf for frame in frames if frame.yardline == yardline and frame.yard_conf]
+    return min(confs) if confs else 0.0
 
 
 def _confidence(

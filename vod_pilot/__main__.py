@@ -85,6 +85,26 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="record explicit hot routes, audibles, and offensive or defensive adjustments",
     )
+    run.add_argument(
+        "--yardline-glyphs",
+        action="store_true",
+        help="read the ball spot when the arrow glyph is ¥, y, a, or a leading 1",
+    )
+    run.add_argument(
+        "--read-result",
+        action="store_true",
+        help="read TD, incomplete, and turnover banners; do not call a moved ball +0",
+    )
+    run.add_argument(
+        "--goal-to-go",
+        action="store_true",
+        help="read & Goal as goal-to-go and take yards from the spots, not from distance 1",
+    )
+    run.add_argument(
+        "--dd-norm",
+        action="store_true",
+        help="accept & read as 6, misread ordinals, bare digits in the down slot, and 360p 3rd",
+    )
     run.set_defaults(func=_run)
 
     score = sub.add_parser("score", help="compare predictions to a hand-check JSON")

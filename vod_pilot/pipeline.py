@@ -33,7 +33,7 @@ def analyze_video(
     n = 0
     for t, frame in iter_samples(str(video_path), sample_fps=sample_fps, max_seconds=max_seconds):
         texts = reader.read(frame)
-        frames.append(classify_frame(t, texts, green_ratio(frame), lexicon, extract))
+        frames.append(classify_frame(t, texts, green_ratio(frame), lexicon, extract, game=game))
         n += 1
     snaps = build_snaps(frames, video_id=video_id, channel=channel, game=game, extract=extract)
     return {

@@ -49,6 +49,7 @@ def situation_raw(
     quarter: int | None = None,
     clock: str | None = None,
     yardline_phrase: str | None = None,
+    goal: bool = False,
 ) -> str:
     """A string ``parse_situation`` can read for down and distance.
 
@@ -57,7 +58,9 @@ def situation_raw(
     is not written here, because own-versus-opp is usually unknown on a VOD.
     """
     parts: list[str] = []
-    if down and distance is not None:
+    if down and goal:
+        parts.append(f"{_ordinal(down)} & Goal")
+    elif down and distance is not None:
         parts.append(f"{_ordinal(down)} & {distance}")
     if yardline_phrase:
         parts.append(yardline_phrase)
@@ -105,6 +108,8 @@ class SnapRow:
     record_left: str = ""
     record_right: str = ""
     adjustments: list[str] = field(default_factory=list)
+    result_flag: str = ""
+    goal_to_go: bool = False
     confidence: dict[str, float] = field(default_factory=dict)
 
     def to_snap_dict(self) -> dict[str, Any]:
@@ -133,6 +138,8 @@ def result_text(*, kind: str, yards: int | None) -> str:
         return "fumble"
     if kind == "td":
         return "td" if yards is None else f"td +{yards}"
+    if kind == "turnover":
+        return "turnover"
     if kind == "convert" and yards is None:
         return "convert"
     if yards is None:
