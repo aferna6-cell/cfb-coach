@@ -19,6 +19,7 @@ except menu rows dropped by ``flag-menu``.
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import re
 from pathlib import Path
@@ -195,6 +196,216 @@ def _adjustment_fields(labels: list[str]) -> dict[str, str]:
     return {key: "; ".join(values) for key, values in buckets.items() if values}
 
 
+_HR_RX = re.compile(r"^(WR|TE|HB|RB|FB|SLOT|QB|X|Y|Z)?HOTROUTES?$")
+_MENU_Y = (0.55, 0.92)
+
+
+def _norm_alnum(text: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", text.upper())
+
+
+def _token_parts(item: Any) -> tuple[str, float | None, float | None, float | None]:
+    parsed = item if isinstance(item, (str, Tok)) else parse_token(item)
+    if isinstance(parsed, Tok):
+        return parsed.text, parsed.conf, parsed.x, parsed.y
+    return str(parsed), None, None, None
+
+
+def engine_tokens(raw_tokens: list[Any]) -> list[Tok | str]:
+    """Same token gate as vodx.py extract_one before classify_frame.
+
+    Confidence under 0.45 is dropped. A hot-route wheel (y 0.55-0.92) is dropped
+    when a HOT ROUTES token is on the frame. Positions are kept.
+    """
+    kept: list[tuple[str, float | None, float | None, float | None]] = []
+    for item in raw_tokens:
+        text, conf, x, y = _token_parts(item)
+        if conf is not None and conf < 0.45:
+            continue
+        kept.append((text, conf, x, y))
+    if any(_HR_RX.search(_norm_alnum(text)) for text, *_ in kept):
+        kept = [
+            item
+            for item in kept
+            if item[3] is None or not (_MENU_Y[0] <= item[3] <= _MENU_Y[1])
+        ]
+    out: list[Tok | str] = []
+    for text, conf, x, y in kept:
+        if x is None and y is None and conf is None:
+            out.append(text)
+        else:
+            out.append(Tok(text, x=x, y=y, conf=conf))
+    return out
+
+
+def apply_layout(
+    frames: list[dict],
+    layout: dict | None,
+    *,
+    section_offset_s: float = 0.0,
+) -> list[dict]:
+    """Transform, mask, then gameplay window. Same order as vodx.py extract_one.
+
+    ``layout`` comes from tools/layouts.json for one video (masks and
+    ``gameplay_window`` in absolute VOD seconds). Token x/y are normalized
+    0-1. Frames outside the window are removed. Tokens inside a mask box are
+    removed. This is what keeps pre-game and ticker chat out of the snap count.
+    """
+    prepared = []
+    for frame in frames:
+        raw = list(frame.get("k", frame.get("tokens", [])))
+        prepared.append(
+            {
+                "t": float(frame.get("t") or frame.get("time") or 0.0),
+                "g": float(frame.get("g", frame.get("green", 0.0)) or 0.0),
+                "k": [_as_k(item) for item in raw],
+            }
+        )
+    layout = layout or {}
+    transform = layout.get("transform")
+    if transform:
+        sx, sy = float(transform["sx"]), float(transform["sy"])
+        ox, oy = float(transform["ox"]), float(transform["oy"])
+        for frame in prepared:
+            kept = []
+            for token in frame["k"]:
+                nx = (token[2] - ox) / sx
+                ny = (token[3] - oy) / sy
+                if 0.0 <= nx <= 1.0 and 0.0 <= ny <= 1.0:
+                    kept.append([token[0], token[1], round(nx, 4), round(ny, 4), *token[4:]])
+            frame["k"] = kept
+    masks = layout.get("mask") or []
+    if masks:
+        for frame in prepared:
+            frame["k"] = [
+                token
+                for token in frame["k"]
+                if not any(
+                    box[0] <= token[2] <= box[2] and box[1] <= token[3] <= box[3] for box in masks
+                )
+            ]
+    window = layout.get("gameplay_window")
+    if window:
+        start = float(window[0] or 0.0)
+        end = float(window[1]) if window[1] is not None else float("inf")
+        prepared = [
+            frame
+            for frame in prepared
+            if start <= frame["t"] + section_offset_s < end
+        ]
+    for frame in prepared:
+        frame["tokens"] = frame["k"]
+    return prepared
+
+
+def _as_k(item: Any) -> list:
+    if isinstance(item, (list, tuple)) and len(item) >= 4:
+        return list(item)
+    text, conf, x, y = _token_parts(item)
+    return [text, 1.0 if conf is None else conf, 0.0 if x is None else x, 0.0 if y is None else y]
+
+
+def layout_for(record: dict, layouts: dict) -> dict:
+    """Creator defaults, then the per-video entry. Video wins."""
+    layout = dict((layouts.get("creators") or {}).get(record.get("creator") or "", {}))
+    layout.update((layouts.get("videos") or {}).get(str(record.get("video_id") or ""), {}))
+    panel = record.get("previous_play_panel")
+    layout["calls"] = "panel" if panel is True else ("no_panel" if panel is False else "unknown")
+    return layout
+
+
+def baseline_snap_ids(
+    frames: list[dict],
+    *,
+    video_id: str,
+    channel: str,
+    game: str,
+    lexicon: Lexicon | None = None,
+) -> list[str]:
+    """v0.96 count logic: engine token gate, plain text, no PR #88 flags."""
+    lexicon = lexicon or load_lexicon()
+    observed = []
+    for frame in frames:
+        raw = frame.get("k", frame.get("tokens", []))
+        texts = []
+        for token in engine_tokens(raw):
+            texts.append(token.text if isinstance(token, Tok) else str(token))
+        observed.append(classify_frame(frame["t"], texts, frame.get("g", 0.0), lexicon, game=game))
+    snaps = build_snaps(
+        observed,
+        video_id=video_id,
+        channel=channel,
+        game=game,
+        extract=ExtractFlags(),
+    )
+    return [f"{video_id}:{snap.t_start:.1f}" for snap in snaps]
+
+
+def snapshot_rows(rows: list[dict]) -> dict[str, dict]:
+    """Values and confidences to protect from a later, less-confident stage."""
+    saved = {}
+    for row in rows:
+        saved[row["snap_id"]] = {
+            "values": {key: row.get(key) for key in _CONF_KEY},
+            "conf": dict(row.get("_pr88_conf") or {}),
+        }
+    return saved
+
+
+def restore_if_not_more_confident(row: dict, snapshot: dict) -> None:
+    """Put a PR #88 value back when a later stage is not strictly more confident."""
+    held = snapshot.get("conf") or {}
+    values = snapshot.get("values") or {}
+    for field, key in _CONF_KEY.items():
+        if key not in held:
+            continue
+        if row.get(field) == values.get(field):
+            continue
+        stage_conf = float((row.get("conf") or {}).get(key) or 0.0)
+        if held[key] >= stage_conf:
+            row[field] = values.get(field)
+            row.setdefault("conf", {})[key] = held[key]
+
+
+def restore_rows(rows: list[dict], snapshots: dict[str, dict]) -> None:
+    for row in rows:
+        saved = snapshots.get(row.get("snap_id"))
+        if saved:
+            restore_if_not_more_confident(row, saved)
+
+
+def observe_frames(
+    frames: list[dict],
+    *,
+    video_id: str,
+    channel: str,
+    game: str,
+    extract: ExtractFlags,
+    lexicon: Lexicon | None = None,
+):
+    """Classify frames that already went through transform, mask, and window."""
+    lexicon = lexicon or load_lexicon()
+    observed = [
+        classify_frame(
+            frame["t"],
+            engine_tokens(frame.get("k", frame.get("tokens", []))),
+            frame.get("g", frame.get("green", 0.0)),
+            lexicon,
+            extract,
+            game=game,
+        )
+        for frame in frames
+    ]
+    snaps = build_snaps(
+        observed,
+        video_id=video_id,
+        channel=channel,
+        game=game,
+        extract=extract,
+    )
+    return snaps, observed
+
+
 def rows_from_frames(
     frames: list[dict],
     *,
@@ -205,25 +416,13 @@ def rows_from_frames(
     lexicon: Lexicon | None = None,
 ) -> list[dict]:
     """Classify with positions and flags. Snap ids stay ``video:t_start``."""
-    lexicon = lexicon or load_lexicon()
-
-    def _tokens(frame: dict) -> list:
-        raw = frame.get("tokens", frame.get("k", []))
-        out = []
-        for item in raw:
-            out.append(item if isinstance(item, (str, Tok)) else parse_token(item))
-        return out
-
-    observed = [
-        classify_frame(frame["t"], _tokens(frame), frame.get("g", frame.get("green", 0.0)), lexicon, extract, game=game)
-        for frame in frames
-    ]
-    snaps = build_snaps(
-        observed,
+    snaps, _observed = observe_frames(
+        frames,
         video_id=video_id,
         channel=channel,
         game=game,
         extract=extract,
+        lexicon=lexicon,
     )
     rows = []
     for snap in snaps:
@@ -343,11 +542,19 @@ def label_manifest(rows: list[dict], *, version: str, fixes: list[str], cache_on
 
 
 def write_label_build(out_dir: Path, rows: list[dict], manifest: dict) -> None:
+    """Per-VOD ``<video_id>.jsonl.gz`` plus manifest and summary.
+
+    ``source.fixes`` and ``field_coverage`` are in both JSON files. Opponent
+    type and side already on the row are left as the pipeline set them.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "snaps.jsonl").write_text(
-        "".join(json.dumps(row, default=str) + "\n" for row in rows),
-        encoding="utf-8",
-    )
+    by_video: dict[str, list[dict]] = {}
+    for row in rows:
+        by_video.setdefault(str(row.get("video_id") or "vod"), []).append(row)
+    for video_id, group in by_video.items():
+        with gzip.open(out_dir / f"{video_id}.jsonl.gz", "wt", encoding="utf-8") as fh:
+            for row in group:
+                fh.write(json.dumps(row, default=str) + "\n")
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     summary = {
         "source": manifest["source"],
@@ -355,6 +562,20 @@ def write_label_build(out_dir: Path, rows: list[dict], manifest: dict) -> None:
         "counts": manifest["counts"],
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
+
+def stamp_manifest_row(row: dict, record: dict) -> None:
+    """Keep Scout opponent metadata and the engine side. Do not invent either."""
+    opponent = record.get("opponent_type") or row.get("opponent_type") or "unknown"
+    if opponent not in ("cpu", "human", "unknown"):
+        opponent = "unknown"
+    row["opponent_type"] = opponent
+    row["opponent_type_source"] = record.get("opponent_type_source") or (
+        "scout_manifest" if opponent in ("cpu", "human") else "missing_scout_tag"
+    )
+    row["side"] = row.get("side") or "offense"
+    if record.get("game") and record.get("game") != "mixed":
+        row["game"] = record["game"]
 
 
 def run_cache(
@@ -366,6 +587,8 @@ def run_cache(
     channel: str,
     video_ids: list[str] | None,
     version: str,
+    layouts: dict | None = None,
+    records: dict[str, dict] | None = None,
 ) -> dict:
     extract = flags_from_fixes(fixes)
     files = cache_files(cache, video_ids)
@@ -373,16 +596,22 @@ def run_cache(
         raise SystemExit(f"no OCR cache jsonl under {cache}")
     rows: list[dict] = []
     for video_id, path in files:
-        frames = load_ocr_jsonl(path)
-        rows.extend(
-            rows_from_frames(
-                frames,
-                video_id=video_id,
-                channel=channel,
-                game=game,
-                extract=extract,
-            )
+        record = dict((records or {}).get(video_id) or {})
+        record.setdefault("video_id", video_id)
+        record.setdefault("game", game)
+        record.setdefault("creator", channel)
+        layout = layout_for(record, layouts or {})
+        frames = apply_layout(load_ocr_jsonl(path), layout, section_offset_s=float(record.get("section_offset_s") or 0))
+        built = rows_from_frames(
+            frames,
+            video_id=video_id,
+            channel=channel or record.get("creator") or "",
+            game=record.get("game") if record.get("game") != "mixed" else game,
+            extract=extract,
         )
+        for row in built:
+            stamp_manifest_row(row, record)
+        rows.extend(built)
     manifest = label_manifest(
         rows,
         version=version,
@@ -404,9 +633,11 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--channel", default="")
     run.add_argument("--fixes", default="", help="comma list, or 'all'. See FIX_ORDER.")
     run.add_argument("--label-version", default="v0.97")
-    run.add_argument("--out", required=True, help="label directory (manifest.json + summary.json)")
+    run.add_argument("--layouts", default="", help="tools/layouts.json; masks and gameplay windows apply before classify")
+    run.add_argument("--out", required=True, help="label directory (per-VOD jsonl.gz, manifest, summary)")
     args = parser.parse_args(argv)
     if args.cmd == "run":
+        layouts = json.loads(Path(args.layouts).read_text(encoding="utf-8")) if args.layouts else {}
         manifest = run_cache(
             Path(args.cache),
             out_dir=Path(args.out),
@@ -415,6 +646,7 @@ def main(argv: list[str] | None = None) -> int:
             channel=args.channel,
             video_ids=args.video_ids,
             version=args.label_version,
+            layouts=layouts,
         )
         print(
             f"snaps {manifest['counts']['snaps_labeled']}  "

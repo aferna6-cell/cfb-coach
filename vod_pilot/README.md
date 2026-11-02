@@ -64,38 +64,22 @@ Leave `--book-match` off unless an exact packaged name should be recorded beside
 
 The box wrapper is `vodx.py`. It must call `vodx_pr88.rows_from_frames` (positioned OCR tokens plus `--fixes`) or run the cache rebuild below. Snap ids stay `video:t_start` except menu rows removed by `flag-menu`.
 
-Cumulative cache-only build, one new label version per added fix (no video decode):
+Cumulative cache-only build on the box. `vodx.py run` applies `tools/layouts.json` (mask and gameplay window on token x/y) before classification, then runs refine, field, score, cards, and speech as usual. Each step writes a new label version. Do not overwrite v0.96.
 
 ```bash
 FIXES=""
 for f in read-defense read-score read-offense-formation read-adjustments \
          yardline-glyphs read-result goal-to-go dd-norm presnap-clock flag-menu; do
   FIXES="${FIXES:+$FIXES,}$f"
-  python -m vodx_pr88 run \
+  python /workspace/vod_data/tools/vodx.py run \
     --cache-only \
-    --cache /workspace/vod_data/cache/ocr \
     --video-ids VIDEO_ID \
-    --game madden27 \
-    --channel "Channel Name" \
     --fixes "${FIXES},field-coverage" \
-    --label-version "v0.97-${f}" \
-    --out "/workspace/vod_data/labels/v0.97-${f}"
+    --label-version "v0.97-${f}"
 done
 ```
 
-One shot with every fix:
-
-```bash
-python -m vodx_pr88 run \
-  --cache-only \
-  --cache /workspace/vod_data/cache/ocr \
-  --video-ids VIDEO_ID \
-  --game madden27 \
-  --channel "Channel Name" \
-  --fixes all \
-  --label-version v0.97 \
-  --out /workspace/vod_data/labels/v0.97
-```
+Every fix at once: `--fixes all --label-version v0.97`. `source.fixes` and `field_coverage` land in the label `manifest.json` and `summary.json`. Empty `--fixes` is the v0.96 count path: layout window and mask, then the baseline down. Copy `tools/vodx.py`, `vodx_pr88.py`, and `tools/layouts.json` onto the box before the run.
 
 `source.fixes` and `field_coverage` are in both `manifest.json` and `summary.json`. A later `vodx_refine` / `vodx_field` / `vodx_score` write goes through `vodx_pr88.stage_write`; it sticks only when that stage is strictly more confident than the PR #88 reader.
 

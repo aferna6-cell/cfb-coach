@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import unittest
 from pathlib import Path
@@ -10,7 +11,7 @@ from tempfile import TemporaryDirectory
 from vod_pilot.flags import ExtractFlags
 from vod_pilot.lexicon import Lexicon
 import vodx_pr88
-from vodx_pr88 import flags_from_fixes, rows_from_frames, run_cache, stage_write
+from vodx_pr88 import flags_from_fixes, rows_from_frames, run_cache, stage_write, stamp_manifest_row
 
 
 def _lex() -> Lexicon:
@@ -42,6 +43,16 @@ def _frames() -> list[dict]:
             "tokens": [["1ST810", 0.9, 0.4, 0.95]],
         },
     ]
+
+
+class ManifestMetaTests(unittest.TestCase):
+    def test_opponent_and_side_stay(self) -> None:
+        row = {"side": "defense", "opponent_type": "unknown", "game": "madden27"}
+        stamp_manifest_row(row, {"opponent_type": "human", "game": "cfb27", "video_id": "D1xGdV6Yv2I"})
+        self.assertEqual(row["opponent_type"], "human")
+        self.assertEqual(row["opponent_type_source"], "scout_manifest")
+        self.assertEqual(row["side"], "defense")
+        self.assertEqual(row["game"], "cfb27")
 
 
 class FixesTests(unittest.TestCase):
@@ -115,7 +126,9 @@ class CacheRebuildTests(unittest.TestCase):
             self.assertEqual(summary["source"]["fixes"], manifest["source"]["fixes"])
             self.assertEqual(summary["field_coverage"]["rows"], manifest["counts"]["snaps_labeled"])
             # The cache file was the only input. No video path is required.
-            self.assertTrue((out / "snaps.jsonl").exists())
+            with gzip.open(out / "abc.jsonl.gz", "rt", encoding="utf-8") as fh:
+                saved = [json.loads(line) for line in fh if line.strip()]
+            self.assertEqual(len(saved), manifest["counts"]["snaps_labeled"])
 
 
 class StageConfidenceTests(unittest.TestCase):
