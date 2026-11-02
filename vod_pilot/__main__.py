@@ -70,6 +70,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="fill defensive formation from a unique on-screen front or its tooltip",
     )
+    run.add_argument(
+        "--read-score",
+        action="store_true",
+        help="keep (0-0) ATL team tokens and read the two scores beside them",
+    )
     run.set_defaults(func=_run)
 
     score = sub.add_parser("score", help="compare predictions to a hand-check JSON")

@@ -98,6 +98,12 @@ class SnapRow:
     yards: int | None = None
     field_zone: str = ""
     def_formation: str = ""
+    team_left: str = ""
+    team_right: str = ""
+    score_left: int | None = None
+    score_right: int | None = None
+    record_left: str = ""
+    record_right: str = ""
     confidence: dict[str, float] = field(default_factory=dict)
 
     def to_snap_dict(self) -> dict[str, Any]:

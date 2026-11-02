@@ -21,6 +21,7 @@ from vod_pilot.parse_hud import (
     parse_yardline_phrase,
 )
 from vod_pilot.schema import SnapRow, result_text, situation_raw
+from vod_pilot.scorebug import ScoreRead, parse_scorebug
 from vod_pilot.screen_read import read_defensive_formation
 from vod_pilot.tokens import token_text
 
@@ -109,6 +110,13 @@ class FrameObs:
     def_formation_conf: float = 0.0
     previous_def_formation: str = ""
     previous_def_conf: float = 0.0
+    team_left: str = ""
+    team_right: str = ""
+    score_left: int | None = None
+    score_right: int | None = None
+    record_left: str = ""
+    record_right: str = ""
+    score_conf: float = 0.0
 
     @property
     def dd(self) -> tuple[int, int] | None:
@@ -125,7 +133,8 @@ def classify_frame(
     extract: ExtractFlags | None = None,
 ) -> FrameObs:
     extract = extract or ExtractFlags()
-    texts = [token_text(item) for item in texts]
+    raw_tokens = list(texts)
+    texts = [token_text(item) for item in raw_tokens]
     blob = " ".join(texts).upper()
     compact = blob.replace(" ", "")
     dd = parse_down_distance(texts)
@@ -176,6 +185,7 @@ def classify_frame(
         elif read_name:
             def_formation = read_name
             def_formation_conf = read_conf
+    score = parse_scorebug(raw_tokens) if extract.read_score else ScoreRead()
 
     kind = "other"
     if any(marker in compact or marker in blob for marker in _MENU_MARKERS):
@@ -217,6 +227,13 @@ def classify_frame(
         def_formation_conf=def_formation_conf,
         previous_def_formation=previous_def_formation,
         previous_def_conf=previous_def_conf,
+        team_left=score.team_left,
+        team_right=score.team_right,
+        score_left=score.score_left,
+        score_right=score.score_right,
+        record_left=score.record_left,
+        record_right=score.record_right,
+        score_conf=score.confidence,
     )
 
 
@@ -497,6 +514,7 @@ def build_snaps(
                 def_form, def_conf = live_name, live_conf
             else:
                 def_form, def_conf = back_def, back_def_conf
+        score_row = _agree_score(run.frames) if extract.read_score else ScoreRead()
         down = dd[0] if dd else None
         distance = dd[1] if dd else None
         agree = 0.0
@@ -546,6 +564,12 @@ def build_snaps(
                 yards=yards,
                 field_zone=_field_zone(yardline, distance),
                 def_formation=def_form,
+                team_left=score_row.team_left,
+                team_right=score_row.team_right,
+                score_left=score_row.score_left,
+                score_right=score_row.score_right,
+                record_left=score_row.record_left,
+                record_right=score_row.record_right,
                 confidence=_confidence(
                     agree=agree,
                     formation=formation,
@@ -553,7 +577,7 @@ def build_snaps(
                     coverage=coverage,
                     result=conf,
                     yardline=yardline,
-                    extra={"def_formation": def_conf} if extract.read_defense else None,
+                    extra=_extra_conf(extract, def_conf=def_conf, score_conf=score_row.confidence),
                 ),
             )
         )
@@ -604,6 +628,56 @@ def _unique_labeled(frames: list[FrameObs], attr: str, conf_attr: str) -> tuple[
         return "", 0.0
     confs = [conf for name, conf in vals if name == names[0] and conf > 0]
     return names[0], (min(confs) if confs else 0.0)
+
+
+def _agree_score(frames: list[FrameObs]) -> ScoreRead:
+    """The score at the snap. Conflicting reads are dropped, not averaged."""
+    from collections import Counter
+
+    reads = [
+        frame
+        for frame in frames
+        if frame.team_left and frame.team_right and frame.score_left is not None and frame.score_right is not None
+    ]
+    if not reads:
+        return ScoreRead()
+
+    def key(frame: FrameObs) -> tuple:
+        return (
+            frame.team_left,
+            frame.score_left,
+            frame.team_right,
+            frame.score_right,
+            frame.record_left,
+            frame.record_right,
+        )
+
+    counts = Counter(key(frame) for frame in reads)
+    best, votes = counts.most_common(1)[0]
+    if sum(1 for count in counts.values() if count == votes) > 1:
+        return ScoreRead()
+    if votes < 2 and len(reads) > 1:
+        return ScoreRead()
+    sample = next(frame for frame in reads if key(frame) == best)
+    conf = min(frame.score_conf for frame in reads if key(frame) == best)
+    return ScoreRead(
+        team_left=sample.team_left,
+        team_right=sample.team_right,
+        score_left=sample.score_left,
+        score_right=sample.score_right,
+        record_left=sample.record_left,
+        record_right=sample.record_right,
+        confidence=conf,
+    )
+
+
+def _extra_conf(extract: ExtractFlags, *, def_conf: float = 0.0, score_conf: float = 0.0) -> dict[str, float] | None:
+    extra: dict[str, float] = {}
+    if extract.read_defense:
+        extra["def_formation"] = def_conf
+    if extract.read_score:
+        extra["score"] = score_conf
+    return extra or None
 
 
 def _confidence(
