@@ -43,6 +43,19 @@ class MenuSnapTests(unittest.TestCase):
         self.assertEqual([s.t_start for s in snaps], [10.0])
         self.assertFalse(snaps[0].is_menu_or_lobby)
 
+    def test_cfb_play_clock_does_not_collapse_the_drive(self) -> None:
+        """hGyLMPWurMg is CFB. PLAY CLOCK read as PLAY CALL must not flag the bug."""
+        lex = Lexicon(formations=["Gun Bunch"], plays=["HB Slam"], coverages=["Cover 3"])
+        bug = ["OREGON", "0", "OHIO ST", "7", "3RD & 4", "2:12", "PLAY CALL", "25"]
+        specs = [(10 + i * 8, bug, 0.6) for i in range(6)]
+        flagged = [classify_frame(t, texts, green, lex, _ON) for t, texts, green in specs]
+        self.assertTrue(all(not frame.is_menu_or_lobby for frame in flagged))
+        base = [classify_frame(t, texts, green, lex) for t, texts, green in specs]
+        self.assertEqual(
+            [s.t_start for s in build_snaps(flagged, video_id="h", channel="CFB", game="cfb27", extract=_ON)],
+            [s.t_start for s in build_snaps(base, video_id="h", channel="CFB", game="cfb27")],
+        )
+
     def test_flag_off_leaves_the_row_clear(self) -> None:
         lex = Lexicon(formations=["Gun Bunch"], plays=["HB Slam"], coverages=["Cover 3"])
         frame = classify_frame(10, ["PAUSE MENU", "1ST810"], 0.5, lex)
