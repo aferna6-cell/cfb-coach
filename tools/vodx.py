@@ -528,7 +528,8 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
             "t_start": t0, "t_end": t1, "section_offset_s": off, "t_start_vod": t0 + off, "opponent_type": opp, "opponent_type_source": opp_src,
             "opponent_type_basis": opp_basis,
             "side": d.get("side") or "", "quarter": d.get("quarter"), "clock": clock, "score": None,
-            "down": d.get("down"), "distance": d.get("distance"), "yardline": d.get("yardline"),
+            "down": vodx_pr88.as_int(d.get("down")), "distance": vodx_pr88.as_int(d.get("distance")),
+            "yardline": vodx_pr88.as_int(d.get("yardline")),
             "situation_raw": d.get("situation_raw") or "",
             "formation": d.get("formation") or "", "play": d.get("play") or "",
             "coverage_seen": d.get("coverage_seen") or "", "concept_seen": d.get("concept_seen") or "",
@@ -616,7 +617,10 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
         if extract.flag_menu:
             row["_pr88_conf"]["menu"] = float(row["menu_confidence"] or 0.0)
         rows.append(row)
+    for row in rows:
+        vodx_pr88.coerce_row_numbers(row)
     pr88_snapshot = vodx_pr88.snapshot_rows(rows)
+    vodx_pr88.install_quality_guard()
     from vodx_refine import refine_rows
     refine_stats = refine_rows(rows, frames_all, game)
     import vodx_speech  # (v0.8) spoken adjustments from cache/speech/<id>.json; separate speech_* fields

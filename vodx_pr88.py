@@ -176,6 +176,91 @@ def cache_files(cache: Path, video_ids: Iterable[str] | None) -> list[tuple[str,
     return found
 
 
+def as_int(value: Any) -> int | None:
+    """Blank, missing, and non-numeric distances are None. Never return \"\"."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value == int(value):
+        return int(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if text.lstrip("-").isdigit():
+            return int(text)
+    return None
+
+
+def yards_delta(dist: Any, ndist: Any) -> int | None:
+    """``dist - ndist`` only when both distances are real numbers."""
+    left, right = as_int(dist), as_int(ndist)
+    if left is None or right is None:
+        return None
+    return left - right
+
+
+def coerce_row_numbers(row: dict) -> None:
+    """In-place: \"\" on a numeric field becomes None. The goal flag is left alone."""
+    for key in ("down", "distance", "yardline", "yards", "quarter", "score_left", "score_right"):
+        if key in row:
+            row[key] = as_int(row.get(key))
+
+
+def install_quality_guard() -> None:
+    """Make vodx_quality.apply_quality treat a blank distance as missing.
+
+    The box function does ``yy = dist - ndist``. A goal-to-go row used to
+    carry distance \"\" with an int down, which raises TypeError. Patch the
+    loaded function when its source has that subtraction, and always coerce
+    blanks before it runs.
+    """
+    try:
+        import vodx_quality
+    except ImportError:
+        return
+    current = getattr(vodx_quality, "apply_quality", None)
+    if current is None or getattr(current, "_blank_safe", False):
+        return
+    import inspect
+    import textwrap
+
+    vodx_quality.as_int = as_int
+    vodx_quality._yards_delta = yards_delta
+
+    def _coerce_then(fn):
+        def apply_quality(rows, *args, **kwargs):
+            if isinstance(rows, list):
+                for row in rows:
+                    if isinstance(row, dict):
+                        coerce_row_numbers(row)
+            return fn(rows, *args, **kwargs)
+
+        apply_quality._blank_safe = True
+        return apply_quality
+
+    try:
+        src = textwrap.dedent(inspect.getsource(current))
+    except (OSError, TypeError):
+        vodx_quality.apply_quality = _coerce_then(current)
+        return
+    if "dist - ndist" not in src:
+        vodx_quality.apply_quality = _coerce_then(current)
+        return
+    src = src.replace("dist - ndist", "_yards_delta(dist, ndist)")
+    ns = dict(vodx_quality.__dict__)
+    ns["_yards_delta"] = yards_delta
+    try:
+        exec(src, ns)
+    except Exception:
+        vodx_quality.apply_quality = _coerce_then(current)
+        return
+    patched = ns.get("apply_quality", current)
+    patched._blank_safe = True
+    vodx_quality.apply_quality = patched
+
+
 def _clock_text(situation: str) -> str:
     match = re.search(r"(\d{1,2}:\d{2})", situation or "")
     return match.group(1) if match else ""
@@ -441,9 +526,9 @@ def rows_from_frames(
             "side": raw.get("side") or "",
             "quarter": raw.get("quarter"),
             "clock": _clock_text(raw.get("situation_raw") or ""),
-            "down": raw.get("down"),
-            "distance": raw.get("distance"),
-            "yardline": raw.get("yardline"),
+            "down": as_int(raw.get("down")),
+            "distance": as_int(raw.get("distance")),
+            "yardline": as_int(raw.get("yardline")),
             "situation_raw": raw.get("situation_raw") or "",
             "formation": raw.get("formation") or "",
             "play": raw.get("play") or "",

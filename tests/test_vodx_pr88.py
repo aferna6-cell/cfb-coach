@@ -45,6 +45,48 @@ def _frames() -> list[dict]:
     ]
 
 
+class GoalDistanceTests(unittest.TestCase):
+    def test_refine_rows_accepts_a_goal_to_go_blank_distance(self) -> None:
+        """--fixes goal-to-go used to crash apply_quality: yy = dist - ndist."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+        from vodx_refine import refine_rows
+
+        lex = _lex()
+        frames = [
+            {"t": 10.0, "g": 0.6, "tokens": [["1STGOAL", 0.9, 0.5, 0.95], ["1st 2:00", 0.8, 0.2, 0.2]]},
+            {"t": 20.0, "g": 0.6, "tokens": [["2NDGOAL", 0.9, 0.5, 0.95], ["1st 1:40", 0.8, 0.2, 0.2]]},
+        ]
+        rows = rows_from_frames(
+            frames,
+            video_id="hGyL",
+            channel="CFB",
+            game="cfb27",
+            extract=flags_from_fixes("goal-to-go"),
+            lexicon=lex,
+        )
+        self.assertTrue(rows[0]["goal_to_go"])
+        self.assertIsInstance(rows[0]["down"], int)
+        self.assertIsNone(rows[0]["distance"])
+        # The box row that crashed: empty string distance, int down, goal flag set.
+        crashed = {
+            "snap_id": "hGyL:10.0",
+            "down": 1,
+            "distance": "",
+            "goal_to_go": True,
+            "yards": None,
+            "result": "",
+        }
+        nxt = {"snap_id": "hGyL:20.0", "down": 2, "distance": 8, "goal_to_go": True, "yards": None, "result": ""}
+        refine_rows([crashed, nxt], [], "cfb27")
+        refine_rows(rows, [], "cfb27")
+        self.assertIsNone(crashed["distance"])
+        self.assertTrue(crashed["goal_to_go"])
+        self.assertIsNone(rows[0]["distance"])
+        self.assertTrue(rows[0]["goal_to_go"])
+
+
 class ManifestMetaTests(unittest.TestCase):
     def test_opponent_and_side_stay(self) -> None:
         row = {"side": "defense", "opponent_type": "unknown", "game": "madden27"}

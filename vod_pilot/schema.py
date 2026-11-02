@@ -37,6 +37,9 @@ SNAP_COLUMNS = (
 
 SCHEMA_ID = "cfb_coach.snaps.v1"
 
+# CSV blanks these. The JSON row must keep None so later arithmetic does not see "".
+_NUMERIC_COLUMNS = frozenset({"down", "distance", "yardline", "quarter"})
+
 
 def _ordinal(down: int | None) -> str:
     return {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}.get(down or 0, "")
@@ -125,7 +128,11 @@ class SnapRow:
 
     def to_full_dict(self) -> dict[str, Any]:
         d = asdict(self)
-        d.update(self.to_snap_dict())
+        for col, val in self.to_snap_dict().items():
+            # A goal-to-go snap has distance None. Do not turn that into "".
+            if col in _NUMERIC_COLUMNS and d.get(col) is None:
+                continue
+            d[col] = val
         return d
 
 
