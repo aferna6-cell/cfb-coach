@@ -175,4 +175,62 @@ def read_defensive_formation(texts: list[str], names: list[str] | None = None) -
 
 
 def read_offensive_formation(texts: list[str], names: list[str] | None = None) -> tuple[str, float]:
-    return unique_screen_name(texts, names if names is not None else formation_names("offense"), custom=_CUSTOM_OFFENSE)
+    """Offensive formation as painted.
+
+    Gun and Shotgun often share the set (``Bunch Str Nasty``). That string is
+    still one read. The family word is not invented when it was not on screen.
+    A second set on the same screen, with no tooltip, is not a read.
+    """
+    catalog = names if names is not None else formation_names("offense")
+    name, conf = unique_screen_name(texts, catalog)
+    if name:
+        return name, conf
+    tail, tail_conf, ambiguous = _unique_tail(texts, catalog)
+    if ambiguous or tail:
+        return tail, tail_conf
+    return unique_screen_name(texts, catalog, custom=_CUSTOM_OFFENSE)
+
+
+def _unique_tail(texts: list[str], names: list[str]) -> tuple[str, float, bool]:
+    """Return ``(tail, confidence, ambiguous)``. Ambiguous stays empty."""
+    tails: dict[str, str] = {}
+    for name in names:
+        parts = name.split()
+        if len(parts) < 2:
+            continue
+        tail = " ".join(parts[1:])
+        key = compact(tail)
+        if len(key) < 7:
+            continue
+        tails.setdefault(key, tail)
+    short: list[str] = []
+    long: list[str] = []
+    for line in texts:
+        text = str(line).strip()
+        if not text:
+            continue
+        key = compact(clean_ocr_line(text))
+        if len(text) >= 40:
+            hits = [tail for tkey, tail in tails.items() if tkey in key]
+            hits = [
+                hit
+                for hit in hits
+                if not any(
+                    hit != other and compact(hit) in compact(other) and compact(other) in key for other in hits
+                )
+            ]
+            if len(hits) == 1:
+                long.append(hits[0])
+            elif len(hits) > 1:
+                return "", 0.0, True
+        elif key in tails:
+            short.append(tails[key])
+    short_u = list(dict.fromkeys(short))
+    long_u = list(dict.fromkeys(long))
+    if len(long_u) == 1:
+        return long_u[0], 0.8 if len(short_u) > 1 else 0.84, False
+    if len(long_u) > 1 or len(short_u) > 1:
+        return "", 0.0, True
+    if len(short_u) == 1:
+        return short_u[0], 0.84, False
+    return "", 0.0, False

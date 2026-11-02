@@ -1,0 +1,51 @@
+{
+  "names": [
+    "Gun Bunch Str Nasty",
+    "Shotgun Bunch Str Nasty",
+    "Gun Cluster",
+    "Singleback Deuce Close",
+    "Gun Deuce Close"
+  ],
+  "cases": [
+    {
+      "id": "shared-tail-keeps-the-set",
+      "texts": ["BUNCH STR NASTY"],
+      "expect": "Bunch Str Nasty",
+      "min_conf": 0.84
+    },
+    {
+      "id": "full-family-and-set",
+      "texts": ["GUN BUNCH STR NASTY"],
+      "expect": "Gun Bunch Str Nasty",
+      "min_conf": 0.9
+    },
+    {
+      "id": "two-sets-abstain",
+      "texts": ["BUNCH STR NASTY", "CLUSTER"],
+      "expect": "",
+      "min_conf": 0.0
+    },
+    {
+      "id": "tooltip-names-the-highlighted-set",
+      "texts": [
+        "BUNCH STR NASTY",
+        "CLUSTER",
+        "Gun Bunch Str Nasty spreads the field with stack releases and a check release option."
+      ],
+      "expect": "Gun Bunch Str Nasty",
+      "min_conf": 0.8
+    },
+    {
+      "id": "custom-mut-formation-kept-raw",
+      "texts": ["GUN TRIPS CUSTOM"],
+      "expect": "GUN TRIPS CUSTOM",
+      "min_conf": 0.64
+    },
+    {
+      "id": "family-word-alone-is-not-a-formation",
+      "texts": ["GUN"],
+      "expect": "",
+      "min_conf": 0.0
+    }
+  ]
+}

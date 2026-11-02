@@ -22,7 +22,7 @@ from vod_pilot.parse_hud import (
 )
 from vod_pilot.schema import SnapRow, result_text, situation_raw
 from vod_pilot.scorebug import ScoreRead, parse_scorebug
-from vod_pilot.screen_read import read_defensive_formation
+from vod_pilot.screen_read import read_defensive_formation, read_offensive_formation
 from vod_pilot.tokens import token_text
 
 _MENU_MARKERS = (
@@ -110,6 +110,9 @@ class FrameObs:
     def_formation_conf: float = 0.0
     previous_def_formation: str = ""
     previous_def_conf: float = 0.0
+    off_formation_conf: float = 0.0
+    previous_off_formation: str = ""
+    previous_off_conf: float = 0.0
     team_left: str = ""
     team_right: str = ""
     score_left: int | None = None
@@ -170,6 +173,9 @@ def classify_frame(
     def_formation_conf = 0.0
     previous_def_formation = ""
     previous_def_conf = 0.0
+    off_formation_conf = 0.0
+    previous_off_formation = ""
+    previous_off_conf = 0.0
     if extract.read_defense:
         # Packaged fronts from every book, plus one custom line when it is not
         # a prefix of two real fronts. Several names and no tooltip: no read.
@@ -185,6 +191,17 @@ def classify_frame(
         elif read_name:
             def_formation = read_name
             def_formation_conf = read_conf
+    if extract.read_offense_formation:
+        off_name, off_conf = read_offensive_formation(texts)
+        if "PREVIOUSPLAY" in compact and not penalty and off_name:
+            previous_off_formation = off_name
+            previous_off_conf = off_conf
+        elif off_name and not formation and not penalty:
+            # Lexicon abstains when Gun and Shotgun share the set. The set is
+            # still what was painted, so keep that string and not a book family.
+            formation = off_name
+            formation_hits = [off_name]
+            off_formation_conf = off_conf
     score = parse_scorebug(raw_tokens) if extract.read_score else ScoreRead()
 
     kind = "other"
@@ -227,6 +244,9 @@ def classify_frame(
         def_formation_conf=def_formation_conf,
         previous_def_formation=previous_def_formation,
         previous_def_conf=previous_def_conf,
+        off_formation_conf=off_formation_conf,
+        previous_off_formation=previous_off_formation,
+        previous_off_conf=previous_off_conf,
         team_left=score.team_left,
         team_right=score.team_right,
         score_left=score.score_left,
@@ -450,14 +470,19 @@ def build_snaps(
         play = _agreed_text(call_frames, "play") or _agreed_text(run.frames, "play")
         coverage = _agreed(call_frames, "coverage_hits") or _agreed(run.frames, "coverage_hits")
         back_def, back_def_conf = "", 0.0
+        back_off, back_off_conf = "", 0.0
         if run.frames[0].kind == "kickoff":
             formation, play, coverage = "", "", ""
         else:
-            back_play, back_cov, back_def, back_def_conf = backward.get(i, ("", "", "", 0.0))
+            back_play, back_cov, back_def, back_def_conf, back_off, back_off_conf = backward.get(
+                i, ("", "", "", 0.0, "", 0.0)
+            )
             if not play and back_play:
                 play = back_play
             if not coverage and back_cov:
                 coverage = back_cov
+            if extract.read_offense_formation and not formation and back_off:
+                formation = back_off
         quarter, clock = _clock_of(run.frames, last=False)
         yardline = next((f.yardline for f in run.frames if f.yardline is not None), None)
         yard_phrase = next((f.yard_phrase for f in run.frames if f.yard_phrase and f.yardline is not None), "")
@@ -577,7 +602,14 @@ def build_snaps(
                     coverage=coverage,
                     result=conf,
                     yardline=yardline,
-                    extra=_extra_conf(extract, def_conf=def_conf, score_conf=score_row.confidence),
+                    extra=_extra_conf(
+                        extract,
+                        def_conf=def_conf,
+                        score_conf=score_row.confidence,
+                        formation_conf=_off_conf(
+                            extract, formation, call_frames, run.frames, back_off, back_off_conf
+                        ),
+                    ),
                 ),
             )
         )
@@ -586,14 +618,19 @@ def build_snaps(
 
 def _tags_from_previous(
     runs: list[_Run], frames: list[FrameObs]
-) -> dict[int, tuple[str, str, str, float]]:
-    """Play, coverage, and defensive front named on a PREVIOUS PLAY screen.
+) -> dict[int, tuple[str, str, str, float, str, float]]:
+    """Play, coverage, and formations named on a PREVIOUS PLAY screen.
 
     Keyed by the snap that ended. A later screen must not fill the next snap.
     """
-    out: dict[int, tuple[str, str, str, float]] = {}
+    out: dict[int, tuple[str, str, str, float, str, float]] = {}
     for frame in frames:
-        if not frame.previous_coverage and not frame.previous_play and not frame.previous_def_formation:
+        if not (
+            frame.previous_coverage
+            or frame.previous_play
+            or frame.previous_def_formation
+            or frame.previous_off_formation
+        ):
             continue
         best: int | None = None
         for i, run in enumerate(runs):
@@ -604,7 +641,7 @@ def _tags_from_previous(
                     best = i
         if best is None:
             continue
-        play, cov, def_name, def_conf = out.get(best, ("", "", "", 0.0))
+        play, cov, def_name, def_conf, off_name, off_conf = out.get(best, ("", "", "", 0.0, "", 0.0))
         if frame.previous_play and not play:
             play = frame.previous_play
         if frame.previous_coverage and not cov:
@@ -612,7 +649,10 @@ def _tags_from_previous(
         if frame.previous_def_formation and not def_name:
             def_name = frame.previous_def_formation
             def_conf = frame.previous_def_conf
-        out[best] = (play, cov, def_name, def_conf)
+        if frame.previous_off_formation and not off_name:
+            off_name = frame.previous_off_formation
+            off_conf = frame.previous_off_conf
+        out[best] = (play, cov, def_name, def_conf, off_name, off_conf)
     return out
 
 
@@ -671,12 +711,40 @@ def _agree_score(frames: list[FrameObs]) -> ScoreRead:
     )
 
 
-def _extra_conf(extract: ExtractFlags, *, def_conf: float = 0.0, score_conf: float = 0.0) -> dict[str, float] | None:
+def _off_conf(
+    extract: ExtractFlags,
+    formation: str,
+    call_frames: list[FrameObs],
+    run_frames: list[FrameObs],
+    back_off: str,
+    back_off_conf: float,
+) -> float:
+    if not extract.read_offense_formation or not formation:
+        return 0.0
+    confs = [
+        frame.off_formation_conf
+        for frame in call_frames + list(run_frames)
+        if frame.formation == formation and frame.off_formation_conf
+    ]
+    if not confs and formation == back_off and back_off_conf:
+        confs = [back_off_conf]
+    return min(confs) if confs else 0.0
+
+
+def _extra_conf(
+    extract: ExtractFlags,
+    *,
+    def_conf: float = 0.0,
+    score_conf: float = 0.0,
+    formation_conf: float = 0.0,
+) -> dict[str, float] | None:
     extra: dict[str, float] = {}
     if extract.read_defense:
         extra["def_formation"] = def_conf
     if extract.read_score:
         extra["score"] = score_conf
+    if extract.read_offense_formation and formation_conf:
+        extra["formation"] = formation_conf
     return extra or None
 
 

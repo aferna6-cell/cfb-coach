@@ -75,6 +75,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="keep (0-0) ATL team tokens and read the two scores beside them",
     )
+    run.add_argument(
+        "--read-offense-formation",
+        action="store_true",
+        help="fill offensive formation from the on-screen set, including a shared Gun/Shotgun tail",
+    )
     run.set_defaults(func=_run)
 
     score = sub.add_parser("score", help="compare predictions to a hand-check JSON")
