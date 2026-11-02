@@ -110,6 +110,8 @@ class SnapRow:
     adjustments: list[str] = field(default_factory=list)
     result_flag: str = ""
     goal_to_go: bool = False
+    is_menu_or_lobby: bool = False
+    menu_confidence: float = 0.0
     confidence: dict[str, float] = field(default_factory=dict)
 
     def to_snap_dict(self) -> dict[str, Any]:

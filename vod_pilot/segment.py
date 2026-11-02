@@ -14,6 +14,7 @@ from dataclasses import dataclass, field, replace
 from vod_pilot.adjustments import read_adjustments
 from vod_pilot.flags import ExtractFlags
 from vod_pilot.lexicon import Lexicon
+from vod_pilot.menu_flag import menu_flag
 from vod_pilot.parse_hud import (
     clocks_compatible,
     goal_down,
@@ -128,6 +129,8 @@ class FrameObs:
     adjustment_conf: float = 0.0
     yard_conf: float = 0.0
     goal_to_go: bool = False
+    is_menu_or_lobby: bool = False
+    menu_confidence: float = 0.0
 
     @property
     def dd(self) -> tuple[int, int] | None:
@@ -173,6 +176,10 @@ def classify_frame(
             elif side == "opp":
                 yardline, yard_phrase = max(1, min(99, 100 - number)), f"opp {number}"
     goal = False
+    is_menu = False
+    menu_conf = 0.0
+    if extract.flag_menu:
+        is_menu, menu_conf = menu_flag(texts)
     if extract.goal_to_go:
         painted = next((goal_down(token) for token in texts if goal_down(token)), None)
         if painted is not None or (dd is not None and dd[1] == 1):
@@ -299,6 +306,8 @@ def classify_frame(
         adjustment_conf=adjustment_conf,
         yard_conf=yard_conf,
         goal_to_go=goal,
+        is_menu_or_lobby=is_menu,
+        menu_confidence=menu_conf,
     )
 
 
@@ -727,6 +736,9 @@ def build_snaps(
             agree = sum(1 for f in run.frames if f.dd == dd) / len(run.frames)
         clock_text = _fmt_clock(clock)
         goal_row = any(frame.goal_to_go for frame in run.frames) if extract.goal_to_go else False
+        menu_hits = [frame for frame in run.frames if frame.is_menu_or_lobby] if extract.flag_menu else []
+        menu_row = bool(menu_hits)
+        menu_conf_row = max((frame.menu_confidence for frame in menu_hits), default=0.0)
         sit = situation_raw(
             down=down,
             distance=distance,
@@ -763,6 +775,8 @@ def build_snaps(
                 result=result_text(kind=kind, yards=yards),
                 result_flag=result_flag,
                 goal_to_go=goal_row,
+                is_menu_or_lobby=menu_row,
+                menu_confidence=menu_conf_row,
                 coverage_seen=coverage,
                 concept_seen=_concepts(call_frames + run.frames),
                 notes=notes,

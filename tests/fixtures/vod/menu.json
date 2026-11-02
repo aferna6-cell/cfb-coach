@@ -1,0 +1,10 @@
+[
+  {"id": "pause-menu", "texts": ["PAUSE MENU", "RESUME", "QUIT"], "flag": true, "min_conf": 0.95},
+  {"id": "ea-splash", "texts": ["EA SPORTS", "MADDEN"], "flag": true, "min_conf": 0.95},
+  {"id": "lobby", "texts": ["ULTIMATE TEAM", "LOBBY"], "flag": true, "min_conf": 0.92},
+  {"id": "play-select", "texts": ["SELECT A PLAY", "GUN TRIPS"], "flag": true, "min_conf": 0.8},
+  {"id": "instant-replay", "texts": ["INSTANT REPLAY"], "flag": true, "min_conf": 0.93},
+  {"id": "replay-line", "texts": ["REPLAY"], "flag": true, "min_conf": 0.9},
+  {"id": "gameplay-is-not-a-guess", "texts": ["1ST & 10", "ATL", "7"], "flag": false, "min_conf": 0.0},
+  {"id": "replay-inside-a-sentence-is-not-enough", "texts": ["THE REPLAY SHOWED THE CATCH"], "flag": false, "min_conf": 0.0}
+]

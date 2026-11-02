@@ -110,6 +110,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="use the clock from before the snap, not the clock after the play",
     )
+    run.add_argument(
+        "--flag-menu",
+        action="store_true",
+        help="set is_menu_or_lobby when a frame is a pause, lobby, splash, play-select, or replay",
+    )
     run.set_defaults(func=_run)
 
     score = sub.add_parser("score", help="compare predictions to a hand-check JSON")
