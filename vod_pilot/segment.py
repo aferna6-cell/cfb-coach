@@ -132,6 +132,10 @@ class FrameObs:
     goal_to_go: bool = False
     is_menu_or_lobby: bool = False
     menu_confidence: float = 0.0
+    # Baseline down used only to group snaps. Enriched reads stay on down/distance.
+    seg_down: int | None = None
+    seg_distance: int | None = None
+    seg_locked: bool = False
 
     @property
     def dd(self) -> tuple[int, int] | None:
@@ -143,6 +147,15 @@ class FrameObs:
         if self.distance is None:
             return None
         return self.down, self.distance
+
+    @property
+    def seg_dd(self) -> tuple[int, int] | None:
+        """Down and distance that decide the snap. Flags must not change this."""
+        if self.seg_locked:
+            if self.seg_down is None or self.seg_distance is None:
+                return None
+            return self.seg_down, self.seg_distance
+        return self.dd
 
 
 def classify_frame(
@@ -158,11 +171,15 @@ def classify_frame(
     texts = [token_text(item) for item in raw_tokens]
     blob = " ".join(texts).upper()
     compact = blob.replace(" ", "")
+    # Snap grouping always uses the PR #16 reader. --dd-norm only fills the
+    # published down when this frame was already a snap.
+    base_dd = parse_down_distance(texts)
+    dd = base_dd
     if extract.dd_norm:
         layout = "cfb" if str(game).startswith("cfb") else "madden"
-        dd = parse_dd_normed(raw_tokens, layout)
-    else:
-        dd = parse_down_distance(texts)
+        normed = parse_dd_normed(raw_tokens, layout)
+        if normed is not None:
+            dd = normed
     clock = parse_clock(texts)
     flags = parse_flags(texts)
     yardline, yard_phrase = parse_yardline_phrase(texts, dd)
@@ -213,6 +230,8 @@ def classify_frame(
             play = ""
     formation = formation_hits[0] if len(formation_hits) == 1 else ""
     coverage = coverage_hits[0] if len(coverage_hits) == 1 else ""
+    # Frozen for snap kind. Readers below may fill the label without moving the frame.
+    kind_formation, kind_play, kind_coverage = formation, play, coverage
     def_formation = ""
     def_formation_conf = 0.0
     previous_def_formation = ""
@@ -253,22 +272,35 @@ def classify_frame(
         found, adjustment_conf = read_adjustments(texts)
         adjustments = [item.label() for item in found]
 
-    kind = "other"
-    if any(marker in compact or marker in blob for marker in _MENU_MARKERS):
-        kind = "menu"
-    elif "KICKOFF" in compact or "KICK OFF" in blob:
-        kind = "kickoff"
-    elif green < 0.40 and (
-        coverage
-        or formation
-        or play
-        or any(marker in compact or marker in blob for marker in _PLAYCALL_MARKERS)
-    ):
+    def _kind(form: str, called: str, cov: str) -> str:
+        if any(marker in compact or marker in blob for marker in _MENU_MARKERS):
+            return "menu"
+        if "KICKOFF" in compact or "KICK OFF" in blob:
+            return "kickoff"
+        if green < 0.40 and (
+            cov
+            or form
+            or called
+            or any(marker in compact or marker in blob for marker in _PLAYCALL_MARKERS)
+        ):
+            return "play_call"
+        if base_dd and green >= 0.20:
+            return "live"
+        if base_dd:
+            return "live"
+        return "other"
+
+    # Flag-off kind is the segmentation kind. A recovered down cannot open a
+    # snap, and a new formation cannot pull a live frame out of one. A frame
+    # that was not live may become a play-call so the label still attaches.
+    baseline_kind = _kind(kind_formation, kind_play, kind_coverage)
+    enriched_kind = _kind(formation, play, coverage)
+    if baseline_kind == "live":
+        kind = "live"
+    elif enriched_kind == "play_call" and baseline_kind == "other":
         kind = "play_call"
-    elif dd and green >= 0.20:
-        kind = "live"
-    elif dd:
-        kind = "live"
+    else:
+        kind = baseline_kind
 
     return FrameObs(
         t=t,
@@ -276,6 +308,9 @@ def classify_frame(
         green=green,
         down=dd[0] if dd else None,
         distance=dd[1] if dd else None,
+        seg_down=base_dd[0] if base_dd else None,
+        seg_distance=base_dd[1] if base_dd else None,
+        seg_locked=True,
         quarter=clock[0] if clock else None,
         clock=clock[1] if clock else None,
         formation=formation,
@@ -319,9 +354,22 @@ def smooth_down_distance(frames: list[FrameObs]) -> list[FrameObs]:
     out = list(frames)
     for i in range(1, len(out) - 1):
         prev, cur, nxt = out[i - 1], out[i], out[i + 1]
-        if prev.dd and prev.dd == nxt.dd and cur.dd != prev.dd:
+        if prev.seg_dd and prev.seg_dd == nxt.seg_dd and cur.seg_dd != prev.seg_dd:
             if 0 < (nxt.t - prev.t) <= 8:
-                out[i] = replace(cur, down=prev.down, distance=prev.distance)
+                # Smooth the grouping key. Keep an enriched down when this frame
+                # already carried one that differs from the baseline.
+                enriched = cur.seg_locked and (cur.down, cur.distance) != (cur.seg_down, cur.seg_distance)
+                if enriched:
+                    out[i] = replace(cur, seg_down=prev.seg_down, seg_distance=prev.seg_distance)
+                else:
+                    out[i] = replace(
+                        cur,
+                        down=prev.down,
+                        distance=prev.distance,
+                        seg_down=prev.seg_down if prev.seg_locked else prev.down,
+                        seg_distance=prev.seg_distance if prev.seg_locked else prev.distance,
+                        seg_locked=cur.seg_locked or prev.seg_locked,
+                    )
     return out
 
 
@@ -358,7 +406,7 @@ def _runs(frames: list[FrameObs]) -> list[_Run]:
         current = []
 
     for frame in frames:
-        usable = frame.kind == "kickoff" or (frame.kind == "live" and frame.dd is not None)
+        usable = frame.kind == "kickoff" or (frame.kind == "live" and frame.seg_dd is not None)
         if not usable:
             # A play-call or menu frame between two looks at the same down
             # is not a new snap. Only the next live frame can close the run.
@@ -368,7 +416,7 @@ def _runs(frames: list[FrameObs]) -> list[_Run]:
             continue
         gap = frame.t - current[-1].t
         same_kind = frame.kind == current[-1].kind
-        same_dd = frame.dd == current[-1].dd
+        same_dd = frame.seg_dd == current[-1].seg_dd
         # Pre-snap play-art can sit between two looks at the same down.
         if same_kind and same_dd and gap <= 25:
             current.append(frame)
@@ -738,7 +786,8 @@ def build_snaps(
         clock_text = _fmt_clock(clock)
         goal_row = any(frame.goal_to_go for frame in run.frames) if extract.goal_to_go else False
         menu_hits = [frame for frame in run.frames if frame.is_menu_or_lobby] if extract.flag_menu else []
-        menu_row = bool(menu_hits)
+        # A snap is a menu row only when the menu is the snap, not one stray token.
+        menu_row = bool(menu_hits) and len(menu_hits) * 2 >= len(run.frames)
         menu_conf_row = max((frame.menu_confidence for frame in menu_hits), default=0.0)
         sit = situation_raw(
             down=down,
@@ -818,6 +867,9 @@ def build_snaps(
                 ),
             )
         )
+    if extract.flag_menu:
+        # Drop menu snaps. Do not invent a replacement, so other snap ids stay put.
+        rows = [row for row in rows if not row.is_menu_or_lobby]
     return rows
 
 
