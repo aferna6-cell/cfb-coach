@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
+from vod_pilot.flags import ExtractFlags
 from vod_pilot.lexicon import Lexicon
 from vod_pilot.parse_hud import (
     clocks_compatible,
@@ -20,6 +21,8 @@ from vod_pilot.parse_hud import (
     parse_yardline_phrase,
 )
 from vod_pilot.schema import SnapRow, result_text, situation_raw
+from vod_pilot.screen_read import read_defensive_formation
+from vod_pilot.tokens import token_text
 
 _MENU_MARKERS = (
     "SELECT GAME MODE",
@@ -102,6 +105,10 @@ class FrameObs:
     texts: list[str] = field(default_factory=list)
     previous_coverage: str = ""
     previous_play: str = ""
+    def_formation: str = ""
+    def_formation_conf: float = 0.0
+    previous_def_formation: str = ""
+    previous_def_conf: float = 0.0
 
     @property
     def dd(self) -> tuple[int, int] | None:
@@ -110,7 +117,15 @@ class FrameObs:
         return self.down, self.distance
 
 
-def classify_frame(t: float, texts: list[str], green: float, lexicon: Lexicon) -> FrameObs:
+def classify_frame(
+    t: float,
+    texts: list,
+    green: float,
+    lexicon: Lexicon,
+    extract: ExtractFlags | None = None,
+) -> FrameObs:
+    extract = extract or ExtractFlags()
+    texts = [token_text(item) for item in texts]
     blob = " ".join(texts).upper()
     compact = blob.replace(" ", "")
     dd = parse_down_distance(texts)
@@ -142,6 +157,25 @@ def classify_frame(t: float, texts: list[str], green: float, lexicon: Lexicon) -
             play = ""
     formation = formation_hits[0] if len(formation_hits) == 1 else ""
     coverage = coverage_hits[0] if len(coverage_hits) == 1 else ""
+    def_formation = ""
+    def_formation_conf = 0.0
+    previous_def_formation = ""
+    previous_def_conf = 0.0
+    if extract.read_defense:
+        # Packaged fronts from every book, plus one custom line when it is not
+        # a prefix of two real fronts. Several names and no tooltip: no read.
+        read_name, read_conf = read_defensive_formation(texts)
+        if "PREVIOUSPLAY" in compact and not penalty and read_name:
+            previous_def_formation = read_name
+            previous_def_conf = read_conf
+        elif read_name and not formation_hits:
+            def_formation = read_name
+            def_formation_conf = read_conf
+            formation_hits = [read_name]
+            formation = read_name
+        elif read_name:
+            def_formation = read_name
+            def_formation_conf = read_conf
 
     kind = "other"
     if any(marker in compact or marker in blob for marker in _MENU_MARKERS):
@@ -179,6 +213,10 @@ def classify_frame(t: float, texts: list[str], green: float, lexicon: Lexicon) -
         texts=list(texts),
         previous_coverage=previous_coverage,
         previous_play=previous_play,
+        def_formation=def_formation,
+        def_formation_conf=def_formation_conf,
+        previous_def_formation=previous_def_formation,
+        previous_def_conf=previous_def_conf,
     )
 
 
@@ -375,7 +413,9 @@ def build_snaps(
     video_id: str,
     channel: str,
     game: str,
+    extract: ExtractFlags | None = None,
 ) -> list[SnapRow]:
+    extract = extract or ExtractFlags()
     frames = smooth_down_distance(frames)
     runs = _runs(frames)
     calls = _attach_play_calls(runs, frames)
@@ -392,10 +432,11 @@ def build_snaps(
         formation = _agreed(call_frames, "formation_hits") or _agreed(run.frames, "formation_hits")
         play = _agreed_text(call_frames, "play") or _agreed_text(run.frames, "play")
         coverage = _agreed(call_frames, "coverage_hits") or _agreed(run.frames, "coverage_hits")
+        back_def, back_def_conf = "", 0.0
         if run.frames[0].kind == "kickoff":
             formation, play, coverage = "", "", ""
         else:
-            back_play, back_cov = backward.get(i, ("", ""))
+            back_play, back_cov, back_def, back_def_conf = backward.get(i, ("", "", "", 0.0))
             if not play and back_play:
                 play = back_play
             if not coverage and back_cov:
@@ -442,6 +483,20 @@ def build_snaps(
             play = play or "Kickoff"
             kind, yards, conf = "", None, 0.0
 
+        def_form = ""
+        def_conf = 0.0
+        if extract.read_defense:
+            live_name, live_conf = _unique_labeled(
+                call_frames + list(run.frames), "def_formation", "def_formation_conf"
+            )
+            # The call screen and the previous-play strip are different snaps.
+            # A disagreement is not a vote, so the field stays empty.
+            if live_name and back_def and live_name != back_def:
+                def_form, def_conf = "", 0.0
+            elif live_name:
+                def_form, def_conf = live_name, live_conf
+            else:
+                def_form, def_conf = back_def, back_def_conf
         down = dd[0] if dd else None
         distance = dd[1] if dd else None
         agree = 0.0
@@ -490,24 +545,31 @@ def build_snaps(
                 result_kind=kind,
                 yards=yards,
                 field_zone=_field_zone(yardline, distance),
-                confidence={
-                    "down": round(agree, 2),
-                    "formation": 0.7 if formation else 0.0,
-                    "play": 0.6 if play and play != "Kickoff" else 0.0,
-                    "coverage": 0.65 if coverage else 0.0,
-                    "result": round(conf, 2),
-                    "yardline": 0.7 if yardline is not None else 0.0,
-                },
+                def_formation=def_form,
+                confidence=_confidence(
+                    agree=agree,
+                    formation=formation,
+                    play=play,
+                    coverage=coverage,
+                    result=conf,
+                    yardline=yardline,
+                    extra={"def_formation": def_conf} if extract.read_defense else None,
+                ),
             )
         )
     return rows
 
 
-def _tags_from_previous(runs: list[_Run], frames: list[FrameObs]) -> dict[int, tuple[str, str]]:
-    """Play and coverage named on a PREVIOUS PLAY screen, keyed by the snap that ended."""
-    out: dict[int, tuple[str, str]] = {}
+def _tags_from_previous(
+    runs: list[_Run], frames: list[FrameObs]
+) -> dict[int, tuple[str, str, str, float]]:
+    """Play, coverage, and defensive front named on a PREVIOUS PLAY screen.
+
+    Keyed by the snap that ended. A later screen must not fill the next snap.
+    """
+    out: dict[int, tuple[str, str, str, float]] = {}
     for frame in frames:
-        if not frame.previous_coverage and not frame.previous_play:
+        if not frame.previous_coverage and not frame.previous_play and not frame.previous_def_formation:
             continue
         best: int | None = None
         for i, run in enumerate(runs):
@@ -518,12 +580,53 @@ def _tags_from_previous(runs: list[_Run], frames: list[FrameObs]) -> dict[int, t
                     best = i
         if best is None:
             continue
-        play, cov = out.get(best, ("", ""))
+        play, cov, def_name, def_conf = out.get(best, ("", "", "", 0.0))
         if frame.previous_play and not play:
             play = frame.previous_play
         if frame.previous_coverage and not cov:
             cov = frame.previous_coverage
-        out[best] = (play, cov)
+        if frame.previous_def_formation and not def_name:
+            def_name = frame.previous_def_formation
+            def_conf = frame.previous_def_conf
+        out[best] = (play, cov, def_name, def_conf)
+    return out
+
+
+def _unique_labeled(frames: list[FrameObs], attr: str, conf_attr: str) -> tuple[str, float]:
+    """One agreed name and the weakest confidence among the frames that said it."""
+    vals: list[tuple[str, float]] = []
+    for frame in frames:
+        name = str(getattr(frame, attr) or "")
+        if name:
+            vals.append((name, float(getattr(frame, conf_attr) or 0.0)))
+    names = list(dict.fromkeys(name for name, _ in vals))
+    if len(names) != 1:
+        return "", 0.0
+    confs = [conf for name, conf in vals if name == names[0] and conf > 0]
+    return names[0], (min(confs) if confs else 0.0)
+
+
+def _confidence(
+    *,
+    agree: float,
+    formation: str,
+    play: str,
+    coverage: str,
+    result: float,
+    yardline: int | None,
+    extra: dict[str, float] | None = None,
+) -> dict[str, float]:
+    out = {
+        "down": round(agree, 2),
+        "formation": 0.7 if formation else 0.0,
+        "play": 0.6 if play and play != "Kickoff" else 0.0,
+        "coverage": 0.65 if coverage else 0.0,
+        "result": round(result, 2),
+        "yardline": 0.7 if yardline is not None else 0.0,
+    }
+    if extra:
+        for key, val in extra.items():
+            out[key] = round(val, 2)
     return out
 
 

@@ -97,6 +97,7 @@ class SnapRow:
     result_kind: str = ""
     yards: int | None = None
     field_zone: str = ""
+    def_formation: str = ""
     confidence: dict[str, float] = field(default_factory=dict)
 
     def to_snap_dict(self) -> dict[str, Any]:

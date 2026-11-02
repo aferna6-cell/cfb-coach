@@ -1,0 +1,58 @@
+[
+  {
+    "id": "tooltip-picks-the-highlighted-front",
+    "texts": [
+      "NICKEL OVER",
+      "NICKEL WIDE",
+      "DIME 3-2 ODD",
+      "Nickel Over presses the slots and drops a hook defender. Good against trips."
+    ],
+    "expect": "Nickel Over",
+    "min_conf": 0.8
+  },
+  {
+    "id": "formation-tab-with-no-tooltip-abstains",
+    "texts": ["NICKEL OVER", "NICKEL WIDE", "DIME 3-2 ODD"],
+    "expect": "",
+    "min_conf": 0.0
+  },
+  {
+    "id": "mashed-single-front",
+    "texts": ["NICKELOVER"],
+    "expect": "Nickel Over",
+    "min_conf": 0.9
+  },
+  {
+    "id": "digit-swap-in-the-front",
+    "texts": ["N1CKEL 0VER"],
+    "expect": "Nickel Over",
+    "min_conf": 0.9
+  },
+  {
+    "id": "bare-package-is-not-a-front",
+    "texts": ["NICKEL"],
+    "expect": "",
+    "min_conf": 0.0
+  },
+  {
+    "id": "personnel-prefix-of-two-fronts-abstains",
+    "texts": ["DIME 3-2"],
+    "expect": "",
+    "min_conf": 0.0
+  },
+  {
+    "id": "custom-mut-front-kept-raw",
+    "texts": ["NICKEL CRAZY STACK"],
+    "expect": "NICKEL CRAZY STACK",
+    "min_conf": 0.64
+  },
+  {
+    "id": "two-tooltips-abstain",
+    "texts": [
+      "Nickel Over presses the slots and drops a hook defender against trips.",
+      "Dime 3-2 Odd brings a mug look and a robber in the passing lane today."
+    ],
+    "expect": "",
+    "min_conf": 0.0
+  }
+]

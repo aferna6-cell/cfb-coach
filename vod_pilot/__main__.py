@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from vod_pilot.accuracy import score_files
+from vod_pilot.flags import flags_from_namespace
 from vod_pilot.pipeline import run_to_disk
 
 
@@ -33,6 +34,7 @@ def _run(args: argparse.Namespace) -> int:
         max_seconds=args.max_seconds,
         source_url=args.url,
         published=args.published,
+        extract=flags_from_namespace(args),
     )
     print(f"snaps {payload['snap_count']}  frames {payload['source']['frames_read']}")
     print(f"wrote {args.out}.json and {args.out}.csv")
@@ -63,6 +65,11 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--fps", type=float, default=1.0)
     run.add_argument("--max-seconds", type=float, default=None)
     run.add_argument("--out", required=True, help="path stem, without .json/.csv")
+    run.add_argument(
+        "--read-defense",
+        action="store_true",
+        help="fill defensive formation from a unique on-screen front or its tooltip",
+    )
     run.set_defaults(func=_run)
 
     score = sub.add_parser("score", help="compare predictions to a hand-check JSON")
