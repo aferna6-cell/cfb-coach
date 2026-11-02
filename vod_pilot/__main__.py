@@ -80,6 +80,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="fill offensive formation from the on-screen set, including a shared Gun/Shotgun tail",
     )
+    run.add_argument(
+        "--read-adjustments",
+        action="store_true",
+        help="record explicit hot routes, audibles, and offensive or defensive adjustments",
+    )
     run.set_defaults(func=_run)
 
     score = sub.add_parser("score", help="compare predictions to a hand-check JSON")

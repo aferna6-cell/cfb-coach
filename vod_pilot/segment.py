@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
+from vod_pilot.adjustments import read_adjustments
 from vod_pilot.flags import ExtractFlags
 from vod_pilot.lexicon import Lexicon
 from vod_pilot.parse_hud import (
@@ -120,6 +121,8 @@ class FrameObs:
     record_left: str = ""
     record_right: str = ""
     score_conf: float = 0.0
+    adjustments: list[str] = field(default_factory=list)
+    adjustment_conf: float = 0.0
 
     @property
     def dd(self) -> tuple[int, int] | None:
@@ -203,6 +206,11 @@ def classify_frame(
             formation_hits = [off_name]
             off_formation_conf = off_conf
     score = parse_scorebug(raw_tokens) if extract.read_score else ScoreRead()
+    adjustments: list[str] = []
+    adjustment_conf = 0.0
+    if extract.read_adjustments:
+        found, adjustment_conf = read_adjustments(texts)
+        adjustments = [item.label() for item in found]
 
     kind = "other"
     if any(marker in compact or marker in blob for marker in _MENU_MARKERS):
@@ -254,6 +262,8 @@ def classify_frame(
         record_left=score.record_left,
         record_right=score.record_right,
         score_conf=score.confidence,
+        adjustments=adjustments,
+        adjustment_conf=adjustment_conf,
     )
 
 
@@ -540,6 +550,10 @@ def build_snaps(
             else:
                 def_form, def_conf = back_def, back_def_conf
         score_row = _agree_score(run.frames) if extract.read_score else ScoreRead()
+        snap_adjustments: list[str] = []
+        snap_adj_conf = 0.0
+        if extract.read_adjustments:
+            snap_adjustments, snap_adj_conf = _agree_adjustments(call_frames + list(run.frames))
         down = dd[0] if dd else None
         distance = dd[1] if dd else None
         agree = 0.0
@@ -595,6 +609,7 @@ def build_snaps(
                 score_right=score_row.score_right,
                 record_left=score_row.record_left,
                 record_right=score_row.record_right,
+                adjustments=snap_adjustments,
                 confidence=_confidence(
                     agree=agree,
                     formation=formation,
@@ -609,6 +624,7 @@ def build_snaps(
                         formation_conf=_off_conf(
                             extract, formation, call_frames, run.frames, back_off, back_off_conf
                         ),
+                        adjustment_conf=snap_adj_conf,
                     ),
                 ),
             )
@@ -711,6 +727,20 @@ def _agree_score(frames: list[FrameObs]) -> ScoreRead:
     )
 
 
+def _agree_adjustments(frames: list[FrameObs]) -> tuple[list[str], float]:
+    labels: list[str] = []
+    confs: list[float] = []
+    for frame in frames:
+        for label in frame.adjustments:
+            if label not in labels:
+                labels.append(label)
+        if frame.adjustments and frame.adjustment_conf:
+            confs.append(frame.adjustment_conf)
+    if not labels:
+        return [], 0.0
+    return labels, min(confs) if confs else 0.0
+
+
 def _off_conf(
     extract: ExtractFlags,
     formation: str,
@@ -737,6 +767,7 @@ def _extra_conf(
     def_conf: float = 0.0,
     score_conf: float = 0.0,
     formation_conf: float = 0.0,
+    adjustment_conf: float = 0.0,
 ) -> dict[str, float] | None:
     extra: dict[str, float] = {}
     if extract.read_defense:
@@ -745,6 +776,8 @@ def _extra_conf(
         extra["score"] = score_conf
     if extract.read_offense_formation and formation_conf:
         extra["formation"] = formation_conf
+    if extract.read_adjustments:
+        extra["adjustments"] = adjustment_conf
     return extra or None
 
 

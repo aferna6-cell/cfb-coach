@@ -1,0 +1,34 @@
+[
+  {
+    "id": "hot-route-and-slide",
+    "texts": ["HOT ROUTE SLANT", "SLIDE LEFT"],
+    "expect": ["hot_route: HOT ROUTE SLANT", "offensive: SLIDE LEFT"],
+    "min_conf": 0.8
+  },
+  {
+    "id": "audible-and-defensive-press",
+    "texts": ["AUDIBLE TO COVER 3", "PRESS"],
+    "expect": ["audible: AUDIBLE TO COVER 3", "defensive: PRESS"],
+    "min_conf": 0.82
+  },
+  {
+    "id": "play-name-is-not-an-adjustment",
+    "texts": ["INSIDE ZONE", "MESH SPOT", "SLANT"],
+    "expect": [],
+    "min_conf": 0.0
+  },
+  {
+    "id": "tooltip-sentence-is-not-an-adjustment",
+    "texts": [
+      "HB Slam in 11 personnel under center is a smart route and a hot route for short yardage."
+    ],
+    "expect": [],
+    "min_conf": 0.0
+  },
+  {
+    "id": "show-blitz-and-id-the-mic",
+    "texts": ["SHOW BLITZ", "ID THE MIC"],
+    "expect": ["defensive: SHOW BLITZ", "offensive: ID THE MIC"],
+    "min_conf": 0.8
+  }
+]

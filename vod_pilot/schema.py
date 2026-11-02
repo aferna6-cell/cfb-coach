@@ -104,6 +104,7 @@ class SnapRow:
     score_right: int | None = None
     record_left: str = ""
     record_right: str = ""
+    adjustments: list[str] = field(default_factory=list)
     confidence: dict[str, float] = field(default_factory=dict)
 
     def to_snap_dict(self) -> dict[str, Any]:
