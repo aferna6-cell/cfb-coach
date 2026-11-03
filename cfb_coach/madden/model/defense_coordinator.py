@@ -1038,6 +1038,26 @@ def _remember_v1(call: Any, record: Mapping[str, Any], *, fell_back: bool, statu
         return
 
 
+def _defense_v1_recent(extras: Mapping[str, Any], db: Any, session: str) -> list[tuple[str, str]]:
+    """Prior defensive calls for the repeat limit. An explicit list wins."""
+    supplied = extras.get("defense_v1_recent")
+    if isinstance(supplied, (list, tuple)):
+        rows = []
+        for row in supplied:
+            if isinstance(row, (list, tuple)) and len(row) >= 2:
+                rows.append((str(row[0]), str(row[1])))
+        return rows
+    if db is None or not session:
+        return []
+    try:
+        from cfb_coach import ingame
+
+        records = ingame.session_records(db, session, "defense")
+    except Exception:
+        return []
+    return [(str(record.formation), str(record.play)) for record in records[-20:]]
+
+
 def _apply_defense_v1(
     call: Any,
     sit: Situation,
@@ -1063,9 +1083,18 @@ def _apply_defense_v1(
     artifact: dict[str, Any] | None = None
     picked: dict[str, Any] | None = None
     error: defense_v1.DefenseV1Error | None = None
+    recent = _defense_v1_recent(extras, db, session)
+    seed = extras.get("defense_v1_seed")
+    if seed is None:
+        seed = f"{session}:{seq}:defense-v2"
     try:
         artifact = defense_v1.load_artifact(path)
-        scored = defense_v1.pick_call(artifact, sit, book, budget_ms=LATENCY_MS)
+        scored = defense_v1.pick_call(
+            artifact, sit, book, budget_ms=LATENCY_MS,
+            recent=recent, seed=seed,
+            top_k=extras.get("defense_v1_top_k"),
+            temperature=extras.get("defense_v1_temperature"),
+        )
         picked = scored["pick"]
         if getattr(call, "macro", None) or getattr(call, "adjustment", None):
             error = defense_v1.DefenseV1Error(
@@ -1088,6 +1117,8 @@ def _apply_defense_v1(
 
         elapsed = (time.perf_counter() - started) * 1000.0
         probability = float(picked["offense_success"])
+        schema_name = str(artifact.get("schema") or defense_v1.SCHEMA)
+        policy_name = str(artifact.get("policy") or defense_v1.POLICY)
         record = defense_v1.comparison_record(
             model=picked,
             heuristic_formation=heur_form,
@@ -1098,9 +1129,11 @@ def _apply_defense_v1(
             reason=None,
             artifact_path=str(path),
             offense_success=probability,
+            schema=schema_name,
+            policy=policy_name,
         )
         note = (
-            f"DEFENSE V1 [{defense_v1.POLICY}] offense_success={probability:.3f} "
+            f"DEFENSE {schema_name} [{policy_name}] offense_success={probability:.3f} "
             f"{defense_v1.comparison_detail(record)} "
             "(offline eval did not beat the situation baseline)"
         )
@@ -1120,8 +1153,8 @@ def _apply_defense_v1(
             )
             decision = replace(
                 decision,
-                model_version=defense_v1.POLICY,
-                policy_version=defense_v1.SCHEMA,
+                model_version=policy_name,
+                policy_version=schema_name,
                 shadow_pick=model_candidate,
                 config_source=defense_v1.comparison_config(record),
                 ml_status_detail=defense_v1.comparison_detail(record),
@@ -1147,6 +1180,8 @@ def _apply_defense_v1(
         lead = "missing defense artifact or zero verified snaps"
     else:
         lead = error.detail
+    schema_name = str((artifact or {}).get("schema") or defense_v1.SCHEMA)
+    policy_name = str((artifact or {}).get("policy") or defense_v1.POLICY)
     record = defense_v1.comparison_record(
         model=picked,
         heuristic_formation=heur_form,
@@ -1157,6 +1192,8 @@ def _apply_defense_v1(
         reason=getattr(status, "value", None) or error.reason,
         artifact_path=str(path),
         offense_success=None if not picked else picked.get("offense_success"),
+        schema=schema_name,
+        policy=policy_name,
     )
     detail = f"{lead}; {defense_v1.comparison_detail(record)}"
     shadow = None
@@ -1170,8 +1207,8 @@ def _apply_defense_v1(
             detail=detail,
             shadow=shadow,
             config_source=defense_v1.comparison_config(record),
-            model_version=defense_v1.POLICY,
-            policy_version=defense_v1.SCHEMA,
+            model_version=policy_name,
+            policy_version=schema_name,
         ), db, extras)
     except Exception:
         pass

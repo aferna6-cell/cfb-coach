@@ -54,11 +54,45 @@ The logit is::
     + sum(coefficients[name] * feature[name])
     + family_coefficients[family]
     + package_coefficients[package]
+    + family_situation_coefficients[family] · interaction(situation)
+    + package_situation_coefficients[package] · interaction(situation)
 
-P(offense success) is the logistic of that logit. The model's pick is the
-candidate with the lowest probability. Ties break by formation, then play.
-The live caller shows that pick only when it is in the installed defensive
-book. It does not walk down to the next legal candidate.
+Schema ``madden.defense.logistic.v1`` has no interaction maps, so the
+situation term is the same for every candidate and the ranking cannot change
+with the situation. Schema ``madden.defense.logistic.v2`` adds those maps.
+v1 files still load.
+
+Interaction features, present on every family and every package in v2:
+
+``short_yardage``, ``long_yardage``
+    1 when the situation flag is set, else 0.
+``down3plus``
+    1 when the down is 3 or 4, else 0.
+``distance``
+    The distance value, or 0 when it was not supplied.
+``yardline_own``, ``yardline_mid``, ``yardline_opp``
+    One-hot yardline bucket. Own is yardline <= 20, mid is 21..79, opp is
+    >= 80. All three are 0 when the yardline is missing.
+
+v2 also samples. Optional keys, with defaults:
+
+``top_k``
+    How many leading candidates can be shown. Default 4.
+``temperature``
+    Softmax temperature on predicted offense success. Lower success is more
+    likely. 0 is greedy. Default 0.25.
+``max_repeat``
+    The same formation and play is not shown more than this many snaps in a
+    row. Default 2.
+``family_spread``
+    Subtracted from the sampling score of a different play in the previous
+    snap's family, so plays inside a family rotate. Default 0.35.
+
+P(offense success) is the logistic of the logit. v1 shows the lowest
+probability. v2 draws from the legal top-k with a seeded softmax. Ties and
+the greedy case break by formation, then play. The best candidate must be in
+the installed defensive book; an illegal best call falls back and does not
+silently take the next legal candidate.
 
 Default path: ``~/.cfb-coach/models/defense_v1.json``.
 Override: ``--defense-model-path``, else ``CFB_COACH_DEFENSE_V1``.
@@ -66,16 +100,34 @@ Override: ``--defense-model-path``, else ``CFB_COACH_DEFENSE_V1``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
+import random
 import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-SCHEMA = "madden.defense.logistic.v1"
+SCHEMA_V1 = "madden.defense.logistic.v1"
+SCHEMA_V2 = "madden.defense.logistic.v2"
+SCHEMA = SCHEMA_V1
+SCHEMAS = (SCHEMA_V1, SCHEMA_V2)
 POLICY = "logged_unverified_v1"
 TARGET = "offense_success"
+INTERACTION_FEATURES = (
+    "short_yardage",
+    "long_yardage",
+    "down3plus",
+    "distance",
+    "yardline_own",
+    "yardline_mid",
+    "yardline_opp",
+)
+DEFAULT_TOP_K = 4
+DEFAULT_TEMPERATURE = 0.25
+DEFAULT_MAX_REPEAT = 2
+DEFAULT_FAMILY_SPREAD = 0.35
 
 NUMERIC_FEATURES = ("down", "distance", "yardline", "score_diff", "quarter")
 BINARY_FEATURES = (
@@ -159,19 +211,60 @@ def _validate_feature_names(features: Sequence[str]) -> None:
         raise DefenseV1Error("invalid", f"unknown or unpaired situation feature: {name}")
 
 
+def _interaction_map(value: Any, names: Sequence[str], label: str) -> dict[str, dict[str, float]]:
+    if not isinstance(value, dict):
+        raise DefenseV1Error("invalid", f"{label} must be an object")
+    if set(value) != set(names):
+        raise DefenseV1Error("invalid", f"{label} keys must match the vocabulary exactly")
+    out: dict[str, dict[str, float]] = {}
+    for name in names:
+        row = value[name]
+        if not isinstance(row, dict):
+            raise DefenseV1Error("invalid", f"{label}.{name} must be an object")
+        if set(row) != set(INTERACTION_FEATURES):
+            raise DefenseV1Error(
+                "invalid",
+                f"{label}.{name} keys must be {', '.join(INTERACTION_FEATURES)}",
+            )
+        out[name] = {
+            feature: _finite_number(row[feature], f"{label}.{name}.{feature}")
+            for feature in INTERACTION_FEATURES
+        }
+    return out
+
+
+def _optional_int(raw: Mapping[str, Any], key: str, default: int, minimum: int) -> int:
+    if key not in raw or raw.get(key) is None:
+        return default
+    value = raw[key]
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise DefenseV1Error("invalid", f"{key} must be an integer >= {minimum}")
+    return value
+
+
+def _optional_float(raw: Mapping[str, Any], key: str, default: float, minimum: float) -> float:
+    if key not in raw or raw.get(key) is None:
+        return default
+    number = _finite_number(raw[key], key)
+    if number < minimum:
+        raise DefenseV1Error("invalid", f"{key} must be >= {minimum}")
+    return number
+
+
 def validate_artifact(raw: Mapping[str, Any]) -> dict[str, Any]:
     """Return a normalized artifact or raise ``DefenseV1Error``."""
     if not isinstance(raw, Mapping):
-        raise DefenseV1Error("invalid", "defense v1 artifact must be a JSON object")
-    if raw.get("schema") != SCHEMA:
-        raise DefenseV1Error("invalid", f"defense v1 schema must be {SCHEMA}")
+        raise DefenseV1Error("invalid", "defense artifact must be a JSON object")
+    schema = raw.get("schema")
+    if schema not in SCHEMAS:
+        raise DefenseV1Error("invalid", f"defense schema must be {SCHEMA_V1} or {SCHEMA_V2}")
     if raw.get("policy") != POLICY:
         raise DefenseV1Error(
             "invalid",
-            f"defense v1 policy must be {POLICY}",
+            f"defense policy must be {POLICY}",
         )
     if raw.get("target") != TARGET:
-        raise DefenseV1Error("invalid", f"defense v1 target must be {TARGET}")
+        raise DefenseV1Error("invalid", f"defense target must be {TARGET}")
     features = _unique_strings(raw.get("features"), "features")
     _validate_feature_names(features)
     families = _unique_strings(raw.get("call_families"), "call_families")
@@ -202,8 +295,8 @@ def validate_artifact(raw: Mapping[str, Any]) -> dict[str, Any]:
             "family": str(family),
             "package": str(package),
         })
-    return {
-        "schema": SCHEMA,
+    artifact = {
+        "schema": schema,
         "policy": POLICY,
         "target": TARGET,
         "intercept": _finite_number(raw.get("intercept"), "intercept"),
@@ -215,6 +308,18 @@ def validate_artifact(raw: Mapping[str, Any]) -> dict[str, Any]:
         "package_coefficients": _coef_map(raw.get("package_coefficients"), packages, "package_coefficients"),
         "candidates": candidates,
     }
+    if schema == SCHEMA_V2:
+        artifact["family_situation_coefficients"] = _interaction_map(
+            raw.get("family_situation_coefficients"), families, "family_situation_coefficients",
+        )
+        artifact["package_situation_coefficients"] = _interaction_map(
+            raw.get("package_situation_coefficients"), packages, "package_situation_coefficients",
+        )
+        artifact["top_k"] = _optional_int(raw, "top_k", DEFAULT_TOP_K, 1)
+        artifact["temperature"] = _optional_float(raw, "temperature", DEFAULT_TEMPERATURE, 0.0)
+        artifact["max_repeat"] = _optional_int(raw, "max_repeat", DEFAULT_MAX_REPEAT, 1)
+        artifact["family_spread"] = _optional_float(raw, "family_spread", DEFAULT_FAMILY_SPREAD, 0.0)
+    return artifact
 
 
 def load_artifact(path: str | Path | None = None) -> dict[str, Any]:
@@ -291,6 +396,31 @@ def _sigmoid(logit: float) -> float:
     return exp / (1.0 + exp)
 
 
+def interaction_values(sit: Any) -> dict[str, float]:
+    """Situation-by-call features. These differ across candidates only via coefficients."""
+    down = getattr(sit, "down", None)
+    distance = getattr(sit, "distance", None)
+    yardline = getattr(sit, "yardline", None)
+    values = {
+        "short_yardage": 1.0 if getattr(sit, "short_yardage", False) else 0.0,
+        "long_yardage": 1.0 if getattr(sit, "long_yardage", False) else 0.0,
+        "down3plus": 1.0 if down is not None and int(down) >= 3 else 0.0,
+        "distance": 0.0 if distance is None else float(distance),
+        "yardline_own": 0.0,
+        "yardline_mid": 0.0,
+        "yardline_opp": 0.0,
+    }
+    if yardline is not None:
+        spot = int(yardline)
+        if spot <= 20:
+            values["yardline_own"] = 1.0
+        elif spot >= 80:
+            values["yardline_opp"] = 1.0
+        else:
+            values["yardline_mid"] = 1.0
+    return values
+
+
 def offense_success_probability(
     artifact: Mapping[str, Any],
     sit: Any,
@@ -304,6 +434,13 @@ def offense_success_probability(
         logit += float(coefficients[name]) * value
     logit += float(artifact["family_coefficients"][candidate["family"]])
     logit += float(artifact["package_coefficients"][candidate["package"]])
+    fam_ix = artifact.get("family_situation_coefficients")
+    if fam_ix:
+        vector = interaction_values(sit)
+        for name, coef in fam_ix[candidate["family"]].items():
+            logit += float(coef) * vector[name]
+        for name, coef in artifact["package_situation_coefficients"][candidate["package"]].items():
+            logit += float(coef) * vector[name]
     return _sigmoid(logit)
 
 
@@ -317,49 +454,150 @@ def play_in_book(book: Mapping[str, Sequence[str]], formation: str, play: str) -
     return plays is not None and play in list(plays)
 
 
+def _call_key(row: Mapping[str, Any]) -> tuple[str, str]:
+    return (str(row.get("formation") or ""), str(row.get("play") or ""))
+
+
+def _family_of(artifact: Mapping[str, Any], formation: str, play: str) -> str | None:
+    for candidate in artifact["candidates"]:
+        if candidate["formation"] == formation and candidate["play"] == play:
+            return str(candidate["family"])
+    return None
+
+
+def _banned_repeat(
+    recent: Sequence[Sequence[Any]],
+    max_repeat: int,
+) -> tuple[str, str] | None:
+    if max_repeat < 1 or len(recent) < max_repeat:
+        return None
+    tail = [_call_key({"formation": row[0], "play": row[1]}) for row in recent[-max_repeat:]]
+    if tail and all(item == tail[0] for item in tail):
+        return tail[0]
+    return None
+
+
+def _sampling_score(
+    row: Mapping[str, Any],
+    artifact: Mapping[str, Any],
+    recent: Sequence[Sequence[Any]],
+) -> float:
+    score = float(row["offense_success"])
+    if not recent:
+        return score
+    last = recent[-1]
+    last_key = (str(last[0]), str(last[1]))
+    last_family = str(last[2]) if len(last) > 2 and last[2] else _family_of(artifact, last_key[0], last_key[1])
+    if _call_key(row) == last_key:
+        return score
+    if last_family and row.get("family") == last_family:
+        return score - float(artifact.get("family_spread") or 0.0)
+    return score
+
+
+def _rng(seed: Any) -> random.Random:
+    if isinstance(seed, int) and not isinstance(seed, bool):
+        return random.Random(seed)
+    digest = hashlib.sha256(str(seed).encode()).digest()
+    return random.Random(int.from_bytes(digest[:8], "big"))
+
+
+def _sample_v2(
+    artifact: Mapping[str, Any],
+    ranked: Sequence[Mapping[str, Any]],
+    book: Mapping[str, Sequence[str]],
+    recent: Sequence[Sequence[Any]],
+    seed: Any,
+    top_k: int | None,
+    temperature: float | None,
+) -> dict[str, Any]:
+    """Seeded softmax over the legal top-k. An illegal best call is not replaced."""
+    k = int(artifact.get("top_k") or DEFAULT_TOP_K) if top_k is None else int(top_k)
+    if isinstance(top_k, bool) or k < 1:
+        raise DefenseV1Error("invalid", "top_k must be an integer >= 1")
+    temp = float(artifact.get("temperature") if temperature is None else temperature)
+    if temp < 0 or not math.isfinite(temp):
+        raise DefenseV1Error("invalid", "temperature must be >= 0")
+    window = [
+        row for row in ranked[:k]
+        if play_in_book(book, str(row["formation"]), str(row["play"]))
+    ]
+    banned = _banned_repeat(recent, int(artifact.get("max_repeat") or DEFAULT_MAX_REPEAT))
+    pool = [row for row in window if _call_key(row) != banned]
+    if not pool:
+        pool = [
+            row for row in ranked
+            if play_in_book(book, str(row["formation"]), str(row["play"])) and _call_key(row) != banned
+        ]
+    if not pool:
+        blocked = banned or _call_key(ranked[0])
+        raise DefenseV1Error(
+            "invalid",
+            f"defense v2 repeat limit blocked {blocked[0]} / {blocked[1]}",
+            pick=dict(ranked[0]),
+        )
+    order = sorted(pool, key=lambda row: (_sampling_score(row, artifact, recent), row["formation"], row["play"]))
+    if temp == 0 or len(order) == 1:
+        chosen = order[0]
+    else:
+        adjusted = [_sampling_score(row, artifact, recent) for row in order]
+        floor = min(adjusted)
+        weights = [math.exp(-(value - floor) / temp) for value in adjusted]
+        chosen = _rng(0 if seed is None else seed).choices(list(order), weights=weights, k=1)[0]
+    return dict(chosen)
+
+
 def pick_call(
     artifact: Mapping[str, Any],
     sit: Any,
     book: Mapping[str, Sequence[str]],
     *,
     budget_ms: float = 150.0,
+    recent: Sequence[Sequence[Any]] = (),
+    seed: Any = None,
+    top_k: int | None = None,
+    temperature: float | None = None,
 ) -> dict[str, Any]:
-    """Lowest predicted offense success. Does not substitute a later legal call."""
+    """Lowest predicted offense success, then v2 variety among that legal top.
+
+    An illegal best candidate falls back. v2 does not walk from an illegal
+    winner onto a later legal call.
+    """
     started = time.perf_counter()
-    best: dict[str, Any] | None = None
-    best_key: tuple[float, str, str] | None = None
+    ranked: list[dict[str, Any]] = []
     try:
         for candidate in artifact["candidates"]:
             _check_budget(started, budget_ms)
             probability = offense_success_probability(artifact, sit, candidate)
-            key = (probability, candidate["formation"], candidate["play"])
-            if best_key is None or key < best_key:
-                best_key = key
-                best = {
-                    "formation": candidate["formation"],
-                    "play": candidate["play"],
-                    "family": candidate["family"],
-                    "package": candidate["package"],
-                    "offense_success": probability,
-                }
+            ranked.append({
+                "formation": candidate["formation"],
+                "play": candidate["play"],
+                "family": candidate["family"],
+                "package": candidate["package"],
+                "offense_success": probability,
+            })
         _check_budget(started, budget_ms)
+        ranked.sort(key=lambda row: (row["offense_success"], row["formation"], row["play"]))
     except DefenseV1Error as exc:
-        if exc.pick is None and best is not None:
-            exc.pick = best
+        if exc.pick is None and ranked:
+            exc.pick = ranked[0]
         raise
     except Exception as exc:  # noqa: BLE001 — score failures fall back
-        raise DefenseV1Error("exception", "defense v1 scoring raised", pick=best) from exc
-    if best is None or best_key is None:
+        raise DefenseV1Error("exception", "defense v1 scoring raised", pick=ranked[0] if ranked else None) from exc
+    if not ranked:
         raise DefenseV1Error("invalid", "defense v1 produced no candidate")
-    legal = play_in_book(book, best["formation"], best["play"])
-    if not legal:
+    best = ranked[0]
+    if not play_in_book(book, best["formation"], best["play"]):
         raise DefenseV1Error(
             "illegal",
             f"illegal play not in installed book: {best['formation']} / {best['play']}",
             pick=best,
         )
+    chosen = best
+    if artifact.get("schema") == SCHEMA_V2:
+        chosen = _sample_v2(artifact, ranked, book, recent, seed, top_k, temperature)
     return {
-        "pick": best,
+        "pick": chosen,
         "legal": True,
         "elapsed_ms": (time.perf_counter() - started) * 1000.0,
     }
@@ -376,6 +614,8 @@ def comparison_record(
     reason: str | None,
     artifact_path: str | None = None,
     offense_success: float | None = None,
+    schema: str | None = None,
+    policy: str | None = None,
 ) -> dict[str, Any]:
     """Model pick, heuristic pick, and the call actually shown."""
 
@@ -387,8 +627,8 @@ def comparison_record(
 
     model_pick = None if not model else _pair(model.get("formation"), model.get("play"))
     return {
-        "policy": POLICY,
-        "schema": SCHEMA,
+        "policy": policy or POLICY,
+        "schema": schema or SCHEMA,
         "artifact_path": artifact_path,
         "model_pick": model_pick,
         "heuristic_pick": _pair(heuristic_formation, heuristic_play),
@@ -407,7 +647,10 @@ def comparison_config(record: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
         play = "" if not pick else str(pick.get("play") or "")
         return ((f"{prefix}_formation", formation), (f"{prefix}_play", play))
 
-    rows: list[tuple[str, str]] = [("policy", POLICY), ("schema", SCHEMA)]
+    rows: list[tuple[str, str]] = [
+        ("policy", str(record.get("policy") or POLICY)),
+        ("schema", str(record.get("schema") or SCHEMA)),
+    ]
     rows.extend(_fields("model", record.get("model_pick")))
     rows.extend(_fields("heuristic", record.get("heuristic_pick")))
     rows.extend(_fields("executed", record.get("executed_pick")))
@@ -425,7 +668,7 @@ def comparison_detail(record: Mapping[str, Any]) -> str:
         return f"{pick.get('formation')} / {pick.get('play')}"
 
     return (
-        f"policy={POLICY}; "
+        f"policy={record.get('policy') or POLICY}; "
         f"model={_text(record.get('model_pick'))}; "
         f"heuristic={_text(record.get('heuristic_pick'))}; "
         f"executed={_text(record.get('executed_pick'))}"

@@ -325,6 +325,152 @@ class DefenseV1LiveTests(unittest.TestCase):
         self.assertFalse(args.ml_human_control)
 
 
+def _interaction(**overrides: float) -> dict[str, float]:
+    row = {name: 0.0 for name in defense_v1.INTERACTION_FEATURES}
+    row.update(overrides)
+    return row
+
+
+def _v2_artifact(candidates: list[dict[str, str]], family_bias: dict[str, dict[str, float]], **extra) -> dict:
+    families: list[str] = []
+    packages: list[str] = []
+    for row in candidates:
+        if row["family"] not in families:
+            families.append(row["family"])
+        if row["package"] not in packages:
+            packages.append(row["package"])
+    payload = {
+        "schema": defense_v1.SCHEMA_V2,
+        "policy": defense_v1.POLICY,
+        "target": defense_v1.TARGET,
+        "intercept": 0.0,
+        "features": ["red_zone"],
+        "coefficients": {"red_zone": 0.0},
+        "call_families": families,
+        "packages": packages,
+        "family_coefficients": {name: 0.0 for name in families},
+        "package_coefficients": {name: 0.0 for name in packages},
+        "family_situation_coefficients": {
+            name: family_bias.get(name, _interaction()) for name in families
+        },
+        "package_situation_coefficients": {name: _interaction() for name in packages},
+        "candidates": candidates,
+        "temperature": 0.0,
+        "top_k": 4,
+        "max_repeat": 2,
+        "family_spread": 0.0,
+    }
+    payload.update(extra)
+    return defense_v1.validate_artifact(payload)
+
+
+class DefenseV2VarietyTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.candidates = [
+            {"formation": "Nickel", "play": "Buzz", "family": "cover3", "package": "nickel"},
+            {"formation": "Dime", "play": "Tampa", "family": "cover2", "package": "dime"},
+            {"formation": "Bear", "play": "Goal", "family": "goal", "package": "base"},
+            {"formation": "Nickel", "play": "Man", "family": "man", "package": "nickel"},
+        ]
+        self.book = {"Nickel": ["Buzz", "Man"], "Dime": ["Tampa"], "Bear": ["Goal"]}
+        self.artifact = _v2_artifact(self.candidates, {
+            "cover3": _interaction(yardline_mid=-4.0),
+            "cover2": _interaction(long_yardage=-5.0),
+            "goal": _interaction(short_yardage=-4.0),
+            "man": _interaction(yardline_own=-4.0),
+        })
+
+    def _pick(self, sit: Situation, **kwargs):
+        return defense_v1.pick_call(self.artifact, sit, self.book, seed=1, **kwargs)["pick"]["play"]
+
+    def test_v2_rankings_change_across_four_situations(self) -> None:
+        situations = [
+            Situation(raw="short", side="defense", down=3, distance=2, yardline=90, short_yardage=True),
+            Situation(raw="long", side="defense", down=3, distance=12, yardline=40, long_yardage=True),
+            Situation(raw="own", side="defense", down=1, distance=10, yardline=15),
+            Situation(raw="mid", side="defense", down=2, distance=7, yardline=55),
+        ]
+        plays = [self._pick(sit) for sit in situations]
+        self.assertEqual(plays, ["Goal", "Tampa", "Man", "Buzz"])
+        self.assertGreaterEqual(len(set(plays)), 4)
+        self.assertEqual(self.artifact["schema"], "madden.defense.logistic.v2")
+        self.assertEqual(
+            set(self.artifact["family_situation_coefficients"]["cover3"]),
+            set(defense_v1.INTERACTION_FEATURES),
+        )
+
+    def test_no_call_repeats_more_than_twice_and_the_seed_repeats(self) -> None:
+        sit = Situation(raw="flat", side="defense", down=1, distance=10, yardline=55)
+        greedy = _v2_artifact(self.candidates, {}, family_spread=0.0, temperature=0.0)
+        varied = _v2_artifact(self.candidates, {}, family_spread=0.0, temperature=0.4)
+
+        def sequence(artifact: dict, seed: int) -> list[str]:
+            recent: list[tuple[str, str]] = []
+            plays = []
+            for _ in range(9):
+                picked = defense_v1.pick_call(artifact, sit, self.book, recent=recent, seed=seed)["pick"]
+                plays.append(picked["play"])
+                recent.append((picked["formation"], picked["play"]))
+            return plays
+
+        capped = sequence(greedy, 7)
+        self.assertEqual(capped[:3], ["Goal", "Goal", "Tampa"])
+        seeded = sequence(varied, 7)
+        self.assertEqual(seeded, sequence(varied, 7))
+        self.assertNotEqual(seeded, sequence(varied, 8))
+        for plays in (capped, seeded, sequence(varied, 8)):
+            for index in range(len(plays) - 2):
+                self.assertFalse(plays[index] == plays[index + 1] == plays[index + 2])
+
+    def test_family_spread_rotates_plays_inside_the_family(self) -> None:
+        candidates = [
+            {"formation": "Nickel", "play": "Buzz", "family": "cover3", "package": "first"},
+            {"formation": "Nickel", "play": "Sky", "family": "cover3", "package": "second"},
+            {"formation": "Dime", "play": "Tampa", "family": "cover2", "package": "dime"},
+        ]
+        artifact = _v2_artifact(
+            candidates,
+            {},
+            family_spread=0.5,
+            temperature=0.0,
+            package_coefficients={"first": -2.0, "second": -1.0, "dime": 0.0},
+        )
+        book = {"Nickel": ["Buzz", "Sky"], "Dime": ["Tampa"]}
+        sit = Situation(raw="flat", side="defense", down=1, distance=10, yardline=55)
+        first = defense_v1.pick_call(artifact, sit, book, seed=1)["pick"]
+        self.assertEqual(first["play"], "Buzz")
+        second = defense_v1.pick_call(
+            artifact, sit, book, recent=[("Nickel", "Buzz")], seed=1,
+        )["pick"]
+        self.assertEqual(second["play"], "Sky")
+        self.assertEqual(second["family"], "cover3")
+
+    def test_v2_still_refuses_an_illegal_best_call(self) -> None:
+        candidates = [
+            {"formation": "Not A Formation", "play": "Not A Play", "family": "cover3", "package": "nickel"},
+            {"formation": "Nickel", "play": "Buzz", "family": "cover2", "package": "dime"},
+        ]
+        artifact = _v2_artifact(candidates, {"cover3": _interaction(short_yardage=-4.0)})
+        sit = Situation(raw="short", side="defense", down=3, distance=2, yardline=90, short_yardage=True)
+        book = {"Nickel": ["Buzz"]}
+        with self.assertRaises(defense_v1.DefenseV1Error) as caught:
+            defense_v1.pick_call(artifact, sit, book, seed=1)
+        self.assertEqual(caught.exception.reason, "illegal")
+        self.assertEqual(caught.exception.pick["play"], "Not A Play")
+
+    def test_goal_to_go_distance_uses_the_named_side(self) -> None:
+        from cfb_coach.madden.situation import parse_madden_situation
+        from cfb_coach.situation import parse_situation
+
+        own = parse_situation("1st and goal my 8")
+        self.assertEqual((own.down, own.distance, own.yardline), (1, 8, 8))
+        madden = parse_madden_situation("1st and goal my 8")
+        self.assertEqual((madden.down, madden.distance, madden.yardline), (1, 8, 8))
+        self.assertTrue(madden.goal_line)
+        opp = parse_situation("1&goal opp 6")
+        self.assertEqual((opp.down, opp.distance, opp.yardline), (1, 6, 94))
+
+
 class DefenseV1EmptyPriorMessageTests(unittest.TestCase):
     def test_missing_substitute_keeps_the_established_missing_artifact_reason(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

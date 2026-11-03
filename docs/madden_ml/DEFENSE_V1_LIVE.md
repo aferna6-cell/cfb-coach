@@ -47,6 +47,38 @@ If defense experimental mode was enabled earlier:
 python3 -m cfb_coach ml defense-experimental --disable --db "$CFB_COACH_MADDEN_DB"
 ```
 
+## Artifact schema
+
+`madden.defense.logistic.v1` is still accepted. Its situation term is the same
+for every candidate, so a file with no interactions can call one play on
+every snap. `madden.defense.logistic.v2` adds a situation coefficient for
+each call family and each package, then samples among the top calls.
+
+v2 required keys, in addition to every v1 key (`schema`, `policy`,
+`target`, `intercept`, `features`, `coefficients`, `call_families`,
+`packages`, `family_coefficients`, `package_coefficients`, `candidates`):
+
+- `family_situation_coefficients`: one object per call family
+- `package_situation_coefficients`: one object per package
+
+Each of those objects has exactly these keys:
+
+- `short_yardage`
+- `long_yardage`
+- `down3plus`
+- `distance`
+- `yardline_own` (yardline <= 20)
+- `yardline_mid` (yardline 21 through 79)
+- `yardline_opp` (yardline >= 80)
+
+Optional v2 keys: `top_k` (default 4), `temperature` (default 0.25),
+`max_repeat` (default 2), `family_spread` (default 0.35). The same formation
+and play is not shown more than `max_repeat` snaps in a row. A different play
+in the previous snap's family is preferred by `family_spread`. The draw is
+seeded, so a test seed repeats.
+
+`policy` remains `logged_unverified_v1`.
+
 ## Artifact schema `madden.defense.logistic.v1`
 
 ```json
