@@ -717,16 +717,104 @@ def _set_yard_conf(row: object, value: float) -> None:
     row.confidence["yardline"] = value
 
 
-def field_spot_agrees(yardline: int, field_spot: int) -> bool:
-    """True when a coach yard line and ``field_spot`` are within 2 yards.
+# Sources the glyph reader itself stamps. Anything else already on the row
+# belongs to an earlier step (phrase parser, scorebug, neighbour motion).
+_GLYPH_SOURCES = frozenset({"", "glyph", "ocr_penalty_card"})
 
-    ``field_spot`` is either the same 0-100 line or the 1-50 number painted
-    on the field. Own 22 and the painted 22 agree; own 22 and 40 do not.
+
+def _territory_of(yardline: int) -> str:
+    if yardline < 50:
+        return "own"
+    if yardline > 50:
+        return "opp"
+    return "mid"
+
+
+def _glyph_side(phrase: str, yardline: int) -> str:
+    text = (phrase or "").strip().lower()
+    if text.startswith("own"):
+        return "own"
+    if text.startswith("opp"):
+        return "opp"
+    return _territory_of(yardline)
+
+
+def _parse_field_spot(field_spot: object) -> tuple[int | None, str | None]:
+    """Return ``(number, side)``. Side stays None when the spot has none."""
+    from vod_pilot.digits import safe_int
+
+    if isinstance(field_spot, dict):
+        number = safe_int(
+            field_spot.get("yardline", field_spot.get("spot", field_spot.get("value")))
+        )
+        side = field_spot.get("side") or field_spot.get("territory")
+        return number, (str(side).lower() if side else None)
+    if isinstance(field_spot, str):
+        import re
+
+        match = re.match(r"^\s*(own|opp|mid)?\s*(-?\d+)\s*$", field_spot, re.I)
+        if match:
+            side = match.group(1).lower() if match.group(1) else None
+            return safe_int(match.group(2)), side
+    return safe_int(field_spot), None
+
+
+def field_spot_agrees(yardline: int, field_spot: object, phrase: str = "") -> bool:
+    """True only when the coach line and the spot are the same side.
+
+    Own 30 is 30. Opp 30 is 70. A bare field number matches the coach line
+    equal to that number, and it does not also match the mirrored side.
     """
-    if abs(yardline - field_spot) <= _SPOT_TOLERANCE:
+    spot, spot_side = _parse_field_spot(field_spot)
+    if spot is None:
+        return False
+    side = _glyph_side(phrase, yardline)
+    if spot_side in ("own", "opp"):
+        sided = spot if spot_side == "own" else (100 - spot if spot <= 50 else spot)
+        if spot_side == "opp" and spot > 50:
+            sided = spot
+        if abs(yardline - sided) > _SPOT_TOLERANCE or side != spot_side:
+            return False
         return True
-    on_field = min(yardline, 100 - yardline)
-    return 1 <= field_spot <= 50 and abs(on_field - field_spot) <= _SPOT_TOLERANCE
+    if spot_side == "mid":
+        return abs(yardline - 50) <= _SPOT_TOLERANCE and side == "mid"
+    # No side on the spot. Accept only the same coach line, within 2 yards.
+    # The mirrored line (opp 30 vs a bare 30) fails closed.
+    return abs(yardline - spot) <= _SPOT_TOLERANCE
+
+
+def _field_source(row: object, key: str) -> str:
+    sources = _row_get(row, "field_sources") or {}
+    if isinstance(sources, dict):
+        return str(sources.get(key) or "")
+    return ""
+
+
+def _earlier_yardline(row: object) -> bool:
+    """A yard line an earlier step already published. The glyph must leave it."""
+    from vod_pilot.digits import safe_int
+
+    if safe_int(_row_get(row, "yardline")) is None:
+        return False
+    if not _row_get(row, "yard_from_glyph"):
+        return True
+    return _field_source(row, "yardline") not in _GLYPH_SOURCES
+
+
+def _context_agrees(row: object, candidate: int, phrase: str) -> bool:
+    """Glyph side must match field_spot, yards_to_goal, and territory."""
+    from vod_pilot.digits import safe_int
+
+    ytg = safe_int(_row_get(row, "yards_to_goal"))
+    if ytg is not None and abs((100 - candidate) - ytg) > _SPOT_TOLERANCE:
+        return False
+    territory = str(_row_get(row, "territory") or "").lower()
+    if territory in ("own", "opp", "mid") and territory != _territory_of(candidate):
+        return False
+    spot = _row_get(row, "field_spot")
+    if spot not in (None, ""):
+        return field_spot_agrees(candidate, spot, phrase)
+    return True
 
 
 def _published_yardline(row: object) -> int | None:
@@ -772,9 +860,15 @@ def _neighbor_yards_match(rows: list, index: int, candidate: int) -> bool:
 def _apply_glyph(row: object, ok: bool) -> None:
     from vod_pilot.digits import safe_int
 
+    if _earlier_yardline(row):
+        # Neighbour-motion and any other published spot stay, including
+        # yards_to_goal and territory derived from them.
+        return
     candidate = safe_int(_row_get(row, "glyph_yardline"))
     phrase = str(_row_get(row, "glyph_phrase") or "")
     current = safe_int(_row_get(row, "yardline"))
+    if ok and candidate is not None and not _context_agrees(row, candidate, phrase):
+        ok = False
     if ok and candidate is not None:
         _row_set(row, "yardline", candidate)
         zone = _field_zone(candidate, safe_int(_row_get(row, "distance")))
@@ -805,12 +899,13 @@ def _apply_glyph(row: object, ok: bool) -> None:
 
 
 def gate_glyph_yardlines(rows: list) -> None:
-    """Keep a glyph yard line only when field_spot or both neighbors agree.
+    """Fill an empty yard line only when the glyph's side checks out.
 
-    A value the pre-glyph parser produced (``yard_from_glyph`` false) is
-    never overwritten or blanked. A rejected glyph stays empty at low
-    confidence, and the candidate is kept so a later ``field_spot`` can
-    still confirm it.
+    A yard line, yards-to-goal, or territory an earlier step already set
+    (phrase parser, scorebug, neighbour-motion) is left as it was. A glyph
+    has to agree with ``field_spot`` on that same side, and with any
+    yards-to-goal or territory already on the row. A bare field number does
+    not license the mirrored side.
     """
     from vod_pilot.digits import safe_int
 
@@ -818,12 +913,18 @@ def gate_glyph_yardlines(rows: list) -> None:
     for index, row in enumerate(rows):
         if not _row_get(row, "yard_from_glyph"):
             continue
+        if _earlier_yardline(row):
+            continue
         candidate = safe_int(_row_get(row, "glyph_yardline"))
         if candidate is None:
             continue
-        spot = safe_int(_row_get(row, "field_spot"))
-        if spot is not None:
-            _apply_glyph(row, field_spot_agrees(candidate, spot))
+        phrase = str(_row_get(row, "glyph_phrase") or "")
+        if not _context_agrees(row, candidate, phrase):
+            _apply_glyph(row, False)
+            continue
+        spot = _row_get(row, "field_spot")
+        if spot not in (None, ""):
+            _apply_glyph(row, True)
         else:
             pending.append(index)
     changed = True

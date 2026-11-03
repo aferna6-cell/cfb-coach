@@ -138,6 +138,89 @@ class YardlineSnapTests(unittest.TestCase):
         gate_glyph_yardlines(missed)
         self.assertEqual(missed[1].yardline, 40)
 
+    def test_glyph_does_not_flip_side_or_drop_an_earlier_spot(self) -> None:
+        """The three box rows: neighbour 37, opp-30 vs ytg 70, own-22 vs opp territory."""
+        rows = [
+            {
+                "snap_id": "RsOG3JCF7Wc:104.1",
+                "yard_from_glyph": True,
+                "glyph_yardline": 37,
+                "glyph_phrase": "own 37",
+                "glyph_conf": 0.51,
+                "yardline": 37,
+                "yards_to_goal": 63,
+                "territory": "own",
+                "field_spot": 37,
+                "field_sources": {"yardline": "scorebug_spot+motion_from_neighbour"},
+                "conf": {"yardline": 0.62},
+            },
+            {
+                "snap_id": "RsOG3JCF7Wc:1061.1",
+                "yard_from_glyph": True,
+                "glyph_yardline": 70,
+                "glyph_phrase": "opp 30",
+                "glyph_conf": 0.55,
+                "yardline": 30,
+                "yards_to_goal": 70,
+                "territory": "own",
+                "field_spot": 30,
+                "field_sources": {"yardline": "scorebug_spot+motion_from_neighbour"},
+                "conf": {"yardline": 0.6},
+            },
+            {
+                "snap_id": "cOPnN8CBQwI:1683.7",
+                "yard_from_glyph": True,
+                "glyph_yardline": 22,
+                "glyph_phrase": "own 22",
+                "glyph_conf": 0.51,
+                "yardline": 78,
+                "yards_to_goal": 22,
+                "territory": "opp",
+                "field_spot": 22,
+                "field_sources": {"yardline": "scorebug_spot+motion_from_neighbour"},
+                "conf": {"yardline": 0.6},
+            },
+        ]
+        gate_glyph_yardlines(rows)
+        self.assertEqual(rows[0]["yardline"], 37)
+        self.assertEqual(rows[0]["yards_to_goal"], 63)
+        self.assertEqual(rows[0]["territory"], "own")
+        self.assertEqual(rows[1]["yardline"], 30)
+        self.assertEqual(rows[1]["yards_to_goal"], 70)
+        self.assertEqual(rows[1]["territory"], "own")
+        self.assertEqual(rows[2]["yardline"], 78)
+        self.assertEqual(rows[2]["territory"], "opp")
+        self.assertEqual(rows[2]["yards_to_goal"], 22)
+        # A bare 30 is not a license to write opp 30, and it must not clear ytg.
+        flip = {
+            "yard_from_glyph": True,
+            "glyph_yardline": 70,
+            "glyph_phrase": "opp 30",
+            "glyph_conf": 0.51,
+            "yardline": None,
+            "yards_to_goal": 70,
+            "territory": "own",
+            "field_spot": 30,
+            "conf": {},
+        }
+        own_on_opp = {
+            "yard_from_glyph": True,
+            "glyph_yardline": 22,
+            "glyph_phrase": "own 22",
+            "glyph_conf": 0.51,
+            "yardline": None,
+            "yards_to_goal": 22,
+            "territory": "opp",
+            "field_spot": 22,
+            "conf": {},
+        }
+        gate_glyph_yardlines([flip, own_on_opp])
+        self.assertIsNone(flip["yardline"])
+        self.assertEqual(flip["yards_to_goal"], 70)
+        self.assertEqual(flip["territory"], "own")
+        self.assertIsNone(own_on_opp["yardline"])
+        self.assertEqual(own_on_opp["territory"], "opp")
+
     def test_cfb_layout_does_not_invent_a_spot(self) -> None:
         lex = _lex()
         frame = classify_frame(

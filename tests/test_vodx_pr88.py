@@ -101,15 +101,45 @@ class GoalDistanceTests(unittest.TestCase):
             "yards": None,
             "result": "",
             "result_kind": "",
+            "t_start": 10.0,
+            "t_end": 18.0,
+            "clock": "2:00",
         }
-        nxt = {"down": 2, "distance": 6, "yards": None, "result": "", "result_kind": ""}
+        nxt = {
+            "down": 2,
+            "distance": 6,
+            "yards": None,
+            "result": "",
+            "result_kind": "",
+            "t_start": 20.0,
+            "t_end": 28.0,
+            "clock": "1:40",
+        }
         apply_quality([goal, nxt])
         self.assertIsNone(goal["distance"])
         self.assertEqual(goal["yards"], -5)
         self.assertEqual(goal["result"], "-5")
 
-        normal = {"down": 1, "distance": 10, "yards": None, "result": "", "result_kind": ""}
-        second = {"down": 2, "distance": 6, "yards": None, "result": "", "result_kind": ""}
+        normal = {
+            "down": 1,
+            "distance": 10,
+            "yards": None,
+            "result": "",
+            "result_kind": "",
+            "t_start": 10.0,
+            "t_end": 18.0,
+            "clock": "5:00",
+        }
+        second = {
+            "down": 2,
+            "distance": 6,
+            "yards": None,
+            "result": "",
+            "result_kind": "",
+            "t_start": 20.0,
+            "t_end": 28.0,
+            "clock": "4:40",
+        }
         apply_quality([normal, second])
         self.assertEqual(normal["yards"], 4)
         self.assertEqual(normal["result"], "+4")
@@ -133,6 +163,27 @@ class GoalDistanceTests(unittest.TestCase):
         apply_quality([blank, also])
         self.assertIsNone(blank["distance"])
         self.assertIsNone(blank["yards"])
+
+    def test_restore_keeps_a_neighbour_motion_yardline(self) -> None:
+        from vodx_pr88 import restore_rows
+
+        row = {
+            "snap_id": "RsOG3JCF7Wc:104.1",
+            "yard_from_glyph": True,
+            "yardline": 37,
+            "yards_to_goal": 63,
+            "territory": "own",
+            "field_sources": {"yardline": "scorebug_spot+motion_from_neighbour"},
+            "conf": {"yardline": 0.62},
+            "_pr88_conf": {},
+        }
+        restore_rows(
+            [row],
+            {"RsOG3JCF7Wc:104.1": {"values": {"yardline": None}, "conf": {"yardline": 0.15}}},
+        )
+        self.assertEqual(row["yardline"], 37)
+        self.assertEqual(row["yards_to_goal"], 63)
+        self.assertEqual(row["territory"], "own")
 
 
 class ManifestMetaTests(unittest.TestCase):

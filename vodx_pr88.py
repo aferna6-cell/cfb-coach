@@ -510,6 +510,13 @@ def restore_if_not_more_confident(row: dict, snapshot: dict) -> None:
             continue
         if row.get(field) == values.get(field):
             continue
+        # An empty or glyph yard line must not blank or replace a spot a
+        # later step already published, including neighbour-motion.
+        if field == "yardline" and row.get("yard_from_glyph"):
+            current = row.get(field)
+            saved = values.get(field)
+            if current not in (None, "") and saved != current:
+                continue
         stage_conf = float((row.get("conf") or {}).get(key) or 0.0)
         if held[key] >= stage_conf:
             row[field] = values.get(field)
@@ -643,7 +650,7 @@ def rows_from_frames(
             active["score"] = owned["score"]
         if extract.read_adjustments:
             active["adjustments"] = owned["adjustments"]
-        if extract.yardline_glyphs:
+        if extract.yardline_glyphs and not row.get("yard_from_glyph") and row.get("yardline") is not None:
             active["yardline"] = owned["yardline"]
         if extract.read_offense_formation:
             active["formation"] = owned["formation"]

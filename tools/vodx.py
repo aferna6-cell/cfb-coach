@@ -606,7 +606,7 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
         if extract.read_adjustments:
             row["_pr88_conf"]["adjustments"] = float(c.get("adjustments") or 0.0)
             row["conf"]["adjustments"] = row["_pr88_conf"]["adjustments"]
-        if extract.yardline_glyphs:
+        if extract.yardline_glyphs and not row.get("yard_from_glyph") and row.get("yardline") is not None:
             row["_pr88_conf"]["yardline"] = float(c.get("yardline") or 0.0)
         if extract.read_offense_formation:
             row["_pr88_conf"]["formation"] = float(c.get("formation") or 0.0)
