@@ -51,7 +51,7 @@ class GoalDistanceTests(unittest.TestCase):
         import sys
 
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-        from vodx_refine import refine_rows
+        from vodx_quality import apply_quality
 
         lex = _lex()
         frames = [
@@ -79,8 +79,8 @@ class GoalDistanceTests(unittest.TestCase):
             "result": "",
         }
         nxt = {"snap_id": "hGyL:20.0", "down": 2, "distance": 8, "goal_to_go": True, "yards": None, "result": ""}
-        refine_rows([crashed, nxt], [], "cfb27")
-        refine_rows(rows, [], "cfb27")
+        apply_quality([crashed, nxt])
+        apply_quality(rows)
         self.assertIsNone(crashed["distance"])
         self.assertTrue(crashed["goal_to_go"])
         self.assertIsNone(rows[0]["distance"])

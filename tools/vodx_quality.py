@@ -27,13 +27,40 @@ def _n(s):
     return re.sub(r"[^A-Z0-9]", "", (s or "").upper())
 
 
+def _clocks_ok(r, n) -> bool:
+    """Use the box refine pass when it is installed. A missing module is not that pass."""
+    try:
+        import vodx_refine as VR
+    except ImportError:
+        VR = None
+    if VR is not None and hasattr(VR, "clocks_ok"):
+        return bool(VR.clocks_ok(r, n))
+    left, right = _cs(r.get("clock")), _cs(n.get("clock"))
+    if left is None or right is None:
+        return True
+    return -2 <= (left - right) <= 50
+
+
+def _spot_deltas(s0, s1) -> set:
+    try:
+        import vodx_refine as VR
+    except ImportError:
+        VR = None
+    if VR is not None and hasattr(VR, "spot_deltas"):
+        return set(VR.spot_deltas(s0, s1))
+    out: set[int] = set()
+    for spot in (s0, s1):
+        if not isinstance(spot, (int, float)) or isinstance(spot, bool):
+            return set()
+    return {int(s1) - int(s0)}
+
+
 def _same_drive(r, n):
-    import vodx_refine as VR
     if n is None or n.get("is_kickoff") or r.get("is_kickoff"):
         return False
     if r.get("t_start") is None or n.get("t_start") is None:
         return False
-    if not VR.clocks_ok(r, n) or n["t_start"] - (r.get("t_end") or r["t_start"]) > MAX_GAP:
+    if not _clocks_ok(r, n) or n["t_start"] - (r.get("t_end") or r["t_start"]) > MAX_GAP:
         return False
     if r.get("result_kind") in ("td", "int", "fumble"):
         return False
@@ -79,7 +106,8 @@ def _play_distance(row: dict):
     yl = row.get("yardline")
     if isinstance(yl, (int, float)) and not isinstance(yl, bool):
         ytg = 100 - int(yl)
-        if 1 <= ytg <= 99:
+        # A spot past the 10 is not a goal-to-go distance.
+        if 1 <= ytg <= 10:
             return ytg
     base = row.get("baseline_distance")
     if isinstance(base, (int, float)) and not isinstance(base, bool):
@@ -91,8 +119,17 @@ def _gain_kind(y):
     return "incomplete_or_no_gain" if y == 0 else ("gain" if y > 0 else "loss")
 
 
+def _clock_s(clock):
+    try:
+        import vodx_refine as VR
+    except ImportError:
+        VR = None
+    if VR is not None and hasattr(VR, "clock_s"):
+        return VR.clock_s(clock)
+    return _cs(clock)
+
+
 def apply_quality(rows: list[dict], frames=None) -> Counter:
-    import vodx_refine as VR
     st = Counter()
     for r in rows:
         if not isinstance(r, dict):
@@ -158,7 +195,7 @@ def apply_quality(rows: list[dict], frames=None) -> Counter:
                       (r.get("side") == n.get("side") and r.get("side") in ("offense", "defense")
                        and min(r["conf"].get("side", 0), n["conf"].get("side", 0)) >= 0.7)
                 s0, s1 = r.get("field_spot"), n.get("field_spot")
-                dl = VR.spot_deltas(s0, s1) if s0 is not None and s1 is not None else set()
+                dl = _spot_deltas(s0, s1) if s0 is not None and s1 is not None else set()
                 moved = bool(dl) and all(x >= dist_num - 1 for x in dl)
                 goal = ndist is not None and ndist < 10 and n.get("yards_to_goal") is not None and n["yards_to_goal"] == ndist
                 if own and (moved or goal):
@@ -173,7 +210,7 @@ def apply_quality(rows: list[dict], frames=None) -> Counter:
             v = r.get(fld) or ""
             if _n(v) != "HAILMARY":
                 continue
-            q, cs, dist = r.get("quarter"), VR.clock_s(r.get("clock")), r.get("distance")
+            q, cs, dist = r.get("quarter"), _clock_s(r.get("clock")), r.get("distance")
             late = q in (2, 4) and cs is not None and cs <= 40
             if late or (dist is not None and dist >= 25):
                 continue

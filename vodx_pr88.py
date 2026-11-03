@@ -209,7 +209,8 @@ def _result_distance(row: dict) -> int | None:
     yardline = as_int(row.get("yardline"))
     if yardline is not None:
         ytg = 100 - yardline
-        if 1 <= ytg <= 99:
+        # Only a real goal-line spot. Midfield "and 1" must not become 100 - yardline.
+        if 1 <= ytg <= 10:
             return ytg
     return as_int(row.get("baseline_distance"))
 

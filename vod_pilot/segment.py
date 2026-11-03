@@ -203,12 +203,26 @@ def classify_frame(
     if extract.flag_menu:
         is_menu, menu_conf = menu_flag(texts)
     if extract.goal_to_go:
+        # GOAL on the HUD is goal-to-go. "and 1" is goal-to-go only inside the
+        # 10. A parsed number is never replaced with 100 - yardline.
         painted = next((goal_down(token) for token in texts if goal_down(token)), None)
-        if painted is not None or (dd is not None and dd[1] == 1):
+        ytg = max(1, min(99, 100 - yardline)) if yardline is not None else None
+        numeric = None
+        for token in texts:
+            if goal_down(token):
+                continue
+            got = parse_down_distance([token])
+            if got is not None:
+                numeric = got
+                break
+        if painted is not None:
             goal = True
-            down_g = painted if painted is not None else dd[0]
-            ytg = max(1, min(99, 100 - yardline)) if yardline is not None else None
-            dd = (down_g, ytg)
+            if numeric is not None:
+                dd = numeric
+            else:
+                dd = (painted, ytg)
+        elif dd is not None and ytg is not None and ytg <= 10 and dd[1] >= ytg:
+            goal = True
     from vod_pilot.lexicon import _hits
 
     formation_hits = lexicon.formation_hits(texts)
