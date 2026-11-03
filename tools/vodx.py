@@ -632,14 +632,18 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
     refine_stats = refine_rows(rows, frames_all, game)
     import vodx_speech  # (v0.8) spoken adjustments from cache/speech/<id>.json; separate speech_* fields
     speech_stats = vodx_speech.apply_speech(rows, vid)
+    # vodx_field has reconciled the engine line with the scorebug. Lock that
+    # published value. The raw engine number must not be restored over it.
+    from vod_pilot.segment import capture_base_yardlines, preserve_base_yardlines
+
+    capture_base_yardlines(rows)
     # vodx_refine, vodx_field, vodx_score, and vodx_cards have already written
     # through refine_rows / apply_speech. Restore a PR #88 field when that
     # stage was not strictly more confident.
     vodx_pr88.restore_rows(rows, pr88_snapshot)
+    preserve_base_yardlines(rows)
     if extract.yardline_glyphs:
         vodx_pr88.gate_glyph_yardlines(rows)
-    from vod_pilot.segment import preserve_base_yardlines
-
     preserve_base_yardlines(rows)
     # A later field pass may have flagged spot_contradicts_plus0 and still
     # left a +0. That +0 is not a result. Filled gains and losses stay.

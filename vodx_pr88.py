@@ -227,23 +227,47 @@ def _text_says_zero(row: dict) -> bool:
     return "INCOMPLETE" in blob or "NO GAIN" in blob or "NO_GAIN" in blob
 
 
-def plus0_has_evidence(row: dict, nxt: dict | None) -> bool:
-    """A new +0 needs the same spot before and after, or a no-gain text read.
+def _spot_value(value: Any) -> int | None:
+    """The yard number on a spot, including a dict or one-item list."""
+    if isinstance(value, dict):
+        for key in ("yardline", "spot", "value", "scorebug", "field"):
+            if key in value:
+                got = _spot_value(value.get(key))
+                if got is not None:
+                    return got
+        return None
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            got = _spot_value(item)
+            if got is not None:
+                return got
+        return None
+    return as_int(value)
 
-    Missing spots are not evidence. A spot that moved is not evidence.
+
+def plus0_has_evidence(row: dict, nxt: dict | None) -> bool:
+    """A new +0 needs both spots still, or a no-gain text read.
+
+    Yard line and field_spot are both checked. A move of more than 2 yards
+    on either one blocks the +0, whatever the confidence and whatever text
+    was read.
     """
-    if _text_says_zero(row):
-        return True
     if not isinstance(nxt, dict):
-        return False
+        return _text_says_zero(row)
     agreed = False
+    saw = False
     for key in ("yardline", "field_spot"):
-        left, right = as_int(row.get(key)), as_int(nxt.get(key))
+        left, right = _spot_value(row.get(key)), _spot_value(nxt.get(key))
         if left is None or right is None:
             continue
+        saw = True
         if abs(left - right) > 2:
             return False
         agreed = True
+    if saw and not agreed:
+        return False
+    if _text_says_zero(row):
+        return True
     return agreed
 
 
@@ -779,12 +803,13 @@ def rows_from_frames(
         row["conf"] = {**conf, **{key: value for key, value in owned.items() if key in active}}
         row["_pr88_conf"] = active
         rows.append(row)
-    if extract.yardline_glyphs:
-        # field_spot may already be on the row. Glyphs fill blanks only.
-        # A base-extraction yard line stays put.
-        gate_glyph_yardlines(rows)
-    from vod_pilot.segment import preserve_base_yardlines
+    from vod_pilot.segment import capture_base_yardlines, preserve_base_yardlines
 
+    # No vodx_field on this path. The engine line is the published value.
+    capture_base_yardlines(rows)
+    if extract.yardline_glyphs:
+        # Glyphs fill blanks only. A captured yard line stays put.
+        gate_glyph_yardlines(rows)
     preserve_base_yardlines(rows)
     return rows
 

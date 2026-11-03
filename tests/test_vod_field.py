@@ -216,6 +216,38 @@ class YardlineSnapTests(unittest.TestCase):
         gate_glyph_yardlines([blank])
         self.assertEqual(blank["yardline"], 35)
 
+    def test_scorebug_reconciliation_is_locked_not_the_raw_engine_line(self) -> None:
+        """mSUAGrMB0ok:5248. vodx_field replaced raw 98 with the scorebug's 43.
+
+        base_yardline is that reconciled 43, taken after the field pass.
+        Preserving it must not put 98 back, and a glyph may not replace 43.
+        """
+        from vod_pilot.segment import capture_base_yardlines, preserve_base_yardlines
+
+        row = {
+            "snap_id": "mSUAGrMB0ok:5248.0",
+            "yardline": 98,
+            "base_yardline": 98,
+            "yard_from_glyph": False,
+            "glyph_yardline": 79,
+            "glyph_phrase": "opp 21",
+            "glyph_conf": 0.8,
+            "field_spot": 21,
+            "notes": "",
+            "conf": {"yardline": 0.7},
+        }
+        # vodx_field reconciles the engine line with the scorebug.
+        row["yardline"] = 43
+        row["notes"] = "yardline_conflict"
+        capture_base_yardlines([row])
+        self.assertEqual(row["base_yardline"], 43)
+        row["yardline"] = 98
+        preserve_base_yardlines([row])
+        self.assertEqual(row["yardline"], 43)
+        row["yard_from_glyph"] = True
+        gate_glyph_yardlines([row])
+        self.assertEqual(row["yardline"], 43)
+
     def test_glyph_does_not_flip_side_or_drop_an_earlier_spot(self) -> None:
         """The three box rows: neighbour 37, opp-30 vs ytg 70, own-22 vs opp territory."""
         rows = [

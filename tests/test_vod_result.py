@@ -191,6 +191,75 @@ class ResultSnapTests(unittest.TestCase):
         self.assertEqual(already["result"], "+9")
         self.assertEqual(already["yards"], 9)
 
+    def test_a_spot_move_over_two_yards_blocks_a_new_plus_zero(self) -> None:
+        """4_-atoyAQzA:2786 is spot 10 to 7. :4130 is spot 6 to 3.
+
+        Both the field spot and the yard line are checked. A move of more
+        than 2 yards blocks the +0 even when the text says incomplete.
+        """
+        from vodx_pr88 import fill_result_yards, plus0_has_evidence
+
+        first = {
+            "snap_id": "4_-atoyAQzA:2786.0",
+            "down": 1,
+            "distance": 10,
+            "yardline": 40,
+            "field_spot": 10,
+            "result": "",
+            "result_kind": "",
+            "yards": None,
+            "notes": "INCOMPLETE",
+            "conf": {"result": 0.9},
+        }
+        first_next = {
+            "down": 2,
+            "distance": 10,
+            "yardline": 40,
+            "field_spot": 7,
+            "result": "",
+            "yards": None,
+        }
+        second = {
+            "snap_id": "4_-atoyAQzA:4130.0",
+            "down": 2,
+            "distance": 6,
+            "yardline": 22,
+            "field_spot": 6,
+            "result": "",
+            "result_kind": "",
+            "yards": None,
+            "conf": {"yardline": 0.95},
+        }
+        second_next = {
+            "down": 3,
+            "distance": 6,
+            "yardline": 22,
+            "field_spot": 3,
+            "result": "",
+            "yards": None,
+        }
+        self.assertFalse(plus0_has_evidence(first, first_next))
+        self.assertFalse(plus0_has_evidence(second, second_next))
+        fill_result_yards([first, first_next])
+        fill_result_yards([second, second_next])
+        self.assertEqual(first["result"], "")
+        self.assertIsNone(first["yards"])
+        self.assertEqual(second["result"], "")
+        self.assertIsNone(second["yards"])
+        # A yard-line move blocks even when the field spot is unchanged.
+        moved = {
+            "down": 1,
+            "distance": 10,
+            "yardline": 25,
+            "field_spot": 25,
+            "result": "",
+            "yards": None,
+        }
+        moved_next = {"down": 2, "distance": 10, "yardline": 79, "field_spot": 25, "result": "", "yards": None}
+        self.assertFalse(plus0_has_evidence(moved, moved_next))
+        fill_result_yards([moved, moved_next])
+        self.assertEqual(moved["result"], "")
+
     def test_missing_spot_still_uses_the_distance(self) -> None:
         frames = [_live(10, 1, 10), _live(20, 2, 10)]
         snaps = build_snaps(frames, video_id="r", channel="SGU", game="madden27", extract=_ON)

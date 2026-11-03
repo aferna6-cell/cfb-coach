@@ -900,10 +900,23 @@ def _apply_glyph(row: object, ok: bool) -> None:
     _set_yard_conf(row, _GLYPH_LOW_CONF)
 
 
-def preserve_base_yardlines(rows: list) -> None:
-    """Put the pre-glyph yard line back if any later writer replaced it.
+def capture_base_yardlines(rows: list) -> None:
+    """Record the yard line after vodx_field, before the glyph gate.
 
-    A blank base value is left alone, so a field reader may still fill it.
+    That is the value v0.96 published, including a scorebug reconciliation
+    that replaced the raw engine number. A blank stays blank so a glyph may
+    fill it.
+    """
+    from vod_pilot.digits import safe_int
+
+    for row in rows:
+        _row_set(row, "base_yardline", safe_int(_row_get(row, "yardline")))
+
+
+def preserve_base_yardlines(rows: list) -> None:
+    """Put the post-field yard line back if a later writer replaced it.
+
+    A blank base value is left alone, so a glyph may still fill it.
     """
     from vod_pilot.digits import safe_int
 
@@ -1027,11 +1040,9 @@ def build_snaps(
             # and do not replace it when a glyph on another frame disagrees.
             yardline = phrase.yardline
             yard_phrase = phrase.yard_phrase
-            base_yardline = phrase.yardline
         else:
             yardline = None
             yard_phrase = ""
-            base_yardline = None
             agreed = {f.yardline for f in glyph_frames}
             if len(agreed) == 1:
                 glyph_yardline = next(iter(agreed))
@@ -1169,7 +1180,6 @@ def build_snaps(
                 menu_confidence=menu_conf_row,
                 book_match=exact_book_match(play) if extract.book_match and play else "",
                 yard_from_glyph=from_glyph,
-                base_yardline=base_yardline,
                 glyph_yardline=glyph_yardline,
                 glyph_phrase=glyph_phrase,
                 glyph_conf=glyph_conf,
@@ -1216,9 +1226,8 @@ def build_snaps(
     if extract.flag_menu:
         # Drop menu snaps. Do not invent a replacement, so other snap ids stay put.
         rows = [row for row in rows if not row.is_menu_or_lobby]
-    # Glyphs stay on glyph_yardline until a later gate. Publishing them here
-    # would block the base field reader, which only fills blanks.
-    preserve_base_yardlines(rows)
+    # Do not lock base_yardline here. vodx_field still has to reconcile the
+    # raw engine line with the scorebug. The lock is taken after that.
     return rows
 
 
