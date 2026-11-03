@@ -49,16 +49,42 @@ class GoalSnapTests(unittest.TestCase):
         self.assertTrue(frame.goal_to_go)
         self.assertEqual(frame.distance, 6)
 
-    def test_no_spot_is_not_plus_zero(self) -> None:
+    def test_no_spot_keeps_distance_empty_and_still_resolves(self) -> None:
+        """Missing spots stay None. Yards still use the painted GOAL distance."""
         lex = _lex()
         frames = [
             classify_frame(10, ["1STGOAL", "1st 2:00"], 0.6, lex, _ON),
             classify_frame(20, ["2NDGOAL", "1st 1:40"], 0.6, lex, _ON),
         ]
         snaps = build_snaps(frames, video_id="g", channel="SGU", game="madden27", extract=_ON)
-        self.assertEqual(snaps[0].result, "")
-        self.assertEqual(snaps[0].result_flag, "goal_no_spot")
         self.assertIsNone(snaps[0].distance)
+        self.assertEqual(snaps[0].baseline_distance, 1)
+        self.assertTrue(snaps[0].goal_to_go)
+        self.assertEqual(snaps[0].yards, 0)
+        self.assertEqual(snaps[0].result, "+0")
+        self.assertEqual(snaps[0].result_flag, "")
+
+    def test_goal_then_a_normal_down_uses_the_painted_distance(self) -> None:
+        lex = _lex()
+        frames = [
+            classify_frame(10, ["1STGOAL", "1st 2:00"], 0.6, lex, _ON),
+            classify_frame(20, ["2ND86", "1st 1:40"], 0.6, lex, _ON),
+        ]
+        snaps = build_snaps(frames, video_id="g", channel="SGU", game="madden27", extract=_ON)
+        self.assertIsNone(snaps[0].distance)
+        self.assertEqual(snaps[0].yards, -5)
+        self.assertEqual(snaps[0].result, "-5")
+
+    def test_goal_touchdown_survives_a_missing_distance(self) -> None:
+        lex = _lex()
+        frames = [
+            classify_frame(10, ["1STGOAL", "TOUCHDOWN", "1st 2:00"], 0.6, lex, _ON),
+            classify_frame(20, ["1ST810", "1st 1:20"], 0.6, lex, _ON),
+        ]
+        snaps = build_snaps(frames, video_id="g", channel="SGU", game="madden27", extract=_ON)
+        self.assertIsNone(snaps[0].distance)
+        self.assertEqual(snaps[0].result, "td")
+        self.assertEqual(snaps[0].result_kind, "td")
 
     def test_flag_off_still_maps_goal_to_one(self) -> None:
         lex = _lex()

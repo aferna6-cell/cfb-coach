@@ -129,6 +129,7 @@ class FrameObs:
     adjustments: list[str] = field(default_factory=list)
     adjustment_conf: float = 0.0
     yard_conf: float = 0.0
+    yard_from_glyph: bool = False
     goal_to_go: bool = False
     is_menu_or_lobby: bool = False
     menu_confidence: float = 0.0
@@ -184,11 +185,14 @@ def classify_frame(
     flags = parse_flags(texts)
     yardline, yard_phrase = parse_yardline_phrase(texts, dd)
     yard_conf = 0.0
+    yard_from_glyph = False
     # CFB's scorebug has no ball spot in this geometry. Do not invent one.
+    # A phrase the pre-glyph parser already produced is left alone.
     if extract.yardline_glyphs and yardline is None and not str(game).startswith("cfb"):
         spot = sided_spot(raw_tokens)
         if spot is not None:
             number, side, yard_conf = spot
+            yard_from_glyph = True
             if side == "own":
                 yardline, yard_phrase = number, f"own {number}"
             elif side == "opp":
@@ -341,6 +345,7 @@ def classify_frame(
         adjustments=adjustments,
         adjustment_conf=adjustment_conf,
         yard_conf=yard_conf,
+        yard_from_glyph=yard_from_glyph,
         goal_to_go=goal,
         is_menu_or_lobby=is_menu,
         menu_confidence=menu_conf,
@@ -518,18 +523,30 @@ def _infer_between(
     if scored is not None:
         return (*scored, "")
 
-    down0, dist0 = dd0
-    down1, dist1 = dd1
+    down0, _grouped0 = dd0
+    down1, _grouped1 = dd1
     if down1 == down0 + 1:
+        # Spots win when both snaps are goal and both yard lines were read.
+        # A missing spot is not a reason to drop the row: the painted
+        # distance (1 for GOAL) still produces yards. The grouping sentinel
+        # 0 is not that distance, and None is not subtracted.
+        if extract.goal_to_go and _both_goal(prev, nxt):
+            moved = _goal_spot_yards(prev, nxt, conf)
+            if moved is not None:
+                return moved
+        dist0 = _yards_distance(prev)
+        dist1 = _yards_distance(nxt)
+        if dist0 is None or dist1 is None:
+            if "sack" in flags:
+                return "sack", None, 0.55, ""
+            if "incomplete" in flags:
+                return "incomplete", 0, 0.75, ""
+            return "", None, 0.0, ""
         yards = dist0 - dist1
         if "sack" in flags:
             return "sack", yards, min(0.85, conf + 0.1), ""
         if "incomplete" in flags and yards == 0:
             return "incomplete", 0, 0.75, ""
-        if extract.goal_to_go and _both_goal(prev, nxt):
-            moved = _goal_spot_yards(prev, nxt, conf)
-            if moved is not None:
-                return moved
         if yards > 0:
             return "gain", yards, conf, ""
         if yards < 0:
@@ -551,12 +568,35 @@ def _both_goal(prev: _Run, nxt: _Run) -> bool:
     return any(frame.goal_to_go for frame in prev.frames) and any(frame.goal_to_go for frame in nxt.frames)
 
 
+def _yards_distance(run: _Run) -> int | None:
+    """Distance used for yards. Goal-to-go with no spot uses the HUD distance.
+
+    ``FrameObs.dd`` reports 0 so a goal snap still groups. That 0 is not a
+    number of yards, and a stored None must not be subtracted.
+    """
+    counts: dict[int, int] = {}
+    for frame in run.frames:
+        if frame.distance is not None:
+            counts[frame.distance] = counts.get(frame.distance, 0) + 1
+    if not counts and any(frame.goal_to_go for frame in run.frames):
+        for frame in run.frames:
+            if frame.seg_distance is not None:
+                counts[frame.seg_distance] = counts.get(frame.seg_distance, 0) + 1
+    if not counts:
+        return None
+    return max(counts, key=lambda key: (counts[key], -key))
+
+
 def _goal_spot_yards(prev: _Run, nxt: _Run, conf: float) -> tuple[str, int | None, float, str] | None:
-    """Yards from the spots when both snaps are goal-to-go. Never a fake +0."""
+    """Yards from the spots when both snaps are goal-to-go.
+
+    Missing spots return None so the painted distance can still resolve the
+    play. Two unread spots are not turned into a crash.
+    """
     yl0 = _single_yardline(prev.frames)
     yl1 = _single_yardline(nxt.frames)
     if yl0 is None or yl1 is None:
-        return "unknown", None, 0.0, "goal_no_spot"
+        return None
     yards = yl1 - yl0
     if yards > 0:
         return "gain", yards, max(conf, 0.75), ""
@@ -645,6 +685,160 @@ def re_word(word: str, blob: str) -> bool:
     return re.search(rf"\b{re.escape(word)}\b", blob) is not None
 
 
+_GLYPH_LOW_CONF = 0.15
+_SPOT_TOLERANCE = 2
+
+
+def _row_get(row: object, key: str):
+    if isinstance(row, dict):
+        return row.get(key)
+    return getattr(row, key, None)
+
+
+def _row_set(row: object, key: str, value) -> None:
+    if isinstance(row, dict):
+        row[key] = value
+    else:
+        setattr(row, key, value)
+
+
+def _set_yard_conf(row: object, value: float) -> None:
+    if isinstance(row, dict):
+        row.setdefault("conf", {})["yardline"] = value
+        if isinstance(row.get("confidence"), dict):
+            row["confidence"]["yardline"] = value
+        held = row.get("_pr88_conf")
+        if isinstance(held, dict) and "yardline" in held:
+            held["yardline"] = value
+        return
+    row.confidence["yardline"] = value
+
+
+def field_spot_agrees(yardline: int, field_spot: int) -> bool:
+    """True when a coach yard line and ``field_spot`` are within 2 yards.
+
+    ``field_spot`` is either the same 0-100 line or the 1-50 number painted
+    on the field. Own 22 and the painted 22 agree; own 22 and 40 do not.
+    """
+    if abs(yardline - field_spot) <= _SPOT_TOLERANCE:
+        return True
+    on_field = min(yardline, 100 - yardline)
+    return 1 <= field_spot <= 50 and abs(on_field - field_spot) <= _SPOT_TOLERANCE
+
+
+def _published_yardline(row: object) -> int | None:
+    from vod_pilot.digits import safe_int
+
+    yardline = safe_int(_row_get(row, "yardline"))
+    if yardline is None:
+        return None
+    return yardline
+
+
+def _neighbor_yards_match(rows: list, index: int, candidate: int) -> bool:
+    """Candidate yards-to-goal matches the previous snap and the next snap.
+
+    Previous: ``prev_ytg - prev.yards``. Next: ``next_ytg + this.yards``.
+    Both neighbors must already have a yard line. An unconfirmed glyph is
+    not that yard line.
+    """
+    from vod_pilot.digits import safe_int
+
+    if index <= 0 or index + 1 >= len(rows):
+        return False
+    prev, nxt = rows[index - 1], rows[index + 1]
+    prev_yl = _published_yardline(prev)
+    next_yl = _published_yardline(nxt)
+    prev_yards = safe_int(_row_get(prev, "yards"))
+    this_yards = safe_int(_row_get(rows[index], "yards"))
+    if prev_yl is None or next_yl is None or prev_yards is None or this_yards is None:
+        return False
+    # A neighbor that is still an unconfirmed glyph does not count.
+    if _row_get(prev, "yard_from_glyph") and _row_get(prev, "yardline") is None:
+        return False
+    if _row_get(nxt, "yard_from_glyph") and _row_get(nxt, "yardline") is None:
+        return False
+    ytg = 100 - candidate
+    if ytg != (100 - prev_yl) - prev_yards:
+        return False
+    if ytg != (100 - next_yl) + this_yards:
+        return False
+    return True
+
+
+def _apply_glyph(row: object, ok: bool) -> None:
+    from vod_pilot.digits import safe_int
+
+    candidate = safe_int(_row_get(row, "glyph_yardline"))
+    phrase = str(_row_get(row, "glyph_phrase") or "")
+    current = safe_int(_row_get(row, "yardline"))
+    if ok and candidate is not None:
+        _row_set(row, "yardline", candidate)
+        zone = _field_zone(candidate, safe_int(_row_get(row, "distance")))
+        if isinstance(row, dict):
+            if "field_zone" in row:
+                row["field_zone"] = zone
+        else:
+            row.field_zone = zone
+        sit = str(_row_get(row, "situation_raw") or "")
+        if phrase and phrase not in sit:
+            _row_set(row, "situation_raw", (sit + " " + phrase).strip())
+        conf = float(_row_get(row, "glyph_conf") or 0.55)
+        _set_yard_conf(row, round(conf, 2))
+        return
+    if current is not None and current != candidate:
+        return
+    _row_set(row, "yardline", None)
+    if phrase:
+        sit = str(_row_get(row, "situation_raw") or "")
+        if phrase in sit:
+            _row_set(row, "situation_raw", " ".join(sit.replace(phrase, " ").split()))
+    if isinstance(row, dict):
+        if "field_zone" in row:
+            row["field_zone"] = ""
+    else:
+        row.field_zone = ""
+    _set_yard_conf(row, _GLYPH_LOW_CONF)
+
+
+def gate_glyph_yardlines(rows: list) -> None:
+    """Keep a glyph yard line only when field_spot or both neighbors agree.
+
+    A value the pre-glyph parser produced (``yard_from_glyph`` false) is
+    never overwritten or blanked. A rejected glyph stays empty at low
+    confidence, and the candidate is kept so a later ``field_spot`` can
+    still confirm it.
+    """
+    from vod_pilot.digits import safe_int
+
+    pending: list[int] = []
+    for index, row in enumerate(rows):
+        if not _row_get(row, "yard_from_glyph"):
+            continue
+        candidate = safe_int(_row_get(row, "glyph_yardline"))
+        if candidate is None:
+            continue
+        spot = safe_int(_row_get(row, "field_spot"))
+        if spot is not None:
+            _apply_glyph(row, field_spot_agrees(candidate, spot))
+        else:
+            pending.append(index)
+    changed = True
+    while changed and pending:
+        changed = False
+        still: list[int] = []
+        for index in pending:
+            candidate = safe_int(_row_get(rows[index], "glyph_yardline"))
+            if candidate is not None and _neighbor_yards_match(rows, index, candidate):
+                _apply_glyph(rows[index], True)
+                changed = True
+            else:
+                still.append(index)
+        pending = still
+    for index in pending:
+        _apply_glyph(rows[index], False)
+
+
 def _field_zone(yardline: int | None, distance: int | None) -> str:
     if yardline is None:
         return ""
@@ -699,15 +893,35 @@ def build_snaps(
             quarter, clock = _presnap_clock(run, frames)
         else:
             quarter, clock = _clock_of(run.frames, last=False)
-        yardline = next((f.yardline for f in run.frames if f.yardline is not None), None)
-        yard_phrase = next((f.yard_phrase for f in run.frames if f.yard_phrase and f.yardline is not None), "")
-        if extract.yardline_glyphs:
-            seen = {f.yardline for f in run.frames if f.yardline is not None}
-            if len(seen) > 1:
-                yardline, yard_phrase = None, ""
+        phrase = next((f for f in run.frames if f.yardline is not None and not f.yard_from_glyph), None)
+        glyph_frames = [f for f in run.frames if f.yard_from_glyph and f.yardline is not None]
+        glyph_yardline: int | None = None
+        glyph_phrase = ""
+        glyph_conf = 0.0
+        from_glyph = False
+        if phrase is not None:
+            # The pre-glyph parser already produced this. Do not blank it
+            # and do not replace it when a glyph on another frame disagrees.
+            yardline = phrase.yardline
+            yard_phrase = phrase.yard_phrase
+        else:
+            yardline = None
+            yard_phrase = ""
+            agreed = {f.yardline for f in glyph_frames}
+            if len(agreed) == 1:
+                glyph_yardline = next(iter(agreed))
+                sample = next(f for f in glyph_frames if f.yardline == glyph_yardline)
+                glyph_phrase = sample.yard_phrase
+                confs = [f.yard_conf for f in glyph_frames if f.yard_conf]
+                glyph_conf = min(confs) if confs else 0.55
+                from_glyph = True
         if not yard_phrase:
-            yard_phrase = next((f.yard_phrase for f in run.frames if f.yard_phrase), "")
-            if yard_phrase.startswith("ball on"):
+            pending = next(
+                (f.yard_phrase for f in run.frames if f.yard_phrase and not f.yard_from_glyph),
+                "",
+            )
+            if pending.startswith("ball on"):
+                yard_phrase = pending
                 yardline = None
 
         kind = ""
@@ -785,6 +999,7 @@ def build_snaps(
             agree = sum(1 for f in run.frames if f.dd == dd) / len(run.frames)
         clock_text = _fmt_clock(clock)
         goal_row = any(frame.goal_to_go for frame in run.frames) if extract.goal_to_go else False
+        baseline_distance = _yards_distance(run) if goal_row and distance is None else None
         menu_hits = [frame for frame in run.frames if frame.is_menu_or_lobby] if extract.flag_menu else []
         # A snap is a menu row only when the menu is the snap, not one stray token.
         menu_row = bool(menu_hits) and len(menu_hits) * 2 >= len(run.frames)
@@ -828,6 +1043,11 @@ def build_snaps(
                 is_menu_or_lobby=menu_row,
                 menu_confidence=menu_conf_row,
                 book_match=exact_book_match(play) if extract.book_match and play else "",
+                yard_from_glyph=from_glyph,
+                glyph_yardline=glyph_yardline,
+                glyph_phrase=glyph_phrase,
+                glyph_conf=glyph_conf,
+                baseline_distance=baseline_distance,
                 coverage_seen=coverage,
                 concept_seen=_concepts(call_frames + run.frames),
                 notes=notes,
@@ -870,6 +1090,8 @@ def build_snaps(
     if extract.flag_menu:
         # Drop menu snaps. Do not invent a replacement, so other snap ids stay put.
         rows = [row for row in rows if not row.is_menu_or_lobby]
+    if extract.yardline_glyphs:
+        gate_glyph_yardlines(rows)
     return rows
 
 

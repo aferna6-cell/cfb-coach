@@ -8,7 +8,7 @@ from pathlib import Path
 
 from vod_pilot.flags import ExtractFlags
 from vod_pilot.lexicon import Lexicon
-from vod_pilot.segment import build_snaps, classify_frame
+from vod_pilot.segment import build_snaps, classify_frame, gate_glyph_yardlines
 from vod_pilot.tokens import Tok
 from vod_pilot.vodx_field import spot_token
 
@@ -52,9 +52,91 @@ class YardlineSnapTests(unittest.TestCase):
             game="madden27",
             extract=_ON,
         )
+        # A glyph with no field spot and no neighboring snaps stays empty.
+        self.assertIsNone(snaps[0].yardline)
+        self.assertEqual(snaps[0].glyph_yardline, 35)
+        self.assertLessEqual(snaps[0].confidence["yardline"], 0.2)
+        snaps[0].field_spot = 35
+        gate_glyph_yardlines(snaps)
         self.assertEqual(snaps[0].yardline, 35)
         self.assertIn("own 35", snaps[0].situation_raw)
         self.assertGreaterEqual(snaps[0].confidence["yardline"], 0.5)
+
+    def test_glyph_does_not_override_or_blank_a_phrase(self) -> None:
+        lex = _lex()
+        frames = [
+            classify_frame(10, ["1ST810", "1st 5:10", Tok("￥40", conf=0.9)], 0.6, lex, _ON),
+            classify_frame(14, ["1ST810", "OWN 22", "1st 5:02"], 0.6, lex, _ON),
+        ]
+        self.assertEqual(frames[0].yardline, 40)
+        self.assertTrue(frames[0].yard_from_glyph)
+        self.assertEqual(frames[1].yardline, 22)
+        self.assertFalse(frames[1].yard_from_glyph)
+        snaps = build_snaps(frames, video_id="y", channel="SGU", game="madden27", extract=_ON)
+        self.assertEqual(snaps[0].yardline, 22)
+        self.assertFalse(snaps[0].yard_from_glyph)
+        self.assertIn("own 22", snaps[0].situation_raw)
+        snaps[0].field_spot = 40
+        gate_glyph_yardlines(snaps)
+        self.assertEqual(snaps[0].yardline, 22)
+
+    def test_glyph_needs_field_spot_or_both_neighbors(self) -> None:
+        lex = _lex()
+        rejected = build_snaps(
+            [
+                classify_frame(10, ["1ST810", "1st 5:10", Tok("^35", conf=0.8)], 0.6, lex, _ON),
+                classify_frame(30, ["2ND810", "1st 4:40"], 0.6, lex, _ON),
+            ],
+            video_id="y",
+            channel="SGU",
+            game="madden27",
+            extract=_ON,
+        )
+        self.assertIsNone(rejected[0].yardline)
+        self.assertEqual(rejected[0].glyph_yardline, 35)
+        self.assertLessEqual(rejected[0].confidence["yardline"], 0.2)
+        rejected[0].field_spot = 37
+        gate_glyph_yardlines(rejected)
+        self.assertEqual(rejected[0].yardline, 35)
+        rejected[0].field_spot = 22
+        gate_glyph_yardlines(rejected)
+        self.assertIsNone(rejected[0].yardline)
+        self.assertLessEqual(rejected[0].confidence["yardline"], 0.2)
+
+        confirmed = build_snaps(
+            [
+                classify_frame(10, ["1ST810", "OWN 25", "1st 8:00"], 0.6, lex, _ON),
+                classify_frame(20, ["2ND85", "1st 7:40", Tok("^30", conf=0.8)], 0.6, lex, _ON),
+                classify_frame(30, ["3RD81", "OWN 34", "1st 7:20"], 0.6, lex, _ON),
+            ],
+            video_id="y",
+            channel="SGU",
+            game="madden27",
+            extract=_ON,
+        )
+        self.assertEqual([snap.yardline for snap in confirmed], [25, 30, 34])
+        self.assertTrue(confirmed[1].yard_from_glyph)
+        self.assertGreaterEqual(confirmed[1].confidence["yardline"], 0.5)
+
+        missed = build_snaps(
+            [
+                classify_frame(10, ["1ST810", "OWN 25", "1st 8:00"], 0.6, lex, _ON),
+                classify_frame(20, ["2ND85", "1st 7:40", Tok("^40", conf=0.8)], 0.6, lex, _ON),
+                classify_frame(30, ["3RD81", "OWN 34", "1st 7:20"], 0.6, lex, _ON),
+            ],
+            video_id="y",
+            channel="SGU",
+            game="madden27",
+            extract=_ON,
+        )
+        self.assertEqual(missed[0].yardline, 25)
+        self.assertIsNone(missed[1].yardline)
+        self.assertEqual(missed[1].glyph_yardline, 40)
+        self.assertLessEqual(missed[1].confidence["yardline"], 0.2)
+        self.assertEqual(missed[2].yardline, 34)
+        missed[1].field_spot = 40
+        gate_glyph_yardlines(missed)
+        self.assertEqual(missed[1].yardline, 40)
 
     def test_cfb_layout_does_not_invent_a_spot(self) -> None:
         lex = _lex()

@@ -86,6 +86,13 @@ class CircledDigitTests(unittest.TestCase):
             extract=ExtractFlags(yardline_glyphs=True),
             lexicon=lex,
         )
+        self.assertIsNone(sided[0]["yardline"])
+        self.assertEqual(sided[0]["glyph_yardline"], 3)
+        self.assertLessEqual(sided[0]["conf"].get("yardline", 0.0), 0.2)
+        sided[0]["field_spot"] = 3
+        from vod_pilot.segment import gate_glyph_yardlines
+
+        gate_glyph_yardlines(sided)
         self.assertEqual(sided[0]["yardline"], 3)
 
 

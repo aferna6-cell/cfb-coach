@@ -86,6 +86,54 @@ class GoalDistanceTests(unittest.TestCase):
         self.assertIsNone(rows[0]["distance"])
         self.assertTrue(rows[0]["goal_to_go"])
 
+    def test_missing_goal_distance_still_resolves_and_keeps_a_score(self) -> None:
+        """None used to make apply_quality skip the row. \"\" must not be subtracted."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+        from vodx_quality import apply_quality
+
+        goal = {
+            "down": 1,
+            "distance": None,
+            "goal_to_go": True,
+            "baseline_distance": 1,
+            "yards": None,
+            "result": "",
+            "result_kind": "",
+        }
+        nxt = {"down": 2, "distance": 6, "yards": None, "result": "", "result_kind": ""}
+        apply_quality([goal, nxt])
+        self.assertIsNone(goal["distance"])
+        self.assertEqual(goal["yards"], -5)
+        self.assertEqual(goal["result"], "-5")
+
+        normal = {"down": 1, "distance": 10, "yards": None, "result": "", "result_kind": ""}
+        second = {"down": 2, "distance": 6, "yards": None, "result": "", "result_kind": ""}
+        apply_quality([normal, second])
+        self.assertEqual(normal["yards"], 4)
+        self.assertEqual(normal["result"], "+4")
+
+        scored = {
+            "down": 1,
+            "distance": "",
+            "goal_to_go": True,
+            "yards": None,
+            "result": "td",
+            "result_kind": "td",
+        }
+        kick = {"down": 1, "distance": 10, "yards": None, "result": "", "result_kind": ""}
+        apply_quality([scored, kick])
+        self.assertIsNone(scored["distance"])
+        self.assertEqual(scored["result"], "td")
+        self.assertEqual(scored["result_kind"], "td")
+
+        blank = {"down": 1, "distance": "", "goal_to_go": True, "yards": None, "result": "", "result_kind": ""}
+        also = {"down": 2, "distance": "", "goal_to_go": True, "yards": None, "result": "", "result_kind": ""}
+        apply_quality([blank, also])
+        self.assertIsNone(blank["distance"])
+        self.assertIsNone(blank["yards"])
+
 
 class ManifestMetaTests(unittest.TestCase):
     def test_opponent_and_side_stay(self) -> None:

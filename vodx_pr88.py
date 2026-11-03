@@ -28,7 +28,7 @@ from typing import Any, Iterable
 from vod_pilot.field_coverage import coverage_report
 from vod_pilot.flags import ExtractFlags
 from vod_pilot.lexicon import Lexicon, load_lexicon
-from vod_pilot.segment import build_snaps, classify_frame
+from vod_pilot.segment import build_snaps, classify_frame, gate_glyph_yardlines
 from vod_pilot.tokens import Tok
 
 # Cumulative order. Each build adds the next name to --fixes.
@@ -191,6 +191,62 @@ def yards_delta(dist: Any, ndist: Any) -> int | None:
     return left - right
 
 
+_RESULT_KEPT = frozenset({"td", "int", "fumble", "turnover"})
+
+
+def _result_distance(row: dict) -> int | None:
+    """Number to subtract for yards.
+
+    A goal-to-go row keeps ``distance is None`` when the spot was missed.
+    The yards still resolve from the yard line, or from the distance the
+    HUD painted before that clear (1 for GOAL). ``\"\"`` is not a number.
+    """
+    dist = as_int(row.get("distance"))
+    if dist is not None:
+        return dist
+    if not row.get("goal_to_go"):
+        return None
+    yardline = as_int(row.get("yardline"))
+    if yardline is not None:
+        ytg = 100 - yardline
+        if 1 <= ytg <= 99:
+            return ytg
+    return as_int(row.get("baseline_distance"))
+
+
+def fill_result_yards(rows: list[dict]) -> None:
+    """Give a goal snap a yards result without subtracting None or \"\".
+
+    Rows that already have yards, or a TD / turnover, are left as they are.
+    """
+    if not isinstance(rows, list):
+        return
+    for row, nxt in zip(rows, rows[1:]):
+        if not isinstance(row, dict) or not isinstance(nxt, dict):
+            continue
+        if (row.get("result_kind") or "") in _RESULT_KEPT:
+            continue
+        if as_int(row.get("yards")) is not None:
+            continue
+        down = as_int(row.get("down"))
+        ndown = as_int(nxt.get("down"))
+        if down is None or ndown is None or ndown != down + 1:
+            continue
+        yy = yards_delta(_result_distance(row), _result_distance(nxt))
+        if yy is None:
+            continue
+        row["yards"] = yy
+        if not row.get("result"):
+            if yy > 0:
+                row["result"] = f"+{yy}"
+            elif yy < 0:
+                row["result"] = str(yy)
+            else:
+                row["result"] = "+0"
+        if not row.get("result_kind"):
+            row["result_kind"] = "gain" if yy > 0 else ("loss" if yy < 0 else "no_gain")
+
+
 def coerce_row_numbers(row: dict) -> None:
     """In-place: \"\" on a numeric field becomes None. The goal flag is left alone."""
     for key in ("down", "distance", "yardline", "yards", "quarter", "score_left", "score_right"):
@@ -221,11 +277,30 @@ def install_quality_guard() -> None:
 
     def _coerce_then(fn):
         def apply_quality(rows, *args, **kwargs):
+            saved = None
             if isinstance(rows, list):
                 for row in rows:
                     if isinstance(row, dict):
                         coerce_row_numbers(row)
-            return fn(rows, *args, **kwargs)
+                saved = [
+                    (row.get("result_kind"), row.get("result"), row.get("yards"))
+                    if isinstance(row, dict)
+                    else None
+                    for row in rows
+                ]
+            out = fn(rows, *args, **kwargs)
+            if saved is not None:
+                for row, prev in zip(rows, saved):
+                    if not prev or not isinstance(row, dict):
+                        continue
+                    kind, result, yards = prev
+                    if kind in _RESULT_KEPT and (row.get("result_kind") or "") not in _RESULT_KEPT:
+                        row["result_kind"] = kind
+                        row["result"] = result
+                        if row.get("yards") is None:
+                            row["yards"] = yards
+                fill_result_yards(rows)
+            return out
 
         apply_quality._blank_safe = True
         return apply_quality
@@ -247,8 +322,7 @@ def install_quality_guard() -> None:
         vodx_quality.apply_quality = _coerce_then(current)
         return
     patched = ns.get("apply_quality", current)
-    patched._blank_safe = True
-    vodx_quality.apply_quality = patched
+    vodx_quality.apply_quality = _coerce_then(patched)
 
 
 def _clock_text(situation: str) -> str:
@@ -540,6 +614,12 @@ def rows_from_frames(
             "result_flag": raw.get("result_flag") or "",
             "yards": raw.get("yards"),
             "book_match": raw.get("book_match") or "",
+            "yard_from_glyph": bool(raw.get("yard_from_glyph")),
+            "glyph_yardline": raw.get("glyph_yardline"),
+            "glyph_phrase": raw.get("glyph_phrase") or "",
+            "glyph_conf": float(raw.get("glyph_conf") or 0.0),
+            "field_spot": raw.get("field_spot"),
+            "baseline_distance": as_int(raw.get("baseline_distance")),
         }
         row.update(adj)
         owned = {
@@ -581,6 +661,10 @@ def rows_from_frames(
         row["conf"] = {**conf, **{key: value for key, value in owned.items() if key in active}}
         row["_pr88_conf"] = active
         rows.append(row)
+    if extract.yardline_glyphs:
+        # field_spot may already be on the row. Re-check glyph fills against it
+        # and against the neighboring snaps. Phrase yard lines stay put.
+        gate_glyph_yardlines(rows)
     return rows
 
 

@@ -117,6 +117,16 @@ class SnapRow:
     menu_confidence: float = 0.0
     book_match: str = ""
     confidence: dict[str, float] = field(default_factory=dict)
+    # Glyph candidates stay off ``yardline`` until field_spot or the
+    # neighboring snaps confirm them. A phrase read never sets these.
+    yard_from_glyph: bool = False
+    glyph_yardline: int | None = None
+    glyph_phrase: str = ""
+    glyph_conf: float = 0.0
+    field_spot: int | None = None
+    # Painted down-and-distance before goal-to-go cleared a missing spot.
+    # Result math uses this. The published distance stays None.
+    baseline_distance: int | None = None
 
     def to_snap_dict(self) -> dict[str, Any]:
         raw = asdict(self)

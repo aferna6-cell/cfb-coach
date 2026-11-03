@@ -530,6 +530,12 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
             "side": d.get("side") or "", "quarter": d.get("quarter"), "clock": clock, "score": None,
             "down": vodx_pr88.as_int(d.get("down")), "distance": vodx_pr88.as_int(d.get("distance")),
             "yardline": vodx_pr88.as_int(d.get("yardline")),
+            "yard_from_glyph": bool(d.get("yard_from_glyph")),
+            "glyph_yardline": d.get("glyph_yardline"),
+            "glyph_phrase": d.get("glyph_phrase") or "",
+            "glyph_conf": float(d.get("glyph_conf") or 0.0),
+            "field_spot": d.get("field_spot"),
+            "baseline_distance": vodx_pr88.as_int(d.get("baseline_distance")),
             "situation_raw": d.get("situation_raw") or "",
             "formation": d.get("formation") or "", "play": d.get("play") or "",
             "coverage_seen": d.get("coverage_seen") or "", "concept_seen": d.get("concept_seen") or "",
@@ -629,6 +635,8 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
     # through refine_rows / apply_speech. Restore a PR #88 field when that
     # stage was not strictly more confident.
     vodx_pr88.restore_rows(rows, pr88_snapshot)
+    if extract.yardline_glyphs:
+        vodx_pr88.gate_glyph_yardlines(rows)
     batch_meta = {"schema": SCHEMA_SNAPS, "video_id": vid, "game": game, "creator": r.get("creator"),
                   "source_platform": plat, "source_url": r.get("url"), "local_path": path, "opponent_type": opp,
                   "opponent_type_source": opp_src, "sample_fps": fps, "max_seconds": max_seconds,
