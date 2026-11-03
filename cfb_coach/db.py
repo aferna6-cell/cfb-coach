@@ -1807,7 +1807,11 @@ class CoachDB:
         """
         now = datetime.now(timezone.utc).isoformat()
         status = str(executed_status or "unknown").lower()
-        if status != "identified":
+        # ``shown`` keeps the call that was on screen. It is not a verified attest,
+        # so training still ignores it. Only ``identified`` is a confirmed execution.
+        if status == "shown":
+            executed_verification = "shown_call"
+        elif status != "identified":
             executed_formation = None
             executed_play = None
             executed_verification = "unknown"

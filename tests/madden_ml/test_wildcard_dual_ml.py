@@ -510,16 +510,16 @@ if python3 -m cfb_coach play --game madden27 -o john --franchise primary --once 
   echo "offense flag should refuse after ml heuristic"
   exit 1
 fi
-python3 -m cfb_coach play --game madden27 -o john --franchise primary --once "2&6 my 28" --no-overlay --terminal --no-vod-prior --db "$CFB_COACH_MADDEN_DB"
+python3 -m cfb_coach play --game madden27 -o john --franchise primary --once "2&6 my 28" --no-overlay --terminal --no-vod-prior --heuristic-offense --db "$CFB_COACH_MADDEN_DB"
 python3 -m cfb_coach ml experimental
 python3 -c 'from pathlib import Path; from cfb_coach.madden.model import defense_coordinator as defense; from cfb_coach.db import CoachDB; from cfb_coach.madden.data import load_seed; db=CoachDB(Path("{db_path}"), seed=load_seed()); defense.set_mode(db, "experimental"); db.close()'
-python3 -m cfb_coach play --game madden27 -o john --once "d 2&7 showing mesh" --no-overlay --terminal --no-vod-prior --ml-defense-control --db "$CFB_COACH_MADDEN_DB"
+python3 -m cfb_coach play --game madden27 -o john --once "d 2&7 showing mesh" --no-overlay --terminal --no-vod-prior --heuristic-offense --ml-defense-control --db "$CFB_COACH_MADDEN_DB"
 python3 -m cfb_coach ml defense-experimental --disable --db "$CFB_COACH_MADDEN_DB"
-if python3 -m cfb_coach play --game madden27 -o john --once "d 1&10" --no-overlay --terminal --no-vod-prior --ml-defense-control --db "$CFB_COACH_MADDEN_DB"; then
+if python3 -m cfb_coach play --game madden27 -o john --once "d 1&10" --no-overlay --terminal --no-vod-prior --heuristic-offense --ml-defense-control --db "$CFB_COACH_MADDEN_DB"; then
   echo "defense flag should refuse when the defense mode is off"
   exit 1
 fi
-python3 -m cfb_coach play --game madden27 -o john --once "d 1&10" --no-overlay --terminal --no-vod-prior --db "$CFB_COACH_MADDEN_DB"
+python3 -m cfb_coach play --game madden27 -o john --once "d 1&10" --no-overlay --terminal --no-vod-prior --heuristic-offense --db "$CFB_COACH_MADDEN_DB"
 """
             self.assertNotIn("--retrain", script)
             repo = Path(__file__).resolve().parents[2]

@@ -84,6 +84,32 @@ python -m cfb_coach ml experimental --retrain
 audit shows those Franchise sessions contributed supervised rows
 (`n_supervised > 0` from that DB). An empty/agent DB trains prior-driven only.
 
+## Retrain so Ryan, John, and recent CPU games are included
+
+Tendencies are read from the live Madden database at call time. They are not
+a roster rating and they are not committed with the repo. `train-experimental`
+rebuilds the offense artifact from that same database, which is what teaches
+each play's success against the coverages those games actually saw.
+
+On the machine that logged the games:
+
+```bash
+python3 -m cfb_coach ml find-db
+python3 -m cfb_coach ml backup-db --db "$CFB_COACH_MADDEN_DB" --out ~/.cfb-coach/backups
+python3 -m cfb_coach ml train-experimental --seed 7 --install --db "$CFB_COACH_MADDEN_DB"
+python3 -m cfb_coach ml experimental
+```
+
+`--install` points the database at the new `offense.json`. It does not by
+itself turn experimental mode on; `ml experimental` does that, and a live
+session still needs `--ml-human-control`. Do not copy the database into the
+repo.
+
+A call then logs `opponent_context_key` (`learned_tendencies.v1` plus the
+opponent id) and a short tendency summary. An opponent with no logged
+coverage, concepts, verified snaps, or learn_stats gets `no learned
+tendencies` and the same ranking as before this term existed.
+
 ## Train / compare experimental model
 
 ```bash

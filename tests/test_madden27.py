@@ -456,7 +456,8 @@ class TestPrimaryTeamConfig(_Isolated):
         self.assertFalse(load_config()["live_macros"])
         self.run_cli(["prep", "--game", "madden27", "-o", "james", "--offline", "--text"])
         rc, off = self.run_cli(
-            ["play", "--game", "madden27", "-o", "james", "--once", "d 1&10 opp 15", "--no-overlay"],
+            ["play", "--game", "madden27", "-o", "james", "--once", "d 1&10 opp 15",
+             "--heuristic-offense", "--no-overlay"],
         )
         self.assertEqual(rc, 0, off)
         self.assertNotIn("MACRO:", off)
@@ -465,13 +466,14 @@ class TestPrimaryTeamConfig(_Isolated):
         self.assertEqual(rc, 0, out)
         self.assertIn("live macros: on", out)
         rc, on = self.run_cli(
-            ["play", "--game", "madden27", "-o", "james", "--once", "d 1&10 opp 15", "--no-overlay"],
+            ["play", "--game", "madden27", "-o", "james", "--once", "d 1&10 opp 15",
+             "--heuristic-offense", "--no-overlay"],
         )
         self.assertEqual(rc, 0, on)
         self.assertIn("MACRO: RZ COVER 2", on)
         rc, forced = self.run_cli(
             ["play", "--game", "madden27", "-o", "james", "--once", "d 1&10 opp 15",
-             "--no-macros", "--no-overlay"],
+             "--heuristic-offense", "--no-macros", "--no-overlay"],
         )
         self.assertEqual(rc, 0, forced)
         self.assertNotIn("MACRO:", forced)
@@ -502,7 +504,10 @@ class TestMaddenCli(_Isolated):
         self.assertIn("Madden Coach", html)
         self.assertIn("PLAY", html)
 
-        rc, out = self.run_cli(["play", "--game", "madden", "-o", "gavin", "--once", "d 3&8", "--no-overlay"])
+        rc, out = self.run_cli([
+            "play", "--game", "madden", "-o", "gavin", "--once", "d 3&8",
+            "--heuristic-offense", "--no-overlay",
+        ])
         self.assertEqual(rc, 0)
         self.assertIn("User game", out)
         self.assertRegex(out, r"\| User ")

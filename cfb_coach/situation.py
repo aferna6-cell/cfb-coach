@@ -260,11 +260,14 @@ def parse_situation(raw: str, default_side: str = "offense") -> Situation:
     yl_opp = _YL_OPP_RE.search(text)
     yl_ball = _YL_BALL_ON_RE.search(text)
     yl = _YL_RE.search(text)
+    yl_side = None
     if yl_own:
         sit.yardline = int(yl_own.group(1))
+        yl_side = "own"
     elif yl_opp:
         opp_yl = int(yl_opp.group(1))
         sit.yardline = max(1, min(99, 100 - opp_yl))  # yards from our goal
+        yl_side = "opp"
     elif yl_ball:
         sit.yardline = int(yl_ball.group(1))
     elif yl:
@@ -272,8 +275,12 @@ def parse_situation(raw: str, default_side: str = "offense") -> Situation:
 
     goal_typed = bool(m and m.group(2).lower() in ("g", "goal"))
     if goal_typed and sit.yardline is not None:
-        # "1&goal opp 6" -> distance is the yards to the goal line
-        sit.distance = max(1, 100 - sit.yardline)
+        # Goal-to-go distance is the yards to the goal line on the named side.
+        # "1st and goal my 8" is 8, not 92. "1&goal opp 6" stays 6.
+        if yl_side == "own":
+            sit.distance = max(1, min(99, int(sit.yardline)))
+        else:
+            sit.distance = max(1, 100 - sit.yardline)
 
     explicit_rz = bool(_RZ_RE.search(text))
     explicit_gl = bool(_GL_RE.search(text))
@@ -289,6 +296,11 @@ def parse_situation(raw: str, default_side: str = "offense") -> Situation:
             # Typed rz/gl in opponent territory with an odd yardline: trust the words
             sit.red_zone = True
             sit.goal_line = explicit_gl
+        if goal_typed and yl_side == "own":
+            # Own-territory yardlines are otherwise backed up. A typed
+            # goal-to-go still means that near goal line.
+            sit.goal_line = True
+            sit.red_zone = True
     else:
         if explicit_rz:
             sit.red_zone = True

@@ -60,7 +60,11 @@ _COV_HINTS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 _OWN_YL = re.compile(r"\b(?:my|our|own)\s*(?:yl|yard\s*line)?\s*\d{1,2}\b", re.I)
-_EXPLICIT_RZ = re.compile(r"\b(rz|red\s*zone|gl|goal\s*line|&\s*goal|[1-4]&g(?:oal)?)\b", re.I)
+_EXPLICIT_RZ = re.compile(
+    r"\b(rz|red\s*zone|gl|goal\s*line|&\s*goal|"
+    r"[1-4](?:st|nd|rd|th)?\s*(?:&|and)\s*g(?:oal)?|[1-4]&g(?:oal)?)\b",
+    re.I,
+)
 
 
 def concept_family(concept: str | None) -> str | None:
