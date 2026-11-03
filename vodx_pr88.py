@@ -831,6 +831,9 @@ def rows_from_frames(
         # Glyphs fill blanks only. A captured yard line stays put.
         gate_glyph_yardlines(rows)
     preserve_base_yardlines(rows)
+    from vod_pilot.segment import apply_spot_result
+
+    apply_spot_result(rows)
     return rows
 
 

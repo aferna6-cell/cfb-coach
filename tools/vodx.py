@@ -645,6 +645,10 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
     if extract.yardline_glyphs:
         vodx_pr88.gate_glyph_yardlines(rows)
     preserve_base_yardlines(rows)
+    # Motion fill has run. Re-check a +0 against the locked yard line.
+    from vod_pilot.segment import apply_spot_result
+
+    apply_spot_result(rows)
     # A later field pass may have flagged spot_contradicts_plus0 and still
     # left a +0. That +0 is not a result. Filled gains and losses stay.
     vodx_pr88.withhold_contradicted_plus0(rows)

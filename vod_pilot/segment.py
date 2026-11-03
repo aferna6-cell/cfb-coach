@@ -568,14 +568,10 @@ def _infer_between(
             return "gain", yards, conf, ""
         if yards < 0:
             return "loss", yards, conf, ""
-        if extract.read_result:
-            same, conflict = _spot_zero(prev, nxt)
-            if conflict:
-                # Distance says 0 and the spots say the ball moved. Not a +0.
-                return "unknown", None, 0.0, "result_spot_conflict"
-            if same:
-                return "no_gain", 0, max(conf, 0.8), ""
-        return "no_gain", 0, conf - 0.15, ""
+        # Keep the distance +0 for now. vodx_field's motion fill needs it
+        # (result confidence at least 0.5). Spot conflicts are applied after
+        # that fill and the yard-line lock, in apply_spot_result.
+        return "no_gain", 0, max(conf - 0.15, 0.5), ""
     if down1 == 1 and down0 in {2, 3} and dist1 == 10:
         return "convert", None, 0.4 if clock_known else 0.25, ""
     return "", None, 0.0, ""
@@ -637,15 +633,88 @@ def _banner_result(flags: set[str]) -> tuple[str, int | None, float, str] | None
     return None
 
 
+def _own_frame_spot(frames: list[FrameObs]) -> int | None:
+    """A spot painted on this snap. A glyph is not a spot of its own."""
+    vals = {
+        frame.yardline
+        for frame in frames
+        if frame.yardline is not None and not frame.yard_from_glyph
+    }
+    if len(vals) == 1:
+        return next(iter(vals))
+    return None
+
+
 def _spot_zero(prev: _Run, nxt: _Run) -> tuple[bool, bool]:
-    """(spots agree on zero, spots disagree). Missing spots are neither."""
-    yl0 = _single_yardline(prev.frames)
-    yl1 = _single_yardline(nxt.frames)
+    """(spots agree on zero, spots disagree). A snap with no spot of its own is neither."""
+    yl0 = _own_frame_spot(prev.frames)
+    yl1 = _own_frame_spot(nxt.frames)
     if yl0 is None or yl1 is None:
         return False, False
     if yl0 == yl1:
         return True, False
     return False, True
+
+
+def _published_spot(row: object) -> int | None:
+    """The snap's own yard line. An unpublished glyph does not count."""
+    from vod_pilot.digits import safe_int
+
+    if _row_get(row, "yardline") in (None, ""):
+        return None
+    return safe_int(_row_get(row, "yardline"))
+
+
+def _distance_zero(row: object) -> bool:
+    kind = str(_row_get(row, "result_kind") or "")
+    if kind in ("td", "int", "fumble", "turnover", "sack", "incomplete", "convert"):
+        return False
+    result = _row_get(row, "result")
+    if result in ("+0", "0", 0):
+        return True
+    yards = _row_get(row, "yards")
+    return yards in (0, 0.0) and kind in ("", "no_gain", "gain", "incomplete_or_no_gain")
+
+
+def apply_spot_result(rows: list) -> None:
+    """Re-check a +0 against the locked yard lines.
+
+    Runs after vodx_field and the yard-line lock. A snap with no spot of its
+    own is not a conflict. When both spots exist and disagree, the +0 is
+    blanked. When they now agree, a previous conflict is put back to +0.
+    """
+    for index, row in enumerate(rows):
+        if index + 1 >= len(rows):
+            break
+        nxt = rows[index + 1]
+        flag = _row_get(row, "result_flag") or ""
+        if not _distance_zero(row) and flag != "result_spot_conflict":
+            continue
+        yl = _published_spot(row)
+        nyl = _published_spot(nxt)
+        if yl is None or nyl is None or yl == nyl:
+            if flag == "result_spot_conflict":
+                _row_set(row, "result", "+0")
+                _row_set(row, "result_kind", "no_gain")
+                _row_set(row, "yards", 0)
+                _row_set(row, "result_flag", "")
+                _bump_result_conf(row, 0.5)
+            continue
+        _row_set(row, "result", "")
+        _row_set(row, "result_kind", "unknown")
+        _row_set(row, "yards", None)
+        _row_set(row, "result_flag", "result_spot_conflict")
+        notes = str(_row_get(row, "notes") or "")
+        if "result_spot_conflict" not in notes:
+            _row_set(row, "notes", (notes + " | result_spot_conflict").strip(" |"))
+        _bump_result_conf(row, 0.0)
+
+
+def _bump_result_conf(row: object, value: float) -> None:
+    for key in ("confidence", "conf"):
+        conf = _row_get(row, key)
+        if isinstance(conf, dict):
+            conf["result"] = value
 
 
 def _single_yardline(frames: list[FrameObs]) -> int | None:

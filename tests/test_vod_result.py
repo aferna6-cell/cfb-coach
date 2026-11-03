@@ -46,8 +46,14 @@ class ResultSnapTests(unittest.TestCase):
         self.assertEqual(snaps[0].result_flag, "")
 
     def test_moved_ball_is_not_plus_zero(self) -> None:
+        from vod_pilot.segment import apply_spot_result
+
         frames = [_live(10, 1, 10, 25), _live(20, 2, 10, 40)]
         snaps = build_snaps(frames, video_id="r", channel="SGU", game="madden27", extract=_ON)
+        # The distance +0 stays until after the yard-line lock.
+        self.assertEqual(snaps[0].result, "+0")
+        self.assertGreaterEqual(snaps[0].confidence["result"], 0.5)
+        apply_spot_result(snaps)
         self.assertEqual(snaps[0].result, "")
         self.assertEqual(snaps[0].result_kind, "unknown")
         self.assertEqual(snaps[0].result_flag, "result_spot_conflict")
@@ -288,6 +294,54 @@ class ResultSnapTests(unittest.TestCase):
         self.assertEqual(row["result_kind"], "")
         self.assertIsNone(row["yards"])
         self.assertEqual(row["result_suspect"]["result"], "+0")
+
+    def test_5386_motion_fill_keeps_the_plus_zero_until_the_line_is_locked(self) -> None:
+        """mSUAGrMB0ok:5386. The raw engine line is 79. The neighbour's line is 25.
+
+        read-result must not blank the +0 before vodx_field's motion fill.
+        After the fill the line is 25, and the +0 is checked against 25.
+        """
+        from vod_pilot.segment import apply_spot_result
+
+        lex = Lexicon(formations=["Gun Bunch"], plays=["HB Slam"], coverages=["Cover 3"])
+        flags = ExtractFlags(read_result=True, yardline_glyphs=True)
+        frames = [
+            classify_frame(5386.0, ["1ST810", "opp 21", "1st 8:00"], 0.6, lex, flags),
+            classify_frame(5402.0, ["2ND810", "OWN 25", "1st 7:40"], 0.6, lex, flags),
+        ]
+        snaps = build_snaps(frames, video_id="mSUAGrMB0ok", channel="SGU", game="madden27", extract=flags)
+        self.assertEqual(snaps[0].yardline, 79)
+        self.assertEqual(snaps[0].result, "+0")
+        self.assertNotEqual(snaps[0].result_flag, "result_spot_conflict")
+        self.assertGreaterEqual(snaps[0].confidence["result"], 0.5)
+        rows = [snap.to_full_dict() for snap in snaps]
+        # Motion fill: 5386 takes 25 from neighbour 5402 because the +0 is still there.
+        rows[0]["yardline"] = rows[1]["yardline"]
+        rows[0]["notes"] = (rows[0].get("notes") or "") + " yardline_conflict:engine=79 scorebug=25"
+        apply_spot_result(rows)
+        self.assertEqual(rows[0]["yardline"], 25)
+        self.assertEqual(rows[0]["result"], "+0")
+        self.assertNotEqual(rows[0].get("result_flag"), "result_spot_conflict")
+
+    def test_no_spot_of_its_own_is_not_a_conflict(self) -> None:
+        """mSUAGrMB0ok:1336 and :2998 have no spot of their own."""
+        from vod_pilot.segment import apply_spot_result
+        from vod_pilot.tokens import Tok
+
+        lex = Lexicon(formations=["Gun Bunch"], plays=["HB Slam"], coverages=["Cover 3"])
+        flags = ExtractFlags(read_result=True, yardline_glyphs=True)
+        frames = [
+            classify_frame(1336.0, ["1ST810", "1st 6:00", Tok("^40", conf=0.8)], 0.6, lex, flags),
+            classify_frame(2998.0, ["2ND810", "1st 5:40", Tok("a25", conf=0.8)], 0.6, lex, flags),
+        ]
+        snaps = build_snaps(frames, video_id="mSUAGrMB0ok", channel="SGU", game="madden27", extract=flags)
+        self.assertIsNone(snaps[0].yardline)
+        self.assertEqual(snaps[0].result, "+0")
+        self.assertNotEqual(snaps[0].result_flag, "result_spot_conflict")
+        rows = [snap.to_full_dict() for snap in snaps]
+        apply_spot_result(rows)
+        self.assertEqual(rows[0]["result"], "+0")
+        self.assertNotEqual(rows[0].get("result_flag"), "result_spot_conflict")
 
     def test_missing_spot_still_uses_the_distance(self) -> None:
         frames = [_live(10, 1, 10), _live(20, 2, 10)]
