@@ -53,6 +53,71 @@ class ResultSnapTests(unittest.TestCase):
         self.assertEqual(snaps[0].result_flag, "result_spot_conflict")
         self.assertIn("result_spot_conflict", snaps[0].notes)
 
+    def test_spot_contradicts_plus0_is_not_published(self) -> None:
+        """A flagged +0 is not a result. A result v0.96 already filled stays."""
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from vodx_pr88 import withhold_contradicted_plus0
+
+        flagged = {
+            "result": "+0",
+            "result_kind": "no_gain",
+            "yards": 0,
+            "quality_flags": ["spot_contradicts_plus0"],
+            "conf": {"result": 0.4},
+        }
+        already = {"result": "+9", "result_kind": "gain", "yards": 9, "quality_flags": [], "conf": {"result": 0.7}}
+        old_zero = {"result": "+0", "result_kind": "no_gain", "yards": 0, "quality_flags": [], "conf": {"result": 0.5}}
+        withhold_contradicted_plus0([flagged, already, old_zero])
+        self.assertEqual(flagged["result"], "")
+        self.assertEqual(flagged["result_kind"], "")
+        self.assertIsNone(flagged["yards"])
+        self.assertEqual(flagged["result_suspect"]["result"], "+0")
+        self.assertEqual(flagged["result_suspect"]["flag"], "spot_contradicts_plus0")
+        self.assertEqual(already["result"], "+9")
+        self.assertEqual(already["yards"], 9)
+        self.assertEqual(old_zero["result"], "+0")
+        self.assertEqual(old_zero["yards"], 0)
+
+        import sys as _sys
+
+        _sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+        from vodx_quality import apply_quality
+
+        fresh = {
+            "down": 1,
+            "distance": 10,
+            "yardline": 20,
+            "result": "",
+            "result_kind": "",
+            "yards": None,
+            "t_start": 10.0,
+            "t_end": 18.0,
+            "clock": "8:00",
+            "conf": {},
+            "field_sources": {},
+            "quality_flags": [],
+        }
+        nxt = {
+            "down": 2,
+            "distance": 10,
+            "yardline": 70,
+            "result": "",
+            "result_kind": "",
+            "yards": None,
+            "t_start": 20.0,
+            "t_end": 28.0,
+            "clock": "7:40",
+            "conf": {},
+            "field_sources": {},
+            "quality_flags": [],
+        }
+        apply_quality([fresh, nxt])
+        self.assertEqual(fresh["result"], "")
+        self.assertIsNone(fresh["yards"])
+        self.assertIn("spot_contradicts_plus0", fresh["quality_flags"])
+
     def test_missing_spot_still_uses_the_distance(self) -> None:
         frames = [_live(10, 1, 10), _live(20, 2, 10)]
         snaps = build_snaps(frames, video_id="r", channel="SGU", game="madden27", extract=_ON)

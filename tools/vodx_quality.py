@@ -188,6 +188,13 @@ def apply_quality(rows: list[dict], frames=None) -> Counter:
         if not kind and ev and not nulled and d in (1, 2, 3) and dist_num is not None and nd is not None:
             if nd == d + 1 and ndist_num is not None and abs(dist_num - ndist_num) <= 99:
                 yy = dist_num - ndist_num
+                if yy == 0 and _zero_contradicted(r, n):
+                    flags = r.setdefault("quality_flags", [])
+                    if "spot_contradicts_plus0" not in flags:
+                        flags.append("spot_contradicts_plus0")
+                    r["result_flag"] = "spot_contradicts_plus0"
+                    st["spot_contradicts_plus0"] += 1
+                    continue
                 _set_result(r, _gain_kind(yy), yy, _text(yy), "next_snap_dd", 0.5, "recovered:next_snap_down+1", st)
                 continue
             if nd == 1 and d == 1:
@@ -217,7 +224,33 @@ def apply_quality(rows: list[dict], frames=None) -> Counter:
             r[fld] = ""; r["conf"][fld] = 0.0; r["field_sources"].pop(fld, None)
             r["quality_flags"].append(f"hail_mary_formation_dropped:{fld}:q{q} {r.get('clock') or '?'} {d_str(r)}")
             st[f"hail_mary_formation_dropped:{fld}"] += 1
+    _withhold_contradicted_plus0(rows)
     return st
+
+
+def _zero_contradicted(row: dict, nxt: dict | None) -> bool:
+    """A distance +0 whose spots are not on the same line."""
+    if not isinstance(nxt, dict):
+        return False
+    for key in ("yardline", "field_spot"):
+        left, right = row.get(key), nxt.get(key)
+        if isinstance(left, bool) or isinstance(right, bool):
+            continue
+        if isinstance(left, (int, float)) and isinstance(right, (int, float)) and abs(int(left) - int(right)) > 2:
+            return True
+    flags = row.get("quality_flags") or []
+    return row.get("result_flag") == "spot_contradicts_plus0" or any(
+        "spot_contradicts_plus0" in str(item) for item in flags
+    )
+
+
+def _withhold_contradicted_plus0(rows: list[dict]) -> None:
+    try:
+        import vodx_pr88
+    except ImportError:
+        vodx_pr88 = None
+    if vodx_pr88 is not None and hasattr(vodx_pr88, "withhold_contradicted_plus0"):
+        vodx_pr88.withhold_contradicted_plus0(rows)
 
 
 def d_str(r):

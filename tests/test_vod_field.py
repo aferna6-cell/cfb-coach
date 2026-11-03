@@ -100,8 +100,8 @@ class YardlineSnapTests(unittest.TestCase):
         self.assertEqual(rejected[0].yardline, 35)
         rejected[0].field_spot = 22
         gate_glyph_yardlines(rejected)
-        self.assertIsNone(rejected[0].yardline)
-        self.assertLessEqual(rejected[0].confidence["yardline"], 0.2)
+        # A yard line that is already filled is not replaced or blanked.
+        self.assertEqual(rejected[0].yardline, 35)
 
         confirmed = build_snaps(
             [
@@ -137,6 +137,33 @@ class YardlineSnapTests(unittest.TestCase):
         missed[1].field_spot = 40
         gate_glyph_yardlines(missed)
         self.assertEqual(missed[1].yardline, 40)
+
+    def test_existing_yardline_is_not_replaced_by_a_glyph(self) -> None:
+        """v0.96 yard lines stay. A glyph may fill only a blank, even 35-54 yards away."""
+        kept = {
+            "yard_from_glyph": True,
+            "glyph_yardline": 76,
+            "glyph_phrase": "opp 24",
+            "glyph_conf": 0.8,
+            "yardline": 22,
+            "field_spot": 24,
+            "field_sources": {"yardline": "ocr_penalty_card"},
+            "conf": {"yardline": 0.7},
+        }
+        blank = {
+            "yard_from_glyph": True,
+            "glyph_yardline": 35,
+            "glyph_phrase": "own 35",
+            "glyph_conf": 0.8,
+            "yardline": None,
+            "field_spot": 35,
+            "field_sources": {},
+            "conf": {},
+        }
+        gate_glyph_yardlines([kept, blank])
+        self.assertEqual(kept["yardline"], 22)
+        self.assertEqual(kept["conf"]["yardline"], 0.7)
+        self.assertEqual(blank["yardline"], 35)
 
     def test_glyph_does_not_flip_side_or_drop_an_earlier_spot(self) -> None:
         """The three box rows: neighbour 37, opp-30 vs ytg 70, own-22 vs opp territory."""

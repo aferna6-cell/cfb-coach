@@ -874,13 +874,13 @@ def _neighbor_yards_match(rows: list, index: int, candidate: int) -> bool:
 def _apply_glyph(row: object, ok: bool) -> None:
     from vod_pilot.digits import safe_int
 
-    if _earlier_yardline(row):
-        # Neighbour-motion and any other published spot stay, including
-        # yards_to_goal and territory derived from them.
+    # An existing yard line, including a v0.96 value and a glyph re-read,
+    # is never replaced or blanked. Only a blank may be filled.
+    current = safe_int(_row_get(row, "yardline"))
+    if current is not None or _earlier_yardline(row):
         return
     candidate = safe_int(_row_get(row, "glyph_yardline"))
     phrase = str(_row_get(row, "glyph_phrase") or "")
-    current = safe_int(_row_get(row, "yardline"))
     if ok and candidate is not None and not _context_agrees(row, candidate, phrase):
         ok = False
     if ok and candidate is not None:
@@ -897,18 +897,6 @@ def _apply_glyph(row: object, ok: bool) -> None:
         conf = float(_row_get(row, "glyph_conf") or 0.55)
         _set_yard_conf(row, round(conf, 2))
         return
-    if current is not None and current != candidate:
-        return
-    _row_set(row, "yardline", None)
-    if phrase:
-        sit = str(_row_get(row, "situation_raw") or "")
-        if phrase in sit:
-            _row_set(row, "situation_raw", " ".join(sit.replace(phrase, " ").split()))
-    if isinstance(row, dict):
-        if "field_zone" in row:
-            row["field_zone"] = ""
-    else:
-        row.field_zone = ""
     _set_yard_conf(row, _GLYPH_LOW_CONF)
 
 

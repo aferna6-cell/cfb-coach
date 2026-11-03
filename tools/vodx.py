@@ -637,6 +637,9 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
     vodx_pr88.restore_rows(rows, pr88_snapshot)
     if extract.yardline_glyphs:
         vodx_pr88.gate_glyph_yardlines(rows)
+    # A later field pass may have flagged spot_contradicts_plus0 and still
+    # left a +0. That +0 is not a result. Filled gains and losses stay.
+    vodx_pr88.withhold_contradicted_plus0(rows)
     batch_meta = {"schema": SCHEMA_SNAPS, "video_id": vid, "game": game, "creator": r.get("creator"),
                   "source_platform": plat, "source_url": r.get("url"), "local_path": path, "opponent_type": opp,
                   "opponent_type_source": opp_src, "sample_fps": fps, "max_seconds": max_seconds,

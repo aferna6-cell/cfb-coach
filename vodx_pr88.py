@@ -215,10 +215,69 @@ def _result_distance(row: dict) -> int | None:
     return as_int(row.get("baseline_distance"))
 
 
+def spots_contradict_zero(row: dict, nxt: dict | None) -> bool:
+    """True when a +0 from the distances disagrees with the two spots.
+
+    Missing spots are not a contradiction. A move of more than 2 yards is.
+    """
+    if not isinstance(nxt, dict):
+        return False
+    for key in ("yardline", "field_spot"):
+        left, right = as_int(row.get(key)), as_int(nxt.get(key))
+        if left is not None and right is not None and abs(left - right) > 2:
+            return True
+    return False
+
+
+def _carries_spot_contradicts_plus0(row: dict) -> bool:
+    if row.get("result_flag") == "spot_contradicts_plus0":
+        return True
+    for item in row.get("quality_flags") or []:
+        if "spot_contradicts_plus0" in str(item):
+            return True
+    return False
+
+
+def _is_plus_zero(row: dict) -> bool:
+    kind = row.get("result_kind") or ""
+    result = row.get("result")
+    yards = row.get("yards")
+    if result in ("+0", "0"):
+        return kind in ("", "no_gain", "incomplete_or_no_gain")
+    return kind in ("no_gain", "incomplete_or_no_gain") and yards in (0, "0")
+
+
+def withhold_contradicted_plus0(rows: list[dict]) -> None:
+    """A spot_contradicts_plus0 row does not publish a +0 no-gain.
+
+    The +0 is kept on ``result_suspect``. Any other result, including a +0
+    that does not carry the flag, stays as it was.
+    """
+    if not isinstance(rows, list):
+        return
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if not _carries_spot_contradicts_plus0(row) or not _is_plus_zero(row):
+            continue
+        row["result_suspect"] = {
+            "result": row.get("result"),
+            "result_kind": row.get("result_kind"),
+            "yards": row.get("yards"),
+            "flag": "spot_contradicts_plus0",
+        }
+        row["result"] = ""
+        row["result_kind"] = ""
+        row["yards"] = None
+        if isinstance(row.get("conf"), dict):
+            row["conf"]["result"] = 0.0
+
+
 def fill_result_yards(rows: list[dict]) -> None:
     """Give a goal snap a yards result without subtracting None or \"\".
 
     Rows that already have yards, or a TD / turnover, are left as they are.
+    A distance +0 that the spots contradict is not written.
     """
     if not isinstance(rows, list):
         return
@@ -229,12 +288,20 @@ def fill_result_yards(rows: list[dict]) -> None:
             continue
         if as_int(row.get("yards")) is not None:
             continue
+        if row.get("result") not in ("", None):
+            continue
         down = as_int(row.get("down"))
         ndown = as_int(nxt.get("down"))
         if down is None or ndown is None or ndown != down + 1:
             continue
         yy = yards_delta(_result_distance(row), _result_distance(nxt))
         if yy is None:
+            continue
+        if yy == 0 and (spots_contradict_zero(row, nxt) or _carries_spot_contradicts_plus0(row)):
+            flags = row.setdefault("quality_flags", [])
+            if "spot_contradicts_plus0" not in flags:
+                flags.append("spot_contradicts_plus0")
+            row["result_flag"] = "spot_contradicts_plus0"
             continue
         row["yards"] = yy
         if not row.get("result"):
@@ -246,6 +313,7 @@ def fill_result_yards(rows: list[dict]) -> None:
                 row["result"] = "+0"
         if not row.get("result_kind"):
             row["result_kind"] = "gain" if yy > 0 else ("loss" if yy < 0 else "no_gain")
+    withhold_contradicted_plus0(rows)
 
 
 def coerce_row_numbers(row: dict) -> None:
