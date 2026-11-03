@@ -88,6 +88,24 @@ cannot exceed 50 percent. Short yardage and the goal line stay on heavy
 fronts. A run-heavy recent tendency does not call Dime or another light box.
 The draw is seeded, so a test seed repeats.
 
+## Opponent tendencies
+
+The logistic file has no opponent features. At call time the picker reads
+that opponent's learned offense only: `offense_concept` tendencies and
+verified defensive snaps, by down-and-distance bucket. A run-heavy mix, shrunk
+toward no adjustment when the sample is small, makes Dime and other light
+boxes less attractive and gives a capped boost to the coverage families that
+answer the concept mix. No learned sample leaves the score untouched. The
+decision stores `opponent_context_key` and a one-line tendency summary.
+
+This is not a retrain of `defense_v1.json`. To fold Ryan, John, and recent
+CPU games into the offense artifact that knows which plays beat a coverage,
+retrain from the laptop database and do not commit that file's game rows:
+
+```bash
+python3 -m cfb_coach ml train-experimental --seed 7 --install --db "$CFB_COACH_MADDEN_DB"
+```
+
 `policy` remains `logged_unverified_v1`.
 
 ## Artifact schema `madden.defense.logistic.v1`

@@ -696,6 +696,7 @@ def pick_call(
     temperature: float | None = None,
     recent_concepts: Sequence[str] | None = None,
     run_heavy: bool | None = None,
+    opponent_profile: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Lowest predicted offense success, then v2 variety among that legal top.
 
@@ -733,6 +734,23 @@ def pick_call(
             f"illegal play not in installed book: {best['formation']} / {best['play']}",
             pick=best,
         )
+    tendency_summary = ""
+    if opponent_profile and int(opponent_profile.get("n") or 0) > 0:
+        from cfb_coach.madden.model.opponent_tendencies import (
+            defense_success_delta,
+            format_defense_summary,
+        )
+
+        changed = False
+        for row in ranked:
+            delta = defense_success_delta(row, opponent_profile)
+            row["tendency_delta"] = delta
+            if delta:
+                row["offense_success"] = min(0.999, max(0.001, row["offense_success"] + delta))
+                changed = True
+        if changed:
+            ranked.sort(key=lambda row: (row["offense_success"], row["formation"], row["play"]))
+        tendency_summary = str(opponent_profile.get("summary") or format_defense_summary(opponent_profile))
     heavy = recent_run_heavy(recent_concepts) if run_heavy is None else bool(run_heavy)
     guarded, guard = _guarded_ranked(ranked, sit, heavy)
     chosen = guarded[0]
@@ -744,13 +762,17 @@ def pick_call(
             if play_in_book(book, str(row["formation"]), str(row["play"]))
         ]
         chosen = legal[0] if legal else best
-    if guard:
+    if guard or tendency_summary:
         chosen = dict(chosen)
-        chosen["situational_guard"] = guard
+        if guard:
+            chosen["situational_guard"] = guard
+        if tendency_summary:
+            chosen["tendency_summary"] = tendency_summary
     return {
         "pick": chosen,
         "legal": True,
         "elapsed_ms": (time.perf_counter() - started) * 1000.0,
+        "tendency_summary": tendency_summary,
     }
 
 

@@ -1084,6 +1084,7 @@ def _apply_defense_v1(
     seq: int,
     snap_id: Any,
     game_id: Any,
+    opponent_id: str = "",
 ) -> Any:
     """Score the local logistic file. Any failure shows the heuristic call."""
     from dataclasses import replace
@@ -1101,6 +1102,12 @@ def _apply_defense_v1(
     error: defense_v1.DefenseV1Error | None = None
     recent = _defense_v1_recent(extras, db, session)
     concepts = _defense_v1_concepts(extras, db, session)
+    try:
+        from cfb_coach.madden.model.opponent_tendencies import build_defense_profile
+
+        opponent_profile = build_defense_profile(db, opponent_id, sit)
+    except Exception:  # noqa: BLE001 — tendency lookup must not block the call
+        opponent_profile = None
     seed = extras.get("defense_v1_seed")
     if seed is None:
         seed = f"{session}:{seq}:defense-v2"
@@ -1112,6 +1119,7 @@ def _apply_defense_v1(
             top_k=extras.get("defense_v1_top_k"),
             temperature=extras.get("defense_v1_temperature"),
             recent_concepts=concepts,
+            opponent_profile=opponent_profile,
         )
         picked = scored["pick"]
         if getattr(call, "macro", None) or getattr(call, "adjustment", None):
@@ -1158,6 +1166,9 @@ def _apply_defense_v1(
         )
         if guard:
             note += f" guard={guard}"
+        tendency_summary = str(scored.get("tendency_summary") or "") if scored else ""
+        if tendency_summary:
+            note += f" tendencies: {tendency_summary}"
         result = MaddenCall(
             "defense", picked["formation"], picked["play"], "No adj",
             user_job_for(picked["play"]) or FAMILY_USER_JOB.get(picked["family"], "User hook"),
@@ -1172,13 +1183,21 @@ def _apply_defense_v1(
                 session_id=session, snap_seq=seq, elapsed_ms=elapsed,
                 heuristic=heur, snap_id=snap_id, game_id=game_id,
             )
+            from cfb_coach.madden.model.opponent_tendencies import opponent_context_key
+
+            detail = defense_v1.comparison_detail(record)
+            if tendency_summary:
+                detail = f"{detail}; tendencies: {tendency_summary}"
             decision = replace(
                 decision,
                 model_version=policy_name,
                 policy_version=schema_name,
                 shadow_pick=model_candidate,
-                config_source=defense_v1.comparison_config(record),
-                ml_status_detail=defense_v1.comparison_detail(record),
+                config_source=defense_v1.comparison_config(record) + (
+                    (("tendency_summary", tendency_summary),) if tendency_summary else ()
+                ),
+                ml_status_detail=detail,
+                opponent_context_key=opponent_context_key(opponent_id),
             )
             _stamp_decision(result, decision, db, extras)
         except Exception:
@@ -1222,7 +1241,9 @@ def _apply_defense_v1(
         shadow = _book_candidate(book, picked["formation"], picked["play"])
     elapsed = (time.perf_counter() - started) * 1000.0
     try:
-        _stamp_decision(call, _fallback_decision(
+        from cfb_coach.madden.model.opponent_tendencies import opponent_context_key
+
+        fallback = _fallback_decision(
             book=book, call=call, status=status, elapsed_ms=elapsed,
             session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
             detail=detail,
@@ -1230,6 +1251,9 @@ def _apply_defense_v1(
             config_source=defense_v1.comparison_config(record),
             model_version=policy_name,
             policy_version=schema_name,
+        )
+        _stamp_decision(call, replace(
+            fallback, opponent_context_key=opponent_context_key(opponent_id),
         ), db, extras)
     except Exception:
         pass
@@ -1266,6 +1290,7 @@ def maybe_apply_defense(
     if isinstance(extras, Mapping) and _defense_v1_requested(extras, db):
         return _apply_defense_v1(
             call, sit, db, book, extras, session, seq, snap_id, game_id,
+            opponent_id=opponent_id,
         )
     if current_mode in ("shadow", "hybrid"):
         return _apply_logged_defense(call, sit, opponent_id, db, book, current_mode)

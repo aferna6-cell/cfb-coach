@@ -642,17 +642,34 @@ def rank_candidates(
     heuristic: tuple[str, str] | None = None,
     heuristic_bonuses: Mapping[tuple[str, str], float] | None = None,
     near_tie_margin: float = 0.03,
+    tendency: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Rank football-eligible (formation, play) candidates.
 
     Near-ties prefer the heuristic pick. Sort is by probability then concept
     diversity — never alphabetical first play-family as a hidden preference.
+
+    ``tendency`` is an optional per-opponent profile. No sample leaves every
+    probability exactly as ``predict_success`` computed it. A sample adds a
+    capped logit from that opponent's coverage mix and learned results.
     """
+    from cfb_coach.madden.model.opponent_tendencies import (
+        apply_offense_probability,
+        format_offense_summary,
+        offense_tendency_delta,
+    )
+
     scored: list[dict[str, Any]] = []
     bonuses = heuristic_bonuses or {}
+    art = (
+        artifact
+        if isinstance(artifact, ExperimentalArtifact)
+        else ExperimentalArtifact.from_dict(artifact)
+    )
+    summary = format_offense_summary(tendency)
     for form, play in candidates:
         pred = predict_success(
-            artifact,
+            art,
             formation=form,
             play=play,
             down=down,
@@ -664,19 +681,30 @@ def rank_candidates(
             opponent_type=opponent_type,
             heuristic_bonus=float(bonuses.get((form, play), 0.0)),
         )
+        components = dict(pred["components"])
+        delta = offense_tendency_delta(
+            art, form, play,
+            baseline=float(components.get("concept_matchup") or pred["probability"]),
+            profile=tendency,
+        )
+        probability = apply_offense_probability(pred["probability"], delta)
+        if tendency is not None:
+            components["opponent_tendency"] = delta
         scored.append(
             {
                 "formation": form,
                 "play": play,
-                "probability": pred["probability"],
+                "probability": probability,
                 "play_family": pred["play_family"],
                 "play_concept": pred["play_concept"],
                 "uncertainty": pred["uncertainty"],
                 "evidence_quality": pred["evidence_quality"],
-                "components": pred["components"],
+                "components": components,
                 "coverage_weight": pred["coverage_weight"],
             }
         )
+        if tendency is not None:
+            scored[-1]["tendency_summary"] = summary
     # Primary: probability. Tie-break: lower uncertainty, then stable formation/play.
     scored.sort(
         key=lambda r: (
