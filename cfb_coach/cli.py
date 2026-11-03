@@ -913,8 +913,29 @@ def build_parser() -> argparse.ArgumentParser:
         "--ml-defense-control",
         action="store_true",
         help="Madden only: allow EXPERIMENTAL defensive ML calls during this human-opponent play session. "
-             "Off by default; requires `ml defense-experimental` already enabled with a trained artifact. "
-             "Does not train. Rollback: `ml defense-experimental --disable --db <absolute>`.",
+             "Off by default; requires `ml defense-experimental` already enabled. "
+             "A missing or zero-snap coordinator file uses the local defense v1 logistic artifact "
+             "(~/.cfb-coach/models/defense_v1.json, policy logged_unverified_v1) instead of that empty prior. "
+             "Does not train and does not require verified snaps for that file. "
+             "Rollback: `ml defense-experimental --disable --db <absolute>` and omit this flag.",
+    )
+    p_play.add_argument(
+        "--defense-model",
+        choices=("v1",),
+        default=None,
+        help="Madden only: this human-opponent session calls defense from the offline defense v1 "
+             "logistic artifact (policy logged_unverified_v1). Does not require verified snaps or "
+             "`ml defense-experimental --enable`. Does not change the offense coordinator. "
+             "A missing, invalid, illegal, slow, or failed artifact falls back to the heuristic caller "
+             "and is labeled HEURISTIC. Rollback: run play again without this flag.",
+    )
+    p_play.add_argument(
+        "--defense-model-path",
+        default=None,
+        metavar="PATH",
+        help="JSON path for --defense-model v1 or for the empty-prior substitute used by "
+             "--ml-defense-control. Default: ~/.cfb-coach/models/defense_v1.json "
+             "(or CFB_COACH_DEFENSE_V1).",
     )
     p_play.add_argument(
         "--score",

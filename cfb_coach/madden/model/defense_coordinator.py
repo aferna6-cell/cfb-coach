@@ -403,6 +403,10 @@ def _fallback_decision(
     game_id: str | None,
     detail: str,
     coaching_mode: Any = None,
+    shadow: Any = None,
+    config_source: tuple[tuple[str, str], ...] | None = None,
+    model_version: str | None = None,
+    policy_version: str | None = None,
 ) -> Any:
     from cfb_coach.madden.model.schema import (
         CoachingDecision,
@@ -426,10 +430,13 @@ def _fallback_decision(
         snap_id=snap_id,
         session_id=session_id or None,
         snap_seq=snap_seq,
-        policy_version=SCHEMA,
+        model_version=model_version,
+        policy_version=policy_version or SCHEMA,
         policy_source=PolicySource.HEURISTIC,
         heuristic_pick=heur,
         final_pick=heur,
+        shadow_pick=shadow,
+        config_source=config_source,
         propensity_method=PropensityMethod.UNKNOWN,
         shadow_status=status,
         fell_back=True,
@@ -981,6 +988,207 @@ def _apply_logged_defense(
         return call
 
 
+def _coordinator_prior_is_empty(db: Any) -> bool:
+    """True when the installed stop-rate file is missing or has no verified snaps."""
+    model = load_model(db.get_meta(MODEL_META) or None) if db is not None else None
+    snaps = int((model or {}).get("supervised_defensive_snaps") or 0)
+    return model is None or snaps < 1
+
+
+def _defense_v1_requested(extras: Mapping[str, Any], db: Any) -> bool:
+    """Explicit ``--defense-model v1``, or the empty prior behind human defense control."""
+    if str(extras.get("defense_model") or "") == "v1":
+        return True
+    if not extras.get("require_trained_defense_artifact"):
+        return False
+    if mode(db) != "experimental":
+        return False
+    return _coordinator_prior_is_empty(db)
+
+
+def _v1_status(reason: str) -> Any:
+    from cfb_coach.madden.model.schema import MLStatus
+
+    return {
+        "missing": MLStatus.MODEL_MISSING,
+        "invalid": MLStatus.INVALID_OUTPUT,
+        "missing_feature": MLStatus.INVALID_OUTPUT,
+        "illegal": MLStatus.INVALID_OUTPUT,
+        "timeout": MLStatus.TIMEOUT,
+        "exception": MLStatus.EXCEPTION,
+        "armed": MLStatus.CIRCUIT_OPEN,
+    }.get(reason, MLStatus.EXCEPTION)
+
+
+def _remember_v1(call: Any, record: Mapping[str, Any], *, fell_back: bool, status: Any) -> None:
+    try:
+        call.defense_v1_log = dict(record)
+    except Exception:
+        return
+    if not fell_back:
+        return
+    try:
+        reason = getattr(status, "value", None) or str(status)
+        call.ml_defense_fallback = {
+            "fell_back": True,
+            "fallback_reason": reason,
+            "fallback_source": "select_defense",
+        }
+    except Exception:
+        return
+
+
+def _apply_defense_v1(
+    call: Any,
+    sit: Situation,
+    db: Any,
+    book: Mapping[str, Sequence[str]],
+    extras: Mapping[str, Any],
+    session: str,
+    seq: int,
+    snap_id: Any,
+    game_id: Any,
+) -> Any:
+    """Score the local logistic file. Any failure shows the heuristic call."""
+    from dataclasses import replace
+
+    from cfb_coach.madden.model import defense_v1
+    from cfb_coach.madden.model.schema import MLStatus, PropensityMethod
+
+    explicit = str(extras.get("defense_model") or "") == "v1"
+    path = defense_v1.resolve_artifact_path(
+        None if extras.get("defense_model_path") in (None, "") else str(extras.get("defense_model_path"))
+    )
+    started = time.perf_counter()
+    artifact: dict[str, Any] | None = None
+    picked: dict[str, Any] | None = None
+    error: defense_v1.DefenseV1Error | None = None
+    try:
+        artifact = defense_v1.load_artifact(path)
+        scored = defense_v1.pick_call(artifact, sit, book, budget_ms=LATENCY_MS)
+        picked = scored["pick"]
+        if getattr(call, "macro", None) or getattr(call, "adjustment", None):
+            error = defense_v1.DefenseV1Error(
+                "armed",
+                "kept existing armed macro or adjustment",
+                pick=picked,
+            )
+    except defense_v1.DefenseV1Error as exc:
+        error = exc
+        if picked is None and exc.pick:
+            picked = dict(exc.pick)
+    except Exception:  # noqa: BLE001 — fail closed to the established caller
+        error = defense_v1.DefenseV1Error("exception", "defense v1 raised", pick=picked)
+
+    heur_form = getattr(call, "formation", None)
+    heur_play = getattr(call, "play", None)
+    if error is None and picked is not None:
+        from cfb_coach.madden.data import user_job_for
+        from cfb_coach.madden.playcaller import MaddenCall
+
+        elapsed = (time.perf_counter() - started) * 1000.0
+        probability = float(picked["offense_success"])
+        record = defense_v1.comparison_record(
+            model=picked,
+            heuristic_formation=heur_form,
+            heuristic_play=heur_play,
+            executed_formation=picked["formation"],
+            executed_play=picked["play"],
+            fell_back=False,
+            reason=None,
+            artifact_path=str(path),
+            offense_success=probability,
+        )
+        note = (
+            f"DEFENSE V1 [{defense_v1.POLICY}] offense_success={probability:.3f} "
+            f"{defense_v1.comparison_detail(record)} "
+            "(offline eval did not beat the situation baseline)"
+        )
+        result = MaddenCall(
+            "defense", picked["formation"], picked["play"], "No adj",
+            user_job_for(picked["play"]) or FAMILY_USER_JOB.get(picked["family"], "User hook"),
+            note,
+        )
+        heur = _book_candidate(book, heur_form, heur_play)
+        model_candidate = _book_candidate(book, picked["formation"], picked["play"])
+        try:
+            decision = _model_decision(
+                book=book, formation=picked["formation"], play=picked["play"],
+                method=PropensityMethod.DETERMINISTIC, propensity=1.0, reason=None,
+                session_id=session, snap_seq=seq, elapsed_ms=elapsed,
+                heuristic=heur, snap_id=snap_id, game_id=game_id,
+            )
+            decision = replace(
+                decision,
+                model_version=defense_v1.POLICY,
+                policy_version=defense_v1.SCHEMA,
+                shadow_pick=model_candidate,
+                config_source=defense_v1.comparison_config(record),
+                ml_status_detail=defense_v1.comparison_detail(record),
+            )
+            _stamp_decision(result, decision, db, extras)
+        except Exception:
+            pass
+        _remember_v1(result, record, fell_back=False, status=MLStatus.OK)
+        try:
+            from cfb_coach.madden.model.dual_control import stamp_displayed_label
+
+            stamp_displayed_label(result)
+        except Exception:
+            pass
+        return result
+
+    if error is None:
+        error = defense_v1.DefenseV1Error("exception", "defense v1 produced no call", pick=picked)
+    if picked is None and error.pick:
+        picked = dict(error.pick)
+    status = _v1_status(error.reason)
+    if not explicit and error.reason == "missing":
+        lead = "missing defense artifact or zero verified snaps"
+    else:
+        lead = error.detail
+    record = defense_v1.comparison_record(
+        model=picked,
+        heuristic_formation=heur_form,
+        heuristic_play=heur_play,
+        executed_formation=heur_form,
+        executed_play=heur_play,
+        fell_back=True,
+        reason=getattr(status, "value", None) or error.reason,
+        artifact_path=str(path),
+        offense_success=None if not picked else picked.get("offense_success"),
+    )
+    detail = f"{lead}; {defense_v1.comparison_detail(record)}"
+    shadow = None
+    if picked and defense_v1.play_in_book(book, str(picked["formation"]), str(picked["play"])):
+        shadow = _book_candidate(book, picked["formation"], picked["play"])
+    elapsed = (time.perf_counter() - started) * 1000.0
+    try:
+        _stamp_decision(call, _fallback_decision(
+            book=book, call=call, status=status, elapsed_ms=elapsed,
+            session_id=session, snap_seq=seq, snap_id=snap_id, game_id=game_id,
+            detail=detail,
+            shadow=shadow,
+            config_source=defense_v1.comparison_config(record),
+            model_version=defense_v1.POLICY,
+            policy_version=defense_v1.SCHEMA,
+        ), db, extras)
+    except Exception:
+        pass
+    _remember_v1(call, record, fell_back=True, status=status)
+    try:
+        call.rationale = (getattr(call, "rationale", "") or "") + f" | {detail}"
+    except Exception:
+        pass
+    try:
+        from cfb_coach.madden.model.dual_control import stamp_displayed_label
+
+        stamp_displayed_label(call)
+    except Exception:
+        pass
+    return call
+
+
 def maybe_apply_defense(
     call: Any, sit: Situation, opponent_id: str, db: Any,
     book: Mapping[str, Sequence[str]],
@@ -989,10 +1197,6 @@ def maybe_apply_defense(
     if db is None or is_cpu_opponent(opponent_id):
         return call
     current_mode = mode(db)
-    if current_mode in ("shadow", "hybrid"):
-        return _apply_logged_defense(call, sit, opponent_id, db, book, current_mode)
-    if current_mode != "experimental":
-        return call
     try:
         extras = getattr(sit, "extras", None) or {}
         session = str(extras.get("session_id") or "defense-pilot")
@@ -1000,6 +1204,14 @@ def maybe_apply_defense(
         snap_id = extras.get("snap_id")
         game_id = extras.get("game_id")
     except Exception:
+        return call
+    if isinstance(extras, Mapping) and _defense_v1_requested(extras, db):
+        return _apply_defense_v1(
+            call, sit, db, book, extras, session, seq, snap_id, game_id,
+        )
+    if current_mode in ("shadow", "hybrid"):
+        return _apply_logged_defense(call, sit, opponent_id, db, book, current_mode)
+    if current_mode != "experimental":
         return call
     if extras.get("require_trained_defense_artifact"):
         # A prior-only or missing file is not a trained defense model. Do not

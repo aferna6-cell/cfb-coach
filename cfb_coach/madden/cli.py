@@ -592,7 +592,12 @@ def cmd_play(args: argparse.Namespace) -> int:
     active = _active_after_prep(db, oid, pid)
     cpu = is_cpu_opponent(oid)
     human_ml_control = bool(getattr(args, "ml_human_control", False)) and not cpu
-    human_defense_ml = bool(getattr(args, "ml_defense_control", False)) and not cpu
+    defense_model = getattr(args, "defense_model", None)
+    defense_model_path = getattr(args, "defense_model_path", None)
+    explicit_defense_v1 = defense_model == "v1" and not cpu
+    human_defense_ml = (
+        bool(getattr(args, "ml_defense_control", False)) or explicit_defense_v1
+    ) and not cpu
     if human_ml_control:
         from cfb_coach.madden.model import inference as ml_inference
         from cfb_coach.madden.model.schema import CoachingMode
@@ -605,14 +610,15 @@ def cmd_play(args: argparse.Namespace) -> int:
             )
             db.close()
             return 2
-    if human_defense_ml:
+    if human_defense_ml and not explicit_defense_v1:
         from cfb_coach.madden.model import defense_coordinator as defense_mode
 
         if defense_mode.mode(db) != "experimental":
             print(
                 "Human defensive ML requires experimental defense mode. "
                 "Run `python -m cfb_coach ml defense-experimental --enable --db <absolute>` "
-                "only when a trained defense artifact is already installed.",
+                "only when a trained defense artifact is already installed. "
+                "To use the offline defense v1 file without that mode, pass --defense-model v1.",
                 file=sys.stderr,
             )
             db.close()
@@ -626,9 +632,22 @@ def cmd_play(args: argparse.Namespace) -> int:
         print("  Instant rollback for next call: python -m cfb_coach ml heuristic")
     elif not cpu:
         print("HUMAN OFFENSE ML PILOT: OFF (heuristic offense; use --ml-human-control to opt in).")
-    if human_defense_ml:
+    if defense_model == "v1" and cpu:
+        print("HUMAN DEFENSE V1: ignored (CPU games are offense-only).")
+    if explicit_defense_v1:
+        from cfb_coach.madden.model.defense_v1 import resolve_artifact_path
+
+        v1_path = resolve_artifact_path(defense_model_path)
+        print("HUMAN DEFENSE V1: ON for this play session only (opt-in, logged_unverified_v1).")
+        print("  Offline eval did not beat the situation baseline. Calls are labeled EXPERIMENTAL or HEURISTIC.")
+        print(f"  Artifact: {v1_path}")
+        print("  A missing, invalid, illegal, slow, or failed artifact falls back to the established caller.")
+        print("  Rollback: run play again without --defense-model v1 and without --ml-defense-control.")
+        print("  Offense is unchanged. Rollback of offense stays `python -m cfb_coach ml heuristic`.")
+    elif human_defense_ml:
         print("HUMAN DEFENSE PILOT: ON for this play session only (opt-in).")
         print("  A human must confirm each call: accepted stays unknown until verify is touched.")
+        print("  An empty prior uses the defense v1 file when it is present; otherwise the call is HEURISTIC.")
         print("  Instant rollback for the next defensive call: "
               "python -m cfb_coach ml defense-experimental --disable --db \"$CFB_COACH_MADDEN_DB\"")
     elif not cpu:
@@ -693,6 +712,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
             allow_human_ml=human_ml_control,
             allow_human_defense_ml=human_defense_ml,
+            defense_model=defense_model,
+            defense_model_path=defense_model_path,
         )
         _maybe_shadow(db, sit, call, oid)
         print(call.headline())
@@ -715,6 +736,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             kwargs.setdefault("active_macros", _active_now())
             kwargs.setdefault("allow_human_ml", human_ml_control)
             kwargs.setdefault("allow_human_defense_ml", human_defense_ml)
+            kwargs.setdefault("defense_model", defense_model)
+            kwargs.setdefault("defense_model_path", defense_model_path)
             return make_call(sit, oid, db, **kwargs)
 
         def _learn():
@@ -869,6 +892,8 @@ def cmd_play(args: argparse.Namespace) -> int:
                 sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
                 allow_human_ml=human_ml_control,
                 allow_human_defense_ml=human_defense_ml,
+                defense_model=defense_model,
+                defense_model_path=defense_model_path,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )

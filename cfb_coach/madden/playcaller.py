@@ -83,6 +83,16 @@ class MaddenCall:
         label = getattr(self, "call_label", None)
         if label in ("EXPERIMENTAL", "HEURISTIC"):
             line += f"\n  LABEL: {label}"
+        log = getattr(self, "defense_v1_log", None)
+        if isinstance(log, dict) and log.get("policy"):
+            from cfb_coach.madden.model.defense_v1 import comparison_detail
+
+            line += f"\n  {comparison_detail(log)}"
+        note = getattr(self, "ml_defense_fallback", None)
+        if isinstance(note, dict) and note.get("fell_back") and note.get("fallback_reason"):
+            line += f"\n  fallback_reason: {note['fallback_reason']}"
+            if note.get("fallback_source"):
+                line += f"\n  fallback_source: {note['fallback_source']}"
         return line
 
 
@@ -914,6 +924,8 @@ def make_call(
     live_macros: bool | None = None,
     allow_human_ml: bool = False,
     allow_human_defense_ml: bool = False,
+    defense_model: str | None = None,
+    defense_model_path: str | None = None,
 ) -> MaddenCall:
     """One call. `playbook` = {side: {formation: [plays]}} locked by prep; defaults to the
     DB's locked (applied) books. Raises NoActivePlaybook when the needed side has no
@@ -983,11 +995,16 @@ def make_call(
         from cfb_coach.madden.human_opponents import is_cold_start_opponent
 
         cold = is_cold_start_opponent(opponent_id, db)
+        wants_v1 = defense_model == "v1"
         if isinstance(sit.extras, dict):
             sit.extras["defense_armed_ids"] = list(sel.get("defense") or [])
-        if allow_human_defense_ml and isinstance(sit.extras, dict):
-            sit.extras["require_trained_defense_artifact"] = True
-        if (not cold) or allow_human_defense_ml:
+            if allow_human_defense_ml:
+                sit.extras["require_trained_defense_artifact"] = True
+            if wants_v1:
+                sit.extras["defense_model"] = "v1"
+            if defense_model_path:
+                sit.extras["defense_model_path"] = defense_model_path
+        if (not cold) or allow_human_defense_ml or wants_v1:
             # Explicit, defense-only opt-in. Never auto-change offense or CPU mode.
             # This function fails closed to the established defensive caller.
             try:
