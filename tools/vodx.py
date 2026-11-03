@@ -531,6 +531,7 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
             "down": vodx_pr88.as_int(d.get("down")), "distance": vodx_pr88.as_int(d.get("distance")),
             "yardline": vodx_pr88.as_int(d.get("yardline")),
             "yard_from_glyph": bool(d.get("yard_from_glyph")),
+            "base_yardline": vodx_pr88.as_int(d.get("base_yardline")),
             "glyph_yardline": d.get("glyph_yardline"),
             "glyph_phrase": d.get("glyph_phrase") or "",
             "glyph_conf": float(d.get("glyph_conf") or 0.0),
@@ -637,6 +638,9 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
     vodx_pr88.restore_rows(rows, pr88_snapshot)
     if extract.yardline_glyphs:
         vodx_pr88.gate_glyph_yardlines(rows)
+    from vod_pilot.segment import preserve_base_yardlines
+
+    preserve_base_yardlines(rows)
     # A later field pass may have flagged spot_contradicts_plus0 and still
     # left a +0. That +0 is not a result. Filled gains and losses stay.
     vodx_pr88.withhold_contradicted_plus0(rows)

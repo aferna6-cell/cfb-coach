@@ -114,6 +114,7 @@ class YardlineSnapTests(unittest.TestCase):
             game="madden27",
             extract=_ON,
         )
+        gate_glyph_yardlines(confirmed)
         self.assertEqual([snap.yardline for snap in confirmed], [25, 30, 34])
         self.assertTrue(confirmed[1].yard_from_glyph)
         self.assertGreaterEqual(confirmed[1].confidence["yardline"], 0.5)
@@ -163,6 +164,56 @@ class YardlineSnapTests(unittest.TestCase):
         gate_glyph_yardlines([kept, blank])
         self.assertEqual(kept["yardline"], 22)
         self.assertEqual(kept["conf"]["yardline"], 0.7)
+        self.assertEqual(blank["yardline"], 35)
+
+    def test_base_yardline_is_restored_after_a_later_writer(self) -> None:
+        """The six v0.96 lines that a later writer moved, including the sticky 79."""
+        from vod_pilot.segment import preserve_base_yardlines
+
+        cases = [
+            ("mSUAGrMB0ok:5386.0", 25, 79),
+            ("mSUAGrMB0ok:5762.0", 29, 79),
+            ("mSUAGrMB0ok:5956.0", 40, 79),
+            ("mSUAGrMB0ok:6428.0", 39, 79),
+            ("sHMdxfg0LuA:3654.0", 19, 24),
+            ("xQBAUAaTfTo:236.0", 51, 86),
+        ]
+        rows = [
+            {
+                "snap_id": snap_id,
+                "base_yardline": base,
+                "yardline": base,
+                "yard_from_glyph": True,
+                "glyph_yardline": changed,
+                "glyph_phrase": "opp 21",
+                "glyph_conf": 0.8,
+                "field_spot": 21,
+                "conf": {"yardline": 0.7},
+            }
+            for snap_id, base, changed in cases
+        ]
+        # The sided gate must not replace the base line with the glyph.
+        gate_glyph_yardlines(rows)
+        for row, (_, base, _) in zip(rows, cases):
+            self.assertEqual(row["yardline"], base)
+        # A direct writer (territory flip, field_spot reconciliation, quality)
+        # is put back to the base extraction.
+        for row, (_, _base, changed) in zip(rows, cases):
+            row["yardline"] = changed
+        preserve_base_yardlines(rows)
+        for row, (_, base, _) in zip(rows, cases):
+            self.assertEqual(row["yardline"], base)
+        blank = {
+            "base_yardline": None,
+            "yardline": None,
+            "yard_from_glyph": True,
+            "glyph_yardline": 35,
+            "glyph_phrase": "own 35",
+            "glyph_conf": 0.8,
+            "field_spot": 35,
+            "conf": {},
+        }
+        gate_glyph_yardlines([blank])
         self.assertEqual(blank["yardline"], 35)
 
     def test_glyph_does_not_flip_side_or_drop_an_earlier_spot(self) -> None:

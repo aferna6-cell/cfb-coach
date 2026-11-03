@@ -188,12 +188,13 @@ def apply_quality(rows: list[dict], frames=None) -> Counter:
         if not kind and ev and not nulled and d in (1, 2, 3) and dist_num is not None and nd is not None:
             if nd == d + 1 and ndist_num is not None and abs(dist_num - ndist_num) <= 99:
                 yy = dist_num - ndist_num
-                if yy == 0 and _zero_contradicted(r, n):
-                    flags = r.setdefault("quality_flags", [])
-                    if "spot_contradicts_plus0" not in flags:
-                        flags.append("spot_contradicts_plus0")
-                    r["result_flag"] = "spot_contradicts_plus0"
-                    st["spot_contradicts_plus0"] += 1
+                if yy == 0 and not _plus0_has_evidence(r, n):
+                    if _zero_contradicted(r, n):
+                        flags = r.setdefault("quality_flags", [])
+                        if "spot_contradicts_plus0" not in flags:
+                            flags.append("spot_contradicts_plus0")
+                        r["result_flag"] = "spot_contradicts_plus0"
+                        st["spot_contradicts_plus0"] += 1
                     continue
                 _set_result(r, _gain_kind(yy), yy, _text(yy), "next_snap_dd", 0.5, "recovered:next_snap_down+1", st)
                 continue
@@ -226,6 +227,16 @@ def apply_quality(rows: list[dict], frames=None) -> Counter:
             st[f"hail_mary_formation_dropped:{fld}"] += 1
     _withhold_contradicted_plus0(rows)
     return st
+
+
+def _plus0_has_evidence(row: dict, nxt: dict | None) -> bool:
+    try:
+        import vodx_pr88
+    except ImportError:
+        vodx_pr88 = None
+    if vodx_pr88 is not None and hasattr(vodx_pr88, "plus0_has_evidence"):
+        return bool(vodx_pr88.plus0_has_evidence(row, nxt))
+    return False
 
 
 def _zero_contradicted(row: dict, nxt: dict | None) -> bool:

@@ -146,6 +146,51 @@ class ResultSnapTests(unittest.TestCase):
         self.assertIsNone(fresh["yards"])
         self.assertIn("spot_contradicts_plus0", fresh["quality_flags"])
 
+    def test_new_plus_zero_needs_a_spot_or_a_text_read(self) -> None:
+        """Distance recovery must not invent a +0 when the spots are missing."""
+        from vodx_pr88 import fill_result_yards
+
+        bare = {"down": 1, "distance": 10, "result": "", "result_kind": "", "yards": None}
+        bare_next = {"down": 2, "distance": 10, "result": "", "result_kind": "", "yards": None}
+        same_spot = {
+            "down": 1,
+            "distance": 10,
+            "yardline": 40,
+            "result": "",
+            "result_kind": "",
+            "yards": None,
+        }
+        same_next = {
+            "down": 2,
+            "distance": 10,
+            "yardline": 40,
+            "result": "",
+            "result_kind": "",
+            "yards": None,
+        }
+        text = {
+            "down": 1,
+            "distance": 10,
+            "result": "",
+            "result_kind": "",
+            "yards": None,
+            "notes": "PASS INCOMPLETE",
+        }
+        text_next = {"down": 2, "distance": 10, "result": "", "result_kind": "", "yards": None}
+        already = {"down": 1, "distance": 10, "result": "+9", "result_kind": "gain", "yards": 9}
+        already_next = {"down": 2, "distance": 1, "result": "", "yards": None}
+        fill_result_yards([bare, bare_next])
+        self.assertEqual(bare["result"], "")
+        self.assertIsNone(bare["yards"])
+        fill_result_yards([same_spot, same_next])
+        self.assertEqual(same_spot["result"], "+0")
+        self.assertEqual(same_spot["yards"], 0)
+        fill_result_yards([text, text_next])
+        self.assertEqual(text["result"], "+0")
+        fill_result_yards([already, already_next])
+        self.assertEqual(already["result"], "+9")
+        self.assertEqual(already["yards"], 9)
+
     def test_missing_spot_still_uses_the_distance(self) -> None:
         frames = [_live(10, 1, 10), _live(20, 2, 10)]
         snaps = build_snaps(frames, video_id="r", channel="SGU", game="madden27", extract=_ON)

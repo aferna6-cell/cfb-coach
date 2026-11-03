@@ -120,6 +120,8 @@ class SnapRow:
     # Glyph candidates stay off ``yardline`` until field_spot or the
     # neighboring snaps confirm them. A phrase read never sets these.
     yard_from_glyph: bool = False
+    # Yard line from the pre-glyph parser. Later writers may not replace it.
+    base_yardline: int | None = None
     glyph_yardline: int | None = None
     glyph_phrase: str = ""
     glyph_conf: float = 0.0

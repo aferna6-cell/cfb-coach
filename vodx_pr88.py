@@ -215,6 +215,38 @@ def _result_distance(row: dict) -> int | None:
     return as_int(row.get("baseline_distance"))
 
 
+def _text_says_zero(row: dict) -> bool:
+    """A no-gain or incomplete read on the row, not a result we are about to invent."""
+    parts = [
+        str(row.get("result_flag") or ""),
+        str(row.get("notes") or ""),
+        str(row.get("situation_raw") or ""),
+    ]
+    parts.extend(str(item) for item in (row.get("quality_flags") or []))
+    blob = " ".join(parts).upper()
+    return "INCOMPLETE" in blob or "NO GAIN" in blob or "NO_GAIN" in blob
+
+
+def plus0_has_evidence(row: dict, nxt: dict | None) -> bool:
+    """A new +0 needs the same spot before and after, or a no-gain text read.
+
+    Missing spots are not evidence. A spot that moved is not evidence.
+    """
+    if _text_says_zero(row):
+        return True
+    if not isinstance(nxt, dict):
+        return False
+    agreed = False
+    for key in ("yardline", "field_spot"):
+        left, right = as_int(row.get(key)), as_int(nxt.get(key))
+        if left is None or right is None:
+            continue
+        if abs(left - right) > 2:
+            return False
+        agreed = True
+    return agreed
+
+
 def spots_contradict_zero(row: dict, nxt: dict | None) -> bool:
     """True when a +0 from the distances disagrees with the two spots.
 
@@ -304,11 +336,13 @@ def fill_result_yards(rows: list[dict]) -> None:
         yy = yards_delta(_result_distance(row), _result_distance(nxt))
         if yy is None:
             continue
-        if yy == 0 and (spots_contradict_zero(row, nxt) or _carries_spot_contradicts_plus0(row)):
-            flags = row.setdefault("quality_flags", [])
-            if "spot_contradicts_plus0" not in flags:
-                flags.append("spot_contradicts_plus0")
-            row["result_flag"] = "spot_contradicts_plus0"
+        if yy == 0 and not plus0_has_evidence(row, nxt):
+            # No same-spot read and no no-gain text. Leave the blank result.
+            if spots_contradict_zero(row, nxt) or _carries_spot_contradicts_plus0(row):
+                flags = row.setdefault("quality_flags", [])
+                if "spot_contradicts_plus0" not in flags:
+                    flags.append("spot_contradicts_plus0")
+                row["result_flag"] = "spot_contradicts_plus0"
             continue
         row["yards"] = yy
         if not row.get("result"):
@@ -698,6 +732,7 @@ def rows_from_frames(
             "yards": raw.get("yards"),
             "book_match": raw.get("book_match") or "",
             "yard_from_glyph": bool(raw.get("yard_from_glyph")),
+            "base_yardline": as_int(raw.get("base_yardline")),
             "glyph_yardline": raw.get("glyph_yardline"),
             "glyph_phrase": raw.get("glyph_phrase") or "",
             "glyph_conf": float(raw.get("glyph_conf") or 0.0),
@@ -745,9 +780,12 @@ def rows_from_frames(
         row["_pr88_conf"] = active
         rows.append(row)
     if extract.yardline_glyphs:
-        # field_spot may already be on the row. Re-check glyph fills against it
-        # and against the neighboring snaps. Phrase yard lines stay put.
+        # field_spot may already be on the row. Glyphs fill blanks only.
+        # A base-extraction yard line stays put.
         gate_glyph_yardlines(rows)
+    from vod_pilot.segment import preserve_base_yardlines
+
+    preserve_base_yardlines(rows)
     return rows
 
 
@@ -763,6 +801,12 @@ def stage_write(row: dict, field: str, value: Any, conf: float, source: str) -> 
     current = row.get(field)
     if current == value:
         return False
+    if field == "yardline":
+        # The pre-glyph yard line is final. A blank is the only one a later
+        # stage, including field_spot reconciliation, may fill.
+        base = as_int(row.get("base_yardline"))
+        if base is not None and value != base:
+            return False
     if held is not None and held >= conf and current not in ("", None, [], {}):
         return False
     row[field] = value
