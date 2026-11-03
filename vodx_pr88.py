@@ -245,13 +245,31 @@ def _spot_value(value: Any) -> int | None:
     return as_int(value)
 
 
+def _flag_spot_move(row: dict) -> tuple[int, int] | None:
+    """Spot pair written by vodx_field, e.g. ``result_nulled:+0 but spot 10->7``."""
+    for item in row.get("quality_flags") or []:
+        match = re.search(r"spot\s+(\d+)\s*->\s*(\d+)", str(item))
+        if match:
+            return int(match.group(1)), int(match.group(2))
+    return None
+
+
+def _result_was_nulled(row: dict) -> bool:
+    return any("result_nulled" in str(item) for item in (row.get("quality_flags") or []))
+
+
 def plus0_has_evidence(row: dict, nxt: dict | None) -> bool:
     """A new +0 needs both spots still, or a no-gain text read.
 
-    Yard line and field_spot are both checked. A move of more than 2 yards
-    on either one blocks the +0, whatever the confidence and whatever text
-    was read.
+    Yard line and field_spot are both checked, and so is a ``spot A->B``
+    note already on the row. A move of more than 2 yards on either spot
+    blocks the +0. A ``result_nulled`` flag is never refilled.
     """
+    if _result_was_nulled(row):
+        return False
+    move = _flag_spot_move(row)
+    if move is not None and abs(move[0] - move[1]) > 2:
+        return False
     if not isinstance(nxt, dict):
         return _text_says_zero(row)
     agreed = False
@@ -321,13 +339,17 @@ def withhold_contradicted_plus0(rows: list[dict]) -> None:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        if not _carries_spot_contradicts_plus0(row) or not _is_plus_zero(row):
+        blocked = _carries_spot_contradicts_plus0(row) or _result_was_nulled(row)
+        move = _flag_spot_move(row)
+        if move is not None and abs(move[0] - move[1]) > 2:
+            blocked = True
+        if not blocked or not _is_plus_zero(row):
             continue
         row["result_suspect"] = {
             "result": row.get("result"),
             "result_kind": row.get("result_kind"),
             "yards": row.get("yards"),
-            "flag": "spot_contradicts_plus0",
+            "flag": "result_nulled" if _result_was_nulled(row) else "spot_contradicts_plus0",
         }
         row["result"] = ""
         row["result_kind"] = ""
@@ -785,8 +807,6 @@ def rows_from_frames(
             active["score"] = owned["score"]
         if extract.read_adjustments:
             active["adjustments"] = owned["adjustments"]
-        if extract.yardline_glyphs and not row.get("yard_from_glyph") and row.get("yardline") is not None:
-            active["yardline"] = owned["yardline"]
         if extract.read_offense_formation:
             active["formation"] = owned["formation"]
         if extract.dd_norm or extract.goal_to_go:
@@ -812,6 +832,35 @@ def rows_from_frames(
         gate_glyph_yardlines(rows)
     preserve_base_yardlines(rows)
     return rows
+
+
+def prepare_yardline_for_field(row: dict) -> None:
+    """Keep a glyph or penalty-card line off the row until vodx_field runs.
+
+    The raw engine number may stay, but it is not labeled ``ocr_penalty_card``
+    and it is not protected, so the scorebug reconciliation still happens.
+    A glyph number is held on ``glyph_yardline`` and the published line is blank.
+    """
+    if row.get("yard_from_glyph"):
+        if row.get("glyph_yardline") in (None, "") and row.get("yardline") not in (None, ""):
+            row["glyph_yardline"] = row.get("yardline")
+        row["yardline"] = None
+        sources = row.get("field_sources")
+        if isinstance(sources, dict):
+            sources.pop("yardline", None)
+        conf = row.get("conf")
+        if isinstance(conf, dict):
+            conf.pop("yardline", None)
+        held = row.get("_pr88_conf")
+        if isinstance(held, dict):
+            held.pop("yardline", None)
+        return
+    sources = row.get("field_sources")
+    if isinstance(sources, dict) and sources.get("yardline") == "ocr_penalty_card":
+        sources["yardline"] = "engine"
+    held = row.get("_pr88_conf")
+    if isinstance(held, dict):
+        held.pop("yardline", None)
 
 
 def stage_write(row: dict, field: str, value: Any, conf: float, source: str) -> bool:

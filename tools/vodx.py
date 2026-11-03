@@ -583,7 +583,7 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
         }
         src = {
             "down": "ocr_scorebug", "distance": "ocr_scorebug", "quarter": "ocr_scorebug", "clock": "ocr_scorebug",
-            "yardline": "ocr_penalty_card", "formation": "ocr_call_screen_lexicon",
+            "yardline": "engine", "formation": "ocr_call_screen_lexicon",
             "play": "ocr_tooltip_or_previous_play_panel", "coverage_seen": "ocr_previous_play_panel",
             "concept_seen": "ocr_call_screen_route_words", "result": "dd_delta_or_banner",
             "audible": adj["audible"][2], "hot_routes": adj["hot_routes"][2], "off_macros": adj["off_macros"][2],
@@ -607,8 +607,6 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
         if extract.read_adjustments:
             row["_pr88_conf"]["adjustments"] = float(c.get("adjustments") or 0.0)
             row["conf"]["adjustments"] = row["_pr88_conf"]["adjustments"]
-        if extract.yardline_glyphs and not row.get("yard_from_glyph") and row.get("yardline") is not None:
-            row["_pr88_conf"]["yardline"] = float(c.get("yardline") or 0.0)
         if extract.read_offense_formation:
             row["_pr88_conf"]["formation"] = float(c.get("formation") or 0.0)
         if extract.dd_norm or extract.goal_to_go:
@@ -626,6 +624,8 @@ def extract_one(r: dict, fps: float, max_seconds: float | None, threads: int, ca
         rows.append(row)
     for row in rows:
         vodx_pr88.coerce_row_numbers(row)
+        # Glyph and penalty-card labels must not be trusted before vodx_field.
+        vodx_pr88.prepare_yardline_for_field(row)
     pr88_snapshot = vodx_pr88.snapshot_rows(rows)
     vodx_pr88.install_quality_guard()
     from vodx_refine import refine_rows

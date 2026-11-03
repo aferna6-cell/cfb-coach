@@ -248,6 +248,44 @@ class YardlineSnapTests(unittest.TestCase):
         gate_glyph_yardlines([row])
         self.assertEqual(row["yardline"], 43)
 
+    def test_5386_is_not_a_trusted_penalty_card_before_the_field_pass(self) -> None:
+        """mSUAGrMB0ok:5386 was engine 79. vodx_field reconciled it to scorebug 25.
+
+        A glyph or ocr_penalty_card label must not be on the row when that
+        reconciliation runs, and the glyph must not put 79 back afterwards.
+        """
+        from vodx_pr88 import prepare_yardline_for_field
+        from vod_pilot.segment import capture_base_yardlines, preserve_base_yardlines
+
+        row = {
+            "snap_id": "mSUAGrMB0ok:5386.0",
+            "yardline": 79,
+            "yard_from_glyph": True,
+            "glyph_yardline": 79,
+            "glyph_phrase": "opp 21",
+            "glyph_conf": 0.8,
+            "field_sources": {"yardline": "ocr_penalty_card"},
+            "conf": {"yardline": 0.8},
+            "_pr88_conf": {"yardline": 0.8},
+            "notes": "",
+        }
+        prepare_yardline_for_field(row)
+        self.assertIsNone(row["yardline"])
+        self.assertNotEqual((row.get("field_sources") or {}).get("yardline"), "ocr_penalty_card")
+        self.assertNotIn("yardline", row.get("_pr88_conf") or {})
+        # vodx_field reconciles engine=79 with scorebug=25.
+        row["yardline"] = 25
+        row["notes"] = "yardline_conflict:engine=79 scorebug=25"
+        row["field_sources"]["yardline"] = "scorebug"
+        capture_base_yardlines([row])
+        self.assertEqual(row["base_yardline"], 25)
+        row["yardline"] = 79
+        preserve_base_yardlines([row])
+        row["yard_from_glyph"] = True
+        gate_glyph_yardlines([row])
+        self.assertEqual(row["yardline"], 25)
+        self.assertNotIn("ocr_penalty_card", row["notes"])
+
     def test_glyph_does_not_flip_side_or_drop_an_earlier_spot(self) -> None:
         """The three box rows: neighbour 37, opp-30 vs ytg 70, own-22 vs opp territory."""
         rows = [

@@ -260,6 +260,35 @@ class ResultSnapTests(unittest.TestCase):
         fill_result_yards([moved, moved_next])
         self.assertEqual(moved["result"], "")
 
+    def test_result_nulled_is_not_refilled_with_plus_zero(self) -> None:
+        """4_-atoyAQzA:2786 was nulled for spot 10->7. A later pass must not write +0."""
+        from vodx_pr88 import fill_result_yards, plus0_has_evidence, withhold_contradicted_plus0
+
+        row = {
+            "snap_id": "4_-atoyAQzA:2786.0",
+            "down": 1,
+            "distance": 10,
+            "result": "",
+            "result_kind": "",
+            "yards": None,
+            "quality_flags": ["result_nulled:+0 but spot 10->7"],
+            "conf": {"result": 0.9},
+        }
+        nxt = {"down": 2, "distance": 10, "result": "", "yards": None}
+        self.assertFalse(plus0_has_evidence(row, nxt))
+        fill_result_yards([row, nxt])
+        self.assertEqual(row["result"], "")
+        self.assertIsNone(row["yards"])
+        # A later pass put +0 back. The nulled flag still wins.
+        row["result"] = "+0"
+        row["result_kind"] = "gain"
+        row["yards"] = 0
+        withhold_contradicted_plus0([row])
+        self.assertEqual(row["result"], "")
+        self.assertEqual(row["result_kind"], "")
+        self.assertIsNone(row["yards"])
+        self.assertEqual(row["result_suspect"]["result"], "+0")
+
     def test_missing_spot_still_uses_the_distance(self) -> None:
         frames = [_live(10, 1, 10), _live(20, 2, 10)]
         snaps = build_snaps(frames, video_id="r", channel="SGU", game="madden27", extract=_ON)
