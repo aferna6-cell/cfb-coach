@@ -422,7 +422,7 @@ class DefenseV2VarietyTests(unittest.TestCase):
             for index in range(len(plays) - 2):
                 self.assertFalse(plays[index] == plays[index + 1] == plays[index + 2])
 
-    def test_family_spread_rotates_plays_inside_the_family(self) -> None:
+    def test_family_spread_penalizes_repeating_a_family(self) -> None:
         candidates = [
             {"formation": "Nickel", "play": "Buzz", "family": "cover3", "package": "first"},
             {"formation": "Nickel", "play": "Sky", "family": "cover3", "package": "second"},
@@ -431,10 +431,23 @@ class DefenseV2VarietyTests(unittest.TestCase):
         artifact = _v2_artifact(
             candidates,
             {},
-            family_spread=0.5,
+            family_spread=0.35,
             temperature=0.0,
-            package_coefficients={"first": -2.0, "second": -1.0, "dime": 0.0},
+            package_coefficients={"first": -0.2, "second": -0.1, "dime": 0.0},
         )
+        same = {
+            "formation": "Nickel", "play": "Sky", "family": "cover3",
+            "package": "second", "offense_success": 0.42,
+        }
+        other = {
+            "formation": "Dime", "play": "Tampa", "family": "cover2",
+            "package": "dime", "offense_success": 0.42,
+        }
+        recent = [("Nickel", "Buzz", "cover3", "first")]
+        same_score = defense_v1._sampling_score(same, artifact, recent)
+        other_score = defense_v1._sampling_score(other, artifact, recent)
+        self.assertGreater(same_score, other_score)
+        self.assertAlmostEqual(same_score - other_score, 0.35)
         book = {"Nickel": ["Buzz", "Sky"], "Dime": ["Tampa"]}
         sit = Situation(raw="flat", side="defense", down=1, distance=10, yardline=55)
         first = defense_v1.pick_call(artifact, sit, book, seed=1)["pick"]
@@ -442,8 +455,8 @@ class DefenseV2VarietyTests(unittest.TestCase):
         second = defense_v1.pick_call(
             artifact, sit, book, recent=[("Nickel", "Buzz")], seed=1,
         )["pick"]
-        self.assertEqual(second["play"], "Sky")
-        self.assertEqual(second["family"], "cover3")
+        self.assertEqual(second["play"], "Tampa")
+        self.assertNotEqual(second["family"], "cover3")
 
     def test_v2_still_refuses_an_illegal_best_call(self) -> None:
         candidates = [
@@ -457,6 +470,198 @@ class DefenseV2VarietyTests(unittest.TestCase):
             defense_v1.pick_call(artifact, sit, book, seed=1)
         self.assertEqual(caught.exception.reason, "illegal")
         self.assertEqual(caught.exception.pick["play"], "Not A Play")
+
+    def test_run_downs_refuse_dime_and_goal_line_uses_a_heavy_front(self) -> None:
+        candidates = [
+            {"formation": "Dime 3-2 Odd", "play": "Cover 3", "family": "cover3", "package": "dime"},
+            {"formation": "Nickel Over", "play": "Cover 4", "family": "quarters", "package": "nickel"},
+            {"formation": "4-3 Over", "play": "Cover 1", "family": "man", "package": "base"},
+            {"formation": "Goal Line", "play": "Goal", "family": "goal", "package": "goal"},
+        ]
+        artifact = _v2_artifact(
+            candidates,
+            {},
+            temperature=0.0,
+            family_coefficients={"cover3": -4.0, "quarters": 0.0, "man": 0.0, "goal": 0.0},
+        )
+        book = {
+            "Dime 3-2 Odd": ["Cover 3"],
+            "Nickel Over": ["Cover 4"],
+            "4-3 Over": ["Cover 1"],
+            "Goal Line": ["Goal"],
+        }
+        early = Situation(raw="early", side="defense", down=1, distance=10, yardline=40)
+        self.assertEqual(
+            defense_v1.pick_call(artifact, early, book, seed=1)["pick"]["play"],
+            "Cover 3",
+        )
+        short = Situation(
+            raw="short", side="defense", down=3, distance=1, yardline=60, short_yardage=True,
+        )
+        short_pick = defense_v1.pick_call(artifact, short, book, seed=1)["pick"]
+        self.assertNotIn("dime", short_pick["formation"].lower())
+        self.assertEqual(short_pick["situational_guard"], "heavy_front")
+        self.assertIn(short_pick["formation"], ("4-3 Over", "Goal Line"))
+        goal = Situation(
+            raw="gl", side="defense", down=1, distance=1, yardline=99, goal_line=True, short_yardage=True,
+        )
+        goal_pick = defense_v1.pick_call(artifact, goal, book, seed=1)["pick"]
+        self.assertEqual(goal_pick["situational_guard"], "heavy_front")
+        self.assertNotIn("dime", goal_pick["formation"].lower())
+        run_heavy = defense_v1.pick_call(
+            artifact, early, book, seed=1,
+            recent_concepts=("Inside Zone", "Stretch", "Dive", "Inside Zone"),
+        )["pick"]
+        self.assertNotIn("dime", run_heavy["formation"].lower())
+        self.assertEqual(run_heavy["situational_guard"], "no_light_box")
+        self.assertFalse(defense_v1.recent_run_heavy(("Mesh", "Four Verticals")))
+        self.assertTrue(defense_v1.recent_run_heavy(("Inside Zone", "Stretch", "Dive")))
+
+    def test_variety_window_is_seeded_and_caps_call_family_and_package(self) -> None:
+        candidates = []
+        for index in range(8):
+            family = f"fam{index}"
+            package = "nickel" if index < 6 else "base"
+            formation = "Nickel Over" if package == "nickel" else "4-3 Over"
+            candidates.append({
+                "formation": formation,
+                "play": f"Call {index}",
+                "family": family,
+                "package": package,
+            })
+        artifact = _v2_artifact(
+            candidates, {}, temperature=0.4, family_spread=0.0, top_k=8,
+        )
+        book = {
+            "Nickel Over": [row["play"] for row in candidates if row["formation"] == "Nickel Over"],
+            "4-3 Over": [row["play"] for row in candidates if row["formation"] == "4-3 Over"],
+        }
+        sit = Situation(raw="flat", side="defense", down=1, distance=10, yardline=45)
+
+        def sequence(seed: int) -> list[str]:
+            recent: list[tuple[str, str]] = []
+            plays = []
+            for _ in range(24):
+                picked = defense_v1.pick_call(artifact, sit, book, recent=recent, seed=seed)["pick"]
+                plays.append(picked["play"])
+                recent.append((picked["formation"], picked["play"]))
+            return plays
+
+        plays = sequence(11)
+        self.assertEqual(plays, sequence(11))
+        self.assertNotEqual(plays, sequence(0))
+        window = defense_v1.VARIETY_WINDOW
+        call_cap = defense_v1._window_cap(defense_v1.MAX_CALL_SHARE)
+        family_cap = defense_v1._window_cap(defense_v1.MAX_FAMILY_SHARE)
+        package_cap = defense_v1._window_cap(defense_v1.MAX_PACKAGE_SHARE)
+        for start in range(len(plays) - window + 1):
+            chunk = plays[start:start + window]
+            self.assertLessEqual(max(chunk.count(play) for play in set(chunk)), call_cap)
+        families_by_play = {row["play"]: row["family"] for row in candidates}
+        packages_by_play = {row["play"]: row["package"] for row in candidates}
+        for start in range(len(plays) - window + 1):
+            chunk = plays[start:start + window]
+            self.assertLessEqual(max(
+                sum(1 for play in chunk if families_by_play[play] == family)
+                for family in {families_by_play[play] for play in chunk}
+            ), family_cap)
+            self.assertLessEqual(max(
+                sum(1 for play in chunk if packages_by_play[play] == package)
+                for package in {packages_by_play[play] for play in chunk}
+            ), package_cap)
+
+    def test_full_game_uses_many_calls_and_no_call_dominates(self) -> None:
+        count = 16
+        candidates = []
+        for index in range(count):
+            package = ("nickel", "base", "dime", "goal")[index % 4]
+            formation = {
+                "nickel": "Nickel Over",
+                "base": "4-3 Over",
+                "dime": "Dime 3-2 Odd",
+                "goal": "Goal Line",
+            }[package]
+            candidates.append({
+                "formation": formation,
+                "play": f"Call {index:02d}",
+                "family": f"fam{index:02d}",
+                "package": package,
+            })
+        families = [row["family"] for row in candidates]
+        packages = []
+        for row in candidates:
+            if row["package"] not in packages:
+                packages.append(row["package"])
+        scale = 0.15
+        family_coefficients = {}
+        family_bias = {}
+        for index, name in enumerate(families):
+            target = float(index + 1)
+            family_coefficients[name] = scale * target * target
+            family_bias[name] = _interaction(distance=scale * -2.0 * target)
+        artifact = _v2_artifact(
+            candidates,
+            family_bias,
+            temperature=0.0,
+            family_spread=0.35,
+            top_k=count,
+            family_coefficients=family_coefficients,
+            package_coefficients={name: 0.0 for name in packages},
+        )
+        book: dict[str, list[str]] = {}
+        for row in candidates:
+            book.setdefault(row["formation"], []).append(row["play"])
+        distances = list(range(1, count + 1)) * 3
+        recent: list[tuple[str, str, str, str]] = []
+        plays: list[str] = []
+        for snap, distance in enumerate(distances):
+            yardline = (15, 45, 85)[snap % 3]
+            sit = Situation(
+                raw=f"d 1&{distance}",
+                side="defense",
+                down=1,
+                distance=distance,
+                yardline=yardline,
+            )
+            picked = defense_v1.pick_call(
+                artifact, sit, book, recent=recent, seed=4,
+            )["pick"]
+            plays.append(picked["play"])
+            recent.append((picked["formation"], picked["play"], picked["family"], picked["package"]))
+        again: list[str] = []
+        recent = []
+        for snap, distance in enumerate(distances):
+            yardline = (15, 45, 85)[snap % 3]
+            sit = Situation(
+                raw=f"d 1&{distance}",
+                side="defense",
+                down=1,
+                distance=distance,
+                yardline=yardline,
+            )
+            picked = defense_v1.pick_call(artifact, sit, book, recent=recent, seed=4)["pick"]
+            again.append(picked["play"])
+            recent.append((picked["formation"], picked["play"], picked["family"], picked["package"]))
+        self.assertEqual(plays, again)
+        self.assertGreaterEqual(len(set(plays)), 15)
+        self.assertLessEqual(max(plays.count(play) for play in set(plays)) / len(plays), 0.30)
+        zones = {}
+        for yardline, label in ((12, "own"), (50, "mid"), (88, "opp")):
+            sit = Situation(
+                raw=label, side="defense", down=2, distance=8, yardline=yardline,
+            )
+            zones[label] = defense_v1.pick_call(
+                _v2_artifact(self.candidates, {
+                    "cover3": _interaction(yardline_mid=-4.0),
+                    "cover2": _interaction(yardline_opp=-4.0),
+                    "goal": _interaction(yardline_own=-4.0),
+                    "man": _interaction(short_yardage=-4.0),
+                }, temperature=0.0),
+                sit,
+                self.book,
+                seed=3,
+            )["pick"]["play"]
+        self.assertGreaterEqual(len(set(zones.values())), 2)
 
     def test_goal_to_go_distance_uses_the_named_side(self) -> None:
         from cfb_coach.madden.situation import parse_madden_situation

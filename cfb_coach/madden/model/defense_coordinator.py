@@ -1038,16 +1038,16 @@ def _remember_v1(call: Any, record: Mapping[str, Any], *, fell_back: bool, statu
         return
 
 
-def _defense_v1_recent(extras: Mapping[str, Any], db: Any, session: str) -> list[tuple[str, str]]:
+def _defense_v1_recent(extras: Mapping[str, Any], db: Any, session: str) -> list[tuple]:
     """Prior defensive calls for the repeat limit. An explicit list wins."""
     supplied = extras.get("defense_v1_recent")
     if isinstance(supplied, (list, tuple)):
         rows = []
         for row in supplied:
             if isinstance(row, (list, tuple)) and len(row) >= 2:
-                rows.append((str(row[0]), str(row[1])))
+                rows.append(tuple(str(item) for item in row[:4]))
         return rows
-    if db is None or not session:
+    if db is None or not session or session == "defense-pilot":
         return []
     try:
         from cfb_coach import ingame
@@ -1056,6 +1056,22 @@ def _defense_v1_recent(extras: Mapping[str, Any], db: Any, session: str) -> list
     except Exception:
         return []
     return [(str(record.formation), str(record.play)) for record in records[-20:]]
+
+
+def _defense_v1_concepts(extras: Mapping[str, Any], db: Any, session: str) -> list[str]:
+    """Named opponent concepts for the run-heavy guard. An explicit list wins."""
+    supplied = extras.get("defense_v1_concepts")
+    if isinstance(supplied, (list, tuple)):
+        return [str(item) for item in supplied if str(item).strip()]
+    if db is None or not session or session == "defense-pilot":
+        return []
+    try:
+        from cfb_coach import ingame
+
+        records = ingame.session_records(db, session, "defense")
+    except Exception:
+        return []
+    return [record.concept for record in records if record.concept]
 
 
 def _apply_defense_v1(
@@ -1084,6 +1100,7 @@ def _apply_defense_v1(
     picked: dict[str, Any] | None = None
     error: defense_v1.DefenseV1Error | None = None
     recent = _defense_v1_recent(extras, db, session)
+    concepts = _defense_v1_concepts(extras, db, session)
     seed = extras.get("defense_v1_seed")
     if seed is None:
         seed = f"{session}:{seq}:defense-v2"
@@ -1094,6 +1111,7 @@ def _apply_defense_v1(
             recent=recent, seed=seed,
             top_k=extras.get("defense_v1_top_k"),
             temperature=extras.get("defense_v1_temperature"),
+            recent_concepts=concepts,
         )
         picked = scored["pick"]
         if getattr(call, "macro", None) or getattr(call, "adjustment", None):
@@ -1132,11 +1150,14 @@ def _apply_defense_v1(
             schema=schema_name,
             policy=policy_name,
         )
+        guard = str(picked.get("situational_guard") or "")
         note = (
             f"DEFENSE {schema_name} [{policy_name}] offense_success={probability:.3f} "
             f"{defense_v1.comparison_detail(record)} "
             "(offline eval did not beat the situation baseline)"
         )
+        if guard:
+            note += f" guard={guard}"
         result = MaddenCall(
             "defense", picked["formation"], picked["play"], "No adj",
             user_job_for(picked["play"]) or FAMILY_USER_JOB.get(picked["family"], "User hook"),

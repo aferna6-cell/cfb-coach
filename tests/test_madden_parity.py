@@ -178,7 +178,10 @@ class TestMacrosResearchBuilt(_Isolated):
         finally:
             db.close()
         self.assertEqual((len(sel["offense"]), len(sel["defense"])), (8, 8))
-        rc, out = self.run_cli(["play", "--game", "madden27", "-o", "quen", "--once", "1&10", "--no-overlay"])
+        rc, out = self.run_cli([
+            "play", "--game", "madden27", "-o", "quen", "--once", "1&10",
+            "--heuristic-offense", "--no-overlay",
+        ])
         self.assertEqual(rc, 0)
         line = out.split("Active macros (from last prep):", 1)[1].split("\n", 1)[0]
         self.assertIn(sel["defense"][0], line)

@@ -23,8 +23,15 @@ disable it, or change its rollback (`python -m cfb_coach ml heuristic`).
 python3 -m cfb_coach play --game madden27 -o ryan \
   --defense-model v1 \
   --defense-model-path ~/.cfb-coach/models/defense_v1.json \
+  --heuristic-offense \
   --no-vod-prior --terminal
 ```
+
+A human opponent will not start until the offense mode is explicit.
+`--heuristic-offense` keeps the existing offense caller. `--ml-human-control`
+selects the experimental offense model and still requires `ml experimental`.
+Startup prints `OFFENSE CONTROLLER` and `DEFENSE CONTROLLER` as
+`EXPERIMENTAL` or `HEURISTIC`.
 
 `--defense-model-path` may be omitted. The default path is
 `~/.cfb-coach/models/defense_v1.json`. `CFB_COACH_DEFENSE_V1` is the
@@ -73,9 +80,13 @@ Each of those objects has exactly these keys:
 
 Optional v2 keys: `top_k` (default 4), `temperature` (default 0.25),
 `max_repeat` (default 2), `family_spread` (default 0.35). The same formation
-and play is not shown more than `max_repeat` snaps in a row. A different play
-in the previous snap's family is preferred by `family_spread`. The draw is
-seeded, so a test seed repeats.
+and play is not shown more than `max_repeat` snaps in a row. `family_spread`
+is added to the sampling score of the previous snap's family. The lowest
+score is preferred, so repeating a family is penalized. Over the last 8
+snaps, one call cannot exceed 25 percent and one family or personnel package
+cannot exceed 50 percent. Short yardage and the goal line stay on heavy
+fronts. A run-heavy recent tendency does not call Dime or another light box.
+The draw is seeded, so a test seed repeats.
 
 `policy` remains `logged_unverified_v1`.
 

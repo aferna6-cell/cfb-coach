@@ -85,14 +85,24 @@ v2 also samples. Optional keys, with defaults:
     The same formation and play is not shown more than this many snaps in a
     row. Default 2.
 ``family_spread``
-    Subtracted from the sampling score of a different play in the previous
-    snap's family, so plays inside a family rotate. Default 0.35.
+    Added to the sampling score of every call in the previous snap's family.
+    The lowest score is preferred, so repeating a family is penalized.
+    Default 0.35.
+
+A rolling window of the last 8 snaps also caps the mix. One call may not be
+more than 25 percent of that window, and one coverage family or personnel
+package may not be more than 50 percent. The same limits apply while the
+window is still filling, so a game cannot build an illegal window. Short
+yardage and the goal line are restricted to heavy fronts. A clear run down,
+including a run-heavy recent opponent tendency, does not call a Dime or other
+light box.
 
 P(offense success) is the logistic of the logit. v1 shows the lowest
-probability. v2 draws from the legal top-k with a seeded softmax. Ties and
-the greedy case break by formation, then play. The best candidate must be in
-the installed defensive book; an illegal best call falls back and does not
-silently take the next legal candidate.
+probability among the calls the situation still allows. v2 draws from the
+legal top-k with a seeded softmax. Ties and the greedy case break by
+formation, then play. The best candidate must be in the installed defensive
+book; an illegal best call falls back and does not silently take the next
+legal candidate.
 
 Default path: ``~/.cfb-coach/models/defense_v1.json``.
 Override: ``--defense-model-path``, else ``CFB_COACH_DEFENSE_V1``.
@@ -105,6 +115,7 @@ import json
 import math
 import os
 import random
+import re
 import time
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -128,6 +139,18 @@ DEFAULT_TOP_K = 4
 DEFAULT_TEMPERATURE = 0.25
 DEFAULT_MAX_REPEAT = 2
 DEFAULT_FAMILY_SPREAD = 0.35
+VARIETY_WINDOW = 8
+MAX_CALL_SHARE = 0.25
+MAX_FAMILY_SHARE = 0.50
+MAX_PACKAGE_SHARE = 0.50
+RUN_HEAVY_WINDOW = 6
+RUN_HEAVY_MIN_SNAPS = 3
+RUN_HEAVY_SHARE = 0.50
+_LIGHT_BOX = re.compile(r"dime|dollar|quarter|light[\s-]*box", re.I)
+_HEAVY_FRONT = re.compile(
+    r"goal[\s-]*line|\b4-3\b|\b4-4\b|\b3-4\b|\b46\b|\bbear\b|\bheavy\b|\bbig\b",
+    re.I,
+)
 
 NUMERIC_FEATURES = ("down", "distance", "yardline", "score_diff", "quarter")
 BINARY_FEATURES = (
@@ -477,21 +500,139 @@ def _banned_repeat(
     return None
 
 
+def _package_of(artifact: Mapping[str, Any], formation: str, play: str) -> str | None:
+    for candidate in artifact["candidates"]:
+        if candidate["formation"] == formation and candidate["play"] == play:
+            return str(candidate["package"])
+    return None
+
+
+def _recent_parts(artifact: Mapping[str, Any], row: Sequence[Any]) -> tuple[str, str, str, str]:
+    formation = str(row[0]) if row else ""
+    play = str(row[1]) if len(row) > 1 else ""
+    family = str(row[2]) if len(row) > 2 and row[2] else (_family_of(artifact, formation, play) or "")
+    package = str(row[3]) if len(row) > 3 and row[3] else (_package_of(artifact, formation, play) or "")
+    return formation, play, family, package
+
+
+def _window_cap(share: float) -> int:
+    """Largest count that is not strictly above ``share`` of a full window."""
+    return int(math.floor(float(share) * VARIETY_WINDOW))
+
+
+def _variety_ok(
+    recent: Sequence[Sequence[Any]],
+    row: Mapping[str, Any],
+    artifact: Mapping[str, Any],
+) -> bool:
+    """False when this call, family, or package would break the rolling mix."""
+    prior = [_recent_parts(artifact, item) for item in list(recent)[-(VARIETY_WINDOW - 1):]]
+    cand = (
+        str(row.get("formation") or ""),
+        str(row.get("play") or ""),
+        str(row.get("family") or ""),
+        str(row.get("package") or ""),
+    )
+    window = prior + [cand]
+    calls = sum(1 for item in window if (item[0], item[1]) == (cand[0], cand[1]))
+    if calls > _window_cap(MAX_CALL_SHARE):
+        return False
+    if cand[2]:
+        families = sum(1 for item in window if item[2] == cand[2])
+        if families > _window_cap(MAX_FAMILY_SHARE):
+            return False
+    if cand[3]:
+        packages = sum(1 for item in window if item[3] == cand[3])
+        if packages > _window_cap(MAX_PACKAGE_SHARE):
+            return False
+    return True
+
+
+def _is_light_box(row: Mapping[str, Any]) -> bool:
+    package = str(row.get("package") or "")
+    formation = str(row.get("formation") or "")
+    return bool(_LIGHT_BOX.search(package) or _LIGHT_BOX.search(formation))
+
+
+def _is_heavy_front(row: Mapping[str, Any]) -> bool:
+    if _is_light_box(row):
+        return False
+    package = str(row.get("package") or "")
+    formation = str(row.get("formation") or "")
+    if package.lower() in {"goal", "goal_line", "goalline", "heavy"}:
+        return True
+    return bool(_HEAVY_FRONT.search(formation) or _HEAVY_FRONT.search(package))
+
+
+def _wants_heavy_front(sit: Any) -> bool:
+    if getattr(sit, "goal_line", False) or getattr(sit, "short_yardage", False):
+        return True
+    down = getattr(sit, "down", None)
+    distance = getattr(sit, "distance", None)
+    return bool(down in (3, 4) and distance is not None and int(distance) <= 2)
+
+
+def recent_run_heavy(concepts: Sequence[str] | None) -> bool:
+    """True when the opponent's recent named concepts are at least half runs.
+
+    Fewer than three named concepts is not a tendency. Inside zone, stretch,
+    and dive are runs.
+    """
+    if not concepts:
+        return False
+    from cfb_coach.madden.situation import concept_family
+
+    tail = [str(item) for item in concepts if str(item).strip()][-RUN_HEAVY_WINDOW:]
+    if len(tail) < RUN_HEAVY_MIN_SNAPS:
+        return False
+    runs = sum(1 for name in tail if concept_family(name) == "run")
+    return (runs / len(tail)) >= RUN_HEAVY_SHARE
+
+
+def _guarded_ranked(
+    ranked: Sequence[Mapping[str, Any]],
+    sit: Any,
+    run_heavy: bool,
+) -> tuple[list[Mapping[str, Any]], str]:
+    """Drop light boxes on run downs, and keep heavy fronts on goal-line/short."""
+    rows = list(ranked)
+    if _wants_heavy_front(sit):
+        heavy = [row for row in rows if _is_heavy_front(row)]
+        if heavy:
+            return heavy, "heavy_front"
+        non_light = [row for row in rows if not _is_light_box(row)]
+        if non_light:
+            return non_light, "no_light_box"
+        return rows, ""
+    if run_heavy:
+        non_light = [row for row in rows if not _is_light_box(row)]
+        if non_light:
+            return non_light, "no_light_box"
+    return rows, ""
+
+
 def _sampling_score(
     row: Mapping[str, Any],
     artifact: Mapping[str, Any],
     recent: Sequence[Sequence[Any]],
 ) -> float:
+    """Lower is a better defensive call.
+
+    ``family_spread`` is added for the previous snap's family. Subtracting it
+    made that family win, which is the bug this score corrects.
+    """
     score = float(row["offense_success"])
-    if not recent:
+    spread = float(artifact.get("family_spread") or 0.0)
+    if not recent or spread == 0.0:
         return score
     last = recent[-1]
     last_key = (str(last[0]), str(last[1]))
     last_family = str(last[2]) if len(last) > 2 and last[2] else _family_of(artifact, last_key[0], last_key[1])
-    if _call_key(row) == last_key:
-        return score
-    if last_family and row.get("family") == last_family:
-        return score - float(artifact.get("family_spread") or 0.0)
+    row_family = row.get("family") or _family_of(
+        artifact, str(row.get("formation") or ""), str(row.get("play") or ""),
+    )
+    if last_family and row_family == last_family:
+        return score + spread
     return score
 
 
@@ -518,24 +659,20 @@ def _sample_v2(
     temp = float(artifact.get("temperature") if temperature is None else temperature)
     if temp < 0 or not math.isfinite(temp):
         raise DefenseV1Error("invalid", "temperature must be >= 0")
-    window = [
-        row for row in ranked[:k]
-        if play_in_book(book, str(row["formation"]), str(row["play"]))
-    ]
     banned = _banned_repeat(recent, int(artifact.get("max_repeat") or DEFAULT_MAX_REPEAT))
-    pool = [row for row in window if _call_key(row) != banned]
-    if not pool:
-        pool = [
-            row for row in ranked
-            if play_in_book(book, str(row["formation"]), str(row["play"])) and _call_key(row) != banned
-        ]
-    if not pool:
+    legal = [
+        row for row in ranked
+        if play_in_book(book, str(row["formation"]), str(row["play"])) and _call_key(row) != banned
+    ]
+    if not legal:
         blocked = banned or _call_key(ranked[0])
         raise DefenseV1Error(
             "invalid",
             f"defense v2 repeat limit blocked {blocked[0]} / {blocked[1]}",
             pick=dict(ranked[0]),
         )
+    varied = [row for row in legal if _variety_ok(recent, row, artifact)]
+    pool = (varied or legal)[:k]
     order = sorted(pool, key=lambda row: (_sampling_score(row, artifact, recent), row["formation"], row["play"]))
     if temp == 0 or len(order) == 1:
         chosen = order[0]
@@ -557,11 +694,14 @@ def pick_call(
     seed: Any = None,
     top_k: int | None = None,
     temperature: float | None = None,
+    recent_concepts: Sequence[str] | None = None,
+    run_heavy: bool | None = None,
 ) -> dict[str, Any]:
     """Lowest predicted offense success, then v2 variety among that legal top.
 
     An illegal best candidate falls back. v2 does not walk from an illegal
-    winner onto a later legal call.
+    winner onto a later legal call. Run downs and the goal line narrow the
+    menu before that draw.
     """
     started = time.perf_counter()
     ranked: list[dict[str, Any]] = []
@@ -593,9 +733,20 @@ def pick_call(
             f"illegal play not in installed book: {best['formation']} / {best['play']}",
             pick=best,
         )
-    chosen = best
+    heavy = recent_run_heavy(recent_concepts) if run_heavy is None else bool(run_heavy)
+    guarded, guard = _guarded_ranked(ranked, sit, heavy)
+    chosen = guarded[0]
     if artifact.get("schema") == SCHEMA_V2:
-        chosen = _sample_v2(artifact, ranked, book, recent, seed, top_k, temperature)
+        chosen = _sample_v2(artifact, guarded, book, recent, seed, top_k, temperature)
+    elif not play_in_book(book, str(chosen["formation"]), str(chosen["play"])):
+        legal = [
+            row for row in guarded
+            if play_in_book(book, str(row["formation"]), str(row["play"]))
+        ]
+        chosen = legal[0] if legal else best
+    if guard:
+        chosen = dict(chosen)
+        chosen["situational_guard"] = guard
     return {
         "pick": chosen,
         "legal": True,

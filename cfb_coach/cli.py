@@ -910,6 +910,13 @@ def build_parser() -> argparse.ArgumentParser:
              "Off by default; requires `ml experimental`; heuristic rollback: `ml heuristic`.",
     )
     p_play.add_argument(
+        "--heuristic-offense",
+        action="store_true",
+        help="Madden only: this human-opponent session explicitly uses the HEURISTIC offense caller. "
+             "Required to start against a human when --ml-human-control is not passed. "
+             "Does not change the heuristic play-caller.",
+    )
+    p_play.add_argument(
         "--ml-defense-control",
         action="store_true",
         help="Madden only: allow EXPERIMENTAL defensive ML calls during this human-opponent play session. "

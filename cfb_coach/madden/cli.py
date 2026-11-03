@@ -586,18 +586,58 @@ def _write_overlay(path: Path | None, text: str, short: str) -> None:
     )
 
 
+def _confirm_heuristic_offense(args: argparse.Namespace, opponent_id: str) -> bool:
+    """True when a human session may start on the heuristic offense caller."""
+    print(
+        f"WARNING: human opponent {opponent_id!r} has no explicit offense mode.\n"
+        "This session would call HEURISTIC offense. That is not the experimental play-caller.\n"
+        "Pass --ml-human-control for the EXPERIMENTAL offense model,\n"
+        "or --heuristic-offense to confirm the heuristic caller.",
+        file=sys.stderr,
+    )
+    interactive = bool(sys.stdin.isatty()) and not getattr(args, "once", None)
+    if not interactive:
+        print(
+            "Refusing to start. Re-run with --ml-human-control or --heuristic-offense.",
+            file=sys.stderr,
+        )
+        return False
+    print("Type YES to start with HEURISTIC offense:", file=sys.stderr)
+    try:
+        answer = input().strip()
+    except EOFError:
+        answer = ""
+    if answer != "YES":
+        print("Not confirmed. Not starting.", file=sys.stderr)
+        return False
+    return True
+
+
 def cmd_play(args: argparse.Namespace) -> int:
     oid, db = _open_opponent(args)
     pid = _profile_arg(args, db)
     active = _active_after_prep(db, oid, pid)
     cpu = is_cpu_opponent(oid)
     human_ml_control = bool(getattr(args, "ml_human_control", False)) and not cpu
+    explicit_heuristic = bool(getattr(args, "heuristic_offense", False)) and not cpu
     defense_model = getattr(args, "defense_model", None)
     defense_model_path = getattr(args, "defense_model_path", None)
     explicit_defense_v1 = defense_model == "v1" and not cpu
     human_defense_ml = (
         bool(getattr(args, "ml_defense_control", False)) or explicit_defense_v1
     ) and not cpu
+    if not cpu and human_ml_control and explicit_heuristic:
+        print(
+            "Refusing to start: pass only one of --ml-human-control or --heuristic-offense.",
+            file=sys.stderr,
+        )
+        db.close()
+        return 2
+    if not cpu and not human_ml_control and not explicit_heuristic:
+        if not _confirm_heuristic_offense(args, oid):
+            db.close()
+            return 2
+        explicit_heuristic = True
     if human_ml_control:
         from cfb_coach.madden.model import inference as ml_inference
         from cfb_coach.madden.model.schema import CoachingMode
@@ -626,12 +666,21 @@ def cmd_play(args: argparse.Namespace) -> int:
     overlay = _overlay_path(args)
 
     print(f"LIVE PLAY — Madden 27 Franchise vs {oid}  (db: {db.path})")
+    offense_controller = "EXPERIMENTAL" if human_ml_control else "HEURISTIC"
+    if cpu:
+        defense_controller = "OFF"
+    elif human_defense_ml:
+        defense_controller = "EXPERIMENTAL"
+    else:
+        defense_controller = "HEURISTIC"
+    print(f"OFFENSE CONTROLLER: {offense_controller}")
+    print(f"DEFENSE CONTROLLER: {defense_controller}")
     if human_ml_control:
         print("HUMAN OFFENSE ML PILOT: ON for this play session only (opt-in).")
         print("  A human must confirm each call: accepted stays unknown until verify is touched.")
         print("  Instant rollback for next call: python -m cfb_coach ml heuristic")
     elif not cpu:
-        print("HUMAN OFFENSE ML PILOT: OFF (heuristic offense; use --ml-human-control to opt in).")
+        print("HUMAN OFFENSE ML PILOT: OFF (heuristic offense; --heuristic-offense).")
     if defense_model == "v1" and cpu:
         print("HUMAN DEFENSE V1: ignored (CPU games are offense-only).")
     if explicit_defense_v1:
@@ -791,6 +840,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     last_call = last_sit = None
     last_cov: str | None = None
     last_concept: str | None = None
+    shown_defense: list[tuple[str, str]] = []
     from cfb_coach.last_snap import LastSnapBook
     from cfb_coach.session import (
         arm_session_exit,
@@ -886,8 +936,19 @@ def cmd_play(args: argparse.Namespace) -> int:
             logged_look = (sit.extras or {}).get("opp_look")
             snap_book.stamp_situation(sit)
             absorb_and_stamp(sit, live_ctx)
+            if str(getattr(sit, "side", "") or "").startswith("d"):
+                if not isinstance(sit.extras, dict):
+                    sit.extras = {}
+                sit.extras["session_id"] = term_sess.session_id
+                sit.extras["snap_seq"] = len(shown_defense) + 1
+                sit.extras["defense_v1_recent"] = list(shown_defense)
             heard = format_heard(sit)
             print(heard)
+            from cfb_coach.last_snap import snap_conflict_warning
+
+            conflict = snap_conflict_warning(snap_book, sit)
+            if conflict:
+                print(conflict)
             call = make_call(
                 sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
                 allow_human_ml=human_ml_control,
@@ -904,6 +965,9 @@ def cmd_play(args: argparse.Namespace) -> int:
             _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
             last_call, last_sit = call, sit
             snap_book.remember_call(call, sit, opp_look=logged_look)
+            if str(getattr(sit, "side", "") or "").startswith("d"):
+                shown_defense.append((str(call.formation), str(call.play)))
+                shown_defense = shown_defense[-20:]
             if sit.coverage_hint and sit.side == "offense":
                 last_cov = sit.coverage_hint
             if sit.concept_hint and sit.side == "defense":
