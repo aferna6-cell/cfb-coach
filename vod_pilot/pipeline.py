@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from vod_pilot.field_coverage import coverage_report
+from vod_pilot.flags import ExtractFlags
 from vod_pilot.lexicon import Lexicon, load_lexicon
 from vod_pilot.ocr_frames import FrameOCR, green_ratio, iter_samples
 from vod_pilot.schema import SCHEMA_ID, write_outputs
@@ -23,16 +25,18 @@ def analyze_video(
     lexicon: Lexicon | None = None,
     source_url: str = "",
     published: str = "",
+    extract: ExtractFlags | None = None,
 ) -> dict[str, Any]:
+    extract = extract or ExtractFlags()
     lexicon = lexicon or load_lexicon()
     reader = FrameOCR()
     frames = []
     n = 0
     for t, frame in iter_samples(str(video_path), sample_fps=sample_fps, max_seconds=max_seconds):
         texts = reader.read(frame)
-        frames.append(classify_frame(t, texts, green_ratio(frame), lexicon))
+        frames.append(classify_frame(t, texts, green_ratio(frame), lexicon, extract, game=game))
         n += 1
-    snaps = build_snaps(frames, video_id=video_id, channel=channel, game=game)
+    snaps = build_snaps(frames, video_id=video_id, channel=channel, game=game, extract=extract)
     return {
         "schema": SCHEMA_ID,
         "compatible_with": ["snaps", "play_records"],
@@ -51,9 +55,11 @@ def analyze_video(
             "file": str(video_path),
             "sample_fps": sample_fps,
             "frames_read": n,
+            **({"fixes": extract.enabled()} if extract.enabled() else {}),
         },
         "snap_count": len(snaps),
         "snaps": [snap.to_full_dict() for snap in snaps],
+        **({"field_coverage": coverage_report(snaps)} if extract.field_coverage else {}),
     }
 
 

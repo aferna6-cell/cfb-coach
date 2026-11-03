@@ -37,6 +37,9 @@ SNAP_COLUMNS = (
 
 SCHEMA_ID = "cfb_coach.snaps.v1"
 
+# CSV blanks these. The JSON row must keep None so later arithmetic does not see "".
+_NUMERIC_COLUMNS = frozenset({"down", "distance", "yardline", "quarter"})
+
 
 def _ordinal(down: int | None) -> str:
     return {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}.get(down or 0, "")
@@ -49,6 +52,7 @@ def situation_raw(
     quarter: int | None = None,
     clock: str | None = None,
     yardline_phrase: str | None = None,
+    goal: bool = False,
 ) -> str:
     """A string ``parse_situation`` can read for down and distance.
 
@@ -57,7 +61,9 @@ def situation_raw(
     is not written here, because own-versus-opp is usually unknown on a VOD.
     """
     parts: list[str] = []
-    if down and distance is not None:
+    if down and goal:
+        parts.append(f"{_ordinal(down)} & Goal")
+    elif down and distance is not None:
         parts.append(f"{_ordinal(down)} & {distance}")
     if yardline_phrase:
         parts.append(yardline_phrase)
@@ -97,7 +103,32 @@ class SnapRow:
     result_kind: str = ""
     yards: int | None = None
     field_zone: str = ""
+    def_formation: str = ""
+    team_left: str = ""
+    team_right: str = ""
+    score_left: int | None = None
+    score_right: int | None = None
+    record_left: str = ""
+    record_right: str = ""
+    adjustments: list[str] = field(default_factory=list)
+    result_flag: str = ""
+    goal_to_go: bool = False
+    is_menu_or_lobby: bool = False
+    menu_confidence: float = 0.0
+    book_match: str = ""
     confidence: dict[str, float] = field(default_factory=dict)
+    # Glyph candidates stay off ``yardline`` until field_spot or the
+    # neighboring snaps confirm them. A phrase read never sets these.
+    yard_from_glyph: bool = False
+    # Yard line from the pre-glyph parser. Later writers may not replace it.
+    base_yardline: int | None = None
+    glyph_yardline: int | None = None
+    glyph_phrase: str = ""
+    glyph_conf: float = 0.0
+    field_spot: int | None = None
+    # Painted down-and-distance before goal-to-go cleared a missing spot.
+    # Result math uses this. The published distance stays None.
+    baseline_distance: int | None = None
 
     def to_snap_dict(self) -> dict[str, Any]:
         raw = asdict(self)
@@ -109,7 +140,11 @@ class SnapRow:
 
     def to_full_dict(self) -> dict[str, Any]:
         d = asdict(self)
-        d.update(self.to_snap_dict())
+        for col, val in self.to_snap_dict().items():
+            # A goal-to-go snap has distance None. Do not turn that into "".
+            if col in _NUMERIC_COLUMNS and d.get(col) is None:
+                continue
+            d[col] = val
         return d
 
 
@@ -125,6 +160,8 @@ def result_text(*, kind: str, yards: int | None) -> str:
         return "fumble"
     if kind == "td":
         return "td" if yards is None else f"td +{yards}"
+    if kind == "turnover":
+        return "turnover"
     if kind == "convert" and yards is None:
         return "convert"
     if yards is None:

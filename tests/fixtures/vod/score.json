@@ -1,0 +1,79 @@
+[
+  {
+    "id": "record-prefix-is-the-team",
+    "texts": ["(0-0) ATL", "7", "14", "(1-2) TB"],
+    "team_left": "ATL",
+    "team_right": "TB",
+    "score_left": 7,
+    "score_right": 14,
+    "record_left": "0-0",
+    "record_right": "1-2",
+    "min_conf": 0.86
+  },
+  {
+    "id": "record-glued-to-the-abbreviation",
+    "texts": ["(0-0)ATL", "3", "10", "(0-0)TB"],
+    "team_left": "ATL",
+    "team_right": "TB",
+    "score_left": 3,
+    "score_right": 10,
+    "record_left": "0-0",
+    "record_right": "0-0",
+    "min_conf": 0.86
+  },
+  {
+    "id": "mut-custom-with-records",
+    "texts": ["(0-0) ZXQ", "3", "10", "(2-1) QRS"],
+    "team_left": "ZXQ",
+    "team_right": "QRS",
+    "score_left": 3,
+    "score_right": 10,
+    "record_left": "0-0",
+    "record_right": "2-1",
+    "min_conf": 0.78
+  },
+  {
+    "id": "yard-line-between-scores-is-not-a-score",
+    "texts": ["(0-0) ATL", "7", "35", "14", "(0-0) TB", "2ND610"],
+    "team_left": "ATL",
+    "team_right": "TB",
+    "score_left": 7,
+    "score_right": 14,
+    "record_left": "0-0",
+    "record_right": "0-0",
+    "min_conf": 0.86
+  },
+  {
+    "id": "one-number-is-not-assigned",
+    "texts": ["(0-0) ATL", "7", "(0-0) TB"],
+    "team_left": "",
+    "team_right": "",
+    "score_left": null,
+    "score_right": null,
+    "record_left": "",
+    "record_right": "",
+    "min_conf": 0.0
+  },
+  {
+    "id": "three-team-words-abstain",
+    "texts": ["ATL", "7", "DAL", "14", "TB"],
+    "team_left": "",
+    "team_right": "",
+    "score_left": null,
+    "score_right": null,
+    "record_left": "",
+    "record_right": "",
+    "min_conf": 0.0
+  },
+  {
+    "id": "combined-team-and-score",
+    "texts": ["ATL 7", "TB 14"],
+    "team_left": "ATL",
+    "team_right": "TB",
+    "score_left": 7,
+    "score_right": 14,
+    "record_left": "",
+    "record_right": "",
+    "min_conf": 0.86
+  }
+]

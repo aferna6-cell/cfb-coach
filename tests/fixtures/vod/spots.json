@@ -1,0 +1,17 @@
+[
+  {"text": "v34", "conf": null, "expect": [34, "own"]},
+  {"text": "A48", "conf": null, "expect": [48, "opp"]},
+  {"text": "￥46", "conf": null, "expect": [46, "own"]},
+  {"text": "a35", "conf": null, "expect": [35, "opp"]},
+  {"text": "140", "conf": null, "expect": [40, null]},
+  {"text": "146", "conf": null, "expect": [46, null]},
+  {"text": "-40", "conf": null, "expect": [40, null]},
+  {"text": "474", "conf": null, "expect": null},
+  {"text": "61", "conf": null, "expect": null},
+  {"text": "^35", "conf": 0.57, "expect": [35, "own"]},
+  {"text": "^35", "conf": 0.49, "expect": null},
+  {"text": "y22", "conf": null, "expect": [22, "own"]},
+  {"text": "+35", "conf": null, "expect": [35, null]},
+  {"text": "R31", "conf": null, "expect": [31, null]},
+  {"text": "735", "conf": null, "expect": [35, "own"]}
+]

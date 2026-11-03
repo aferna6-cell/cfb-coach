@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 from vod_pilot.accuracy import score_files
+from vod_pilot.flags import flags_from_namespace
 from vod_pilot.pipeline import run_to_disk
 
 
@@ -33,6 +34,7 @@ def _run(args: argparse.Namespace) -> int:
         max_seconds=args.max_seconds,
         source_url=args.url,
         published=args.published,
+        extract=flags_from_namespace(args),
     )
     print(f"snaps {payload['snap_count']}  frames {payload['source']['frames_read']}")
     print(f"wrote {args.out}.json and {args.out}.csv")
@@ -63,6 +65,66 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--fps", type=float, default=1.0)
     run.add_argument("--max-seconds", type=float, default=None)
     run.add_argument("--out", required=True, help="path stem, without .json/.csv")
+    run.add_argument(
+        "--read-defense",
+        action="store_true",
+        help="fill defensive formation from a unique on-screen front or its tooltip",
+    )
+    run.add_argument(
+        "--read-score",
+        action="store_true",
+        help="keep (0-0) ATL team tokens and read the two scores beside them",
+    )
+    run.add_argument(
+        "--read-offense-formation",
+        action="store_true",
+        help="fill offensive formation from the on-screen set, including a shared Gun/Shotgun tail",
+    )
+    run.add_argument(
+        "--read-adjustments",
+        action="store_true",
+        help="record explicit hot routes, audibles, and offensive or defensive adjustments",
+    )
+    run.add_argument(
+        "--yardline-glyphs",
+        action="store_true",
+        help="read the ball spot when the arrow glyph is ¥, y, a, or a leading 1",
+    )
+    run.add_argument(
+        "--read-result",
+        action="store_true",
+        help="read TD, incomplete, and turnover banners; do not call a moved ball +0",
+    )
+    run.add_argument(
+        "--goal-to-go",
+        action="store_true",
+        help="read & Goal as goal-to-go and take yards from the spots, not from distance 1",
+    )
+    run.add_argument(
+        "--dd-norm",
+        action="store_true",
+        help="accept & read as 6, misread ordinals, bare digits in the down slot, and 360p 3rd",
+    )
+    run.add_argument(
+        "--presnap-clock",
+        action="store_true",
+        help="use the clock from before the snap, not the clock after the play",
+    )
+    run.add_argument(
+        "--flag-menu",
+        action="store_true",
+        help="set is_menu_or_lobby when a frame is a pause, lobby, splash, play-select, or replay",
+    )
+    run.add_argument(
+        "--field-coverage",
+        action="store_true",
+        help="add a per-field fill report (formation, play, defensive call, adjustments) instead of book coverage",
+    )
+    run.add_argument(
+        "--book-match",
+        action="store_true",
+        help="set book_match on an exact name match; never replace the read play name",
+    )
     run.set_defaults(func=_run)
 
     score = sub.add_parser("score", help="compare predictions to a hand-check JSON")
