@@ -7,7 +7,8 @@ import unittest
 from pathlib import Path
 
 from vod_pilot.flags import ExtractFlags
-from vod_pilot.segment import FrameObs, _extra_result_markers, build_snaps
+from vod_pilot.lexicon import Lexicon
+from vod_pilot.segment import FrameObs, _extra_result_markers, build_snaps, classify_frame
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "vod" / "results.json"
 _ON = ExtractFlags(read_result=True)
@@ -68,6 +69,37 @@ class ResultSnapTests(unittest.TestCase):
         )
         self.assertEqual(first([_live(30, 1, 8, texts=["TOUCH DOWN"]), _live(40, 1, 10)]).result, "td")
         self.assertEqual(first([_live(50, 2, 7, texts=["TURNOVER"]), _live(60, 1, 10)]).result, "turnover")
+
+    def test_new_set_of_downs_is_a_conversion(self) -> None:
+        """3rd down into 1st & 10 takes the convert branch.
+
+        That branch reads the next snap's distance. It used to raise
+        UnboundLocalError because dist1 was only set when the down advanced
+        by one.
+        """
+        lex = Lexicon(formations=["Gun Bunch"], plays=["HB Slam"], coverages=["Cover 3"])
+        specs = [
+            (10, ["3RD84", "1st 5:00"]),
+            (20, ["1ST810", "1st 4:40"]),
+        ]
+        flagged = ExtractFlags(yardline_glyphs=True, goal_to_go=True, read_result=True, dd_norm=True)
+        for extract in (ExtractFlags(), flagged):
+            frames = [classify_frame(t, texts, 0.6, lex, extract) for t, texts in specs]
+            snaps = build_snaps(frames, video_id="r", channel="SGU", game="madden27", extract=extract)
+            self.assertEqual(frames[0].down, 3)
+            self.assertEqual(frames[0].distance, 4)
+            self.assertEqual(frames[1].down, 1)
+            self.assertEqual(frames[1].distance, 10)
+            self.assertEqual(snaps[0].result_kind, "convert")
+            self.assertEqual(snaps[0].result, "convert")
+
+        goal = [
+            classify_frame(10, ["2NDGOAL", "1st 5:00"], 0.6, lex, flagged),
+            classify_frame(20, ["1ST810", "1st 4:40"], 0.6, lex, flagged),
+        ]
+        snaps = build_snaps(goal, video_id="r", channel="SGU", game="madden27", extract=flagged)
+        self.assertEqual(snaps[0].result_kind, "convert")
+        self.assertEqual(snaps[0].result, "convert")
 
     def test_flag_off_keeps_distance_plus_zero(self) -> None:
         frames = [_live(10, 1, 10, 25), _live(20, 2, 10, 40)]

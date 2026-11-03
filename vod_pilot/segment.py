@@ -525,6 +525,11 @@ def _infer_between(
 
     down0, _grouped0 = dd0
     down1, _grouped1 = dd1
+    # Always the snaps' parsed distances. The convert check below reads
+    # dist1 even when the down did not advance by one, and the grouping
+    # sentinel 0 is not a parsed distance.
+    dist0 = _yards_distance(prev)
+    dist1 = _yards_distance(nxt)
     if down1 == down0 + 1:
         # Spots win when both snaps are goal and both yard lines were read.
         # A missing spot is not a reason to drop the row: the painted
@@ -534,8 +539,6 @@ def _infer_between(
             moved = _goal_spot_yards(prev, nxt, conf)
             if moved is not None:
                 return moved
-        dist0 = _yards_distance(prev)
-        dist1 = _yards_distance(nxt)
         if dist0 is None or dist1 is None:
             if "sack" in flags:
                 return "sack", None, 0.55, ""
