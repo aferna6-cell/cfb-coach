@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 
+from vod_pilot.digits import normalize_digits, safe_int
+
 _ORDINAL = {"1ST": 1, "2ND": 2, "3RD": 3, "4TH": 4}
 _CLOCK = re.compile(
     r"([1-4])(?:ST|ND|RD|TH)\s*(\d{1,2}):(\d{2})",
@@ -33,7 +35,7 @@ _FLAG_WORDS = (
 
 
 def _clean_token(token: str) -> str:
-    return re.sub(r"[^A-Z0-9&]", "", token.upper())
+    return re.sub(r"[^A-Z0-9&]", "", normalize_digits(token).upper())
 
 
 def parse_down_distance_token(token: str) -> tuple[int, int] | None:
@@ -59,17 +61,16 @@ def _parse_rest(down: int, rest: str) -> tuple[int, int] | None:
         return None
     if rest.startswith("&"):
         rest = rest[1:]
-    elif rest.startswith("8") and len(rest) > 1 and rest[1:].isdigit():
-        dist = int(rest[1:])
-        if 1 <= dist <= 40:
+    elif rest.startswith("8") and len(rest) > 1:
+        dist = safe_int(rest[1:])
+        if dist is not None and 1 <= dist <= 40:
             return down, dist
         return None
     if rest in {"G", "GOAL"}:
         return down, 1
-    if rest.isdigit():
-        dist = int(rest)
-        if 1 <= dist <= 40:
-            return down, dist
+    dist = safe_int(rest)
+    if dist is not None and 1 <= dist <= 40:
+        return down, dist
     return None
 
 
@@ -96,7 +97,7 @@ def norm_dd(text: str, bare: bool = False) -> str | None:
     """
     if ":" in text:
         return None
-    compact = re.sub(r"[^A-Z0-9&]", "", text.upper())
+    compact = re.sub(r"[^A-Z0-9&]", "", normalize_digits(text).upper())
     if not compact:
         return None
     ordinal = _ordinal_dd(compact)
@@ -127,16 +128,17 @@ def _dd_rest(rest: str) -> str | None:
         return "GOAL"
     if rest == "INCHES":
         return "INCHES"
-    if rest[0] in "&86E" and rest[1:].isdigit() and 1 <= len(rest[1:]) <= 2:
-        dist = int(rest[1:])
-        if 1 <= dist <= 40:
+    if rest[0] in "&86E" and 1 <= len(rest[1:]) <= 2:
+        dist = safe_int(rest[1:])
+        if dist is not None and 1 <= dist <= 40:
             return str(dist)
-    if rest.isdigit():
-        value = int(rest)
-        if 1 <= value <= 40:
-            return str(value)
-        if rest[0] in "68" and 1 <= int(rest[1:]) <= 40:
-            return str(int(rest[1:]))
+    value = safe_int(rest)
+    if value is not None and 1 <= value <= 40 and rest.isdigit():
+        return str(value)
+    if rest[:1] in "68":
+        stripped = safe_int(rest[1:])
+        if stripped is not None and value is not None and value > 40 and 1 <= stripped <= 40:
+            return str(stripped)
     return None
 
 
@@ -153,11 +155,13 @@ def _bare_dd(compact: str) -> str | None:
     for mid in splits:
         if not mid:
             continue
-        if mid.isdigit() and 1 <= len(mid) <= 2 and 1 <= int(mid) <= 40:
-            options.append((down, int(mid)))
-        if len(mid) > 1 and mid[0] in "68&" and mid[1:].isdigit() and 1 <= len(mid[1:]) <= 2:
-            dist = int(mid[1:])
-            if 1 <= dist <= 40:
+        if 1 <= len(mid) <= 2:
+            dist = safe_int(mid)
+            if dist is not None and mid.isdigit() and 1 <= dist <= 40:
+                options.append((down, dist))
+        if len(mid) > 1 and mid[0] in "68&" and 1 <= len(mid[1:]) <= 2:
+            dist = safe_int(mid[1:])
+            if dist is not None and 1 <= dist <= 40:
                 options.append((down, dist))
     unique = list(dict.fromkeys(options))
     if len(unique) != 1:
@@ -197,12 +201,15 @@ def _norm_pair(got: str | None) -> tuple[int, int] | None:
     if not got or "&" not in got:
         return None
     down_s, rest = got.split("&", 1)
-    down = int(down_s[0])
+    down = safe_int(down_s[:1])
+    if down is None:
+        return None
     if rest == "GOAL" or rest == "INCHES":
         return down, 1
-    if rest.isdigit():
-        return down, int(rest)
-    return None
+    dist = safe_int(rest)
+    if dist is None:
+        return None
+    return down, dist
 
 
 def goal_down(token: str) -> int | None:
@@ -216,9 +223,9 @@ def goal_down(token: str) -> int | None:
         rest = compact[len(name) :]
         if rest in {"GOAL", "G", "SGOAL", "&GOAL", "6GOAL", "8GOAL"} or rest.endswith("GOAL"):
             return down
-    match = re.search(r"\b([1-4])(?:ST|ND|RD|TH)\s*(?:&|AND)\s*GOAL\b", token, re.I)
+    match = re.search(r"\b([1-4])(?:ST|ND|RD|TH)\s*(?:&|AND)\s*GOAL\b", normalize_digits(token), re.I)
     if match:
-        return int(match.group(1))
+        return safe_int(match.group(1))
     return None
 
 
@@ -227,16 +234,18 @@ def parse_down_distance(texts: list[str]) -> tuple[int, int] | None:
         got = parse_down_distance_token(token)
         if got is not None:
             return got
-    blob = " ".join(texts)
+    blob = " ".join(normalize_digits(token) for token in texts)
     match = _EXPLICIT_DD.search(blob)
     if not match:
         return None
-    down = int(match.group(1))
+    down = safe_int(match.group(1))
     raw = match.group(2).upper()
+    if down is None:
+        return None
     if raw in {"G", "GOAL"}:
         return down, 1
-    dist = int(raw)
-    if 1 <= dist <= 40:
+    dist = safe_int(raw)
+    if dist is not None and 1 <= dist <= 40:
         return down, dist
     return None
 
@@ -244,12 +253,14 @@ def parse_down_distance(texts: list[str]) -> tuple[int, int] | None:
 def parse_clock(texts: list[str]) -> tuple[int, int] | None:
     """Return (quarter, seconds remaining) from a ``1st 3:56`` style token."""
     for token in texts:
-        match = _CLOCK.search(token)
+        match = _CLOCK.search(normalize_digits(token))
         if not match:
             continue
-        quarter = int(match.group(1))
-        minutes = int(match.group(2))
-        seconds = int(match.group(3))
+        quarter = safe_int(match.group(1))
+        minutes = safe_int(match.group(2))
+        seconds = safe_int(match.group(3))
+        if quarter is None or minutes is None or seconds is None:
+            continue
         if minutes > 15 or seconds > 59:
             continue
         return quarter, minutes * 60 + seconds
@@ -263,6 +274,7 @@ def parse_yardline_phrase(texts: list[str], dd: tuple[int, int] | None = None) -
     is not knowable from that digit. ``own N`` is stored as N, which matches
     the coach's 0-at-our-goal scale when the row's side is the offense on screen.
     """
+    texts = [normalize_digits(token) for token in texts]
     blob = " ".join(texts)
     mashed = re.sub(r"[^A-Z0-9]", "", blob.upper())
     own_mashed = _yard_near_down(texts, dd, "OWN")
@@ -274,18 +286,18 @@ def parse_yardline_phrase(texts: list[str], dd: tuple[int, int] | None = None) -
     # Spaced forms: "OWN 22", "OPP 40".
     own = _YARD_OWN.search(blob)
     if own and not re.search(r"ONOWN\d", mashed):
-        yl = int(own.group(1))
-        if 1 <= yl <= 50:
+        yl = safe_int(own.group(1))
+        if yl is not None and 1 <= yl <= 50:
             return yl, f"own {yl}"
     opp = _YARD_OPP.search(blob)
     if opp and not re.search(r"ONOPP\d", mashed):
-        yl = int(opp.group(1))
-        if 1 <= yl <= 50:
+        yl = safe_int(opp.group(1))
+        if yl is not None and 1 <= yl <= 50:
             return max(1, min(99, 100 - yl)), f"opp {yl}"
     ball = _YARD_BALL.search(blob)
     if ball:
-        yl = int(ball.group(1))
-        if 1 <= yl <= 50:
+        yl = safe_int(ball.group(1))
+        if yl is not None and 1 <= yl <= 50:
             return None, f"ball on {yl}"
     return None, ""
 
@@ -294,16 +306,19 @@ def _yard_near_down(texts: list[str], dd: tuple[int, int] | None, side: str) -> 
     """Read ``1st&15onown22`` style tokens. Ignore a second spot tied to another down."""
     found: list[int] = []
     for token in texts:
-        compact = re.sub(r"[^A-Z0-9&]", "", token.upper())
+        compact = re.sub(r"[^A-Z0-9&]", "", normalize_digits(token).upper())
         match = re.search(rf"ON{side}(\d{{1,2}})", compact)
         if not match:
             continue
-        yl = int(match.group(1))
-        if not 1 <= yl <= 50:
+        yl = safe_int(match.group(1))
+        if yl is None or not 1 <= yl <= 50:
             continue
         lead = re.search(r"(1ST|2ND|3RD|4TH)&(\d{1,2})", compact)
         if dd and lead:
-            lead_dd = (_ORDINAL[lead.group(1)], int(lead.group(2)))
+            lead_dist = safe_int(lead.group(2))
+            if lead_dist is None:
+                continue
+            lead_dd = (_ORDINAL[lead.group(1)], lead_dist)
             if lead_dd != dd:
                 continue
         found.append(yl)

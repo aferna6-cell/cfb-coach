@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import re
 
+from vod_pilot.digits import normalize_digits, safe_int
+
 # Longer phrases first. A short REPLAY line counts; the word inside a sentence does not.
 _MARKERS: tuple[tuple[str, float], ...] = (
     ("EA SPORTS", 0.95),
@@ -47,7 +49,8 @@ def _has_down(texts: list[str]) -> bool:
 
 def _has_play_clock_number(texts: list[str]) -> bool:
     for text in texts:
-        if _SMALL_NUMBER.fullmatch(text) and 1 <= int(text) <= 40:
+        number = safe_int(normalize_digits(text))
+        if number is not None and _SMALL_NUMBER.fullmatch(normalize_digits(text)) and 1 <= number <= 40:
             return True
     return False
 

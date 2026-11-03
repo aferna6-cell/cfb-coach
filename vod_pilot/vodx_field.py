@@ -8,6 +8,7 @@ not one of those glyphs. Confidence below 0.5 is not a spot.
 
 from __future__ import annotations
 
+from vod_pilot.digits import normalize_digits, safe_int
 from vod_pilot.tokens import Token, as_tok
 
 OWN_GLYPH = set("vV^¥￥yY▲")
@@ -22,7 +23,7 @@ def spot_token(text: str, conf: float | None = None) -> tuple[int, str | None] |
     """
     if conf is not None and conf < 0.5:
         return None
-    raw = text.strip().replace(" ", "")
+    raw = normalize_digits(text).strip().replace(" ", "")
     if not raw:
         return None
     if raw[0].isdigit():
@@ -49,12 +50,10 @@ def spot_token(text: str, conf: float | None = None) -> tuple[int, str | None] |
 
 
 def _yard(number: str) -> int | None:
-    if not number.isdigit():
+    yard = safe_int(normalize_digits(number))
+    if yard is None or not 1 <= yard <= 50:
         return None
-    yard = int(number)
-    if 1 <= yard <= 50:
-        return yard
-    return None
+    return yard
 
 
 def sided_spot(tokens: list[Token]) -> tuple[int, str, float] | None:

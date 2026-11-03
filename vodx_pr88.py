@@ -177,20 +177,10 @@ def cache_files(cache: Path, video_ids: Iterable[str] | None) -> list[tuple[str,
 
 
 def as_int(value: Any) -> int | None:
-    """Blank, missing, and non-numeric distances are None. Never return \"\"."""
-    if value is None or value == "":
-        return None
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float) and value == int(value):
-        return int(value)
-    if isinstance(value, str):
-        text = value.strip()
-        if text.lstrip("-").isdigit():
-            return int(text)
-    return None
+    """Blank, circled, and non-numeric values are None. Never return \"\" and never raise."""
+    from vod_pilot.digits import safe_int
+
+    return safe_int(value)
 
 
 def yards_delta(dist: Any, ndist: Any) -> int | None:

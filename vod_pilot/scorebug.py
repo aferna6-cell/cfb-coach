@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from vod_pilot.digits import normalize_digits, safe_int
 from vod_pilot.tokens import Token, as_tok
 
 # 32 clubs plus the abbreviations Madden still paints.
@@ -74,11 +75,12 @@ class _Piece:
 
 
 def _record(a: str, b: str) -> str:
-    if not (a.isdigit() and b.isdigit()):
+    left, right = safe_int(a), safe_int(b)
+    if left is None or right is None:
         return ""
-    if int(a) > 20 or int(b) > 20:
+    if left > 20 or right > 20:
         return ""
-    return f"{int(a)}-{int(b)}"
+    return f"{left}-{right}"
 
 
 def _ok_team(name: str, *, from_record: bool) -> bool:
@@ -91,23 +93,23 @@ def _ok_team(name: str, *, from_record: bool) -> bool:
 
 def _piece_from_text(text: str, x: float | None) -> _Piece | None:
     """One scorebug piece. A leading ``(record)`` is the team, not noise."""
-    raw = " ".join(text.upper().replace("—", "-").split())
+    raw = " ".join(normalize_digits(text).upper().replace("—", "-").split())
     if not raw or ":" in raw or _DOWN.match(raw.replace(" ", "")):
         return None
     match = _RECORD_TEAM_SCORE.match(raw)
     if match:
         rec = _record(match.group(1), match.group(2))
         team = match.group(3)
-        score = int(match.group(4))
-        if rec and _ok_team(team, from_record=True) and score <= 99:
+        score = safe_int(match.group(4))
+        if rec and score is not None and _ok_team(team, from_record=True) and score <= 99:
             return _Piece("both", team, rec, score, x, team in NFL_ABBREV)
         return None
     match = _SCORE_RECORD_TEAM.match(raw)
     if match:
-        score = int(match.group(1))
+        score = safe_int(match.group(1))
         rec = _record(match.group(2), match.group(3))
         team = match.group(4)
-        if rec and _ok_team(team, from_record=True) and score <= 99:
+        if rec and score is not None and _ok_team(team, from_record=True) and score <= 99:
             return _Piece("both", team, rec, score, x, team in NFL_ABBREV)
         return None
     match = _RECORD_TEAM.match(raw)
@@ -119,18 +121,24 @@ def _piece_from_text(text: str, x: float | None) -> _Piece | None:
         return None
     match = _TEAM_SCORE.match(raw)
     if match and _ok_team(match.group(1), from_record=False) and match.group(1) in NFL_ABBREV:
-        return _Piece("both", match.group(1), "", int(match.group(2)), x, True)
+        points = safe_int(match.group(2))
+        if points is None:
+            return None
+        return _Piece("both", match.group(1), "", points, x, True)
     match = _SCORE_TEAM.match(raw)
     if match and _ok_team(match.group(2), from_record=False) and match.group(2) in NFL_ABBREV:
-        return _Piece("both", match.group(2), "", int(match.group(1)), x, True)
+        points = safe_int(match.group(1))
+        if points is None:
+            return None
+        return _Piece("both", match.group(2), "", points, x, True)
     if re.fullmatch(r"[A-Z]{2,4}", raw) and _ok_team(raw, from_record=False):
         # Bare MUT letters wait until the bar has a shape. NFL letters are teams.
         if raw in NFL_ABBREV:
             return _Piece("team", raw, "", None, x, True)
         return _Piece("maybe", raw, "", None, x, False)
     if re.fullmatch(r"\d{1,2}", raw):
-        val = int(raw)
-        if val <= 99:
+        val = safe_int(raw)
+        if val is not None and val <= 99:
             return _Piece("score", "", "", val, x, False)
     return None
 
