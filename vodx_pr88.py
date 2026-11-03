@@ -239,19 +239,26 @@ def _carries_spot_contradicts_plus0(row: dict) -> bool:
 
 
 def _is_plus_zero(row: dict) -> bool:
-    kind = row.get("result_kind") or ""
+    """A published zero, whatever ``result_kind`` says.
+
+    ``gain`` with result ``+0`` is still a +0. The kind is not a reason to
+    leave it on the row.
+    """
     result = row.get("result")
+    if result in ("+0", "0", 0):
+        return True
     yards = row.get("yards")
-    if result in ("+0", "0"):
-        return kind in ("", "no_gain", "incomplete_or_no_gain")
-    return kind in ("no_gain", "incomplete_or_no_gain") and yards in (0, "0")
+    if isinstance(yards, bool):
+        return False
+    return yards in (0, 0.0, "0")
 
 
 def withhold_contradicted_plus0(rows: list[dict]) -> None:
-    """A spot_contradicts_plus0 row does not publish a +0 no-gain.
+    """A spot_contradicts_plus0 row does not publish a +0.
 
-    The +0 is kept on ``result_suspect``. Any other result, including a +0
-    that does not carry the flag, stays as it was.
+    That includes result_kind ``gain`` when the result text is ``+0`` or the
+    yards are 0. The +0 is kept on ``result_suspect``. An unflagged row stays
+    as it was.
     """
     if not isinstance(rows, list):
         return

@@ -79,6 +79,34 @@ class ResultSnapTests(unittest.TestCase):
         self.assertEqual(already["yards"], 9)
         self.assertEqual(old_zero["result"], "+0")
         self.assertEqual(old_zero["yards"], 0)
+        gain_zero = {
+            "snap_id": "4_-atoyAQzA:5484.0",
+            "result": "+0",
+            "result_kind": "gain",
+            "yards": 0,
+            "quality_flags": ["spot_contradicts_plus0"],
+            "conf": {"result": 0.4},
+        }
+        other_gain = {
+            "snap_id": "RsOG3JCF7Wc:864.9",
+            "result": "+0",
+            "result_kind": "gain",
+            "yards": 0,
+            "result_flag": "spot_contradicts_plus0",
+            "conf": {"result": 0.4},
+        }
+        unflagged_gain = {"result": "+0", "result_kind": "gain", "yards": 0, "quality_flags": []}
+        withhold_contradicted_plus0([gain_zero, other_gain, unflagged_gain])
+        self.assertEqual(gain_zero["result"], "")
+        self.assertEqual(gain_zero["result_kind"], "")
+        self.assertIsNone(gain_zero["yards"])
+        self.assertEqual(gain_zero["result_suspect"]["result_kind"], "gain")
+        self.assertEqual(gain_zero["result_suspect"]["result"], "+0")
+        self.assertEqual(other_gain["result"], "")
+        self.assertIsNone(other_gain["yards"])
+        self.assertEqual(unflagged_gain["result"], "+0")
+        self.assertEqual(unflagged_gain["result_kind"], "gain")
+        self.assertEqual(unflagged_gain["yards"], 0)
 
         import sys as _sys
 
