@@ -38,9 +38,12 @@ class ConditionalAdviceTests(unittest.TestCase):
         return mock.patch.multiple(
             "cfb_coach.madden.offense_macros",
             clean_ids=mock.Mock(return_value=["C2"]),
-            pairs_in_book=mock.Mock(return_value=(
-                ["Mesh (Gun Test)"] if paired else ["Mesh (Wrong Formation)"])),
-            offense_detail=mock.Mock(return_value={
+            macro_book_index=mock.Mock(return_value={
+                "active": ["C2"], "pair_sets": {"C2": {
+                    "Mesh (Gun Test)" if paired else "Mesh (Wrong Formation)"}},
+                "details": {},
+            }),
+            cached_offense_detail=mock.Mock(return_value={
                 "xbox_name": "C2", "buttons": "LB → C2", "settings": (
                     [{"setting": "confirmed"}] if settings else []),
                 "needs_settings": not settings, "gaps": []}),
