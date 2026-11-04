@@ -222,6 +222,11 @@ class LivePlayController:
             "standing_execution_attestation": bool(self.standing_execution_attestation),
             "pending_recommendation": self._pending_recommendation(),
             "pending_offense_action": self._pending_offense_action(),
+            # Conditional IF-look advice is not an executed/recommended action.
+            "conditional_action": (
+                getattr(self.last_call, "conditional_action", None)
+                if self.last_call is not None and not self.ended else None
+            ),
             "ml_experimental": self._ml_experimental_state(),
         }
 
@@ -1350,6 +1355,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
   <div class="call" id="call"{' aria-live="polite"' if compact_madden else ''}>{_esc(_call_main(ctrl))}</div>
   {_macro_box_html(None if compact_madden else ctrl.macro_state())}
   {"""<div id="offense-action-now" class="action-now" hidden></div>
+  <div id="conditional-action-now" class="action-now" hidden></div>
   <details id="offense-action-panel" hidden>
     <summary>Why this adjustment</summary>
     <div id="offense-action-label"></div>
@@ -1564,6 +1570,16 @@ function renderState(st) {{
   if (actionNow) {{
     actionNow.hidden = !act;
     actionNow.textContent = act ? (act.buttons || act.label || "") : "";
+  }}
+  // This is an optional IF-look note, not a recommendation to attest as executed.
+  const conditionalNow = $("conditional-action-now");
+  if (conditionalNow) {{
+    const hint = st.conditional_action;
+    conditionalNow.hidden = !hint || !!act;
+    conditionalNow.textContent = hint
+      ? "IF " + hint.condition + ": " + hint.name + " — " + hint.buttons
+        + " | OTHERWISE keep the play unchanged"
+      : "";
   }}
   if (actionPanel) {{
     actionPanel.hidden = !act;
