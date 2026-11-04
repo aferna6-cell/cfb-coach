@@ -33,5 +33,16 @@ Read-only audit of the Nov 4 `madden27.db` backup, session `698831a80afb434b`:
 - Run `python3 -m pytest tests/madden_ml/test_conditional_look_actions.py -q` and existing relevant offense/live/defense gates on the user's checkout. GitHub Actions does not currently show a fresh run for this stacked branch.
 - Inspect artifact `~/.cfb-coach/models/defense_v1.json`; confirm schema v2, installed defense-book coverage, legal candidate diversity and actual file presence.
 - Replay a set of Ryan's 37 defensive situations **on the user's machine against the installed artifact**. Compare the original concentration to new calls; check short-yardage guard, run-heavy response, diversity, in-book legality, latency, fallback reasons, and no invented adjustments. This is an offline policy replay, not an outcome counterfactual.
+
+  Read-only replay command on this stacked branch:
+
+  ```bash
+  python3 scripts/replay_madden_defense_session.py \
+    --db "$HOME/.cfb-coach/madden27.db" \
+    --artifact "$HOME/.cfb-coach/models/defense_v1.json" \
+    --session 698831a80afb434b
+  ```
+
+  The replay deliberately uses only concepts observed **before** each simulated decision. It does not use full-game Ryan opponent priors, which would leak future events, and does not report hypothetical wins or stop rates.
 - Decide separately whether defensive conditional controls can be safely offered without an observed live concept. Keep any such note optional, legal, and non-executed.
 - PR #89 reports 1,077 tests passing, three skipped, and five failures reported as preexisting on the base. Reproduce/triage the five, not treat the report as a green release gate.
