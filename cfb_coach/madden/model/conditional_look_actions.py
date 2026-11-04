@@ -76,7 +76,7 @@ def suggest_conditional_action(
         return None
 
     from cfb_coach.madden.offense_macros import (
-        clean_ids, offense_detail, pairs_in_book, suggest_for_snap,
+        clean_ids, macro_book_index, cached_offense_detail, suggest_for_snap,
     )
 
     armed = clean_ids(list(active or []))
@@ -84,16 +84,19 @@ def suggest_conditional_action(
         return None
     zone = ("gl" if getattr(sit, "goal_line", False) else
             "rz" if getattr(sit, "red_zone", False) else "open")
-    full_cap = 1 + sum(len(plays) for plays in book.values())
+    book_dict = {name: list(plays) for name, plays in book.items()}
+    index = macro_book_index(book_dict, armed)
     pairs = f"{play} ({form})"
+    eligible: list[tuple[str, dict[str, Any]]] = []
+    for mid in armed:
+        if pairs not in (index.get("pair_sets") or {}).get(mid, set()):
+            continue
+        detail = cached_offense_detail(index, mid, book_dict)
+        if not (detail.get("needs_settings") or detail.get("gaps") or not detail.get("settings")):
+            eligible.append((mid, detail))
     matches: list[dict[str, Any]] = []
     for condition, hypothetical in _LOOKS:
-        for mid in armed:
-            if pairs not in pairs_in_book(mid, dict(book), cap=full_cap):
-                continue
-            detail = offense_detail(mid, dict(book))
-            if detail.get("needs_settings") or detail.get("gaps") or not detail.get("settings"):
-                continue
+        for mid, detail in eligible:
             buttons = str(detail.get("buttons") or "")
             if not buttons or any(token in buttons.upper() for token in ("VERIFY", "UNKNOWN", "NOT CONFIRMED")):
                 continue
@@ -103,7 +106,7 @@ def suggest_conditional_action(
                 zone=zone, play=play, coverage=hypothetical,
                 coverage_source="live", active=[mid],
                 down=getattr(sit, "down", None), repeated=False,
-                book=dict(book),
+                book=book_dict, prepared=index,
             )
             if not suggestion or suggestion.get("id") != mid or suggestion.get("kind") != "look":
                 continue
