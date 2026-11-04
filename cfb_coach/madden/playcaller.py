@@ -42,6 +42,7 @@ class MaddenCall:
     macro: str | None = None  # untagged macro name armed this snap (for logging)
     macro_info: dict[str, Any] | None = None  # defense macro (of the D 10) + research-built settings + buttons
     adjustment: dict[str, Any] | None = None  # v1.17: pre-snap adjustment (hot route / audible / contain…) + buttons
+    conditional_action: dict[str, Any] | None = None  # optional IF-look advice, never an executed action
 
     def macro_line(self) -> str:
         """'MACRO: TAMPA MABLE — press LB → TAMPA MABLE | <researched settings> · why: …' or ''."""
@@ -80,6 +81,10 @@ class MaddenCall:
             line += f"\n  {self.macro_line()}"
         if self.adjustment_line():
             line += f"\n  {self.adjustment_line()}"
+        if self.conditional_action:
+            hint = self.conditional_action
+            line += (f"\n  IF {hint['condition']}: {hint['name']} — {hint['buttons']}"
+                     " | OTHERWISE use the play unchanged (optional; not logged as executed)")
         label = getattr(self, "call_label", None)
         if label in ("EXPERIMENTAL", "HEURISTIC"):
             line += f"\n  LABEL: {label}"
@@ -1051,6 +1056,18 @@ def make_call(
                     }
             except Exception:  # noqa: BLE001
                 pass
+    # Optional look-specific instructions require no live coverage input. They
+    # do not change the selected play, selected action, or execution log.
+    if not cpu and sit.side == "offense":
+        try:
+            from cfb_coach.madden.model.conditional_look_actions import suggest_conditional_action
+
+            call.conditional_action = suggest_conditional_action(
+                call, sit, book=books["offense"], active=sel.get("offense") or [],
+                db=db, opponent_id=opponent_id,
+            )
+        except Exception:  # noqa: BLE001 — hint generation cannot block live play
+            pass
     stamp = _sit_stamp(sit)
     call.rationale = note + call.rationale + (f" | {stamp}" if stamp else "")
     from cfb_coach.game_score import score_call_note
