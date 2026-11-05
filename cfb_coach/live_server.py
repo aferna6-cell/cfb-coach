@@ -1425,8 +1425,8 @@ def render_live_html(ctrl: LivePlayController) -> str:
         <option value="4">4th</option>
         <option value="5">OT</option>
       </select>
-      <label title="Game clock for this snap. Blank stays unknown.">clock</label>
-      <input id="game-clock" placeholder="12:00" inputmode="numeric" style="width:4.5rem"/>
+      <label title="Optional clock, hidden in Madden's no-clock pad"{' hidden' if compact_madden else ''}>clock</label>
+      <input id="game-clock" placeholder="12:00" inputmode="numeric" style="width:4.5rem"{' hidden' if compact_madden else ''}/>
       <label title="Our score. Sticks until you change it. Us-them, not the final winner-first score.">us</label>
       <input type="number" id="score-us" min="0" max="99" placeholder="—" value="{_esc(us_v)}"/>
       <label title="Their score">them</label>
@@ -1448,10 +1448,10 @@ def render_live_html(ctrl: LivePlayController) -> str:
       </select>
     </div>
     <div class="row">
-      <label>last play / look</label>
-      <input class="wide" id="look" placeholder="mesh spot · cover 2 · showing cover 3"/>
-      <label title="Bare name = previous snap; check for live pre-snap look">live</label>
-      <input type="checkbox" id="live-mark"/>
+      <label>last play / look (optional)</label>
+      <input class="wide" id="look" placeholder="optional previous play or coverage — no pre-snap entry required"/>
+      <label title="Optional live observation"{' hidden' if compact_madden else ''}>live</label>
+      <input type="checkbox" id="live-mark"{' hidden' if compact_madden else ''}/>
     </div>
     <div class="row">
       <button type="button" class="primary" id="btn-submit">Submit → log + new PLAY</button>

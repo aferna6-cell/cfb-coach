@@ -725,10 +725,10 @@ def cmd_play(args: argparse.Namespace) -> int:
     else:
         print("User game — O + D. Prefix 'd ' for defense. Commands: side o|d | result <text> | why | quit")
     print("  Type D&D (+ yl) + previous play/coverage name, e.g. '2&7 my 35 stick wheel' | '1&10 cover 3 match'")
-    print("  Live look only with: showing / live / pre-snap / aligned (e.g. 'showing cover 2 man')")
+    print("  No game-clock or pre-snap showing input required. Prior look/outcome is optional.")
     print("  A play or result with no down (mesh, 4 verts, cover 2, +7, td, int) is the last snap, not a new call. undo removes it.")
     print("  Score (optional, us-them): --score 21-14, or `score 21-14` / `score clear` mid-game.")
-    print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. `clock 12:00` is stored on the snap.")
+    print("  Quarter is optional: --quarter 4, `quarter 4`, or `q4` on the sit line.")
     macros_on = _session_live_macros(args)
 
     def _active_now() -> dict:
