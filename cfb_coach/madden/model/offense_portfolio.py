@@ -325,6 +325,7 @@ def select_formation_portfolio(
             row["model_competitive_reserve"] = True
             row["reserve_play_depth"] = len(novel_plays)
             chosen.append(row)
+            remaining.remove(row)
             installed_play_names.update(row["plays"])
             covered_concepts.update(row.get("concept_ids") or [])
             for name in SITUATION_NAMES:
