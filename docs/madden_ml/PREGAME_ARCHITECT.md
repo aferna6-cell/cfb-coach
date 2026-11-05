@@ -228,6 +228,28 @@ shake`) is saved as the opponent's play for the snap being closed.
 In a replay of the Dillon game (v2 artifact, applied book), light boxes in the
 red zone or at 4 yards or less went from 4 to 0 and Dime from 11 calls to 3.
 
+### Defense: repeat beaters and run fits
+
+Both use the opponent's own logged plays and confirmed results, graded
+against the sticks. They shift the call; they are never training labels.
+
+- Repeat beaters: any play of his that won at least twice, and more often
+  than not, counts. Prior games against the same human opponent count half
+  (CPU opponents use this game only). Each beater pulls up the coverages that
+  answer its family and pushes down the coverages it beat; one he used to
+  win in the same spot (goal line, 3rd-and-short, 3rd-and-long, early downs)
+  counts 1.5x. The total shift per call is capped at 0.06 offense success.
+  Log line: `repeat beaters: Slants 4/4, Return Bench 3/3`.
+- Run fits: once three of his last eight runs are logged and most of them
+  won, light boxes come off the menu, and heavy fronts plus run-fit
+  coverages move up, twice as hard on run downs (1st/2nd-and-7 or less,
+  3rd/4th-and-2, inside the 5) and half as hard on 3rd-and-5+. Log line:
+  `run fits: his runs won 7/8`.
+
+In the Dillon replay, the first repeat beaters showed up by the 3rd-and-4
+at our 21 (snap 17). Once his runs started winning, every call came from a
+4-3 or 46 front, and the 1st-and-goal from the 1 stayed on Fire Zone 3.
+
 ### Offense adjustments (after the Dillon game)
 
 The installed offensive model is unchanged; these are capped layers on top.

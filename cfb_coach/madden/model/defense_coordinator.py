@@ -1103,6 +1103,59 @@ def _defense_v1_results(extras: Mapping[str, Any], db: Any, session: str) -> lis
     return out
 
 
+def _defense_v1_opponent_plays(
+    extras: Mapping[str, Any], db: Any, session: str, opponent_id: str = "",
+) -> list[dict[str, Any]]:
+    """His named plays with whether each beat us: this game, then prior games vs the same human.
+
+    An explicit list wins. CPU opponents use this game only.
+    """
+    supplied = extras.get("defense_v1_opponent_plays")
+    if isinstance(supplied, (list, tuple)):
+        return [dict(item) for item in supplied]
+    if db is None or not session or session == "defense-pilot":
+        return []
+    from cfb_coach.madden.model.defense_v1 import offense_won
+
+    def rows(snaps: Sequence[Any], current: bool) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for snap in snaps:
+            def cell(key: str) -> Any:
+                try:
+                    return snap[key]
+                except (KeyError, IndexError, TypeError):
+                    return getattr(snap, key, None)
+
+            if (cell("side") or "offense") != "defense" or not str(cell("concept_seen") or "").strip():
+                continue
+            out.append({
+                "concept": str(cell("concept_seen")).strip(),
+                "won": offense_won(cell("result"), cell("down"), cell("distance")),
+                "play": str(cell("play") or ""),
+                "down": cell("down"),
+                "distance": cell("distance"),
+                "yardline": cell("yardline"),
+                "current": current,
+            })
+        return out
+
+    try:
+        current = rows(db.get_session_snaps(session), True)
+    except Exception:  # noqa: BLE001 — never break a live call
+        return []
+    prior: list[dict[str, Any]] = []
+    if opponent_id and not is_cpu_opponent(opponent_id):
+        try:
+            prior = rows(list(db.conn.execute(
+                "SELECT * FROM snaps WHERE side = 'defense' AND opponent_id = ? "
+                "AND (session_id IS NULL OR session_id != ?) ORDER BY id ASC LIMIT 400",
+                (opponent_id, session),
+            )), False)
+        except Exception:  # noqa: BLE001 — prior games are optional
+            prior = []
+    return prior + current
+
+
 def _installed_scope(db: Any, extras: Mapping[str, Any]) -> bool:
     """Rank only installed calls once the defense book came from a confirmed architect proposal."""
     override = extras.get("defense_v1_installed_scope")
@@ -1145,6 +1198,7 @@ def _apply_defense_v1(
     recent = _defense_v1_recent(extras, db, session)
     concepts = _defense_v1_concepts(extras, db, session)
     results = _defense_v1_results(extras, db, session)
+    opponent_plays = _defense_v1_opponent_plays(extras, db, session, opponent_id)
     try:
         from cfb_coach.madden.model.opponent_tendencies import build_defense_profile
 
@@ -1171,6 +1225,7 @@ def _apply_defense_v1(
             opponent_profile=opponent_profile,
             installed_scope=installed_scope,
             recent_results=results,
+            opponent_plays=opponent_plays,
         )
         picked = scored["pick"]
         if getattr(call, "macro", None) or getattr(call, "adjustment", None):

@@ -945,6 +945,182 @@ def _live_result_adjust(
     return f"beaten this game: {', '.join(beaten)}" if beaten else ""
 
 
+REPEAT_MIN_WINS = 2
+REPEAT_PRIOR_GAME_WEIGHT = 0.5
+REPEAT_COUNTER_WEIGHT = 0.25
+REPEAT_BEATEN_WEIGHT = 0.15
+REPEAT_SITUATION_BOOST = 1.5
+REPEAT_MAX_SHIFT = 0.06
+
+
+def _norm_concept(name: Any) -> str:
+    return " ".join(str(name or "").lower().split())
+
+
+def _down_bucket(down: Any, distance: Any, yardline: Any) -> str:
+    d, togo, yl = _int_or_none(down), _int_or_none(distance), _int_or_none(yardline)
+    if yl is not None and yl <= 10:
+        return "goal_line"
+    if d in (3, 4):
+        return "third_short" if togo is not None and togo <= 4 else "third_long"
+    return "early"
+
+
+def repeat_beaters(
+    plays: Sequence[Mapping[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    """Opponent plays that beat us at least twice, strongest first.
+
+    ``plays`` rows carry ``concept``, ``won`` (offense won the snap), and
+    ``current`` (this game). Prior games against the same opponent count half.
+    Strength is the Laplace win rate above a coin flip.
+    """
+    from cfb_coach.madden.defense_select import call_family
+    from cfb_coach.madden.situation import concept_family
+
+    stats: dict[str, dict[str, Any]] = {}
+    for row in plays or []:
+        name = _norm_concept(row.get("concept"))
+        if not name or row.get("won") is None:
+            continue
+        weight = 1.0 if row.get("current", True) else REPEAT_PRIOR_GAME_WEIGHT
+        stat = stats.setdefault(name, {
+            "concept": str(row.get("concept")).strip(), "family": concept_family(name),
+            "wins": 0.0, "n": 0.0, "beat": {}, "buckets": {},
+        })
+        stat["n"] += weight
+        if row["won"]:
+            stat["wins"] += weight
+            fam = _MODEL_FAMILY.get(call_family(str(row.get("play") or "")) or "")
+            if fam:
+                stat["beat"][fam] = stat["beat"].get(fam, 0.0) + weight
+            bucket = _down_bucket(row.get("down"), row.get("distance"), row.get("yardline"))
+            stat["buckets"][bucket] = stat["buckets"].get(bucket, 0.0) + weight
+    out = []
+    for stat in stats.values():
+        if stat["wins"] < REPEAT_MIN_WINS or stat["wins"] * 2 <= stat["n"]:
+            continue
+        stat["strength"] = (stat["wins"] + 1) / (stat["n"] + 2) - 0.5
+        out.append(stat)
+    out.sort(key=lambda s: (-s["strength"], -s["wins"], s["concept"]))
+    return out
+
+
+def _repeat_counter_adjust(
+    ranked: list[dict[str, Any]], sit: Any, plays: Sequence[Mapping[str, Any]] | None,
+) -> str:
+    """Call the counters to the specific plays that keep beating us.
+
+    Each repeat beater pushes down coverages it beat and pulls up the
+    coverages ``COUNTERS`` says answer its family. A beater used in this down
+    bucket (goal line, 3rd-and-short, 3rd-and-long, early) counts 1.5x.
+    """
+    from cfb_coach.madden.defense_select import COUNTERS
+
+    beaters = repeat_beaters(plays)
+    if not beaters:
+        return ""
+    bucket = _down_bucket(getattr(sit, "down", None), getattr(sit, "distance", None),
+                          getattr(sit, "yardline", None))
+    changed = False
+    for row in ranked:
+        fam = str(row.get("family") or "")
+        cov = _COVERAGE_OF.get(fam)
+        delta = 0.0
+        for stat in beaters:
+            s = stat["strength"]
+            if stat["buckets"].get(bucket, 0.0) >= REPEAT_MIN_WINS:
+                s *= REPEAT_SITUATION_BOOST
+            delta -= REPEAT_COUNTER_WEIGHT * s * float((COUNTERS.get(stat["family"] or "") or {}).get(cov, 0.0))
+            delta += REPEAT_BEATEN_WEIGHT * s * stat["beat"].get(fam, 0.0) / stat["n"]
+        delta = max(-REPEAT_MAX_SHIFT, min(REPEAT_MAX_SHIFT, delta))
+        if delta:
+            row["offense_success"] = min(0.999, max(0.001, row["offense_success"] + delta))
+            row["repeat_adjust"] = round(delta, 4)
+            changed = True
+    if changed:
+        ranked.sort(key=lambda row: (row["offense_success"], row["formation"], row["play"]))
+
+    def fmt(x: float) -> str:
+        return str(int(x)) if float(x).is_integer() else f"{x:.1f}"
+
+    return "repeat beaters: " + ", ".join(
+        f"{s['concept']} {fmt(s['wins'])}/{fmt(s['n'])}" for s in beaters[:3]
+    )
+
+
+RUN_FIT_WINDOW = 8
+RUN_FIT_MIN_RUNS = 3
+RUN_FIT_WEIGHT = 0.25
+
+
+def run_fit_pressure(plays: Sequence[Mapping[str, Any]] | None) -> tuple[float, int, int]:
+    """How hard this game's runs are hitting: (pressure, wins, runs) over the last eight runs.
+
+    Pressure is the Laplace run success above a coin flip, 0 when the runs
+    are being stopped or fewer than three are logged.
+    """
+    from cfb_coach.madden.situation import concept_family
+
+    runs = [
+        bool(row["won"]) for row in (plays or [])
+        if row.get("current", True) and row.get("won") is not None
+        and concept_family(_norm_concept(row.get("concept"))) == "run"
+    ][-RUN_FIT_WINDOW:]
+    if len(runs) < RUN_FIT_MIN_RUNS:
+        return 0.0, sum(runs), len(runs)
+    return max(0.0, (sum(runs) + 1) / (len(runs) + 2) - 0.5), sum(runs), len(runs)
+
+
+def _run_fit(row: Mapping[str, Any]) -> float:
+    """How much a hot run game hurts this call (+) or how well it fits the run (-)."""
+    from cfb_coach.madden.defense_select import COUNTERS
+
+    if _is_light_box(row):
+        box = 1.0
+    elif str(row.get("package") or "") == "nickel":
+        box = 0.5
+    elif _is_heavy_front(row):
+        box = -1.0
+    else:
+        box = -0.3
+    cov = _COVERAGE_OF.get(str(row.get("family") or ""))
+    return box - float(COUNTERS["run"].get(cov, 0.0))
+
+
+def _run_down_factor(sit: Any) -> float:
+    """Run downs (1st/2nd-and-7 or less, 3rd/4th-and-2, the goal line) count double; 3rd-and-5+ half."""
+    down = _int_or_none(getattr(sit, "down", None))
+    distance = _int_or_none(getattr(sit, "distance", None))
+    yardline = _int_or_none(getattr(sit, "yardline", None))
+    if yardline is not None and yardline <= 5:
+        return 2.0
+    if distance is None or down is None:
+        return 1.0
+    if down in (1, 2):
+        return 2.0 if distance <= 7 else 1.0
+    if distance <= 2:
+        return 2.0
+    return 0.5 if distance >= 5 else 1.0
+
+
+def _run_fit_adjust(
+    ranked: list[dict[str, Any]], sit: Any, plays: Sequence[Mapping[str, Any]] | None,
+) -> str:
+    """Heavier fronts and a safety in the box while his runs keep winning."""
+    pressure, wins, runs = run_fit_pressure(plays)
+    if not pressure:
+        return ""
+    weight = RUN_FIT_WEIGHT * pressure * _run_down_factor(sit)
+    for row in ranked:
+        delta = weight * _run_fit(row)
+        if delta:
+            row["offense_success"] = min(0.999, max(0.001, row["offense_success"] + delta))
+            row["run_fit_adjust"] = round(delta, 4)
+    ranked.sort(key=lambda row: (row["offense_success"], row["formation"], row["play"]))
+    return f"run fits: his runs won {wins}/{runs}"
+
+
 def pick_call(
     artifact: Mapping[str, Any],
     sit: Any,
@@ -960,6 +1136,7 @@ def pick_call(
     opponent_profile: Mapping[str, Any] | None = None,
     installed_scope: bool = False,
     recent_results: Sequence[Sequence[Any]] | None = None,
+    opponent_plays: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Lowest predicted offense success, then v2 variety among that legal top.
 
@@ -972,6 +1149,11 @@ def pick_call(
     and spreads a formation past 40% of recent calls. It fails closed
     (``installed_gap``) when nothing installed can be scored, or when a
     heavy-front down has no heavy front installed.
+
+    ``opponent_plays`` rows (``concept``, ``won``, ``play``, down/distance/
+    yardline, ``current``) push toward counters of the plays that keep beating
+    us and toward run fits while his runs keep winning. They are in-game
+    signals only, never training labels.
     """
     started = time.perf_counter()
     if installed_scope:
@@ -1037,10 +1219,16 @@ def pick_call(
     if installed_scope:
         live_summary = _live_opponent_adjust(ranked, recent_concepts)
         _spread_installed(ranked, recent)
-    result_summary = _live_result_adjust(ranked, recent_results)
-    if result_summary:
-        live_summary = f"{live_summary}; {result_summary}" if live_summary else result_summary
+    for extra in (
+        _live_result_adjust(ranked, recent_results),
+        _repeat_counter_adjust(ranked, sit, opponent_plays),
+        _run_fit_adjust(ranked, sit, opponent_plays),
+    ):
+        if extra:
+            live_summary = f"{live_summary}; {extra}" if live_summary else extra
     heavy = recent_run_heavy(recent_concepts) if run_heavy is None else bool(run_heavy)
+    if run_heavy is None and run_fit_pressure(opponent_plays)[0]:
+        heavy = True
     light_ok = True
     if installed_scope or recent_results is not None:
         light_ok = light_box_allowed(sit, live_run_share(recent_concepts, opponent_profile))

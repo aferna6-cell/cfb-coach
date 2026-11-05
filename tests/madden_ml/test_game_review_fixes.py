@@ -249,5 +249,98 @@ class CpuGameFixTests(unittest.TestCase):
         self.assertNotIn("recent_pressure_quick", ids("Slants", calm))
 
 
+def _his(concept, won, play="Cover 3 Sky", down=1, distance=10, yardline=40, current=True):
+    return {"concept": concept, "won": won, "play": play, "down": down, "distance": distance,
+            "yardline": yardline, "current": current}
+
+
+def _rows():
+    return [
+        {"formation": "Nickel Over", "play": "Cover 3 Match", "family": "cover3", "package": "nickel",
+         "offense_success": 0.40},
+        {"formation": "Nickel Over", "play": "Cover 2 Invert", "family": "two_high_zone", "package": "nickel",
+         "offense_success": 0.41},
+    ]
+
+
+class RepeatBeaterTests(unittest.TestCase):
+    def test_a_play_that_beat_us_twice_is_a_repeat_beater_and_one_win_is_not(self):
+        from cfb_coach.madden.model.defense_v1 import repeat_beaters
+
+        beaters = repeat_beaters([_his("Slants", True), _his("Slants", True), _his("Mesh", True),
+                                  _his("Mid Zone", True), _his("Mid Zone", False), _his("Mid Zone", False)])
+        self.assertEqual([b["concept"] for b in beaters], ["Slants"])
+
+    def test_prior_games_against_him_count_half(self):
+        from cfb_coach.madden.model.defense_v1 import repeat_beaters
+
+        self.assertEqual(repeat_beaters([_his("Slants", True, current=False)] * 3), [])
+        beaters = repeat_beaters([_his("Slants", True, current=False)] * 4)
+        self.assertEqual(beaters[0]["wins"], 2.0)
+
+    def test_counters_the_play_and_avoids_the_coverage_it_beat(self):
+        from cfb_coach.madden.model.defense_v1 import _repeat_counter_adjust
+
+        ranked = _rows()
+        summary = _repeat_counter_adjust(ranked, _dsit(1, 10, 40), [_his("Slants", True)] * 3)
+        self.assertEqual(ranked[0]["play"], "Cover 2 Invert")
+        self.assertIn("Slants 3/3", summary)
+
+    def test_stopped_plays_change_nothing(self):
+        from cfb_coach.madden.model.defense_v1 import _repeat_counter_adjust
+
+        ranked = _rows()
+        self.assertEqual(_repeat_counter_adjust(ranked, _dsit(1, 10, 40), [_his("Slants", False)] * 4), "")
+        self.assertEqual(ranked[0]["play"], "Cover 3 Match")
+
+    def test_the_shift_is_capped(self):
+        from cfb_coach.madden.model.defense_v1 import REPEAT_MAX_SHIFT, _repeat_counter_adjust
+
+        ranked = _rows()
+        plays = [_his(name, True) for name in ("Slants", "Crossers", "Mesh", "Return Bench") for _ in range(6)]
+        _repeat_counter_adjust(ranked, _dsit(1, 10, 40), plays)
+        for row in ranked:
+            self.assertLessEqual(abs(row.get("repeat_adjust", 0.0)), REPEAT_MAX_SHIFT)
+
+
+class RunFitTests(unittest.TestCase):
+    def test_pressure_needs_three_runs_that_are_winning(self):
+        from cfb_coach.madden.model.defense_v1 import run_fit_pressure
+
+        self.assertEqual(run_fit_pressure([_his("HB Dive", True)] * 2)[0], 0.0)
+        self.assertEqual(run_fit_pressure([_his("HB Dive", False)] * 4)[0], 0.0)
+        self.assertGreater(run_fit_pressure([_his("HB Dive", True)] * 4)[0], 0.0)
+        self.assertEqual(run_fit_pressure([_his("HB Dive", True, current=False)] * 4)[0], 0.0)
+
+    def test_hot_runs_push_light_boxes_down_and_heavy_fronts_up_most_on_run_downs(self):
+        from cfb_coach.madden.model.defense_v1 import _run_fit_adjust
+
+        def ranked():
+            return [
+                {"formation": "Dime 3-2 Odd", "play": "Cover 3", "family": "cover3", "package": "dime",
+                 "offense_success": 0.38},
+                {"formation": "46 Normal", "play": "Cover 3", "family": "cover3", "package": "base",
+                 "offense_success": 0.42},
+            ]
+
+        hot = [_his("HB Dive", True)] * 4 + [_his("Stretch", True)] * 2
+        early = ranked()
+        summary = _run_fit_adjust(early, _dsit(2, 3, 40), hot)
+        self.assertEqual(early[0]["formation"], "46 Normal")
+        self.assertIn("6/6", summary)
+        passing = ranked()
+        _run_fit_adjust(passing, _dsit(3, 9, 40), hot)
+        by = {r["formation"]: r for r in early}
+        by_pass = {r["formation"]: r for r in passing}
+        self.assertGreater(abs(by["Dime 3-2 Odd"]["run_fit_adjust"]), abs(by_pass["Dime 3-2 Odd"]["run_fit_adjust"]))
+
+    def test_coordinator_takes_an_explicit_opponent_play_list(self):
+        from cfb_coach.madden.model.defense_coordinator import _defense_v1_opponent_plays
+
+        plays = [_his("Slants", True)]
+        self.assertEqual(_defense_v1_opponent_plays({"defense_v1_opponent_plays": plays}, None, "g1"), plays)
+        self.assertEqual(_defense_v1_opponent_plays({}, None, "g1"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
