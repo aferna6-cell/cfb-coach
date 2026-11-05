@@ -216,16 +216,26 @@ class JohnCliTests(unittest.TestCase):
         self.assertEqual(rc, 0, prep)
         self.assertIn("John", prep)
         self.assertIn("unknown", prep.lower())
-        rc, offense = self.run_cli(
+        rc, missing = self.run_cli(
             ["play", "--game", "madden27", "-o", "john", "--franchise", "primary",
              "--once", "1&10 my 25", "--no-overlay", "--terminal", "--no-vod-prior"]
         )
+        self.assertEqual(rc, 2, missing)
+        self.assertIn("no explicit offense mode", missing)
+        self.assertIn("Refusing to start", missing)
+        rc, offense = self.run_cli(
+            ["play", "--game", "madden27", "-o", "john", "--franchise", "primary",
+             "--once", "1&10 my 25", "--no-overlay", "--terminal", "--no-vod-prior",
+             "--heuristic-offense"]
+        )
         self.assertEqual(rc, 0, offense)
         self.assertIn("HUMAN OFFENSE ML PILOT: OFF", offense)
+        self.assertIn("OFFENSE CONTROLLER: HEURISTIC", offense)
+        self.assertIn("DEFENSE CONTROLLER: HEURISTIC", offense)
         self.assertIn("vs john", offense)
         rc, defense = self.run_cli(
             ["play", "--game", "madden27", "-o", "john", "--once", "d 2&7",
-             "--no-overlay", "--terminal", "--no-vod-prior"]
+             "--no-overlay", "--terminal", "--no-vod-prior", "--heuristic-offense"]
         )
         self.assertEqual(rc, 0, defense)
         self.assertRegex(defense, r"\| User ")
@@ -235,6 +245,13 @@ class JohnCliTests(unittest.TestCase):
         )
         self.assertEqual(rc, 2, refused)
         self.assertIn("requires experimental mode", refused)
+        rc, both = self.run_cli(
+            ["play", "--game", "madden27", "-o", "john", "--once", "1&10 my 25",
+             "--no-overlay", "--terminal", "--no-vod-prior",
+             "--ml-human-control", "--heuristic-offense"]
+        )
+        self.assertEqual(rc, 2, both)
+        self.assertIn("only one of", both)
 
     def test_flag_on_requires_confirmation_and_defense_stays_established(self) -> None:
         self.run_cli(
@@ -252,10 +269,11 @@ class JohnCliTests(unittest.TestCase):
             db.close()
         rc, off = self.run_cli(
             ["play", "--game", "madden27", "-o", "john", "--once", "1&10 my 25",
-             "--no-overlay", "--terminal", "--no-vod-prior"]
+             "--no-overlay", "--terminal", "--no-vod-prior", "--heuristic-offense"]
         )
         self.assertEqual(rc, 0, off)
         self.assertIn("HUMAN OFFENSE ML PILOT: OFF", off)
+        self.assertIn("OFFENSE CONTROLLER: HEURISTIC", off)
         self.assertNotIn("HUMAN OFFENSE ML PILOT: ON", off)
         rc, on = self.run_cli(
             ["play", "--game", "madden27", "-o", "john", "--once", "1&10 my 25",
@@ -263,10 +281,11 @@ class JohnCliTests(unittest.TestCase):
         )
         self.assertEqual(rc, 0, on)
         self.assertIn("HUMAN OFFENSE ML PILOT: ON", on)
+        self.assertIn("OFFENSE CONTROLLER: EXPERIMENTAL", on)
         self.assertIn("A human must confirm each call", on)
         rc, dcall = self.run_cli(
             ["play", "--game", "madden27", "-o", "john", "--once", "d 2&7",
-             "--no-overlay", "--terminal", "--no-vod-prior"]
+             "--no-overlay", "--terminal", "--no-vod-prior", "--heuristic-offense"]
         )
         self.assertEqual(rc, 0, dcall)
         self.assertNotIn("DEFENSE ML", dcall)

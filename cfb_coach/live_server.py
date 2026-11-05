@@ -10,6 +10,7 @@ import contextvars
 import json
 import re
 import socket
+import sys
 import threading
 import traceback
 from dataclasses import dataclass, field
@@ -221,6 +222,11 @@ class LivePlayController:
             "standing_execution_attestation": bool(self.standing_execution_attestation),
             "pending_recommendation": self._pending_recommendation(),
             "pending_offense_action": self._pending_offense_action(),
+            # Conditional IF-look advice is not an executed/recommended action.
+            "conditional_action": (
+                getattr(self.last_call, "conditional_action", None)
+                if self.last_call is not None and not self.ended else None
+            ),
             "ml_experimental": self._ml_experimental_state(),
         }
 
@@ -441,6 +447,15 @@ class LivePlayController:
         except (TypeError, ValueError):
             return
 
+    def _warn_spot_conflict(self, sit: Any) -> str | None:
+        """Print when this typed down cannot follow the previous result."""
+        from cfb_coach.last_snap import snap_conflict_warning
+
+        warning = snap_conflict_warning(self._book(), sit)
+        if warning:
+            print(warning, file=sys.stderr)
+        return warning
+
     def _stamp(self, sit: Any) -> Any:
         from cfb_coach.game_score import LiveContext, absorb_and_stamp
 
@@ -450,6 +465,16 @@ class LivePlayController:
             # Quarter from the dropdown wins unless the sit line itself named one.
             if extras.get("quarter") in (None, "") and self.quarter is not None:
                 extras["quarter"] = self.quarter
+            # Defense sampling is seeded by snap_seq. A missing seq used to stay
+            # 0 for the whole game, so the same draw repeated. Offense is left
+            # alone: its caller does not read this counter.
+            if (
+                str(getattr(sit, "side", "") or "").startswith("d")
+                and not extras.get("snap_seq")
+            ):
+                count = int(getattr(self, "_defense_calls", 0)) + 1
+                self._defense_calls = count
+                extras["snap_seq"] = count
         ctx = LiveContext(score=self.live_score, quarter=self.quarter)
         absorb_and_stamp(sit, ctx)
         self.live_score = ctx.score
@@ -863,6 +888,7 @@ class LivePlayController:
                 heard = format_heard(sit)
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
+            self._warn_spot_conflict(sit)
             # Game-clock evidence must arrive BEFORE inference, not after the call.
             self._stamp_live_context(sit, game_clock, fresh=game_clock_fresh)
             call = self._make(sit)
@@ -1003,6 +1029,7 @@ class LivePlayController:
                 heard = format_heard(sit)
             except Exception:
                 heard = getattr(sit, "label", sit_raw)
+            self._warn_spot_conflict(sit)
             # Game-clock evidence must arrive BEFORE inference, not after the call.
             self._stamp_live_context(sit, game_clock, fresh=game_clock_fresh)
             call = self._make(sit)
@@ -1328,6 +1355,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
   <div class="call" id="call"{' aria-live="polite"' if compact_madden else ''}>{_esc(_call_main(ctrl))}</div>
   {_macro_box_html(None if compact_madden else ctrl.macro_state())}
   {"""<div id="offense-action-now" class="action-now" hidden></div>
+  <div id="conditional-action-now" class="action-now" hidden></div>
   <details id="offense-action-panel" hidden>
     <summary>Why this adjustment</summary>
     <div id="offense-action-label"></div>
@@ -1542,6 +1570,16 @@ function renderState(st) {{
   if (actionNow) {{
     actionNow.hidden = !act;
     actionNow.textContent = act ? (act.buttons || act.label || "") : "";
+  }}
+  // This is an optional IF-look note, not a recommendation to attest as executed.
+  const conditionalNow = $("conditional-action-now");
+  if (conditionalNow) {{
+    const hint = st.conditional_action;
+    conditionalNow.hidden = !hint || !!act;
+    conditionalNow.textContent = hint
+      ? "IF " + hint.condition + ": " + hint.name + " — " + hint.buttons
+        + " | OTHERWISE keep the play unchanged"
+      : "";
   }}
   if (actionPanel) {{
     actionPanel.hidden = !act;

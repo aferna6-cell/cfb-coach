@@ -92,6 +92,20 @@ class TestClassifyAndAdvance(unittest.TestCase):
         self.assertIsNone(dead.down)
         self.assertIn("turnover on downs", dead_note)
 
+    def test_typed_spot_warns_when_it_contradicts_the_previous_gain(self) -> None:
+        from cfb_coach.last_snap import BallSpot, describe_spot_conflict
+
+        sit = parse_situation("d 1&10 my 25")
+        spot, _note = advance_ball(sit, "+11", "defense", BallSpot())
+        typed = parse_situation("d 1&1 my 1")
+        warning = describe_spot_conflict(spot, typed, result="+11")
+        self.assertIsNotNone(warning)
+        self.assertIn("SITUATION WARNING", warning or "")
+        self.assertIn("+11", warning or "")
+        self.assertIn("distance 1", warning or "")
+        matched = parse_situation(f"d {spot.down}&{spot.distance} my {spot.yardline}")
+        self.assertIsNone(describe_spot_conflict(spot, matched, result="+11"))
+
 
 class TestCfbTerminal(_Isolated):
     def test_mesh_and_gain_log_the_last_snap_and_undo_removes_it(self) -> None:
@@ -185,12 +199,14 @@ class TestMaddenTerminal(_Isolated):
             "undo", "q",
         ]
         rc, out = self.play(
-            ["play", "--game", "madden27", "-o", "james", "--terminal", "--no-overlay"],
+            ["play", "--game", "madden27", "-o", "james", "--terminal", "--no-overlay",
+             "--heuristic-offense"],
             lines,
         )
         self.assertEqual(rc, 0, out)
         self.assertIn("logged last snap: Four Verticals", out)
         self.assertIn("logged last snap: +15 | Four Verticals", out)
+        self.assertIn("executed ", out)
         call = out[out.rfind("heard:"):]
         self.assertIn("[live:Four Verticals]", call)
         self.assertIn("SAFE DEEP", call, call)
@@ -206,6 +222,9 @@ class TestMaddenTerminal(_Isolated):
                 ["Four Verticals", "Four Verticals"],
             )
             self.assertEqual(rows[0]["macro"], "SAFE DEEP")
+            self.assertEqual(rows[0]["executed_status"], "shown")
+            self.assertTrue(rows[0]["executed_formation"])
+            self.assertTrue(rows[0]["executed_play"])
         finally:
             db.close()
 
