@@ -304,6 +304,32 @@ def select_formation_portfolio(
         chosen.append(pick)
         for name in SITUATION_NAMES:
             coverage[name] = max(coverage[name], float(pick["situation_scores"][name]))
+    # A small number of formations can saturate broad run/pass concepts while
+    # still leaving dozens of genuinely new, model-competitive plays out of
+    # the user's installable inventory. Allow strong alternate formations as
+    # reserves, chosen entirely by model evidence, not a fixed roster size.
+    # The cap is a physical Madden editor limit, NOT a quota to fill.
+    if pool and remaining and len(chosen) < max_formations:
+        leader = float(pool[0]["score"])
+        installed_play_names = {p for row in chosen for p in row["plays"]}
+        for row in sorted(remaining, key=lambda r: (-r["score"], r["formation"])):
+            if len(chosen) >= max_formations:
+                break
+            # Model-relative quality gate; each candidate must add playable
+            # depth. Do not add a weak formation just to hit 15.
+            if leader - float(row["score"]) > 0.042:
+                break
+            novel_plays = set(row["plays"]) - installed_play_names
+            if len(novel_plays) < 3:
+                continue
+            row["model_competitive_reserve"] = True
+            row["reserve_play_depth"] = len(novel_plays)
+            chosen.append(row)
+            installed_play_names.update(row["plays"])
+            covered_concepts.update(row.get("concept_ids") or [])
+            for name in SITUATION_NAMES:
+                coverage[name] = max(coverage[name], float(row["situation_scores"][name]))
+
     if chosen and not any(r["has_run"] for r in chosen):
         runner = next((r for r in remaining if r["has_run"]), None)
         if runner:
@@ -371,6 +397,9 @@ def select_formation_portfolio(
             "max_formations": max_formations,
             "cap_is_not_a_quota": True,
             "plays_not_trimmed": True,
+            "model_competitive_reserves": [r["formation"] for r in chosen if r.get("model_competitive_reserve")],
+            "reserve_quality_gate": "within 0.042 of leading modeled formation and >=3 distinct play names",
+            "no_fixed_formation_quota": True,
             "concepts_covered": sorted(covered_concepts),
             "why_each_formation": [
                 {
