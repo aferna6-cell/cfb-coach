@@ -1128,7 +1128,9 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
         )
         db = open_explicit_madden_db(path, read_only=False)
     else:
-        db = open_madden_db(read_only=True)
+        # Respect an explicit DB for model-designed read-only preview too.
+        db = (open_explicit_madden_db(Path(args.db), read_only=True)
+              if getattr(args, "db", None) else open_madden_db(read_only=True))
 
     def display(payload: dict[str, Any] | None, mode: str) -> None:
         if text_mode or payload is None:
@@ -1194,9 +1196,14 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
             display(browser.installed_design(db, args.opponent), "installed")
             return 0
         try:
+            supplied_artifact = None
+            if getattr(args, "artifact", None):
+                from cfb_coach.madden.model.experimental_model import load_artifact
+
+                supplied_artifact = load_artifact(Path(args.artifact).expanduser())
             design = designer.design_offense(
                 db, opponent_id=args.opponent,
-                max_formations=args.max_formations
+                max_formations=args.max_formations, artifact=supplied_artifact,
             )
             if args.stage:
                 design = designer.stage_design(db, design)
@@ -2215,6 +2222,8 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_od.add_argument("--opponent", "-o", default="cpu")
     p_od.add_argument("--max-formations", type=int, default=DEFAULT_MAX_FORMATIONS)
+    p_od.add_argument("--artifact", default=None,
+                      help="Optional offline-trained model JSON for design only; never installs the model")
     p_od.add_argument("--text", action="store_true",
                       help="Print the inspectable plan instead of opening the HTML designer")
     p_od.add_argument("--no-open", action="store_true",
