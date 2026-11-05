@@ -18,6 +18,11 @@ KNOWLEDGE_CAP = 0.025
 _LIVE_BONUS = 0.02
 # Stays inside the indifference band. A thin tendency does not decide the snap.
 _INFERRED_BONUS = 0.008
+# The same shell on most of the latest closed snaps is a game trend, not a
+# thin tendency. It may leave the indifference band like a live look.
+_RECENT_TREND_BONUS = KNOWLEDGE_CAP
+_RECENT_TREND_CONFIDENCE = 0.50
+_MAN_SHELLS = frozenset({"cover_0", "cover_1"})
 _QUICK_REACH_YARDS = 6
 _QUICK = frozenset({
     "mesh", "stick", "slant_flat", "curl_flat", "texas_angle", "spacing",
@@ -105,16 +110,31 @@ def evaluate_concept_matchup(
         inferred_shell = inferred.get("shell")
         exploits = set(principle.get("may_exploit") or [])
         confidence = float(inferred.get("confidence") or 0.0)
-        if (
-            inferred_shell
-            and inferred_shell in exploits
+        looks = {inferred_shell} if inferred_shell else set()
+        if inferred_shell in _MAN_SHELLS:
+            looks.add("man")
+        trend = (
+            inferred.get("source") == "recent_snaps"
+            and confidence >= _RECENT_TREND_CONFIDENCE
+        )
+        slow_vs_man = (
+            inferred_shell in _MAN_SHELLS
+            and principle.get("time_to_develop") == "slow"
+        )
+        if concept_id and looks & exploits and slow_vs_man:
+            withheld.append(
+                f"{concept_id} develops slowly; recent {inferred_shell} gets no bonus"
+            )
+        elif (
+            concept_id
+            and looks & exploits
             and confidence >= 0.40
             and not _too_short_to_convert()
         ):
-            offers.append(_INFERRED_BONUS)
+            offers.append(_RECENT_TREND_BONUS if trend else _INFERRED_BONUS)
             reasons.append(
-                f"inferred {inferred_shell} after shrinkage "
-                f"({confidence:.2f}); not this snap's coverage"
+                f"{'recent snaps show' if trend else 'inferred'} {inferred_shell} "
+                f"after shrinkage ({confidence:.2f}); not this snap's coverage"
             )
         elif diagnosis.get("previous_snap_not_copied"):
             withheld.append("previous coverage was not copied onto this snap")

@@ -18,6 +18,9 @@ PRIOR_COUNT = 1.0
 # Do not publish an inferred shell until the sample actually moves the prior.
 MIN_INFER_CONFIDENCE = 0.40
 MIN_INFER_MARGIN = 0.15
+# A defense that switches to Cover 1 mid-game is drowned out by its early
+# looks in a whole-game count. The latest closed snaps get the first say.
+RECENT_WINDOW = 6
 
 _COVER_0 = re.compile(r"cover\s*0|\bzero\b", re.I)
 _COVER_1 = re.compile(r"cover\s*1", re.I)
@@ -142,7 +145,9 @@ def shrink_shells(counts: Mapping[str, int]) -> dict[str, Any]:
     }
 
 
-def _historical_counts(memory: Mapping[str, Any] | None) -> dict[str, int]:
+def _historical_counts(
+    memory: Mapping[str, Any] | None, *, last: int | None = None,
+) -> dict[str, int]:
     counts = {shell: 0 for shell in SHELLS}
     if not memory:
         return counts
@@ -150,6 +155,8 @@ def _historical_counts(memory: Mapping[str, Any] | None) -> dict[str, int]:
     if not labels and memory.get("distribution"):
         # coverage_class buckets are not shells. Do not promote them.
         return counts
+    if last is not None:
+        labels = labels[-last:]
     for label in labels:
         parsed = parse_look(str(label))
         shell = parsed.get("shell")
@@ -170,20 +177,28 @@ def diagnose_defense(
     source = getattr(sit, "coverage_source", None) if sit is not None else None
     source = source or "none"
     parsed = parse_look(hint if source == "live" else None)
-    history = shrink_shells(_historical_counts(memory))
+    recent = shrink_shells(_historical_counts(memory, last=RECENT_WINDOW))
+    if recent["state"] == "inferred":
+        history, history_source = recent, "recent_snaps"
+    else:
+        history, history_source = shrink_shells(_historical_counts(memory)), "all_snaps"
     observed = source == "live" and bool(hint) and (
         parsed["shell"] or parsed["structure"] or parsed["principles"] or parsed["pressure"]
     )
     inferred_shell = None if observed else history["mode"]
-    if source == "last":
-        current_state = "unknown"
-        note = "previous snap only; not the current coverage"
-    elif observed:
+    if observed:
         current_state = "observed"
         note = "pre-snap words on this snap; unspecified shells stay unknown"
     elif history["state"] == "inferred":
         current_state = "inferred"
-        note = "historical explicit shells after shrinkage; not this snap's coverage"
+        note = (
+            "the latest closed snaps after shrinkage; not this snap's coverage"
+            if history_source == "recent_snaps"
+            else "historical explicit shells after shrinkage; not this snap's coverage"
+        )
+    elif source == "last":
+        current_state = "unknown"
+        note = "previous snap only; not the current coverage"
     else:
         current_state = "unknown"
         note = "current coverage was not established"
@@ -207,6 +222,7 @@ def diagnose_defense(
             "confidence": history["confidence"] if inferred_shell else 0.0,
             "posterior": history["posterior"],
             "margin": history["margin"],
+            "source": history_source if inferred_shell else None,
         },
         "unknown": [
             name for name, present in (

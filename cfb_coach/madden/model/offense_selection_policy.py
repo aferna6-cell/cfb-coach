@@ -138,8 +138,8 @@ def choose_model_play(
                 penalty += 0.08
             if len(recent) > 1 and recent[0] == recent[1] == key:
                 penalty += 0.12
-            if fam == "screen" and screen_exposure >= 2:
-                penalty += min(0.14, 0.05 + .015 * (screen_exposure - 2))
+            if fam == "screen" and screen_exposure >= 1:
+                penalty += min(0.14, 0.03 + .02 * (screen_exposure - 1))
             if sum(p == key for p in last4) >= 3:
                 penalty += 0.055
         situation_delta, situation_reason = _situational_adjustment(key[1], sit)

@@ -21,6 +21,8 @@ _UNDERNEATH = frozenset({
 })
 _UNDERNEATH_SHELLS = frozenset({"cover_2", "cover_3", "cover_4", "cover_6"})
 _COMPLEMENT_BONUS = 0.008
+_MAN_SHELLS = frozenset({"cover_0", "cover_1"})
+_MAN_ANSWERS = frozenset({"mesh", "slant_flat", "texas_angle", "drive"})
 
 
 def _key(session_id: str) -> str:
@@ -120,8 +122,14 @@ def current_strategy(
     boundary = drive_boundary(sit, memory)
     success, failure = _concept_counts(memory)
     mesh_failed = failure.get("mesh", 0) >= 3 and success.get("mesh", 0) == 0
-    inferred = (diagnosis.get("inferred") or {}).get("shell")
+    inferred_block = diagnosis.get("inferred") or {}
+    inferred = inferred_block.get("shell")
     observed = diagnosis.get("observed") or {}
+    man_trend = (
+        inferred in _MAN_SHELLS
+        and inferred_block.get("source") == "recent_snaps"
+        and float(inferred_block.get("confidence") or 0.0) >= 0.5
+    )
     underneath = (
         not mesh_failed
         and (
@@ -139,6 +147,13 @@ def current_strategy(
             "Mesh has failed without a verified success."
         )
         revised = True
+    elif man_trend:
+        hypothesis_id = "man_answers"
+        hypothesis = (
+            f"The latest snaps keep showing {inferred}. Crossers, slants and "
+            "rubs beat man; slow shots and wheels do not get extra credit."
+        )
+        revised = False
     elif underneath:
         hypothesis_id = "underneath_space"
         hypothesis = (
@@ -172,7 +187,9 @@ def current_strategy(
         revised = bool(previous.get("revised"))
 
     confidence = 0.0
-    if hypothesis_id == "underneath_space":
+    if hypothesis_id == "man_answers":
+        confidence = float(inferred_block.get("confidence") or 0.0)
+    elif hypothesis_id == "underneath_space":
         confidence = float((diagnosis.get("inferred") or {}).get("confidence") or 0.0)
         if diagnosis.get("state") == "observed" and observed.get("shell") in _UNDERNEATH_SHELLS:
             confidence = max(confidence, 0.55)
@@ -240,7 +257,12 @@ def strategy_adjustment(
             ["opponent learning carries this hypothesis; strategy does not add a second bonus"],
             ["not_stacked_with_learning"],
         )
-    if float(knowledge_delta) > 0:
+    if strategy.get("hypothesis_id") == "man_answers" and concept_id in _MAN_ANSWERS:
+        # Stacks with the knowledge prior on purpose: a defense that stays in
+        # man snap after snap is the clearest read this caller gets.
+        delta = STRATEGY_CAP
+        reasons.append("recent man coverage; this concept is a man answer")
+    elif float(knowledge_delta) > 0:
         reasons.append(
             "knowledge already scored this concept; strategy does not add the same prior"
         )

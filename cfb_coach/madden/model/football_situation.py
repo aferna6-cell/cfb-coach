@@ -80,6 +80,16 @@ SELECTION_PRIORS: dict[str, dict[str, Any]] = {
         "reason": "long-developing route on short yardage",
         "claim": "conversion_proxy_not_expected_points",
     },
+    "short_yardage_screen": {
+        "delta": -0.06,
+        "reason": "screen starts behind the line on 3rd/4th-and-short",
+        "claim": "conversion_proxy_not_expected_points",
+    },
+    "third_long_play_action": {
+        "delta": -0.03,
+        "reason": "play action on an obvious passing down does not hold the defense",
+        "claim": "conversion_proxy_not_expected_points",
+    },
     "two_minute_trail_run": {
         "delta": -0.07,
         "reason": "trailing in two-minute drill",
@@ -459,12 +469,16 @@ def _selection_parts(play: str, sit: Any) -> list[dict[str, Any]]:
             parts.append({"id": "third_long_screen", **SELECTION_PRIORS["third_long_screen"]})
         if not run and not screen and deep:
             parts.append({"id": "third_long_reachable", **SELECTION_PRIORS["third_long_reachable"]})
+        if not run and _PA_RE.search(play):
+            parts.append({"id": "third_long_play_action", **SELECTION_PRIORS["third_long_play_action"]})
     elif d in (3, 4) and yards <= 3:
         # Do not force a run: let quick game, PA and RPO win on their merits.
         # No quota and no fabricated counterfactual conversion labels.
         fam = _play_family(play)
         if _RPO_RE.search(play) or fam == "rpo":
             key = "short_yardage_rpo"
+        elif screen:
+            key = "short_yardage_screen"
         elif _PA_RE.search(play) or _play_concept(play) == "pa":
             key = "short_yardage_pa"
         elif run:

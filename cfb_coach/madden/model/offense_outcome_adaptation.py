@@ -13,6 +13,7 @@ MAX_TOTAL_PENALTY = 0.105
 GOAL_LINE_MAX = 0.075
 SCREEN_MAX = 0.070
 RECENT_FAILURE_MAX = 0.048
+SESSION_INT_PENALTY = 0.05
 
 
 def _as_int(value: Any) -> int | None:
@@ -133,6 +134,12 @@ def outcome_penalty(
         session_rows = [
             r for r in selected if str(r.get("session_id")) == session_id
         ]
+        session_ints = sum(
+            str(r.get("result") or "").lower().strip() == "int" for r in session_rows
+        )
+        if session_ints:
+            parts["intercepted_this_game"] = SESSION_INT_PENALTY
+            reasons.append(f"verified INT on this play earlier this game ({session_ints})")
         if len(session_rows) >= 2 and _loss(session_rows[0]) and _loss(session_rows[1]):
             parts["two_recent_failures"] = min(
                 RECENT_FAILURE_MAX, 0.03 +
