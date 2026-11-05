@@ -205,6 +205,44 @@ called Dime 3-2 Odd 3 times out of 37, against 30 in the real game, used six
 formations, and never showed a light box while he leaned run. That is
 selection behavior only, not a claim about the result.
 
+### Situation rules (after the Dillon game)
+
+- Light boxes (Dime, Dollar, Quarter) are allowed only on 3rd/4th-and-7+, or
+  when this game's run share (last eight named concepts, else the opponent
+  profile) is under 40%. Never inside our 20 and never at 4 yards or less.
+  Defensive situations are typed as `my N`, so N is the offense's distance
+  to score. Guard label: `no_light_box_situation`.
+- Inside our 5 the call must come from a heavy front (4-3, 46, goal line).
+- This game's results push beaten coverage families and light boxes down:
+  each shown call is graded against the sticks (40% of the distance on 1st,
+  60% on 2nd, all of it on 3rd/4th; TD is an offense win). From three calls
+  in the last ten, a family moves by up to 0.075 offense success. This is an
+  in-game signal on displayed calls only, never a training label.
+- The decision log (`ml_status_detail`) now carries the guard, the scope,
+  and the live summary, e.g. `beaten this game: man 4/5, light box 3/4`.
+
+Logging: on defense, text after a result (`td hb scissors`) or left on the
+situation line after down, spot, quarter, clock and score (`3&4 my 27 trail
+shake`) is saved as the opponent's play for the snap being closed.
+
+In a replay of the Dillon game (v2 artifact, applied book), light boxes in the
+red zone or at 4 yards or less went from 4 to 0 and Dime from 11 calls to 3.
+
+### Offense adjustments (after the Dillon game)
+
+The installed offensive model is unchanged; these are capped layers on top.
+
+- The in-game coverage read uses the coverage you log after each snap and
+  weights the latest six closed snaps, so a mid-game switch to Cover 1 shows
+  up within three or four snaps. It stays labeled inferred, never observed.
+- A recent Cover 1/Cover 0 read counts as man: Mesh, Slants, Texas and Drive
+  gain up to +0.04 (knowledge +0.025, strategy +0.015). Slow wheels and play
+  action shots get nothing against it.
+- Screens lose 0.06 on 3rd/4th-and-3-or-less (RPO bubbles excluded); play
+  action loses 0.03 on 3rd/4th-and-7+.
+- A screen pays a repeat cost from the first recent screen.
+- A play intercepted earlier in the same game loses 0.05 for the rest of it.
+
 ## Replay (read-only)
 
 ```bash

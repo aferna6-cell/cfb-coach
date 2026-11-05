@@ -1389,7 +1389,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
     </div>
     <div class="row">
       <label title="Their call on the snap you just logged: their coverage/blitz when you had the ball, their concept when they had it">they ran</label>
-      <input class="wide" id="their" placeholder="cover 6 · A-gap blitz · cross wheels · mesh"/>
+      <input class="wide" id="their" placeholder="cover 6 · A-gap blitz · cross wheels · mesh · fill it on TDs too"/>
     </div>
     <div id="exec-verify" hidden>
       <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional — leave this alone and the snap stays unknown)</span></h2>

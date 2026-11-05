@@ -564,12 +564,72 @@ def _is_heavy_front(row: Mapping[str, Any]) -> bool:
     return bool(_HEAVY_FRONT.search(formation) or _HEAVY_FRONT.search(package))
 
 
+RED_ZONE_YARDS = 20
+GOAL_LINE_YARDS = 5
+LIGHT_BOX_PASS_DISTANCE = 7
+LIGHT_BOX_SHORT_DISTANCE = 4
+LIGHT_BOX_MAX_RUN_SHARE = 0.40
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _yards_to_goal(sit: Any) -> int | None:
+    """Defensive snaps are entered as "my N": the offense is N yards from scoring."""
+    spot = _int_or_none(getattr(sit, "yardline", None))
+    return spot if spot is not None and 0 < spot < 100 else None
+
+
+def _defense_red_zone(sit: Any) -> bool:
+    if getattr(sit, "red_zone", False) or getattr(sit, "goal_line", False):
+        return True
+    spot = _yards_to_goal(sit)
+    return spot is not None and spot <= RED_ZONE_YARDS
+
+
 def _wants_heavy_front(sit: Any) -> bool:
     if getattr(sit, "goal_line", False) or getattr(sit, "short_yardage", False):
+        return True
+    spot = _yards_to_goal(sit)
+    if spot is not None and spot <= GOAL_LINE_YARDS:
         return True
     down = getattr(sit, "down", None)
     distance = getattr(sit, "distance", None)
     return bool(down in (3, 4) and distance is not None and int(distance) <= 2)
+
+
+def light_box_allowed(sit: Any, run_share: float | None) -> bool:
+    """Dime and other light boxes: obvious passing downs, or a pass-first opponent.
+
+    Never inside the 20 and never on short yardage. An unknown run share
+    keeps the box honest except on 3rd/4th-and-7+.
+    """
+    if _defense_red_zone(sit):
+        return False
+    down = _int_or_none(getattr(sit, "down", None))
+    distance = _int_or_none(getattr(sit, "distance", None))
+    if distance is not None and distance <= LIGHT_BOX_SHORT_DISTANCE:
+        return False
+    if down in (3, 4) and distance is not None and distance >= LIGHT_BOX_PASS_DISTANCE:
+        return True
+    return run_share is not None and run_share < LIGHT_BOX_MAX_RUN_SHARE
+
+
+def live_run_share(concepts: Sequence[str] | None, profile: Mapping[str, Any] | None = None) -> float | None:
+    """This game's run share from named concepts, else the opponent profile."""
+    from cfb_coach.madden.situation import concept_family
+
+    tail = [concept_family(str(c)) for c in (concepts or []) if str(c).strip()][-LIVE_WINDOW:]
+    tail = [f for f in tail if f]
+    if len(tail) >= LIVE_MIN_CONCEPTS:
+        return tail.count("run") / len(tail)
+    if profile and int(profile.get("n") or 0) > 0 and profile.get("run_share") is not None:
+        return float(profile["run_share"])
+    return None
 
 
 def recent_run_heavy(concepts: Sequence[str] | None) -> bool:
@@ -593,6 +653,7 @@ def _guarded_ranked(
     ranked: Sequence[Mapping[str, Any]],
     sit: Any,
     run_heavy: bool,
+    light_ok: bool = True,
 ) -> tuple[list[Mapping[str, Any]], str]:
     """Drop light boxes on run downs, and keep heavy fronts on goal-line/short."""
     rows = list(ranked)
@@ -604,10 +665,10 @@ def _guarded_ranked(
         if non_light:
             return non_light, "no_light_box"
         return rows, ""
-    if run_heavy:
+    if run_heavy or not light_ok:
         non_light = [row for row in rows if not _is_light_box(row)]
         if non_light:
-            return non_light, "no_light_box"
+            return non_light, "no_light_box" if run_heavy else "no_light_box_situation"
     return rows, ""
 
 
@@ -802,6 +863,88 @@ def _spread_installed(ranked: list[dict[str, Any]], recent: Sequence[Sequence[An
         ranked.sort(key=lambda row: (row["offense_success"], row["formation"], row["play"]))
 
 
+RESULT_WINDOW = 10
+RESULT_MIN_CALLS = 3
+RESULT_WEIGHT = 0.15
+_RESULT_NAMES = {"one_high_man": "man", "cover3": "single-high", "quarters_c4": "quarters",
+                 "two_high_zone": "cover 2", "pressure": "pressure"}
+
+
+def offense_won(result: Any, down: Any, distance: Any) -> bool | None:
+    """Did the offense win this snap? TD yes; stops and turnovers no; gains vs the sticks.
+
+    First down needs 40% of the distance, second down 60%, third/fourth all
+    of it. A bare "+N" is not enough to call a 2-yard gain on 1st-and-10 a win.
+    """
+    from cfb_coach.outcome import parse_outcome
+
+    parsed = parse_outcome(None if result is None else str(result))
+    if parsed.kind == "td":
+        return True
+    if parsed.kind in ("int", "fumble", "sack", "incomplete", "stop", "loss"):
+        return False
+    if parsed.kind == "convert":
+        return True
+    if parsed.kind != "gain" or parsed.yards is None:
+        return None
+    d, togo = _int_or_none(down), _int_or_none(distance)
+    if d is None or togo is None or togo <= 0:
+        return parsed.yards >= 4
+    need = {1: 0.4, 2: 0.6}.get(d, 1.0) * togo
+    return parsed.yards >= need
+
+
+def _live_result_adjust(
+    ranked: list[dict[str, Any]], results: Sequence[Sequence[Any]] | None,
+) -> str:
+    """Shift coverage families and light boxes by how they fared this game.
+
+    ``results`` rows are (formation, play, offense_won) for this game's shown
+    calls, newest last. They are an in-game signal only, never training labels.
+    """
+    from cfb_coach.madden.defense_select import call_family
+
+    tail = [r for r in (results or []) if len(r) >= 3 and r[2] is not None][-RESULT_WINDOW:]
+    if len(tail) < RESULT_MIN_CALLS:
+        return ""
+    families: dict[str, list[int]] = {}
+    light = [0, 0]
+    for form, play, won in ((str(r[0]), str(r[1]), bool(r[2])) for r in tail):
+        fam = _MODEL_FAMILY.get(call_family(play) or "")
+        if fam:
+            stat = families.setdefault(fam, [0, 0])
+            stat[0] += won
+            stat[1] += 1
+        if _LIGHT_BOX.search(form):
+            light[0] += won
+            light[1] += 1
+
+    def shift(won: int, n: int) -> float:
+        if n < RESULT_MIN_CALLS:
+            return 0.0
+        return RESULT_WEIGHT * ((won + 1) / (n + 2) - 0.5)
+
+    changed = False
+    for row in ranked:
+        stat = families.get(str(row.get("family") or ""))
+        delta = shift(*stat) if stat else 0.0
+        if _is_light_box(row):
+            delta += shift(*light)
+        if delta:
+            row["offense_success"] = min(0.999, max(0.001, row["offense_success"] + delta))
+            row["result_adjust"] = round(delta, 4)
+            changed = True
+    if changed:
+        ranked.sort(key=lambda row: (row["offense_success"], row["formation"], row["play"]))
+    beaten = [
+        f"{_RESULT_NAMES.get(fam, fam)} {won}/{n}"
+        for fam, (won, n) in sorted(families.items()) if n >= RESULT_MIN_CALLS and won * 2 > n
+    ]
+    if light[1] >= RESULT_MIN_CALLS and light[0] * 2 > light[1]:
+        beaten.append(f"light box {light[0]}/{light[1]}")
+    return f"beaten this game: {', '.join(beaten)}" if beaten else ""
+
+
 def pick_call(
     artifact: Mapping[str, Any],
     sit: Any,
@@ -816,6 +959,7 @@ def pick_call(
     run_heavy: bool | None = None,
     opponent_profile: Mapping[str, Any] | None = None,
     installed_scope: bool = False,
+    recent_results: Sequence[Sequence[Any]] | None = None,
 ) -> dict[str, Any]:
     """Lowest predicted offense success, then v2 variety among that legal top.
 
@@ -893,8 +1037,14 @@ def pick_call(
     if installed_scope:
         live_summary = _live_opponent_adjust(ranked, recent_concepts)
         _spread_installed(ranked, recent)
+    result_summary = _live_result_adjust(ranked, recent_results)
+    if result_summary:
+        live_summary = f"{live_summary}; {result_summary}" if live_summary else result_summary
     heavy = recent_run_heavy(recent_concepts) if run_heavy is None else bool(run_heavy)
-    guarded, guard = _guarded_ranked(ranked, sit, heavy)
+    light_ok = True
+    if installed_scope or recent_results is not None:
+        light_ok = light_box_allowed(sit, live_run_share(recent_concepts, opponent_profile))
+    guarded, guard = _guarded_ranked(ranked, sit, heavy, light_ok)
     chosen = guarded[0]
     if artifact.get("schema") == SCHEMA_V2:
         chosen = _sample_v2(artifact, guarded, book, recent, seed, top_k, temperature)

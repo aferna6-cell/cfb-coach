@@ -546,7 +546,8 @@ class LiveScopeTests(_DBCase):
         art["family_coefficients"] = {"shell": -0.02, "pressure": 0.02, "cover3": 0.0}
         book = {"Dime 3-2 Odd": ["Cover 3", "Cover 1"], "4-3 Over": ["Cover 3 Sky"]}
         sit = Situation(raw="1&10", side="defense", down=1, distance=10)
-        quiet = defense_v1.pick_call(art, sit, book, installed_scope=True)
+        pass_first = {"n": 20, "run_share": 0.2, "concepts": {}, "shrink": 0.0}
+        quiet = defense_v1.pick_call(art, sit, book, installed_scope=True, opponent_profile=pass_first)
         self.assertEqual(quiet["pick"]["formation"], "Dime 3-2 Odd")
         runs = ["Inside Zone", "Stretch", "Inside Zone", "Outside Zone", "Mesh"]
         loud = defense_v1.pick_call(art, sit, book, installed_scope=True, recent_concepts=runs, run_heavy=False)
@@ -564,13 +565,14 @@ class LiveScopeTests(_DBCase):
         book = {"Dime 3-2 Odd": ["Cover 3"], "Nickel Over": ["Cover 1"]}
         sit = Situation(raw="2&7", side="defense", down=2, distance=7)
         recent = [("Dime 3-2 Odd", "Cover 3")] * 8 + [("Nickel Over", "Cover 1")] * 2
+        pass_first = {"n": 20, "run_share": 0.2, "concepts": {}, "shrink": 0.0}
         close = _artifact(("Dime 3-2 Odd", "Cover 3"), ("Nickel Over", "Cover 1"), gap=0.05)
         self.assertEqual(defense_v1.pick_call(close, sit, book)["pick"]["formation"], "Dime 3-2 Odd")
-        self.assertEqual(defense_v1.pick_call(close, sit, book, recent=recent, installed_scope=True)
-                         ["pick"]["formation"], "Nickel Over")
+        self.assertEqual(defense_v1.pick_call(close, sit, book, recent=recent, installed_scope=True,
+                                              opponent_profile=pass_first)["pick"]["formation"], "Nickel Over")
         clear = _artifact(("Dime 3-2 Odd", "Cover 3"), ("Nickel Over", "Cover 1"), gap=2.0)
-        self.assertEqual(defense_v1.pick_call(clear, sit, book, recent=recent, installed_scope=True)
-                         ["pick"]["formation"], "Dime 3-2 Odd")
+        self.assertEqual(defense_v1.pick_call(clear, sit, book, recent=recent, installed_scope=True,
+                                              opponent_profile=pass_first)["pick"]["formation"], "Dime 3-2 Odd")
 
     def test_scope_turns_on_only_for_a_confirmed_architect_book(self) -> None:
         self.assertFalse(defense_coordinator._installed_scope(self.db, {}))

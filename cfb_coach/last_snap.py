@@ -21,6 +21,20 @@ _RESULT_HEAD = re.compile(
     re.I,
 )
 _BARE_YARDS = re.compile(r"^\d{1,2}$")
+_SITUATION_TOKENS = re.compile(
+    r"\d\s*&\s*(?:\d+|goal|g)\b|\b(?:my|opp|own|their|our)\s*\d{1,2}\b|\b(?:d|def|defense|offense)\b|"
+    r"\bq[1-5]\b|\b[1-4](?:st|nd|rd|th)\s*(?:q|qtr|quarter)?\b|\bclock\s*\d{1,2}:\d{2}\b|\b\d{1,2}:\d{2}\b|"
+    r"\b\d{1,2}\s*-\s*\d{1,2}\b|\b(?:rz|red\s*zone|gl|goal\s*line|2\s*min|two[\s-]*minute|hurry|"
+    r"kickoff|kick\s*off|after\s+punt|touchback|midfield)\b",
+    re.I,
+)
+
+
+def leftover_play_text(raw: str | None) -> str:
+    """What is left on a situation line after down, spot, quarter, clock and score."""
+    text = _SITUATION_TOKENS.sub(" ", raw or "")
+    text = re.sub(r"\s+", " ", text).strip(" ,.;:-")
+    return text if re.search(r"[a-z]{3}", text, re.I) else ""
 
 
 @dataclass
@@ -497,11 +511,18 @@ class LastSnapBook:
         side = getattr(self.call, "side", None) or "offense"
         their_look = normalize_opp_look(their)
         cov, concept = _prev_look(self.parse_situation, their_look or "", side)
-        if their_look and not cov and not concept and str(side).lower().startswith("d"):
+        defense = str(side).lower().startswith("d")
+        if their_look and not cov and not concept and defense:
             # On defense "they ran" is the opponent's play call, named or not.
             concept = their_look
+        if defense and not cov and not concept:
+            typed = _RESULT_HEAD.match((outcome or "").strip())
+            if typed and (typed.group("rest") or "").strip():
+                concept = typed.group("rest").strip()
         if next_raw and not cov and not concept:
             cov, concept = _prev_look(self.parse_situation, next_raw, side)
+            if defense and not cov and not concept:
+                concept = leftover_play_text(next_raw) or None
         canon = parse_outcome(outcome).to_result_text()
         status = (executed_status or "unknown").strip().lower()
         # Never promote a recommendation to a verified execution without evidence.

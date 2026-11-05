@@ -1075,6 +1075,34 @@ def _defense_v1_concepts(extras: Mapping[str, Any], db: Any, session: str) -> li
     return [record.concept for record in records if record.concept]
 
 
+def _defense_v1_results(extras: Mapping[str, Any], db: Any, session: str) -> list[tuple[str, str, bool | None]]:
+    """This game's shown calls with whether the offense won the snap. An explicit list wins."""
+    supplied = extras.get("defense_v1_results")
+    if isinstance(supplied, (list, tuple)):
+        return [tuple(item) for item in supplied]  # type: ignore[misc]
+    if db is None or not session or session == "defense-pilot":
+        return []
+    from cfb_coach.madden.model.defense_v1 import offense_won
+
+    try:
+        snaps = db.get_session_snaps(session)
+    except Exception:  # noqa: BLE001 — never break a live call
+        return []
+    out: list[tuple[str, str, bool | None]] = []
+    for snap in snaps:
+        def cell(key: str) -> Any:
+            try:
+                return snap[key]
+            except (KeyError, IndexError, TypeError):
+                return getattr(snap, key, None)
+
+        if (cell("side") or "offense") != "defense" or not cell("formation") or not cell("play"):
+            continue
+        out.append((str(cell("formation")), str(cell("play")),
+                    offense_won(cell("result"), cell("down"), cell("distance"))))
+    return out
+
+
 def _installed_scope(db: Any, extras: Mapping[str, Any]) -> bool:
     """Rank only installed calls once the defense book came from a confirmed architect proposal."""
     override = extras.get("defense_v1_installed_scope")
@@ -1116,6 +1144,7 @@ def _apply_defense_v1(
     error: defense_v1.DefenseV1Error | None = None
     recent = _defense_v1_recent(extras, db, session)
     concepts = _defense_v1_concepts(extras, db, session)
+    results = _defense_v1_results(extras, db, session)
     try:
         from cfb_coach.madden.model.opponent_tendencies import build_defense_profile
 
@@ -1141,6 +1170,7 @@ def _apply_defense_v1(
             recent_concepts=concepts,
             opponent_profile=opponent_profile,
             installed_scope=installed_scope,
+            recent_results=results,
         )
         picked = scored["pick"]
         if getattr(call, "macro", None) or getattr(call, "adjustment", None):
@@ -1187,12 +1217,13 @@ def _apply_defense_v1(
         )
         if guard:
             note += f" guard={guard}"
+        live_summary = str(scored.get("live_summary") or "") if scored else ""
         if installed_scope:
             note += " scope=confirmed architect book"
             if picked.get("mapped"):
                 note += " (scored by coverage family and package)"
-            if scored and scored.get("live_summary"):
-                note += f" | {scored['live_summary']}"
+        if live_summary:
+            note += f" | {live_summary}"
         tendency_summary = str(scored.get("tendency_summary") or "") if scored else ""
         if tendency_summary:
             note += f" tendencies: {tendency_summary}"
@@ -1213,6 +1244,12 @@ def _apply_defense_v1(
             from cfb_coach.madden.model.opponent_tendencies import opponent_context_key
 
             detail = defense_v1.comparison_detail(record)
+            if guard:
+                detail = f"{detail}; guard={guard}"
+            if installed_scope:
+                detail = f"{detail}; scope=confirmed architect book"
+            if live_summary:
+                detail = f"{detail}; {live_summary}"
             if tendency_summary:
                 detail = f"{detail}; tendencies: {tendency_summary}"
             decision = replace(

@@ -107,5 +107,98 @@ class RepeatAndTurnoverTests(unittest.TestCase):
         self.assertEqual(other, 0.0)
 
 
+def _dsit(down, distance, yardline):
+    return SimpleNamespace(down=down, distance=distance, yardline=yardline, red_zone=False,
+                           goal_line=False, short_yardage=False, side="defense")
+
+
+class LightBoxTests(unittest.TestCase):
+    def test_dime_needs_a_passing_down_or_a_pass_first_opponent(self):
+        from cfb_coach.madden.model.defense_v1 import light_box_allowed
+
+        self.assertFalse(light_box_allowed(_dsit(1, 7, 7), 0.1))      # inside our 20
+        self.assertFalse(light_box_allowed(_dsit(3, 4, 27), 0.1))     # short yardage
+        self.assertFalse(light_box_allowed(_dsit(4, 4, 21), 0.1))
+        self.assertTrue(light_box_allowed(_dsit(3, 8, 40), 0.9))      # obvious passing down
+        self.assertFalse(light_box_allowed(_dsit(1, 10, 33), 0.54))   # balanced opponent
+        self.assertFalse(light_box_allowed(_dsit(1, 10, 33), None))   # unknown run share
+        self.assertTrue(light_box_allowed(_dsit(1, 10, 33), 0.3))
+
+    def test_inside_the_five_wants_a_heavy_front(self):
+        from cfb_coach.madden.model.defense_v1 import _wants_heavy_front
+
+        self.assertTrue(_wants_heavy_front(_dsit(3, 4, 4)))
+        self.assertFalse(_wants_heavy_front(_dsit(1, 10, 33)))
+
+    def test_situation_guard_drops_light_boxes(self):
+        from cfb_coach.madden.model.defense_v1 import _guarded_ranked
+
+        rows = [{"formation": "Dime 3-2 Odd", "play": "Cover 3", "package": "dime"},
+                {"formation": "Nickel Over", "play": "Cover 3", "package": "nickel"}]
+        kept, guard = _guarded_ranked(rows, _dsit(1, 10, 40), False, light_ok=False)
+        self.assertEqual([r["formation"] for r in kept], ["Nickel Over"])
+        self.assertEqual(guard, "no_light_box_situation")
+
+
+class LiveResultTests(unittest.TestCase):
+    def test_offense_win_is_graded_against_the_sticks(self):
+        from cfb_coach.madden.model.defense_v1 import offense_won
+
+        self.assertTrue(offense_won("td", 1, 10))
+        self.assertFalse(offense_won("+2", 1, 10))
+        self.assertTrue(offense_won("+5", 1, 10))
+        self.assertFalse(offense_won("+3", 3, 4))
+        self.assertTrue(offense_won("+6", 2, 10))
+        self.assertFalse(offense_won("incomplete", 2, 10))
+        self.assertIsNone(offense_won(None, 1, 10))
+
+    def test_a_beaten_coverage_family_is_pushed_down(self):
+        from cfb_coach.madden.model.defense_v1 import _live_result_adjust
+
+        ranked = [
+            {"formation": "Nickel Over", "play": "Cover 1 Hole", "family": "one_high_man", "package": "nickel",
+             "offense_success": 0.40},
+            {"formation": "Nickel Over", "play": "Cover 3 Match", "family": "cover3", "package": "nickel",
+             "offense_success": 0.42},
+        ]
+        results = [("4-3 Over", "Cover 1 Hole", True)] * 4 + [("4-3 Over", "Cover 3 Sky", False)] * 2
+        summary = _live_result_adjust(ranked, results)
+        self.assertEqual(ranked[0]["play"], "Cover 3 Match")
+        self.assertIn("man 4/4", summary)
+
+
+class DefensiveLoggingTests(unittest.TestCase):
+    def test_leftover_text_on_a_situation_line_is_their_play(self):
+        from cfb_coach.last_snap import leftover_play_text
+
+        self.assertEqual(leftover_play_text("3&4 my 27 trail shake"), "trail shake")
+        self.assertEqual(leftover_play_text("1&10 opp 30 q2 7-14"), "")
+        self.assertEqual(leftover_play_text("2&7 my 43 clock 5:15"), "")
+
+    def test_close_from_form_keeps_unnamed_calls_and_td_plays(self):
+        import tempfile
+        from pathlib import Path
+
+        from cfb_coach.db import CoachDB
+        from cfb_coach.last_snap import LastSnapBook
+        from cfb_coach.madden.playcaller import MaddenCall
+        from cfb_coach.madden.situation import parse_madden_situation
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db = CoachDB(Path(tmp) / "t.db")
+            try:
+                book = LastSnapBook(db=db, opponent_id="dillon", parse_situation=parse_madden_situation,
+                                    session_id="g1")
+                call = MaddenCall("defense", "Nickel Over", "Cover 3 Match", "No adj", "User hook", "")
+                book.remember_call(call, parse_madden_situation("1&10 my 40", default_side="defense"))
+                book.close_from_form("+6", "", next_raw="2&4 my 34 trail shake")
+                self.assertEqual(book.concept, "trail shake")
+                book.remember_call(call, parse_madden_situation("2&4 my 34", default_side="defense"))
+                book.close_from_form("td hb scissors", "")
+                self.assertEqual(book.concept, "hb scissors")
+            finally:
+                db.close()
+
+
 if __name__ == "__main__":
     unittest.main()
