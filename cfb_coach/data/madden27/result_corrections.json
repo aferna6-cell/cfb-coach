@@ -1,0 +1,13 @@
+{
+  "schema": "madden27.result_corrections.v1",
+  "note": "Read-side corrections for owner-reported final scores. The stored row is not modified; a correction applies only while the stored score still equals stored_score.",
+  "corrections": {
+    "3d9b477c10df4827": {
+      "stored_score": "42-7",
+      "score": "35-7",
+      "result_wl": "W",
+      "reason": "Owner reported the final as 35-7; 42-7 was a data-entry error. The snap log also reconciles to 35-7.",
+      "reported": "2026-11-05"
+    }
+  }
+}
