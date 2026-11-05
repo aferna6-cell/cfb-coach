@@ -1,0 +1,27 @@
+name: Adaptive Madden CPU branch tests
+
+on:
+  push:
+    branches:
+      - madden-ml/adaptive-cpu-playbook-20261105
+  workflow_dispatch:
+
+jobs:
+  unit-and-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install editable package and pytest
+        run: |
+          python -m pip install -e .
+          python -m pip install pytest
+      - name: Adaptive Madden unit tests
+        run: |
+          PYTHONPATH=. python -m pytest -q             tests/madden_ml/test_adaptive_cpu_playbook.py             tests/madden_ml/test_week5_clock_evidence.py             tests/madden_ml/test_week4_redzone_actions.py             tests/madden_ml/test_cpu_audit_fixes.py
+      - name: Compile changed code
+        run: |
+          python -m py_compile             cfb_coach/madden/model/offense_outcome_adaptation.py             cfb_coach/madden/model/offense_formation_rotation.py             cfb_coach/madden/model/offense_selection_policy.py             cfb_coach/madden/model/offense_portfolio.py             cfb_coach/madden/cli.py cfb_coach/live_server.py             scripts/repair_madden_cpu_final_score.py             scripts/evaluate_madden_offense_candidate.py
