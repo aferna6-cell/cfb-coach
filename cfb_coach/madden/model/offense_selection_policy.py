@@ -81,6 +81,9 @@ def choose_model_play(
     opponent_type: str = "cpu",
     session_id: str | None = None,
     snap_seq: int | None = None,
+    outcome_history: Sequence[Mapping[str, Any]] = (),
+    rotation_db: Any = None,
+    rotation_opponent_id: str = "",
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Pick from top model-backed choices, with long-horizon exposure costs.
 
@@ -158,6 +161,19 @@ def choose_model_play(
         row["selection_policy"] = POLICY
         choices.append(row)
 
+    # Adjust only selection utility: keep calibrated model probabilities raw.
+    # The first layer consumes VERIFIED historical outcomes, and the second
+    # rotates the active formation strategy solely on modeled advantage.
+    from cfb_coach.madden.model.offense_outcome_adaptation import apply_outcome_adaptation
+    from cfb_coach.madden.model.offense_formation_rotation import apply_formation_rotation
+
+    choices, outcome_audit = apply_outcome_adaptation(
+        choices, sit=sit, history=outcome_history, session_id=session_id,
+    )
+    choices, formation_audit = apply_formation_rotation(
+        choices, db=rotation_db, opponent_id=rotation_opponent_id,
+        session_id=session_id,
+    )
     choices.sort(
         key=lambda r: (-r["selection_score"], -float(r["probability"]),
                        r.get("uncertainty", 1.0), r["formation"], r["play"])
@@ -265,6 +281,8 @@ def choose_model_play(
 
     audit = {
         "policy": POLICY,
+        "outcome_adaptation": outcome_audit,
+        "formation_rotation": formation_audit,
         "recent_calls_used": len(recent),
         "top_original": [ranked[0]["formation"], ranked[0]["play"]],
         "top_selected": [chosen["formation"], chosen["play"]],
@@ -294,11 +312,15 @@ def select_from_database(
     sit: Any = None, opponent_type: str = "cpu",
     session_id: str | None = None, snap_seq: int | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    from cfb_coach.madden.model.offense_outcome_adaptation import verified_history
+
     return choose_model_play(
         ranked,
         recent_calls=_recent_calls(db, opponent_id, session_id=session_id),
         sit=sit, opponent_type=opponent_type,
         session_id=session_id, snap_seq=snap_seq,
+        outcome_history=verified_history(db, opponent_id),
+        rotation_db=db, rotation_opponent_id=opponent_id,
     )
 
 
