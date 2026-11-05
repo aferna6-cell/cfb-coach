@@ -517,6 +517,40 @@ def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None
     return profile
 
 
+PRIOR_HANDOFF = 12
+
+
+def with_pooled_prior(db: Any, own: Mapping[str, Any] | None, sit: Any, opponent_id: str) -> dict[str, Any]:
+    """A thin human profile leaned toward the league prior, handing off as his snaps pile up.
+
+    His own share weighs n / (n + 12): about a third after 6 logged plays, half after 12.
+    """
+    own = dict(own or empty_profile(opponent_id))
+    n = float(own.get("n") or 0)
+    if n >= 4 * PRIOR_HANDOFF:
+        return own
+    prior = pooled_human_profile(db, sit, exclude=opponent_id)
+    if int(prior.get("n") or 0) <= 0 or prior.get("run_share") is None:
+        return own
+    if n <= 0 or own.get("run_share") is None:
+        return prior
+    w = n / (n + PRIOR_HANDOFF)
+    keys = set(own.get("concepts") or {}) | set(prior.get("concepts") or {})
+    concepts = {
+        k: w * float((own.get("concepts") or {}).get(k, 0.0)) + (1 - w) * float(prior["concepts"].get(k, 0.0))
+        for k in keys
+    }
+    blended = dict(own)
+    blended.update(
+        run_share=w * float(own["run_share"]) + (1 - w) * float(prior["run_share"]),
+        concepts=_shares(concepts),
+        shrink=max(float(own.get("shrink") or 0.0), (1 - w) * float(prior.get("shrink") or 0.0)),
+        scope=f"his {int(n)} plays + league prior",
+    )
+    blended["summary"] = f"{round(100 * w)}% his own, rest league prior: " + format_defense_summary(blended)
+    return blended
+
+
 def format_defense_summary(profile: Mapping[str, Any] | None) -> str:
     if not profile or int(profile.get("n") or 0) <= 0 or profile.get("run_share") is None:
         return "no learned tendencies"

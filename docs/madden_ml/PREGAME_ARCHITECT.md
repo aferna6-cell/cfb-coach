@@ -79,8 +79,9 @@ individual score.
   from scratch and shown, with the gain each unchosen formation would add.
 - **Unknown human.** With no snaps of his own, the defense is designed
   against a prior pooled from every other human opponent, weighted by
-  evidence, at half the usual shrink (capped at 0.4). His own snaps replace it
-  once they are logged.
+  evidence, at half the usual shrink (capped at 0.4). During the game the live
+  defense hands off gradually: his own plays weigh n / (n + 12), so about a
+  third after 6 logged plays and half after 12.
 
 **No rotation.** Nothing changes on a timer, a game count, a snap count, or a
 win or loss. A formation enters, leaves, or comes back only when the portfolio
@@ -178,6 +179,9 @@ When the defensive book came from a confirmed proposal, the defense model:
   down and base or heavy fronts move up as his run share climbs. This uses
   only his plays (the concept you type on the situation line), never whether
   our call was executed;
+  Recognized names include zone, stretch, dive, power, counter, duo, iso,
+  toss, trap, draw, sweep, option runs, QB runs, mesh, crossers, slants,
+  drive, dagger, verticals, go, post, flood, stick, smash, curl flat, and RPOs;
 - falls back to the established caller when no installed play has a
   coverage it can score, or on a short-yardage or goal-line down with no
   heavy front installed. Fallback reason: `installed_gap`;

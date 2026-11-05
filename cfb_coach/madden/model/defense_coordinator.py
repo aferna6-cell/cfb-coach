@@ -1120,10 +1120,10 @@ def _apply_defense_v1(
         from cfb_coach.madden.model.opponent_tendencies import build_defense_profile
 
         opponent_profile = build_defense_profile(db, opponent_id, sit)
-        if int((opponent_profile or {}).get("n") or 0) == 0 and not is_cpu_opponent(opponent_id):
-            from cfb_coach.madden.model.opponent_tendencies import pooled_human_profile
+        if opponent_id and not is_cpu_opponent(opponent_id):
+            from cfb_coach.madden.model.opponent_tendencies import with_pooled_prior
 
-            opponent_profile = pooled_human_profile(db, sit, exclude=opponent_id)
+            opponent_profile = with_pooled_prior(db, opponent_profile, sit, opponent_id)
     except Exception:  # noqa: BLE001 — tendency lookup must not block the call
         opponent_profile = None
     seed = extras.get("defense_v1_seed")

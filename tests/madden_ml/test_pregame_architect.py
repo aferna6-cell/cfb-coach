@@ -476,6 +476,35 @@ class LiveScopeTests(_DBCase):
         out = defense_v1.pick_call(art, sit, book, installed_scope=True)
         self.assertEqual(out["pick"]["formation"], "46 Normal")
 
+    def test_common_madden_concept_names_reach_the_live_adjustment(self) -> None:
+        from cfb_coach.madden.situation import concept_family, parse_madden_situation
+
+        expected = {
+            "Power": "run", "Counter": "run", "HB Draw": "run", "Duo": "run", "Toss": "run", "Run": "run",
+            "Read Option": "run", "QB Draw": "scram", "Smash": "flood", "Curl Flat": "flood",
+            "Drive": "cross", "Mesh": "cross", "Go": "vert", "Four Verticals": "vert",
+            "Mtn Shuffle Verts Smash": "vert", "Mtn RPO Zone Alert": "rpo",
+        }
+        for name, family in expected.items():
+            self.assertEqual(concept_family(name), family, name)
+        self.assertIsNone(concept_family("Goal line"))
+        for raw, hint in [("2&6 own 34 power", "Power"), ("3&4 HB draw", "HB Draw"), ("2&7 read option", "Read Option")]:
+            self.assertEqual(parse_madden_situation(raw, default_side="defense").concept_hint, hint)
+        self.assertEqual(parse_madden_situation("2&7 cover 2 trap").coverage_hint, "Cover 2")
+
+    def test_a_thin_human_profile_hands_off_from_the_league_prior(self) -> None:
+        from cfb_coach.madden.model import opponent_tendencies as ot
+
+        prior = {"n": 160, "run_share": 0.4, "concepts": {"run": 0.4, "cross": 0.6}, "shrink": 0.4}
+        own = {"n": 12, "run_share": 1.0, "concepts": {"run": 1.0}, "shrink": 0.3}
+        with mock.patch.object(ot, "pooled_human_profile", return_value=prior):
+            blended = ot.with_pooled_prior(None, own, None, "dillon")
+            self.assertAlmostEqual(blended["run_share"], 0.7)
+            self.assertIn("50% his own", blended["summary"])
+            self.assertIs(ot.with_pooled_prior(None, {}, None, "dillon"), prior)
+            seasoned = dict(own, n=60)
+            self.assertEqual(ot.with_pooled_prior(None, seasoned, None, "dillon")["run_share"], 1.0)
+
     def test_a_run_heavy_game_moves_the_defense_out_of_light_boxes(self) -> None:
         art = _artifact(("Dime 3-2 Odd", "Cover 3"), ("Dime 3-2 Odd", "Cover 1"), gap=0.02)
         art = dict(art, packages=["base", "dime", "four_three"],

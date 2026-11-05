@@ -42,7 +42,14 @@ _CONCEPT_HINTS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"clamp|\bstack\b|\bbunch\b", re.I), "Clamp Stack / Bunch"),
     (re.compile(r"\brpo\b|bubble", re.I), "RPO bubble"),
     (re.compile(r"\bscreen\b", re.I), "Screen"),
-    (re.compile(r"scram(?:ble)?|qb\s*run|qb\s*draw", re.I), "QB scramble"),
+    (re.compile(r"scram(?:ble)?|qb\s*run|qb\s*draw|qb\s*sneak|\bsneak\b", re.I), "QB scramble"),
+    (re.compile(r"read\s*option|zone\s*read|speed\s*option|triple\s*option", re.I), "Read Option"),
+    (re.compile(r"\bpower\b", re.I), "Power"),
+    (re.compile(r"\bcounter\b", re.I), "Counter"),
+    (re.compile(r"\bdraw\b", re.I), "HB Draw"),
+    (re.compile(r"\bsweep\b|pin\s*pull", re.I), "Sweep"),
+    (re.compile(r"curl\s*flat|\bcurls?\b", re.I), "Curl Flat"),
+    (re.compile(r"\bdagger\b", re.I), "Dagger"),
     (re.compile(r"same\s*side\s*zone", re.I), "Same Side Zone"),
     (re.compile(r"mid\s*zone", re.I), "Mid Zone"),
     (re.compile(r"hb\s*dive|\bdive\b", re.I), "HB Dive"),
@@ -67,11 +74,25 @@ _EXPLICIT_RZ = re.compile(
 )
 
 
+_OPTION_RUN = re.compile(r"\b(zone\s*read|read\s*option|speed\s*option|triple\s*option|option\s*run)\b")
+_QB_RUN = re.compile(r"\bqb\s*(draw|run|power|sweep|sneak|counter)\b")
+_RUN_WORDS = re.compile(
+    r"\b(power|counter|duo|iso|toss|trap|draws?|sweep|pitch|dart|lead|blast|pin\s*pull|sneak|wham|runs?)\b"
+)
+_SIDELINE_PASS = re.compile(r"\b(smash|corner|curls?|hitch|snag|spacing|spot|outs?|whip|flat)\b")
+_MIDDLE_PASS = re.compile(r"\b(drive|shallow|dagger|levels|drags?|ins?|digs?)\b")
+_DEEP_PASS = re.compile(r"\b(go|fade|posts?|streaks?|deep|bomb)\b")
+
+
 def concept_family(concept: str | None) -> str | None:
     """Madden concept → macro family (vert / flood / cross / stack / scram / run / rpo)."""
     c = (concept or "").lower()
     if not c:
         return None
+    if _QB_RUN.search(c):
+        return "scram"
+    if _OPTION_RUN.search(c):
+        return "run"
     if any(k in c for k in ("stick", "flood", "sail", "salem", "bench")):
         return "flood"
     if any(k in c for k in ("vert", "double post", "wheel", "seam", "clear deep")):
@@ -84,8 +105,14 @@ def concept_family(concept: str | None) -> str | None:
         return "scram"
     if "rpo" in c or "bubble" in c:
         return "rpo"
-    if any(k in c for k in ("zone", "stretch", "dive")):
+    if any(k in c for k in ("zone", "stretch", "dive")) or _RUN_WORDS.search(c):
         return "run"
+    if _SIDELINE_PASS.search(c):
+        return "flood"
+    if _MIDDLE_PASS.search(c):
+        return "cross"
+    if _DEEP_PASS.search(c):
+        return "vert"
     return None
 
 
