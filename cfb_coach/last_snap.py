@@ -81,6 +81,9 @@ def classify_last_snap(
         return None
     cov = getattr(look, "coverage_hint", None) if look is not None else None
     concept = getattr(look, "concept_hint", None) if look is not None else None
+    if result is not None and rest and not cov and not concept and str(side).lower().startswith("d"):
+        # On defense the text after the result is the opponent's play call, named or not.
+        concept = rest
     if result is None and not cov and not concept:
         return None
     canon = parse_outcome(result).to_result_text() if result else None
@@ -494,6 +497,9 @@ class LastSnapBook:
         side = getattr(self.call, "side", None) or "offense"
         their_look = normalize_opp_look(their)
         cov, concept = _prev_look(self.parse_situation, their_look or "", side)
+        if their_look and not cov and not concept and str(side).lower().startswith("d"):
+            # On defense "they ran" is the opponent's play call, named or not.
+            concept = their_look
         if next_raw and not cov and not concept:
             cov, concept = _prev_look(self.parse_situation, next_raw, side)
         canon = parse_outcome(outcome).to_result_text()

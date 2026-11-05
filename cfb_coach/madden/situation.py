@@ -79,7 +79,7 @@ _QB_RUN = re.compile(r"\bqb\s*(draw|run|power|sweep|sneak|counter)\b")
 _RUN_WORDS = re.compile(
     r"\b(power|counter|duo|iso|toss|trap|draws?|sweep|pitch|dart|lead|blast|pin\s*pull|sneak|wham|runs?)\b"
 )
-_SIDELINE_PASS = re.compile(r"\b(smash|corner|curls?|hitch|snag|spacing|spot|outs?|whip|flat)\b")
+_SIDELINE_PASS = re.compile(r"\b(smash|corner|curls?|hitch|snag|spacing|spot|outs?|whip|flat|boot|bootleg|rollout)\b")
 _MIDDLE_PASS = re.compile(r"\b(drive|shallow|dagger|levels|drags?|ins?|digs?)\b")
 _DEEP_PASS = re.compile(r"\b(go|fade|posts?|streaks?|deep|bomb)\b")
 

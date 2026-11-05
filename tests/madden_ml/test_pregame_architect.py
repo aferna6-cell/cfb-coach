@@ -515,6 +515,16 @@ class LiveScopeTests(_DBCase):
             self.assertEqual(parse_madden_situation(raw, default_side="defense").concept_hint, hint)
         self.assertEqual(parse_madden_situation("2&7 cover 2 trap").coverage_hint, "Cover 2")
 
+    def test_any_typed_opponent_play_call_is_saved_on_defense(self) -> None:
+        from cfb_coach.last_snap import classify_last_snap
+        from cfb_coach.madden.situation import concept_family
+
+        spec = classify_last_snap("+5 PA Boot Over", parse_madden_situation, side="defense")
+        self.assertEqual(spec["concept"], "PA Boot Over")
+        self.assertEqual(concept_family(spec["concept"]), "flood")
+        self.assertEqual(classify_last_snap("+4 power", parse_madden_situation, side="defense")["concept"], "Power")
+        self.assertIsNone(classify_last_snap("+5 PA Boot Over", parse_madden_situation, side="offense")["concept"])
+
     def test_a_thin_human_profile_hands_off_from_the_league_prior(self) -> None:
         from cfb_coach.madden.model import opponent_tendencies as ot
 
