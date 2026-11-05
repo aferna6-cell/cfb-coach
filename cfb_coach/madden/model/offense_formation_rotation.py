@@ -13,8 +13,8 @@ import json
 from typing import Any, Mapping, Sequence
 
 POLICY = "model_discretionary_formation_pool.v1"
-ENTER_GAP = 0.052
-STAY_GAP = 0.082
+ENTER_GAP = 0.013
+STAY_GAP = 0.027
 OUTSIDE_PENALTY = 0.012  # soft preference only; NEVER excludes a legal play
 
 
@@ -48,11 +48,18 @@ def choose_active_formations(
     can remain as long as competitive and can enter at the very next call.
     No fixed maximum active count, no forced substitution, no rotation period.
     """
-    best_by_form: dict[str, float] = {}
+    by_formation: dict[str, list[float]] = {}
     for item in ranked:
         form = str(item.get("formation") or "")
         if form:
-            best_by_form[form] = max(best_by_form.get(form, -1.0), _score(item))
+            by_formation.setdefault(form, []).append(_score(item))
+    # A single highly ranked play should not keep an otherwise weak formation
+    # permanently installed in the active tactical set. Judge the top three
+    # *legal* model-backed options; different downs can change their ordering.
+    best_by_form = {
+        form: sum(sorted(scores, reverse=True)[:3]) / min(3, len(scores))
+        for form, scores in by_formation.items() if scores
+    }
     if not best_by_form:
         return [], {"reason": "no legal formation", "entered": [], "exited": []}
     ceiling = max(best_by_form.values())
@@ -67,7 +74,7 @@ def choose_active_formations(
     # scores, all of them may remain active.
     ordered = sorted(active, key=lambda f: (-best_by_form[f], f))
     return ordered, {
-        "reason": "formation model scores crossed relative entry/stay bands",
+        "reason": "model top-three legal play utility crossed relative entry/stay bands",
         "entered": sorted(active - prior),
         "exited": sorted(prior - active),
         "best_score": round(ceiling, 6),
