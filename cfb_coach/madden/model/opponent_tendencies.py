@@ -472,6 +472,51 @@ def build_defense_profile(db: Any, opponent_id: str, sit: Any = None) -> dict[st
     return profile
 
 
+POOLED_SHRINK_SCALE = 0.5
+POOLED_SHRINK_CAP = 0.4
+
+
+def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None) -> dict[str, Any]:
+    """A starting prior for a human opponent with no history: every other human, pooled.
+
+    Weighted by each opponent's evidence. Shrink is halved and capped at 0.4,
+    so the opponent's own snaps take over as soon as they are logged.
+    """
+    from cfb_coach.opponents import is_cpu_opponent
+
+    profile = empty_profile(exclude)
+    try:
+        ids = sorted({str(r[0]) for r in db.conn.execute(
+            "SELECT id FROM opponents UNION SELECT opponent_id FROM tendencies "
+            "UNION SELECT opponent_id FROM snaps WHERE side = 'defense'"
+        ).fetchall() if r[0]})
+    except Exception:  # noqa: BLE001
+        return profile
+    runs = total = 0.0
+    concepts: dict[str, float] = {}
+    used = 0
+    for oid in ids:
+        if oid == exclude or is_cpu_opponent(oid):
+            continue
+        p = build_defense_profile(db, oid, sit)
+        n = float(p.get("n") or 0)
+        if n <= 0 or p.get("run_share") is None:
+            continue
+        used += 1
+        total += n
+        runs += n * float(p["run_share"])
+        for name, share in (p.get("concepts") or {}).items():
+            concepts[name] = concepts.get(name, 0.0) + n * float(share)
+    if total <= 0:
+        return profile
+    profile.update(
+        n=int(total), run_share=runs / total, concepts=_shares(concepts), scope="pooled human opponents",
+        shrink=min(POOLED_SHRINK_CAP, POOLED_SHRINK_SCALE * _shrink(total)), pooled_from=used,
+    )
+    profile["summary"] = f"league prior from {used} human opponents: " + format_defense_summary(profile)
+    return profile
+
+
 def format_defense_summary(profile: Mapping[str, Any] | None) -> str:
     if not profile or int(profile.get("n") or 0) <= 0 or profile.get("run_share") is None:
         return "no learned tendencies"

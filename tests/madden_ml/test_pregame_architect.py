@@ -180,6 +180,24 @@ class PortfolioSearchTests(unittest.TestCase):
         self.assertEqual([c["id"] for c in one[0]], [c["id"] for c in two[0]])
         self.assertIn("timer", arch.no_schedule_statement())
 
+    def test_installed_formations_stay_until_the_book_is_full(self) -> None:
+        recs = [r for r in catalog_full.formation_records("defense") if r["source_book"] == "49ers"][:4]
+        weak = recs[0]
+        applied = {"name": "Old", "formations": {weak["formation"]: list(weak["plays"])},
+                   "formation_sources": {weak["formation"]: "49ers"}}
+        bad = {"formation": {weak["formation"]: {"delta": -0.8, "n": 80}}, "verified_executions": 80}
+        loose = arch.design_side("defense", opponent_id="ryan", db=None, applied=applied, evidence=bad,
+                                 evidence_quality="empirical", remove_only_when_full=False)
+        kept = arch.design_side("defense", opponent_id="ryan", db=None, applied=applied, evidence=bad,
+                                evidence_quality="empirical")
+        self.assertIn(weak["formation"], loose["changes"]["remove"])
+        self.assertEqual(kept["changes"]["remove"], [])
+        self.assertIn(weak["formation"], kept["book"]["formations"])
+        self.assertIn("15", kept["objective"]["removal_policy"])
+        full = arch.design_side("defense", opponent_id="ryan", db=None, applied=applied, evidence=bad,
+                                evidence_quality="empirical", max_formations=1)
+        self.assertNotIn(weak["formation"], full["book"]["formations"])
+
     def test_switching_a_formation_to_a_better_source_book_is_not_an_add_and_remove(self) -> None:
         from cfb_coach.madden.defense_select import FAMILIES
 
@@ -319,6 +337,36 @@ class InstallWorkflowTests(_DBCase):
         with self.assertRaises(install.InstallError):
             install.rollback(self.db, root=self.root, side="offense", attestation=ATTEST)
 
+    def test_macro_approvals_survive_a_book_that_only_adds(self) -> None:
+        key = "ml_offense_verified_macros.v1:cpu"
+        first = self.stage("offense", n=2)
+        self.confirm(first)
+        self.db.set_meta(key, "approved")
+        grown = _manual_design("offense", n=3)
+        p = install.build_proposal(grown, opponent_id="ryan", applied=playbook.load_books(self.db)["offense"])
+        install.save_proposals(self.root, "ryan", {"offense": p})
+        out = self.confirm(p)
+        self.assertTrue(out["macro_approvals"].startswith("kept"))
+        self.assertEqual(self.db.get_meta(key), "approved")
+        shrunk = self.stage("offense", n=2, skip=3)
+        out = self.confirm(shrunk)
+        self.assertTrue(out["macro_approvals"].startswith("revoked"))
+        self.assertEqual(self.db.get_meta(key), "")
+
+    def test_an_unknown_human_starts_from_a_pooled_prior(self) -> None:
+        from cfb_coach.madden.model.opponent_tendencies import pooled_human_profile
+
+        self.assertEqual(pooled_human_profile(self.db, None, exclude="dillon")["n"], 0)
+        self.db.bump_tendency("ryan", "offense_concept", "Inside Zone", amount=12)
+        self.db.bump_tendency("ryan", "offense_concept", "Mesh", amount=4)
+        self.db.bump_tendency("cpu", "offense_concept", "Four Verticals", amount=40)
+        self.db.bump_tendency("dillon", "offense_concept", "Stick", amount=40)
+        pooled = pooled_human_profile(self.db, None, exclude="dillon")
+        self.assertEqual(pooled["n"], 16)
+        self.assertAlmostEqual(pooled["run_share"], 0.75)
+        self.assertLessEqual(pooled["shrink"], 0.4)
+        self.assertIn("league prior", pooled["summary"])
+
     def test_ordinary_prep_does_not_rewrite_a_confirmed_architect_book(self) -> None:
         p = self.stage("defense")
         self.confirm(p)
@@ -410,8 +458,38 @@ class LiveScopeTests(_DBCase):
         out = defense_v1.pick_call(art, sit, book, installed_scope=True)
         self.assertEqual(out["pick"]["formation"], "Nickel 2-4-5")
         with self.assertRaises(defense_v1.DefenseV1Error) as gap:
-            defense_v1.pick_call(art, sit, {"Dime 1-3-7": ["Cover 0"]}, installed_scope=True)
+            defense_v1.pick_call(art, sit, {"Dime 1-3-7": ["Spy Contain"]}, installed_scope=True)
         self.assertEqual(gap.exception.reason, "installed_gap")
+
+    def test_untrained_installed_plays_are_scored_by_coverage_family_and_package(self) -> None:
+        art = _artifact(("Nickel 2-4-5", "Cover 3"), ("Dime 1-3-7", "Cover 1"))
+        art = dict(art, packages=["base", "four_three", "nickel", "dime"],
+                   package_coefficients={"base": 0.0, "four_three": 0.0, "nickel": 0.0, "dime": 0.0})
+        art["call_families"] = ["shell", "pressure", "cover3", "one_high_man"]
+        art["family_coefficients"] = {"shell": 0.0, "pressure": 0.0, "cover3": -1.0, "one_high_man": 1.0}
+        book = {"46 Normal": ["Cover 3 Sky", "Cover 1 Robber"], "Nickel 2-4-5": ["Cover 3"]}
+        cands = defense_v1.installed_candidates(art, book)
+        mapped = {(c["formation"], c["play"]): c for c in cands if c.get("mapped")}
+        self.assertEqual(mapped[("46 Normal", "Cover 3 Sky")]["family"], "cover3")
+        self.assertEqual(mapped[("46 Normal", "Cover 3 Sky")]["package"], "four_three")
+        sit = Situation(raw="3&1", side="defense", down=3, distance=1, short_yardage=True)
+        out = defense_v1.pick_call(art, sit, book, installed_scope=True)
+        self.assertEqual(out["pick"]["formation"], "46 Normal")
+
+    def test_a_run_heavy_game_moves_the_defense_out_of_light_boxes(self) -> None:
+        art = _artifact(("Dime 3-2 Odd", "Cover 3"), ("Dime 3-2 Odd", "Cover 1"), gap=0.02)
+        art = dict(art, packages=["base", "dime", "four_three"],
+                   package_coefficients={"base": 0.0, "dime": -0.05, "four_three": 0.0})
+        art["call_families"] = ["shell", "pressure", "cover3"]
+        art["family_coefficients"] = {"shell": -0.02, "pressure": 0.02, "cover3": 0.0}
+        book = {"Dime 3-2 Odd": ["Cover 3", "Cover 1"], "4-3 Over": ["Cover 3 Sky"]}
+        sit = Situation(raw="1&10", side="defense", down=1, distance=10)
+        quiet = defense_v1.pick_call(art, sit, book, installed_scope=True)
+        self.assertEqual(quiet["pick"]["formation"], "Dime 3-2 Odd")
+        runs = ["Inside Zone", "Stretch", "Inside Zone", "Outside Zone", "Mesh"]
+        loud = defense_v1.pick_call(art, sit, book, installed_scope=True, recent_concepts=runs, run_heavy=False)
+        self.assertEqual(loud["pick"]["formation"], "4-3 Over")
+        self.assertIn("run 80%", loud["live_summary"])
 
     def test_heavy_front_downs_fall_back_when_no_known_heavy_front_is_installed(self) -> None:
         art = _artifact(("Nickel 2-4-5", "Cover 3"), ("Dime 1-3-7", "Cover 1"))
@@ -509,6 +587,19 @@ class CpuDefenseOptInTests(_DBCase):
         self.assertFalse(args.cpu_defense)
         args = build_parser().parse_args(["play", "--game", "madden27", "-o", "cpu", "--cpu-defense"])
         self.assertTrue(args.cpu_defense)
+
+    def test_game_prep_can_register_a_new_human(self) -> None:
+        from cfb_coach.cli import build_parser
+        from cfb_coach.madden.model.cli import cmd_ml_game_prep
+
+        db_path = Path(self.tmp.name) / "madden.db"
+        args = build_parser().parse_args(["ml", "game-prep", "--opponent", "dillon", "--new-opponent", "Dillon",
+                                          "--db", str(db_path), "--status", "--out", str(self.root)])
+        self.assertEqual(cmd_ml_game_prep(args), 0)
+        from cfb_coach.madden.human_opponents import is_cold_start_opponent, resolve_madden_opponent
+
+        self.assertTrue(is_cold_start_opponent("dillon", self.db))
+        self.assertEqual(resolve_madden_opponent("dillon", self.db), "dillon")
 
 
 if __name__ == "__main__":

@@ -116,6 +116,13 @@ def run_game_prep(db: Any, *, opponent_id: str, franchise: str = "primary", nfl_
     art, quality = _load_offense_artifact(db)
     off_ev = game_evidence.offense_evidence(db, opponent_id, before_ts=now)
     def_ev = game_evidence.defense_evidence(db, opponent_id, before_ts=now)
+    if kind == "human" and not int((def_ev.get("opponent_profile") or {}).get("n") or 0):
+        from cfb_coach.madden.model.opponent_tendencies import pooled_human_profile
+
+        pooled = pooled_human_profile(db, None, exclude=opponent_id)
+        if pooled.get("n"):
+            def_ev["opponent_profile"] = {k: pooled.get(k) for k in ("n", "shrink", "run_share", "concepts", "summary")}
+            def_ev["unknown_opponent_prior"] = pooled["summary"]
     designs = {
         "offense": playbook_architect.design_side(
             "offense", opponent_id=opponent_id, db=db, applied=applied.get("offense"), evidence=off_ev, art=art,
@@ -158,7 +165,8 @@ def run_game_prep(db: Any, *, opponent_id: str, franchise: str = "primary", nfl_
                                                          "repeated_failures", "label")},
                      "defense": {k: def_ev[k] for k in ("snaps", "verified_executions", "opponent_success_allowed",
                                                          "situation_allowed", "call_concentration",
-                                                         "opponent_profile", "labels")}},
+                                                         "opponent_profile", "labels")}
+                     | {"unknown_opponent_prior": def_ev.get("unknown_opponent_prior")}},
         "games_vs_opponent": games,
         "latest_games": latest_any,
         "concentration_alerts": concentration,
@@ -223,7 +231,11 @@ def limitations(pkg: Mapping[str, Any]) -> list[str]:
     out.append(f"Defense evidence: {ev['defense']['verified_executions']} verified defensive executions. Defensive "
                "formation choice rests on football priors, opponent tendencies and situation-level results, not "
                "verified call outcomes.")
-    if ev["defense"]["opponent_profile"].get("n"):
+    if ev["defense"].get("unknown_opponent_prior"):
+        out.append(f"{pkg['opponent']['name']} has no logged history. The plan and the first defensive calls lean on a "
+                   f"{ev['defense']['unknown_opponent_prior']} at reduced weight. His own snaps take over as you log "
+                   "them, and the live defense reacts to his last eight named concepts.")
+    elif ev["defense"]["opponent_profile"].get("n"):
         out.append(f"Opponent tendencies: {ev['defense']['opponent_profile']['summary']}.")
     out.append("Formation play lists come from Huddle.gg (third party). Nothing here was verified in your copy of Madden.")
     out.append("Editor limits (15 formations, 56 sets, 500 plays) come from madden.tools and are not verified in game.")
@@ -234,8 +246,9 @@ def limitations(pkg: Mapping[str, Any]) -> list[str]:
         out.append("Scouting notes were recorded for you; they do not change the scores.")
     cov = pkg["sides"]["defense"].get("model_coverage") or {}
     if cov.get("unknown"):
-        out.append("The installed defensive ML model has never seen " + ", ".join(cov["unknown"]) +
-                   "; it calls only formations it knows and the established coordinator covers the rest.")
+        out.append("The defensive ML model was trained on none of " + ", ".join(cov["unknown"]) +
+                   ". With a confirmed book it still scores their plays through each play's coverage family and "
+                   "package; plays with no recognizable coverage go to the established caller.")
     out.append("Scores are planning estimates, not win probabilities. No simulated alternative is claimed to have won a past game.")
     return out
 

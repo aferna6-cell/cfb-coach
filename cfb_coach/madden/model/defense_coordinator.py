@@ -1120,6 +1120,10 @@ def _apply_defense_v1(
         from cfb_coach.madden.model.opponent_tendencies import build_defense_profile
 
         opponent_profile = build_defense_profile(db, opponent_id, sit)
+        if int((opponent_profile or {}).get("n") or 0) == 0 and not is_cpu_opponent(opponent_id):
+            from cfb_coach.madden.model.opponent_tendencies import pooled_human_profile
+
+            opponent_profile = pooled_human_profile(db, sit, exclude=opponent_id)
     except Exception:  # noqa: BLE001 — tendency lookup must not block the call
         opponent_profile = None
     seed = extras.get("defense_v1_seed")
@@ -1185,6 +1189,10 @@ def _apply_defense_v1(
             note += f" guard={guard}"
         if installed_scope:
             note += " scope=confirmed architect book"
+            if picked.get("mapped"):
+                note += " (scored by coverage family and package)"
+            if scored and scored.get("live_summary"):
+                note += f" | {scored['live_summary']}"
         tendency_summary = str(scored.get("tendency_summary") or "") if scored else ""
         if tendency_summary:
             note += f" tendencies: {tendency_summary}"

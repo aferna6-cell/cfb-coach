@@ -1914,6 +1914,18 @@ def cmd_ml_game_prep(args: argparse.Namespace) -> int:
             return 1
         print(json.dumps(result, indent=2))
         return 0
+    if args.new_opponent:
+        from cfb_coach.madden.human_opponents import register_cold_start
+
+        wdb = open_explicit_madden_db(_require_db(args, "game-prep --new-opponent"), read_only=False)
+        try:
+            profile = register_cold_start(wdb, args.opponent, display_name=args.new_opponent)
+        except ValueError as exc:
+            print(f"refused: {exc} (nothing was written)", file=sys.stderr)
+            return 1
+        finally:
+            wdb.close()
+        print(f"opponent {profile['id']} ({profile['display_name']}): Madden-only human, no borrowed history")
     db = (open_explicit_madden_db(Path(args.db), read_only=True)
           if args.db else open_madden_db(read_only=True))
     if args.status:
@@ -2329,6 +2341,9 @@ def build_ml_subparser(sub: Any) -> None:
     p_gp.add_argument("--roster-json", default=None, help="Roster snapshot for this run only; never saved")
     p_gp.add_argument("--injury", action="append", default=None, help="Injury note, e.g. 'WR1 out' (repeatable)")
     p_gp.add_argument("--scouting", default=None, help="Free-text scouting notes shown on the page")
+    p_gp.add_argument("--new-opponent", metavar="DISPLAY_NAME", default=None,
+                      help="Register --opponent as a new Madden-only human (no borrowed history) before prep. "
+                           "Needs --db; adds one opponent row and nothing else")
     p_gp.add_argument("--max-offense", type=int, default=15, help="Offensive formation cap (1-15)")
     p_gp.add_argument("--max-defense", type=int, default=15, help="Defensive formation cap (1-15)")
     p_gp.add_argument("--out", default=None, help="Folder for proposals and pages (default <data dir>/game_prep)")

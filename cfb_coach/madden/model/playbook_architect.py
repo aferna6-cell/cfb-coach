@@ -392,8 +392,13 @@ def _situation_story(before: Sequence[Mapping[str, Any]], after: Sequence[Mappin
 
 
 def search(pool: Sequence[dict[str, Any]], start: Sequence[dict[str, Any]], obj: Objective, *,
-           cap: int, threshold: float) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Best-improvement local search. Each accepted move must gain more than ``threshold``."""
+           cap: int, threshold: float, remove_only_when_full: bool = False,
+           ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Best-improvement local search. Each accepted move must gain more than ``threshold``.
+
+    ``remove_only_when_full`` keeps every installed formation until the book
+    holds ``cap`` formations; only then can a swap replace one.
+    """
     current = list(start)
     moves: list[dict[str, Any]] = []
     while not feasible(current, cap):
@@ -406,13 +411,17 @@ def search(pool: Sequence[dict[str, Any]], start: Sequence[dict[str, Any]], obj:
         base = obj(current)
         best: tuple[float, str, list[dict[str, Any]], dict[str, Any]] | None = None
         options: list[tuple[list[dict[str, Any]], dict[str, Any]]] = []
-        for c in current:
-            options.append(([m for m in current if m is not c], {"type": "remove", "removed": c["id"]}))
+        may_drop = not remove_only_when_full or len(current) >= cap
+        if not remove_only_when_full:
+            for c in current:
+                options.append(([m for m in current if m is not c], {"type": "remove", "removed": c["id"]}))
         outside = [c for c in pool if c["id"] not in ids]
         names = {c["formation"] for c in current}
         for d in outside:
             if len(current) < cap and d["formation"] not in names:
                 options.append((current + [d], {"type": "add", "added": d["id"]}))
+            if not may_drop:
+                continue
             for c in current:
                 if d["formation"] in names and d["formation"] != c["formation"]:
                     continue
@@ -451,7 +460,7 @@ def _best_situations(c: Mapping[str, Any], members: Sequence[Mapping[str, Any]],
 
 
 def _why_member(c: Mapping[str, Any], members: Sequence[Mapping[str, Any]], obj: Objective,
-                status: str, threshold: float) -> str:
+                status: str, threshold: float, protected: bool = False) -> str:
     side = obj.side
     without = [m for m in members if m is not c]
     contribution = obj(members) - obj(without)
@@ -488,6 +497,8 @@ def _why_member(c: Mapping[str, Any], members: Sequence[Mapping[str, Any]], obj:
         tail = f"removing it would lower the portfolio score by {contribution:.4f}"
         if status == "ADD":
             tail += f" (switch threshold {threshold:.4f})"
+    elif protected:
+        tail = "installed formations are only replaced once the book is full, so it stays"
     else:
         tail = (f"removing it would raise the score by only {-contribution:.4f}, under the "
                 f"{threshold:.4f} switch threshold, so the installed formation stays")
@@ -566,7 +577,8 @@ def _current_members(side: str, applied: Mapping[str, Any] | None, by_id: Mappin
 def design_side(side: str, *, opponent_id: str, db: Any, applied: Mapping[str, Any] | None,
                 evidence: Mapping[str, Any], art: Any = None, max_formations: int = MAX_FORMATIONS,
                 evidence_quality: str = "prior_driven", records: Sequence[Mapping[str, Any]] | None = None,
-                opponent_type: str = "human", roster_input: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                opponent_type: str = "human", roster_input: Mapping[str, Any] | None = None,
+                remove_only_when_full: bool = True) -> dict[str, Any]:
     t0 = time.perf_counter()
     cap = max(1, min(int(max_formations), MAX_FORMATIONS))
     if side == "offense":
@@ -588,7 +600,8 @@ def design_side(side: str, *, opponent_id: str, db: Any, applied: Mapping[str, A
     if evidence_n < 30:
         threshold += THIN_EVIDENCE_EXTRA
     ideal, _ = search(pool, [], obj, cap=cap, threshold=1e-9)
-    final, moves = search(pool, current, obj, cap=cap, threshold=threshold)
+    final, moves = search(pool, current, obj, cap=cap, threshold=threshold,
+                          remove_only_when_full=remove_only_when_full)
     cur_ids = {c["id"] for c in current}
     cur_names = {c["formation"]: c for c in current}
     final_ids = {c["id"] for c in final}
@@ -607,7 +620,8 @@ def design_side(side: str, *, opponent_id: str, db: Any, applied: Mapping[str, A
             "profile": c.get("profile"), "situations": c.get("situations"),
             "source_url": c.get("source_url"), "verification": c.get("verification"),
             "situation_values": c["values"], "evidence": c["evidence"],
-            "why": _why_member(c, final, obj, status[c["id"]], threshold)
+            "why": _why_member(c, final, obj, status[c["id"]], threshold,
+                               protected=remove_only_when_full and len(final) < cap)
             + (f" Was installed with the {cur_names[c['formation']]['source_book']} play list."
                if status[c["id"]] == "SOURCE" else ""),
             "previous_source_book": cur_names[c["formation"]]["source_book"] if status[c["id"]] == "SOURCE" else None,
@@ -671,6 +685,9 @@ def design_side(side: str, *, opponent_id: str, db: Any, applied: Mapping[str, A
             "situation_weights": weights,
             "evidence_quality": evidence_quality,
             "evidence_rows": evidence_n,
+            "removal_policy": ("installed formations stay until the book holds "
+                               f"{cap}; then a better formation can replace one"
+                               if remove_only_when_full else "remove when the book is better without it"),
         },
         "limits": {
             "formations": len(final), "max_formations": cap, "plays": plays, "max_plays": MAX_PLAYS,
@@ -685,8 +702,8 @@ def design_side(side: str, *, opponent_id: str, db: Any, applied: Mapping[str, A
 
 def no_schedule_statement() -> str:
     return ("Changes come only from the portfolio score: a formation enters when it adds more than the "
-            "switch threshold, leaves when the book is better without it, and nothing changes on a timer, "
-            "a game count, a snap count, or a win/loss.")
+            "switch threshold. Installed formations are never removed until the book is full (15); then a "
+            "better formation can replace one. Nothing changes on a timer, a game count, a snap count, or a win/loss.")
 
 
 __all__ = [

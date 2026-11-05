@@ -21,6 +21,15 @@ from the opponent record), `--roster-json roster.json`, `--injury "WR1 out"`
 (repeatable), `--scouting "lives in Cover 3 on 3rd down"`, `--max-offense N`,
 `--max-defense N` (default and ceiling 15), `--out DIR`, `--no-open`.
 
+For a human you have never played, add `--new-opponent "Display Name"` (with
+`--db`). That one write registers a Madden-only opponent with no borrowed
+history, then prep runs as usual:
+
+```bash
+python3 -m cfb_coach ml game-prep --opponent dillon --new-opponent "Dillon" \
+  --db ~/.cfb-coach/madden27.db --franchise primary
+```
+
 The command reads the database read-only and writes three files to
 `~/.cfb-coach/game_prep/<opponent>/`, plus one proposal JSON per side:
 
@@ -61,11 +70,17 @@ individual score.
   a formation's situation values. They never add a flat bonus per formation.
   Defensive evidence uses identified, verified executions only. Today there
   are none, so the defense is designed from priors and tendencies.
-- **Search.** The search starts from the installed book and tries add,
-  remove, and swap moves. A move must gain more than a switch threshold: 0.004
+- **Search.** The search starts from the installed book. Below 15
+  formations it only adds: an installed formation is never removed. Once the
+  book holds 15, a better formation can replace one. A move must gain more
+  than a switch threshold: 0.004
   with empirical evidence, 0.012 when the evidence is prior-driven, plus 0.003
   when there are fewer than 30 evidence rows. An "ideal" book is also computed
   from scratch and shown, with the gain each unchosen formation would add.
+- **Unknown human.** With no snaps of his own, the defense is designed
+  against a prior pooled from every other human opponent, weighted by
+  evidence, at half the usual shrink (capped at 0.4). His own snaps replace it
+  once they are logged.
 
 **No rotation.** Nothing changes on a timer, a game count, a snap count, or a
 win or loss. A formation enters, leaves, or comes back only when the portfolio
@@ -111,7 +126,11 @@ Confirmation is refused, and nothing is written, if:
 A confirmation does three things:
 1. It snapshots the database to `game_prep/snapshots/`.
 2. It writes the new book and its history in one transaction.
-3. It revokes generated Custom Adjustment approvals for that side.
+3. If the new book drops a formation or play, it revokes generated Custom
+   Adjustment approvals for that side. A book that only adds keeps them.
+
+The experimental offense needs no change. With `--ml-human-control` it
+builds its eligible pool from the confirmed offensive book and ranks inside it.
 
 The coach cannot see Madden. A confirmation only records your statement that
 you built the book.
@@ -135,7 +154,8 @@ database snapshots are a second safety net: copy one back over
 
 ```bash
 # Human opponent: ML offense + model defense from the confirmed books
-python3 -m cfb_coach play --game madden27 -o ryan --ml-human-control --defense-model v1
+python3 -m cfb_coach play --game madden27 -o ryan --ml-human-control --defense-model v1 \
+  --defense-model-path ~/.cfb-coach/models/defense_v2.json
 
 # CPU: offense only (unchanged default)
 python3 -m cfb_coach play --game madden27 -o cpu
@@ -150,16 +170,25 @@ is needed.
 
 When the defensive book came from a confirmed proposal, the defense model:
 
-- ranks only installed calls;
-- falls back to the established caller when nothing it knows is installed,
-  or on a short-yardage or goal-line down with no known heavy front
-  installed. Fallback reason: `installed_gap`;
+- ranks every installed call. Plays it was trained on keep their learned
+  values; the rest are scored by coverage family (Cover 3, quarters, Cover
+  2/Tampa, man, pressure) and package (dime, nickel, base front);
+- shifts each call by what this opponent ran in his last eight named
+  concepts this game: the matching coverage counters, and light boxes move
+  down and base or heavy fronts move up as his run share climbs. This uses
+  only his plays (the concept you type on the situation line), never whether
+  our call was executed;
+- falls back to the established caller when no installed play has a
+  coverage it can score, or on a short-yardage or goal-line down with no
+  heavy front installed. Fallback reason: `installed_gap`;
 - penalizes a formation that passes 40% of the last ten calls, so a close
-  installed alternative gets through and a clear leader still wins. In a
-  replay of the Ryan game this took the model from 29 of 37 Dime 3-2 Odd
-  calls to 17 of 37, using four formations. That is selection behavior only,
-  not a claim about the result;
-- stays inside the 150 ms budget.
+  installed alternative gets through and a clear leader still wins;
+- stays inside the 150 ms budget (about 2 ms in replay).
+
+In a replay of the Ryan game (64% runs) with the proposed book, the model
+called Dime 3-2 Odd 3 times out of 37, against 30 in the real game, used six
+formations, and never showed a light box while he leaned run. That is
+selection behavior only, not a claim about the result.
 
 ## Replay (read-only)
 
@@ -193,6 +222,6 @@ only evidence logged before each game. It writes nothing.
   madden.tools and are not verified in game.
 - Menu labels in the steps come from ClutchPoints and EA Help and may differ
   slightly in Madden 27.
-- The defense model knows only the formations it was trained on. Installed
-  formations it does not know are called by the established caller through
-  the fallback.
+- The defense model was trained on unverified 49ers snaps. Plays outside
+  that set are scored by their coverage family and package, not by
+  play-specific results.

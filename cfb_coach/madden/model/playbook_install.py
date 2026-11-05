@@ -231,13 +231,26 @@ def confirm(db: Any, *, root: Path | str | None, opponent_id: str, side: str, pr
     hist[side] = hist[side][-30:]
     state["applied"][side] = new
     _write_atomically(db, {playbook.META_KEY: json.dumps(state), HISTORY_KEY: json.dumps(hist, sort_keys=True)})
-    _revoke_generated_macros(db, side)
+    dropped = _drops(current, new)
+    if dropped:
+        _revoke_generated_macros(db, side)
     return {
+        "macro_approvals": "revoked: the new book drops installed plays" if dropped
+        else "kept: every installed formation and play is still in the book",
         "confirmed": True, "side": side, "proposal_id": proposal_id, "fingerprint": real_fp,
         "revision": new["rev"], "formations": len(new["formations"]),
         "plays": sum(len(ps) for ps in new["formations"].values()), "snapshot": snapshot,
         "note": "The coach's callable book now matches your attestation. The coach cannot see Madden itself.",
     }
+
+
+def _drops(old: Mapping[str, Any] | None, new: Mapping[str, Any] | None) -> bool:
+    """True when any formation or play in ``old`` is missing from ``new``."""
+    new_forms = (new or {}).get("formations") or {}
+    for form, plays in ((old or {}).get("formations") or {}).items():
+        if form not in new_forms or set(plays or []) - set(new_forms[form] or []):
+            return True
+    return False
 
 
 def _revoke_generated_macros(db: Any, side: str) -> None:
@@ -287,7 +300,8 @@ def rollback(db: Any, *, root: Path | str | None = None, side: str, attestation:
                        "snapshot": snapshot})
     hist[side] = hist[side][-30:]
     _write_atomically(db, {playbook.META_KEY: json.dumps(state), HISTORY_KEY: json.dumps(hist, sort_keys=True)})
-    _revoke_generated_macros(db, side)
+    if _drops(current, restored):
+        _revoke_generated_macros(db, side)
     return {"rolled_back": True, "side": side, "rollback_of": match["proposal_id"],
             "restored": (restored or {}).get("name"), "revision": (restored or {}).get("rev"),
             "snapshot": snapshot}

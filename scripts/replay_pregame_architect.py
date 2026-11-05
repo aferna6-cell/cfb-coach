@@ -75,15 +75,24 @@ def _model_defense(rows: Sequence[Mapping[str, Any]], artifact: Mapping[str, Any
     illegal = 0
     lat: list[float] = []
     recent: list[tuple[str, ...]] = []
+    concepts: list[str] = []
+    light_on_run_lean = 0
     for i, row in enumerate(rows, 1):
         sit = parse_madden_situation(f"d {row['situation_raw'] or ''}", default_side="defense")
         sit.two_minute = False
         try:
             out = defense_v1.pick_call(artifact, sit, book, recent=recent, seed=f"{session}:{i}:replay",
-                                       opponent_profile=None, installed_scope=scope)
+                                       recent_concepts=list(concepts), opponent_profile=None,
+                                       installed_scope=scope)
         except defense_v1.DefenseV1Error as exc:
             fallbacks[exc.reason] += 1
+            if row["concept_seen"]:
+                concepts.append(str(row["concept_seen"]))
             continue
+        if defense_v1.recent_run_heavy(concepts) and defense_v1._is_light_box(out["pick"]):
+            light_on_run_lean += 1
+        if row["concept_seen"]:
+            concepts.append(str(row["concept_seen"]))
         pick = out["pick"]
         lat.append(out["elapsed_ms"])
         usage[str(pick["formation"])] += 1
@@ -93,7 +102,8 @@ def _model_defense(rows: Sequence[Mapping[str, Any]], artifact: Mapping[str, Any
     n = len(rows)
     return {"model_calls": sum(usage.values()), "fallback_rate": round(sum(fallbacks.values()) / n, 3) if n else None,
             "fallbacks": dict(fallbacks), "illegal": illegal, "formations_used": len(usage),
-            "top": usage.most_common(3), "max_ms": round(max(lat), 2) if lat else None}
+            "light_box_on_run_lean": light_on_run_lean,
+            "top": usage.most_common(4), "max_ms": round(max(lat), 2) if lat else None}
 
 
 def replay(db_path: Path, sessions: Sequence[str], defense_artifact: Path | None) -> None:
@@ -131,7 +141,7 @@ def replay(db_path: Path, sessions: Sequence[str], defense_artifact: Path | None
             }
             for side in ("offense", "defense"):
                 rows = list(db.conn.execute(
-                    "SELECT situation_raw FROM snaps WHERE session_id=? AND side=? "
+                    "SELECT situation_raw, concept_seen FROM snaps WHERE session_id=? AND side=? "
                     "ORDER BY COALESCE(snap_seq, id), id", (sid, side)))
                 d = designs[side]
                 print(f"\n[{side}] {len(rows)} logged situations | proposal {d['fingerprint']} | "
@@ -161,6 +171,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--db", type=Path, required=True)
     p.add_argument("--session", action="append", help="session id (repeatable); default Ryan loss + latest CPU win")
-    p.add_argument("--defense-artifact", type=Path, default=defense_v1.default_artifact_path())
+    p.add_argument("--defense-artifact", type=Path,
+                   default=defense_v1.default_artifact_path().with_name("defense_v2.json"))
     args = p.parse_args()
     replay(args.db, args.session or list(DEFAULT_SESSIONS), args.defense_artifact)

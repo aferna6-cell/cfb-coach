@@ -684,6 +684,94 @@ def _sample_v2(
     return dict(chosen)
 
 
+_MODEL_FAMILY = {"single_high": "cover3", "two_high": "quarters_c4", "cover2": "two_high_zone",
+                 "man": "one_high_man", "pressure": "pressure"}
+_COVERAGE_OF = {v: k for k, v in _MODEL_FAMILY.items()}
+
+
+def _installed_package(formation: str, packages: Sequence[str]) -> str | None:
+    if _LIGHT_BOX.search(formation):
+        pkg = "dime"
+    elif re.search(r"nickel", formation, re.I):
+        pkg = "nickel"
+    else:
+        pkg = "four_three"
+    return pkg if pkg in packages else None
+
+
+def installed_candidates(artifact: Mapping[str, Any], book: Mapping[str, Sequence[str]]) -> list[dict[str, Any]]:
+    """Every installed play the model can score.
+
+    Trained candidates keep their labels. Other installed plays get the
+    model family of their coverage (Cover 3 -> cover3, quarters -> quarters_c4,
+    Cover 2/Tampa -> two_high_zone, man -> one_high_man, pressure) and the
+    package of their formation (base fronts score as four_three). Plays with
+    no recognizable coverage are left to the established caller.
+    """
+    from cfb_coach.madden.defense_select import call_family
+
+    trained = {(c["formation"], c["play"]): dict(c) for c in artifact["candidates"]}
+    out = [c for key, c in trained.items() if play_in_book(book, *key)]
+    families = set(artifact["call_families"])
+    for form, plays in book.items():
+        pkg = _installed_package(str(form), artifact["packages"])
+        if pkg is None:
+            continue
+        for play in plays or []:
+            if (form, play) in trained:
+                continue
+            fam = _MODEL_FAMILY.get(call_family(play) or "")
+            if fam in families:
+                out.append({"formation": form, "play": play, "family": fam, "package": pkg, "mapped": True})
+    return out
+
+
+LIVE_WINDOW = 8
+LIVE_MIN_CONCEPTS = 3
+LIVE_COUNTER_WEIGHT = 0.06
+LIVE_RUN_TILT = 0.15
+LIVE_NEUTRAL_RUN_SHARE = 0.4
+
+
+def _run_tilt(row: Mapping[str, Any]) -> float:
+    """How much a heavier opponent run share hurts this call (+) or helps it (-)."""
+    if _is_light_box(row):
+        return 1.0
+    if str(row.get("package") or "") == "nickel":
+        return 0.3
+    if _is_heavy_front(row):
+        return -0.8
+    return -0.5
+
+
+def _live_opponent_adjust(ranked: list[dict[str, Any]], concepts: Sequence[str] | None) -> str:
+    """Shift each call by what this opponent ran in the last eight named concepts.
+
+    Uses only the opponent's own plays (concepts logged this game), never
+    whether our displayed call was executed.
+    """
+    from cfb_coach.madden.defense_select import COUNTERS
+    from cfb_coach.madden.situation import concept_family
+
+    tail = [concept_family(str(c)) for c in (concepts or []) if str(c).strip()][-LIVE_WINDOW:]
+    tail = [f for f in tail if f]
+    if len(tail) < LIVE_MIN_CONCEPTS:
+        return ""
+    shares = {f: tail.count(f) / len(tail) for f in set(tail)}
+    run = shares.get("run", 0.0)
+    for row in ranked:
+        cov = _COVERAGE_OF.get(str(row.get("family") or ""))
+        delta = -sum(LIVE_COUNTER_WEIGHT * s * float((COUNTERS.get(their) or {}).get(cov, 0.0))
+                     for their, s in shares.items())
+        delta += LIVE_RUN_TILT * (run - LIVE_NEUTRAL_RUN_SHARE) * _run_tilt(row)
+        if delta:
+            row["offense_success"] = min(0.999, max(0.001, row["offense_success"] + delta))
+            row["live_adjust"] = round(delta, 4)
+    ranked.sort(key=lambda row: (row["offense_success"], row["formation"], row["play"]))
+    top = sorted(shares.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+    return f"this game: {', '.join(f'{k} {round(100 * v)}%' for k, v in top)} of last {len(tail)} named concepts"
+
+
 SPREAD_WINDOW = 10
 SPREAD_MIN_CALLS = 4
 SPREAD_FREE_SHARE = 0.4
@@ -735,12 +823,17 @@ def pick_call(
     winner onto a later legal call. Run downs and the goal line narrow the
     menu before that draw.
 
-    ``installed_scope`` ranks only candidates in a confirmed architect book.
-    It fails closed (``installed_gap``) when none are installed, or when a
-    heavy-front down has no model-known heavy front in the book, so the
-    established caller handles formations the model never learned.
+    ``installed_scope`` scores every installed play (``installed_candidates``)
+    and ranks only those, then shifts them by this game's opponent concepts
+    and spreads a formation past 40% of recent calls. It fails closed
+    (``installed_gap``) when nothing installed can be scored, or when a
+    heavy-front down has no heavy front installed.
     """
     started = time.perf_counter()
+    if installed_scope:
+        artifact = dict(artifact, candidates=installed_candidates(artifact, book))
+        if not artifact["candidates"]:
+            raise DefenseV1Error("installed_gap", "no installed play has a coverage the model can score")
     ranked: list[dict[str, Any]] = []
     try:
         for candidate in artifact["candidates"]:
@@ -796,7 +889,9 @@ def pick_call(
         if changed:
             ranked.sort(key=lambda row: (row["offense_success"], row["formation"], row["play"]))
         tendency_summary = str(opponent_profile.get("summary") or format_defense_summary(opponent_profile))
+    live_summary = ""
     if installed_scope:
+        live_summary = _live_opponent_adjust(ranked, recent_concepts)
         _spread_installed(ranked, recent)
     heavy = recent_run_heavy(recent_concepts) if run_heavy is None else bool(run_heavy)
     guarded, guard = _guarded_ranked(ranked, sit, heavy)
@@ -809,17 +904,20 @@ def pick_call(
             if play_in_book(book, str(row["formation"]), str(row["play"]))
         ]
         chosen = legal[0] if legal else best
-    if guard or tendency_summary:
+    if guard or tendency_summary or live_summary:
         chosen = dict(chosen)
         if guard:
             chosen["situational_guard"] = guard
         if tendency_summary:
             chosen["tendency_summary"] = tendency_summary
+        if live_summary:
+            chosen["live_summary"] = live_summary
     return {
         "pick": chosen,
         "legal": True,
         "elapsed_ms": (time.perf_counter() - started) * 1000.0,
         "tendency_summary": tendency_summary,
+        "live_summary": live_summary,
     }
 
 
