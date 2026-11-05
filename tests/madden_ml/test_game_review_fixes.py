@@ -200,5 +200,54 @@ class DefensiveLoggingTests(unittest.TestCase):
                 db.close()
 
 
+class CpuGameFixTests(unittest.TestCase):
+    def test_cover_2_man_is_man_underneath_not_an_underneath_zone(self):
+        from cfb_coach.madden.model.defensive_diagnosis import parse_look
+
+        look = parse_look("cover 2 man")
+        self.assertEqual(look["shell"], "cover_2_man")
+        self.assertEqual(look["structure"], "two_high")
+        self.assertIn("man", look["principles"])
+        self.assertNotIn("zone", look["principles"])
+        memory = _mem(["Cover 2 Man"] * 6)
+        picture = diagnose_defense(_sit(), memory)
+        self.assertEqual(picture["inferred"]["shell"], "cover_2_man")
+        plan = current_strategy(_sit(), memory, picture)
+        self.assertNotIn(plan["hypothesis_id"], ("underneath_space", "man_answers"))
+        self.assertEqual(diagnose_defense(_sit(), _mem(["Cover 2"] * 6))["inferred"]["shell"], "cover_2")
+
+    def test_installed_route_names_map_to_concepts(self):
+        from cfb_coach.madden.model.football_knowledge import profile_for_play
+
+        expected = {
+            "Spot Choice": "spot", "L Spot": "spot", "Bench": "out_break", "Return Bench": "out_break",
+            "Mills Double Out": "out_break", "Mtn FK Rub": "rub", "Mtn Salem Drag": "mesh",
+            "Inside Cross": "deep_cross", "Slot Dig Wide Corner": "levels", "Quick Short Post": "dagger",
+            "Mtn HB Swing": "texas_angle", "PA Post Shot Choice": "play_action", "PA X Cross Shot": "play_action",
+            "Mesh Spot": "mesh", "Mtn Rub Smash": "smash",
+        }
+        for play, concept in expected.items():
+            self.assertEqual(profile_for_play(play)["concept_id"], concept, play)
+        self.assertIsNone(profile_for_play("Totally Unknown Play")["concept_id"])
+
+    def test_goal_line_blitzes_drop_the_run_bonus_and_lift_quick_throws(self):
+        from cfb_coach.madden.model.football_situation import coordinator_components, evaluate_situation
+
+        sit = _sit(down=3, distance=3, yardline=97, coverage_hint="sam will blitz", goal_line=True)
+        calm = evaluate_situation(sit, memory=_mem(["Cover 2 Man", "Cover 2 Man", "Cover 2 Man"]))
+        hot = evaluate_situation(sit, memory=_mem(["Cover 2 Man", "pressure", "sam will blitz"]))
+        self.assertFalse(calm["recent_pressure"])
+        self.assertTrue(hot["recent_pressure"])
+
+        def ids(play, picture):
+            return {p["id"] for p in coordinator_components(play, picture)}
+
+        self.assertIn("goal_line_run", ids("HB Stretch", calm))
+        self.assertNotIn("goal_line_run", ids("HB Stretch", hot))
+        self.assertIn("recent_pressure_quick", ids("Slants", hot))
+        self.assertNotIn("recent_pressure_quick", ids("HB Slip Screen", hot))
+        self.assertNotIn("recent_pressure_quick", ids("Slants", calm))
+
+
 if __name__ == "__main__":
     unittest.main()

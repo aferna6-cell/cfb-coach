@@ -11,10 +11,12 @@ from typing import Any, Mapping, Sequence
 
 DIAGNOSIS_VERSION = "defensive_diagnosis.v1"
 SHELLS: tuple[str, ...] = (
-    "cover_0", "cover_1", "cover_2", "cover_3", "cover_4", "cover_6",
+    "cover_0", "cover_1", "cover_2", "cover_2_man", "cover_3", "cover_4", "cover_6",
 )
-# One pseudo-count per shell. Sparse samples stay near the uniform prior.
-PRIOR_COUNT = 1.0
+# Six pseudo-counts spread evenly over the shells. Sparse samples stay near
+# the uniform prior, and adding a shell does not raise the evidence bar.
+PRIOR_MASS = 6.0
+PRIOR_COUNT = PRIOR_MASS / len(SHELLS)
 # Do not publish an inferred shell until the sample actually moves the prior.
 MIN_INFER_CONFIDENCE = 0.40
 MIN_INFER_MARGIN = 0.15
@@ -50,6 +52,9 @@ def _shell_from_text(text: str) -> str | None:
         return "cover_6"
     if _COVER_4.search(text):
         return "cover_4"
+    if _COVER_2.search(text) and _MAN.search(text):
+        # Two deep with man underneath. Zone-void concepts do not apply.
+        return "cover_2_man"
     if _COVER_2.search(text) and not _TWO_HIGH.search(text):
         return "cover_2"
     if _COVER_2.search(text) and _COVER_2.search(text):
@@ -62,7 +67,7 @@ def _shell_from_text(text: str) -> str | None:
 def _structure(text: str, shell: str | None) -> str | None:
     if shell in ("cover_0", "cover_1", "cover_3"):
         return "single_high"
-    if shell in ("cover_2", "cover_4", "cover_6"):
+    if shell in ("cover_2", "cover_2_man", "cover_4", "cover_6"):
         return "two_high"
     if _TWO_HIGH.search(text):
         return "two_high"

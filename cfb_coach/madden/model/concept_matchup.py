@@ -25,7 +25,7 @@ _RECENT_TREND_CONFIDENCE = 0.50
 _MAN_SHELLS = frozenset({"cover_0", "cover_1"})
 _QUICK_REACH_YARDS = 6
 _QUICK = frozenset({
-    "mesh", "stick", "slant_flat", "curl_flat", "texas_angle", "spacing",
+    "mesh", "stick", "slant_flat", "curl_flat", "texas_angle", "spacing", "rub", "spot",
 })
 
 

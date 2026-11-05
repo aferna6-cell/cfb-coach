@@ -17,12 +17,12 @@ SCHEMA = "madden.offense.strategy.v1"
 META = "ml_offense_strategy.v1"
 STRATEGY_CAP = 0.015
 _UNDERNEATH = frozenset({
-    "mesh", "stick", "slant_flat", "curl_flat", "spacing",
+    "mesh", "stick", "slant_flat", "curl_flat", "spacing", "spot",
 })
 _UNDERNEATH_SHELLS = frozenset({"cover_2", "cover_3", "cover_4", "cover_6"})
 _COMPLEMENT_BONUS = 0.008
 _MAN_SHELLS = frozenset({"cover_0", "cover_1"})
-_MAN_ANSWERS = frozenset({"mesh", "slant_flat", "texas_angle", "drive"})
+_MAN_ANSWERS = frozenset({"mesh", "slant_flat", "texas_angle", "drive", "rub", "deep_cross"})
 
 
 def _key(session_id: str) -> str:

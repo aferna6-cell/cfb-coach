@@ -160,7 +160,23 @@ COORDINATOR_PRIORS: dict[str, dict[str, Any]] = {
         "reason": "inferred pressure tendency only; not proof of this snap's coverage",
         "claim": "tendency_not_current_coverage",
     },
+    "recent_pressure_quick": {
+        "delta": 0.015,
+        "reason": "pressure on most of the latest snaps; a quick throw beats the rush",
+        "claim": "recent_snaps_not_current_coverage",
+    },
 }
+
+RECENT_PRESSURE_WINDOW = 3
+RECENT_PRESSURE_MIN = 2
+
+
+def _recent_pressure(memory: Mapping[str, Any] | None) -> bool:
+    """Pressure on most of the latest closed snaps. Not this snap's look."""
+    from cfb_coach.madden.model.defensive_diagnosis import parse_look
+
+    labels = list((memory or {}).get("observed_labels") or [])[-RECENT_PRESSURE_WINDOW:]
+    return sum(bool(parse_look(str(label))["pressure"]) for label in labels) >= RECENT_PRESSURE_MIN
 
 
 def _extra(sit: Any, key: str) -> Any:
@@ -339,6 +355,7 @@ def evaluate_situation(
         "short_yardage": short,
         "long_yardage": long,
         "backed_up": backed_up,
+        "recent_pressure": _recent_pressure(memory),
         "situations": names,
         "coverage": look,
         "roster": personnel,
@@ -548,7 +565,7 @@ def coordinator_components(
         credible_goal_run = not (
             down in (3, 4) and distance is not None and distance >= 4
         )
-        if run and credible_goal_run:
+        if run and credible_goal_run and not evaluation.get("recent_pressure"):
             parts.append({"id": "goal_line_run", **COORDINATOR_PRIORS["goal_line_run"]})
         if deep:
             parts.append({"id": "goal_line_deep", **COORDINATOR_PRIORS["goal_line_deep"]})
@@ -596,6 +613,14 @@ def coordinator_components(
             "reason": look.get("note") or "coverage unknown",
             "claim": "no_fabricated_coverage",
         })
+    if (
+        evaluation.get("recent_pressure")
+        and look.get("state") != "observed"
+        and not run and not deep
+        and not (screen and evaluation.get("goal_line"))
+        and not any(p["id"] == "inferred_pressure_quick" for p in parts)
+    ):
+        parts.append({"id": "recent_pressure_quick", **COORDINATOR_PRIORS["recent_pressure_quick"]})
     return parts
 
 

@@ -243,6 +243,18 @@ The installed offensive model is unchanged; these are capped layers on top.
 - A screen pays a repeat cost from the first recent screen.
 - A play intercepted earlier in the same game loses 0.05 for the rest of it.
 
+### Offense adjustments (after the 2026-11-05 CPU game)
+
+- "Cover 2 Man" is its own shell (two deep, man underneath). It no longer
+  triggers the underneath-zone plan, and it does not get the Cover 1 man
+  boost; wheels and play action beat it in that game.
+- When two of the last three logged looks were pressure, quick throws gain
+  0.015 and the goal-line run bonus is dropped (goal-line screens excluded).
+- Installed route names without a concept now map by name: Spot/Snag
+  (spot), Bench and Double Out (out-breaking), Rub/Pick (rub, a man answer),
+  Drag (mesh), Cross (deep crosser, a man answer), Dig (levels), Post
+  (dagger), Swing (back release). Play-action names still map to play action.
+
 ## Replay (read-only)
 
 ```bash
