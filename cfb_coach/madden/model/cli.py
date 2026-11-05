@@ -1877,10 +1877,10 @@ def _load_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
 
 
 def cmd_ml_game_prep(args: argparse.Namespace) -> int:
-    """Design both books before a game, or confirm / roll back one side.
+    """Design both books before a game and apply them, or confirm / roll back one side.
 
-    Generating never writes the database. --confirm and --rollback are the
-    only writes; they need --db and act on one side at a time.
+    Designing reads the database only. The plan is then applied through the
+    confirm checks (with a snapshot) unless --no-auto-apply is given.
     """
     from cfb_coach.madden.model import game_prep, playbook_install
 
@@ -1942,12 +1942,20 @@ def cmd_ml_game_prep(args: argparse.Namespace) -> int:
         db, opponent_id=args.opponent, franchise=args.franchise, nfl_team=args.nfl_team,
         opponent_type=args.opponent_type, roster=roster, injuries=args.injury or [], scouting=args.scouting,
         max_offense=args.max_offense, max_defense=args.max_defense, root=root)
+    if not args.no_auto_apply:
+        db.close()
+        db = (open_explicit_madden_db(Path(args.db), read_only=False)
+              if args.db else open_madden_db(read_only=False))
+        game_prep.auto_apply(db, pkg, root)
     paths = game_prep.write_outputs(pkg, root)
     for line in pkg["summary"]:
         print(line)
     for side in ("offense", "defense"):
         s = pkg["sides"][side]
         print(f"{side}: proposal {s['proposal_id']} fingerprint {s['fingerprint']} - {s['status']['label']}")
+        detail = (pkg.get("auto_applied") or {}).get(side, {})
+        if detail and not detail.get("applied") and detail.get("detail", "").startswith("not applied"):
+            print(f"  {detail['detail']}", file=sys.stderr)
     print(pkg["game_ready"]["label"])
     print(f"page: {paths['html']}\nchecklist: {paths['markdown']}")
     if not args.no_open:
@@ -2349,6 +2357,8 @@ def build_ml_subparser(sub: Any) -> None:
     p_gp.add_argument("--out", default=None, help="Folder for proposals and pages (default <data dir>/game_prep)")
     p_gp.add_argument("--no-open", action="store_true", help="Write the page but do not open a browser")
     p_gp.add_argument("--status", action="store_true", help="Show each side's install state and exit")
+    p_gp.add_argument("--no-auto-apply", action="store_true",
+                      help="Only stage the plan; apply each side later with --confirm")
     p_gp.add_argument("--confirm", choices=("offense", "defense"), default=None,
                       help="Confirm you built this side's proposal in Madden (writes; needs --db)")
     p_gp.add_argument("--proposal-id", default=None)

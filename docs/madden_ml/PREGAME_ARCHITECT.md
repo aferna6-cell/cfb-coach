@@ -96,7 +96,18 @@ fingerprint; the tests check this across a simulated week.
 
 Each label comes with the football reason, plus the score change.
 
-## Install in Madden, then confirm
+## Applied automatically
+
+By default, `game-prep` applies each side right after designing it, so the
+coach calls from the new books with no confirm step. It goes through the
+same checks as `--confirm` below, snapshots the database first, and records
+the attestation "Auto-applied by game-prep: the plan's additions are assumed
+built in Madden". The page and terminal list what to add in Madden (for
+example, "add in Madden: 46 Normal"). The coach cannot see Madden, so add
+those formations before kickoff. `--rollback` undoes an auto-apply like any
+other. Pass `--no-auto-apply` to only stage the plan and confirm by hand.
+
+## Install in Madden, then confirm (with --no-auto-apply)
 
 Follow the page's "Build it in Madden" steps:
 1. Creation Center > Playbooks > Create Offense/Defense, and pick the

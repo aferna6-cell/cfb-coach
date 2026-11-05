@@ -1,7 +1,9 @@
 """`ml game-prep`: design both books, write the setup page and checklist.
 
-Read-only against the database. The only files written are the proposal JSON,
-the browser page and the Markdown checklist under ``<data dir>/game_prep``.
+Designing is read-only against the database. The files written are the
+proposal JSON, the browser page and the Markdown checklist under
+``<data dir>/game_prep``. :func:`auto_apply` then applies the plan through the
+normal confirm path unless the caller opts out.
 """
 from __future__ import annotations
 
@@ -186,6 +188,39 @@ def run_game_prep(db: Any, *, opponent_id: str, franchise: str = "primary", nfl_
     return pkg
 
 
+AUTO_ATTEST = ("Auto-applied by game-prep: the plan's additions are assumed built in Madden "
+               "(user setting, no manual confirmation)")
+
+
+def auto_apply(db: Any, pkg: dict[str, Any], root: Path | str | None = None) -> dict[str, Any]:
+    """Apply every side that is not already ready, through the normal confirm checks.
+
+    Each apply snapshots the database first, so --rollback still works.
+    """
+    out: dict[str, Any] = {}
+    oid = pkg["opponent"]["id"]
+    for side in ("offense", "defense"):
+        s = pkg["sides"][side]
+        if s["status"]["state"] == "ready":
+            out[side] = {"applied": False, "detail": "already the applied book"}
+            continue
+        try:
+            res = playbook_install.confirm(
+                db, root=root, opponent_id=oid, side=side, proposal_id=s["proposal_id"],
+                typed_fingerprint=s["fingerprint"], attestation=AUTO_ATTEST)
+        except playbook_install.InstallError as exc:
+            out[side] = {"applied": False, "detail": f"not applied: {exc}"}
+            continue
+        adds = list(s["design"]["changes"]["add"]) + list(s["design"]["changes"].get("new_source") or [])
+        out[side] = {"applied": True, "add_in_madden": adds, "result": res}
+        status = playbook_install.side_status(db, root, oid, side)
+        s["status"] = dict(status, label="READY - applied automatically"
+                           + (f"; add in Madden: {', '.join(adds)}" if adds else "; nothing to change in Madden"))
+    pkg["auto_applied"] = out
+    pkg["game_ready"] = game_ready(pkg)
+    return out
+
+
 def game_ready(pkg: Mapping[str, Any]) -> dict[str, Any]:
     needed = ["offense"] if pkg["opponent"]["type"] == "cpu" else ["offense", "defense"]
     states = {s: pkg["sides"][s]["status"]["state"] for s in ("offense", "defense")}
@@ -351,8 +386,11 @@ def render_html(pkg: Mapping[str, Any]) -> str:
              f"<p>{_badge('ready' if gr['ready'] else 'wait', gr['label'])} "
              + " ".join(_badge(pkg['sides'][s]['status']['state'], f"{s.title()}: {pkg['sides'][s]['status']['label']}")
                         for s in ("offense", "defense")) + "</p>",
-             "<div class='flow'><span>1 Generate ✓</span><span>2 Review this page</span><span>3 Build in Madden</span>"
-             "<span>4 Confirm each side</span><span>5 Ready to play</span></div>",
+             ("<div class='flow'><span>1 Generate ✓</span><span>2 Applied automatically ✓</span>"
+              "<span>3 Add the new formations in Madden</span><span>4 Play</span></div>"
+              if pkg.get("auto_applied") else
+              "<div class='flow'><span>1 Generate ✓</span><span>2 Review this page</span><span>3 Build in Madden</span>"
+              "<span>4 Confirm each side</span><span>5 Ready to play</span></div>"),
              "<h2>Summary</h2><ul>" + "".join(f"<li>{e(x)}</li>" for x in pkg["summary"]) + "</ul>"]
     for side in ("offense", "defense"):
         s = pkg["sides"][side]

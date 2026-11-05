@@ -405,6 +405,29 @@ class GamePrepTests(_DBCase):
         self.assertIn(two["sides"]["defense"]["fingerprint"], md)
         self.assertIn(two["sides"]["offense"]["fingerprint"], html)
 
+    def test_auto_apply_makes_the_plan_callable_and_rollback_still_works(self) -> None:
+        art = experimental_model.ExperimentalArtifact(model_version="test.model", n_supervised=3,
+                                                      evidence_quality="mixed", global_rate=0.5)
+        with mock.patch.object(game_prep, "_load_offense_artifact", return_value=(art, "mixed")):
+            pkg = game_prep.run_game_prep(self.db, opponent_id="ryan", root=self.root)
+        self.assertFalse(pkg["game_ready"]["ready"])
+        out = game_prep.auto_apply(self.db, pkg, self.root)
+        self.assertTrue(out["offense"]["applied"] and out["defense"]["applied"])
+        self.assertTrue(pkg["game_ready"]["ready"])
+        books = playbook.load_books(self.db)
+        for side in ("offense", "defense"):
+            self.assertEqual(books[side]["architect_proposal_id"], pkg["sides"][side]["proposal_id"])
+            self.assertEqual(books[side]["formations"], pkg["sides"][side]["design"]["book"]["formations"])
+            self.assertIn("applied automatically", pkg["sides"][side]["status"]["label"])
+        self.assertIn("Applied automatically", game_prep.render_html(pkg))
+        again = game_prep.auto_apply(self.db, pkg | {"sides": {
+            s: dict(v, status=install.side_status(self.db, self.root, "ryan", s)) for s, v in pkg["sides"].items()}},
+            self.root)
+        self.assertFalse(again["offense"]["applied"])
+        install.rollback(self.db, root=self.root, side="defense", attestation=ATTEST)
+        self.assertNotEqual(playbook.load_books(self.db).get("defense", {}).get("architect_proposal_id"),
+                            pkg["sides"]["defense"]["proposal_id"])
+
 
 class EvidenceTests(_DBCase):
     def test_score_correction_applies_only_to_the_stored_wrong_score(self) -> None:
