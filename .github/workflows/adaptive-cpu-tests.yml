@@ -25,3 +25,12 @@ jobs:
       - name: Compile changed code
         run: |
           python -m py_compile             cfb_coach/madden/model/offense_outcome_adaptation.py             cfb_coach/madden/model/offense_formation_rotation.py             cfb_coach/madden/model/offense_selection_policy.py             cfb_coach/madden/model/offense_portfolio.py             cfb_coach/madden/cli.py cfb_coach/live_server.py             scripts/repair_madden_cpu_final_score.py             scripts/evaluate_madden_offense_candidate.py
+
+      - name: Prepare reproducible source snapshot for offline DB test
+        run: |
+          tar -czf cfb-coach-source.tar.gz cfb_coach scripts tests pyproject.toml README.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cfb-coach-source
+          path: cfb-coach-source.tar.gz
+          retention-days: 3
