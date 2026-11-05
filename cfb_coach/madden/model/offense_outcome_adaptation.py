@@ -7,7 +7,6 @@ No clock, live coverage, or manually identified pre-snap defense is required.
 """
 from __future__ import annotations
 
-from collections import defaultdict
 from typing import Any, Mapping, Sequence
 
 MAX_TOTAL_PENALTY = 0.105
@@ -93,15 +92,22 @@ def outcome_penalty(
             if (_as_int(r.get("yardline")) or 0) >= 95
         ]
         goal_ints = sum(str(r.get("result") or "").lower() == "int" for r in goal)
-        if len(goal) >= 2 and goal_ints:
-            # Require repeated *same-play* failure near the goal line. Even
-            # then, a pass remains available if its predicted advantage wins.
+        if goal_ints:
+            # One verified INT is information but not decisive: four prior
+            # observations keep the first failure heavily shrunk. A second
+            # verified INT gradually increases the cost, never bans the play.
             parts["goal_line_interceptions"] = min(
-                GOAL_LINE_MAX, 0.14 * goal_ints / (len(goal) + 2)
+                GOAL_LINE_MAX, 0.14 * goal_ints / (len(goal) + 4)
             )
-            reasons.append(f"historical goal-to-go INT {goal_ints}/{len(goal)}")
+            reasons.append(f"historical verified goal-line INT {goal_ints}/{len(goal)}")
+        # Small, explicitly football-prior risk for long-developing passing
+        # concepts inside the 5. No current defensive look is assumed.
+        # This does not prohibit passing or override a strong model advantage.
+        risky_name = play.lower()
+        if any(token in risky_name for token in ("post", "cross", "verts", "vertical", "wheel", "deep")):
+            parts["goal_line_route_risk_prior"] = 0.012
+            reasons.append("goal-line congestion prior for developing routes")
 
-    from cfb_coach.madden.catalog import is_run
     is_screen = "screen" in play.lower()
     if is_screen:
         recent = selected[:12]
@@ -122,8 +128,10 @@ def outcome_penalty(
     # Pure same-session response to consecutive observed failures. The model
     # can switch after two genuine outcomes, not after a fixed snap count.
     if session_id:
+        # A play called in a different formation can still have the same
+        # developing screen concept; respond across those executions.
         session_rows = [
-            r for r in exact if str(r.get("session_id")) == session_id
+            r for r in selected if str(r.get("session_id")) == session_id
         ]
         if len(session_rows) >= 2 and _loss(session_rows[0]) and _loss(session_rows[1]):
             parts["two_recent_failures"] = min(
