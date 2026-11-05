@@ -937,6 +937,13 @@ def build_parser() -> argparse.ArgumentParser:
              "and is labeled HEURISTIC. Rollback: run play again without this flag.",
     )
     p_play.add_argument(
+        "--cpu-defense",
+        action="store_true",
+        help="Madden only: also call defense against the CPU for this session. Off by default, so "
+             "existing CPU sessions stay offense-only. Combine with --ml-defense-control or "
+             "--defense-model v1 to let the defensive model call; otherwise the established caller does.",
+    )
+    p_play.add_argument(
         "--defense-model-path",
         default=None,
         metavar="PATH",

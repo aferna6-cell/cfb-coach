@@ -1014,6 +1014,7 @@ def _v1_status(reason: str) -> Any:
         "invalid": MLStatus.INVALID_OUTPUT,
         "missing_feature": MLStatus.INVALID_OUTPUT,
         "illegal": MLStatus.INVALID_OUTPUT,
+        "installed_gap": MLStatus.INVALID_OUTPUT,
         "timeout": MLStatus.TIMEOUT,
         "exception": MLStatus.EXCEPTION,
         "armed": MLStatus.CIRCUIT_OPEN,
@@ -1074,6 +1075,19 @@ def _defense_v1_concepts(extras: Mapping[str, Any], db: Any, session: str) -> li
     return [record.concept for record in records if record.concept]
 
 
+def _installed_scope(db: Any, extras: Mapping[str, Any]) -> bool:
+    """Rank only installed calls once the defense book came from a confirmed architect proposal."""
+    override = extras.get("defense_v1_installed_scope")
+    if override is not None:
+        return bool(override)
+    try:
+        from cfb_coach.madden import playbook
+
+        return bool((playbook.load_books(db).get("defense") or {}).get("architect_proposal_id"))
+    except Exception:  # noqa: BLE001 — unknown book state keeps the established v2 menu
+        return False
+
+
 def _apply_defense_v1(
     call: Any,
     sit: Situation,
@@ -1111,6 +1125,8 @@ def _apply_defense_v1(
     seed = extras.get("defense_v1_seed")
     if seed is None:
         seed = f"{session}:{seq}:defense-v2"
+    installed_scope = _installed_scope(db, extras)
+    scored: dict[str, Any] | None = None
     try:
         artifact = defense_v1.load_artifact(path)
         scored = defense_v1.pick_call(
@@ -1120,6 +1136,7 @@ def _apply_defense_v1(
             temperature=extras.get("defense_v1_temperature"),
             recent_concepts=concepts,
             opponent_profile=opponent_profile,
+            installed_scope=installed_scope,
         )
         picked = scored["pick"]
         if getattr(call, "macro", None) or getattr(call, "adjustment", None):
@@ -1166,6 +1183,8 @@ def _apply_defense_v1(
         )
         if guard:
             note += f" guard={guard}"
+        if installed_scope:
+            note += " scope=confirmed architect book"
         tendency_summary = str(scored.get("tendency_summary") or "") if scored else ""
         if tendency_summary:
             note += f" tendencies: {tendency_summary}"
@@ -1274,9 +1293,11 @@ def _apply_defense_v1(
 def maybe_apply_defense(
     call: Any, sit: Situation, opponent_id: str, db: Any,
     book: Mapping[str, Sequence[str]],
+    *,
+    allow_cpu: bool = False,
 ) -> Any:
-    """Opt-in for human-user defense only; timeout/error falls back to old caller."""
-    if db is None or is_cpu_opponent(opponent_id):
+    """Opt-in defense ML; CPU games only with ``allow_cpu``. Timeout/error falls back to old caller."""
+    if db is None or (is_cpu_opponent(opponent_id) and not allow_cpu):
         return call
     current_mode = mode(db)
     try:

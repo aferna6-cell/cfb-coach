@@ -167,7 +167,7 @@ class DefenseV1Error(Exception):
     """A defense v1 load or score failed closed.
 
     ``reason`` is ``missing``, ``invalid``, ``missing_feature``, ``illegal``,
-    ``timeout``, or ``exception``.
+    ``installed_gap``, ``timeout``, or ``exception``.
     """
 
     def __init__(self, reason: str, detail: str, pick: Mapping[str, Any] | None = None) -> None:
@@ -684,6 +684,36 @@ def _sample_v2(
     return dict(chosen)
 
 
+SPREAD_WINDOW = 10
+SPREAD_MIN_CALLS = 4
+SPREAD_FREE_SHARE = 0.4
+SPREAD_PENALTY = 0.15
+
+
+def _spread_installed(ranked: list[dict[str, Any]], recent: Sequence[Sequence[Any]]) -> None:
+    """Penalize a formation past 40% of the last ten calls, so a clear leader still wins.
+
+    At 80% of the window the penalty is 0.06 offense success, enough to let a
+    close installed alternative through, not enough to override a big gap.
+    """
+    window = [str(r[0]) for r in list(recent)[-SPREAD_WINDOW:] if r]
+    if len(window) < SPREAD_MIN_CALLS:
+        return
+    counts: dict[str, int] = {}
+    for form in window:
+        counts[form] = counts.get(form, 0) + 1
+    changed = False
+    for row in ranked:
+        share = counts.get(str(row["formation"]), 0) / len(window)
+        penalty = SPREAD_PENALTY * max(0.0, share - SPREAD_FREE_SHARE)
+        if penalty:
+            row["offense_success"] = min(0.999, row["offense_success"] + penalty)
+            row["concentration_penalty"] = round(penalty, 4)
+            changed = True
+    if changed:
+        ranked.sort(key=lambda row: (row["offense_success"], row["formation"], row["play"]))
+
+
 def pick_call(
     artifact: Mapping[str, Any],
     sit: Any,
@@ -697,12 +727,18 @@ def pick_call(
     recent_concepts: Sequence[str] | None = None,
     run_heavy: bool | None = None,
     opponent_profile: Mapping[str, Any] | None = None,
+    installed_scope: bool = False,
 ) -> dict[str, Any]:
     """Lowest predicted offense success, then v2 variety among that legal top.
 
     An illegal best candidate falls back. v2 does not walk from an illegal
     winner onto a later legal call. Run downs and the goal line narrow the
     menu before that draw.
+
+    ``installed_scope`` ranks only candidates in a confirmed architect book.
+    It fails closed (``installed_gap``) when none are installed, or when a
+    heavy-front down has no model-known heavy front in the book, so the
+    established caller handles formations the model never learned.
     """
     started = time.perf_counter()
     ranked: list[dict[str, Any]] = []
@@ -727,6 +763,15 @@ def pick_call(
         raise DefenseV1Error("exception", "defense v1 scoring raised", pick=ranked[0] if ranked else None) from exc
     if not ranked:
         raise DefenseV1Error("invalid", "defense v1 produced no candidate")
+    if installed_scope:
+        scoped = [row for row in ranked if play_in_book(book, str(row["formation"]), str(row["play"]))]
+        if not scoped:
+            raise DefenseV1Error("installed_gap", "no model-known call in the confirmed defense book", pick=ranked[0])
+        if _wants_heavy_front(sit) and not any(_is_heavy_front(row) for row in scoped):
+            raise DefenseV1Error(
+                "installed_gap", "heavy-front down with no model-known heavy front installed", pick=scoped[0],
+            )
+        ranked = scoped
     best = ranked[0]
     if not play_in_book(book, best["formation"], best["play"]):
         raise DefenseV1Error(
@@ -751,6 +796,8 @@ def pick_call(
         if changed:
             ranked.sort(key=lambda row: (row["offense_success"], row["formation"], row["play"]))
         tendency_summary = str(opponent_profile.get("summary") or format_defense_summary(opponent_profile))
+    if installed_scope:
+        _spread_installed(ranked, recent)
     heavy = recent_run_heavy(recent_concepts) if run_heavy is None else bool(run_heavy)
     guarded, guard = _guarded_ranked(ranked, sit, heavy)
     chosen = guarded[0]

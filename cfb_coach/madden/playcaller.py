@@ -931,6 +931,7 @@ def make_call(
     allow_human_defense_ml: bool = False,
     defense_model: str | None = None,
     defense_model_path: str | None = None,
+    cpu_defense: bool = False,
 ) -> MaddenCall:
     """One call. `playbook` = {side: {formation: [plays]}} locked by prep; defaults to the
     DB's locked (applied) books. Raises NoActivePlaybook when the needed side has no
@@ -970,7 +971,7 @@ def make_call(
 
     cpu = is_cpu_opponent(opponent_id)
     note = ""
-    if cpu:
+    if cpu and not cpu_defense:
         sel["defense"] = []
         if sit.side == "defense":
             sit.side = "offense"
@@ -1009,12 +1010,12 @@ def make_call(
                 sit.extras["defense_model"] = "v1"
             if defense_model_path:
                 sit.extras["defense_model_path"] = defense_model_path
-        if (not cold) or allow_human_defense_ml or wants_v1:
+        if (not cold and not cpu) or allow_human_defense_ml or wants_v1:
             # Explicit, defense-only opt-in. Never auto-change offense or CPU mode.
             # This function fails closed to the established defensive caller.
             try:
                 from cfb_coach.madden.model.defense_coordinator import maybe_apply_defense
-                call = maybe_apply_defense(call, sit, opponent_id, db, books["defense"])
+                call = maybe_apply_defense(call, sit, opponent_id, db, books["defense"], allow_cpu=cpu_defense)
             except Exception:  # noqa: BLE001 — safe legacy defense fallback
                 try:
                     call.ml_defense_fallback = {
