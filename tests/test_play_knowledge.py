@@ -123,3 +123,29 @@ def test_reject_missing_source_unknown_taxonomy_and_unsourced_reads(tmp_path):
             db.annotate(key, _offense_jobs(), read_order=["WR3"], read_source="diagram")
         with pytest.raises(KnowledgeError):
             db.annotate(key, _offense_jobs(), read_order=["WR1"])
+
+
+def test_seed_requires_exact_catalog_identity_and_never_implies_user_verification(tmp_path):
+    from cfb_coach.madden.model.play_knowledge import ConceptTag
+    with PlayKnowledgeDB(tmp_path / "seed.db") as db:
+        db.import_catalog(CATALOG)
+        seed = {"schema": "madden27.play_knowledge.seed.v1", "annotations": [{
+            "side": "offense", "book": "Alpha", "formation": "Gun Trips", "play": "Mesh",
+            "evidence": "source_documented", "source": "https://example.org/mesh",
+            "jobs": [{"position": "WR1", "kind": "route", "task": "drag"}],
+            "concepts": ["mesh"]}]}
+        assert db.import_seed_annotations(seed) == 1
+        play = db.get(play_key("offense", "Alpha", "Gun Trips", "Mesh"))
+        assert play.completeness == "partial"
+        assert play.concepts == (ConceptTag("mesh", "source_documented", "https://example.org/mesh"),)
+        assert offense_read(play) == "READ UNKNOWN"
+
+
+def test_seed_does_not_silently_overwrite_existing_annotations(tmp_path):
+    with PlayKnowledgeDB(tmp_path / "seed.db") as db:
+        db.import_catalog(CATALOG)
+        key = play_key("offense", "Alpha", "Gun Trips", "Mesh")
+        db.annotate(key, _offense_jobs())
+        with pytest.raises(KnowledgeError, match="overwrite=True"):
+            db.annotate(key, [PlayerJob("WR1", "route", "drag", "annotated", "other")])
+        assert db.get(key).jobs_for("WR1")[0].task == "curl"
