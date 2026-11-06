@@ -686,6 +686,28 @@ def _experimental_candidate_path(side: str) -> Path:
     return Path(data_dir()) / "madden_ml_experimental" / "candidates" / f"{side}.{stamp}.json"
 
 
+def cmd_ml_heldout_eval(args: argparse.Namespace) -> int:
+    """Read-only held-out evaluation; writes a report outside the live data dir."""
+    from cfb_coach.madden.model import heldout_eval
+
+    out = Path(args.out).expanduser().resolve()
+    live = Path(data_dir()).expanduser().resolve()
+    if out == live or live in out.parents:
+        print(f"Refusing to write evaluation output inside the live data dir {live}.")
+        return 2
+    data = heldout_eval.load_eval_data(args.db_path)
+    report = heldout_eval.evaluate(
+        data,
+        min_train_games=args.min_train_games,
+        n_boot=args.bootstrap,
+        seed=args.seed,
+    )
+    jp, mp = heldout_eval.write_report(report, out)
+    print(f"Wrote {jp}")
+    print(f"Wrote {mp}")
+    return 0
+
+
 def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
     """Train a candidate experimental model. Never overwrites an existing artifact.
 
@@ -2182,6 +2204,17 @@ def build_ml_subparser(sub: Any) -> None:
         help="Madden SQLite path. Required with --install.",
     )
     p_te.set_defaults(func=cmd_ml_train_experimental, cli_parser=p_te)
+
+    p_he = ml_sub.add_parser(
+        "heldout-eval",
+        help="Read-only held-out evaluation of outcome models and logged live behaviour",
+    )
+    p_he.add_argument("--db", dest="db_path", required=True, help="Madden SQLite path (opened read-only)")
+    p_he.add_argument("--out", required=True, help="Report directory (must be outside the live data dir)")
+    p_he.add_argument("--min-train-games", type=int, default=3)
+    p_he.add_argument("--bootstrap", type=int, default=1000)
+    p_he.add_argument("--seed", type=int, default=20261106)
+    p_he.set_defaults(func=cmd_ml_heldout_eval, cli_parser=p_he)
 
     p_to = ml_sub.add_parser(
         "train-offense",
