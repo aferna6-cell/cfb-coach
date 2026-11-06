@@ -14,6 +14,7 @@ dependencies = []
 vision = ["numpy", "opencv-python", "dxcam", "mss"]
 dev = ["pytest", "numpy"]
 youtube = ["youtube-transcript-api>=1.0", "yt-dlp"]
+nfl-research = ["nflreadpy", "polars", "pyarrow", "pandas", "numpy", "scikit-learn", "xgboost", "torch"]
 
 [project.scripts]
 cfb-coach = "cfb_coach.cli:main"
