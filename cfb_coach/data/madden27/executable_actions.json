@@ -1,0 +1,268 @@
+{
+  "schema": "madden27.executable_actions.v1",
+  "game": "Madden NFL 27",
+  "platform": "Xbox",
+  "verified_on": "2026-11-06",
+  "notes": [
+    "Entry buttons come from EA's official Madden 27 Xbox controls hub images (pre-play offense and pre-play defense).",
+    "A sub-menu choice EA does not document is written as an on-screen label to pick, never as a guessed button.",
+    "Saved Custom Adjustments are selected by the slot the user confirmed in-game; no face-button mapping is assumed.",
+    "user_confirmed is false for every action until the user records a physical test."
+  ],
+  "sources": {
+    "ea-controls-xb-off": {
+      "title": "EA - Madden NFL 27 Xbox Controls: Preplay Offense (official controls hub)",
+      "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/controls-hub/m27-xb-preplay-offense",
+      "image_sha256": "b403811011750074728fadbe3aeb8313a4d6d05a37c0cfead03ea5843ef362d1",
+      "grade": "ea_official"
+    },
+    "ea-controls-xb-def": {
+      "title": "EA - Madden NFL 27 Xbox Controls: Preplay Defense (official controls hub)",
+      "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/controls-hub/m27-xb-preplay-defense",
+      "image_sha256": "9ee6664ae80a86225586c57970a2b1b19c52177f855d9623a4af7a7c8fb71d79",
+      "grade": "ea_official"
+    },
+    "ea-deep-dive": {
+      "title": "EA - Madden NFL 27 Gameplay Deep Dive",
+      "url": "https://www.ea.com/en/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay",
+      "grade": "ea_official"
+    },
+    "ea-tu-0916": {
+      "title": "EA - Madden NFL 27 Title Update September 16, 2026",
+      "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-nfl-27-title-update-september-16",
+      "grade": "ea_official"
+    },
+    "madden27-wiki-ca": {
+      "title": "Madden27.wiki - Custom Adjustments & Macros",
+      "url": "https://madden27.wiki/coach-mode/custom-adjustments",
+      "grade": "secondary"
+    },
+    "prodigy-preplay": {
+      "title": "Madden Prodigy - Madden 27 Pre-Play Controls Explained for PS5 and Xbox",
+      "url": "https://www.maddenprodigy.com/madden-27-pre-play-controls/",
+      "grade": "secondary"
+    },
+    "mgw-controls": {
+      "title": "Magic Game World - Madden NFL 27 Controls Guide",
+      "url": "https://www.magicgameworld.com/madden-nfl-27-controls-guide-for-pc-xbox-ps5/",
+      "grade": "secondary"
+    }
+  },
+  "entry_buttons": {
+    "offense": {
+      "LT": "Pass Protection", "LB": "Custom Adjustments", "RT": "Show Play Art", "RB": "Fake Snap",
+      "Y": "Hot Route", "X": "Audible", "B": "Switch Player", "A": "Snap Ball",
+      "LS_HOLD_LEFT_RIGHT": "Motion Player", "LS": "Player Lock", "RS": "Pre-Play Menu", "VIEW": "Call Timeout",
+      "DPAD_UP": "Camera Zoom In", "DPAD_DOWN": "Camera Zoom Out", "DPAD_LEFT": "Coach Vision", "DPAD_RIGHT": "Preplay Subs"
+    },
+    "defense": {
+      "LT": "Global Coverage", "LB": "Custom Adjustments", "RT": "X-Factor Vision", "RB": "Defensive Keys",
+      "Y": "Coverage Audible", "X": "Audible", "B": "Switch Player", "A": "DEF Hot Route",
+      "RS_LEFT_RIGHT": "DL Shift / LB Shift", "LS": "Player Lock", "RS": "Pre-Play Menu", "VIEW": "Call Timeout",
+      "DPAD_UP": "Camera Zoom In", "DPAD_DOWN": "Camera Zoom Out", "DPAD_LEFT": "Coach / X-Factor Vision", "DPAD_RIGHT": "Preplay Subs"
+    }
+  },
+  "rules": {
+    "get_set_between_adjustments": {"text": "Once an adjustment is made, players must get set at the line of scrimmage before another adjustment can be applied.", "source": "ea-deep-dive"},
+    "saved_and_active_limits": {"saved_per_side": 20, "active_per_game": 10, "active_scope": "unknown", "text": "Create up to 20 Custom Adjustments on offense and 20 on defense, but you can only bring 10 active adjustments into a game.", "source": "ea-deep-dive"},
+    "coach_mode_cutoff_seconds": {"value": 15, "text": "Coach Mode: at 15 seconds left on the play clock no further audibles or hot route adjustments can be made.", "source": "ea-deep-dive"},
+    "home_field_advantage": {"text": "Custom Adjustments are not impacted by Home Field Advantage.", "source": "ea-deep-dive"}
+  },
+  "actions": [
+    {
+      "id": "off.no_adjustment", "name": "No adjustment (run the called play)", "side": "offense",
+      "category": "stock", "kind": "stock", "inputs": [], "inputs_grade": "ea_documented",
+      "requires": {}, "exclusive_groups": [], "touches": [], "est_seconds": 0, "sources": ["ea-controls-xb-off"],
+      "effects": {"addresses": {}, "exposes": {}, "evidence": "prior"}
+    },
+    {
+      "id": "def.no_adjustment", "name": "No adjustment (run the called play)", "side": "defense",
+      "category": "stock", "kind": "stock", "inputs": [], "inputs_grade": "ea_documented",
+      "requires": {}, "exclusive_groups": [], "touches": [], "est_seconds": 0, "sources": ["ea-controls-xb-def"],
+      "effects": {"addresses": {}, "exposes": {}, "evidence": "prior"}
+    },
+    {
+      "id": "off.hot_route", "name": "Hot Route", "side": "offense", "category": "hot_route", "kind": "individual_presnap",
+      "inputs": ["tap:Y", "icon:receiver", "onscreen:{route}"], "inputs_grade": "ea_entry_documented",
+      "params": {"route": {"options": ["Slant", "Flat", "Streak", "Curl", "Out", "In", "Drag", "Fade", "Post", "Corner", "Comeback", "Block"], "options_grade": "needs_user_test"}},
+      "requires": {"play_type": ["pass"], "target": "eligible_receiver"},
+      "exclusive_groups": ["routes:{target}"], "touches": ["route:{target}"], "est_seconds": 3,
+      "sources": ["ea-controls-xb-off"],
+      "effects_by_param": {
+        "Slant": {"addresses": {"man": 0.15, "pressure": 0.08}, "exposes": {"cover2": 0.05}, "evidence": "prior"},
+        "Flat": {"addresses": {"pressure": 0.15}, "exposes": {"cover2": 0.08}, "evidence": "prior"},
+        "Streak": {"addresses": {"single_high": 0.08}, "exposes": {"pressure": 0.12, "two_high": 0.08}, "evidence": "prior"},
+        "Block": {"addresses": {"pressure": 0.12}, "exposes": {"two_high": 0.03}, "evidence": "prior"}
+      }
+    },
+    {
+      "id": "off.audible", "name": "Audible", "side": "offense", "category": "audible", "kind": "individual_presnap",
+      "inputs": ["tap:X", "onscreen:{play}"], "inputs_grade": "ea_entry_documented",
+      "params": {"play": {"options": "formation_audibles", "options_grade": "user_playbook"}},
+      "requires": {"in_formation_audibles": true},
+      "exclusive_groups": ["play_change"], "touches": ["play"], "est_seconds": 2, "sources": ["ea-controls-xb-off"],
+      "effects_by_param": {
+        "run": {"addresses": {"two_high": 0.1, "cover2": 0.05}, "exposes": {"single_high": 0.05, "pressure": 0.05}, "evidence": "prior"},
+        "pass": {"addresses": {"single_high": 0.05}, "exposes": {"two_high": 0.03}, "evidence": "prior"}
+      }
+    },
+    {
+      "id": "off.pass_protection", "name": "Pass Protection", "side": "offense", "category": "protection", "kind": "individual_presnap",
+      "inputs": ["hold:LT", "onscreen:{protection}"], "inputs_grade": "ea_entry_documented",
+      "params": {"protection": {"options": ["Half Slide", "Full Slide"], "options_grade": "ea_named_path_untested"}},
+      "requires": {"play_type": ["pass"]},
+      "exclusive_groups": ["protection"], "touches": ["protection"], "est_seconds": 3, "sources": ["ea-controls-xb-off", "ea-tu-0916"],
+      "effects": {"addresses": {"pressure": 0.1}, "exposes": {"two_high": 0.02}, "evidence": "prior"}
+    },
+    {
+      "id": "off.chip_block", "name": "Chip Block", "side": "offense", "category": "protection", "kind": "individual_presnap",
+      "inputs": [], "inputs_grade": "undocumented",
+      "requires": {"play_type": ["pass"], "target_positions": ["TE", "HB"]},
+      "exclusive_groups": ["routes:{target}"], "touches": ["route:{target}"], "est_seconds": 3, "sources": ["ea-deep-dive"],
+      "blocked_reason": "EA documents the Chip Block mechanic (a TE or HB chips a defender before releasing) but not its Xbox input.",
+      "effects": {"addresses": {"pressure": 0.08}, "exposes": {}, "evidence": "prior"}
+    },
+    {
+      "id": "off.motion", "name": "Motion Player", "side": "offense", "category": "motion", "kind": "individual_presnap",
+      "inputs": ["tap:B", "icon:receiver", "hold_stick:LS_LEFT_RIGHT"], "inputs_grade": "ea_entry_documented",
+      "requires": {"target": "eligible_receiver"},
+      "exclusive_groups": ["motion"], "touches": ["alignment:{target}"], "est_seconds": 3, "sources": ["ea-controls-xb-off"],
+      "effects": {"addresses": {"man": 0.05}, "exposes": {}, "evidence": "hypothesis"}
+    },
+    {
+      "id": "off.fake_snap", "name": "Fake Snap", "side": "offense", "category": "snap_control", "kind": "individual_presnap",
+      "inputs": ["tap:RB"], "inputs_grade": "ea_documented",
+      "requires": {}, "exclusive_groups": [], "touches": [], "est_seconds": 1, "sources": ["ea-controls-xb-off"],
+      "effects": {"addresses": {"pressure": 0.03}, "exposes": {}, "evidence": "hypothesis"}
+    },
+    {"id": "off.preset.go_vertical", "name": "Go Vertical", "side": "offense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "requires": {"play_type": ["pass"], "preset_slot": true},
+     "exclusive_groups": ["routes:all"], "touches": ["route:all"], "est_seconds": 2, "sources": ["ea-deep-dive", "ea-controls-xb-off"],
+     "effects": {"addresses": {"single_high": 0.1, "man": 0.08}, "exposes": {"two_high": 0.15, "cover2": 0.1, "pressure": 0.1}, "evidence": "prior"}},
+    {"id": "off.preset.slants", "name": "Slants", "side": "offense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "requires": {"play_type": ["pass"], "preset_slot": true},
+     "exclusive_groups": ["routes:all"], "touches": ["route:all"], "est_seconds": 2, "sources": ["ea-deep-dive", "ea-controls-xb-off"],
+     "effects": {"addresses": {"man": 0.15, "pressure": 0.12}, "exposes": {"cover2": 0.08, "two_high": 0.03}, "evidence": "prior"}},
+    {"id": "off.preset.mesh", "name": "Mesh", "side": "offense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "requires": {"play_type": ["pass"], "preset_slot": true},
+     "exclusive_groups": ["routes:all"], "touches": ["route:all"], "est_seconds": 2, "sources": ["ea-deep-dive", "ea-controls-xb-off"],
+     "effects": {"addresses": {"man": 0.15, "single_high": 0.05}, "exposes": {"cover2": 0.05, "pressure": 0.05}, "evidence": "prior"}},
+    {"id": "off.preset.outs", "name": "Outs", "side": "offense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "requires": {"play_type": ["pass"], "preset_slot": true},
+     "exclusive_groups": ["routes:all"], "touches": ["route:all"], "est_seconds": 2, "sources": ["ea-deep-dive", "ea-controls-xb-off"],
+     "effects": {"addresses": {"two_high": 0.08, "single_high": 0.05}, "exposes": {"cover2": 0.15}, "evidence": "prior"}},
+    {"id": "off.preset.smart_routes", "name": "Smart Routes", "side": "offense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "requires": {"play_type": ["pass"], "preset_slot": true},
+     "exclusive_groups": ["routes:all"], "touches": ["route:all"], "est_seconds": 2, "sources": ["ea-deep-dive", "ea-controls-xb-off"],
+     "effects": {"addresses": {"cover2": 0.05, "single_high": 0.05}, "exposes": {"pressure": 0.05}, "evidence": "hypothesis"}},
+    {"id": "off.preset.comebacks", "name": "Comebacks", "side": "offense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "requires": {"play_type": ["pass"], "preset_slot": true},
+     "exclusive_groups": ["routes:all"], "touches": ["route:all"], "est_seconds": 2, "sources": ["ea-deep-dive", "ea-controls-xb-off"],
+     "effects": {"addresses": {"single_high": 0.1, "two_high": 0.05}, "exposes": {"pressure": 0.12}, "evidence": "prior"}},
+    {"id": "off.preset.double_moves", "name": "Double Moves", "side": "offense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "requires": {"play_type": ["pass"], "preset_slot": true},
+     "exclusive_groups": ["routes:all"], "touches": ["route:all"], "est_seconds": 2, "sources": ["ea-deep-dive", "ea-controls-xb-off"],
+     "effects": {"addresses": {"man": 0.1, "single_high": 0.05}, "exposes": {"pressure": 0.2}, "evidence": "prior"}},
+    {"id": "off.preset.zigs", "name": "Zigs", "side": "offense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "requires": {"play_type": ["pass"], "preset_slot": true},
+     "exclusive_groups": ["routes:all"], "touches": ["route:all"], "est_seconds": 2, "sources": ["ea-deep-dive", "ea-controls-xb-off"],
+     "effects": {"addresses": {"man": 0.15}, "exposes": {"pressure": 0.1}, "evidence": "prior"}},
+    {
+      "id": "def.double_team", "name": "Double Team", "side": "defense", "category": "coverage_hub", "kind": "individual_presnap",
+      "inputs": ["hold:LT", "icon:receiver", "tap:X"], "inputs_grade": "ea_documented",
+      "requires": {"target": "eligible_receiver", "play_type": ["coverage"]},
+      "exclusive_groups": ["coverage_target:{target}"], "touches": ["coverage:{target}"], "est_seconds": 3, "sources": ["ea-deep-dive", "ea-controls-xb-def"],
+      "effects": {"addresses": {"vert": 0.12, "cross": 0.08, "flood": 0.08}, "exposes": {"run": 0.08, "rpo": 0.05}, "evidence": "prior"}
+    },
+    {
+      "id": "def.coverage_hub", "name": "Global Coverage", "side": "defense", "category": "coverage_hub", "kind": "individual_presnap",
+      "inputs": ["hold:LT", "onscreen:{option}"], "inputs_grade": "ea_entry_documented",
+      "params": {"option": {"options": ["Press", "Back Off", "Inside Leverage", "Outside Leverage", "Pass Commit Inside", "Pass Commit Outside",
+                                        "Smart Zone Aggressive", "Smart Zone Balanced", "Smart Zone Conservative", "Smart Zone Ultra Aggressive",
+                                        "Smart Zone Ultra Conservative", "Deep Zone Focus", "Clear Deep Zone Focus"],
+                            "options_grade": "ea_named_path_untested"}},
+      "requires": {"play_type": ["coverage"]},
+      "exclusive_groups": ["hub:{option_group}"], "touches": ["coverage:{option_group}"], "est_seconds": 3,
+      "sources": ["ea-deep-dive", "ea-controls-xb-def"],
+      "option_groups": {"Press": "depth", "Back Off": "depth", "Inside Leverage": "leverage", "Outside Leverage": "leverage",
+                        "Pass Commit Inside": "commit", "Pass Commit Outside": "commit",
+                        "Smart Zone Aggressive": "smart_zone", "Smart Zone Balanced": "smart_zone", "Smart Zone Conservative": "smart_zone",
+                        "Smart Zone Ultra Aggressive": "smart_zone", "Smart Zone Ultra Conservative": "smart_zone",
+                        "Deep Zone Focus": "deep_focus", "Clear Deep Zone Focus": "deep_focus"},
+      "effects_by_param": {
+        "Press": {"addresses": {"cross": 0.05, "flood": 0.05, "rpo": 0.05}, "exposes": {"vert": 0.15}, "evidence": "prior"},
+        "Back Off": {"addresses": {"vert": 0.15}, "exposes": {"cross": 0.08, "flood": 0.05, "rpo": 0.05}, "evidence": "prior"},
+        "Inside Leverage": {"addresses": {"cross": 0.12}, "exposes": {"flood": 0.08}, "evidence": "prior"},
+        "Outside Leverage": {"addresses": {"flood": 0.12}, "exposes": {"cross": 0.08}, "evidence": "prior"},
+        "Pass Commit Inside": {"addresses": {"cross": 0.18}, "exposes": {"flood": 0.14, "vert": 0.04}, "evidence": "prior"},
+        "Pass Commit Outside": {"addresses": {"flood": 0.18}, "exposes": {"cross": 0.14, "vert": 0.04}, "evidence": "prior"},
+        "Smart Zone Aggressive": {"addresses": {"cross": 0.12, "flood": 0.08, "rpo": 0.05}, "exposes": {"vert": 0.2}, "evidence": "prior"},
+        "Smart Zone Ultra Aggressive": {"addresses": {"cross": 0.18, "flood": 0.1, "rpo": 0.08}, "exposes": {"vert": 0.3}, "evidence": "prior"},
+        "Smart Zone Conservative": {"addresses": {"vert": 0.15}, "exposes": {"cross": 0.08, "flood": 0.08}, "evidence": "prior"},
+        "Smart Zone Ultra Conservative": {"addresses": {"vert": 0.22}, "exposes": {"cross": 0.12, "flood": 0.12, "run": 0.04}, "evidence": "prior"},
+        "Deep Zone Focus": {"addresses": {"vert": 0.12}, "exposes": {"cross": 0.04}, "evidence": "prior"}
+      }
+    },
+    {
+      "id": "def.coverage_audible", "name": "Coverage Audible", "side": "defense", "category": "coverage_audible", "kind": "individual_presnap",
+      "inputs": ["tap:Y", "onscreen:{coverage}"], "inputs_grade": "ea_entry_documented",
+      "params": {"coverage": {"options": "on_screen", "options_grade": "needs_user_test"}},
+      "requires": {}, "exclusive_groups": ["coverage_audible"], "touches": ["coverage:shell"], "est_seconds": 2,
+      "sources": ["ea-controls-xb-def"], "effects": {"addresses": {}, "exposes": {}, "evidence": "hypothesis"}
+    },
+    {
+      "id": "def.hot_route", "name": "DEF Hot Route", "side": "defense", "category": "individual_assignment", "kind": "individual_presnap",
+      "inputs": ["tap:A", "icon:defender", "onscreen:{assignment}"], "inputs_grade": "ea_entry_documented",
+      "params": {"assignment": {"options": "on_screen", "options_grade": "needs_user_test"}},
+      "requires": {"target": "defender"}, "exclusive_groups": ["assignment:{target}"], "touches": ["assignment:{target}"], "est_seconds": 3,
+      "sources": ["ea-controls-xb-def"], "effects": {"addresses": {}, "exposes": {}, "evidence": "hypothesis"}
+    },
+    {
+      "id": "def.front_shift", "name": "DL Shift / LB Shift", "side": "defense", "category": "front", "kind": "individual_presnap",
+      "inputs": ["stick:RS_LEFT_RIGHT", "onscreen:{shift}"], "inputs_grade": "ea_entry_documented",
+      "params": {"shift": {"options": "on_screen", "options_grade": "needs_user_test"}},
+      "requires": {}, "exclusive_groups": ["front"], "touches": ["front"], "est_seconds": 3,
+      "sources": ["ea-controls-xb-def"], "effects": {"addresses": {}, "exposes": {}, "evidence": "hypothesis"}
+    },
+    {
+      "id": "def.defensive_keys", "name": "Defensive Keys", "side": "defense", "category": "keys", "kind": "individual_presnap",
+      "inputs": ["tap:RB", "onscreen:{key}"], "inputs_grade": "ea_entry_documented",
+      "params": {"key": {"options": "on_screen", "options_grade": "needs_user_test"}},
+      "requires": {}, "exclusive_groups": ["keys"], "touches": ["keys"], "est_seconds": 3,
+      "sources": ["ea-controls-xb-def"], "effects": {"addresses": {}, "exposes": {}, "evidence": "hypothesis"}
+    },
+    {
+      "id": "def.qb_contain", "name": "QB Contain", "side": "defense", "category": "contain", "kind": "individual_presnap",
+      "inputs": [], "inputs_grade": "conflict",
+      "requires": {}, "exclusive_groups": ["contain"], "touches": ["contain"], "est_seconds": 3, "sources": ["ea-tu-0916", "ea-controls-xb-def"],
+      "blocked_reason": "EA's update notes confirm QB Contain exists, but EA's Madden 27 Xbox pre-play map has no QB Contain input. The project's old 'RB then LB' maps to Defensive Keys and Custom Adjustments in Madden 27.",
+      "effects": {"addresses": {"scram": 0.25}, "exposes": {"cross": 0.05, "run": 0.05}, "evidence": "prior"}
+    },
+    {
+      "id": "def.show_blitz", "name": "Show Blitz", "side": "defense", "category": "pressure_look", "kind": "individual_presnap",
+      "inputs": [], "inputs_grade": "conflict",
+      "requires": {}, "exclusive_groups": ["pressure_look"], "touches": ["pressure_look"], "est_seconds": 2, "sources": ["ea-controls-xb-def"],
+      "blocked_reason": "No Show Blitz input on EA's Madden 27 Xbox pre-play map; RB is Defensive Keys.",
+      "effects": {"addresses": {}, "exposes": {}, "evidence": "hypothesis"}
+    },
+    {"id": "def.preset.defend_screen_pass", "name": "Defend Screen Pass", "side": "defense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "requires": {"preset_slot": true},
+     "exclusive_groups": ["custom_adjustment"], "touches": ["coverage:all"], "est_seconds": 2, "sources": ["ea-deep-dive", "ea-controls-xb-def"],
+     "effects": {"addresses": {"rpo": 0.25}, "exposes": {"vert": 0.15, "run": 0.05}, "evidence": "prior"}},
+    {"id": "def.preset.play_short_routes", "name": "Play Short Routes", "side": "defense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "name_grade": "secondary",
+     "requires": {"preset_slot": true}, "exclusive_groups": ["custom_adjustment"], "touches": ["coverage:all"], "est_seconds": 2,
+     "sources": ["madden27-wiki-ca", "prodigy-preplay", "mgw-controls"],
+     "effects": {"addresses": {"cross": 0.18, "flood": 0.1, "rpo": 0.05}, "exposes": {"vert": 0.25}, "evidence": "prior"}},
+    {"id": "def.preset.no_deep_passes", "name": "No Deep Passes", "side": "defense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "name_grade": "secondary",
+     "requires": {"preset_slot": true}, "exclusive_groups": ["custom_adjustment"], "touches": ["coverage:all"], "est_seconds": 2,
+     "sources": ["madden27-wiki-ca", "prodigy-preplay", "mgw-controls"],
+     "effects": {"addresses": {"vert": 0.3}, "exposes": {"cross": 0.1, "flood": 0.1, "run": 0.08}, "evidence": "prior"}},
+    {"id": "def.preset.qb_scramble", "name": "QB Scramble", "side": "defense", "category": "custom_adjustment_preset", "kind": "preset",
+     "inputs": ["tap:LB", "slot:{slot}"], "inputs_grade": "ea_entry_documented", "name_grade": "secondary",
+     "requires": {"preset_slot": true}, "exclusive_groups": ["custom_adjustment"], "touches": ["coverage:all"], "est_seconds": 2,
+     "sources": ["madden27-wiki-ca", "prodigy-preplay", "mgw-controls"],
+     "effects": {"addresses": {"scram": 0.3}, "exposes": {"cross": 0.05, "vert": 0.05}, "evidence": "prior"}}
+  ]
+}
