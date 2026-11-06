@@ -55,5 +55,44 @@ class CalibrationTests(unittest.TestCase):
         self.assertEqual(mod.NFLRaw().predict(_offense_row(0.37, True))["success"], 0.37)
 
 
+class MappingTests(unittest.TestCase):
+    def test_madden_plays_map_to_the_only_nfl_play_input_run_or_pass(self):
+        self.assertEqual(mod.nfl_play_input("Inside Zone"), "run")
+        self.assertEqual(mod.nfl_play_input("Four Verticals"), "pass")
+        self.assertEqual(mod.nfl_play_input("HB Screen"), "pass")
+        self.assertEqual(mod.nfl_play_input("Totally Unknown Name"), "mixture")
+        self.assertEqual(mod.nfl_play_input(None), "mixture")
+        self.assertEqual(set(mod.NFL_PLAY_INPUT.values()), {"run", "pass", "mixture"})
+
+    def test_situation_slices(self):
+        self.assertEqual(mod.situation_slices({"side": "offense", "distance": 1, "yardline": 85}),
+                         {"short_yardage": "yes", "red_zone": "yes"})
+        self.assertEqual(mod.situation_slices({"side": "offense", "distance": 10, "yardline": 30}),
+                         {"short_yardage": "no", "red_zone": "no"})
+        self.assertEqual(mod.situation_slices({"side": "offense", "distance": None, "yardline": None}),
+                         {"short_yardage": "no", "red_zone": "no"})
+
+
+class TunedBlendTests(unittest.TestCase):
+    def test_zero_strength_is_the_experimental_model(self):
+        self.assertAlmostEqual(mod.blend(0.62, 0.30, 0.5, 0.0), 0.62)
+
+    def test_prior_at_the_base_rate_changes_nothing(self):
+        self.assertAlmostEqual(mod.blend(0.62, 0.5, 0.5, 1.0), 0.62)
+
+    def test_strength_is_chosen_without_the_test_game(self):
+        rows = []
+        for g in range(4):
+            for i in range(40):
+                success = i % 2 == 0
+                rows.append({**_offense_row(0.8 if success else 0.2, success), "game_id": f"g{g}"})
+        choices: list[float] = []
+        model = mod.ExperimentalNFLTuned({f"g{g}": g for g in range(4)}, choices)
+        model.fit(rows)
+        # An informative NFL score earns the strongest allowed prior on the validation game.
+        self.assertEqual(choices, [max(mod.PRIOR_STRENGTHS)])
+        self.assertGreater(model.predict({**_offense_row(0.8, True), "game_id": "test"})["success"], 0.6)
+
+
 if __name__ == "__main__":
     unittest.main()
