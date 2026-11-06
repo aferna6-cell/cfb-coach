@@ -55,6 +55,11 @@ Routes are a reusable taxonomy, with depth/direction optionally captured in `par
   a verified assignment; apply a declared, active, user-verified macro with
   known changes; preserve unaffected assignments; reject unknown or conflicting
   changes; choose a specific eligible action or `NO ADJUSTMENT`.
+  The additional `select_scored_plan` API accepts model-scored combinations
+  (individual edits, macros, or both), revalidates real Madden legality,
+  confirmed installation and clock restrictions through the existing executable
+  registry, and returns one complete plan or `NO ADJUSTMENT`. It never fabricates
+  the scores or activates the resulting plan in live coaching.
 - **Supported**: only emit a quarterback read order if that actual play has a
   sourced progression and relevant routes; only provide a user-defender duty
   if the selected position has a sourced defensive job.
