@@ -64,7 +64,31 @@ def empty_profile(opponent_id: str | None = None) -> dict[str, Any]:
         "play_rates": {},
         "concepts": {},
         "run_share": None,
+        "evidence": {},
         "summary": "no learned tendencies",
+    }
+
+
+OBSERVATION_BASIS = "observed_opponent_play"
+SOURCE_CONFIDENCE = {
+    "logged_snaps": "per_play_logged_observation",
+    "tendency_counters": "aggregate_counter_undated",
+}
+
+
+def _evidence(snap_counts: Mapping[str, float], tendency_counts: Mapping[str, float],
+              merged: Mapping[str, float], as_of: str | None) -> dict[str, Any]:
+    """Where the counted plays came from. Our own call is never one of them."""
+    from_snaps = sum(snap_counts.values())
+    from_counters = sum(tendency_counts.values())
+    return {
+        "basis": OBSERVATION_BASIS,
+        "counted": int(sum(merged.values())),
+        "logged_snaps": int(from_snaps),
+        "tendency_counters": int(from_counters),
+        "counter_only": int(sum(max(0.0, merged[k] - float(snap_counts.get(k, 0.0))) for k in merged)),
+        "confidence": dict(SOURCE_CONFIDENCE),
+        "as_of": as_of,
     }
 
 
@@ -92,22 +116,16 @@ def _shares(counts: Mapping[str, float]) -> dict[str, float]:
     return {key: value / total for key, value in counts.items() if value > 0}
 
 
-def _blend_shares(
-    left: Mapping[str, float], n_left: float,
-    right: Mapping[str, float], n_right: float,
+def _merge_observations(
+    tendency: Mapping[str, float], snaps: Mapping[str, float],
 ) -> dict[str, float]:
-    if n_left <= 0 and n_right <= 0:
-        return {}
-    if n_left <= 0:
-        return dict(right)
-    if n_right <= 0:
-        return dict(left)
-    keys = set(left) | set(right)
-    mixed = {
-        key: (n_left * left.get(key, 0.0) + n_right * right.get(key, 0.0)) / (n_left + n_right)
-        for key in keys
-    }
-    return _shares(mixed)
+    """Each logged snap also bumps the tendency table, so the two overlap.
+
+    Per-category max keeps tendency counts that predate snap logging without
+    counting a logged play twice.
+    """
+    keys = set(tendency) | set(snaps)
+    return {k: max(float(tendency.get(k, 0.0)), float(snaps.get(k, 0.0))) for k in keys}
 
 
 def _dist_class(distance: Any) -> str:
@@ -137,21 +155,26 @@ def _verified(row: Any) -> bool:
     return status == "identified" or verification in ("verified", "confirmed")
 
 
-def _snap_rows(db: Any, opponent_id: str) -> list[Any]:
+def _snap_rows(db: Any, opponent_id: str, as_of: str | None = None) -> list[Any]:
+    """This opponent's logged snaps; with ``as_of``, only snaps logged strictly before it."""
     if db is None or not opponent_id or not hasattr(db, "conn"):
         return []
     try:
-        return list(db.conn.execute(
-            "SELECT side, down, distance, coverage_seen, concept_seen, formation, play, "
+        rows = list(db.conn.execute(
+            "SELECT ts, side, down, distance, coverage_seen, concept_seen, formation, play, "
             "result, executed_status, executed_verification FROM snaps WHERE opponent_id = ?",
             (opponent_id,),
         ).fetchall())
     except Exception:  # noqa: BLE001 — a database without those columns has no verified snaps
         return []
+    if as_of is None:
+        return rows
+    return [r for r in rows if str(_row_get(r, "ts") or "") and str(_row_get(r, "ts")) < as_of]
 
 
-def _tendency_rows(db: Any, opponent_id: str) -> list[Any]:
-    if db is None or not opponent_id or not hasattr(db, "get_tendencies"):
+def _tendency_rows(db: Any, opponent_id: str, as_of: str | None = None) -> list[Any]:
+    # Counters carry no timestamps, so a dated profile cannot use them.
+    if as_of is not None or db is None or not opponent_id or not hasattr(db, "get_tendencies"):
         return []
     try:
         return list(db.get_tendencies(opponent_id))
@@ -195,8 +218,7 @@ def _count_snap_coverage(rows: Sequence[Any], sit: Any, *, bucketed: bool) -> tu
     for row in rows:
         if str(_row_get(row, "side") or "offense").startswith("d"):
             continue
-        if not _verified(row):
-            continue
+        # The opponent's look is observed whether or not our call was executed as shown.
         seen = str(_row_get(row, "coverage_seen") or "").strip()
         if not seen:
             continue
@@ -244,29 +266,35 @@ def _learned_weights(db: Any, opponent_id: str, side: str) -> Any:
         return None
 
 
-def build_offense_profile(db: Any, opponent_id: str, sit: Any = None) -> dict[str, Any]:
-    """Coverage mix and play results for one opponent. Empty when nothing is stored."""
+def build_offense_profile(db: Any, opponent_id: str, sit: Any = None, *, as_of: str | None = None) -> dict[str, Any]:
+    """Coverage mix and play results for one opponent. Empty when nothing is stored.
+
+    ``as_of`` (replay/evaluation) limits evidence to snaps logged before it.
+    """
     profile = empty_profile(opponent_id)
     from cfb_coach.tendency import situation_bucket
 
     specific = f"their_coverage|{situation_bucket(sit)}" if sit is not None else None
-    rows = _tendency_rows(db, opponent_id)
-    snaps = _snap_rows(db, opponent_id)
-    spec_counts, spec_labels, spec_n = _count_coverage(rows, bucket=specific) if specific else ({}, {}, 0.0)
-    all_counts, all_labels, all_n = _count_coverage(rows, bucket=None)
-    snap_spec, snap_labels, snap_spec_n = _count_snap_coverage(snaps, sit, bucketed=True)
-    snap_all, snap_all_labels, snap_all_n = _count_snap_coverage(snaps, sit, bucketed=False)
+    rows = _tendency_rows(db, opponent_id, as_of)
+    snaps = _snap_rows(db, opponent_id, as_of)
+    spec_counts, spec_labels, _ = _count_coverage(rows, bucket=specific) if specific else ({}, {}, 0.0)
+    all_counts, all_labels, _ = _count_coverage(rows, bucket=None)
+    snap_spec, snap_labels, _ = _count_snap_coverage(snaps, sit, bucketed=True)
+    snap_all, snap_all_labels, _ = _count_snap_coverage(snaps, sit, bucketed=False)
 
-    if spec_n >= MIN_BUCKET or snap_spec_n >= MIN_BUCKET:
-        mix = _blend_shares(_shares(spec_counts), spec_n, _shares(snap_spec), snap_spec_n)
+    merged = _merge_observations(spec_counts, snap_spec)
+    if sum(merged.values()) >= MIN_BUCKET:
         labels = {**snap_labels, **spec_labels}
         scope = "this down"
-        n = max(spec_n, snap_spec_n)
+        used = (snap_spec, spec_counts)
     else:
-        mix = _blend_shares(_shares(all_counts), all_n, _shares(snap_all), snap_all_n)
+        merged = _merge_observations(all_counts, snap_all)
         labels = {**snap_all_labels, **all_labels}
         scope = "all downs"
-        n = max(all_n, snap_all_n)
+        used = (snap_all, all_counts)
+    n = sum(merged.values())
+    profile["evidence"] = _evidence(*used, merged, as_of)
+    mix = _shares(merged)
     profile["mix"] = mix
     profile["labels"] = labels
     profile["scope"] = scope if n else ""
@@ -423,8 +451,6 @@ def _count_snap_concepts(rows: Sequence[Any], sit: Any, *, bucketed: bool) -> tu
     for row in rows:
         if not str(_row_get(row, "side") or "").startswith("d"):
             continue
-        if not _verified(row):
-            continue
         seen = str(_row_get(row, "concept_seen") or "").strip()
         if not seen:
             continue
@@ -438,36 +464,36 @@ def _count_snap_concepts(rows: Sequence[Any], sit: Any, *, bucketed: bool) -> tu
     return counts, runs, total
 
 
-def build_defense_profile(db: Any, opponent_id: str, sit: Any = None) -> dict[str, Any]:
-    """Run/pass and concept mix from this opponent's learned offense. Empty if none."""
+def build_defense_profile(db: Any, opponent_id: str, sit: Any = None, *, as_of: str | None = None) -> dict[str, Any]:
+    """Run/pass and concept mix from this opponent's learned offense. Empty if none.
+
+    Counts the concept we saw him run, never the call we displayed. ``as_of``
+    (replay/evaluation) limits evidence to snaps logged before it.
+    """
     profile = empty_profile(opponent_id)
     from cfb_coach.tendency import situation_bucket
 
     specific = f"offense_concept|{situation_bucket(sit)}" if sit is not None else None
-    rows = _tendency_rows(db, opponent_id)
-    snaps = _snap_rows(db, opponent_id)
-    spec_counts, spec_runs, spec_n = _count_concepts(rows, bucket=specific) if specific else ({}, 0.0, 0.0)
-    all_counts, all_runs, all_n = _count_concepts(rows, bucket=None)
-    snap_spec, snap_runs, snap_spec_n = _count_snap_concepts(snaps, sit, bucketed=True)
-    snap_all, snap_all_runs, snap_all_n = _count_snap_concepts(snaps, sit, bucketed=False)
-    if spec_n >= MIN_BUCKET or snap_spec_n >= MIN_BUCKET:
-        counts = _blend_shares(_shares(spec_counts), spec_n, _shares(snap_spec), snap_spec_n)
-        runs = spec_runs + snap_runs
-        total = spec_n + snap_spec_n
-        n = max(spec_n, snap_spec_n)
-        scope = "this down"
-    else:
-        counts = _blend_shares(_shares(all_counts), all_n, _shares(snap_all), snap_all_n)
-        runs = all_runs + snap_all_runs
-        total = all_n + snap_all_n
-        n = max(all_n, snap_all_n)
+    rows = _tendency_rows(db, opponent_id, as_of)
+    snaps = _snap_rows(db, opponent_id, as_of)
+    spec_counts = _count_concepts(rows, bucket=specific)[0] if specific else {}
+    all_counts = _count_concepts(rows, bucket=None)[0]
+    snap_spec = _count_snap_concepts(snaps, sit, bucketed=True)[0]
+    snap_all = _count_snap_concepts(snaps, sit, bucketed=False)[0]
+    merged = _merge_observations(spec_counts, snap_spec)
+    scope = "this down"
+    used = (snap_spec, spec_counts)
+    if sum(merged.values()) < MIN_BUCKET:
+        merged = _merge_observations(all_counts, snap_all)
         scope = "all downs"
-    # Shrinkage uses the larger source, not the sum, so one snap is not counted twice.
+        used = (snap_all, all_counts)
+    n = sum(merged.values())
+    profile["evidence"] = _evidence(*used, merged, as_of)
     profile["n"] = int(n)
     profile["shrink"] = _shrink(n)
-    profile["concepts"] = counts
+    profile["concepts"] = _shares(merged)
     profile["scope"] = scope if n else ""
-    profile["run_share"] = (runs / total) if total > 0 else None
+    profile["run_share"] = (merged.get("run", 0.0) / n) if n > 0 else None
     profile["summary"] = format_defense_summary(profile)
     return profile
 
@@ -476,7 +502,8 @@ POOLED_SHRINK_SCALE = 0.5
 POOLED_SHRINK_CAP = 0.4
 
 
-def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None) -> dict[str, Any]:
+def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None,
+                         as_of: str | None = None) -> dict[str, Any]:
     """A starting prior for a human opponent with no history: every other human, pooled.
 
     Weighted by each opponent's evidence. Shrink is halved and capped at 0.4,
@@ -498,7 +525,7 @@ def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None
     for oid in ids:
         if oid == exclude or is_cpu_opponent(oid):
             continue
-        p = build_defense_profile(db, oid, sit)
+        p = build_defense_profile(db, oid, sit, as_of=as_of)
         n = float(p.get("n") or 0)
         if n <= 0 or p.get("run_share") is None:
             continue
@@ -512,6 +539,7 @@ def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None
     profile.update(
         n=int(total), run_share=runs / total, concepts=_shares(concepts), scope="pooled human opponents",
         shrink=min(POOLED_SHRINK_CAP, POOLED_SHRINK_SCALE * _shrink(total)), pooled_from=used,
+        evidence={"basis": OBSERVATION_BASIS, "counted": int(total), "pooled_opponents": used},
     )
     profile["summary"] = f"league prior from {used} human opponents: " + format_defense_summary(profile)
     return profile
@@ -520,7 +548,8 @@ def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None
 PRIOR_HANDOFF = 12
 
 
-def with_pooled_prior(db: Any, own: Mapping[str, Any] | None, sit: Any, opponent_id: str) -> dict[str, Any]:
+def with_pooled_prior(db: Any, own: Mapping[str, Any] | None, sit: Any, opponent_id: str, *,
+                      as_of: str | None = None) -> dict[str, Any]:
     """A thin human profile leaned toward the league prior, handing off as his snaps pile up.
 
     His own share weighs n / (n + 12): about a third after 6 logged plays, half after 12.
@@ -529,7 +558,7 @@ def with_pooled_prior(db: Any, own: Mapping[str, Any] | None, sit: Any, opponent
     n = float(own.get("n") or 0)
     if n >= 4 * PRIOR_HANDOFF:
         return own
-    prior = pooled_human_profile(db, sit, exclude=opponent_id)
+    prior = pooled_human_profile(db, sit, exclude=opponent_id, as_of=as_of)
     if int(prior.get("n") or 0) <= 0 or prior.get("run_share") is None:
         return own
     if n <= 0 or own.get("run_share") is None:
