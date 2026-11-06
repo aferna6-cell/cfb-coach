@@ -277,13 +277,32 @@ class PlayKnowledgeDB:
                             counts[side] += 1
         return counts
 
+    def import_seed_annotations(self, payload: Mapping[str, Any]) -> int:
+        """Import source-identified examples without upgrading to Xbox verification."""
+        if payload.get("schema") != "madden27.play_knowledge.seed.v1":
+            raise KnowledgeError("unexpected play-knowledge seed schema")
+        count = 0
+        for row in payload.get("annotations") or []:
+            key = play_key(row["side"], row["book"], row["formation"], row["play"])
+            source = str(row.get("source") or "")
+            evidence = str(row.get("evidence") or "")
+            jobs = [PlayerJob(j["position"], j["kind"], j["task"], evidence, source,
+                              dict(j.get("params") or {})) for j in row.get("jobs") or []]
+            concepts = [ConceptTag(str(c), evidence, source) for c in row.get("concepts") or []]
+            self.annotate(key, jobs, concepts=concepts)
+            count += 1
+        return count
+
     def annotate(self, key: str, jobs: Sequence[PlayerJob], *,
                  read_order: Sequence[str] = (), read_source: str = "",
-                 concepts: Sequence[ConceptTag] = ()) -> None:
+                 concepts: Sequence[ConceptTag] = (), overwrite: bool = False) -> None:
         row = self.conn.execute("SELECT side FROM plays WHERE key=?", (key,)).fetchone()
         if not row:
             raise KnowledgeError("play must exist in catalog before annotation")
         side = row["side"]
+        existing = self.conn.execute("SELECT 1 FROM player_jobs WHERE play_key=? LIMIT 1", (key,)).fetchone()
+        if existing and not overwrite:
+            raise KnowledgeError("play already annotated; explicit overwrite=True required")
         if not jobs:
             raise KnowledgeError("empty annotation would erase useful evidence")
         for job in jobs:
