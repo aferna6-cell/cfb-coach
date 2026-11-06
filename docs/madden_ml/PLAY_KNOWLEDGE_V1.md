@@ -23,6 +23,7 @@ catalog records, **not** counts of fully annotated or unique play designs.
 - `scripts/madden_ml/build_play_knowledge.py`: builds a separate research database
   from catalog names; refuses to overwrite a file or write into `~/.cfb-coach`.
 - `tests/test_play_knowledge.py`: synthetic catalog and assignment safety tests.
+- `cfb_coach/data/madden27/play_knowledge_seeds.json`: one **source-documented**, not Xbox-verified, offensive route-table example from Madden Tools (`Balanced / Gun Tight Slots / Mesh`). It is intentionally partial. The published page's narrative and route/read table contain discrepancies; no read order is imported.
 
 ## Build the database
 
@@ -32,9 +33,11 @@ From the checkout, with the package installed or working directory on `PYTHONPAT
 python scripts/madden_ml/build_play_knowledge.py --output /tmp/madden27-play-knowledge.db
 ```
 
-The importer creates **names only**. The initially reported number of annotated
-assignments will be **zero**. It does not know WR routes, blocking patterns, or
-defensive zones from a label like `Mesh` or `Cover 3 Sky`.
+The importer first creates **names only**, then (by default) applies one small
+public-source example annotation if the seed file is present. Without that
+example (`--no-seeds`), annotated assignments are **zero**. It cannot infer WR
+routes, blocking patterns, or defensive zones from a label like `Mesh` or
+`Cover 3 Sky`. The seed remains `source_documented`, not `user_verified`.
 
 Add a verified annotation for a known play using `PlayKnowledgeDB.annotate` with
 `PlayerJob(position, kind, task, evidence, source, params)`. Positions are
