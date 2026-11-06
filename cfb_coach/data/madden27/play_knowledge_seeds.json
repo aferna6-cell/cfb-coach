@@ -1,0 +1,22 @@
+{
+  "schema": "madden27.play_knowledge.seed.v1",
+  "note": "Small public-source research annotation, not user-verified play art. Route table and descriptive text may disagree; do not treat the published read order as independently verified.",
+  "annotations": [
+    {
+      "side": "offense",
+      "book": "Balanced",
+      "formation": "Gun Tight Slots",
+      "play": "Mesh",
+      "jobs": [
+        {"position": "HB1", "kind": "route", "task": "wheel", "params": {"side": "right"}},
+        {"position": "WR3", "kind": "route", "task": "drag", "params": {"side": "left"}},
+        {"position": "WR1", "kind": "route", "task": "streak", "params": {"side": "left"}},
+        {"position": "WR2", "kind": "route", "task": "curl", "params": {"side": "right"}},
+        {"position": "TE1", "kind": "route", "task": "drag", "params": {"side": "right"}}
+      ],
+      "concepts": ["mesh", "crossing_route_combination"],
+      "evidence": "source_documented",
+      "source": "https://madden.tools/playbooks/formation/shotgun/tight-slots/mesh"
+    }
+  ]
+}
