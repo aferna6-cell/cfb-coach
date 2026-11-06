@@ -21,9 +21,13 @@ names or play-by-play rows. Re-running on the same backup reproduces these numbe
    human-game plays and on the 91 per-snap-verified plays it shows no ranking skill (AUC ≈ 0.5).
 2. Down/distance tables predict *3rd/4th-down conversion* clearly better than the base rate
    (log loss 0.651 vs 0.698, n = 117). Nothing beats the base rate on explosives or turnovers.
-3. Opponent run/pass on our defensive snaps is essentially unpredictable from situation alone
-   (AUC 0.51–0.54, n = 96). Every human opponent appears in only one game, so cross-game
-   opponent learning cannot be validated yet; within-game learning is the testable next step.
+3. Opponent run/pass on our defensive snaps (192 observed plays, 7 human opponents, one game
+   each) is not yet predictable: every model — league situation rates, the opponent's own
+   history, league → style → individual pooling — scores about the same as a 50/50 guess
+   (log loss 0.69–0.73), and no difference is statistically separated. Directionally, the
+   opponent's own history hurts during his first 5 plays and helps after 15. A leakage-free
+   GBT/MLP check on raw features (`scripts/madden_ml/opponent_gbt_nn_experiment.py`) was also
+   inconclusive (LOOO log loss 0.683 / 0.701; chronological only 74 plays in 3 games).
 4. Live reliability is good: 1.2% heuristic fallbacks (all timeouts), p95 latency 96 ms,
    p99 153 ms (1.2% of decisions over the 150 ms budget), no final pick outside the applied book.
 5. ML and the heuristic agreed on only 6.3% of decisions, and no decision logged a usable
@@ -82,7 +86,7 @@ Lower log loss / Brier is better; AUC 0.5 = no ranking skill. `Δ vs base` is th
 | situation_play_family | 599 | 0.040 | 0.040 | 0.1772 | 0.0389 | 0.528 | 0.000 | 0.0078 [-0.0022, 0.0185] |
 | situation_table | 599 | 0.040 | 0.037 | 0.1791 | 0.0389 | 0.498 | 0.004 | 0.0097 [-0.0023, 0.0235] |
 
-Timing (fit median ms / predict p95 µs): base_rate 3.1 / 1, situation_table 5.4 / 15, situation_play_family 7.9 / 26, experimental_shrinkage 11.7 / 35
+Timing (fit median ms / predict p95 µs): base_rate 3.0 / 1, situation_table 4.6 / 11, situation_play_family 7.2 / 24, experimental_shrinkage 10.6 / 29
 
 ### Split: exclude_opponent (2 test games)
 
@@ -119,7 +123,7 @@ Timing (fit median ms / predict p95 µs): base_rate 3.1 / 1, situation_table 5.4
 | situation_play_family | 83 | 0.060 | 0.039 | 0.2226 | 0.0563 | 0.667 | 0.024 | -0.0090 [-0.0137, -0.0020] |
 | situation_table | 83 | 0.060 | 0.037 | 0.2365 | 0.0569 | 0.594 | 0.023 | 0.0048 [-0.0000, 0.0122] |
 
-Timing (fit median ms / predict p95 µs): base_rate 3.5 / 1, situation_table 5.5 / 11, situation_play_family 8.6 / 21, experimental_shrinkage 12.2 / 25
+Timing (fit median ms / predict p95 µs): base_rate 4.3 / 1, situation_table 4.9 / 9, situation_play_family 8.0 / 20, experimental_shrinkage 11.0 / 22
 
 ### Success by stratum (chronological split, log loss / AUC)
 
@@ -130,8 +134,39 @@ Timing (fit median ms / predict p95 µs): base_rate 3.5 / 1, situation_table 5.5
 
 ## 2. Predicting the opponent's run/pass on our defensive snaps
 
-- chronological (4 test games): base_rate n=96 ll=0.7246 AUC=0.509; situation_table n=96 ll=0.7239 AUC=0.535
-- exclude_opponent (4 test games): base_rate n=96 ll=0.7246 AUC=0.509; situation_table n=96 ll=0.7239 AUC=0.535
+Each snap is predicted from the league/style prior (other opponents only) plus this opponent's earlier plays. `own n` is how many of his plays had been seen. Primary hand-off strength k = 12 (the live `PRIOR_HANDOFF`); k = 4 and 30 are sensitivity checks.
+
+### chronological — 5 test games, styles formed per fold [0, 0, 2, 2, 2]
+
+| model | n | log loss | Brier | AUC | ECE | Δ vs league_situation [95% CI] |
+|---|---|---|---|---|---|---|
+| coin_flip | 134 | 0.6931 | 0.2500 | 0.500 | 0.045 | -0.0376 [-0.0758, 0.0040] |
+| individual_only | 134 | 0.7367 | 0.2706 | 0.451 | 0.135 | 0.0059 [-0.0268, 0.0434] |
+| league+individual | 134 | 0.7243 | 0.2645 | 0.521 | 0.117 | -0.0065 [-0.0203, 0.0094] |
+| league+style | 134 | 0.7174 | 0.2606 | 0.573 | 0.119 | -0.0134 [-0.0341, -0.0011] |
+| league+style+individual | 134 | 0.7188 | 0.2618 | 0.543 | 0.122 | -0.0119 [-0.0375, 0.0109] |
+| league+style+individual@k30 | 134 | 0.7148 | 0.2598 | 0.564 | 0.108 | -0.0159 [-0.0381, 0.0014] |
+| league+style+individual@k4 | 134 | 0.7311 | 0.2675 | 0.515 | 0.150 | 0.0003 [-0.0275, 0.0296] |
+| league_situation | 134 | 0.7308 | 0.2672 | 0.546 | 0.137 | reference |
+- own_n=0-4: coin_flip ll=0.6931; individual_only ll=0.8189; league+individual ll=0.7459; league+style ll=0.7463; league+style+individual ll=0.7696; league_situation ll=0.7247 (n=25)
+- own_n=15+: coin_flip ll=0.6931; individual_only ll=0.7342; league+individual ll=0.7532; league+style ll=0.7457; league+style+individual ll=0.7310; league_situation ll=0.7872 (n=59)
+- own_n=5-14: coin_flip ll=0.6931; individual_only ll=0.6985; league+individual ll=0.6793; league+style ll=0.6695; league+style+individual ll=0.6790; league_situation ll=0.6671 (n=50)
+
+### leave_one_opponent_out — 7 test games, styles formed per fold [2, 2, 2, 2, 2, 2, 2]
+
+| model | n | log loss | Brier | AUC | ECE | Δ vs league_situation [95% CI] |
+|---|---|---|---|---|---|---|
+| coin_flip | 192 | 0.6931 | 0.2500 | 0.500 | 0.021 | -0.0116 [-0.0455, 0.0154] |
+| individual_only | 192 | 0.7133 | 0.2592 | 0.524 | 0.094 | 0.0085 [-0.0712, 0.0613] |
+| league+individual | 192 | 0.6979 | 0.2524 | 0.524 | 0.066 | -0.0069 [-0.0494, 0.0183] |
+| league+style | 192 | 0.7075 | 0.2568 | 0.537 | 0.066 | 0.0027 [-0.0286, 0.0344] |
+| league+style+individual | 192 | 0.7077 | 0.2566 | 0.541 | 0.082 | 0.0029 [-0.0519, 0.0432] |
+| league+style+individual@k30 | 192 | 0.7051 | 0.2555 | 0.537 | 0.083 | 0.0003 [-0.0480, 0.0377] |
+| league+style+individual@k4 | 192 | 0.7176 | 0.2607 | 0.540 | 0.097 | 0.0128 [-0.0503, 0.0550] |
+| league_situation | 192 | 0.7048 | 0.2558 | 0.451 | 0.070 | reference |
+- own_n=0-4: coin_flip ll=0.6931; individual_only ll=0.8189; league+individual ll=0.7718; league+style ll=0.7909; league+style+individual ll=0.8225; league_situation ll=0.7394 (n=35)
+- own_n=15+: coin_flip ll=0.6931; individual_only ll=0.6899; league+individual ll=0.6857; league+style ll=0.6985; league+style+individual ll=0.6884; league_situation ll=0.7077 (n=87)
+- own_n=5-14: coin_flip ll=0.6931; individual_only ll=0.6896; league+individual ll=0.6760; league+style ll=0.6770; league+style+individual ll=0.6742; league_situation ll=0.6839 (n=70)
 
 ## 3. What the live system did (descriptive, not causal)
 

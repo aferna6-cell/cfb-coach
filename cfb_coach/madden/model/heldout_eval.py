@@ -32,6 +32,7 @@ from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
 
 from cfb_coach.madden.model import dataset as dataset_mod
 from cfb_coach.madden.model import experimental_model as em
+from cfb_coach.madden.model import opponent_tendencies as ot
 from cfb_coach.outcome import parse_outcome
 
 EVAL_VERSION = "madden-heldout-eval.v1"
@@ -339,16 +340,85 @@ def default_offense_models() -> list[Predictor]:
     ]
 
 
-def _opp_label(row: Mapping[str, Any], target: str) -> int | None:
-    return opponent_pass_label(row)
+OPPONENT_VARIANTS: dict[str, dict[str, Any] | None] = {
+    "coin_flip": None,
+    "league_situation": {"use_styles": False, "use_individual": False},
+    "individual_only": None,
+    "league+individual": {"use_styles": False, "use_individual": True},
+    "league+style": {"use_styles": True, "use_individual": False},
+    "league+style+individual": {"use_styles": True, "use_individual": True},
+}
+HANDOFF_SENSITIVITY = (4.0, 30.0)
 
 
-def default_opponent_models() -> list[Predictor]:
-    keep = lambda r: opponent_pass_label(r) is not None  # noqa: E731
-    return [
-        BaseRate(("opp_pass",), _opp_label, keep),
-        ShrunkTable("situation_table", ("opp_pass",), _opp_label, keep, [dd_key, field_key]),
-    ]
+def run_pass_observations(rows: Sequence[Mapping[str, Any]]) -> dict[str, list[ot.RunPassObservation]]:
+    """Observed opponent run/pass per game, in snap order."""
+    out: dict[str, list[ot.RunPassObservation]] = {}
+    for r in rows:
+        y = opponent_pass_label(r)
+        if y is None or not r.get("game_id") or not r.get("opponent_id"):
+            continue
+        out.setdefault(str(r["game_id"]), []).append(ot.RunPassObservation(
+            opponent_id=str(r["opponent_id"]), game_id=str(r["game_id"]),
+            down=r.get("down"), distance=r.get("distance"), is_pass=int(y),
+        ))
+    return out
+
+
+def _own_bucket(n: int) -> str:
+    return "0-4" if n < 5 else "5-14" if n < 15 else "15+"
+
+
+def opponent_sequential_eval(
+    rows: Sequence[Mapping[str, Any]],
+    game_order: Mapping[str, int],
+    *,
+    scheme: str = "chronological",
+    handoff: float = ot.PRIOR_HANDOFF,
+    min_train_obs: int = 40,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Predict each observed opponent snap from information available before it.
+
+    ``chronological``: the league/style prior is fit on other opponents' games
+    played earlier. ``leave_one_opponent_out``: fit on every other opponent's
+    games regardless of date (measures structure; not deployable as-is). In both,
+    the individual level only sees this opponent's earlier games and the earlier
+    snaps of the current game.
+    """
+    if scheme not in ("chronological", "leave_one_opponent_out"):
+        raise ValueError(scheme)
+    by_game = {g: o for g, o in run_pass_observations(rows).items() if g in game_order}
+    games = sorted(by_game, key=lambda g: game_order[g])
+    opp_of = {g: by_game[g][0].opponent_id for g in games}
+    preds: list[dict[str, Any]] = []
+    folds: list[dict[str, Any]] = []
+    for g in games:
+        opp = opp_of[g]
+        earlier = [h for h in games if game_order[h] < game_order[g]]
+        others = earlier if scheme == "chronological" else games
+        train = [o for h in others if opp_of[h] != opp for o in by_game[h]]
+        if len(train) < min_train_obs:
+            continue
+        prior = ot.RunPassPrior().fit(train)
+        own_before = [o for h in earlier if opp_of[h] == opp for o in by_game[h]]
+        folds.append({"game": g, "train_plays": len(train), "styles": len(prior.styles),
+                      "style_sizes": [s["opponents"] for s in prior.styles]})
+        test = by_game[g]
+        for t, o in enumerate(test):
+            history = own_before + test[:t]
+            p: dict[str, float] = {}
+            for name, kw in OPPONENT_VARIANTS.items():
+                if name == "coin_flip":
+                    p[name] = 0.5
+                elif kw is None:
+                    p[name] = (sum(h.is_pass for h in history) + 1.0) / (len(history) + 2.0)
+                else:
+                    p[name] = ot.estimate_run_pass(prior, history, o.down, o.distance, handoff=handoff, **kw)["p_pass"]
+            for k in HANDOFF_SENSITIVITY:
+                p[f"league+style+individual@k{k:g}"] = ot.estimate_run_pass(prior, history, o.down, o.distance, handoff=k)["p_pass"]
+            preds.append({"target": "opp_pass", "game": g, "y": o.is_pass, "own_n": _own_bucket(len(history)),
+                          "n_history": len(history), "down": o.down, "distance": o.distance, "p": p})
+    return preds, folds
 
 
 # ---------------------------------------------------------------- metrics
@@ -740,7 +810,6 @@ def evaluate(
     n_boot: int = DEFAULT_BOOTSTRAP,
     seed: int = DEFAULT_SEED,
     offense_models: Callable[[], list[Predictor]] = default_offense_models,
-    opponent_models: Callable[[], list[Predictor]] = default_opponent_models,
 ) -> dict[str, Any]:
     rows = data.rows
     verified = [r for r in rows if is_verified_offense(r)]
@@ -771,13 +840,17 @@ def evaluate(
             "timing": timing,
             "metrics": summarize_predictions(preds, OFFENSE_TARGETS, n_boot=n_boot, seed=seed),
         }
-        is_opp = lambda r: opponent_pass_label(r) is not None  # noqa: E731
-        ofolds = make_folds(rows, data.game_order, is_test_row=is_opp, mode=mode, min_train_games=min_train_games)
-        opreds, otiming = run_folds(rows, ofolds, opponent_models, targets=("opp_pass",), label_fn=_opp_label, is_test_row=is_opp)
-        report["opponent_run_pass"][mode] = {
-            "folds": len(ofolds),
-            "timing": otiming,
-            "metrics": summarize_predictions(opreds, ("opp_pass",), n_boot=n_boot, seed=seed, strata=("opponent_type",)),
+    for scheme in ("chronological", "leave_one_opponent_out"):
+        opreds, ofolds = opponent_sequential_eval(rows, data.game_order, scheme=scheme)
+        report["opponent_run_pass"][scheme] = {
+            "folds": ofolds,
+            "metrics": summarize_predictions(opreds, ("opp_pass",), reference="league_situation",
+                                             n_boot=n_boot, seed=seed, strata=("own_n",)),
+            "feature_rows": [
+                {"game": p["game"], "y": p["y"], "down": p["down"], "distance": p["distance"],
+                 "n_history": p["n_history"], **{f"p_{k}": round(v, 5) for k, v in p["p"].items()}}
+                for p in opreds
+            ],
         }
     report["live_behavior"] = live_behavior(data.decisions, rows)
     report["defense_outcomes"] = defense_outcomes(rows)
@@ -854,11 +927,30 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         lines.append(f"- {key}: " + "; ".join(
             f"{m} n={v.get('n')} ll={_f(v.get('log_loss'), 4)} auc={_f(v.get('auc'))}" for m, v in ms.items() if v.get("n")))
 
-    lines += ["", "## 2. Predicting the opponent's run/pass on our defensive snaps", ""]
-    for mode, block in report["opponent_run_pass"].items():
+    lines += [
+        "", "## 2. Predicting the opponent's run/pass on our defensive snaps", "",
+        "Each snap is predicted from the league/style prior (other opponents only) plus this "
+        "opponent's earlier plays. `own n` is how many of his plays had been seen. Primary "
+        "hand-off strength k = 12 (the live `PRIOR_HANDOFF`); k = 4 and 30 are sensitivity checks.",
+    ]
+    for scheme, block in report["opponent_run_pass"].items():
         tb = block["metrics"].get("opp_pass", {})
-        lines.append(f"- {mode} ({block['folds']} test games): " + "; ".join(
-            f"{m} n={v['n']} ll={_f(v['log_loss'], 4)} AUC={_f(v['auc'])}" for m, v in tb.get("models", {}).items() if v.get("n")))
+        styles = [f["styles"] for f in block["folds"]]
+        lines += ["", f"### {scheme} — {len(block['folds'])} test games, styles formed per fold {styles}", "",
+                  "| model | n | log loss | Brier | AUC | ECE | Δ vs league_situation [95% CI] |",
+                  "|---|---|---|---|---|---|---|"]
+        for m, v in tb.get("models", {}).items():
+            if not v.get("n"):
+                continue
+            vr = tb["vs_reference"].get(m)
+            delta = "reference" if vr is None else (
+                f"{_f(vr['mean_diff'], 4)} [{_f(vr['lo'], 4)}, {_f(vr['hi'], 4)}]" if vr.get("mean_diff") is not None else "—")
+            lines.append(f"| {m} | {v['n']} | {_f(v['log_loss'], 4)} | {_f(v['brier'], 4)} | {_f(v['auc'])} | "
+                         f"{_f(v['ece'])} | {delta} |")
+        for key, ms in tb.get("strata", {}).items():
+            lines.append(f"- {key}: " + "; ".join(
+                f"{m} ll={_f(v.get('log_loss'), 4)}" for m, v in ms.items()
+                if v.get("n") and "@k" not in m) + f" (n={next(iter(ms.values())).get('n')})")
 
     lb = report["live_behavior"]
     lines += [
