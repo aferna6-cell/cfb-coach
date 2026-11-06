@@ -548,13 +548,15 @@ def build_rows(
             ml_id = mapping.get("ml_snap_id")
             if ml_id and str(ml_id) in decisions:
                 dec = decisions[str(ml_id)]
+                # The final pick is the call that was displayed; the heuristic
+                # pick is only the fallback/comparison when ML is primary.
                 mapping.setdefault(
                     "recommended_formation",
-                    dec.get("heuristic_formation") or dec.get("final_formation"),
+                    dec.get("final_formation") or dec.get("heuristic_formation"),
                 )
                 mapping.setdefault(
                     "recommended_play",
-                    dec.get("heuristic_play") or dec.get("final_play"),
+                    dec.get("final_play") or dec.get("heuristic_play"),
                 )
                 mapping.setdefault("game_id", dec.get("game_id") or mapping.get("session_id"))
             if ml_id and str(ml_id) in outcomes:

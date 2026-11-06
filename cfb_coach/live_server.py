@@ -938,8 +938,13 @@ class LivePlayController:
             if token is None:
                 # A stale, backwards or missing clock is unknown. Never carry an old value.
                 extras.pop("game_clock", None)
-                extras.pop("clock_seconds", None)
                 if posted is not None:
+                    # A clock WAS posted and rejected (stale or backwards): drop every
+                    # clock field so the rejected value cannot leak into inference.
+                    # With nothing posted, a clock typed into this snap's own
+                    # situation text ("... clock 5:15") is current-snap evidence
+                    # and stays.
+                    extras.pop("clock_seconds", None)
                     extras["game_clock_stale"] = reason == "stale_resubmit"
                     extras["game_clock_null_reason"] = reason
                 return
