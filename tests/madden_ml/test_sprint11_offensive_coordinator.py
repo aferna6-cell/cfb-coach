@@ -255,8 +255,12 @@ class JointDecisionTests(unittest.TestCase):
                 ranked=ranked, anchor=ranked[0], sit=sit(), book=self.book,
                 active=[], session_id="rotate", snap_seq=seq, opponent_type="cpu",
             )
-            calls.append(decision["joint"]["play"])
+            audit = decision["override_audit"]
+            calls.append(audit["unrestricted"][1])
             self.assertEqual(decision["kind"], "none")
+            # Equal scores never clear the no-adjustment margin, so the
+            # final call stays on the first-stage anchor.
+            self.assertEqual(decision["joint"]["play"], ranked[0]["play"])
         order = [row["play"] for row in ranked]
         self.assertGreater(len(set(calls)), 1)
         self.assertNotEqual(calls, [order[i % len(order)] for i in range(len(calls))])
@@ -281,28 +285,19 @@ class JointDecisionTests(unittest.TestCase):
             )
         self.assertEqual(decision["kind"], "none")
 
-    def test_short_clock_blocks_adjustments(self):
-        ranked = self._anchor(sit(
-            coverage_hint="Cover 1", coverage_source="live",
-            extras={"clock_seconds": 5, "quarter": 2},
-        ))
-        action = {
-            "id": "HOT-MAN", "kind": "hot_route", "sources": ["source"],
-            "buttons": "Y then select receiver", "label": "Hot route", "why": "man",
-        }
-        snap = sit(
-            coverage_hint="Cover 1", coverage_source="live",
-            extras={"clock_seconds": 5, "quarter": 2},
-        )
-        with mock.patch(
-            "cfb_coach.madden.adjustments.offense_adjustment_candidates",
-            return_value=[action],
-        ):
-            decision = choose_joint_action(
-                ranked=ranked, anchor=ranked[0], sit=snap, book=self.book, active=[],
-            )
-        self.assertEqual(decision["kind"], "none")
-        self.assertNotIn("HOT-MAN", [row["id"] for row in decision["candidates"]])
+    def test_short_play_clock_blocks_adjustments(self):
+        from cfb_coach.madden.model.offense_joint_decision import _clock_blocks
+
+        self.assertIsNotNone(_clock_blocks({"play_clock_seconds": 5}, 1))
+        self.assertIsNone(_clock_blocks({"play_clock_seconds": 5}, 0))
+        self.assertIsNone(_clock_blocks({"play_clock_seconds": 15}, 1))
+
+    def test_short_game_clock_does_not_block_adjustments(self):
+        from cfb_coach.madden.model.offense_joint_decision import _clock_blocks
+
+        self.assertIsNone(_clock_blocks({"clock_seconds": 5}, 1))
+        evaluation = evaluate_situation(sit(extras={"clock_seconds": 5, "quarter": 2}))
+        self.assertIsNone(_clock_blocks(evaluation, 1))
 
     def test_compatible_adjustments_can_be_scored_together_and_conflicts_drop(self):
         self.assertEqual(conflicts([

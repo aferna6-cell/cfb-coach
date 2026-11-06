@@ -366,28 +366,31 @@ def train_experimental(
     ctx: dict[str, RateBucket] = {}
     opp: dict[str, RateBucket] = {}
 
-    def ingest(row: Mapping[str, Any], weight: float) -> None:
+    def ingest(row: Mapping[str, Any], weight: float, *, trusted_action: bool) -> None:
         success = str(row.get("success")) == "true"
-        action = row.get("action_play") or row.get("executed_play") or row.get("recommended_play")
-        fam = _play_family(str(action) if action else None)
-        concept = _play_concept(str(action) if action else None)
-        # Matchup tables may use historical post-snap coverage for training only.
-        cov = _cov_bucket(row.get("coverage_seen") or row.get("coverage_hint"))
-        play_fam.setdefault(fam, RateBucket()).add(success, weight)
-        play_concept.setdefault(concept, RateBucket()).add(success, weight)
-        play_vs.setdefault(f"{fam}|{cov}", RateBucket()).add(success, weight)
-        concept_vs.setdefault(f"{concept}|{cov}", RateBucket()).add(success, weight)
         dd_key = _dd_bucket(row.get("down"), row.get("distance"))
         dd.setdefault(dd_key, RateBucket()).add(success, weight)
-        if dd_key != "unknown":
-            concept_dd.setdefault(f"{concept}|{dd_key}", RateBucket()).add(success, weight)
-            family_dd.setdefault(f"{fam}|{dd_key}", RateBucket()).add(success, weight)
-            converted = _converted_offense(row)
-            if converted is not None:
-                conv_concept_dd.setdefault(f"{concept}|{dd_key}", RateBucket()).add(
-                    converted, weight
-                )
-                conv_fam_dd.setdefault(f"{fam}|{dd_key}", RateBucket()).add(converted, weight)
+        # When execution is uncertain, the outcome and situation are useful
+        # context, but the displayed play MUST NOT receive credit or blame.
+        if trusted_action:
+            action = row.get("action_play") or row.get("executed_play")
+            fam = _play_family(str(action) if action else None)
+            concept = _play_concept(str(action) if action else None)
+            # Post-snap coverage is training-only, never a live prediction input.
+            cov = _cov_bucket(row.get("coverage_seen") or row.get("coverage_hint"))
+            play_fam.setdefault(fam, RateBucket()).add(success, weight)
+            play_concept.setdefault(concept, RateBucket()).add(success, weight)
+            play_vs.setdefault(f"{fam}|{cov}", RateBucket()).add(success, weight)
+            concept_vs.setdefault(f"{concept}|{cov}", RateBucket()).add(success, weight)
+            if dd_key != "unknown":
+                concept_dd.setdefault(f"{concept}|{dd_key}", RateBucket()).add(success, weight)
+                family_dd.setdefault(f"{fam}|{dd_key}", RateBucket()).add(success, weight)
+                converted = _converted_offense(row)
+                if converted is not None:
+                    conv_concept_dd.setdefault(f"{concept}|{dd_key}", RateBucket()).add(
+                        converted, weight
+                    )
+                    conv_fam_dd.setdefault(f"{fam}|{dd_key}", RateBucket()).add(converted, weight)
         yl = row.get("yardline")
         try:
             yl_i = int(yl) if yl is not None else None
@@ -402,9 +405,9 @@ def train_experimental(
         opp.setdefault(oid, RateBucket()).add(success, weight)
 
     for row in supervised:
-        ingest(row, 1.0)
+        ingest(row, 1.0, trusted_action=True)
     for row in discounted:
-        ingest(row, float(row.get("prior_discount") or 0.25))
+        ingest(row, float(row.get("prior_discount") or 0.25), trusted_action=False)
 
     n_sup = len(supervised)
     total_s = sum(1 for r in supervised if str(r.get("success")) == "true")
@@ -421,7 +424,7 @@ def train_experimental(
     version = f"madden-ml.experimental.{side}.{n_sup}.{quality}"
     note = (
         f"Hierarchical shrinkage on {n_sup} supervised + {len(discounted)} discounted "
-        f"uncertain-execution rows. Evidence quality: {quality}. "
+        f"uncertain-execution CONTEXT rows (never credited to a play). Evidence quality: {quality}. "
         f"Knowledge: {knowledge_version} (origin={knowledge_origin or 'none'})."
     )
     if quality == "prior_driven":

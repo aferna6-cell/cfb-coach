@@ -132,17 +132,16 @@ def _success_from_yards(
     yards: int | None,
     kind: str | None,
 ) -> str:
-    if yards is None and not kind:
-        return Tri.UNKNOWN.value
     side_l = (side or "offense").strip().lower()
     is_def = side_l.startswith("d")
-    if kind in ("int", "interception", "fumble"):
-        return Tri.FALSE.value if not is_def else Tri.TRUE.value
-    if kind == "sack":
-        return Tri.FALSE.value if not is_def else Tri.TRUE.value
+    # Outcome type takes precedence over yards. A touchdown or conversion
+    # without a numeric gain is still a known success; a stop, turnover, or
+    # negative play is a known failure. Defense labels are the inverse.
+    if kind in ("td", "convert"):
+        return Tri.FALSE.value if is_def else Tri.TRUE.value
+    if kind in ("int", "interception", "fumble", "sack", "incomplete", "stop", "loss"):
+        return Tri.TRUE.value if is_def else Tri.FALSE.value
     if yards is None:
-        if kind == "incomplete":
-            return Tri.FALSE.value if not is_def else Tri.TRUE.value
         return Tri.UNKNOWN.value
     try:
         d = int(down) if down is not None and down != "" else None
@@ -191,11 +190,14 @@ def _normalize_row(raw: Mapping[str, Any], *, provenance: str) -> dict[str, Any]
 
     result = row.get("result")
     yards = row.get("yards")
-    kind = None
-    if yards is None and result not in (None, ""):
-        parsed = parse_outcome(str(result))
+    # Always parse the outcome type, even when a yards column exists. For
+    # example, an interception with 5 recorded yards must not be labeled as
+    # a successful five-yard offensive gain. Preserve the explicit yards
+    # field when present.
+    parsed = parse_outcome(str(result)) if result not in (None, "") else None
+    kind = parsed.kind if parsed is not None else None
+    if yards is None and parsed is not None:
         yards = parsed.yards
-        kind = parsed.kind
     try:
         yards_i = int(yards) if yards is not None and yards != "" else None
     except (TypeError, ValueError):
@@ -278,6 +280,15 @@ def _normalize_row(raw: Mapping[str, Any], *, provenance: str) -> dict[str, Any]
         "executed_verification": executed_verification,
         "executed_formation": None if _blank(executed_formation) else str(executed_formation),
         "executed_play": None if _blank(executed_play) else str(executed_play),
+        # How a verified execution was established. A standing attestation
+        # ("I always run the displayed call") is weaker than a per-snap
+        # confirmation; keep it visible so it can be audited or excluded.
+        "execution_attestation_source": (
+            str(row["execution_attestation_source"])
+            if executed_verification == Verification.VERIFIED.value
+            and not _blank(row.get("execution_attestation_source"))
+            else None
+        ),
         "result": None if _blank(result) else str(result),
         "yards": yards_i,
         "success": success,
@@ -537,13 +548,15 @@ def build_rows(
             ml_id = mapping.get("ml_snap_id")
             if ml_id and str(ml_id) in decisions:
                 dec = decisions[str(ml_id)]
+                # The final pick is the call that was displayed; the heuristic
+                # pick is only the fallback/comparison when ML is primary.
                 mapping.setdefault(
                     "recommended_formation",
-                    dec.get("heuristic_formation") or dec.get("final_formation"),
+                    dec.get("final_formation") or dec.get("heuristic_formation"),
                 )
                 mapping.setdefault(
                     "recommended_play",
-                    dec.get("heuristic_play") or dec.get("final_play"),
+                    dec.get("final_play") or dec.get("heuristic_play"),
                 )
                 mapping.setdefault("game_id", dec.get("game_id") or mapping.get("session_id"))
             if ml_id and str(ml_id) in outcomes:
@@ -568,6 +581,10 @@ def build_rows(
                             mapping["result"] = payload.get("result")
                         if payload.get("yards") is not None:
                             mapping["yards"] = payload.get("yards")
+                        if payload.get("execution_attestation_source"):
+                            mapping["execution_attestation_source"] = payload[
+                                "execution_attestation_source"
+                            ]
                     except (TypeError, json.JSONDecodeError):
                         pass
             mapping["source_path"] = str(getattr(db, "path", "coach.db"))

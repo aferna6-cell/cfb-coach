@@ -41,7 +41,7 @@ def _db(games: list[tuple[str, str, str, list[tuple]]]) -> sqlite3.Connection:
     conn.execute(
         "CREATE TABLE snaps (id INTEGER PRIMARY KEY, session_id TEXT, side TEXT, snap_seq INTEGER, "
         "situation_raw TEXT, formation TEXT, play TEXT, result TEXT, down INTEGER, distance INTEGER, "
-        "executed_verification TEXT, executed_formation TEXT, executed_play TEXT)"
+        "executed_status TEXT, executed_verification TEXT, executed_formation TEXT, executed_play TEXT)"
     )
     for session, opponent, started, snaps in games:
         conn.execute("INSERT INTO game_sessions VALUES (?,?,?)", (session, opponent, started))
@@ -49,9 +49,11 @@ def _db(games: list[tuple[str, str, str, list[tuple]]]) -> sqlite3.Connection:
             verification, ex_form, ex_play = (rest + [None, None, None])[:3]
             conn.execute(
                 "INSERT INTO snaps (session_id, side, snap_seq, situation_raw, formation, play, result, "
-                "down, distance, executed_verification, executed_formation, executed_play) "
-                "VALUES (?, 'defense', ?, '1&10 my 30', ?, ?, ?, 1, 10, ?, ?, ?)",
-                (session, seq, formation, play, result, verification, ex_form, ex_play),
+                "down, distance, executed_status, executed_verification, executed_formation, executed_play) "
+                "VALUES (?, 'defense', ?, '1&10 my 30', ?, ?, ?, 1, 10, ?, ?, ?, ?)",
+                (session, seq, formation, play, result,
+                 "identified" if verification == "verified" else "unknown",
+                 verification, ex_form, ex_play),
             )
     conn.commit()
     return conn
@@ -64,7 +66,7 @@ def _signal_game(n: int = 20, *, flip_every: int = 5) -> list[tuple]:
         pressure = i % 2 == 0
         offense_wins = pressure != (i % flip_every == 0)
         call = ("4-3 Over", "Fire Zone") if pressure else ("Nickel Over", "Cover 3 Sky")
-        snaps.append((*call, "+12" if offense_wins else "incomplete"))
+        snaps.append((*call, "+12" if offense_wins else "incomplete", "verified", *call))
     return snaps
 
 
@@ -84,17 +86,27 @@ class CollectRowsTest(unittest.TestCase):
                                   unattested_after="2026-11-03T00:00:00+00:00")
         got = [(r.session_id, r.formation, r.play, r.provenance, r.admitted, r.excluded_reason) for r in rows]
         self.assertEqual(got, [
-            ("old", "Nickel Over", "Cover 3 Sky", train.PROVENANCE_LOGGED, True, ""),
+            ("old", "Nickel Over", "Cover 3 Sky", train.PROVENANCE_LOGGED, False, "execution_unverified"),
             ("old", "4-3 Over", "Fire Zone", train.PROVENANCE_VERIFIED, True, ""),
-            ("ryan", "4-3 Over", "Fire Zone", train.PROVENANCE_LOGGED, False, "unattested_after_cutoff"),
-            ("dillon", "4-3 Over", "Fire Zone", train.PROVENANCE_ATTESTED, True, ""),
+            ("ryan", "4-3 Over", "Fire Zone", train.PROVENANCE_LOGGED, False, "execution_unverified"),
+            ("dillon", "4-3 Over", "Fire Zone", train.PROVENANCE_ATTESTED, False, "execution_unverified"),
         ])
         self.assertEqual([r.offense_success for r in rows], [True, True, False, True])
 
-    def test_without_cutoff_unattested_logged_snaps_stay_admitted(self) -> None:
+    def test_verified_flag_without_identified_execution_is_excluded(self) -> None:
+        conn = _db([("g", "dillon", "2026-11-05", [
+            ("Nickel Over", "Cover 3 Sky", "td", "verified", "Nickel Over", "Cover 3 Sky"),
+        ])])
+        conn.execute("UPDATE snaps SET executed_status='unknown'")
+        (row,) = train.collect_rows(conn)
+        self.assertFalse(row.admitted)
+        self.assertEqual(row.excluded_reason, "execution_unverified")
+
+    def test_without_cutoff_unattested_logged_snap_stays_excluded(self) -> None:
         conn = _db([("ryan", "ryan", "2026-11-03T17:00:00+00:00", [("4-3 Over", "Fire Zone", "+12")])])
         (row,) = train.collect_rows(conn)
-        self.assertTrue(row.admitted)
+        self.assertFalse(row.admitted)
+        self.assertEqual(row.excluded_reason, "execution_unverified")
         self.assertEqual(row.provenance, train.PROVENANCE_LOGGED)
 
     def test_summary_records_attestation_and_exclusions(self) -> None:
@@ -102,7 +114,9 @@ class CollectRowsTest(unittest.TestCase):
             ("ryan", "ryan", "2026-11-03T17:00:00+00:00", [("4-3 Over", "Fire Zone", "+12")]),
             ("dillon", "dillon", "2026-11-05T21:00:00+00:00", [("4-3 Over", "Fire Zone", "+12")]),
         ])
-        rows = train.collect_rows(conn, attested={"dillon": "confirmed"}, unattested_after="2026-11-03")
+        # Historical comparison only: do not use this opt-out for model promotion.
+        rows = train.collect_rows(conn, attested={"dillon": "confirmed"},
+                                  unattested_after="2026-11-03", verified_only=False)
         summary = train.training_summary(rows, {"dillon": "confirmed"}, "2026-11-03", 10.0)
         self.assertEqual(summary["provenance"], {train.PROVENANCE_ATTESTED: 1})
         self.assertEqual(summary["sessions"]["dillon"]["attestation"], "confirmed")
@@ -197,10 +211,24 @@ class ScriptTest(unittest.TestCase):
         art = json.loads(out.read_text(encoding="utf-8"))
         defense_v1.validate_artifact(art)
         training = art["training"]
-        self.assertEqual(training["provenance"], {train.PROVENANCE_LOGGED: 80, train.PROVENANCE_ATTESTED: 20})
+        self.assertEqual(training["provenance"], {train.PROVENANCE_VERIFIED: 100})
         self.assertEqual(training["sessions"]["late"]["attestation"], "user confirmed logged results")
         self.assertEqual(training["evaluation"]["current_in_sample_sessions"], ["g0", "g1", "g2", "g3"])
         self.assertIn(training["evaluation"]["gate"]["result"], ("PASSED", "FAILED", "INSUFFICIENT"))
+
+    def test_refuses_unverified_only_database_without_creating_artifact(self) -> None:
+        no_verified = self.tmp / "unverified.db"
+        conn = sqlite3.connect(no_verified)
+        _db([
+            ("g1", "jack", "2026-10-01", [("Nickel Over", "Cover 3 Sky", "+12")]),
+            ("g2", "jill", "2026-10-02", [("4-3 Over", "Fire Zone", "td")]),
+        ]).backup(conn)
+        conn.close()
+        out = self.tmp / "should_not_exist.json"
+        with self.assertRaisesRegex(SystemExit, "verified defensive executions"):
+            self._run("--db", str(no_verified), "--out", str(out),
+                      "--attest", "g2=I confirm the score")
+        self.assertFalse(out.exists())
 
     def test_refuses_to_overwrite(self) -> None:
         with self.assertRaises(SystemExit):

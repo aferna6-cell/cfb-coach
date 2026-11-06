@@ -8,8 +8,7 @@ Example::
     python scripts/madden_ml/train_defense_logistic.py --db ~/.cfb-coach/madden27.db \\
       --current ~/.cfb-coach/models/defense_v2.json \\
       --out ~/.cfb-coach/models/defense_v3_candidate.json \\
-      --unattested-after 2026-11-03T00:00:00 \\
-      --attest '449784244fd743cb=user confirmed logged defensive results and opponent plays'
+      --unattested-after 2026-11-03T00:00:00
 """
 from __future__ import annotations
 
@@ -20,6 +19,11 @@ import sqlite3
 import subprocess
 import sys
 from pathlib import Path
+
+# An editable install may point at a different checkout; train with this one.
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from cfb_coach.madden.model import defense_logistic_train as train
 from cfb_coach.madden.model import defense_v1
@@ -52,10 +56,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", type=Path, required=True, help="candidate path; must not exist")
     p.add_argument("--report", type=Path, default=None)
     p.add_argument("--attest", action="append", default=[], metavar="SESSION=NOTE",
-                   help="session whose logged results the user confirmed; its displayed calls are "
-                        "admitted as user_confirmed_logged_result")
+                   help="record the user's confirmation of logged outcomes for audit; "
+                        "does NOT verify the executed defensive call or admit it for training")
     p.add_argument("--unattested-after", default=None, metavar="ISO",
-                   help="sessions started at or after this are trained on only if attested or verified")
+                   help="legacy audit cutoff for logged calls; training always requires verified execution")
     p.add_argument("--current-trained-before", default=None, metavar="ISO",
                    help="sessions started before this are flagged in-sample for --current "
                         "(default: --current file mtime)")
@@ -83,11 +87,20 @@ def main(argv: list[str] | None = None) -> int:
     labels = train.label_calls(rows, current)
     unlabeled = [r for r in rows if (r.formation, r.play) not in labels]
     rows = [r for r in rows if (r.formation, r.play) in labels]
-
-    in_sample = {r.session_id for r in rows if r.started_ts < trained_before}
-    report = train.leave_one_game_out(rows, labels, current, current, current_in_sample=in_sample)
-    verdict = train.gate(report)
     admitted = [r for r in rows if r.admitted]
+    games = {r.session_id for r in admitted}
+    if len(games) < 2:
+        raise SystemExit(
+            f"Only {len(admitted)} verified defensive executions across {len(games)} games. "
+            "Need verified calls from at least two games for safe, game-separated training. "
+            "Logged recommendations and score attestations cannot replace execution proof; "
+            "no model was written."
+        )
+    # Neither training nor play-specific holdout evaluation may attribute
+    # results to an unverified displayed recommendation.
+    in_sample = {r.session_id for r in admitted if r.started_ts < trained_before}
+    report = train.leave_one_game_out(admitted, labels, current, current, current_in_sample=in_sample)
+    verdict = train.gate(report)
     lam = train.choose_lambda(admitted, labels, current)
     candidate = train.fit_artifact(admitted, labels, current, lam)
     defense_v1.validate_artifact(candidate)

@@ -679,16 +679,41 @@ def cmd_ml_eval_offense(args: argparse.Namespace) -> int:
     return 0
 
 
+def _experimental_candidate_path(side: str) -> Path:
+    from datetime import datetime, timezone
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return Path(data_dir()) / "madden_ml_experimental" / "candidates" / f"{side}.{stamp}.json"
+
+
 def cmd_ml_train_experimental(args: argparse.Namespace) -> int:
-    """Train the hierarchical shrinkage experimental model (no promotion gate)."""
+    """Train a candidate experimental model. Never overwrites an existing artifact.
+
+    The live coach falls back to ``madden_ml_experimental/<side>.json`` when no
+    path is installed, so writing that file would activate an unevaluated
+    model. Output goes to a new candidate file; ``--install`` is the explicit
+    activation step.
+    """
     from cfb_coach.madden.model import experimental_live as exp_live
     from cfb_coach.madden.model import experimental_model as exp_mod
 
     if getattr(args, "install", False) and not getattr(args, "db_path", None):
         _parser_error(args, "--db is required for train-experimental --install")
+    side = str(args.side or "offense")
+    dest = Path(args.out) if args.out else _experimental_candidate_path(side)
+    live_default = Path(data_dir()) / "madden_ml_experimental" / f"{side}.json"
+    if dest.expanduser().resolve() == live_default.expanduser().resolve():
+        print(
+            f"error: refusing to write the live fallback artifact {live_default}. "
+            "Train to a candidate path, evaluate it, then pass --install.",
+            file=sys.stderr,
+        )
+        return 2
+    if dest.exists():
+        print(f"error: refusing to overwrite existing artifact {dest}", file=sys.stderr)
+        return 2
     rows = _load_rows(args)
-    art = exp_mod.train_experimental(rows, side=str(args.side or "offense"))
-    dest = Path(args.out or (Path(data_dir()) / "madden_ml_experimental" / f"{art.side}.json"))
+    art = exp_mod.train_experimental(rows, side=side)
     exp_mod.save_artifact(art, dest)
     # Compare against logistic baseline when enough data exists.
     comparison: dict[str, Any] = {
@@ -2134,12 +2159,16 @@ def build_ml_subparser(sub: Any) -> None:
 
     p_te = ml_sub.add_parser(
         "train-experimental",
-        help="Train hierarchical shrinkage experimental model (no promotion gate)",
+        help="Train a candidate experimental model (new file; never overwrites; no promotion gate)",
     )
     p_te.add_argument("--seed", type=int, default=7)
     p_te.add_argument("--side", default="offense", choices=("offense", "defense"))
     p_te.add_argument("--path", action="append", default=[], help="Extra training paths")
-    p_te.add_argument("--out", default=None)
+    p_te.add_argument(
+        "--out",
+        default=None,
+        help="New artifact path (default: madden_ml_experimental/candidates/<side>.<UTC>.json)",
+    )
     p_te.add_argument(
         "--install",
         action="store_true",
