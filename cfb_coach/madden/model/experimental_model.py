@@ -22,7 +22,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from cfb_coach.madden.model import dataset as dataset_mod
 from cfb_coach.madden.model.features import (
@@ -340,8 +340,12 @@ def train_experimental(
     *,
     side: str = "offense",
     seed: int = 7,
+    row_weight: Callable[[Mapping[str, Any]], float] | None = None,
 ) -> ExperimentalArtifact:
-    """Fit shrinkage buckets from verified rows (+ optional discounted priors)."""
+    """Fit shrinkage buckets from verified rows (+ optional discounted priors).
+
+    ``row_weight`` (research only) scales each supervised row; default 1.0.
+    """
     del seed
     supervised = dataset_mod.supervised_rows(rows)
     supervised = [r for r in supervised if str(r.get("side") or "").startswith(side[:1])]
@@ -404,8 +408,14 @@ def train_experimental(
         oid = str(row.get("opponent_id") or "unknown")
         opp.setdefault(oid, RateBucket()).add(success, weight)
 
-    for row in supervised:
-        ingest(row, 1.0, trusted_action=True)
+    if row_weight is not None:
+        weights = [float(row_weight(r)) for r in supervised]
+        supervised = [r for r, w in zip(supervised, weights) if w > 0]
+        weights = [w for w in weights if w > 0]
+    else:
+        weights = [1.0] * len(supervised)
+    for row, w in zip(supervised, weights):
+        ingest(row, w, trusted_action=True)
     for row in discounted:
         ingest(row, float(row.get("prior_discount") or 0.25), trusted_action=False)
 
