@@ -74,19 +74,21 @@ def collect_rows(
     attested = dict(attested or {})
     cur = conn.execute(
         "SELECT s.id, s.session_id, g.opponent_id, g.started_ts, s.situation_raw, s.formation, s.play, "
-        "s.result, s.down, s.distance, s.executed_verification, s.executed_formation, s.executed_play "
+        "s.result, s.down, s.distance, s.executed_status, s.executed_verification, "
+        "s.executed_formation, s.executed_play "
         "FROM snaps s JOIN game_sessions g ON g.session_id = s.session_id "
         "WHERE s.side = 'defense' ORDER BY g.started_ts, COALESCE(s.snap_seq, s.id), s.id"
     )
     rows: list[SnapRow] = []
     for (snap_id, session_id, opponent, started, raw, formation, play, result, down, distance,
-         verification, ex_formation, ex_play) in cur:
+         executed_status, verification, ex_formation, ex_play) in cur:
         if is_cpu_opponent(str(opponent or "")):
             continue
         won = defense_v1.offense_won(result, down, distance)
         if won is None:
             continue
-        if str(verification or "") == "verified" and ex_formation and ex_play:
+        if (str(executed_status or "") == "identified"
+                and str(verification or "") == "verified" and ex_formation and ex_play):
             formation, play, provenance = ex_formation, ex_play, PROVENANCE_VERIFIED
         elif session_id in attested:
             provenance = PROVENANCE_ATTESTED
