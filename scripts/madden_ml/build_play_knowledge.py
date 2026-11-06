@@ -15,6 +15,10 @@ def main() -> None:
     parser.add_argument("--catalog", type=Path,
                         default=Path(__file__).resolve().parents[2] / "cfb_coach/data/madden27/playbooks_full.json")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--seeds", type=Path, default=Path(__file__).resolve().parents[2] /
+                        "cfb_coach/data/madden27/play_knowledge_seeds.json",
+                        help="source-documented annotations (not Xbox-verified); omit with --no-seeds")
+    parser.add_argument("--no-seeds", action="store_true")
     args = parser.parse_args()
     output = args.output.expanduser().resolve()
     live_dir = (Path.home() / ".cfb-coach").resolve()
@@ -28,7 +32,11 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     with PlayKnowledgeDB(output) as db:
         counts = db.import_catalog(payload)
-        print(json.dumps({"imported_play_entries": counts, "coverage": db.coverage(),
+        seeded = 0
+        if not args.no_seeds and args.seeds.is_file():
+            seeded = db.import_seed_annotations(json.loads(args.seeds.read_text(encoding="utf-8")))
+        print(json.dumps({"imported_play_entries": counts, "source_documented_seed_plays": seeded,
+                          "coverage": db.coverage(),
                           "note": "Names imported; player assignments remain UNKNOWN until annotated."}, indent=2))
 
 
