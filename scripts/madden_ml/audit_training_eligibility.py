@@ -11,9 +11,15 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+import sys
 from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
+
+# An editable install may point at a different checkout; audit with this one.
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 from cfb_coach.madden.model import dataset
 
@@ -46,14 +52,26 @@ def summarize(db_path: Path) -> dict:
             "verified_touchdowns": sum(
                 1 for r in verified if str(r.get("result") or "").lower().strip() == "td"
             ),
+            "verified_games": len({r.get("game_id") for r in verified if r.get("game_id")}),
+            "verified_by_opponent_type": dict(
+                Counter(str(r.get("opponent_type") or "unknown") for r in verified)
+            ),
+            "verified_by_basis": dict(Counter(
+                r.get("execution_attestation_source") or "per_snap_or_legacy" for r in verified
+            )),
         }
+    snap_ids = Counter(r.get("snap_id") for r in rows if r.get("snap_id"))
     return {
         "database": str(source),
+        "dataset_module": dataset.__file__,
         "logical_snap_count": len(rows),
+        "duplicate_snap_ids": sum(n - 1 for n in snap_ids.values() if n > 1),
         "trainable_verified_offense": by_side["offense"]["verified_executed_and_labeled"],
         "trainable_verified_defense": by_side["defense"]["verified_executed_and_labeled"],
         "explanation": ("Verified executed play + known outcome = play-specific training. "
-                        "A displayed call with uncertain execution does not qualify."),
+                        "A displayed call with uncertain execution does not qualify. "
+                        "'standing_user_attestation' means the owner pre-committed to running "
+                        "every displayed call; it was not confirmed snap by snap."),
         "by_side": by_side,
     }
 

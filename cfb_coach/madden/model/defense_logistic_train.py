@@ -5,7 +5,6 @@ Each row is one human-game defensive snap with a parseable result. The label is
 otherwise the row preserves the displayed recommendation for diagnostics.
 Only verified executions are admitted for play-specific training by default:
 
-
 ``executed_verified``
     The executed formation and play were verified.
 ``user_confirmed_logged_result``

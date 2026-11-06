@@ -20,6 +20,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+# An editable install may point at a different checkout; train with this one.
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 from cfb_coach.madden.model import defense_logistic_train as train
 from cfb_coach.madden.model import defense_v1
 

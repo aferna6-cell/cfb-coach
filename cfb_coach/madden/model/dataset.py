@@ -280,6 +280,15 @@ def _normalize_row(raw: Mapping[str, Any], *, provenance: str) -> dict[str, Any]
         "executed_verification": executed_verification,
         "executed_formation": None if _blank(executed_formation) else str(executed_formation),
         "executed_play": None if _blank(executed_play) else str(executed_play),
+        # How a verified execution was established. A standing attestation
+        # ("I always run the displayed call") is weaker than a per-snap
+        # confirmation; keep it visible so it can be audited or excluded.
+        "execution_attestation_source": (
+            str(row["execution_attestation_source"])
+            if executed_verification == Verification.VERIFIED.value
+            and not _blank(row.get("execution_attestation_source"))
+            else None
+        ),
         "result": None if _blank(result) else str(result),
         "yards": yards_i,
         "success": success,
@@ -570,6 +579,10 @@ def build_rows(
                             mapping["result"] = payload.get("result")
                         if payload.get("yards") is not None:
                             mapping["yards"] = payload.get("yards")
+                        if payload.get("execution_attestation_source"):
+                            mapping["execution_attestation_source"] = payload[
+                                "execution_attestation_source"
+                            ]
                     except (TypeError, json.JSONDecodeError):
                         pass
             mapping["source_path"] = str(getattr(db, "path", "coach.db"))
