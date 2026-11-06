@@ -8,7 +8,8 @@ Small samples shrink toward that baseline. The adjustment is capped.
 from __future__ import annotations
 
 import math
-from typing import Any, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Iterable, Mapping, Sequence
 
 from cfb_coach.madden.model.schema import OpponentContextKey
 
@@ -602,3 +603,178 @@ def defense_success_delta(row: Mapping[str, Any], profile: Mapping[str, Any] | N
                 # so predicted offense success goes down.
                 delta -= shrink * float(share) * float(weight) * _COUNTER_SCALE
     return _cap(delta, DEFENSE_SUCCESS_CAP)
+
+
+# ---------------------------------------------------------------------------
+# Hierarchical run/pass prior: league -> playing style -> individual.
+# Not read by the live caller yet; evaluated offline in heldout_eval.
+
+
+@dataclass(frozen=True)
+class RunPassObservation:
+    """One snap where the opponent's run/pass was observed.
+
+    Comes from what he was seen doing, so it does not depend on whether our
+    own defensive call was verified.
+    """
+
+    opponent_id: str
+    game_id: str
+    down: Any
+    distance: Any
+    is_pass: int
+
+
+def _situation_key(down: Any, distance: Any) -> str:
+    try:
+        d = int(down)
+    except (TypeError, ValueError):
+        return "unknown"
+    return f"{d}_{_dist_class(distance)}"
+
+
+def _logit(p: float) -> float:
+    p = min(1 - 1e-4, max(1e-4, float(p)))
+    return math.log(p / (1 - p))
+
+
+def _sigmoid(x: float) -> float:
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+@dataclass
+class RunPassPrior:
+    """League situational pass rates and evidence-learned playing styles.
+
+    A style is a cluster of opponents by how much more (or less) they pass than
+    the league in the same situations. Styles are only formed when there are at
+    least two qualifying opponents per style; otherwise the prior is league-only.
+    """
+
+    situation_strength: float = 10.0
+    style_strength: float = 10.0
+    n_styles: int = 2
+    min_style_plays: int = 15
+    overall: float = 0.5
+    league: dict[str, float] = field(default_factory=dict)
+    styles: list[dict[str, Any]] = field(default_factory=list)
+
+    def fit(self, observations: Iterable[RunPassObservation]) -> "RunPassPrior":
+        obs = list(observations)
+        self.overall = (sum(o.is_pass for o in obs) + 1.0) / (len(obs) + 2.0)
+        self.league = self._table(obs, lambda key: self.overall, self.situation_strength)
+        self.styles = self._fit_styles(obs)
+        return self
+
+    @staticmethod
+    def _table(obs: Sequence[RunPassObservation], parent: Any, strength: float) -> dict[str, float]:
+        counts: dict[str, list[float]] = {}
+        for o in obs:
+            c = counts.setdefault(_situation_key(o.down, o.distance), [0.0, 0.0])
+            c[0] += o.is_pass
+            c[1] += 1
+        return {k: (s + strength * parent(k)) / (m + strength) for k, (s, m) in counts.items()}
+
+    def league_rate(self, down: Any, distance: Any) -> float:
+        return self.league.get(_situation_key(down, distance), self.overall)
+
+    def style_rate(self, style: Mapping[str, Any], down: Any, distance: Any) -> float:
+        key = _situation_key(down, distance)
+        if key in style["rates"]:
+            return style["rates"][key]
+        return _sigmoid(_logit(self.league_rate(down, distance)) + style["offset"])
+
+    def _fit_styles(self, obs: Sequence[RunPassObservation]) -> list[dict[str, Any]]:
+        by_opp: dict[str, list[RunPassObservation]] = {}
+        for o in obs:
+            by_opp.setdefault(o.opponent_id, []).append(o)
+        eligible = {k: v for k, v in by_opp.items() if len(v) >= self.min_style_plays}
+        if self.n_styles < 2 or len(eligible) < 2 * self.n_styles:
+            return []
+        offsets = {}
+        for k, v in eligible.items():
+            expected = sum(self.league_rate(o.down, o.distance) for o in v) / len(v)
+            share = (sum(o.is_pass for o in v) + 1.0) / (len(v) + 2.0)
+            offsets[k] = _logit(share) - _logit(expected)
+        ordered = sorted(offsets.values())
+        centres = [ordered[int((i + 0.5) * len(ordered) / self.n_styles)] for i in range(self.n_styles)]
+        groups: list[list[str]] = []
+        for _ in range(50):
+            groups = [[] for _ in centres]
+            for k in sorted(offsets):
+                groups[min(range(len(centres)), key=lambda i: abs(offsets[k] - centres[i]))].append(k)
+            new = [sum(offsets[k] for k in g) / len(g) if g else centres[i] for i, g in enumerate(groups)]
+            if new == centres:
+                break
+            centres = new
+        styles = []
+        for centre, members in zip(centres, groups):
+            if not members:
+                continue
+            member_obs = [o for k in members for o in eligible[k]]
+            rates = self._table(
+                member_obs,
+                lambda key, c=centre: _sigmoid(_logit(self.league.get(key, self.overall)) + c),
+                self.style_strength,
+            )
+            styles.append({"offset": centre, "weight": len(members) / len(offsets),
+                           "opponents": len(members), "plays": len(member_obs), "rates": rates})
+        return styles
+
+
+def estimate_run_pass(
+    prior: RunPassPrior,
+    history: Iterable[RunPassObservation],
+    down: Any,
+    distance: Any,
+    *,
+    use_styles: bool = True,
+    use_individual: bool = True,
+    handoff: float = PRIOR_HANDOFF,
+) -> dict[str, Any]:
+    """P(pass) on the next snap for one opponent.
+
+    ``history`` must hold only his plays observed before this snap, each once.
+    His plays first update which style he resembles; the individual offset is
+    then the shrunk residual against that updated style, so evidence the style
+    already explains is not added a second time. With no history the answer is
+    the league (or style-average) prior and ``confidence`` is 0.
+    """
+    hist = list(history)
+    n = len(hist)
+    styles = prior.styles if use_styles else []
+    weights: list[float] = []
+    if styles:
+        logw = []
+        for s in styles:
+            ll = math.log(s["weight"])
+            for o in hist:
+                p = min(1 - 1e-4, max(1e-4, prior.style_rate(s, o.down, o.distance)))
+                ll += math.log(p if o.is_pass else 1 - p)
+            logw.append(ll)
+        top = max(logw)
+        raw = [math.exp(x - top) for x in logw]
+        weights = [x / sum(raw) for x in raw]
+
+        def base(d: Any, dist: Any) -> float:
+            return sum(w * prior.style_rate(s, d, dist) for w, s in zip(weights, styles))
+
+        source = "style"
+    else:
+        base = prior.league_rate
+        source = "league"
+    p0 = base(down, distance)
+    delta = 0.0
+    if use_individual and n:
+        expected = sum(base(o.down, o.distance) for o in hist) / n
+        shrunk = (sum(o.is_pass for o in hist) + handoff * expected) / (n + handoff)
+        delta = _logit(shrunk) - _logit(expected)
+        source += "+individual"
+    return {
+        "p_pass": _sigmoid(_logit(p0) + delta),
+        "prior_p_pass": p0,
+        "n_own": n,
+        "confidence": (n / (n + handoff)) if use_individual else 0.0,
+        "style_weights": [round(w, 3) for w in weights],
+        "source": source,
+    }

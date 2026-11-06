@@ -160,7 +160,8 @@ def test_evaluate_end_to_end_is_read_only(synthetic_db: Path, tmp_path: Path) ->
     chron = report["offense"]["chronological"]
     assert chron["folds"] == 2
     assert chron["metrics"]["success"]["models"]["experimental_shrinkage"]["n"] == 16
-    assert report["opponent_run_pass"]["chronological"]["metrics"]["opp_pass"]["models"]["base_rate"]["n"] == 4
+    # Every synthetic game is against the same opponent, so no other-opponent prior exists.
+    assert report["opponent_run_pass"]["chronological"]["folds"] == []
     assert report["defense_outcomes"]["all"]["plays"] == 10
     jp, mp = he.write_report(report, tmp_path / "out")
     assert json.loads(jp.read_text())["eval_version"] == he.EVAL_VERSION
