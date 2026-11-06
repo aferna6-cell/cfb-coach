@@ -1,0 +1,44 @@
+"""Create a SEPARATE research play-knowledge DB from Madden 27 catalog names.
+
+Usage: python scripts/madden_ml/build_play_knowledge.py --output /tmp/play-knowledge.db
+Never writes the live ~/.cfb-coach database or changes the current playcaller.
+"""
+import argparse
+import json
+from pathlib import Path
+
+from cfb_coach.madden.model.play_knowledge import PlayKnowledgeDB
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--catalog", type=Path,
+                        default=Path(__file__).resolve().parents[2] / "cfb_coach/data/madden27/playbooks_full.json")
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--seeds", type=Path, default=Path(__file__).resolve().parents[2] /
+                        "cfb_coach/data/madden27/play_knowledge_seeds.json",
+                        help="source-documented annotations (not Xbox-verified); omit with --no-seeds")
+    parser.add_argument("--no-seeds", action="store_true")
+    args = parser.parse_args()
+    output = args.output.expanduser().resolve()
+    live_dir = (Path.home() / ".cfb-coach").resolve()
+    if output == live_dir or live_dir in output.parents:
+        parser.error("research DB must be outside the live CFB Coach data directory")
+    if output.exists():
+        parser.error("output exists; refusing to overwrite")
+    if not args.catalog.is_file():
+        parser.error(f"catalog does not exist: {args.catalog}")
+    payload = json.loads(args.catalog.read_text(encoding="utf-8"))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with PlayKnowledgeDB(output) as db:
+        counts = db.import_catalog(payload)
+        seeded = 0
+        if not args.no_seeds and args.seeds.is_file():
+            seeded = db.import_seed_annotations(json.loads(args.seeds.read_text(encoding="utf-8")))
+        print(json.dumps({"imported_play_entries": counts, "source_documented_seed_plays": seeded,
+                          "coverage": db.coverage(),
+                          "note": "Most catalog plays have UNKNOWN assignments; source-documented seeds are partial, not Xbox-verified."}, indent=2))
+
+
+if __name__ == "__main__":
+    main()
