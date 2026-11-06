@@ -1,0 +1,293 @@
+{
+  "game": "Madden NFL 27",
+  "source": "Verified subset of playbooks_full.json on GitHub PR #105 head c927fc416a567dad06036237900fd6247b597fec; each listed play confirmed present in source-book formation record",
+  "books": {
+    "offense": {
+      "Buccaneers": {
+        "formations": {
+          "Gun 5WR Tight": {
+            "url": "https://huddle.gg/27/playbooks/buccaneers-off/gun-5wr-tight/",
+            "plays": [
+              "Clear Deep",
+              "Cluster Bunch",
+              "L Spot",
+              "Mesh",
+              "Mesh Post",
+              "Mills Double Out",
+              "Mtn Double Post",
+              "Mtn Fork Salem",
+              "Mtn Post Swirl",
+              "QB Draw",
+              "Salem Smash Under",
+              "Slot Dig Wide Corner",
+              "Smash Dagger",
+              "Spacing",
+              "Zl Spot Shake"
+            ]
+          },
+          "Gun Doubles Clamp Stack": {
+            "url": "https://huddle.gg/27/playbooks/buccaneers-off/gun-doubles-clamp-stack/",
+            "plays": [
+              "Counter Y",
+              "Curl Ohio",
+              "Flood Seam",
+              "HB Mid Zone",
+              "HB Slip Screen",
+              "Hitch HB Rail",
+              "Inside Zone",
+              "Mtn Choice Gos Y-Shake",
+              "Mtn Counter Y",
+              "Mtn FK Rub",
+              "Mtn Flood HB Sneak",
+              "Mtn Rub Smash",
+              "Mtn Salem Drag",
+              "Mtn Shuffle Drive Choice",
+              "Mtn Shuffle Mesh Rail",
+              "Mtn Shuffle Verts Smash",
+              "PA Post Shot Choice",
+              "Portland Ywheel",
+              "Return Bench",
+              "Return PA Z Over",
+              "Return RPO Zone Alert",
+              "RPO Alert Out",
+              "Same Side Zone",
+              "Spot Choice",
+              "Texas Smash",
+              "Texas Y-Stutter Wheel",
+              "Y Ohio Return"
+            ]
+          },
+          "Gun Trips X Nasty": {
+            "url": "https://huddle.gg/27/playbooks/buccaneers-off/gun-trips-x-nasty/",
+            "plays": [
+              "HB Mid Draw",
+              "HB Off Tackle",
+              "HB Slip Screen",
+              "Hi Lo Cross",
+              "Hi Lo Dig",
+              "Inside Zone",
+              "Mid Zone",
+              "Mtn Drag Sluggo",
+              "Mtn HB Swing",
+              "Mtn Slot Fades",
+              "Mtn Spot Y Corner",
+              "Mtn Stick Wheel",
+              "Mtn Triple Slants",
+              "PA X Cross Shot",
+              "Quick Fork Zig",
+              "Quick Short Post",
+              "Quick Unders",
+              "Slot Fade H Wheel",
+              "Switch HB Wheel",
+              "Verticals X Shallow",
+              "WR Smash"
+            ]
+          },
+          "Pistol Deuce Close": {
+            "url": "https://huddle.gg/27/playbooks/buccaneers-off/pistol-deuce-close/",
+            "plays": [
+              "Bench",
+              "Counter Y",
+              "HB Dive",
+              "HB Stretch",
+              "Inside Zone Split",
+              "Mesh Spot",
+              "Mtn Counter Lt",
+              "Mtn PA Flood",
+              "Mtn Zone Split",
+              "PA Boot Y Leak",
+              "PA Z Over",
+              "Y Lead Read Option"
+            ]
+          },
+          "Pistol Trips": {
+            "url": "https://huddle.gg/27/playbooks/buccaneers-off/pistol-trips/",
+            "plays": [
+              "HB Counter",
+              "HB Dive",
+              "HB Draw",
+              "HB Slip Screen",
+              "HB Stretch",
+              "HB Zone WK",
+              "Inside Cross",
+              "PA Boot",
+              "PA Boot Lt",
+              "PA HB Flat",
+              "Pin Pull Sweep",
+              "Read Option",
+              "RPO Alert Bubble",
+              "Slants",
+              "Smash",
+              "Strong Power",
+              "Verticals",
+              "X Spot"
+            ]
+          }
+        }
+      }
+    },
+    "defense": {
+      "49ers": {
+        "formations": {
+          "4-3 Over": {
+            "url": "https://huddle.gg/27/playbooks/49ers-def/4--3-over/",
+            "plays": [
+              "1 Hole Press",
+              "1 Robber Press",
+              "Cover 1 Contain",
+              "Cover 1 Hole",
+              "Cover 2 Hard Flat",
+              "Cover 2 Man",
+              "Cover 3 Cloud Str",
+              "Cover 3 Sky",
+              "Cover 4 Press",
+              "Cover 4 Quarters",
+              "Cover 6",
+              "DBL Safety Blitz",
+              "Free Fire",
+              "LB Sting 1",
+              "OLB Fire Man",
+              "Sam Edge 3",
+              "Tampa 2",
+              "Thunder Smoke"
+            ]
+          },
+          "Dime 3-2 Odd": {
+            "url": "https://huddle.gg/27/playbooks/49ers-def/dime-3--2-odd/",
+            "plays": [
+              "1 Double WR1",
+              "1 Double WR2",
+              "Cover 1 Robber Press",
+              "Cover 2 Man",
+              "Cover 3 Buzz Match WK",
+              "Cover 3 Cloud",
+              "Cover 3 Hard Flat",
+              "Cover 3 Lock",
+              "Cover 4 Drop",
+              "Cover 4 Palms",
+              "Cover 4 Quarters",
+              "Cover 6",
+              "Cover 6 Willie",
+              "DB Fire 2",
+              "DBL Safety Go",
+              "Double Bracket",
+              "Edge Blitz 1",
+              "Edge Blitz 3",
+              "FS Zone Blitz",
+              "Hot Blitz 3",
+              "Okie Eagle 3",
+              "Okie Roll 2",
+              "Overload 3 Seam",
+              "SS Zone Blitz",
+              "Tampa 2",
+              "Tampa 2 Drop",
+              "Zero Blitz"
+            ]
+          },
+          "Nickel Double Mug": {
+            "url": "https://huddle.gg/27/playbooks/49ers-def/nickel-double-mug/",
+            "plays": [
+              "2 Invert Hard Flat",
+              "Blitz Loop 3",
+              "Coffee House 3 Seam",
+              "Cover 1 Hole",
+              "Cover 2 Invert",
+              "Cover 3 Match",
+              "Cover 3 Sky",
+              "Field Sim 3",
+              "LB Blitz 3",
+              "Mid Blitz 0",
+              "Nickel 2 Trap",
+              "Nickel Overload 3",
+              "Nickel Sim 2",
+              "SS Blitz 3",
+              "Tampa 2"
+            ]
+          },
+          "Nickel Over": {
+            "url": "https://huddle.gg/27/playbooks/49ers-def/nickel-over/",
+            "plays": [
+              "1 Double Slot",
+              "1 Double TE",
+              "1 Double WR1",
+              "1 Double WR2",
+              "1 Robber Press",
+              "Bracket Switch Willie",
+              "Cov 3 Buzz Match",
+              "Cover 1 Contain",
+              "Cover 1 Hole",
+              "Cover 2 Invert",
+              "Cover 2 Man",
+              "Cover 2 Roll",
+              "Cover 3 Buzz Match",
+              "Cover 3 Cloud",
+              "Cover 3 Match",
+              "Cover 3 Sky",
+              "Cover 4 Drop Field",
+              "Cover 4 Palms",
+              "Cover 4 Quarters",
+              "Cover 6",
+              "Cover 6 Willie",
+              "Cover 9 Show 2",
+              "DBL Safety Blitz",
+              "Double Bracket",
+              "Double Bracket Switch",
+              "Edge Blitz 0",
+              "Edge Blitz 3",
+              "Field Sim 3",
+              "FS Will Blitz 0",
+              "LB Blitz 1",
+              "Nickel 2 Trap",
+              "Nickel Blitz 3",
+              "Nickel Sim 2",
+              "Over Storm Brave",
+              "Overload 3 Seam",
+              "Overload Blitz",
+              "Roll 23 Cloud",
+              "Roll Cover 2 Invert",
+              "Roll Cover 3 Cloud",
+              "Show SS Sim 2",
+              "Sim Pressure 3",
+              "Tampa 2"
+            ]
+          },
+          "Nickel Single Mug": {
+            "url": "https://huddle.gg/27/playbooks/49ers-def/nickel-single-mug/",
+            "plays": [
+              "1 LB Dog",
+              "Blitz Tex 3 Sim 3",
+              "Cover 1 Hole",
+              "Cover 2 Invert",
+              "Cover 3",
+              "Cover 3 Buzz Match",
+              "Cover 4 Quarters",
+              "DB Blitz Tex 3",
+              "DT Mike Loop 3",
+              "Nickel 2 Trap",
+              "Nickel Blitz 3",
+              "Tampa 2"
+            ]
+          }
+        }
+      },
+      "Chargers": {
+        "formations": {
+          "46 Normal": {
+            "url": "https://huddle.gg/27/playbooks/chargers-def/46-normal/",
+            "plays": [
+              "Cover 1 Contain",
+              "Cover 1 Hole",
+              "Cover 2 Invert",
+              "Cover 3",
+              "Cover 3 Match",
+              "Engage Eight",
+              "Fire Zone 3",
+              "Inside Blitz",
+              "Rush Outside"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
