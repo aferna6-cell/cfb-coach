@@ -41,7 +41,7 @@ def _db(games: list[tuple[str, str, str, list[tuple]]]) -> sqlite3.Connection:
     conn.execute(
         "CREATE TABLE snaps (id INTEGER PRIMARY KEY, session_id TEXT, side TEXT, snap_seq INTEGER, "
         "situation_raw TEXT, formation TEXT, play TEXT, result TEXT, down INTEGER, distance INTEGER, "
-        "executed_verification TEXT, executed_formation TEXT, executed_play TEXT)"
+        "executed_status TEXT, executed_verification TEXT, executed_formation TEXT, executed_play TEXT)"
     )
     for session, opponent, started, snaps in games:
         conn.execute("INSERT INTO game_sessions VALUES (?,?,?)", (session, opponent, started))
@@ -49,9 +49,11 @@ def _db(games: list[tuple[str, str, str, list[tuple]]]) -> sqlite3.Connection:
             verification, ex_form, ex_play = (rest + [None, None, None])[:3]
             conn.execute(
                 "INSERT INTO snaps (session_id, side, snap_seq, situation_raw, formation, play, result, "
-                "down, distance, executed_verification, executed_formation, executed_play) "
-                "VALUES (?, 'defense', ?, '1&10 my 30', ?, ?, ?, 1, 10, ?, ?, ?)",
-                (session, seq, formation, play, result, verification, ex_form, ex_play),
+                "down, distance, executed_status, executed_verification, executed_formation, executed_play) "
+                "VALUES (?, 'defense', ?, '1&10 my 30', ?, ?, ?, 1, 10, ?, ?, ?, ?)",
+                (session, seq, formation, play, result,
+                 "identified" if verification == "verified" else "unknown",
+                 verification, ex_form, ex_play),
             )
     conn.commit()
     return conn
@@ -90,6 +92,15 @@ class CollectRowsTest(unittest.TestCase):
             ("dillon", "4-3 Over", "Fire Zone", train.PROVENANCE_ATTESTED, False, "execution_unverified"),
         ])
         self.assertEqual([r.offense_success for r in rows], [True, True, False, True])
+
+    def test_verified_flag_without_identified_execution_is_excluded(self) -> None:
+        conn = _db([("g", "dillon", "2026-11-05", [
+            ("Nickel Over", "Cover 3 Sky", "td", "verified", "Nickel Over", "Cover 3 Sky"),
+        ])])
+        conn.execute("UPDATE snaps SET executed_status='unknown'")
+        (row,) = train.collect_rows(conn)
+        self.assertFalse(row.admitted)
+        self.assertEqual(row.excluded_reason, "execution_unverified")
 
     def test_without_cutoff_unattested_logged_snap_stays_excluded(self) -> None:
         conn = _db([("ryan", "ryan", "2026-11-03T17:00:00+00:00", [("4-3 Over", "Fire Zone", "+12")])])
