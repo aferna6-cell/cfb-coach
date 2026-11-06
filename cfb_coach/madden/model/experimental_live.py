@@ -996,6 +996,18 @@ def apply_experimental_offense(
             "timed_out": trace.get("timed_out", False),
             "slowest_stage": trace.get("slowest_stage"),
         }
+        try:
+            from cfb_coach.madden.model import nfl_prior_shadow
+
+            nfl_shadow = nfl_prior_shadow.observe(
+                ranked=ranked, chosen=(call.formation, call.play), sit=sit, opponent_type=opp_type,
+                session_id=session_id or game_id, snap_id=snap_id, snap_seq=snap_seq,
+                remaining_ms=budget - (time.perf_counter() - started) * 1000.0,
+            )
+        except Exception:  # noqa: BLE001 — opt-in shadow; never part of the call
+            nfl_shadow = None
+        if nfl_shadow is not None:
+            info["nfl_prior_shadow"] = nfl_shadow
 
         if db is not None and (session_id or game_id):
             try:

@@ -110,6 +110,16 @@ def _predict(model: Any, rows: Sequence[Mapping[str, Any]], features: Sequence[s
     return out
 
 
+# The only play information the NFL models take is run vs pass. Concept,
+# formation, play action and RPO reads have no NFL counterpart here.
+NFL_PLAY_INPUT = {"run": "run", "pass": "pass", "screen": "pass", "unknown": "mixture"}
+
+
+def nfl_play_input(play: str | None) -> str:
+    """Madden play -> NFL model input: 'run', 'pass' or 'mixture' (weighted by NFL P(pass))."""
+    return NFL_PLAY_INPUT.get(he.run_or_pass(play), "mixture")
+
+
 def attach_nfl_scores(rows: list[dict[str, Any]], run_dir: Path) -> dict[str, Any]:
     """Add ``_nfl_success`` (offense rows) and ``_nfl_pass`` (all rows) in place."""
     import numpy as np
@@ -117,22 +127,33 @@ def attach_nfl_scores(rows: list[dict[str, Any]], run_dir: Path) -> dict[str, An
     succ = load_xgb(run_dir / "models" / "success" / "xgboost.json")
     rp = load_xgb(run_dir / "models" / "run_pass" / "xgboost.json")
     p_pass = _predict(rp, rows, SITUATION_FEATURES, None)
-    fam = [he.run_or_pass(r.get("action_play")) for r in rows]
     p_run = _predict(succ, rows, OUTCOME_FEATURES, np.zeros(len(rows)))
     p_throw = _predict(succ, rows, OUTCOME_FEATURES, np.ones(len(rows)))
     counts: dict[str, int] = {}
-    for r, f, pp, pr, pt in zip(rows, fam, p_pass, p_run, p_throw):
+    mapped: dict[str, int] = {}
+    for r, pp, pr, pt in zip(rows, p_pass, p_run, p_throw):
         r["_nfl_pass"] = float(pp)
         if r.get("side") != "offense":
             continue
-        counts[f] = counts.get(f, 0) + 1
-        if f == "run":
+        fam = he.run_or_pass(r.get("action_play"))
+        target = nfl_play_input(r.get("action_play"))
+        counts[fam] = counts.get(fam, 0) + 1
+        mapped[target] = mapped.get(target, 0) + 1
+        if target == "run":
             r["_nfl_success"] = float(pr)
-        elif f in ("pass", "screen"):
+        elif target == "pass":
             r["_nfl_success"] = float(pt)
         else:
             r["_nfl_success"] = float(pp * pt + (1 - pp) * pr)
-    return {"offense_play_family_counts": counts}
+    return {"offense_play_family_counts": counts, "nfl_input_counts": mapped, "mapping": dict(NFL_PLAY_INPUT)}
+
+
+def situation_slices(row: Mapping[str, Any]) -> dict[str, str]:
+    dist = he._int(row.get("distance"))
+    return {
+        "short_yardage": "yes" if dist is not None and dist <= 2 else "no",
+        "red_zone": "yes" if _yardline_100(row) <= 20 and row.get("yardline") is not None else "no",
+    }
 
 
 def fit_platt(xs: Sequence[float], ys: Sequence[int], l2: float = 1.0, iters: int = 50) -> tuple[float, float]:
@@ -254,22 +275,81 @@ class ExperimentalPlusNFL:
         return {"success": _sigmoid(z)}
 
 
-def offense_models() -> list[Any]:
+PRIOR_STRENGTHS = (0.0, 0.1, 0.25, 0.5, 1.0)
+
+
+def blend(p_exp: float, p_nfl: float, base: float, w: float) -> float:
+    """Experimental logit plus ``w`` times how far the NFL prior sits from the base rate."""
+    return _sigmoid(_logit(p_exp) + w * (_logit(p_nfl) - _logit(base)))
+
+
+class ExperimentalNFLTuned:
+    """Experimental model nudged by the calibrated NFL prior, strength chosen on validation games.
+
+    The latest quarter of the fold's training games (at least one) is the
+    validation set; the test game is never seen. Ties go to the weaker prior.
+    """
+
+    name = "experimental+nfl_tuned"
+    targets = ("success",)
+
+    def __init__(self, game_order: Mapping[str, int], choices: list[float] | None = None) -> None:
+        self.game_order = game_order
+        self.choices = choices
+        self.w = 0.0
+
+    @staticmethod
+    def _parts(train: Sequence[Mapping[str, Any]]) -> tuple[Any, NFLCalibrated, float]:
+        exp, cal = he.ExperimentalSuccess(), NFLCalibrated()
+        exp.fit(train)
+        cal.fit(train)
+        ys = [y for r in train if he.is_verified_offense(r) for y in [he.offense_label(r, "success")] if y is not None]
+        return exp, cal, (sum(ys) + 1) / (len(ys) + 2)
+
+    def fit(self, train_rows: Sequence[Mapping[str, Any]]) -> None:
+        games = sorted({str(r["game_id"]) for r in train_rows if r.get("game_id")},
+                       key=lambda g: self.game_order.get(g, 0))
+        val_games = set(games[-max(1, len(games) // 4):]) if len(games) >= 2 else set()
+        inner = [r for r in train_rows if str(r.get("game_id")) not in val_games]
+        val = [(r, y) for r in train_rows if str(r.get("game_id")) in val_games and he.is_verified_offense(r)
+               for y in [he.offense_label(r, "success")] if y is not None]
+        if val and any(he.is_verified_offense(r) for r in inner):
+            exp, cal, base = self._parts(inner)
+            scored = [(exp.predict(r)["success"], cal.predict(r)["success"], y) for r, y in val]
+            best = None
+            for w in PRIOR_STRENGTHS:
+                ll = sum(he._row_ll(y, blend(pe, pn, base, w)) for pe, pn, y in scored) / len(scored)
+                if best is None or ll < best[0] - 1e-12:
+                    best = (ll, w)
+            self.w = best[1]
+        if self.choices is not None:
+            self.choices.append(self.w)
+        self.exp, self.cal, self.base = self._parts(train_rows)
+
+    def predict(self, row: Mapping[str, Any]) -> dict[str, float]:
+        return {"success": blend(self.exp.predict(row)["success"], self.cal.predict(row)["success"], self.base, self.w)}
+
+
+def offense_models(game_order: Mapping[str, int] | None = None, choices: list[float] | None = None) -> list[Any]:
     keep = he.is_verified_offense
     return [
         he.BaseRate(TARGETS, he.offense_label, keep),
         he.ShrunkTable("situation_table", TARGETS, he.offense_label, keep, [he.dd_key, he.field_key]),
         he.ExperimentalSuccess(),
         NFLRaw(), NFLCalibrated(), NFLPriorTable(), ExperimentalPlusNFL(),
+        ExperimentalNFLTuned(game_order or {}, choices),
     ]
 
 
 def offense_block(rows: list[dict[str, Any]], game_order: Mapping[str, int], *, mode: str,
                   n_boot: int, seed: int) -> dict[str, Any]:
     folds = he.make_folds(rows, game_order, is_test_row=he.is_verified_offense, mode=mode)
-    preds, timing = he.run_folds(rows, folds, offense_models, targets=TARGETS,
-                                 label_fn=he.offense_label, is_test_row=he.is_verified_offense)
-    block: dict[str, Any] = {"folds": len(folds), "timing": timing, "subsets": {}}
+    choices: list[float] = []
+    preds, timing = he.run_folds(rows, folds, lambda: offense_models(game_order, choices), targets=TARGETS,
+                                 label_fn=he.offense_label, is_test_row=he.is_verified_offense,
+                                 extra=situation_slices)
+    block: dict[str, Any] = {"folds": len(folds), "timing": timing, "subsets": {},
+                             "tuned_prior_strength_per_fold": choices}
     for name, keep in (("all", lambda p: True), ("cpu", lambda p: p["opponent_type"] == "cpu"),
                        ("human", lambda p: p["opponent_type"] != "cpu")):
         sub = [p for p in preds if keep(p)]
@@ -277,7 +357,7 @@ def offense_block(rows: list[dict[str, Any]], game_order: Mapping[str, int], *, 
             continue
         block["subsets"][name] = {
             "vs_base_rate": he.summarize_predictions(sub, TARGETS, reference="base_rate", n_boot=n_boot,
-                                                     seed=seed, strata=("basis",)),
+                                                     seed=seed, strata=("basis", "short_yardage", "red_zone")),
             "vs_experimental": he.summarize_predictions(
                 [p for p in sub if p["target"] == "success"], ("success",),
                 reference="experimental_shrinkage", n_boot=n_boot, seed=seed, strata=()),
@@ -327,16 +407,19 @@ def render(report: Mapping[str, Any]) -> str:
         "Imputed NFL features (not logged in Madden): " + "; ".join(f"{k}: {v}" for k, v in report["imputed"].items()) + ".",
         "",
     ]
+    lines += [f"NFL input mapping: {report['nfl_inputs'].get('mapping')}; offense rows per input: "
+              f"{report['nfl_inputs'].get('nfl_input_counts')}.", ""]
     for mode, block in report["offense"].items():
-        lines += [f"## Offense success — {mode} folds ({block['folds']} test games)", ""]
+        lines += [f"## Offense success — {mode} folds ({block['folds']} test games)", "",
+                  f"Prior strength chosen on validation games, per fold: {block.get('tuned_prior_strength_per_fold')}.", ""]
         for subset, sb in block["subsets"].items():
             for target in TARGETS:
                 m = sb["vs_base_rate"].get(target)
                 if not m:
                     continue
                 lines += [f"### {subset} games — {target} (plays scored: {next(iter(m['models'].values()))['n']})", "",
-                          "| model | log loss | Brier | AUC | Δ log loss vs base rate [95% CI] | Δ vs experimental [95% CI] |",
-                          "|---|---|---|---|---|---|"]
+                          "| model | log loss | Brier | AUC | ECE | Δ log loss vs base rate [95% CI] | Δ vs experimental [95% CI] |",
+                          "|---|---|---|---|---|---|---|"]
                 vx = sb["vs_experimental"].get("success", {}).get("vs_reference", {}) if target == "success" else {}
                 for name, mm in sorted(m["models"].items(), key=lambda kv: kv[1]["log_loss"]):
                     vb = m["vs_reference"].get(name)
@@ -344,8 +427,20 @@ def render(report: Mapping[str, Any]) -> str:
                     ve = vx.get(name)
                     ve_s = ("reference" if name == "experimental_shrinkage" and target == "success" else
                             "—" if ve is None else f"{_fmt(ve['mean_diff'], 4)} [{_fmt(ve['lo'], 4)}, {_fmt(ve['hi'], 4)}]")
-                    lines.append(f"| {name} | {_fmt(mm['log_loss'], 4)} | {_fmt(mm['brier'], 4)} | {_fmt(mm.get('auc'))} | {vb_s} | {ve_s} |")
+                    lines.append(f"| {name} | {_fmt(mm['log_loss'], 4)} | {_fmt(mm['brier'], 4)} | {_fmt(mm.get('auc'))} "
+                                 f"| {_fmt(mm.get('ece'))} | {vb_s} | {ve_s} |")
                 lines.append("")
+                if target == "success" and m.get("strata"):
+                    names = ["base_rate", "experimental_shrinkage", "nfl_xgb_calibrated", "experimental+nfl",
+                             "experimental+nfl_tuned"]
+                    lines += ["Log loss by slice (n):", "", "| slice | " + " | ".join(names) + " |",
+                              "|---|" + "---|" * len(names)]
+                    for stratum, ms in m["strata"].items():
+                        n = next((v.get("n") for v in ms.values() if v.get("n")), 0)
+                        if not n:
+                            continue
+                        lines.append(f"| {stratum} ({n}) | " + " | ".join(_fmt(ms.get(k, {}).get("log_loss"), 4) for k in names) + " |")
+                    lines.append("")
     for scheme, block in report["opponent_run_pass"].items():
         m = block["metrics"]["opp_pass"]
         lines += [f"## Opponent run/pass (human, defensive snaps) — {scheme} ({m['test_games']} test games)", "",

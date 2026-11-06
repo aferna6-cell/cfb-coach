@@ -235,5 +235,112 @@ class DefenseTendencyTests(unittest.TestCase):
         )
 
 
+class _FakeConn:
+    def __init__(self, rows: list[dict]) -> None:
+        self.rows = rows
+
+    def execute(self, _sql: str, _params: tuple = ()):
+        return self
+
+    def fetchall(self) -> list[dict]:
+        return list(self.rows)
+
+
+class _FakeDB:
+    def __init__(self, snaps: list[dict], tendencies: list[dict] | None = None) -> None:
+        self.conn = _FakeConn(snaps)
+        self.tendencies = tendencies or []
+
+    def get_tendencies(self, _opponent_id: str) -> list[dict]:
+        return list(self.tendencies)
+
+
+def _defense_snap(concept: str, *, executed: str = "unknown") -> dict:
+    return {
+        "side": "defense", "down": 1, "distance": 10, "coverage_seen": None,
+        "concept_seen": concept, "formation": None, "play": None, "result": "4",
+        "executed_status": executed, "executed_verification": executed,
+    }
+
+
+class OpponentObservationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.sit = Situation(raw="1&10", side="defense", down=1, distance=10, yardline=45)
+
+    def test_unverified_execution_still_counts_the_opponents_observed_play(self) -> None:
+        snaps = [_defense_snap("Inside Zone") for _ in range(6)] + [_defense_snap("Mesh") for _ in range(2)]
+        profile = build_defense_profile(_FakeDB(snaps), "opp_a", self.sit)
+        self.assertEqual(profile["n"], 8)
+        self.assertAlmostEqual(profile["run_share"], 0.75)
+
+    def test_a_logged_snap_and_its_tendency_bump_count_once(self) -> None:
+        snaps = [_defense_snap("Inside Zone") for _ in range(6)] + [_defense_snap("Mesh") for _ in range(2)]
+        tendencies = [
+            {"bucket": "offense_concept|open|normal|1", "key": "Inside Zone", "count": 6},
+            {"bucket": "offense_concept|open|normal|1", "key": "Mesh", "count": 2},
+            {"bucket": "offense_concept", "key": "Inside Zone", "count": 6},
+            {"bucket": "offense_concept", "key": "Mesh", "count": 2},
+        ]
+        profile = build_defense_profile(_FakeDB(snaps, tendencies), "opp_a", self.sit)
+        self.assertEqual(profile["n"], 8)
+        self.assertAlmostEqual(profile["run_share"], 0.75)
+
+    def test_tendency_history_beyond_logged_snaps_is_kept(self) -> None:
+        snaps = [_defense_snap("Inside Zone") for _ in range(4)]
+        tendencies = [
+            {"bucket": "offense_concept", "key": "Inside Zone", "count": 4},
+            {"bucket": "offense_concept", "key": "Four Verticals", "count": 4},
+        ]
+        profile = build_defense_profile(_FakeDB(snaps, tendencies), "opp_a", None)
+        self.assertEqual(profile["n"], 8)
+        self.assertAlmostEqual(profile["run_share"], 0.5)
+
+    def test_offense_profile_counts_observed_coverage_once(self) -> None:
+        snaps = [{
+            "side": "offense", "down": 3, "distance": 7, "coverage_seen": "Cover 2 Man",
+            "concept_seen": None, "formation": "Gun", "play": "Mesh", "result": "4",
+            "executed_status": "shown", "executed_verification": "shown_call",
+        } for _ in range(5)]
+        tendencies = [{"bucket": "their_coverage", "key": "Cover 2 Man", "count": 5}]
+        profile = build_offense_profile(_FakeDB(snaps, tendencies), "opp_a", None)
+        self.assertEqual(profile["n"], 5)
+        self.assertEqual(profile["mix"], {"cover2_man": 1.0})
+        self.assertEqual(profile["play_rates"], {})
+
+    def test_our_displayed_defensive_call_is_not_an_opponent_observation(self) -> None:
+        shown = [{
+            "side": "defense", "down": 1, "distance": 10, "coverage_seen": None, "concept_seen": None,
+            "formation": "Nickel", "play": "Cover 3 Sky", "result": "4",
+            "executed_status": "identified", "executed_verification": "verified",
+        } for _ in range(6)]
+        profile = build_defense_profile(_FakeDB(shown), "opp_a", self.sit)
+        self.assertEqual(profile["n"], 0)
+        self.assertIsNone(profile["run_share"])
+
+    def test_evidence_records_sources_without_double_counting(self) -> None:
+        snaps = [_defense_snap("Inside Zone") for _ in range(4)]
+        tendencies = [
+            {"bucket": "offense_concept", "key": "Inside Zone", "count": 4},
+            {"bucket": "offense_concept", "key": "Four Verticals", "count": 3},
+        ]
+        ev = build_defense_profile(_FakeDB(snaps, tendencies), "opp_a", None)["evidence"]
+        self.assertEqual(ev["basis"], "observed_opponent_play")
+        self.assertEqual((ev["counted"], ev["logged_snaps"], ev["tendency_counters"], ev["counter_only"]),
+                         (7, 4, 7, 3))
+        self.assertEqual(ev["confidence"]["logged_snaps"], "per_play_logged_observation")
+        self.assertIsNone(ev["as_of"])
+
+    def test_as_of_uses_only_earlier_snaps_and_skips_undated_counters(self) -> None:
+        snaps = [{**_defense_snap("Inside Zone"), "ts": f"2026-11-0{d}T12:00:00"} for d in (1, 2, 3)]
+        snaps += [{**_defense_snap("Mesh"), "ts": "2026-11-05T12:00:00"} for _ in range(3)]
+        snaps.append(_defense_snap("Mesh"))
+        tendencies = [{"bucket": "offense_concept", "key": "Mesh", "count": 9}]
+        profile = build_defense_profile(_FakeDB(snaps, tendencies), "opp_a", None, as_of="2026-11-04T00:00:00")
+        self.assertEqual(profile["n"], 3)
+        self.assertAlmostEqual(profile["run_share"], 1.0)
+        self.assertEqual(profile["evidence"]["tendency_counters"], 0)
+        self.assertEqual(profile["evidence"]["as_of"], "2026-11-04T00:00:00")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -42,6 +42,40 @@ Log loss vs the experimental model (CPU games):
 
 Human games: no model beats the base rate; all intervals include zero (83 plays, 2 games).
 
+### Play-category mapping
+
+The NFL models know only run versus pass. `NFL_PLAY_INPUT` maps the Madden
+family classifier onto that: run → run, pass → pass, screen → pass, and
+unknown → a mixture weighted by the NFL run/pass probability for that
+situation. Of 1,097 offensive rows, 185 map to run, 422 to pass and 490 to the
+mixture. Concept, formation, play action and RPO reads do not transfer; any
+play-specific knowledge has to come from the Madden model.
+
+### Tuned prior strength (validation games only)
+
+`experimental+nfl_tuned` scores
+`logit p_experimental + w × (logit p_nfl_calibrated − logit training base rate)`,
+with `w` in {0, 0.1, 0.25, 0.5, 1.0}, chosen on the latest quarter of each
+fold's training games. The test game is never used. The chosen strength was
+1.0 in 11 of 13 chronological folds and 0.5 in 2.
+
+| subset | plays | experimental | exp + NFL (fixed average) | exp + NFL (tuned) | Δ tuned vs experimental |
+|---|---|---|---|---|---|
+| all | 599 | 0.6765 | 0.6658 | **0.6630** | −0.0136 [−0.0282, −0.0009] |
+| CPU | 516 | 0.6722 | 0.6602 | **0.6564** | −0.0158 [−0.0321, −0.0002] |
+| human | 83 | 0.7033 | 0.7010 | 0.7038 | +0.0004 [−0.0130, +0.0093] |
+
+Slices (log loss, all games; experimental → tuned):
+
+- Per-snap or legacy verification (91): 0.6735 → 0.6685. Standing-toggle attestation (508): 0.6770 → 0.6619. The gain holds in both, and is smaller where verification is strongest.
+- Short yardage, distance ≤ 2 (65): 0.6305 → 0.6241, though the fixed average does best (0.6183). In CPU games alone the tuned blend is slightly worse than experimental (0.6324 vs 0.6296).
+- Red zone (138): 0.6891 → 0.6828. Outside the red zone (461): 0.6727 → 0.6570.
+
+Calibration: expected calibration error rises from 0.011 (experimental) to
+0.041 (tuned) while log loss and AUC (0.564 → 0.605) improve. The blend
+sharpens rankings but over-commits slightly, so any shadow run should record
+calibration per confidence bin.
+
 Third/fourth-down conversion (117 plays): NFL raw 0.6445 and calibrated 0.6425 vs
 situation table 0.6514 and base rate 0.6980. The NFL scores beat the base rate, but
 they are not distinguishable from the existing Madden situation table.
@@ -57,7 +91,7 @@ than the pooled Madden priors and no better than a coin flip.
 | question | decision |
 |---|---|
 | Promote any NFL model to live play calling | **No-go** (out of scope; offline evidence only) |
-| Shadow-log `experimental + NFL` for CPU games next | **Go**, in shadow only, recording both scores, never the shown call |
+| Shadow-log `experimental + NFL` for CPU games next | **Go**, in shadow only, recording both scores, never the shown call; opt-in, off by default |
 | Use the NFL prior for human games | **No-go**: no measurable gain on 83 plays / 2 games |
 | NFL prior for opponent run/pass | **No-go**: no gain over a coin flip |
 | NFL-rooted shrinkage table | **No-go**: worse than the base rate |
