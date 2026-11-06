@@ -1,0 +1,137 @@
+{
+  "schema": "madden27.play_knowledge.seed.v1",
+  "purpose": "User's recorded November 5 installed plays. Third-party route tables / defensive responsibilities, not independently Xbox-verified.",
+  "provenance": "Each play names its specific public Madden Tools Madden 27 page. Receiver route TABLE is authoritative for these annotations; the page's free-text narrative can differ from the table. Human review is still required.",
+  "annotations": [
+    {
+      "side": "offense", "book": "Buccaneers", "formation": "Gun Trips X Nasty", "play": "Hi Lo Cross",
+      "source": "https://madden.tools/playbooks/formation/shotgun/trips-x-nasty/hi-lo-cross", "evidence": "source_documented",
+      "jobs": [
+        {"position":"HB1","kind":"route","task":"flat","params":{"side":"left"}},
+        {"position":"SLWR","kind":"route","task":"drag","params":{"side":"right"}},
+        {"position":"WR1","kind":"route","task":"drag","params":{"side":"left"}},
+        {"position":"WR2","kind":"route","task":"in","params":{"side":"right","depth":"deep","published_route":"Deep In"}},
+        {"position":"TE1","kind":"route","task":"deep_cross","params":{"side":"right"}}
+      ],
+      "read_order":["WR2","TE1","HB1","WR1","SLWR"], "concepts":["crossers","hi_lo"]
+    },
+    {
+      "side": "offense", "book": "Buccaneers", "formation": "Gun Trips X Nasty", "play": "Mtn Stick Wheel",
+      "source": "https://madden.tools/playbooks/formation/shotgun/trips-x-nasty/mtn-stick-wheel", "evidence": "source_documented",
+      "jobs": [
+        {"position":"HB1","kind":"route","task":"swing","params":{"side":"left"}},
+        {"position":"SLWR","kind":"route","task":"wheel","params":{"side":"right"}},
+        {"position":"WR1","kind":"route","task":"corner","params":{"side":"left","depth":"deep","published_route":"Deep Corner"}},
+        {"position":"WR2","kind":"route","task":"post","params":{"side":"right"}},
+        {"position":"TE1","kind":"route","task":"hitch","params":{"side":"right"}}
+      ],
+      "read_order":["TE1","WR2","HB1","WR1","SLWR"], "concepts":["motion","stick_wheel"]
+    },
+    {
+      "side": "offense", "book": "Buccaneers", "formation": "Gun Trips X Nasty", "play": "Switch HB Wheel",
+      "source": "https://madden.tools/playbooks/formation/shotgun/trips-x-nasty/switch-hb-wheel", "evidence": "source_documented",
+      "jobs": [
+        {"position":"HB1","kind":"route","task":"wheel","params":{"side":"left"}},
+        {"position":"SLWR","kind":"route","task":"other","params":{"side":"right","published_route":"Return"}},
+        {"position":"WR1","kind":"route","task":"post","params":{"side":"left"}},
+        {"position":"WR2","kind":"route","task":"drag","params":{"side":"right"}},
+        {"position":"TE1","kind":"route","task":"streak","params":{"side":"right"}}
+      ],
+      "read_order":["HB1","SLWR","WR2","WR1","TE1"], "concepts":["wheel","switch_release"]
+    },
+    {
+      "side": "offense", "book": "Buccaneers", "formation": "Gun Trips X Nasty", "play": "Slot Fade H Wheel",
+      "source": "https://madden.tools/playbooks/formation/shotgun/trips-x-nasty/slot-fade-h-wheel", "evidence": "source_documented",
+      "jobs": [
+        {"position":"HB1","kind":"route","task":"wheel","params":{"side":"left"}},
+        {"position":"SLWR","kind":"route","task":"streak","params":{"side":"right"}},
+        {"position":"WR1","kind":"route","task":"other","params":{"side":"left","published_route":"Smash"}},
+        {"position":"WR2","kind":"route","task":"other","params":{"side":"right","published_route":"Smash"}},
+        {"position":"TE1","kind":"route","task":"post","params":{"side":"right","depth":"deep","published_route":"Deep Post"}}
+      ],
+      "read_order":["SLWR","WR2","WR1","HB1","TE1"], "concepts":["vertical_stretch","wheel"]
+    },
+    {
+      "side": "offense", "book": "Buccaneers", "formation": "Gun Doubles Clamp Stack", "play": "Texas Y-Stutter Wheel",
+      "source": "https://madden.tools/playbooks/formation/shotgun/doubles-stack-clamp/texas-y-stutter-wheel", "evidence": "source_documented",
+      "jobs": [
+        {"position":"HB1","kind":"route","task":"angle","params":{"side":"right"}},
+        {"position":"SLWR","kind":"route","task":"out","params":{"side":"left","variant":"speed","published_route":"Speed Out"}},
+        {"position":"WR1","kind":"route","task":"in","params":{"side":"left","depth":"short","published_route":"Short In"}},
+        {"position":"WR2","kind":"route","task":"post","params":{"side":"right"}},
+        {"position":"TE1","kind":"route","task":"wheel","params":{"side":"right"}}
+      ],
+      "read_order":["TE1","WR2","WR1","HB1","SLWR"], "concepts":["wheel","angle"]
+    },
+    {
+      "side": "offense", "book": "Buccaneers", "formation": "Gun Doubles Clamp Stack", "play": "Mtn Shuffle Verts Smash",
+      "source": "https://madden.tools/playbooks/formation/shotgun/doubles-stack-clamp/mtn-shuffle-verts-smash", "evidence": "source_documented",
+      "jobs": [
+        {"position":"HB1","kind":"route","task":"wheel","params":{"side":"right"}},
+        {"position":"SLWR","kind":"route","task":"zig","params":{"side":"left"}},
+        {"position":"WR1","kind":"route","task":"corner","params":{"side":"left"}},
+        {"position":"WR2","kind":"route","task":"post","params":{"side":"right","depth":"deep","published_route":"Deep Post"}},
+        {"position":"TE1","kind":"route","task":"post","params":{"side":"right"}}
+      ],
+      "read_order":["TE1","WR2","WR1","HB1","SLWR"], "concepts":["vertical_stretch","smash","motion"]
+    },
+    {
+      "side": "offense", "book": "Buccaneers", "formation": "Pistol Trips", "play": "Slants",
+      "source": "https://madden.tools/playbooks/formation/pistol/trips/slants", "evidence": "source_documented",
+      "jobs": [
+        {"position":"HB1","kind":"block","task":"pass_block","params":{"side":"middle"}},
+        {"position":"WR3","kind":"route","task":"flat","params":{"side":"left"}},
+        {"position":"WR1","kind":"route","task":"slant","params":{"side":"left"}},
+        {"position":"WR2","kind":"route","task":"slant","params":{"side":"left"}},
+        {"position":"TE1","kind":"route","task":"flat","params":{"side":"right"}}
+      ],
+      "read_order":["WR1","WR2","WR3","TE1"], "concepts":["slants","quick_game"]
+    },
+    {
+      "side": "offense", "book": "Buccaneers", "formation": "Pistol Trips", "play": "Inside Cross",
+      "source": "https://madden.tools/playbooks/formation/pistol/trips/inside-cross", "evidence": "source_documented",
+      "jobs": [
+        {"position":"HB1","kind":"block","task":"block_and_release_hook","params":{"side":"middle","published_route":"Block and Release Hook"}},
+        {"position":"WR3","kind":"route","task":"in","params":{"side":"left","variant":"speed","published_route":"Speed In"}},
+        {"position":"WR1","kind":"route","task":"post","params":{"side":"left","depth":"deep","published_route":"Deep Post"}},
+        {"position":"WR2","kind":"route","task":"drag","params":{"side":"left"}},
+        {"position":"TE1","kind":"route","task":"drag","params":{"side":"right"}}
+      ],
+      "concepts":["crossers","block_and_release"]
+    },
+    {
+      "side": "defense", "book": "49ers", "formation": "Nickel Over", "play": "Cover 3 Sky",
+      "source": "https://madden.tools/playbooks/formation/nickel/over/cover-3-sky", "evidence": "source_documented",
+      "jobs": [
+        {"position":"CB1","kind":"zone","task":"deep_outside_third","params":{"side":"unknown"}},
+        {"position":"CB2","kind":"zone","task":"deep_outside_third","params":{"side":"unknown"}},
+        {"position":"FS","kind":"zone","task":"deep_middle_third"},
+        {"position":"SS","kind":"zone","task":"short_flat_support","params":{"rotation":"sky"}}
+      ],
+      "concepts":["cover_3","sky_rotation"]
+    },
+    {
+      "side": "defense", "book": "49ers", "formation": "Nickel Over", "play": "Tampa 2",
+      "source": "https://madden.tools/playbooks/formation/nickel/over/tampa-2", "evidence": "source_documented",
+      "jobs": [
+        {"position":"CB1","kind":"zone","task":"flat","params":{"side":"unknown"}},
+        {"position":"CB2","kind":"zone","task":"flat","params":{"side":"unknown"}},
+        {"position":"FS","kind":"zone","task":"deep_half"},
+        {"position":"SS","kind":"zone","task":"deep_half"},
+        {"position":"MLB","kind":"zone","task":"vertical_middle_seam"}
+      ],
+      "concepts":["tampa_2","two_high"]
+    },
+    {
+      "side": "defense", "book": "49ers", "formation": "Nickel Over", "play": "Cover 4 Quarters",
+      "source": "https://madden.tools/playbooks/formation/nickel/over/cover-4-quarters", "evidence": "source_documented",
+      "jobs": [
+        {"position":"CB1","kind":"zone","task":"deep_quarter"},
+        {"position":"CB2","kind":"zone","task":"deep_quarter"},
+        {"position":"FS","kind":"zone","task":"deep_quarter"},
+        {"position":"SS","kind":"zone","task":"deep_quarter"}
+      ],
+      "concepts":["cover_4","quarters"]
+    }
+  ]
+}
