@@ -7,6 +7,8 @@ implies a receiver route or defensive responsibility.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
+from typing import Sequence
 from typing import Any, Mapping
 
 from cfb_coach.madden.adjustments import executable as ex
@@ -108,3 +110,60 @@ def evaluate_assignment_decision(
                         "partial_play_jobs" if post and post.jobs else "catalog_only",
         status=status,
     )
+
+
+@dataclass(frozen=True)
+class ScoredPlan:
+    """Complete play + optional adjustment plan scored by a research model.
+
+    The score is supplied, not invented by this module. Adjustments may be
+    individual, saved macros, or legal combinations thereof.
+    """
+    actions: tuple[ex.PlannedAction, ...]
+    model_score: float
+    evidence: str
+
+
+@dataclass(frozen=True)
+class PlanSelection:
+    actions: tuple[ex.PlannedAction, ...]
+    label: str
+    model_score: float
+    evidence: str
+
+
+def select_scored_plan(ctx: ex.PlayContext, stock_score: float,
+                       proposed: Sequence[ScoredPlan], *,
+                       loadout: ex.Loadout | None = None,
+                       confirmations: Mapping[str, Any] | None = None,
+                       min_gain: float = 0.01) -> PlanSelection:
+    """Return a decisive choice from pre-scored plans, safety-gated by Madden.
+
+    This does not estimate that any adjustment is better: it consumes scores
+    provided by an outside model/evaluator and refuses invalid combinations.
+    Never call from live coaching without an approved, validated model.
+    """
+    if not math.isfinite(stock_score) or min_gain < 0:
+        raise KnowledgeError("invalid stock score or minimum gain")
+    valid: list[ScoredPlan] = []
+    for candidate in proposed:
+        if not candidate.actions or not math.isfinite(candidate.model_score):
+            continue
+        if not candidate.evidence or candidate.model_score < stock_score + min_gain:
+            continue
+        if ex.validate_plan(candidate.actions, ctx, loadout=loadout,
+                            confirmations=confirmations, require_live=True):
+            continue
+        valid.append(candidate)
+    if not valid:
+        return PlanSelection((), "NO ADJUSTMENT", stock_score, "stock_play")
+    valid.sort(key=lambda c: (-c.model_score,
+                              tuple((p.action_id, tuple(sorted(p.params.items()))) for p in c.actions)))
+    winner = valid[0]
+    # Display exactly the Madden registry action identifiers and selected
+    # parameters. No invented on-screen names or unspecified submenu steps.
+    label = " + ".join(
+        p.action_id + (" (" + ", ".join(f"{k}={v}" for k, v in sorted(p.params.items())) + ")"
+                       if p.params else "") for p in winner.actions
+    )
+    return PlanSelection(winner.actions, label, winner.model_score, winner.evidence)
