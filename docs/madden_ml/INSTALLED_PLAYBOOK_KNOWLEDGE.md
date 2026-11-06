@@ -2,6 +2,12 @@
 
 ## Exact scope and evidence
 
+## User-confirmed custom-book creation (November 6, 2026)
+
+The user directly confirmed that **both custom Madden 27 playbooks have been built**. This is recorded separately in `cfb_coach/data/madden27/installed_playbook_user_attestation.json`. The earlier "custom books may not have been built" concern is resolved.
+
+The confirmation is **not** a fresh per-play audit of the 93 offensive and 123 defensive entries against the current Xbox screens, nor proof that every published route or defensive assignment is accurate. The historical Nov 5 installed-playbook snapshot remains unchanged. Exact source-catalog membership is independently checked by this importer; play-art annotations are still source-documented, not in-game verified.
+
 The immutable `cfb_coach/data/madden27/installed_playbook_snapshot.json` records the
 **applied playbook state in a read-only November 6, 2026 database backup**, recorded
 November 5. It is not independent evidence that every play is presently visible
