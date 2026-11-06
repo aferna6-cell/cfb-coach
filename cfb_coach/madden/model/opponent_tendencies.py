@@ -64,7 +64,31 @@ def empty_profile(opponent_id: str | None = None) -> dict[str, Any]:
         "play_rates": {},
         "concepts": {},
         "run_share": None,
+        "evidence": {},
         "summary": "no learned tendencies",
+    }
+
+
+OBSERVATION_BASIS = "observed_opponent_play"
+SOURCE_CONFIDENCE = {
+    "logged_snaps": "per_play_logged_observation",
+    "tendency_counters": "aggregate_counter_undated",
+}
+
+
+def _evidence(snap_counts: Mapping[str, float], tendency_counts: Mapping[str, float],
+              merged: Mapping[str, float], as_of: str | None) -> dict[str, Any]:
+    """Where the counted plays came from. Our own call is never one of them."""
+    from_snaps = sum(snap_counts.values())
+    from_counters = sum(tendency_counts.values())
+    return {
+        "basis": OBSERVATION_BASIS,
+        "counted": int(sum(merged.values())),
+        "logged_snaps": int(from_snaps),
+        "tendency_counters": int(from_counters),
+        "counter_only": int(sum(max(0.0, merged[k] - float(snap_counts.get(k, 0.0))) for k in merged)),
+        "confidence": dict(SOURCE_CONFIDENCE),
+        "as_of": as_of,
     }
 
 
@@ -131,21 +155,26 @@ def _verified(row: Any) -> bool:
     return status == "identified" or verification in ("verified", "confirmed")
 
 
-def _snap_rows(db: Any, opponent_id: str) -> list[Any]:
+def _snap_rows(db: Any, opponent_id: str, as_of: str | None = None) -> list[Any]:
+    """This opponent's logged snaps; with ``as_of``, only snaps logged strictly before it."""
     if db is None or not opponent_id or not hasattr(db, "conn"):
         return []
     try:
-        return list(db.conn.execute(
-            "SELECT side, down, distance, coverage_seen, concept_seen, formation, play, "
+        rows = list(db.conn.execute(
+            "SELECT ts, side, down, distance, coverage_seen, concept_seen, formation, play, "
             "result, executed_status, executed_verification FROM snaps WHERE opponent_id = ?",
             (opponent_id,),
         ).fetchall())
     except Exception:  # noqa: BLE001 — a database without those columns has no verified snaps
         return []
+    if as_of is None:
+        return rows
+    return [r for r in rows if str(_row_get(r, "ts") or "") and str(_row_get(r, "ts")) < as_of]
 
 
-def _tendency_rows(db: Any, opponent_id: str) -> list[Any]:
-    if db is None or not opponent_id or not hasattr(db, "get_tendencies"):
+def _tendency_rows(db: Any, opponent_id: str, as_of: str | None = None) -> list[Any]:
+    # Counters carry no timestamps, so a dated profile cannot use them.
+    if as_of is not None or db is None or not opponent_id or not hasattr(db, "get_tendencies"):
         return []
     try:
         return list(db.get_tendencies(opponent_id))
@@ -237,14 +266,17 @@ def _learned_weights(db: Any, opponent_id: str, side: str) -> Any:
         return None
 
 
-def build_offense_profile(db: Any, opponent_id: str, sit: Any = None) -> dict[str, Any]:
-    """Coverage mix and play results for one opponent. Empty when nothing is stored."""
+def build_offense_profile(db: Any, opponent_id: str, sit: Any = None, *, as_of: str | None = None) -> dict[str, Any]:
+    """Coverage mix and play results for one opponent. Empty when nothing is stored.
+
+    ``as_of`` (replay/evaluation) limits evidence to snaps logged before it.
+    """
     profile = empty_profile(opponent_id)
     from cfb_coach.tendency import situation_bucket
 
     specific = f"their_coverage|{situation_bucket(sit)}" if sit is not None else None
-    rows = _tendency_rows(db, opponent_id)
-    snaps = _snap_rows(db, opponent_id)
+    rows = _tendency_rows(db, opponent_id, as_of)
+    snaps = _snap_rows(db, opponent_id, as_of)
     spec_counts, spec_labels, _ = _count_coverage(rows, bucket=specific) if specific else ({}, {}, 0.0)
     all_counts, all_labels, _ = _count_coverage(rows, bucket=None)
     snap_spec, snap_labels, _ = _count_snap_coverage(snaps, sit, bucketed=True)
@@ -254,11 +286,14 @@ def build_offense_profile(db: Any, opponent_id: str, sit: Any = None) -> dict[st
     if sum(merged.values()) >= MIN_BUCKET:
         labels = {**snap_labels, **spec_labels}
         scope = "this down"
+        used = (snap_spec, spec_counts)
     else:
         merged = _merge_observations(all_counts, snap_all)
         labels = {**snap_all_labels, **all_labels}
         scope = "all downs"
+        used = (snap_all, all_counts)
     n = sum(merged.values())
+    profile["evidence"] = _evidence(*used, merged, as_of)
     mix = _shares(merged)
     profile["mix"] = mix
     profile["labels"] = labels
@@ -429,24 +464,31 @@ def _count_snap_concepts(rows: Sequence[Any], sit: Any, *, bucketed: bool) -> tu
     return counts, runs, total
 
 
-def build_defense_profile(db: Any, opponent_id: str, sit: Any = None) -> dict[str, Any]:
-    """Run/pass and concept mix from this opponent's learned offense. Empty if none."""
+def build_defense_profile(db: Any, opponent_id: str, sit: Any = None, *, as_of: str | None = None) -> dict[str, Any]:
+    """Run/pass and concept mix from this opponent's learned offense. Empty if none.
+
+    Counts the concept we saw him run, never the call we displayed. ``as_of``
+    (replay/evaluation) limits evidence to snaps logged before it.
+    """
     profile = empty_profile(opponent_id)
     from cfb_coach.tendency import situation_bucket
 
     specific = f"offense_concept|{situation_bucket(sit)}" if sit is not None else None
-    rows = _tendency_rows(db, opponent_id)
-    snaps = _snap_rows(db, opponent_id)
+    rows = _tendency_rows(db, opponent_id, as_of)
+    snaps = _snap_rows(db, opponent_id, as_of)
     spec_counts = _count_concepts(rows, bucket=specific)[0] if specific else {}
     all_counts = _count_concepts(rows, bucket=None)[0]
     snap_spec = _count_snap_concepts(snaps, sit, bucketed=True)[0]
     snap_all = _count_snap_concepts(snaps, sit, bucketed=False)[0]
     merged = _merge_observations(spec_counts, snap_spec)
     scope = "this down"
+    used = (snap_spec, spec_counts)
     if sum(merged.values()) < MIN_BUCKET:
         merged = _merge_observations(all_counts, snap_all)
         scope = "all downs"
+        used = (snap_all, all_counts)
     n = sum(merged.values())
+    profile["evidence"] = _evidence(*used, merged, as_of)
     profile["n"] = int(n)
     profile["shrink"] = _shrink(n)
     profile["concepts"] = _shares(merged)
@@ -460,7 +502,8 @@ POOLED_SHRINK_SCALE = 0.5
 POOLED_SHRINK_CAP = 0.4
 
 
-def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None) -> dict[str, Any]:
+def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None,
+                         as_of: str | None = None) -> dict[str, Any]:
     """A starting prior for a human opponent with no history: every other human, pooled.
 
     Weighted by each opponent's evidence. Shrink is halved and capped at 0.4,
@@ -482,7 +525,7 @@ def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None
     for oid in ids:
         if oid == exclude or is_cpu_opponent(oid):
             continue
-        p = build_defense_profile(db, oid, sit)
+        p = build_defense_profile(db, oid, sit, as_of=as_of)
         n = float(p.get("n") or 0)
         if n <= 0 or p.get("run_share") is None:
             continue
@@ -496,6 +539,7 @@ def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None
     profile.update(
         n=int(total), run_share=runs / total, concepts=_shares(concepts), scope="pooled human opponents",
         shrink=min(POOLED_SHRINK_CAP, POOLED_SHRINK_SCALE * _shrink(total)), pooled_from=used,
+        evidence={"basis": OBSERVATION_BASIS, "counted": int(total), "pooled_opponents": used},
     )
     profile["summary"] = f"league prior from {used} human opponents: " + format_defense_summary(profile)
     return profile
@@ -504,7 +548,8 @@ def pooled_human_profile(db: Any, sit: Any = None, *, exclude: str | None = None
 PRIOR_HANDOFF = 12
 
 
-def with_pooled_prior(db: Any, own: Mapping[str, Any] | None, sit: Any, opponent_id: str) -> dict[str, Any]:
+def with_pooled_prior(db: Any, own: Mapping[str, Any] | None, sit: Any, opponent_id: str, *,
+                      as_of: str | None = None) -> dict[str, Any]:
     """A thin human profile leaned toward the league prior, handing off as his snaps pile up.
 
     His own share weighs n / (n + 12): about a third after 6 logged plays, half after 12.
@@ -513,7 +558,7 @@ def with_pooled_prior(db: Any, own: Mapping[str, Any] | None, sit: Any, opponent
     n = float(own.get("n") or 0)
     if n >= 4 * PRIOR_HANDOFF:
         return own
-    prior = pooled_human_profile(db, sit, exclude=opponent_id)
+    prior = pooled_human_profile(db, sit, exclude=opponent_id, as_of=as_of)
     if int(prior.get("n") or 0) <= 0 or prior.get("run_share") is None:
         return own
     if n <= 0 or own.get("run_share") is None:

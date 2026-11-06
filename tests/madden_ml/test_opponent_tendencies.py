@@ -307,6 +307,40 @@ class OpponentObservationTests(unittest.TestCase):
         self.assertEqual(profile["mix"], {"cover2_man": 1.0})
         self.assertEqual(profile["play_rates"], {})
 
+    def test_our_displayed_defensive_call_is_not_an_opponent_observation(self) -> None:
+        shown = [{
+            "side": "defense", "down": 1, "distance": 10, "coverage_seen": None, "concept_seen": None,
+            "formation": "Nickel", "play": "Cover 3 Sky", "result": "4",
+            "executed_status": "identified", "executed_verification": "verified",
+        } for _ in range(6)]
+        profile = build_defense_profile(_FakeDB(shown), "opp_a", self.sit)
+        self.assertEqual(profile["n"], 0)
+        self.assertIsNone(profile["run_share"])
+
+    def test_evidence_records_sources_without_double_counting(self) -> None:
+        snaps = [_defense_snap("Inside Zone") for _ in range(4)]
+        tendencies = [
+            {"bucket": "offense_concept", "key": "Inside Zone", "count": 4},
+            {"bucket": "offense_concept", "key": "Four Verticals", "count": 3},
+        ]
+        ev = build_defense_profile(_FakeDB(snaps, tendencies), "opp_a", None)["evidence"]
+        self.assertEqual(ev["basis"], "observed_opponent_play")
+        self.assertEqual((ev["counted"], ev["logged_snaps"], ev["tendency_counters"], ev["counter_only"]),
+                         (7, 4, 7, 3))
+        self.assertEqual(ev["confidence"]["logged_snaps"], "per_play_logged_observation")
+        self.assertIsNone(ev["as_of"])
+
+    def test_as_of_uses_only_earlier_snaps_and_skips_undated_counters(self) -> None:
+        snaps = [{**_defense_snap("Inside Zone"), "ts": f"2026-11-0{d}T12:00:00"} for d in (1, 2, 3)]
+        snaps += [{**_defense_snap("Mesh"), "ts": "2026-11-05T12:00:00"} for _ in range(3)]
+        snaps.append(_defense_snap("Mesh"))
+        tendencies = [{"bucket": "offense_concept", "key": "Mesh", "count": 9}]
+        profile = build_defense_profile(_FakeDB(snaps, tendencies), "opp_a", None, as_of="2026-11-04T00:00:00")
+        self.assertEqual(profile["n"], 3)
+        self.assertAlmostEqual(profile["run_share"], 1.0)
+        self.assertEqual(profile["evidence"]["tendency_counters"], 0)
+        self.assertEqual(profile["evidence"]["as_of"], "2026-11-04T00:00:00")
+
 
 if __name__ == "__main__":
     unittest.main()
