@@ -1,9 +1,10 @@
 """Train and evaluate the ``madden.defense.logistic.v2`` artifact from logged defensive snaps.
 
 Each row is one human-game defensive snap with a parseable result. The label is
-``defense_v1.offense_won`` (the same rule the live caller uses). The call is the
-executed call when ``executed_verification`` is ``verified``; otherwise it is the
-call the tool displayed, and the row says so in ``provenance``:
+``defense_v1.offense_won``. The executed call is used only when verified;
+otherwise the row preserves the displayed recommendation for diagnostics.
+Only verified executions are admitted for play-specific training by default:
+
 
 ``executed_verified``
     The executed formation and play were verified.
@@ -16,8 +17,9 @@ call the tool displayed, and the row says so in ``provenance``:
     policy the live artifact was built under.
 
 ``unattested_after`` keeps sessions that started at or after that timestamp out
-of training unless they are attested or verified. Every row is still scored in
-evaluation. Nothing here writes the database.
+of legacy analysis unless they are attested or verified. Strict training
+requires verified execution regardless of an attested game score. Nothing
+here writes the database.
 """
 from __future__ import annotations
 
@@ -62,8 +64,13 @@ def collect_rows(
     *,
     attested: Mapping[str, str] | None = None,
     unattested_after: str | None = None,
+    verified_only: bool = True,
 ) -> list[SnapRow]:
-    """Every human defensive snap with a call and a parseable result, in game order."""
+    """Human defensive snaps, with only verified executions admitted by default.
+
+    Set ``verified_only=False`` solely to reproduce older exploratory analyses;
+    never promote an artifact learned from displayed but unverified calls.
+    """
     attested = dict(attested or {})
     cur = conn.execute(
         "SELECT s.id, s.session_id, g.opponent_id, g.started_ts, s.situation_raw, s.formation, s.play, "
@@ -88,7 +95,9 @@ def collect_rows(
         if not formation or not play:
             continue
         reason = ""
-        if (provenance == PROVENANCE_LOGGED and unattested_after
+        if verified_only and provenance != PROVENANCE_VERIFIED:
+            reason = "execution_unverified"
+        elif (provenance == PROVENANCE_LOGGED and unattested_after
                 and str(started or "") >= unattested_after):
             reason = "unattested_after_cutoff"
         rows.append(SnapRow(
