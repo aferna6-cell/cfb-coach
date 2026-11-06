@@ -1,0 +1,23 @@
+{
+  "schema": "madden27.custom_playbooks.user_attestation.v1",
+  "attested_on": "2026-11-06",
+  "source": "user_direct_statement_in_conversation",
+  "scope": "Both custom Madden 27 playbooks built by the user",
+  "user_confirmation": {
+    "offense_custom_book_built": true,
+    "defense_custom_book_built": true
+  },
+  "related_recorded_snapshot": {
+    "source_file": "cfb_coach/data/madden27/installed_playbook_snapshot.json",
+    "offense_name": "ML Designed Offense (custom)",
+    "offense_fingerprint": "OFF-3C6D-E543",
+    "defense_name": "ML Designed Defense (custom)",
+    "defense_fingerprint": "DEF-F1CF-1862"
+  },
+  "not_attested": {
+    "exact_current_play_membership": "The user's confirmation that both custom books are built is not a per-play verification against the Nov 5 recorded snapshot.",
+    "currently_selected_for_active_game": "Not separately confirmed by a fresh in-game screen.",
+    "play_art_routes_and_defensive_assignments": "Not verified by this statement."
+  },
+  "preservation": "Do not rewrite the immutable recorded snapshot or game database. This is additional, independent provenance."
+}
