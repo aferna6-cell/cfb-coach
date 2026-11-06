@@ -37,7 +37,7 @@ def main() -> None:
             seeded = db.import_seed_annotations(json.loads(args.seeds.read_text(encoding="utf-8")))
         print(json.dumps({"imported_play_entries": counts, "source_documented_seed_plays": seeded,
                           "coverage": db.coverage(),
-                          "note": "Names imported; player assignments remain UNKNOWN until annotated."}, indent=2))
+                          "note": "Most catalog plays have UNKNOWN assignments; source-documented seeds are partial, not Xbox-verified."}, indent=2))
 
 
 if __name__ == "__main__":
