@@ -1,0 +1,608 @@
+{
+ "concepts": {
+  "dagger": {
+   "desc": "vertical clears a safety; deep in/dig behind it",
+   "kind": "pass",
+   "stress": [
+    "cover_3",
+    "cover_1"
+   ]
+  },
+  "drive": {
+   "desc": "shallow crosser plus an in-breaker behind it",
+   "kind": "pass",
+   "stress": [
+    "zone_hook",
+    "man"
+   ]
+  },
+  "flood": {
+   "desc": "three levels to one side (flat, intermediate, deep outside)",
+   "kind": "pass",
+   "stress": [
+    "zone_flat",
+    "cover_3",
+    "cover_2"
+   ]
+  },
+  "four_verticals": {
+   "desc": "four vertical-stem routes stretching the deep zone",
+   "kind": "pass",
+   "stress": [
+    "cover_3",
+    "cover_1",
+    "cover_4"
+   ]
+  },
+  "hi_lo": {
+   "desc": "short and deeper route on one defender's zone: high-low read",
+   "kind": "pass",
+   "stress": [
+    "zone_hook",
+    "zone_flat"
+   ]
+  },
+  "levels": {
+   "desc": "two in-breaking routes at different depths on the same side",
+   "kind": "pass",
+   "stress": [
+    "zone_hook",
+    "man"
+   ]
+  },
+  "mesh": {
+   "desc": "two shallow crossers from opposite sides at near-equal depth; rub/pick vs man",
+   "kind": "pass",
+   "stress": [
+    "man",
+    "zone_hook"
+   ]
+  },
+  "mills": {
+   "desc": "deep post with a deep in/dig; post and dig cross at depth",
+   "kind": "pass",
+   "stress": [
+    "cover_3",
+    "cover_1",
+    "cover_2"
+   ]
+  },
+  "option": {
+   "desc": "QB read keep/give",
+   "kind": "option",
+   "stress": [
+    "unblocked_defender"
+   ]
+  },
+  "play_action": {
+   "desc": "run fake before dropback/boot",
+   "kind": "play_action",
+   "stress": [
+    "run_fit_defenders"
+   ]
+  },
+  "post_dig": {
+   "desc": "post combined with a dig/deep in; different from post + underneath flat",
+   "kind": "pass",
+   "stress": [
+    "cover_3",
+    "cover_1"
+   ]
+  },
+  "rpo": {
+   "desc": "run plus pass option off a defender read",
+   "kind": "rpo",
+   "stress": [
+    "conflict_defender"
+   ]
+  },
+  "run_gap": {
+   "desc": "gap/power/counter scheme",
+   "kind": "run",
+   "stress": [
+    "light_box"
+   ]
+  },
+  "run_zone": {
+   "desc": "zone blocking scheme",
+   "kind": "run",
+   "stress": [
+    "base_front"
+   ]
+  },
+  "screen": {
+   "desc": "blocked screen",
+   "kind": "screen",
+   "stress": [
+    "pressure",
+    "man"
+   ]
+  },
+  "slant_flat": {
+   "desc": "slant with flat; quick answer to pressure",
+   "kind": "pass",
+   "stress": [
+    "man",
+    "zone_flat"
+   ]
+  },
+  "smash": {
+   "desc": "hitch/curl underneath with a corner over the top on one side",
+   "kind": "pass",
+   "stress": [
+    "cover_2",
+    "cover_4"
+   ]
+  },
+  "spacing": {
+   "desc": "three-plus short routes at distinct horizontal landmarks",
+   "kind": "pass",
+   "stress": [
+    "zone"
+   ]
+  },
+  "stick": {
+   "desc": "short stick/hitch with flat and out; quick horizontal read",
+   "kind": "pass",
+   "stress": [
+    "zone_hook",
+    "man_pick"
+   ]
+  }
+ },
+ "depth_basis": "family_default_prior_not_play_specific",
+ "evidence_tiers": [
+  "in_game_verified",
+  "diagram_verified",
+  "source_documented",
+  "football_inference",
+  "unknown"
+ ],
+ "hot_route_options": [
+  "Block",
+  "Comeback",
+  "Corner",
+  "Curl",
+  "Drag",
+  "Fade",
+  "Flat",
+  "In",
+  "Out",
+  "Post",
+  "Slant",
+  "Streak"
+ ],
+ "ol_tasks": [
+  "pass_set",
+  "slide_left",
+  "slide_right",
+  "zone_step_left",
+  "zone_step_right",
+  "down_block",
+  "reach_block",
+  "pull_left",
+  "pull_right",
+  "double_team",
+  "combo_to_second_level",
+  "screen_release",
+  "draw_set",
+  "unknown"
+ ],
+ "pass_protections": [
+  "half_slide",
+  "full_slide",
+  "max_protect",
+  "man_protect",
+  "play_action_protect",
+  "boot_protect",
+  "screen_protect",
+  "quick_set",
+  "unknown"
+ ],
+ "published_route_map": {
+  "block and release hook": [
+   "block_and_release_hook",
+   "short"
+  ],
+  "deep corner": [
+   "corner",
+   "deep"
+  ],
+  "deep in": [
+   "in",
+   "deep"
+  ],
+  "deep out": [
+   "out",
+   "deep"
+  ],
+  "deep post": [
+   "post",
+   "deep"
+  ],
+  "return": [
+   "other",
+   "unspecified"
+  ],
+  "short in": [
+   "in",
+   "short"
+  ],
+  "short post": [
+   "post",
+   "short"
+  ],
+  "smash": [
+   "other",
+   "unspecified"
+  ],
+  "speed in": [
+   "in",
+   "short"
+  ],
+  "speed out": [
+   "out",
+   "short"
+  ]
+ },
+ "route_families": {
+  "angle": {
+   "break": "mixed",
+   "category": "underneath",
+   "default_band": "short",
+   "hot_route": null,
+   "man_beater": 0.6,
+   "note": "RB angle / texas family",
+   "quick": true,
+   "zone_beater": 0.6
+  },
+  "block": {
+   "break": "none",
+   "category": "blocking",
+   "default_band": "unspecified",
+   "hot_route": "Block",
+   "man_beater": 0.0,
+   "note": "receiver/back stays in to block (hot route 'Block')",
+   "quick": true,
+   "zone_beater": 0.0
+  },
+  "block_and_release_hook": {
+   "break": "back",
+   "category": "blocking",
+   "default_band": "short",
+   "hot_route": null,
+   "man_beater": 0.2,
+   "note": "published 'Block and Release Hook'",
+   "quick": true,
+   "zone_beater": 0.5
+  },
+  "choice": {
+   "break": "mixed",
+   "category": "breaking",
+   "default_band": "short",
+   "hot_route": null,
+   "man_beater": 0.6,
+   "note": "option/choice route",
+   "quick": true,
+   "zone_beater": 0.5
+  },
+  "comeback": {
+   "break": "back",
+   "category": "curl_sit",
+   "default_band": "deep",
+   "hot_route": "Comeback",
+   "man_beater": 0.3,
+   "note": "",
+   "quick": false,
+   "zone_beater": 0.6
+  },
+  "corner": {
+   "break": "outside",
+   "category": "breaking",
+   "default_band": "deep",
+   "hot_route": "Corner",
+   "man_beater": 0.5,
+   "note": "",
+   "quick": false,
+   "zone_beater": 0.7
+  },
+  "cross": {
+   "break": "inside",
+   "category": "crossing",
+   "default_band": "intermediate",
+   "hot_route": null,
+   "man_beater": 0.7,
+   "note": "",
+   "quick": false,
+   "zone_beater": 0.5
+  },
+  "curl": {
+   "break": "back",
+   "category": "curl_sit",
+   "default_band": "intermediate",
+   "hot_route": "Curl",
+   "man_beater": 0.3,
+   "note": "",
+   "quick": false,
+   "zone_beater": 0.8
+  },
+  "deep_cross": {
+   "break": "inside",
+   "category": "crossing",
+   "default_band": "intermediate",
+   "hot_route": null,
+   "man_beater": 0.6,
+   "note": "",
+   "quick": false,
+   "zone_beater": 0.6
+  },
+  "drag": {
+   "break": "inside",
+   "category": "crossing",
+   "default_band": "shallow",
+   "hot_route": "Drag",
+   "man_beater": 0.8,
+   "note": "shallow crosser",
+   "quick": true,
+   "zone_beater": 0.5
+  },
+  "fade": {
+   "break": "vertical",
+   "category": "vertical",
+   "default_band": "deep",
+   "hot_route": "Fade",
+   "man_beater": 0.4,
+   "note": "",
+   "quick": false,
+   "zone_beater": 0.3
+  },
+  "flat": {
+   "break": "outside",
+   "category": "underneath",
+   "default_band": "shallow",
+   "hot_route": "Flat",
+   "man_beater": 0.4,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.5
+  },
+  "hitch": {
+   "break": "back",
+   "category": "curl_sit",
+   "default_band": "short",
+   "hot_route": null,
+   "man_beater": 0.2,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.7
+  },
+  "in": {
+   "break": "inside",
+   "category": "breaking",
+   "default_band": "short",
+   "hot_route": "In",
+   "man_beater": 0.5,
+   "note": "band separates short in / speed in / deep in (dig)",
+   "quick": false,
+   "zone_beater": 0.7
+  },
+  "option": {
+   "break": "mixed",
+   "category": "breaking",
+   "default_band": "short",
+   "hot_route": null,
+   "man_beater": 0.6,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.5
+  },
+  "other": {
+   "break": "mixed",
+   "category": "other",
+   "default_band": "unspecified",
+   "hot_route": null,
+   "man_beater": 0.4,
+   "note": "published route name not mapped to a family; kept as published_route",
+   "quick": false,
+   "zone_beater": 0.4
+  },
+  "out": {
+   "break": "outside",
+   "category": "breaking",
+   "default_band": "short",
+   "hot_route": "Out",
+   "man_beater": 0.4,
+   "note": "",
+   "quick": false,
+   "zone_beater": 0.6
+  },
+  "pass_block": {
+   "break": "none",
+   "category": "blocking",
+   "default_band": "unspecified",
+   "hot_route": null,
+   "man_beater": 0.0,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.0
+  },
+  "pivot": {
+   "break": "mixed",
+   "category": "underneath",
+   "default_band": "short",
+   "hot_route": null,
+   "man_beater": 0.5,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.5
+  },
+  "post": {
+   "break": "inside",
+   "category": "breaking",
+   "default_band": "deep",
+   "hot_route": "Post",
+   "man_beater": 0.5,
+   "note": "",
+   "quick": false,
+   "zone_beater": 0.7
+  },
+  "screen": {
+   "break": "none",
+   "category": "other",
+   "default_band": "shallow",
+   "hot_route": null,
+   "man_beater": 0.3,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.3
+  },
+  "seam": {
+   "break": "vertical",
+   "category": "vertical",
+   "default_band": "deep",
+   "hot_route": null,
+   "man_beater": 0.5,
+   "note": "",
+   "quick": false,
+   "zone_beater": 0.7
+  },
+  "shallow_cross": {
+   "break": "inside",
+   "category": "crossing",
+   "default_band": "shallow",
+   "hot_route": null,
+   "man_beater": 0.8,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.5
+  },
+  "slant": {
+   "break": "inside",
+   "category": "breaking",
+   "default_band": "short",
+   "hot_route": "Slant",
+   "man_beater": 0.8,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.4
+  },
+  "sluggo": {
+   "break": "mixed",
+   "category": "vertical",
+   "default_band": "deep",
+   "hot_route": null,
+   "man_beater": 0.6,
+   "note": "slant-and-go double move",
+   "quick": false,
+   "zone_beater": 0.4
+  },
+  "smoke": {
+   "break": "none",
+   "category": "other",
+   "default_band": "shallow",
+   "hot_route": null,
+   "man_beater": 0.3,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.5
+  },
+  "spot": {
+   "break": "back",
+   "category": "curl_sit",
+   "default_band": "short",
+   "hot_route": null,
+   "man_beater": 0.3,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.7
+  },
+  "stick": {
+   "break": "back",
+   "category": "curl_sit",
+   "default_band": "short",
+   "hot_route": null,
+   "man_beater": 0.3,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.6
+  },
+  "streak": {
+   "break": "vertical",
+   "category": "vertical",
+   "default_band": "deep",
+   "hot_route": "Streak",
+   "man_beater": 0.5,
+   "note": "",
+   "quick": false,
+   "zone_beater": 0.4
+  },
+  "swing": {
+   "break": "outside",
+   "category": "underneath",
+   "default_band": "shallow",
+   "hot_route": null,
+   "man_beater": 0.4,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.5
+  },
+  "texas": {
+   "break": "mixed",
+   "category": "underneath",
+   "default_band": "short",
+   "hot_route": null,
+   "man_beater": 0.6,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.6
+  },
+  "wheel": {
+   "break": "mixed",
+   "category": "vertical",
+   "default_band": "deep",
+   "hot_route": null,
+   "man_beater": 0.7,
+   "note": "flat-to-vertical; stresses flat defender",
+   "quick": false,
+   "zone_beater": 0.5
+  },
+  "whip": {
+   "break": "mixed",
+   "category": "breaking",
+   "default_band": "short",
+   "hot_route": null,
+   "man_beater": 0.6,
+   "note": "",
+   "quick": true,
+   "zone_beater": 0.5
+  },
+  "zig": {
+   "break": "mixed",
+   "category": "breaking",
+   "default_band": "intermediate",
+   "hot_route": null,
+   "man_beater": 0.6,
+   "note": "double move",
+   "quick": false,
+   "zone_beater": 0.5
+  }
+ },
+ "run_schemes": {
+  "counter": "gap: misdirection step then backside guard + another blocker pull",
+  "dive": "quick-hitting inside handoff",
+  "draw": "pass-set OL, delayed handoff",
+  "duo": "gap/double-team: two double teams to the second level",
+  "inside_zone": "zone: OL step playside and combo to LBs; RB reads the first vertical crease",
+  "lead_read_option": "read option with a lead blocker",
+  "mid_zone": "zone: tighter than outside zone, cutback allowed",
+  "off_tackle": "gap run at the edge of the tackle box",
+  "outside_zone": "zone: stretch the edge; RB presses outside then cuts",
+  "power": "gap: backside guard (and often a lead blocker) pulls to lead through the hole",
+  "qb_draw": "delayed QB run from pass-set OL",
+  "read_option": "QB reads an unblocked defender: hand off or keep",
+  "split_zone": "zone with a backside blocker kicking/cutting across the formation",
+  "sweep": "pulling blockers lead a perimeter run",
+  "toss": "pitch to the back running wide"
+ },
+ "version": "offense_taxonomy.v1"
+}
