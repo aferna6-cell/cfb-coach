@@ -269,7 +269,7 @@ class OpponentObservationTests(unittest.TestCase):
 
     def test_unverified_execution_still_counts_the_opponents_observed_play(self) -> None:
         snaps = [_defense_snap("Inside Zone") for _ in range(6)] + [_defense_snap("Mesh") for _ in range(2)]
-        profile = build_defense_profile(_FakeDB(snaps), "ryan", self.sit)
+        profile = build_defense_profile(_FakeDB(snaps), "opp_a", self.sit)
         self.assertEqual(profile["n"], 8)
         self.assertAlmostEqual(profile["run_share"], 0.75)
 
@@ -281,7 +281,7 @@ class OpponentObservationTests(unittest.TestCase):
             {"bucket": "offense_concept", "key": "Inside Zone", "count": 6},
             {"bucket": "offense_concept", "key": "Mesh", "count": 2},
         ]
-        profile = build_defense_profile(_FakeDB(snaps, tendencies), "ryan", self.sit)
+        profile = build_defense_profile(_FakeDB(snaps, tendencies), "opp_a", self.sit)
         self.assertEqual(profile["n"], 8)
         self.assertAlmostEqual(profile["run_share"], 0.75)
 
@@ -291,7 +291,7 @@ class OpponentObservationTests(unittest.TestCase):
             {"bucket": "offense_concept", "key": "Inside Zone", "count": 4},
             {"bucket": "offense_concept", "key": "Four Verticals", "count": 4},
         ]
-        profile = build_defense_profile(_FakeDB(snaps, tendencies), "ryan", None)
+        profile = build_defense_profile(_FakeDB(snaps, tendencies), "opp_a", None)
         self.assertEqual(profile["n"], 8)
         self.assertAlmostEqual(profile["run_share"], 0.5)
 
@@ -302,7 +302,7 @@ class OpponentObservationTests(unittest.TestCase):
             "executed_status": "shown", "executed_verification": "shown_call",
         } for _ in range(5)]
         tendencies = [{"bucket": "their_coverage", "key": "Cover 2 Man", "count": 5}]
-        profile = build_offense_profile(_FakeDB(snaps, tendencies), "ryan", None)
+        profile = build_offense_profile(_FakeDB(snaps, tendencies), "opp_a", None)
         self.assertEqual(profile["n"], 5)
         self.assertEqual(profile["mix"], {"cover2_man": 1.0})
         self.assertEqual(profile["play_rates"], {})
