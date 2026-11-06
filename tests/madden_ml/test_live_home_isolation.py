@@ -244,7 +244,8 @@ class TestEmptyHome(unittest.TestCase):
                         ["call", "--game", "madden27", "--opponent", "cpu", "--situation", "1&10"]
                     )
                     play_code, play_out, play_ms = run_cli(
-                        ["play", "--game", "madden27", "--opponent", "gavin", "--once", "1&10", "--terminal"]
+                        ["play", "--game", "madden27", "--opponent", "gavin", "--once", "1&10",
+                         "--terminal", "--heuristic-offense"]
                     )
                     bare_code, bare_out, bare_ms = run_cli(
                         ["play", "--game", "madden27", "--opponent", "cpu", "--once", "1&10", "--no-overlay"]
@@ -409,7 +410,8 @@ class TestMaddenDbSeparateFromCoach(unittest.TestCase):
                 )
                 self.assertEqual(call_code, 0, call_out)
                 play_code, play_out = run_cli(
-                    ["play", "--game", "madden27", "--opponent", "gavin", "--terminal", "--no-overlay"],
+                    ["play", "--game", "madden27", "--opponent", "gavin", "--terminal",
+                     "--no-overlay", "--heuristic-offense"],
                     ["1&10", "+7", "quit"],
                 )
                 self.assertEqual(play_code, 0, play_out)

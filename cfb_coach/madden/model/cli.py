@@ -1128,7 +1128,9 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
         )
         db = open_explicit_madden_db(path, read_only=False)
     else:
-        db = open_madden_db(read_only=True)
+        # Respect an explicit DB for model-designed read-only preview too.
+        db = (open_explicit_madden_db(Path(args.db), read_only=True)
+              if getattr(args, "db", None) else open_madden_db(read_only=True))
 
     def display(payload: dict[str, Any] | None, mode: str) -> None:
         if text_mode or payload is None:
@@ -1194,9 +1196,14 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
             display(browser.installed_design(db, args.opponent), "installed")
             return 0
         try:
+            supplied_artifact = None
+            if getattr(args, "artifact", None):
+                from cfb_coach.madden.model.experimental_model import load_artifact
+
+                supplied_artifact = load_artifact(Path(args.artifact).expanduser())
             design = designer.design_offense(
                 db, opponent_id=args.opponent,
-                max_formations=args.max_formations
+                max_formations=args.max_formations, artifact=supplied_artifact,
             )
             if args.stage:
                 design = designer.stage_design(db, design)
@@ -1869,6 +1876,95 @@ def _load_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
             db.close()
 
 
+def cmd_ml_game_prep(args: argparse.Namespace) -> int:
+    """Design both books before a game and apply them, or confirm / roll back one side.
+
+    Designing reads the database only. The plan is then applied through the
+    confirm checks (with a snapshot) unless --no-auto-apply is given.
+    """
+    from cfb_coach.madden.model import game_prep, playbook_install
+
+    actions = [a for a in (args.confirm, args.rollback) if a]
+    if len(actions) > 1:
+        _parser_error(args, "--confirm and --rollback are separate deliberate actions")
+    root = Path(args.out) if args.out else None
+    if args.confirm:
+        if not (args.proposal_id and args.fingerprint and args.attest):
+            _parser_error(args, "--confirm needs --proposal-id, --fingerprint and --attest")
+        db = open_explicit_madden_db(_require_db(args, "game-prep --confirm"), read_only=False)
+        try:
+            result = playbook_install.confirm(
+                db, root=root, opponent_id=args.opponent, side=args.confirm, proposal_id=args.proposal_id,
+                typed_fingerprint=args.fingerprint, attestation=args.attest)
+        except playbook_install.InstallError as exc:
+            print(f"refused: {exc} (nothing was written)", file=sys.stderr)
+            return 1
+        print(json.dumps(result, indent=2))
+        for side in ("offense", "defense"):
+            print(f"{side}: {playbook_install.side_status(db, root, args.opponent, side)['label']}")
+        return 0
+    if args.rollback:
+        if not args.attest:
+            _parser_error(args, "--rollback needs --attest")
+        db = open_explicit_madden_db(_require_db(args, "game-prep --rollback"), read_only=False)
+        try:
+            result = playbook_install.rollback(db, root=root, side=args.rollback, attestation=args.attest)
+        except playbook_install.InstallError as exc:
+            print(f"refused: {exc} (nothing was written)", file=sys.stderr)
+            return 1
+        print(json.dumps(result, indent=2))
+        return 0
+    if args.new_opponent:
+        from cfb_coach.madden.human_opponents import register_cold_start
+
+        wdb = open_explicit_madden_db(_require_db(args, "game-prep --new-opponent"), read_only=False)
+        try:
+            profile = register_cold_start(wdb, args.opponent, display_name=args.new_opponent)
+        except ValueError as exc:
+            print(f"refused: {exc} (nothing was written)", file=sys.stderr)
+            return 1
+        finally:
+            wdb.close()
+        print(f"opponent {profile['id']} ({profile['display_name']}): Madden-only human, no borrowed history")
+    db = (open_explicit_madden_db(Path(args.db), read_only=True)
+          if args.db else open_madden_db(read_only=True))
+    if args.status:
+        for side in ("offense", "defense"):
+            print(f"{side}: {playbook_install.side_status(db, root, args.opponent, side)['label']}")
+        return 0
+    roster = None
+    if args.roster_json:
+        try:
+            roster = json.loads(Path(args.roster_json).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            _parser_error(args, f"--roster-json could not be read: {exc}")
+    pkg = game_prep.run_game_prep(
+        db, opponent_id=args.opponent, franchise=args.franchise, nfl_team=args.nfl_team,
+        opponent_type=args.opponent_type, roster=roster, injuries=args.injury or [], scouting=args.scouting,
+        max_offense=args.max_offense, max_defense=args.max_defense, root=root)
+    if not args.no_auto_apply:
+        db.close()
+        db = (open_explicit_madden_db(Path(args.db), read_only=False)
+              if args.db else open_madden_db(read_only=False))
+        game_prep.auto_apply(db, pkg, root)
+    paths = game_prep.write_outputs(pkg, root)
+    for line in pkg["summary"]:
+        print(line)
+    for side in ("offense", "defense"):
+        s = pkg["sides"][side]
+        print(f"{side}: proposal {s['proposal_id']} fingerprint {s['fingerprint']} - {s['status']['label']}")
+        detail = (pkg.get("auto_applied") or {}).get(side, {})
+        if detail and not detail.get("applied") and detail.get("detail", "").startswith("not applied"):
+            print(f"  {detail['detail']}", file=sys.stderr)
+    print(pkg["game_ready"]["label"])
+    print(f"page: {paths['html']}\nchecklist: {paths['markdown']}")
+    if not args.no_open:
+        from cfb_coach.prep_browser import open_prep_html
+
+        open_prep_html(Path(paths["html"]), open_browser=True)
+    return 0
+
+
 def build_ml_subparser(sub: Any) -> None:
     p = sub.add_parser(
         "ml",
@@ -2215,6 +2311,8 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_od.add_argument("--opponent", "-o", default="cpu")
     p_od.add_argument("--max-formations", type=int, default=DEFAULT_MAX_FORMATIONS)
+    p_od.add_argument("--artifact", default=None,
+                      help="Optional offline-trained model JSON for design only; never installs the model")
     p_od.add_argument("--text", action="store_true",
                       help="Print the inspectable plan instead of opening the HTML designer")
     p_od.add_argument("--no-open", action="store_true",
@@ -2238,6 +2336,38 @@ def build_ml_subparser(sub: Any) -> None:
         help="Madden SQLite path. Required for stage, confirm, verify, unverify, and rollback.",
     )
     p_od.set_defaults(func=cmd_ml_offense_design, cli_parser=p_od)
+
+    p_gp = ml_sub.add_parser(
+        "game-prep",
+        help="Design the offensive and defensive books for the next game; confirm or roll back one side",
+    )
+    p_gp.add_argument("--opponent", "-o", required=True)
+    p_gp.add_argument("--franchise", default="primary")
+    p_gp.add_argument("--nfl-team", default=None, help="Opponent's NFL team (shown on the page)")
+    p_gp.add_argument("--opponent-type", choices=("human", "cpu"), default=None,
+                      help="Default: cpu for CPU opponent ids, otherwise human")
+    p_gp.add_argument("--roster-json", default=None, help="Roster snapshot for this run only; never saved")
+    p_gp.add_argument("--injury", action="append", default=None, help="Injury note, e.g. 'WR1 out' (repeatable)")
+    p_gp.add_argument("--scouting", default=None, help="Free-text scouting notes shown on the page")
+    p_gp.add_argument("--new-opponent", metavar="DISPLAY_NAME", default=None,
+                      help="Register --opponent as a new Madden-only human (no borrowed history) before prep. "
+                           "Needs --db; adds one opponent row and nothing else")
+    p_gp.add_argument("--max-offense", type=int, default=15, help="Offensive formation cap (1-15)")
+    p_gp.add_argument("--max-defense", type=int, default=15, help="Defensive formation cap (1-15)")
+    p_gp.add_argument("--out", default=None, help="Folder for proposals and pages (default <data dir>/game_prep)")
+    p_gp.add_argument("--no-open", action="store_true", help="Write the page but do not open a browser")
+    p_gp.add_argument("--status", action="store_true", help="Show each side's install state and exit")
+    p_gp.add_argument("--no-auto-apply", action="store_true",
+                      help="Only stage the plan; apply each side later with --confirm")
+    p_gp.add_argument("--confirm", choices=("offense", "defense"), default=None,
+                      help="Confirm you built this side's proposal in Madden (writes; needs --db)")
+    p_gp.add_argument("--proposal-id", default=None)
+    p_gp.add_argument("--fingerprint", default=None, help="Code shown on the setup page, e.g. OFF-1A2B-3C4D")
+    p_gp.add_argument("--rollback", choices=("offense", "defense"), default=None,
+                      help="Restore the book used before the last confirmation (writes; needs --db)")
+    p_gp.add_argument("--attest", default=None, help="Your statement that Madden now has this book")
+    p_gp.add_argument("--db", default=None, help="Madden SQLite path. Required for --confirm and --rollback.")
+    p_gp.set_defaults(func=cmd_ml_game_prep, cli_parser=p_gp)
 
     p_or = ml_sub.add_parser(
         "offense-report",

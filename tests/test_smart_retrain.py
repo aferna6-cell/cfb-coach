@@ -53,6 +53,16 @@ class TestZones(unittest.TestCase):
         sit = parse_situation("1&goal opp 6")
         self.assertEqual((sit.down, sit.distance, sit.yardline), (1, 6, 94))
         self.assertTrue(sit.goal_line)
+        own = parse_situation("1st and goal my 8")
+        self.assertEqual((own.down, own.distance, own.yardline), (1, 8, 8))
+        self.assertTrue(own.goal_line)
+        from cfb_coach.madden.situation import parse_madden_situation
+
+        madden = parse_madden_situation("1st and goal my 8")
+        self.assertEqual((madden.down, madden.distance, madden.yardline), (1, 8, 8))
+        self.assertTrue(madden.goal_line)
+        their = parse_situation("1st and goal their 8")
+        self.assertEqual((their.down, their.distance, their.yardline), (1, 8, 92))
         sit = parse_situation("3&2 opp 12")
         self.assertEqual(zone_of_situation(sit), RED_ZONE)
         self.assertFalse(sit.goal_line)

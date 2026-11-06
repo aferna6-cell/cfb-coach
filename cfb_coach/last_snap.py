@@ -21,6 +21,20 @@ _RESULT_HEAD = re.compile(
     re.I,
 )
 _BARE_YARDS = re.compile(r"^\d{1,2}$")
+_SITUATION_TOKENS = re.compile(
+    r"\d\s*&\s*(?:\d+|goal|g)\b|\b(?:my|opp|own|their|our)\s*\d{1,2}\b|\b(?:d|def|defense|offense)\b|"
+    r"\bq[1-5]\b|\b[1-4](?:st|nd|rd|th)\s*(?:q|qtr|quarter)?\b|\bclock\s*\d{1,2}:\d{2}\b|\b\d{1,2}:\d{2}\b|"
+    r"\b\d{1,2}\s*-\s*\d{1,2}\b|\b(?:rz|red\s*zone|gl|goal\s*line|2\s*min|two[\s-]*minute|hurry|"
+    r"kickoff|kick\s*off|after\s+punt|touchback|midfield)\b",
+    re.I,
+)
+
+
+def leftover_play_text(raw: str | None) -> str:
+    """What is left on a situation line after down, spot, quarter, clock and score."""
+    text = _SITUATION_TOKENS.sub(" ", raw or "")
+    text = re.sub(r"\s+", " ", text).strip(" ,.;:-")
+    return text if re.search(r"[a-z]{3}", text, re.I) else ""
 
 
 @dataclass
@@ -81,6 +95,9 @@ def classify_last_snap(
         return None
     cov = getattr(look, "coverage_hint", None) if look is not None else None
     concept = getattr(look, "concept_hint", None) if look is not None else None
+    if result is not None and rest and not cov and not concept and str(side).lower().startswith("d"):
+        # On defense the text after the result is the opponent's play call, named or not.
+        concept = rest
     if result is None and not cov and not concept:
         return None
     canon = parse_outcome(result).to_result_text() if result else None
@@ -162,6 +179,56 @@ def advance_ball(sit: Any, result: str, side: str, spot: BallSpot) -> tuple[Ball
         new.distance = max(1, dist - gain)
     where = f" yl{new.yardline}" if new.yardline is not None else ""
     return new, f"now {new.down}&{new.distance}{where}"
+
+
+def describe_spot_conflict(expected: BallSpot, sit: Any, *, result: str) -> str | None:
+    """Warn when a typed down does not follow the previous snap's result.
+
+    A turnover or a new possession has no expected spot. Down and distance
+    must match. The yardline may be off by two yards.
+    """
+    if expected.down is None and expected.distance is None and expected.yardline is None:
+        return None
+    problems: list[str] = []
+    down = getattr(sit, "down", None)
+    distance = getattr(sit, "distance", None)
+    yardline = getattr(sit, "yardline", None)
+    if down is not None and expected.down is not None and int(down) != int(expected.down):
+        problems.append(f"down {int(down)} (expected {int(expected.down)})")
+    if (
+        distance is not None and expected.distance is not None
+        and int(distance) != int(expected.distance)
+    ):
+        problems.append(f"distance {int(distance)} (expected {int(expected.distance)})")
+    if (
+        yardline is not None and expected.yardline is not None
+        and abs(int(yardline) - int(expected.yardline)) > 2
+    ):
+        problems.append(f"yardline {int(yardline)} (expected {int(expected.yardline)})")
+    if not problems:
+        return None
+    spot = f"{expected.down}&{expected.distance}"
+    if expected.yardline is not None:
+        spot += f" yl{expected.yardline}"
+    shown = str(result or "").strip() or "the previous snap"
+    return (
+        f"SITUATION WARNING: typed spot contradicts the previous result {shown!r}. "
+        f"Expected about {spot}; got {', '.join(problems)}."
+    )
+
+
+def snap_conflict_warning(book: Any, sit: Any) -> str | None:
+    """The warning for ``sit`` given the ball spot after the book's last result."""
+    if book is None or getattr(book, "result", None) in (None, ""):
+        return None
+    if getattr(book, "_drive_break", False):
+        return None
+    previous = getattr(book, "sit", None)
+    prev_side = str(getattr(previous, "side", "") or "")[:1].lower()
+    next_side = str(getattr(sit, "side", "") or "")[:1].lower()
+    if prev_side and next_side and prev_side != next_side:
+        return None
+    return describe_spot_conflict(book.spot, sit, result=str(book.result))
 
 
 INFERRED_DRIVE_PREFIX = "auto-d"
@@ -444,8 +511,18 @@ class LastSnapBook:
         side = getattr(self.call, "side", None) or "offense"
         their_look = normalize_opp_look(their)
         cov, concept = _prev_look(self.parse_situation, their_look or "", side)
+        defense = str(side).lower().startswith("d")
+        if their_look and not cov and not concept and defense:
+            # On defense "they ran" is the opponent's play call, named or not.
+            concept = their_look
+        if defense and not cov and not concept:
+            typed = _RESULT_HEAD.match((outcome or "").strip())
+            if typed and (typed.group("rest") or "").strip():
+                concept = typed.group("rest").strip()
         if next_raw and not cov and not concept:
             cov, concept = _prev_look(self.parse_situation, next_raw, side)
+            if defense and not cov and not concept:
+                concept = leftover_play_text(next_raw) or None
         canon = parse_outcome(outcome).to_result_text()
         status = (executed_status or "unknown").strip().lower()
         # Never promote a recommendation to a verified execution without evidence.
@@ -705,6 +782,16 @@ class LastSnapBook:
         executed_play = spec.get("executed_play")
         executed_macro = spec.get("executed_macro")
         executed_verification = spec.get("executed_verification") or "unknown"
+        # A typed result names no other call. Store the call that was on screen
+        # so the executed columns are not blank. This is not a verified attest.
+        if "executed_formation" not in spec and "executed_play" not in spec:
+            shown_form = getattr(self.call, "formation", None)
+            shown_play = getattr(self.call, "play", None)
+            if shown_form and shown_play:
+                executed_formation = str(shown_form)
+                executed_play = str(shown_play)
+                executed_status = "shown"
+                executed_verification = "shown_call"
 
         from cfb_coach.madden.model.call_outcome_log import (
             acceptance_for_log,
@@ -736,6 +823,21 @@ class LastSnapBook:
             "executed_macro": None,
             "executed_verification": "unknown",
         }
+        if not inserted and self.logged_id is not None:
+            try:
+                current = self.db.conn.execute(
+                    "SELECT executed_status, executed_formation, executed_play, "
+                    "executed_macro, executed_verification FROM snaps WHERE id = ?",
+                    (self.logged_id,),
+                ).fetchone()
+            except Exception:  # noqa: BLE001 — undo falls back to an empty execution
+                current = None
+            if current is not None:
+                prev_row["executed_status"] = current["executed_status"] or "unknown"
+                prev_row["executed_formation"] = current["executed_formation"]
+                prev_row["executed_play"] = current["executed_play"]
+                prev_row["executed_macro"] = current["executed_macro"]
+                prev_row["executed_verification"] = current["executed_verification"] or "unknown"
         if inserted:
             quarter = (getattr(sit, "extras", None) or {}).get("quarter")
             self.logged_id = self.db.log_snap(
@@ -868,10 +970,12 @@ class LastSnapBook:
         head = "logged last snap: " + " | ".join(bits) if bits else "logged last snap"
         if note:
             head += f" | {note}"
+        if executed_status == "shown" and executed_formation and executed_play:
+            head += f" | executed {executed_formation} / {executed_play}"
         return head
 
 
 __all__ = [
-    "BallSpot", "LastSnapBook", "advance_ball", "classify_last_snap", "refresh_marks",
-    "shown_macro",
+    "BallSpot", "LastSnapBook", "advance_ball", "classify_last_snap",
+    "describe_spot_conflict", "refresh_marks", "shown_macro", "snap_conflict_warning",
 ]

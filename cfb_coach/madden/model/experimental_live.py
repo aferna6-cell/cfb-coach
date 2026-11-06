@@ -615,6 +615,7 @@ def apply_experimental_offense(
     after seal — never an anonymous DB row.
     """
     from cfb_coach.madden.model.inference import StageClock
+    from cfb_coach.madden.model.opponent_tendencies import opponent_context_key
     from cfb_coach.madden.model.schema import Possession
 
     decision_ts = datetime.now(timezone.utc).isoformat()
@@ -685,6 +686,7 @@ def apply_experimental_offense(
             propensity_method=PropensityMethod.UNKNOWN,
             accepted=Tri.UNKNOWN,
             ml_status_detail=note,
+            opponent_context_key=opponent_context_key(opponent_id),
         )
         info = {
             "heuristic_formation": heur_form,
@@ -769,6 +771,12 @@ def apply_experimental_offense(
             cov_src = "none"
 
         opp_type = "cpu" if is_cpu_opponent(opponent_id) else "human"
+        from cfb_coach.madden.model.opponent_tendencies import build_offense_profile
+
+        try:
+            tendency = build_offense_profile(db, opponent_id, sit)
+        except Exception:  # noqa: BLE001 — a tendency lookup must not change the call
+            tendency = None
         clock.begin("rank")
         ranked = exp_mod.rank_candidates(
             artifact,
@@ -783,6 +791,7 @@ def apply_experimental_offense(
             heuristic=None,
             heuristic_bonuses={},
             near_tie_margin=0.0,
+            tendency=tendency,
         )
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
@@ -906,6 +915,11 @@ def apply_experimental_offense(
             explanation += " | near-tie kept heuristic"
         if cov_src == "last" and cov_hint:
             explanation += " | last-snap coverage used as soft prior only"
+        tendency_summary = str((top.get("tendency_summary") if isinstance(top, dict) else "") or "")
+        if not tendency_summary and tendency:
+            tendency_summary = str(tendency.get("summary") or "")
+        if tendency_summary:
+            explanation += f" | tendencies: {tendency_summary}"
 
         # Always build the model-selected call, even when the play name agrees
         # with the heuristic. Accessories must never be inherited by accident.
@@ -976,6 +990,8 @@ def apply_experimental_offense(
             # coverage as a training feature for which action to fire.
             # Quarter lives on extras, not as a Situation attribute.
             "pre_snap_action_context": _pre_snap_context(sit, joint.get("input_audit")),
+            "opponent_context_key": opponent_id,
+            "tendency_summary": tendency_summary,
             "latency_ms": trace.get("latency_ms"),
             "timed_out": trace.get("timed_out", False),
             "slowest_stage": trace.get("slowest_stage"),
@@ -1019,6 +1035,8 @@ def apply_experimental_offense(
             propensity_method=PropensityMethod.DETERMINISTIC,
             accepted=Tri.UNKNOWN,
             macro=_catalog_decision_macro(getattr(call, "macro", None)),
+            opponent_context_key=opponent_context_key(opponent_id),
+            ml_status_detail=tendency_summary or "no learned tendencies",
         )
         _attach(call, dec, info)
         if commit and db is not None and snap_id:
