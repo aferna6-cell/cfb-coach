@@ -132,17 +132,16 @@ def _success_from_yards(
     yards: int | None,
     kind: str | None,
 ) -> str:
-    if yards is None and not kind:
-        return Tri.UNKNOWN.value
     side_l = (side or "offense").strip().lower()
     is_def = side_l.startswith("d")
-    if kind in ("int", "interception", "fumble"):
-        return Tri.FALSE.value if not is_def else Tri.TRUE.value
-    if kind == "sack":
-        return Tri.FALSE.value if not is_def else Tri.TRUE.value
+    # Outcome type takes precedence over yards. A touchdown or conversion
+    # without a numeric gain is still a known success; a stop, turnover, or
+    # negative play is a known failure. Defense labels are the inverse.
+    if kind in ("td", "convert"):
+        return Tri.FALSE.value if is_def else Tri.TRUE.value
+    if kind in ("int", "interception", "fumble", "sack", "incomplete", "stop", "loss"):
+        return Tri.TRUE.value if is_def else Tri.FALSE.value
     if yards is None:
-        if kind == "incomplete":
-            return Tri.FALSE.value if not is_def else Tri.TRUE.value
         return Tri.UNKNOWN.value
     try:
         d = int(down) if down is not None and down != "" else None
@@ -191,11 +190,14 @@ def _normalize_row(raw: Mapping[str, Any], *, provenance: str) -> dict[str, Any]
 
     result = row.get("result")
     yards = row.get("yards")
-    kind = None
-    if yards is None and result not in (None, ""):
-        parsed = parse_outcome(str(result))
+    # Always parse the outcome type, even when a yards column exists. For
+    # example, an interception with 5 recorded yards must not be labeled as
+    # a successful five-yard offensive gain. Preserve the explicit yards
+    # field when present.
+    parsed = parse_outcome(str(result)) if result not in (None, "") else None
+    kind = parsed.kind if parsed is not None else None
+    if yards is None and parsed is not None:
         yards = parsed.yards
-        kind = parsed.kind
     try:
         yards_i = int(yards) if yards is not None and yards != "" else None
     except (TypeError, ValueError):
