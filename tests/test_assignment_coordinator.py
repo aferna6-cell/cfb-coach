@@ -62,3 +62,29 @@ def test_unknown_route_effect_stays_unknown_and_mismatched_play_fails(monkeypatc
     bad = ex.PlayContext(side="offense", formation="Gun Trips", play="Mesh Switch", play_type="pass")
     with pytest.raises(KnowledgeError):
         bridge.evaluate_assignment_decision(bad, play, {"man": .5})
+
+
+
+def test_scored_plans_choose_no_adjustment_without_executable_gain(monkeypatch):
+    ctx = ex.PlayContext(side="offense", formation="Gun Trips", play="Mesh", play_type="pass",
+                         eligible_receivers=("WR1", "WR2"))
+    monkeypatch.setattr(bridge.ex, "validate_plan", lambda p, *args, **kwargs:
+                        ["not installed"] if p[0].action_id.endswith("bad") else [])
+    bad = bridge.ScoredPlan((SimpleNamespace(action_id="off.saved.bad", params={}),), .95, "hypothesis")
+    weak = bridge.ScoredPlan((SimpleNamespace(action_id="off.hot_route", params={"target":"WR1", "route":"Drag"}),), .605, "prior")
+    chosen = bridge.select_scored_plan(ctx, .60, [bad, weak])
+    assert chosen.label == "NO ADJUSTMENT"
+    assert not chosen.actions
+
+
+def test_scored_plans_support_validated_macro_plus_individual(monkeypatch):
+    ctx = ex.PlayContext(side="offense", formation="Gun Trips", play="Mesh", play_type="pass",
+                         eligible_receivers=("WR1", "WR2"))
+    monkeypatch.setattr(bridge.ex, "validate_plan", lambda plan, *args, **kwargs: [])
+    combo = bridge.ScoredPlan((SimpleNamespace(action_id="off.saved.Beat Cover 2", params={}),
+                               SimpleNamespace(action_id="off.hot_route", params={"target":"WR2", "route":"Drag"})),
+                              .74, "research_model")
+    chosen = bridge.select_scored_plan(ctx, .65, [combo])
+    assert len(chosen.actions) == 2
+    assert "off.saved.Beat Cover 2" in chosen.label
+    assert "WR2" in chosen.label
