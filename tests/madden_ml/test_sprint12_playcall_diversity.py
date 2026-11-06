@@ -49,8 +49,11 @@ class StrategicDiversityTests(unittest.TestCase):
         locked = history["without_diversity_band"]
         opened = history["with_diversity"]
         self.assertEqual(locked["formations"]["top_share"], 1.0)
-        self.assertTrue(history["band_changes_the_call_sheet"])
+        self.assertTrue(history["band_changes_proposals"])
         self.assertTrue(history["best_play_still_used"])
+        after_guard = history["with_diversity_after_guard"]
+        self.assertEqual(after_guard["formations"]["distinct"], 1)
+        self.assertGreater(history["guard_kept_anchor_snaps"], 0)
         self.assertGreater(opened["formations"]["distinct"], 1)
         self.assertEqual(opened["consideration_rate"], 1.0)
         self.assertLessEqual(opened["mean_probability_drop"], 0.06)
