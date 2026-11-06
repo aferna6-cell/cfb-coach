@@ -449,8 +449,8 @@ def concentrated_history_probe(*, snaps: int = 24) -> dict[str, Any]:
             })
     recent = [{"formation": "Gun Doubles Clamp Stack", "play": "Mesh"} for _ in range(8)]
 
-    def _calls(use_diversity: bool) -> list[dict[str, Any]]:
-        out = []
+    def _calls(use_diversity: bool) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        proposed, final = [], []
         for seq in range(1, snaps + 1):
             decision = choose_joint_action(
                 ranked=ranked, anchor=ranked[0], sit=_sit("normal"), book=book,
@@ -458,34 +458,46 @@ def concentrated_history_probe(*, snaps: int = 24) -> dict[str, Any]:
                 opponent_type="cpu", recent_calls=recent, use_diversity=use_diversity,
                 use_knowledge=False, use_strategy=False,
             )
-            out.append({
-                "formation": decision["joint"]["formation"],
-                "play": decision["joint"]["play"],
-                "adjustment_kind": "none",
-                "plays_considered": decision.get("plays_considered"),
-                "probability": next(
-                    row["probability"] for row in ranked
-                    if row["play"] == decision["joint"]["play"]
-                    and row["formation"] == decision["joint"]["formation"]
-                ),
-                "best_probability": 0.60,
-                "situation": "normal",
-                "extra_band": (decision.get("exploration") or {}).get("extra_band"),
-            })
-        return out
+            audit = decision.get("override_audit") or {}
+            final_pair = (decision["joint"]["formation"], decision["joint"]["play"])
+            proposed_pair = tuple(audit.get("unrestricted") or final_pair)
+            for pair, out in ((proposed_pair, proposed), (final_pair, final)):
+                out.append({
+                    "formation": pair[0],
+                    "play": pair[1],
+                    "adjustment_kind": "none",
+                    "plays_considered": decision.get("plays_considered"),
+                    "probability": next(
+                        row["probability"] for row in ranked
+                        if row["play"] == pair[1] and row["formation"] == pair[0]
+                    ),
+                    "best_probability": 0.60,
+                    "situation": "normal",
+                    "extra_band": (decision.get("exploration") or {}).get("extra_band"),
+                    "guard_kept_anchor": bool(audit.get("guard_kept_anchor")),
+                })
+        return proposed, final
 
-    locked = diversity_report(_calls(False), book)
-    opened = diversity_report(_calls(True), book)
+    locked_proposed, locked_final = _calls(False)
+    opened_proposed, opened_final = _calls(True)
+    locked = diversity_report(locked_proposed, book)
+    opened = diversity_report(opened_proposed, book)
+    final = diversity_report(opened_final, book)
     return {
         "without_diversity_band": locked,
         "with_diversity": opened,
-        "band_changes_the_call_sheet": (
+        "with_diversity_after_guard": final,
+        "band_changes_proposals": (
             locked["formations"]["distinct"] == 1 and opened["formations"]["distinct"] > 1
         ),
+        "guard_kept_anchor_snaps": sum(c["guard_kept_anchor"] for c in opened_final),
         "best_play_still_used": (opened["plays"]["counts"].get("Gun Doubles Clamp Stack — Mesh") or 0) > 0,
         "note": (
-            "The 0.03 probability gap is not a clear superiority. Sampling "
-            "other formations does not ban the better play."
+            "The anchor is fixed here, so this isolates the joint-stage band. "
+            "Proposals are the joint optimizer's pre-guard picks; the override "
+            "guard keeps the anchor when a no-adjustment change gains less than "
+            "its margin. Live variety comes from first-stage anchor sampling. "
+            "The 0.03 probability gap is not a clear superiority."
         ),
     }
 

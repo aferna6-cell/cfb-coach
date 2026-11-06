@@ -156,8 +156,11 @@ class MatchupTests(unittest.TestCase):
             ranked=_rows(book), anchor=_rows(book)[0], sit=sit, book=book,
             active=[], db=None, session_id="s", snap_seq=1,
         )
-        self.assertEqual(decision["joint"]["play"], "Four Verticals")
-        self.assertNotEqual(decision["joint"]["play"], "Mesh")
+        audit = decision["override_audit"]
+        self.assertEqual(audit["unrestricted"][1], "Four Verticals")
+        self.assertTrue(audit["guard_kept_anchor"])
+        self.assertLess(audit["joint_gain"], audit["margin"])
+        self.assertEqual(decision["joint"]["play"], "Mesh")
         self.assertTrue(decision["football_intelligence"]["summary"])
 
     def test_third_and_4_man_can_prefer_mesh_without_overturning_a_better_play(self):
