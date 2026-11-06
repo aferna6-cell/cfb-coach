@@ -92,22 +92,16 @@ def _shares(counts: Mapping[str, float]) -> dict[str, float]:
     return {key: value / total for key, value in counts.items() if value > 0}
 
 
-def _blend_shares(
-    left: Mapping[str, float], n_left: float,
-    right: Mapping[str, float], n_right: float,
+def _merge_observations(
+    tendency: Mapping[str, float], snaps: Mapping[str, float],
 ) -> dict[str, float]:
-    if n_left <= 0 and n_right <= 0:
-        return {}
-    if n_left <= 0:
-        return dict(right)
-    if n_right <= 0:
-        return dict(left)
-    keys = set(left) | set(right)
-    mixed = {
-        key: (n_left * left.get(key, 0.0) + n_right * right.get(key, 0.0)) / (n_left + n_right)
-        for key in keys
-    }
-    return _shares(mixed)
+    """Each logged snap also bumps the tendency table, so the two overlap.
+
+    Per-category max keeps tendency counts that predate snap logging without
+    counting a logged play twice.
+    """
+    keys = set(tendency) | set(snaps)
+    return {k: max(float(tendency.get(k, 0.0)), float(snaps.get(k, 0.0))) for k in keys}
 
 
 def _dist_class(distance: Any) -> str:
@@ -195,8 +189,7 @@ def _count_snap_coverage(rows: Sequence[Any], sit: Any, *, bucketed: bool) -> tu
     for row in rows:
         if str(_row_get(row, "side") or "offense").startswith("d"):
             continue
-        if not _verified(row):
-            continue
+        # The opponent's look is observed whether or not our call was executed as shown.
         seen = str(_row_get(row, "coverage_seen") or "").strip()
         if not seen:
             continue
@@ -252,21 +245,21 @@ def build_offense_profile(db: Any, opponent_id: str, sit: Any = None) -> dict[st
     specific = f"their_coverage|{situation_bucket(sit)}" if sit is not None else None
     rows = _tendency_rows(db, opponent_id)
     snaps = _snap_rows(db, opponent_id)
-    spec_counts, spec_labels, spec_n = _count_coverage(rows, bucket=specific) if specific else ({}, {}, 0.0)
-    all_counts, all_labels, all_n = _count_coverage(rows, bucket=None)
-    snap_spec, snap_labels, snap_spec_n = _count_snap_coverage(snaps, sit, bucketed=True)
-    snap_all, snap_all_labels, snap_all_n = _count_snap_coverage(snaps, sit, bucketed=False)
+    spec_counts, spec_labels, _ = _count_coverage(rows, bucket=specific) if specific else ({}, {}, 0.0)
+    all_counts, all_labels, _ = _count_coverage(rows, bucket=None)
+    snap_spec, snap_labels, _ = _count_snap_coverage(snaps, sit, bucketed=True)
+    snap_all, snap_all_labels, _ = _count_snap_coverage(snaps, sit, bucketed=False)
 
-    if spec_n >= MIN_BUCKET or snap_spec_n >= MIN_BUCKET:
-        mix = _blend_shares(_shares(spec_counts), spec_n, _shares(snap_spec), snap_spec_n)
+    merged = _merge_observations(spec_counts, snap_spec)
+    if sum(merged.values()) >= MIN_BUCKET:
         labels = {**snap_labels, **spec_labels}
         scope = "this down"
-        n = max(spec_n, snap_spec_n)
     else:
-        mix = _blend_shares(_shares(all_counts), all_n, _shares(snap_all), snap_all_n)
+        merged = _merge_observations(all_counts, snap_all)
         labels = {**snap_all_labels, **all_labels}
         scope = "all downs"
-        n = max(all_n, snap_all_n)
+    n = sum(merged.values())
+    mix = _shares(merged)
     profile["mix"] = mix
     profile["labels"] = labels
     profile["scope"] = scope if n else ""
@@ -423,8 +416,6 @@ def _count_snap_concepts(rows: Sequence[Any], sit: Any, *, bucketed: bool) -> tu
     for row in rows:
         if not str(_row_get(row, "side") or "").startswith("d"):
             continue
-        if not _verified(row):
-            continue
         seen = str(_row_get(row, "concept_seen") or "").strip()
         if not seen:
             continue
@@ -446,28 +437,21 @@ def build_defense_profile(db: Any, opponent_id: str, sit: Any = None) -> dict[st
     specific = f"offense_concept|{situation_bucket(sit)}" if sit is not None else None
     rows = _tendency_rows(db, opponent_id)
     snaps = _snap_rows(db, opponent_id)
-    spec_counts, spec_runs, spec_n = _count_concepts(rows, bucket=specific) if specific else ({}, 0.0, 0.0)
-    all_counts, all_runs, all_n = _count_concepts(rows, bucket=None)
-    snap_spec, snap_runs, snap_spec_n = _count_snap_concepts(snaps, sit, bucketed=True)
-    snap_all, snap_all_runs, snap_all_n = _count_snap_concepts(snaps, sit, bucketed=False)
-    if spec_n >= MIN_BUCKET or snap_spec_n >= MIN_BUCKET:
-        counts = _blend_shares(_shares(spec_counts), spec_n, _shares(snap_spec), snap_spec_n)
-        runs = spec_runs + snap_runs
-        total = spec_n + snap_spec_n
-        n = max(spec_n, snap_spec_n)
-        scope = "this down"
-    else:
-        counts = _blend_shares(_shares(all_counts), all_n, _shares(snap_all), snap_all_n)
-        runs = all_runs + snap_all_runs
-        total = all_n + snap_all_n
-        n = max(all_n, snap_all_n)
+    spec_counts = _count_concepts(rows, bucket=specific)[0] if specific else {}
+    all_counts = _count_concepts(rows, bucket=None)[0]
+    snap_spec = _count_snap_concepts(snaps, sit, bucketed=True)[0]
+    snap_all = _count_snap_concepts(snaps, sit, bucketed=False)[0]
+    merged = _merge_observations(spec_counts, snap_spec)
+    scope = "this down"
+    if sum(merged.values()) < MIN_BUCKET:
+        merged = _merge_observations(all_counts, snap_all)
         scope = "all downs"
-    # Shrinkage uses the larger source, not the sum, so one snap is not counted twice.
+    n = sum(merged.values())
     profile["n"] = int(n)
     profile["shrink"] = _shrink(n)
-    profile["concepts"] = counts
+    profile["concepts"] = _shares(merged)
     profile["scope"] = scope if n else ""
-    profile["run_share"] = (runs / total) if total > 0 else None
+    profile["run_share"] = (merged.get("run", 0.0) / n) if n > 0 else None
     profile["summary"] = format_defense_summary(profile)
     return profile
 
