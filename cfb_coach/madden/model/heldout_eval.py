@@ -589,7 +589,9 @@ def run_folds(
     targets: Sequence[str],
     label_fn: LabelFn,
     is_test_row: Callable[[Mapping[str, Any]], bool],
+    extra: Callable[[Mapping[str, Any]], dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """``extra`` adds per-row fields (for example situation slices) to each prediction."""
     by_game: dict[str, list[Mapping[str, Any]]] = {}
     for r in rows:
         if r.get("game_id"):
@@ -623,6 +625,7 @@ def run_folds(
                         "opponent_type": r.get("opponent_type") or "unknown",
                         "basis": verification_basis(r),
                         "p": {name: o[t] for name, o in outs.items() if t in o},
+                        **(extra(r) if extra else {}),
                     }
                 )
     timing = {
