@@ -281,6 +281,26 @@ class CoachDB:
         )
         self.conn.commit()
 
+    def adjust_tendency(
+        self,
+        opponent_id: str,
+        bucket: str,
+        key: str,
+        *,
+        amount: int,
+        success_delta: int = 0,
+    ) -> None:
+        """Add ``amount`` (may be negative) to an existing live tendency. Used by undo."""
+        self.conn.execute(
+            """
+            UPDATE tendencies
+            SET count = MAX(0, count + ?), success = MAX(0, success + ?)
+            WHERE opponent_id = ? AND bucket = ? AND key = ?
+            """,
+            (amount, success_delta, opponent_id, bucket, key),
+        )
+        self.conn.commit()
+
     def get_tendencies(
         self, opponent_id: str, bucket: str | None = None
     ) -> list[sqlite3.Row]:
@@ -350,6 +370,21 @@ class CoachDB:
         self.conn.commit()
         return int(cur.lastrowid)
 
+    def update_snap(self, snap_id: int, **fields: Any) -> None:
+        allowed = ("result", "coverage_seen", "concept_seen", "notes")
+        cols = [(k, fields[k]) for k in allowed if k in fields]
+        if not cols:
+            return
+        sets = ", ".join(f"{k} = ?" for k, _ in cols)
+        self.conn.execute(
+            f"UPDATE snaps SET {sets} WHERE id = ?",
+            [v for _, v in cols] + [snap_id],
+        )
+        self.conn.commit()
+
+    def delete_snap(self, snap_id: int) -> None:
+        self.conn.execute("DELETE FROM snaps WHERE id = ?", (snap_id,))
+        self.conn.commit()
 
     def count_snaps(self, opponent_id: str, *, side: str | None = None) -> int:
         if side:

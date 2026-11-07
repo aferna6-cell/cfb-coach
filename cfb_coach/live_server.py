@@ -7,6 +7,7 @@ keeps the classic typed loop.
 from __future__ import annotations
 
 import json
+import re
 import socket
 import threading
 import traceback
@@ -16,7 +17,6 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 from cfb_coach.browser_open import open_url
-from cfb_coach.outcome import parse_outcome
 from cfb_coach.session import start_session
 
 
@@ -48,6 +48,47 @@ class LogRow:
         }
 
 
+_RAW_DOWN = re.compile(
+    r"\b([1-4])(?:st|nd|rd|th)?\s*(?:&|and)\s*(?:\d+|goal|g|inches)\b",
+    re.I,
+)
+_RAW_SPOT = re.compile(
+    r"\b(?:(?:my|our|own|opp(?:onent)?s?|their)\s*(?:yl|yard\s*line)?\s*\d{1,2}"
+    r"|(?:yl|yardline)\s*\d{1,2})\b",
+    re.I,
+)
+
+
+def _sync_raw_to_spot(sit: Any) -> None:
+    """Rewrite the typed down and yardline so the logged line matches the snap.
+
+    The form often still shows the previous down. The numeric spot is already the
+    ball after the result; the raw line was left behind, so ``situation_raw`` was
+    one snap late. Coverage and concept words stay.
+    """
+    raw = getattr(sit, "raw", "") or ""
+    down = getattr(sit, "down", None)
+    dist = getattr(sit, "distance", None)
+    if not raw or down is None or dist is None:
+        return
+    updated = _RAW_DOWN.sub(f"{int(down)}&{int(dist)}", raw, count=1)
+    yl = getattr(sit, "yardline", None)
+    if yl is not None and _RAW_SPOT.search(updated):
+        phrase = f"opp {100 - int(yl)}" if int(yl) > 50 else f"my {int(yl)}"
+        updated = _RAW_SPOT.sub(phrase, updated, count=1)
+    if updated != raw:
+        sit.raw = updated
+
+
+def _same_spot(sit: Any, other: Any) -> bool:
+    """True when the form still shows the down and yardline of the snap just logged."""
+    return (
+        getattr(sit, "down", None) == getattr(other, "down", None)
+        and getattr(sit, "distance", None) == getattr(other, "distance", None)
+        and getattr(sit, "yardline", None) == getattr(other, "yardline", None)
+    )
+
+
 @dataclass
 class LivePlayController:
     """In-memory live session shared by the HTTP handlers."""
@@ -75,7 +116,9 @@ class LivePlayController:
     ended: bool = False
     retrain_summary: str = ""
     result_wl: str | None = None
-    score: str | None = None
+    score: str | None = None  # final game-over score (winner-first); not the live us-them score
+    quarter: int | None = None
+    live_score: Any | None = None  # GameScore us-them, persists across snaps
     lock: threading.Lock = field(default_factory=threading.Lock)
     # v1.13 (CFB): playbook-of-record hooks — optional so Madden is unaffected
     book_info: Callable[[], dict[str, Any] | None] | None = None
@@ -122,11 +165,76 @@ class LivePlayController:
             "ended": self.ended,
             "result_wl": self.result_wl,
             "score": self.score,
+            "live_score": (
+                None if self.live_score is None else {
+                    "us": self.live_score.us,
+                    "them": self.live_score.them,
+                    "label": self.live_score.label,
+                }
+            ),
             "retrain_summary": self.retrain_summary,
             "log": [r.to_dict() for r in self.log],
             "book": self.book_state(),
             "macro": self.macro_state(),
+            "quarter": self.quarter,
+            "benched": self.benched_state(),
+            "ball": self._book().spot.as_dict(),
         }
+
+    def benched_state(self) -> dict[str, list[str]]:
+        """Calls benched for the rest of this half, per side."""
+        from cfb_coach.ingame import bench_report
+
+        out: dict[str, list[str]] = {}
+        for side in ("offense",) if self.cpu_only else ("offense", "defense"):
+            try:
+                rep = bench_report(self.db, self.session_id, side, self.quarter)
+            except Exception:  # noqa: BLE001 — never break live play
+                continue
+            if rep.benched:
+                out[side] = rep.lines()
+        return out
+
+    def _set_quarter(self, quarter: Any) -> None:
+        try:
+            q = int(quarter) if quarter not in (None, "") else None
+        except (TypeError, ValueError):
+            q = None
+        if q is not None and 1 <= q <= 5:
+            self.quarter = q
+
+    def set_live_score(self, us: Any, them: Any) -> None:
+        """Set or clear the session score. Both blank clears; one blank is ignored."""
+        from cfb_coach.game_score import GameScore
+
+        def _blank(v: Any) -> bool:
+            return v is None or str(v).strip() == ""
+
+        if _blank(us) and _blank(them):
+            self.live_score = None
+            return
+        if _blank(us) or _blank(them):
+            return
+        try:
+            self.live_score = GameScore(int(us), int(them))
+        except (TypeError, ValueError):
+            return
+
+    def _stamp(self, sit: Any) -> Any:
+        from cfb_coach.game_score import LiveContext, absorb_and_stamp
+
+        extras = getattr(sit, "extras", None)
+        if isinstance(extras, dict):
+            extras["session_id"] = self.session_id or None
+            # Quarter from the dropdown wins unless the sit line itself named one.
+            if extras.get("quarter") in (None, "") and self.quarter is not None:
+                extras["quarter"] = self.quarter
+        ctx = LiveContext(score=self.live_score, quarter=self.quarter)
+        absorb_and_stamp(sit, ctx)
+        self.live_score = ctx.score
+        if ctx.quarter is not None:
+            self.quarter = ctx.quarter
+        return sit
 
     def macro_state(self) -> dict[str, Any] | None:
         """v1.15: the Active-8 macro on the pending call (CFB offense; Madden defense) or None.
@@ -158,65 +266,86 @@ class LivePlayController:
         }
 
     def _macro_of(self, call: Any) -> str | None:
+        from cfb_coach.last_snap import shown_macro
+
         if call is None:
             return None
-        if getattr(call, "macro", None):
-            return call.macro
-        if getattr(call, "side", "") == "defense":
-            return getattr(call, "adj_or_macro", None)
-        return None
+        return shown_macro(call)
 
-    def _log_pending_result(self, outcome_raw: str) -> dict[str, Any] | None:
+    def _book(self):
+        from cfb_coach.last_snap import LastSnapBook
+
+        book = getattr(self, "_snap_book", None)
+        if book is None:
+            book = LastSnapBook(
+                self.db, self.opponent_id, self.parse_situation, session_id=self.session_id or None,
+            )
+            if self.live_score is not None:
+                book.spot.score_us = self.live_score.us
+                book.spot.score_them = self.live_score.them
+            self._snap_book = book
+        elif self.session_id and not book.session_id:
+            book.session_id = self.session_id
+        return book
+
+    def _push_score(self) -> None:
+        from cfb_coach.game_score import GameScore
+
+        spot = self._book().spot
+        if spot.score_us is None:
+            return
+        self.live_score = GameScore(int(spot.score_us), int(spot.score_them or 0))
+
+    def _apply_form_score(self, score_us: Any, score_them: Any, score_set: bool) -> None:
+        """Copy the score boxes onto the ball. Both blank clears the session score."""
+        if not score_set:
+            return
+
+        def _blank(v: Any) -> bool:
+            return v is None or str(v).strip() == ""
+
+        self.set_live_score(score_us, score_them)
+        book = self._book()
+        if _blank(score_us) and _blank(score_them):
+            book.spot.score_us = None
+            book.spot.score_them = None
+        elif self.live_score is not None:
+            book.spot.score_us = self.live_score.us
+            book.spot.score_them = self.live_score.them
+
+    def undo_last(self) -> dict[str, Any]:
+        with self.lock:
+            book = self._book()
+            before = len(book._undos)
+            msg = book.undo()
+            if len(book._undos) < before and self.log:
+                self.log.pop()
+            self._push_score()
+            return {"ok": True, "message": msg.strip(), "state": self.state()}
+
+    def _log_pending_result(self, outcome_raw: str, their: str = "", next_raw: str | None = None) -> dict[str, Any] | None:
+        """Log the snap that just ended. The form's last-play field belongs to THAT snap."""
         if not self.last_call or not self.last_sit:
             return None
-        parsed = parse_outcome(outcome_raw)
-        result_text = parsed.to_result_text()
-        sit = self.last_sit
-        call = self.last_call
-        cov = getattr(sit, "coverage_hint", None) or self.last_coverage
-        concept = getattr(sit, "concept_hint", None) or self.last_concept
-        # Prefer coverage for offense / concept for defense in look column
-        look = (cov if call.side == "offense" else concept) or cov or concept or ""
-
-        self.db.log_snap(
-            opponent_id=self.opponent_id,
-            side=call.side,
-            situation_raw=getattr(sit, "raw", "") or "",
-            our_call=call.format().split("\n")[0],
-            formation=call.formation,
-            play=call.play,
-            macro=self._macro_of(call),
-            down=getattr(sit, "down", None),
-            distance=getattr(sit, "distance", None),
-            yardline=getattr(sit, "yardline", None),
-            result=result_text,
-            coverage_seen=cov,
-            concept_seen=concept,
-            session_id=self.session_id or None,
-        )
-        # Mild live bumps (same spirit as terminal loop)
-        try:
-            from cfb_coach.tendency import mild_bump_concept, mild_bump_coverage
-
-            success = parsed.success_for(call.side)
-            if concept and call.side == "defense":
-                mild_bump_concept(
-                    self.db, self.opponent_id, concept, sit, success=bool(success)
-                )
-                self.last_concept = concept
-            elif cov and call.side == "offense":
-                mild_bump_coverage(self.db, self.opponent_id, cov, sit)
-                self.last_coverage = cov
-        except Exception:
-            pass
-
+        book = self._book()
+        if book.call is None:
+            book.remember_call(self.last_call, self.last_sit)
+        closed = book.close_from_form(outcome_raw, their=their, next_raw=next_raw)
+        if closed is None:
+            return None
+        side = getattr(self.last_call, "side", "") or ""
+        if book.concept and side.startswith("d"):
+            self.last_concept = book.concept
+        if book.coverage and not side.startswith("d"):
+            self.last_coverage = book.coverage
+        self._push_score()
         row = LogRow(
-            formation=call.formation or "?",
-            play=call.play or "?",
-            result=result_text,
-            look=look or "",
-            call_text=call.format(),
-            side=call.side,
+            formation=closed["formation"],
+            play=closed["play"],
+            result=closed["result"],
+            look=closed["look"],
+            call_text=closed["call_text"],
+            side=closed["side"],
         )
         self.log.append(row)
         return row.to_dict()
@@ -233,14 +362,26 @@ class LivePlayController:
         except TypeError:
             return self.make_call(sit)
 
-    def call_only(self, sit_raw: str, *, side: str | None = None) -> dict[str, Any]:
+    def call_only(
+        self,
+        sit_raw: str,
+        *,
+        side: str | None = None,
+        quarter: Any = None,
+        score_us: Any = None,
+        score_them: Any = None,
+        score_set: bool = False,
+    ) -> dict[str, Any]:
         with self.lock:
             if self.ended:
                 return {"ok": False, "error": "game already ended"}
+            self._set_quarter(quarter)
+            self._apply_form_score(score_us, score_them, score_set)
             side_use = side or self.default_side
             if self.cpu_only:
                 side_use = "offense"
-            sit = self.parse_situation(sit_raw, default_side=side_use)
+            sit = self._stamp(self.parse_situation(sit_raw, default_side=side_use))
+            self._book().stamp_situation(sit)
             from cfb_coach.situation import format_heard
 
             try:
@@ -249,6 +390,7 @@ class LivePlayController:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
             self.last_call, self.last_sit = call, sit
+            self._book().remember_call(call, sit)
             self.call_text = call.format()
             self.heard = heard
             if getattr(sit, "coverage_hint", None) and sit.side == "offense":
@@ -264,23 +406,43 @@ class LivePlayController:
         outcome: str,
         sit_raw: str,
         side: str | None = None,
+        quarter: Any = None,
+        their: str = "",
+        score_us: Any = None,
+        score_them: Any = None,
+        score_set: bool = False,
     ) -> dict[str, Any]:
         with self.lock:
             if self.ended:
                 return {"ok": False, "error": "game already ended"}
+            self._apply_form_score(score_us, score_them, score_set)
             logged = None
+            closed_sit = self.last_sit
             if self.last_call is not None and (outcome or "").strip():
-                logged = self._log_pending_result(outcome)
+                logged = self._log_pending_result(outcome, their=their, next_raw=sit_raw)
             elif self.last_call is not None and not (outcome or "").strip():
                 # Allow first snap without prior outcome
                 pass
             elif (outcome or "").strip() and self.last_call is None:
                 return {"ok": False, "error": "no prior call to attach outcome to"}
 
+            self._set_quarter(quarter)
             side_use = side or self.default_side
             if self.cpu_only:
                 side_use = "offense"
-            sit = self.parse_situation(sit_raw, default_side=side_use)
+            sit = self._stamp(self.parse_situation(sit_raw, default_side=side_use))
+            book = self._book()
+            book.stamp_situation(sit)
+            # The down boxes still describe the snap we just logged — the result moved the ball.
+            if logged and closed_sit is not None and book.spot.down and _same_spot(sit, closed_sit):
+                from cfb_coach.last_snap import refresh_marks
+
+                sit.down = book.spot.down
+                sit.distance = book.spot.distance
+                if book.spot.yardline is not None:
+                    sit.yardline = book.spot.yardline
+                refresh_marks(sit)
+                _sync_raw_to_spot(sit)
             from cfb_coach.situation import format_heard
 
             try:
@@ -289,6 +451,8 @@ class LivePlayController:
                 heard = getattr(sit, "label", sit_raw)
             call = self._make(sit)
             self.last_call, self.last_sit = call, sit
+            book.remember_call(call, sit)
+            self._push_score()
             self.call_text = call.format()
             self.heard = heard
             if getattr(sit, "coverage_hint", None) and sit.side == "offense":
@@ -391,6 +555,9 @@ def _esc(s: Any) -> str:
 
 def render_live_html(ctrl: LivePlayController) -> str:
     brand = _esc(ctrl.brand)
+    sc = ctrl.live_score
+    us_v = "" if sc is None else str(sc.us)
+    them_v = "" if sc is None else str(sc.them)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -480,9 +647,25 @@ def render_live_html(ctrl: LivePlayController) -> str:
       <label>or free text</label>
       <input class="wide" id="outcome-text" placeholder="+13 / gain 13 / incomplete / sack …"/>
     </div>
+    <div class="row">
+      <label title="Their call on the snap you just logged: their coverage/blitz when you had the ball, their concept when they had it">they ran</label>
+      <input class="wide" id="their" placeholder="cover 6 · A-gap blitz · cross wheels · mesh"/>
+    </div>
 
     <h2 style="margin-top:1rem">Next situation</h2>
     <div class="row">
+      <label>quarter</label>
+      <select id="quarter">
+        <option value="1">1st</option>
+        <option value="2">2nd</option>
+        <option value="3">3rd</option>
+        <option value="4">4th</option>
+        <option value="5">OT</option>
+      </select>
+      <label title="Our score. Sticks until you change it. Us-them, not the final winner-first score.">us</label>
+      <input type="number" id="score-us" min="0" max="99" placeholder="—" value="{_esc(us_v)}"/>
+      <label title="Their score">them</label>
+      <input type="number" id="score-them" min="0" max="99" placeholder="—" value="{_esc(them_v)}"/>
       <label>down</label>
       <input type="number" id="down" min="1" max="4" value="1"/>
       <label>distance</label>
@@ -507,8 +690,14 @@ def render_live_html(ctrl: LivePlayController) -> str:
     </div>
     <div class="row">
       <button type="button" class="primary" id="btn-submit">Submit → log + new PLAY</button>
+      <button type="button" id="btn-undo">Undo last snap</button>
       <button type="button" id="btn-call-only">Call only (no log)</button>
     </div>
+  </section>
+
+  <section id="bench-panel" hidden>
+    <h2>Benched this half (kept failing)</h2>
+    <div id="bench-list" style="font-size:.85rem"></div>
   </section>
 
   <section id="book-panel" hidden>
@@ -582,6 +771,28 @@ function renderState(st) {{
   }}
   renderBook(st.book);
   renderDyn(st);
+  renderBench(st.benched);
+  if (st.quarter) $("quarter").value = String(st.quarter);
+  if (st.live_score) {{
+    $("score-us").value = st.live_score.us;
+    $("score-them").value = st.live_score.them;
+  }} else if (st.ball && st.ball.score_us != null) {{
+    $("score-us").value = st.ball.score_us;
+    $("score-them").value = st.ball.score_them || 0;
+  }} else if (document.activeElement !== $("score-us") && document.activeElement !== $("score-them")) {{
+    $("score-us").value = "";
+    $("score-them").value = "";
+  }}
+  const ball = st.ball;
+  if (ball && ball.down) {{
+    $("down").value = ball.down;
+    if (ball.distance) $("distance").value = ball.distance;
+  }}
+  if (ball && ball.yardline) {{
+    const yl = Number(ball.yardline);
+    if (yl <= 50) {{ $("yl-side").value = "my"; $("yl").value = yl; }}
+    else {{ $("yl-side").value = "opp"; $("yl").value = 100 - yl; }}
+  }}
   if (st.cpu_only) {{
     $("side").style.display = "none";
     $("side-label").style.display = "none";
@@ -601,6 +812,13 @@ function renderMacro(m) {{
   $("macro-rows").innerHTML = (m.settings || []).map(r =>
     "<tr><td class='s'>" + esc(r.section) + "</td><td class='s'>" + esc(r.setting) + "</td><td>" + esc(r.value) + "</td></tr>").join("")
     + (m.settings ? "<tr><td class='s'></td><td class='s'>Everything else</td><td>Default</td></tr>" : "");
+}}
+
+function renderBench(b) {{
+  const sides = Object.entries(b || {{}}).filter(([, rows]) => rows && rows.length);
+  $("bench-panel").hidden = !sides.length;
+  $("bench-list").innerHTML = sides.map(([side, rows]) =>
+    "<div><b>" + (side === "offense" ? "O" : "D") + "</b>: " + rows.map(esc).join(" · ") + "</div>").join("");
 }}
 
 function esc(s) {{ return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }}
@@ -682,11 +900,22 @@ $("btn-submit").addEventListener("click", async () => {{
   try {{
     const out = currentOutcome();
     const sit = buildSit();
-    const body = {{ outcome: out, sit: sit, side: $("side").value }};
+    const body = {{ outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value, their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value }};
     const data = await api("/api/result_call", body);
     outcomeChoice = "";
     $("outcome-text").value = "";
+    $("their").value = "";
+    $("look").value = "";
+    $("live-mark").checked = false;
     document.querySelectorAll("#outcome-btns button.outcome").forEach(b => b.style.outline = "");
+    renderState(data.state);
+  }} catch (e) {{ setErr(String(e.message || e)); }}
+}});
+
+$("btn-undo").addEventListener("click", async () => {{
+  setErr("");
+  try {{
+    const data = await api("/api/undo", {{}});
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -694,7 +923,7 @@ $("btn-submit").addEventListener("click", async () => {{
 $("btn-call-only").addEventListener("click", async () => {{
   setErr("");
   try {{
-    const data = await api("/api/call", {{ sit: buildSit(), side: $("side").value }});
+    const data = await api("/api/call", {{ sit: buildSit(), side: $("side").value, quarter: $("quarter").value, score_us: $("score-us").value, score_them: $("score-them").value }});
     renderState(data.state);
   }} catch (e) {{ setErr(String(e.message || e)); }}
 }});
@@ -816,7 +1045,14 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                     if not sit:
                         self._json(400, {"ok": False, "error": "sit required"})
                         return
-                    self._json(200, ctrl.call_only(sit, side=body.get("side")))
+                    self._json(200, ctrl.call_only(
+                        sit, side=body.get("side"), quarter=body.get("quarter"),
+                        score_us=body.get("score_us"), score_them=body.get("score_them"),
+                        score_set=("score_us" in body or "score_them" in body),
+                    ))
+                    return
+                if path == "/api/undo":
+                    self._json(200, ctrl.undo_last())
                     return
                 if path in ("/api/result_call", "/api/result+call"):
                     sit = (body.get("sit") or body.get("situation") or "").strip()
@@ -829,6 +1065,11 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             outcome=body.get("outcome") or body.get("result") or "",
                             sit_raw=sit,
                             side=body.get("side"),
+                            quarter=body.get("quarter"),
+                            their=body.get("their") or "",
+                            score_us=body.get("score_us"),
+                            score_them=body.get("score_them"),
+                            score_set=("score_us" in body or "score_them" in body),
                         ),
                     )
                     return

@@ -1,0 +1,36 @@
+id,down,distance,yardline,play,macro,result,situation_raw
+372,1,10,22,Mtn FK Rub,none,+3,1&10 my 22
+373,2,7,25,Inside Cross,C3,incomplete,1&10 my 22 cover 3 sky
+374,3,7,25,Mtn Triple Slants,MAN,incomplete,2&7 my 25 cover 1 robber
+375,1,10,20,Mtn FK Rub,MAN,+18,1&10 my 20
+376,1,10,38,Quick Unders,PROT,+4,1&10 my 20 hot blitz 3
+377,2,6,42,Flood Seam,C3,+5,1&10 my 38 cover 3 cloud
+378,3,1,47,X Spot,PROT,+19,2&6 my 42 nickel sim 2
+379,1,10,66,L Spot,PROT,+5,1&10 opp 34
+380,2,5,71,Return RPO Zone Alert,O-RPO,+3,1&10 opp 34 roll cover 2 invert
+381,3,2,74,Hi Lo Cross,C3,+15,2&5 opp 29 cover 3 hard flat
+382,1,10,89,RPO Alert Out,O-RPO,+2,3&2 opp 26 1 double te
+383,2,8,91,RPO Alert Out,O-RPO,int,1&10 opp 11 cover 2 invert
+384,1,10,22,Return RPO Zone Alert,O-RPO,-1,1&10 my 22
+385,2,11,21,RPO Alert Bubble,O-RPO,+1,1&10 my 22 cover 2 hard flat
+386,3,10,22,Slot Dig Wide Corner,C3,+5,2&11 my 21 roll cover 3 cloud
+387,1,10,8,PA Boot Lt,C3,+9,1&10 my 8
+388,2,1,17,Inside Cross,C3,incomplete,1&10 my 8 cover 3 buzz
+389,3,1,17,Mtn Rub Smash,MAN,+9,2&1 my 17 cover 2 man
+390,1,10,26,RPO Alert Out,O-RPO,+2,3&1 my 17 cover 4 drop
+391,2,8,28,Slot Dig Wide Corner,C3,+12,1&10 my 26 cover 3
+392,1,10,38,Slot Dig Wide Corner,C3,+21,1&10 my 38
+393,1,10,59,RPO Alert Out,O-RPO,fumble,1&10 my 38 2 invert hard flat
+394,1,10,30,Return RPO Zone Alert,O-RPO,+0,1&10 my 30
+395,2,10,30,Mtn Spot Y Corner,C3,+3,1&10 my 30 cover 3 hard flat
+396,3,7,33,Return RPO Zone Alert,O-RPO,+7,2&10 my 30 tampa 2
+397,1,10,40,RPO Alert Out,O-RPO,+9,3&7 my 33 nickel 2 trap
+398,1,10,49,RPO Alert Out,O-RPO,+1,1&10 my 49
+399,2,9,50,Return RPO Zone Alert,O-RPO,+0,1&10 my 49 cover 2 invert
+400,3,9,50,Inside Cross,C3,+14,2&9 my 50 cover 3 hard flat
+401,1,20,54,Flood Seam,C3,incomplete,1&20 opp 46
+402,2,20,54,Mesh Spot,MAN,incomplete,1&20 opp 46 cover 2 man
+403,3,20,54,Return RPO Zone Alert,O-RPO,-1,2&20 opp 46 cover 6
+404,1,10,30,Inside Cross,MAN,incomplete,1&10 my 30
+405,2,10,30,RPO Alert Out,O-RPO,+5,1&10 my 30 2 invert hard flat
+406,3,5,35,Return RPO Zone Alert,O-RPO,+2,2&10 my 30 tampa 2

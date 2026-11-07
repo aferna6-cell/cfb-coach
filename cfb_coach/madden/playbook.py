@@ -1,15 +1,17 @@
 """Madden playbook of record — one active book per side, locked by the latest prep.
 
-Contract (owner review on PR #2):
-  - Every prep chooses a mode per side: STOCK (an existing in-game book by exact
-    name) or CUSTOM (a book Aidan builds).
-  - First custom / switch-to-custom → full formation checklist to install.
-  - Successive preps on a custom book → only ADD / REMOVE of entire formations.
-  - Switch any time (custom ↔ stock, stock → other stock) via --o-book / --d-book.
+Contract (owner review on PR #2, trimmed plan is the default custom book):
+  - Default prep saves the coach's trimmed plan as CUSTOM: the recommended source
+    stock book (start Buccaneers O / 49ers D) plus the focused formations, with
+    every play those formations have in that book. ``source_book`` records the
+    source. It locks immediately. Explicit ``stock:NAME`` stays a stock book.
+  - CUSTOM without ``source_book`` is the in-game editor book (explicit
+    ``--o-book custom``): full checklist on the first one, then formation
+    ADD/REMOVE. Those edits stay pending until ``prep --mark-applied``.
+  - Switch any time via --o-book / --d-book.
   - Live `play` may only call formation+play pairs inside the locked (applied) book;
     with no locked book it refuses to call (run prep first).
-  - Stock picks need no building → locked (applied) at prep. Custom builds/diffs are
-    PENDING until `prep --mark-applied` confirms Aidan installed them.
+  - The trimmed custom plan and stock picks lock at prep (nothing to build).
 
 Persisted in the Madden DB meta key `active_playbook_json`:
   {"applied": {side: record}, "pending": {side: record}}
@@ -374,7 +376,7 @@ def recommend_book(
     live = (research.get("mode") or "") == "live"
     book_hits = (research.get("books") or {}).get(side) or {}
     start = start_book or DEFAULT_STOCK[side]
-    cur_name = (current or {}).get("name") if (current or {}).get("mode") == STOCK else None
+    cur_name = incumbent_book_name(current)
     rows = []
     for b in catalog.book_names(side):
         plays = catalog.book_formations(side, b)
@@ -429,6 +431,51 @@ def recommend_book(
 # ---------------------------------------------------------------------------
 # Record persistence
 # ---------------------------------------------------------------------------
+
+def incumbent_book_name(current: dict[str, Any] | None) -> str | None:
+    """Stock book a locked record was trimmed from (custom plan) or selected (stock)."""
+    if not current:
+        return None
+    if current.get("source_book"):
+        return str(current["source_book"])
+    if current.get("mode") == STOCK:
+        return current.get("name")
+    return None
+
+
+def make_trimmed_record(
+    side: str,
+    source_book: str,
+    *,
+    rev: int = 1,
+    reason: str = "",
+    formations: list[str] | None = None,
+    named: dict[str, Any] | None = None,
+    lw: Any = None,
+) -> dict[str, Any]:
+    """Coach's trimmed plan, stored as mode custom.
+
+    Plays are exactly the catalog plays of ``formations`` inside ``source_book``.
+    This is the book of record prep assumes — not a separate in-game custom import.
+    """
+    forms = _stock_formations(side, source_book, formations)
+    auds = {
+        f: pick_audibles(side, source_book, f, ps, named, lw) for f, ps in forms.items()
+    }
+    return {
+        "side": side,
+        "mode": CUSTOM,
+        "name": source_book,
+        "source_book": source_book,
+        "trimmed": True,
+        "formations": forms,
+        "audibles": {f: a for f, a in auds.items() if a},
+        "core": list(forms),
+        "rev": rev,
+        "locked_ts": datetime.now(timezone.utc).isoformat(),
+        "reason": reason,
+    }
+
 
 def make_record(side: str, mode: str, name: str | None, *, rev: int = 1, reason: str = "",
                 formations: list[str] | None = None, audibles: dict[str, list[str]] | None = None,
@@ -553,34 +600,80 @@ def plan_side(
 ) -> dict[str, Any]:
     """Decide the book of record for one side + the formations (full, every play) to work from.
 
-    auto (default): stay on a custom book once built; otherwise score every catalogued stock
-    book from this prep's research (web + YouTube named books / formations / plays), the seed
-    rankings, the primary team and Aidan's own results — starting from the configured start
-    book (stock Buccaneers O / stock 49ers D) with hysteresis, like the CFB autonomous book."""
+    auto (default): the coach's trimmed plan, stored as mode ``custom``. The source stock
+    book is still scored (start: Buccaneers O / 49ers D, research can switch it), then
+    ``select_focus`` keeps the formations to call from. That trimmed set is the custom
+    playbook prep assumes. ``--o-book stock:NAME`` forces a stock book. ``--o-book custom``
+    (or an already-applied editor custom with no ``source_book``) stays on the in-game
+    custom-install path (checklist, then formation ADD/REMOVE)."""
     mode_req, book_req = parse_choice(side, choice)
     named = side_named(research, side)
     cur_mode = (current or {}).get("mode")
+
+    def _editor_custom(rec: dict[str, Any] | None) -> bool:
+        return bool(rec) and rec.get("mode") == CUSTOM and not rec.get("source_book")
+
+    on_editor = mode_req == CUSTOM or (mode_req == "auto" and (_editor_custom(current) or _editor_custom(pending)))
     recommendation: dict[str, Any] | None = None
+    trimmed = False
 
     if mode_req == STOCK:
         mode, name, reason = STOCK, book_req, f"explicit --{side[0]}-book stock:{book_req}"
-    elif mode_req == CUSTOM:
-        mode, name, reason = CUSTOM, None, f"explicit --{side[0]}-book custom"
-    elif cur_mode == CUSTOM or (pending or {}).get("mode") == CUSTOM:
-        mode, name, reason = CUSTOM, None, "staying on your custom book (formation ADD/REMOVE only — no rebuild churn)"
+    elif on_editor:
+        if mode_req == CUSTOM:
+            mode, name, reason = CUSTOM, None, f"explicit --{side[0]}-book custom"
+        else:
+            mode, name, reason = CUSTOM, None, "staying on your custom book (formation ADD/REMOVE only — no rebuild churn)"
     else:
         recommendation = recommend_book(side, current=current, research=research, team=team,
                                         start_book=start_book, lw=lw, preps_since_switch=preps_since_switch)
-        mode, name, reason = STOCK, recommendation["book"], recommendation["reason"]
+        mode, name = CUSTOM, recommendation["book"]
+        reason = (recommendation["reason"]
+                  + " Saved as your custom plan: these trimmed formations, not the full stock book.")
         if team and next((True for r in recommendation["rows"] if r["book"] == name and r["team"] == team), False):
             reason += " (matches primary team)"
+        trimmed = True
 
     rev = int((current or {}).get("rev") or 0)
     deltas: list[dict[str, Any]] = []
     checklist: list[dict[str, Any]] = []
     focus: dict[str, Any] | None = None
 
-    if mode == STOCK:
+    if trimmed:
+        cur_forms = list((current or {}).get("formations") or {}) if incumbent_book_name(current) == name else None
+        focus = select_focus(side, name, named=named, lw=lw, current=cur_forms)
+        new = make_trimmed_record(side, name, rev=rev, reason=reason, formations=focus["formations"],
+                                  named=named, lw=lw)
+        same = bool(current) and current.get("source_book") == name and current.get("mode") == CUSTOM
+        if not same:
+            new["rev"] = rev + 1
+            change = "custom_plan"
+            deltas.append(_book_delta(
+                "USE CUSTOM", name,
+                (f"{side.title()} custom plan → trimmed {name} "
+                 f"({len(new['formations'])} formations, every play in each). "
+                 "This is the book of record — nothing to build in the custom editor."),
+                side=side, why=reason, plays=list(new["formations"]),
+            ))
+        else:
+            before = set(current.get("formations") or {})
+            after = set(new["formations"])
+            for f in [x for x in new["formations"] if x not in before]:
+                deltas.append(_book_delta(
+                    "ADD", f, f"Add formation {f} to the custom plan (from {name}) → plays: {', '.join(new['formations'][f])}",
+                    side=side, why="playbook suggestion added it this prep", plays=new["formations"][f],
+                ))
+            for f in [x for x in current.get("formations") or {} if x not in after]:
+                deltas.append(_book_delta(
+                    "REMOVE", f, f"Remove formation {f} from the custom plan",
+                    side=side, why="playbook suggestion dropped it this prep",
+                    plays=list((current.get("formations") or {}).get(f) or []),
+                ))
+            change = "focus" if deltas else "none"
+            if deltas:
+                new["rev"] = rev + 1
+        mode = CUSTOM  # locks below via source_book
+    elif mode == STOCK:
         cur_forms = list((current or {}).get("formations") or {}) if (current or {}).get("name") == name else None
         focus = select_focus(side, name, named=named, lw=lw, current=cur_forms)
         new = make_record(side, STOCK, name, rev=rev, reason=reason, formations=focus["formations"],
@@ -601,7 +694,7 @@ def plan_side(
     else:
         new = make_record(side, CUSTOM, None, rev=rev, reason=reason, formations=desired_custom(side, opp),
                           named=named, lw=lw)
-        if cur_mode != CUSTOM:
+        if cur_mode != CUSTOM or (current or {}).get("source_book"):
             new["rev"] = rev + 1
             change = "switch" if current and current.get("rev", 0) > 0 else "first_custom"
             deltas.append(_book_delta(
@@ -628,10 +721,11 @@ def plan_side(
             if deltas:
                 new["rev"] = rev + 1
     new["formation_list"] = formation_list(side, new, current, focus=focus)
+    locks_now = trimmed or mode == STOCK or change == "none"
     return {
         "side": side,
         "record": new,
-        "status": "applied" if mode == STOCK or change == "none" else "pending",
+        "status": "applied" if locks_now else "pending",
         "change": change,
         "deltas": deltas,
         "checklist": checklist,
@@ -647,23 +741,28 @@ def formation_list(side: str, rec: dict[str, Any], current: dict[str, Any] | Non
     """Rows for the minimal prep page (CFB `render_formations_min` shape)."""
     from cfb_coach.madden import catalog
 
-    prev = set((current or {}).get("formations") or {}) if (current or {}).get("name") == rec.get("name") else set()
+    same_book = bool(current) and (
+        (current.get("source_book") or current.get("name")) == (rec.get("source_book") or rec.get("name"))
+    )
+    prev = set((current or {}).get("formations") or {}) if same_book else set()
     why = {r["formation"]: r.get("why") or "" for r in (focus or {}).get("chosen") or []}
     rows = []
+    src_name = rec.get("source_book") or (rec["name"] if rec["mode"] == STOCK else "")
     for f, ps in rec["formations"].items():
         st = "applied" if (not current or f in prev) else "new"
-        if rec["mode"] == CUSTOM and current and current.get("mode") == CUSTOM and f not in prev:
+        if rec["mode"] == CUSTOM and not rec.get("source_book") and current and current.get("mode") == CUSTOM and f not in prev:
             st = "new"
-        fam = catalog.formation_family(side, rec["name"], f) if rec["mode"] == STOCK else ""
+        fam = catalog.formation_family(side, src_name, f) if src_name else ""
+        source = src_name or (formation_books(side, f) or DEFAULT_STOCK[side])
         rows.append({"formation": f, "status": st, "n_plays": len(ps),
-                     "source_book": rec["name"] if rec["mode"] == STOCK else (formation_books(side, f) or DEFAULT_STOCK[side]),
+                     "source_book": source,
                      "note": "; ".join(x for x in (f"{fam} family" if fam and fam not in f.split()[0] else "", why.get(f, "")) if x)})
-    if current and current.get("name") == rec.get("name"):
+    if current and same_book:
         for f in current.get("formations") or {}:
             if f not in rec["formations"]:
                 rows.append({"formation": f, "status": "remove", "n_plays": len(current["formations"][f]),
-                             "source_book": rec["name"],
-                             "note": "dropped from the plan this prep" if rec["mode"] == STOCK else "remove from the custom book"})
+                             "source_book": src_name or rec.get("name"),
+                             "note": "dropped from the plan this prep" if rec.get("source_book") or rec["mode"] == STOCK else "remove from the custom book"})
     return rows
 
 
@@ -753,7 +852,7 @@ def lock_books(db: Any, plans: dict[str, dict[str, Any]], *, applied: bool = Fal
         if p.get("untouched"):
             continue
         rec = p["record"]
-        if rec["mode"] == STOCK or p["change"] == "none" or applied:
+        if rec["mode"] == STOCK or rec.get("source_book") or p["change"] == "none" or applied:
             state["applied"][side] = rec
             state["pending"].pop(side, None)
         else:

@@ -7,13 +7,13 @@ dispatches to cfb_coach.madden.cli (Madden 27 Franchise).
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from cfb_coach.db import CoachDB, resolve_db_path_from_env
 from cfb_coach.opponents import format_opponent_list, resolve_opponent
 from cfb_coach.playcaller import make_call
 from cfb_coach.situation import parse_situation, format_heard
-from cfb_coach.tendency import mild_bump_concept, mild_bump_coverage
 from cfb_coach.dynasty import (
     DEFAULT_DYNASTY,
     dynasty_config,
@@ -198,6 +198,8 @@ def cmd_macro_settings(args: argparse.Namespace) -> int:
 
 
 def cmd_prep(args: argparse.Namespace) -> int:
+    if getattr(args, "live_scout", False):
+        os.environ["CFB_COACH_LIVE_SCOUT"] = "1"
     handler = _madden_handler(args, "cmd_prep")
     if handler:
         return handler(args)
@@ -381,6 +383,9 @@ def cmd_call(args: argparse.Namespace) -> int:
         sit = parse_situation(args.situation, default_side=args.side or "offense")
         if args.side:
             sit.side = args.side
+        from cfb_coach.game_score import absorb_and_stamp, context_from_args
+
+        absorb_and_stamp(sit, context_from_args(args))
         from cfb_coach.dynasty import resolve_dynasty
 
         call = make_call(sit, oid, db, dynasty=resolve_dynasty(db, oid, getattr(args, "dynasty", None))[0])
@@ -429,6 +434,15 @@ def cmd_play(args: argparse.Namespace) -> int:
     print("  Aidan UX: type D&D (+ yl) + previous play/coverage name — no need to say 'last'.")
     print("  Examples: '1&10 my 35 mesh spot' | '2&7 deep flood' | '1&10 cover 2'")
     print("  Live look only with: showing / live / pre-snap / aligned (e.g. 'showing cover 2')")
+    print("  A play or result with no down (mesh, 4 verts, cover 2, +7, td, int) is the last snap, not a new call. undo removes it.")
+    print("  Score (optional, us-them): --score 21-14, or `score 21-14` / `score clear` mid-game.")
+    print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. Close early games stay neutral.")
+
+    from cfb_coach.game_score import absorb_and_stamp, context_from_args, interpret_live_command, sit_prompt
+
+    live_ctx = context_from_args(args)
+    if live_ctx.describe():
+        print(f"  Game situation: {live_ctx.describe()} (sticks until you update it)")
 
     # Overlay: default ON for interactive play; --no-overlay disables; --once skips browser
     no_overlay = bool(getattr(args, "no_overlay", False))
@@ -446,6 +460,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         # Non-interactive: still refresh overlay file if enabled, but do not auto-open
         default_side = "offense"
         sit = parse_situation(args.once, default_side=default_side)
+        absorb_and_stamp(sit, live_ctx)
         heard = format_heard(sit)
         print(heard)
         call = make_call(sit, oid, db, dynasty=dynasty)
@@ -492,6 +507,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             cpu_only=cpu_only,
             book_info=lambda: _book_live_info(db, dynasty),
             book_apply=lambda rev: _book_live_apply(db, dynasty, rev),
+            live_score=live_ctx.score,
+            quarter=live_ctx.quarter,
         )
         print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
         try:
@@ -524,6 +541,12 @@ def cmd_play(args: argparse.Namespace) -> int:
     # Previous-snap observations — mild context only, never auto hard-counter
     last_coverage: str | None = None
     last_concept: str | None = None
+    from cfb_coach.last_snap import LastSnapBook
+
+    snap_book = LastSnapBook(db, oid, parse_situation)
+    if live_ctx.score is not None:
+        snap_book.spot.score_us = live_ctx.score.us
+        snap_book.spot.score_them = live_ctx.score.them
 
     def _refresh_overlay(call_obj, sit_obj, heard: str = "") -> None:
         if overlay_path is None:
@@ -540,7 +563,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     try:
         while True:
             try:
-                raw = input(f"[{default_side[0].upper()}] sit> ").strip()
+                raw = input(sit_prompt(default_side, live_ctx)).strip()
             except EOFError:
                 print()
                 break
@@ -572,64 +595,45 @@ def cmd_play(args: argparse.Namespace) -> int:
             if low == "why" and last_call:
                 print(f"  ({last_call.rationale})")
                 continue
-            if low.startswith("result ") or low.startswith("log "):
-                if not last_call or not last_sit:
-                    print("  No call to log yet.")
-                    continue
-                result = raw.split(" ", 1)[1].strip()
-                # Optional inline coverage/concept in result: "result +4 cov c2 invert"
-                res_sit = parse_situation(result, default_side=last_sit.side)
-                cov_seen = res_sit.coverage_hint or last_sit.coverage_hint
-                concept_seen = res_sit.concept_hint or last_sit.concept_hint
+            if low in ("undo", "undo last"):
+                print(snap_book.undo())
+                if snap_book.spot.score_us is not None:
+                    from cfb_coach.game_score import GameScore
 
-                db.log_snap(
-                    opponent_id=oid,
-                    side=last_call.side,
-                    situation_raw=last_sit.raw,
-                    our_call=last_call.format().split("\n")[0],
-                    formation=last_call.formation,
-                    play=last_call.play,
-                    macro=last_call.adj_or_macro if last_call.side == "defense" else getattr(last_call, "macro", None),
-                    down=last_sit.down,
-                    distance=last_sit.distance,
-                    yardline=last_sit.yardline,
-                    result=result,
-                    coverage_seen=cov_seen,
-                    concept_seen=concept_seen,
-                )
-                success = any(
-                    w in result.lower()
-                    for w in ("td", "+", "good", "convert", "stop", "sack", "int")
-                )
-                # ONE tell = mild bump only (symmetric O/D)
-                if concept_seen and last_call.side == "defense":
-                    mild_bump_concept(
-                        db, oid, concept_seen, last_sit, success=success
-                    )
-                    last_concept = concept_seen
-                    print(
-                        f"  logged: {result} | mild bump concept={concept_seen} "
-                        "(no hard-counter next snap)"
-                    )
-                elif cov_seen and last_call.side == "offense":
-                    mild_bump_coverage(db, oid, cov_seen, last_sit)
-                    last_coverage = cov_seen
-                    print(
-                        f"  logged: {result} | mild bump coverage={cov_seen} "
-                        "(no hard-counter next snap)"
-                    )
-                else:
-                    print(f"  logged: {result}")
-                from cfb_coach.gameplan import format_pivot_hints
+                    live_ctx.score = GameScore(snap_book.spot.score_us, snap_book.spot.score_them or 0)
+                continue
+            score_msg = interpret_live_command(raw, live_ctx)
+            if score_msg is not None:
+                print(score_msg)
+                if live_ctx.score is not None:
+                    snap_book.spot.score_us = live_ctx.score.us
+                    snap_book.spot.score_them = live_ctx.score.them
+                continue
+            note_raw = raw.split(" ", 1)[1].strip() if low.startswith(("result ", "log ")) else raw
+            noted = snap_book.handle(note_raw)
+            if noted is not None:
+                print(noted)
+                if snap_book.concept and last_call and last_call.side == "defense":
+                    last_concept = snap_book.concept
+                if snap_book.coverage and last_call and last_call.side == "offense":
+                    last_coverage = snap_book.coverage
+                if snap_book.spot.score_us is not None:
+                    from cfb_coach.game_score import GameScore
 
-                tip = format_pivot_hints(db, oid)
-                if tip:
-                    for line in tip.splitlines()[1:]:
-                        if line.strip():
-                            print(f"  {line.strip()}")
+                    live_ctx.score = GameScore(snap_book.spot.score_us, snap_book.spot.score_them or 0)
+                if snap_book.wrote:
+                    from cfb_coach.gameplan import format_pivot_hints
+
+                    tip = format_pivot_hints(db, oid)
+                    if tip:
+                        for line in tip.splitlines()[1:]:
+                            if line.strip():
+                                print(f"  {line.strip()}")
                 continue
 
             sit = parse_situation(raw, default_side=default_side)
+            snap_book.stamp_situation(sit)
+            absorb_and_stamp(sit, live_ctx)
             heard = format_heard(sit)
             print(heard)
             # Pass previous-snap signals as last-only context (not hard-counters)
@@ -644,6 +648,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             print(call.format())
             _refresh_overlay(call, sit, heard)
             last_call, last_sit = call, sit
+            snap_book.remember_call(call, sit)
             # If this sit itself named a live/last coverage or concept, remember for NEXT snap
             if sit.coverage_hint and sit.side == "offense":
                 last_coverage = sit.coverage_hint
@@ -804,12 +809,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_prep.add_argument(
         "--offline",
         action="store_true",
-        help="Skip the live meta fetch (use last cache, else the seed research in meta_baseline.json)",
+        help="No network: use the last downloaded daily research (else the copy in this checkout / seed research)",
     )
     p_prep.add_argument(
         "--refresh-meta",
         action="store_true",
-        help="(Kept for compatibility) every prep now researches live; the cache is only a fallback when sources fail",
+        help="(Kept for compatibility) prep always loads the newest daily AI research",
+    )
+    p_prep.add_argument(
+        "--live-scout",
+        action="store_true",
+        help="Scrape the web during prep (old keyword scout) instead of using the daily AI research",
     )
     _add_game_args(p_prep)
     p_prep.add_argument(
@@ -817,14 +827,39 @@ def build_parser() -> argparse.ArgumentParser:
         dest="o_book",
         default=None,
         metavar="auto|custom|stock:NAME",
-        help="Madden only: offensive playbook of record (default auto; e.g. stock:Buccaneers, stock:'Shotgun Classic', custom)",
+        help="Madden only: offensive playbook of record (default auto = coach's trimmed custom plan; stock:NAME forces stock)",
     )
     p_prep.add_argument(
         "--d-book",
         dest="d_book",
         default=None,
         metavar="auto|custom|stock:NAME",
-        help="Madden only: defensive playbook of record (default auto → stock:49ers)",
+        help="Madden only: defensive playbook of record (default auto = trimmed custom plan, start 49ers)",
+    )
+    p_prep.add_argument(
+        "--opp-team",
+        default=None,
+        metavar="TEAM",
+        help='Madden only: opponent NFL team for this prep (saved on the persona), e.g. "Minnesota Vikings"',
+    )
+    p_prep.add_argument(
+        "--gameplan",
+        type=int,
+        default=8,
+        metavar="N",
+        help="Madden only: offense and defense call-package macros to build (default 8 each)",
+    )
+    p_prep.add_argument(
+        "--no-vod-prior",
+        dest="no_vod_prior",
+        action="store_true",
+        help="Ignore the trained VOD model for this prep (no call-quality prior, no playbook edits).",
+    )
+    p_prep.add_argument(
+        "--freeze-vod-book",
+        dest="freeze_vod_book",
+        action="store_true",
+        help="Use VOD call quality but do not add or swap plays in the book.",
     )
     p_prep.set_defaults(func=cmd_prep)
 
@@ -838,6 +873,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Non-interactive: one situation string, print one call, exit",
     )
     p_play.add_argument("--why", action="store_true", help="Show rationale")
+    p_play.add_argument(
+        "--score",
+        default=None,
+        metavar="US-THEM",
+        help="Current score, us-them (e.g. 21-14). Optional; persists for the session. "
+             "Update mid-game with `score 17-21` or `score clear`.",
+    )
+    p_play.add_argument(
+        "--quarter",
+        type=int,
+        choices=(1, 2, 3, 4, 5),
+        default=None,
+        help="Current quarter (5 = OT). Optional. Also `quarter 4` or `q4` on the sit line.",
+    )
     p_play.add_argument(
         "--dynasty",
         choices=("alabama", "ohio_state"),
@@ -862,6 +911,25 @@ def build_parser() -> argparse.ArgumentParser:
         dest="terminal",
         action="store_true",
         help="Classic terminal sit> loop instead of the HTML live window (default: HTML ON)",
+    )
+    p_play.add_argument(
+        "--no-macros",
+        dest="no_macros",
+        action="store_true",
+        help="Madden only: this session suggests no Custom Adjustment (the play call is unchanged). "
+             "config --game madden27 --no-macros keeps them off.",
+    )
+    p_play.add_argument(
+        "--no-vod-prior",
+        dest="no_vod_prior",
+        action="store_true",
+        help="This session ignores the trained VOD model (calls and the book stay on logged + meta signals).",
+    )
+    p_play.add_argument(
+        "--freeze-vod-book",
+        dest="freeze_vod_book",
+        action="store_true",
+        help="This session may use VOD to pick an in-book play, and will not edit the book.",
     )
     p_play.add_argument(
         "--html-port",
@@ -911,6 +979,37 @@ def build_parser() -> argparse.ArgumentParser:
     p_call.add_argument("--situation", "-s", required=True)
     p_call.add_argument("--side", choices=("offense", "defense"), default=None)
     p_call.add_argument("--why", action="store_true")
+    p_call.add_argument(
+        "--no-macros",
+        dest="no_macros",
+        action="store_true",
+        help="Madden only: suggest no Custom Adjustment on this call.",
+    )
+    p_call.add_argument(
+        "--no-vod-prior",
+        dest="no_vod_prior",
+        action="store_true",
+        help="Ignore the trained VOD model on this call.",
+    )
+    p_call.add_argument(
+        "--freeze-vod-book",
+        dest="freeze_vod_book",
+        action="store_true",
+        help="Allow an in-book VOD call and do not edit the book.",
+    )
+    p_call.add_argument(
+        "--score",
+        default=None,
+        metavar="US-THEM",
+        help="Current score, us-them (e.g. 21-14). Optional. Same flag for CFB and --game madden27.",
+    )
+    p_call.add_argument(
+        "--quarter",
+        type=int,
+        choices=(1, 2, 3, 4, 5),
+        default=None,
+        help="Current quarter (5 = OT). Optional; score stays neutral early and close without it.",
+    )
     _add_game_args(p_call, franchise=False)
     p_call.set_defaults(func=cmd_call)
 
@@ -950,6 +1049,28 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Default offense book for every prep (auto = research picks; start stock:Buccaneers)")
     p_cfg.add_argument("--d-book", dest="d_book", default=None, metavar="auto|custom|stock:NAME",
                        help="Default defense book for every prep (auto = research picks; start stock:49ers)")
+    p_cfg.add_argument("--no-macros", dest="no_macros", action="store_true",
+                       help="Turn live Custom Adjustment suggestions off until --macros")
+    p_cfg.add_argument("--macros", dest="macros", action="store_true",
+                       help="Turn live Custom Adjustment suggestions back on (still rare)")
+    p_cfg.add_argument("--experimental-macros", dest="experimental_macros", action="store_true",
+                       help="Let experimental macros (O-RPO, HEAT) into the primary list")
+    p_cfg.add_argument("--no-experimental-macros", dest="no_experimental_macros", action="store_true",
+                       help="Keep experimental macros out of the primary list")
+    p_cfg.add_argument("--swap-macro", dest="swap_macro", default=None, metavar="ID",
+                       help="Opt one experimental macro into the primary list, e.g. O-RPO")
+    p_cfg.add_argument("--unswap-macro", dest="unswap_macro", default=None, metavar="ID",
+                       help="Take one experimental macro back out of the primary list")
+    p_cfg.add_argument("--no-vod-prior", dest="no_vod_prior", action="store_true",
+                       help="Turn the VOD model prior off until --vod-prior (no book edits either)")
+    p_cfg.add_argument("--vod-prior", dest="vod_prior", action="store_true",
+                       help="Turn the VOD model prior back on")
+    p_cfg.add_argument("--freeze-vod-book", dest="freeze_vod_book", action="store_true",
+                       help="Keep VOD calls and stop playbook adds/swaps until --unfreeze-vod-book")
+    p_cfg.add_argument("--unfreeze-vod-book", dest="unfreeze_vod_book", action="store_true",
+                       help="Allow the VOD model to add or swap catalogued plays again")
+    p_cfg.add_argument("--vod-models", dest="vod_models", default=None, metavar="DIR",
+                       help="Directory of LAST_TRAINED.json and vX.Y/ (else CFB_COACH_VOD_MODELS)")
     p_cfg.set_defaults(func=cmd_config)
 
     p_ms = sub.add_parser(
@@ -1126,7 +1247,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    from cfb_coach.vod_model.flags import use_cli_flags
+
+    with use_cli_flags(
+        no_vod_prior=bool(getattr(args, "no_vod_prior", False)),
+        freeze_vod_book=bool(getattr(args, "freeze_vod_book", False)),
+    ):
+        return args.func(args)
 
 
 if __name__ == "__main__":

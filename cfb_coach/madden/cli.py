@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Any
 
 from cfb_coach.db import CoachDB
 from cfb_coach.games import GAMES, MADDEN27, madden_db_path
@@ -22,7 +21,6 @@ from cfb_coach.madden.franchise import (
 from cfb_coach.madden.playcaller import active_pivot, make_call
 from cfb_coach.madden.situation import format_heard, parse_madden_situation
 from cfb_coach.opponents import is_cpu_opponent, resolve_opponent
-from cfb_coach.tendency import mild_bump_concept, mild_bump_coverage
 
 PROFILE = GAMES[MADDEN27]
 
@@ -57,8 +55,7 @@ def _profile_header(pid: str) -> str:
 
 
 def _active_after_prep(db: CoachDB, oid: str, pid: str) -> dict[str, list[str]]:
-    """The defense 10 for live calls = what the last prep for this opponent picked, else a
-    no-live-research pick from the same ranking. Offense has no macros (adjustments)."""
+    """Custom Adjustments from the last prep. Without one, rank defense only (no offense book yet)."""
     from cfb_coach.madden.macro_select import select_loadout
     from cfb_coach.madden.macros import legacy_picks, load_selection
 
@@ -69,14 +66,18 @@ def _active_after_prep(db: CoachDB, oid: str, pid: str) -> dict[str, list[str]]:
     prof = db.get_opponent(oid) or {}
     pick = select_loadout(oid, db=db, archetype=prof.get("archetype") or "", offense_only=is_cpu_opponent(oid),
                           previous=legacy_picks(db, oid))
-    return {"offense": [], "defense": pick["defense"]}
+    return {"offense": list(pick["offense"]), "defense": list(pick["defense"])}
 
 
 def _active_line(active: dict[str, list[str]], cpu: bool) -> str:
     if cpu:
-        return "Active macros (from last prep): none — CPU = offense only; offense calls carry adjustments"
+        o = ", ".join(active.get("offense") or []) or "none"
+        return (f"Active macros (from last prep): O {len(active.get('offense') or [])}: {o} | "
+                "D off (CPU)")
+    o = ", ".join(active.get("offense") or []) or "none"
     d = ", ".join(active.get("defense") or []) or "none"
-    return f"Active macros (from last prep): D {len(active.get('defense') or [])}: {d} | offense: adjustments"
+    return (f"Active macros (from last prep): O {len(active.get('offense') or [])}: {o} | "
+            f"D {len(active.get('defense') or [])}: {d}")
 
 
 # ---------------------------------------------------------------------------
@@ -105,11 +106,49 @@ def cmd_opponents(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _session_live_macros(args: argparse.Namespace) -> bool:
+    """``--no-macros`` forces this session off. Otherwise the config decides."""
+    from cfb_coach.madden.macro_policy import resolve_live_macros
+
+    if getattr(args, "no_macros", False):
+        return False
+    return resolve_live_macros(None)
+
+
 def cmd_config(args: argparse.Namespace) -> int:
+    if getattr(args, "no_macros", False) and getattr(args, "macros", False):
+        raise SystemExit("Pass only one of --no-macros or --macros.")
+    if getattr(args, "experimental_macros", False) and getattr(args, "no_experimental_macros", False):
+        raise SystemExit("Pass only one of --experimental-macros or --no-experimental-macros.")
+    if getattr(args, "no_vod_prior", False) and getattr(args, "vod_prior", False):
+        raise SystemExit("Pass only one of --no-vod-prior or --vod-prior.")
+    if getattr(args, "freeze_vod_book", False) and getattr(args, "unfreeze_vod_book", False):
+        raise SystemExit("Pass only one of --freeze-vod-book or --unfreeze-vod-book.")
+    live_macros = None
+    if getattr(args, "no_macros", False):
+        live_macros = False
+    elif getattr(args, "macros", False):
+        live_macros = True
+    experimental = None
+    if getattr(args, "no_experimental_macros", False):
+        experimental = False
+    elif getattr(args, "experimental_macros", False):
+        experimental = True
+    vod_prior = None
+    if getattr(args, "no_vod_prior", False):
+        vod_prior = False
+    elif getattr(args, "vod_prior", False):
+        vod_prior = True
+    vod_freeze = None
+    if getattr(args, "freeze_vod_book", False):
+        vod_freeze = True
+    elif getattr(args, "unfreeze_vod_book", False):
+        vod_freeze = False
     changing = any(
         getattr(args, k, None)
-        for k in ("primary_team", "lab_team", "clear_primary", "clear_lab", "o_book", "d_book")
-    )
+        for k in ("primary_team", "lab_team", "clear_primary", "clear_lab", "o_book", "d_book",
+                  "swap_macro", "unswap_macro", "vod_models")
+    ) or live_macros is not None or experimental is not None or vod_prior is not None or vod_freeze is not None
     if changing:
         try:
             _, warnings = save_config(
@@ -119,6 +158,13 @@ def cmd_config(args: argparse.Namespace) -> int:
                 clear_lab=bool(args.clear_lab),
                 offense_book=getattr(args, "o_book", None),
                 defense_book=getattr(args, "d_book", None),
+                live_macros=live_macros,
+                experimental_macros=experimental,
+                swap_macro=getattr(args, "swap_macro", None),
+                unswap_macro=getattr(args, "unswap_macro", None),
+                vod_prior=vod_prior,
+                vod_freeze_book=vod_freeze,
+                vod_models_dir=getattr(args, "vod_models", None),
             )
         except ValueError as exc:
             raise SystemExit(str(exc)) from None
@@ -136,6 +182,27 @@ def cmd_config(args: argparse.Namespace) -> int:
         val = cfg.get(key) or "auto"
         note = (f" (research picks each prep; starts on stock {DEFAULT_START_BOOK[side]})" if val == "auto" else "")
         print(f"  {side} book: {val}{note}")
+    macros_on = bool(cfg.get("live_macros", True))
+    print("  live macros: " + ("on" if macros_on else "off")
+          + (" — play --game madden27 --no-macros turns off one session;"
+             " config --macros turns them back on" if not macros_on else
+             " — a matching look, repeated tendency, or red zone / clock / score; config --no-macros turns them off"))
+    exp_on = bool(cfg.get("experimental_macros"))
+    swaps = [str(x).upper() for x in (cfg.get("experimental_swaps") or [])]
+    exp_line = "on" if exp_on else "off"
+    if swaps:
+        exp_line += " — swapped in: " + ", ".join(swaps)
+    else:
+        exp_line += " — O-RPO and HEAT stay benched (config --swap-macro O-RPO, or --experimental-macros)"
+    print(f"  experimental macros: {exp_line}")
+    vod_on = cfg.get("vod_prior", True) is not False
+    frozen = bool(cfg.get("vod_freeze_book"))
+    models = cfg.get("vod_models_dir") or "(CFB_COACH_VOD_MODELS, or unset)"
+    print("  VOD prior: " + ("on" if vod_on else "off")
+          + (" — book frozen" if frozen and vod_on else "")
+          + ("" if vod_on else " — no call-quality prior and no playbook edits"))
+    print(f"  VOD models: {models}")
+    print("  VOD weights: quality 1.0 (CFB_COACH_VOD_QUALITY_WEIGHT), log nudge 0.25 (CFB_COACH_VOD_LOG_NUDGE)")
     if not cfg.get("primary_team"):
         print("  Set: config --game madden27 --primary-team \"Detroit Lions\"")
     return 0
@@ -197,6 +264,8 @@ def cmd_prep(args: argparse.Namespace) -> int:
                 oid, db=db, persist=True, profile=pid,
                 offline=args.offline, refresh_meta=args.refresh_meta,
                 o_book=args.o_book, d_book=args.d_book, apply_books=args.mark_applied,
+                opp_team=getattr(args, "opp_team", None),
+                n_gameplan=getattr(args, "gameplan", 8),
             )
             if args.mark_applied:
                 mark_applied(db, oid, plan["proposed_deltas"])
@@ -210,6 +279,8 @@ def cmd_prep(args: argparse.Namespace) -> int:
             mark=args.mark_applied, profile=pid,
             offline=args.offline, refresh_meta=args.refresh_meta,
             o_book=args.o_book, d_book=args.d_book,
+            opp_team=getattr(args, "opp_team", None),
+            n_gameplan=getattr(args, "gameplan", 8),
         )
         n = len(plan.get("shown_deltas") or [])
         print(f"Prep (Madden 27 Franchise) vs {plan['display_name']} → {path}")
@@ -221,8 +292,21 @@ def cmd_prep(args: argparse.Namespace) -> int:
                 print(f"  BUILD CUSTOM {side.upper()} BOOK — {len(bp['checklist'])} formations (see browser / playbook --game madden27)")
         print(_profile_header(pid))
         print(doctrine_line(profile_config(pid)["team"]))
+        sel = plan.get("macro_selection") or {}
         if plan["offense_only"]:
-            print("CPU opponent — OFFENSE-ONLY prep (no D macros).")
+            print(
+                f"Custom Adjustments: {len(sel.get('offense') or [])} offense "
+                "(CPU — defense off). Create & Share → Custom Adjustments, LB in game."
+            )
+        else:
+            print(
+                f"Custom Adjustments: {len(sel.get('offense') or [])} offense + "
+                f"{len(sel.get('defense') or [])} defense (Create & Share → Custom Adjustments, LB in game)."
+            )
+        for warning in plan.get("playbook_warnings") or []:
+            print(warning if str(warning).startswith("WARNING:") else f"WARNING: {warning}")
+        if plan["offense_only"]:
+            print("CPU opponent — offense macros only (no D calls, no D macros).")
         if args.mark_applied:
             print(f"Marked proposed deltas applied for {oid}.")
         elif n == 0:
@@ -249,10 +333,16 @@ def cmd_call(args: argparse.Namespace) -> int:
         sit = parse_madden_situation(args.situation, default_side=args.side or "offense")
         if args.side:
             sit.side = args.side
+        from cfb_coach.game_score import absorb_and_stamp, context_from_args
+
+        absorb_and_stamp(sit, context_from_args(args))
         from cfb_coach.madden.playbook import NoActivePlaybook
 
         try:
-            call = make_call(sit, oid, db, active_macros=_active_after_prep(db, oid, pid))
+            call = make_call(
+                sit, oid, db, active_macros=_active_after_prep(db, oid, pid),
+                live_macros=_session_live_macros(args),
+            )
         except NoActivePlaybook as exc:
             print(str(exc).replace("<opp>", oid), file=sys.stderr)
             return 2
@@ -339,29 +429,6 @@ def _write_overlay(path: Path | None, text: str, short: str) -> None:
     )
 
 
-def _log_result(db: CoachDB, oid: str, call: Any, sit: Any, result: str) -> tuple[str | None, str | None]:
-    res_sit = parse_madden_situation(result, default_side=sit.side)
-    cov = res_sit.coverage_hint or sit.coverage_hint
-    concept = res_sit.concept_hint or sit.concept_hint
-    db.log_snap(
-        opponent_id=oid, side=call.side, situation_raw=sit.raw,
-        our_call=call.format().split("\n")[0], formation=call.formation, play=call.play,
-        macro=call.macro, down=sit.down, distance=sit.distance, yardline=sit.yardline,
-        result=result, coverage_seen=cov, concept_seen=concept,
-    )
-    success = any(w in result.lower() for w in ("td", "+", "good", "convert", "stop", "sack", "int"))
-    if concept and call.side == "defense":
-        mild_bump_concept(db, oid, concept, sit, success=success)
-        print(f"  logged: {result} | mild bump concept={concept} (no hard-counter next snap)")
-        return None, concept
-    if cov and call.side == "offense":
-        mild_bump_coverage(db, oid, cov, sit)
-        print(f"  logged: {result} | mild bump coverage={cov} (no hard-counter next snap)")
-        return cov, None
-    print(f"  logged: {result}")
-    return None, None
-
-
 def cmd_play(args: argparse.Namespace) -> int:
     oid = _require_opponent(args.opponent)
     db = open_db()
@@ -396,12 +463,35 @@ def cmd_play(args: argparse.Namespace) -> int:
         print("User game — O + D. Prefix 'd ' for defense. Commands: side o|d | result <text> | why | quit")
     print("  Type D&D (+ yl) + previous play/coverage name, e.g. '2&7 my 35 stick wheel' | '1&10 cover 3 match'")
     print("  Live look only with: showing / live / pre-snap / aligned (e.g. 'showing cover 2 man')")
+    print("  A play or result with no down (mesh, 4 verts, cover 2, +7, td, int) is the last snap, not a new call. undo removes it.")
+    print("  Score (optional, us-them): --score 21-14, or `score 21-14` / `score clear` mid-game.")
+    print("  Quarter: --quarter 4, `quarter 4`, or `q4` on the sit line. Close early games stay neutral.")
+    macros_on = _session_live_macros(args)
+
+    def _active_now() -> dict:
+        """Re-read the stored macros so a book edit during this session is the next snap's list."""
+        from cfb_coach.madden.macros import load_selection
+
+        return load_selection(db, oid) or active
+
+    if macros_on:
+        print("  Live macros: on. A stored macro shows when its trigger matches (live look, repeated")
+        print("  tendency, red zone, two-minute, protecting a lead). --no-macros turns them off.")
+    else:
+        print("  Live macros: OFF. Plays still come out; no Custom Adjustment is suggested.")
+
+    from cfb_coach.game_score import absorb_and_stamp, context_from_args, interpret_live_command, sit_prompt
+
+    live_ctx = context_from_args(args)
+    if live_ctx.describe():
+        print(f"  Game situation: {live_ctx.describe()} (sticks until you update it)")
 
     if getattr(args, "once", None):
         sit = parse_madden_situation(args.once, default_side="offense")
+        absorb_and_stamp(sit, live_ctx)
         heard = format_heard(sit)
         print(heard)
-        call = make_call(sit, oid, db, active_macros=active)
+        call = make_call(sit, oid, db, active_macros=_active_now(), live_macros=macros_on)
         print(call.headline())
         print(call.format())
         if args.why:
@@ -418,7 +508,9 @@ def cmd_play(args: argparse.Namespace) -> int:
         from cfb_coach.madden.playbook import live_apply, live_book_info
 
         def _make(sit, **kwargs):
-            return make_call(sit, oid, db, active_macros=active, **kwargs)
+            kwargs.setdefault("live_macros", macros_on)
+            kwargs.setdefault("active_macros", _active_now())
+            return make_call(sit, oid, db, **kwargs)
 
         def _learn():
             from cfb_coach.madden.postgame import summary
@@ -438,6 +530,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             cpu_only=cpu,
             book_info=lambda: live_book_info(db, cpu=cpu, profile_label=profile_config(pid)["label"]),
             book_apply=lambda rev: live_apply(db, rev),
+            live_score=live_ctx.score,
+            quarter=live_ctx.quarter,
         )
         print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
         try:
@@ -463,10 +557,16 @@ def cmd_play(args: argparse.Namespace) -> int:
     last_call = last_sit = None
     last_cov: str | None = None
     last_concept: str | None = None
+    from cfb_coach.last_snap import LastSnapBook
+
+    snap_book = LastSnapBook(db, oid, parse_madden_situation)
+    if live_ctx.score is not None:
+        snap_book.spot.score_us = live_ctx.score.us
+        snap_book.spot.score_them = live_ctx.score.them
     try:
         while True:
             try:
-                raw = input(f"[{side[0].upper()}] sit> ").strip()
+                raw = input(sit_prompt(side, live_ctx)).strip()
             except EOFError:
                 print()
                 break
@@ -489,24 +589,46 @@ def cmd_play(args: argparse.Namespace) -> int:
             if low == "why" and last_call:
                 print(f"  ({last_call.rationale})")
                 continue
-            if low.startswith(("result ", "log ")):
-                if not last_call:
-                    print("  No call to log yet.")
-                    continue
-                cov, concept = _log_result(db, oid, last_call, last_sit, raw.split(" ", 1)[1].strip())
-                last_cov = cov or last_cov
-                last_concept = concept or last_concept
-                for s in ("offense", "defense"):
-                    tip = active_pivot(db, oid, s)
-                    if tip and (s == "offense" or not cpu):
-                        print(f"  {tip}")
+            if low in ("undo", "undo last"):
+                print(snap_book.undo())
+                if snap_book.spot.score_us is not None:
+                    from cfb_coach.game_score import GameScore
+
+                    live_ctx.score = GameScore(snap_book.spot.score_us, snap_book.spot.score_them or 0)
+                continue
+            score_msg = interpret_live_command(raw, live_ctx)
+            if score_msg is not None:
+                print(score_msg)
+                if live_ctx.score is not None:
+                    snap_book.spot.score_us = live_ctx.score.us
+                    snap_book.spot.score_them = live_ctx.score.them
+                continue
+            note_raw = raw.split(" ", 1)[1].strip() if low.startswith(("result ", "log ")) else raw
+            noted = snap_book.handle(note_raw)
+            if noted is not None:
+                print(noted)
+                if snap_book.concept and last_call and last_call.side == "defense":
+                    last_concept = snap_book.concept
+                if snap_book.coverage and last_call and last_call.side == "offense":
+                    last_cov = snap_book.coverage
+                if snap_book.spot.score_us is not None:
+                    from cfb_coach.game_score import GameScore
+
+                    live_ctx.score = GameScore(snap_book.spot.score_us, snap_book.spot.score_them or 0)
+                if snap_book.wrote:
+                    for s in ("offense", "defense"):
+                        tip = active_pivot(db, oid, s)
+                        if tip and (s == "offense" or not cpu):
+                            print(f"  {tip}")
                 continue
 
             sit = parse_madden_situation(raw, default_side=side)
+            snap_book.stamp_situation(sit)
+            absorb_and_stamp(sit, live_ctx)
             heard = format_heard(sit)
             print(heard)
             call = make_call(
-                sit, oid, db, active_macros=active,
+                sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )
@@ -514,6 +636,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             print(call.format())
             _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
             last_call, last_sit = call, sit
+            snap_book.remember_call(call, sit)
             if sit.coverage_hint and sit.side == "offense":
                 last_cov = sit.coverage_hint
             if sit.concept_hint and sit.side == "defense":

@@ -87,6 +87,11 @@ def _render_playbook(plan: dict[str, Any]) -> str:
                 f"install exactly these {len(bp['checklist'])} formations "
                 "(Create &amp; Share → custom playbook)<ol>" + items + "</ol></div>"
             )
+        elif rec.get("source_book"):
+            head = (
+                f"<div class='banner ok'>Custom plan — trimmed from the in-game <b>{_esc(rec.get('source_book'))}</b> "
+                f"{side} book. These formations are the book of record. Nothing to build in the custom editor.</div>"
+            )
         elif change == "stock_select":
             head = (
                 f"<div class='banner ok'>Use the in-game stock book <b>{_esc(rec.get('name'))}</b>"
@@ -157,21 +162,68 @@ def _book_pick_line(plan: dict[str, Any], side: str) -> str:
     for r in rows:
         if r.get("book") == rec.get("name") and r.get("team"):
             team = f" ({r['team']} book)"
-    stock = rec.get("mode") == "stock"
-    how = (f"In game: select the <b>{_esc(rec.get('name'))}</b> {side} playbook{_esc(team)} — nothing to build."
-           if stock else "Build the custom book with the formations below.")
+    if rec.get("source_book"):
+        how = (f"Custom plan trimmed from the <b>{_esc(rec.get('source_book'))}</b> {side} book{_esc(team)}. "
+               "Custom Adjustments pair only with these formations.")
+    elif rec.get("mode") == "stock":
+        how = f"In game: select the <b>{_esc(rec.get('name'))}</b> {side} playbook{_esc(team)} — nothing to build."
+    else:
+        how = "Build the custom book with the formations below."
     return (f"<div class='rline'><b>{side.title()} book: {_esc(rec.get('name'))}</b> — {how}"
             f"<div class='muted'>{_esc(bp.get('reason') or '')}</div></div>")
 
 
+def _render_vod(plan: dict[str, Any]) -> str:
+    from cfb_coach.vod_model.report import render_vod_html
+
+    return render_vod_html(plan)
+
+
+def _render_gameplan(plan: dict[str, Any]) -> str:
+    """Call sheet (plays). Not Custom Adjustments — kept off the prep headline."""
+    gp = plan.get("gameplan") or {}
+    warns = "".join(
+        f"<div class='banner fail'><strong>Playbook warning.</strong> {_esc(w)}</div>"
+        for w in (plan.get("playbook_warnings") or [])
+    )
+
+    def side_html(title: str, macros: list[dict[str, Any]]) -> str:
+        if not macros:
+            empty = "N/A — offense only (CPU)" if title == "Defense" and gp.get("offense_only") else "none"
+            return f"<h3>{_esc(title)}</h3><div class='empty'>{empty}</div>"
+        rows = []
+        for i, m in enumerate(macros, 1):
+            rows.append(
+                "<article class='gp'>"
+                f"<h4>{i}. {_esc(m.get('label'))} <span class='muted'>{_esc(m.get('id'))}</span></h4>"
+                f"<div class='call'><b>CALL:</b> {_esc(m.get('play'))} ({_esc(m.get('formation'))})</div>"
+                f"<div><b>When:</b> {_esc(m.get('when'))} {_esc(m.get('score_situation') or '')}</div>"
+                f"<div><b>Pre-snap:</b> {_esc(m.get('adjustments'))}</div>"
+                f"<div><b>Read:</b> {_esc(m.get('read'))}</div>"
+                f"<div><b>Counter:</b> {_esc(m.get('counter'))}</div>"
+                + (f"<div class='muted'>{_esc(m.get('why'))}</div>" if m.get("why") else "")
+                + "</article>"
+            )
+        return f"<h3>{_esc(title)} ({len(macros)})</h3>" + "".join(rows)
+
+    note = _esc(gp.get("opponent_note") or "")
+    return (
+        f"<section id='gameplan'><h2>Call sheet — plays, not Custom Adjustments</h2>"
+        f"<div class='why'>These are formation + play calls from the trimmed book. "
+        f"They are not macros. Macros are the Custom Adjustments at the top of the prep page. {note}</div>"
+        f"{warns}{side_html('Offense calls', list(gp.get('offense') or []))}"
+        f"{side_html('Defense calls', list(gp.get('defense') or []))}</section>"
+    )
+
+
 def _render_offense_adjustments(plan: dict[str, Any]) -> str:
-    """Offense uses no macros (v1.17): the researched pre-snap adjustments, each with its buttons."""
+    """Cited one-off adjustments used only when no offense Custom Adjustment matches the look."""
     rows = "".join(
         f"<tr><td>{_esc(a['vs'])}</td><td><b>{_esc(a['label'])}</b><div class='muted'>{_esc(a['why'])}</div></td>"
         f"<td><code>{_esc(a['buttons'])}</code></td></tr>"
         for a in plan.get("offense_adjustments") or [])
-    return ("<section id='offense-adjustments'><h2>Offense adjustments (no macros)</h2>"
-            "<div class='why'>Called live only when a live or repeated look calls for it — "
+    return ("<section id='offense-adjustments'><h2>Pre-snap adjustments (not macros)</h2>"
+            "<div class='why'>Used live only when no Custom Adjustment matches the look — "
             "the call line says <code>ADJ: … — press …</code>.</div>"
             f"<table class='ca-set'><tr><th>vs look</th><th>Adjustment</th><th>Buttons (Xbox)</th></tr>{rows}</table></section>")
 
@@ -187,46 +239,60 @@ def _render_controls(plan: dict[str, Any]) -> str:
 
 
 def _render_macro_groups(plan: dict[str, Any], *, details: bool = False) -> str:
-    """v1.17: the Defense (10) macros in prep rank order. Every row expands to EVERY editor field
-    (researched value + source, else Default) and the button to fire it; then one copy checklist."""
+    """8 offense + 8 defense Custom Adjustments. Each card is the editor settings and LB."""
     offense_only = bool(plan.get("offense_only"))
-    cards = [c for c in plan.get("macro_cards") or [] if c.get("side") == "defense"]
-    if offense_only:
-        return '<div class="empty">Defense macros: <b>N/A — offense only</b> (CPU coaching)</div>'
-    items = "".join(
-        _render_ingame_card(c, "copy-d-" + "".join(ch if ch.isalnum() else "-" for ch in str(c.get("id"))),
-                            details=details)
-        for c in cards)
+    blocks = []
+    for side, title in (("offense", "Offense"), ("defense", "Defense")):
+        cards = [c for c in plan.get("macro_cards") or [] if c.get("side") == side]
+        if not cards and offense_only and side == "defense":
+            items = "<div class='empty'>N/A — defense off (CPU)</div>"
+        else:
+            items = "".join(
+                _render_ingame_card(c, f"copy-{side[0]}-" + "".join(ch if ch.isalnum() else "-" for ch in str(c.get("id"))),
+                                    details=details)
+                for c in cards) or "<div class=empty>none</div>"
+        blocks.append(f"<h3 class='macro-group' id='macros-{side}'>{title} ({len(cards)})</h3>"
+                      f"<div class='macro-list'>{items}</div>")
+    n_o = len([c for c in plan.get("macro_cards") or [] if c.get("side") == "offense"])
+    n_d = len([c for c in plan.get("macro_cards") or [] if c.get("side") == "defense"])
     checklist = (
-        "<div class='copy-wrap'><div class='copy-head'><h4>Copy checklist — defense "
-        f"{len(cards)}</h4><button type='button' class='copy-btn' data-target='copy-all-macros'>Copy</button></div>"
+        f"<div class='copy-wrap'><div class='copy-head'><h4>Copy checklist — {n_o} offense + {n_d} defense</h4>"
+        "<button type='button' class='copy-btn' data-target='copy-all-macros'>Copy</button></div>"
         f"<pre id='copy-all-macros' class='copy-block'>{_esc(plan.get('copy_checklist') or '')}</pre></div>")
     meter = _esc((plan.get("loadout") or {}).get("meter") or "")
-    return (f"<div class='meter ok'><span class='meter-label'>Macros per opponent</span>"
+    return (f"<div class='meter ok'><span class='meter-label'>Custom Adjustments</span>"
             f"<span class='meter-value'>{meter}</span>"
-            "<span class='meter-note'>settings research-built (cited) · fields no source names = Default</span></div>"
-            f"<h3 class='macro-group' id='macros-defense'>Defense ({len(cards)})</h3>"
-            f"<div class='macro-list'>{items or '<div class=empty>none</div>'}</div>" + checklist)
+            "<span class='meter-note'>LB in game · unnamed fields = Default · cited value or Aidan's notes only</span></div>"
+            + "".join(blocks) + checklist)
 
 
 def render_prep_html(plan: dict[str, Any]) -> str:
-    """Minimal prep page (CFB parity): O formations + audibles, D formations, the 10 offense +
-    10 defense macros with your exact settings. Everything else is on the details page."""
+    """Prep page headline is the 8+8 Custom Adjustments. Play calls stay on the details page."""
     oid = _esc(plan.get("opponent_id"))
     offense_only = bool(plan.get("offense_only"))
     scout = plan.get("meta_scout") or {}
     det = plan.get("details_path") or str(details_path(plan.get("opponent_id") or ""))
     o = _min_book(plan, "offense")
-    parts = [research_fail_banner(scout), _book_pick_line(plan, "offense"), render_formations_min(o),
-             render_audibles_min(o)]
-    if not offense_only:
-        d = _min_book(plan, "defense")
-        parts += [_book_pick_line(plan, "defense"), render_formations_min(d)]
+    from cfb_coach.scouting import opponent_study_html
+
     rstat = plan.get("research_db") or {}
     miss_html = (f"<div class='banner {'fail' if rstat.get('stale') else 'info'}'>{_esc(rstat.get('line') or '')}</div>"
                  if rstat else "")
-    head = "Defense macros — N/A (CPU, offense only)" if offense_only else "Defense macros (10)"
-    parts.insert(4, _render_offense_adjustments(plan))  # right after the offense audibles
+    sel = plan.get("macro_selection") or {}
+    if offense_only:
+        head = (f"Custom Adjustments — {len(sel.get('offense') or [])} offense "
+                "(CPU — defense off)")
+    else:
+        head = (f"Custom Adjustments — {len(sel.get('offense') or [])} offense + "
+                f"{len(sel.get('defense') or [])} defense")
+    macro_section = (f"<section id='macros'><h2>{head}</h2>{miss_html}{_render_macro_groups(plan)}</section>")
+    parts = [research_fail_banner(scout), macro_section,
+             opponent_study_html(plan.get("scouting_lines") or [], plan.get("opponent_research") or []),
+             _book_pick_line(plan, "offense"), render_formations_min(o), render_audibles_min(o),
+             _render_offense_adjustments(plan)]
+    if not offense_only:
+        d = _min_book(plan, "defense")
+        parts += [_book_pick_line(plan, "defense"), render_formations_min(d)]
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -244,14 +310,9 @@ def render_prep_html(plan: dict[str, Any]) -> str:
       <div class="rline">{_esc(research_status_line(scout))} · <a href="file:///{_esc(str(det).lstrip('/'))}">details</a></div>
     </header>
     {"".join(parts)}
-    <section id="macros">
-      <h2>{head}</h2>
-      {miss_html}
-      {_render_macro_groups(plan)}
-    </section>
-    <footer>Live: <code>play --game madden27 -o {oid}</code> — calls come only from these formations
-      (offense: PLAY: X + ADJ: Y with buttons; defense: PLAY: X + MACRO: Y from the defense 10, or an ADJ).
-      Details: {_esc(str(det))}</footer>
+    <footer>Live: <code>play --game madden27 -o {oid}</code> — calls come only from these formations.
+      A Custom Adjustment is <code>MACRO: name — press LB → name</code>. A one-off hot route or
+      protection is <code>ADJ:</code>, and only when no macro matches. Details: {_esc(str(det))}</footer>
   </div>
   <script>{_COPY_JS}</script>
 </body>
@@ -326,9 +387,9 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
     patch_lis = "".join(f"<li>{_esc(p)}</li>" for p in plan.get("patch_notes") or [])
     tip_lis = "".join(f"<li>{_esc(t)}</li>" for t in plan.get("tips") or [])
     loadout_h = (
-        "Offense adjustments (CPU — no macros)"
+        "Custom Adjustments — 8 offense (CPU — defense off) · click to expand · Copy recipe"
         if offense_only
-        else "Defense macros (10) — click to expand · every field + source · Copy recipe"
+        else "Custom Adjustments — 8 offense + 8 defense · click to expand · Copy recipe"
     )
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -367,6 +428,8 @@ def render_prep_details_html(plan: dict[str, Any]) -> str:
     </section>
 
     {_render_playbook(plan)}
+    {_render_vod(plan)}
+    {_render_gameplan(plan)}
 
     {_render_swap_banners(plan.get("swap_banners") or [])}
 
@@ -436,13 +499,15 @@ def generate_and_open(
     refresh_meta: bool = False,
     o_book: str | None = None,
     d_book: str | None = None,
+    opp_team: str | None = None,
+    n_gameplan: int = 8,
 ) -> tuple[Path, dict[str, Any]]:
     from cfb_coach.madden.prep import build_prep_plan, mark_applied
 
     plan = build_prep_plan(
         opponent_id, db=db, persist=persist, profile=profile,
         offline=offline, refresh_meta=refresh_meta, o_book=o_book, d_book=d_book,
-        apply_books=mark,
+        apply_books=mark, opp_team=opp_team, n_gameplan=n_gameplan,
     )
     if mark and db is not None:
         mark_applied(db, opponent_id, plan["proposed_deltas"])

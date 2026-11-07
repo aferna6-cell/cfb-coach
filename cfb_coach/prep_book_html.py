@@ -196,6 +196,11 @@ def research_status_line(scout: dict[str, Any] | None) -> str:
     n_ok = sum(1 for s in (scout.get("sources") or []) if s.get("fetched"))
     yt = (scout.get("youtube") or {}).get("transcripts", 0)
     when = _local_hm(scout.get("fetched_at") or "")
+    if scout.get("mode") == "ai":
+        age = scout.get("fallback_age_hours")
+        age_txt = f" ({age:.0f}h old)" if isinstance(age, (int, float)) else ""
+        stale = " — STALE, check the daily research automation" if scout.get("research_status") == "ai-stale" else ""
+        return f"Daily AI research {when}{age_txt} · {len(scout.get('headlines') or [])} findings · {n_ok} sources{stale}"
     if research_failed(scout):
         age = scout.get("fallback_age_hours")
         age_txt = f", cache {age:.0f}h old" if isinstance(age, (int, float)) else ""
@@ -206,6 +211,8 @@ def research_status_line(scout: dict[str, Any] | None) -> str:
 
 def research_fail_banner(scout: dict[str, Any] | None) -> str:
     scout = scout or {}
+    if scout.get("research_status") == "ai-stale":
+        return f'<div class="banner pend">⚠️ The daily AI research is stale. {_esc(scout.get("message") or "")}</div>'
     if not research_failed(scout):
         return ""
     age = scout.get("fallback_age_hours")
@@ -303,6 +310,8 @@ def render_research(scout: dict[str, Any] | None) -> str:
                   f'playbook decisions below are based on older information. {_esc(scout.get("message") or "")}</div>')
     elif status == "partial":
         banner = f'<div class="banner pend">Live research partially succeeded — {_esc(scout.get("message") or "")}</div>'
+    elif mode == "ai":
+        banner = f'<div class="banner {"pend" if status == "ai-stale" else "ok"}">{_esc(scout.get("message") or "")}</div>'
     yt = scout.get("youtube") or {}
     vids = "".join(
         f"<tr><td class='muted'>{_esc((v.get('published') or '')[:10])}{'' if v.get('published_exact') else '~'}</td>"

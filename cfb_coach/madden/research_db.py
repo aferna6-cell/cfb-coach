@@ -1,10 +1,11 @@
-"""Madden 27 research DB (v1.18) — what the daily research routine found, pulled by every prep.
+"""Madden 27 research DB (v1.18) — what the research routine found, pulled by every prep.
 
-A scheduled Claude Code routine researches the current Madden 27 meta each day (web + YouTube
-transcripts): defense macros with settings, offense / defense pre-snap adjustments, the Xbox
-buttons for each, and playbook notes. It writes ``data/madden27/research_db.json`` on the
-``madden-research-db`` branch. Every prep pulls the newest copy (``git fetch`` that branch),
-falls back to the last pulled copy in the data dir, then to the packaged seed in this repo.
+A scheduled research run writes ``data/madden27/research_db.json`` on the
+``madden-research-db`` branch and, when that lands on main, into this repo.
+Every prep (not ``--offline``) compares four copies and keeps the newest ``updated``
+timestamp: that branch, GitHub main, the last copy in the data dir, and the packaged
+seed. The winner is cached, so the next prep and the live calls in this process use it
+without a manual copy. A DB older than 48 h is marked stale; it is still used.
 
 Defense macro settings are research-built: every field of the Custom Adjustments editor
 (``editor_fields.json`` = the field list from Aidan's CFB sheets, same editor) gets the value a
@@ -15,15 +16,20 @@ from __future__ import annotations
 
 import json
 import subprocess
+import urllib.request
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 DB_BRANCH = "madden-research-db"
 DB_REL_PATH = "cfb_coach/data/madden27/research_db.json"
+GITHUB_DB_URL = (
+    "https://raw.githubusercontent.com/aferna6-cell/cfb-coach/main/" + DB_REL_PATH
+)
 CACHE_FILENAME = "madden27_research_db.json"
 STALE_HOURS = 48
+_GITHUB_TIMEOUT = 4.0
 FAMILIES_D = ("vert", "flood", "cross", "stack", "scram", "run", "rpo", "screen", "pressure", "red_zone", "prevent")
 LOOKS_O = ("man", "pressure", "two_high", "cover2", "single_high")
 CONTROL_CONFIDENCE = ("confirmed", "single-source", "conflict")
@@ -69,27 +75,69 @@ def _read(path: Path) -> dict[str, Any] | None:
         return None
 
 
-def load(*, pull: bool = False) -> dict[str, Any]:
-    """The research DB. ``pull=True`` (prep) fetches the routine's newest copy first."""
+def _http_get(url: str, timeout: float) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": "cfb-coach prep", "Cache-Control": "no-cache"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — fixed https URL
+        return resp.read().decode("utf-8")
+
+
+def _github_db(timeout: float = _GITHUB_TIMEOUT, fetch: Callable[[str, float], str] | None = None) -> dict[str, Any] | None:
+    """research_db.json on GitHub main, or None when the fetch fails."""
+    try:
+        return json.loads((fetch or _http_get)(GITHUB_DB_URL, timeout))
+    except Exception:  # noqa: BLE001 — a failed fetch falls back to cache and the packaged seed
+        return None
+
+
+def _updated(db: dict[str, Any]) -> datetime:
+    try:
+        dt = datetime.fromisoformat(str(db.get("updated") or "").replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _usable(db: dict[str, Any] | None) -> bool:
+    return isinstance(db, dict) and not validate(db)
+
+
+def _write_cache(db: dict[str, Any]) -> None:
+    try:
+        _cache_path().parent.mkdir(parents=True, exist_ok=True)
+        _cache_path().write_text(json.dumps(db, indent=1, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def load(*, pull: bool = False, fetch: Callable[[str, float], str] | None = None) -> dict[str, Any]:
+    """The research DB.
+
+    ``pull=True`` (every prep that is not ``--offline``) fetches the research branch
+    and GitHub main, then keeps the newest ``updated`` timestamp among those, the
+    last cached copy, and the packaged seed. The winner is written to the cache.
+    ``pull=False`` (live calls) compares the cache and the packaged seed only.
+    """
     if pull or "db" not in _STATE:
-        db, origin = None, ""
+        # Higher rank wins a timestamp tie: GitHub main, then the research branch,
+        # then the cache, then the file shipped in this checkout.
+        candidates: list[tuple[datetime, int, str, dict[str, Any]]] = []
+
+        def add(db: dict[str, Any] | None, rank: int, origin: str) -> None:
+            if _usable(db):
+                candidates.append((_updated(db), rank, origin, db))  # type: ignore[arg-type]
+
         if pull:
-            db = _git_pull_db()
-            if db is not None and not validate(db):
-                try:
-                    _cache_path().parent.mkdir(parents=True, exist_ok=True)
-                    _cache_path().write_text(json.dumps(db, indent=1, ensure_ascii=False), encoding="utf-8")
-                except OSError:
-                    pass
-                origin = f"pulled origin/{DB_BRANCH}"
-            else:
-                db = None
-        if db is None:
-            cached = _read(_cache_path())
-            if cached is not None and not validate(cached):
-                db, origin = cached, "last pulled copy"
-        if db is None:
-            db, origin = _read(_packaged_path()) or {"defense_macros": []}, "packaged seed (repo)"
+            add(_git_pull_db(), 2, f"pulled origin/{DB_BRANCH}")
+            add(_github_db(fetch=fetch), 3, "GitHub main")
+        add(_read(_cache_path()), 1, "last pulled copy")
+        packaged = _read(_packaged_path()) or {"defense_macros": []}
+        add(packaged, 0, "packaged seed (repo)")
+        if not candidates:
+            db, origin = packaged, "packaged seed (repo)"
+        else:
+            _ts, _rank, origin, db = max(candidates, key=lambda c: (c[0], c[1]))
+        if pull:
+            _write_cache(db)
         _STATE.update(db=db, origin=origin)
     return _STATE["db"]
 

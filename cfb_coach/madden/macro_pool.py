@@ -1,8 +1,8 @@
-"""Madden 27 macro pool (v1.17): the DEFENSE macros in the research DB.
+"""Madden 27 defense macro pool: the research-DB Custom Adjustments.
 
-Offense uses no macros — offense calls carry pre-snap adjustments (audibles, hot routes,
-protection) instead (``madden/adjustments.py``). Defense macros come from the daily research
-routine (``madden/research_db.py``), each with research-built settings for every editor field.
+Offense Custom Adjustments are Aidan's confirmed notes (``madden/offense_macros.py``),
+not this pool. Defense settings are research-built: every editor field is a cited value
+or Default.
 """
 
 from __future__ import annotations

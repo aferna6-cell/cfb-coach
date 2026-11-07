@@ -558,6 +558,9 @@ def _book_menu(
             b += SIT_BONUS if not run else -0.20
         if getattr(sit, "two_minute", False):
             b += 0.08 if not run else -0.05
+        from cfb_coach.game_score import offense_score_bonus
+
+        b += offense_score_bonus(sit, p, run=run, deep=deep)
         if b:
             bonus[(f, p)] = round(b, 3)
     return pool, bonus
@@ -572,6 +575,43 @@ def _is_deep(play: str) -> bool:
     import re
 
     return bool(re.search(r"vert|flood|dagger|shot|deep|post wheel|corner post|double post|dbl post|seam|go\b", play or "", re.I))
+
+
+def _trail_explosive_menu(
+    sit: Situation, menu: list[tuple[str, str]], pb: dict
+) -> list[tuple[str, str]]:
+    """No custom book: a late deficit adds shot plays to the menu. The ranker still
+    weighs them against the situational calls, and goal-line / short / long downs stay put."""
+    from cfb_coach.game_score import classify
+
+    ctx = classify(sit)
+    if ctx is None or ctx.phase != "trail" or ctx.strength < 0.7:
+        return menu
+    if sit.goal_line or sit.short_yardage or sit.long_yardage or sit.red_zone:
+        return menu
+    have = set(menu)
+    out = list(menu)
+    for fp in ((_BUNCH, "Deep Flood"), (_BUNCH, "Verticals"), (_CLUSTER, "Mesh Post")):
+        fp = _validate_play(fp[0], fp[1], pb)
+        if fp not in have:
+            out.append(fp)
+            have.add(fp)
+    return out
+
+
+def _score_only_bonus(
+    sit: Situation, menu: list[tuple[str, str]]
+) -> dict[tuple[str, str], float] | None:
+    """Score lean when there is no custom book (the book path adds it inside `_book_menu`)."""
+    from cfb_coach.cfb_catalog import is_run
+    from cfb_coach.game_score import offense_score_bonus
+
+    bonus: dict[tuple[str, str], float] = {}
+    for form, play in menu:
+        b = offense_score_bonus(sit, play, run=is_run(play), deep=_is_deep(play))
+        if b:
+            bonus[(form, play)] = b
+    return bonus or None
 
 
 def _demote_rows(rows: list[dict[str, Any]], book: dict[str, Any]) -> list[dict[str, Any]]:
@@ -624,13 +664,21 @@ def _pick_offense_inner(
         menu, bonus = _book_menu(sit, menu, book)
     else:
         menu = [_validate_play(f, p, pb) for f, p in menu]
+        menu = _trail_explosive_menu(sit, menu, pb)
+        bonus = _score_only_bonus(sit, menu)
     ranker = _Ranker(db, _opp_id(opp))
     rows = ranker.rank(sit, menu, bonus=bonus)
     if book:
         rows = _demote_rows(rows, book)
+    from cfb_coach import ingame
+
+    bench = ingame.bench_for_situation(db, sit, "offense")
+    rows = ingame.drop_benched(rows, bench)
     pick = _sample(rows, rng)
     form, play = pick["formation"], pick["play"]
     rationale = f"{rationale} | {_rank_note(sit, pick, rows)}"
+    if bench.benched:
+        rationale += f" | {bench.note()}"
     form, play, adj, rationale, _ = _soft_coverage_lean(
         form, play, adj, rationale, sit, opp, db, rng
     )
@@ -991,6 +1039,16 @@ def _macro_for_family(family: str | None) -> str:
     }.get(family or "", "targeted macro")
 
 
+_D_CHANGEUPS = [
+    ("Nickel Over", "Cover 3 Sky"),
+    ("Nickel Over", "Cover 4 Quarters"),
+    ("Nickel Over", "Tampa 2"),
+    ("Dime Normal", "Cover 4 Quarters"),
+    ("Nickel Double Mug", "Mid Blitz 0"),
+    ("4-3 Even 6-1", "Cover 3 Buzz"),
+]
+
+
 def _pick_defense(
     sit: Situation,
     opp: dict[str, Any],
@@ -1016,13 +1074,26 @@ def _pick_defense(
         macro = "none"
         rationale += " | low-confidence opponent — strip macro"
 
+    from cfb_coach import ingame
+
+    bench = ingame.bench_for_situation(db, sit, "defense")
+    if bench.is_benched(form, play):
+        alts = [fp for fp in _D_CHANGEUPS if fp[1] != play and not bench.is_benched(*fp)]
+        if alts:
+            form, play = rng.choice(alts)
+            macro = "none"
+            user = _USER_FOR_PLAY.get(play, "User hook")
+            rationale = f"{bench.note()} → {form}/{play} | {rationale}"
+
     # Mid-game PIVOT: last 3 D snaps failed → reset to Nickel Over base, clear chase macros
     if db is not None:
         try:
             from cfb_coach.gameplan import active_pivot
 
             tip = active_pivot(db, _opp_id(opp), "defense")
-            if tip:
+            if tip and macro and macro not in ("none", ""):
+                rationale = f"{tip.message} — keep {macro} (repeated answer) | {rationale}"
+            elif tip:
                 form, play, macro = "Nickel Over", rng.choice(
                     ["Cover 3 Sky", "Cover 4 Quarters", "Tampa 2"]
                 ), "none"
@@ -1031,6 +1102,10 @@ def _pick_defense(
                 suggest = suggest or "macros cleared — re-arm only on repeated tendency"
         except Exception:
             pass
+
+    form, play, macro, user, rationale = adjust_cfb_defense_score(
+        sit, form, play, macro, user, rationale
+    )
 
     macro_out = tag_live_macro(macro) if macro and macro not in ("none", "") else (macro or "none")
     suggest_out = None
@@ -1043,6 +1118,19 @@ def _pick_defense(
         suggest_out = head + ((" — " + parts[1]) if len(parts) > 1 else "")
     return Call("defense", form, play, macro_out, user, rationale, suggest_macro=suggest_out)
 
+
+
+def adjust_cfb_defense_score(
+    sit: Situation,
+    form: str,
+    play: str,
+    macro: str,
+    user: str,
+    rationale: str,
+) -> tuple[str, str, str, str, str]:
+    from cfb_coach.game_score import adjust_cfb_defense
+
+    return adjust_cfb_defense(sit, form, play, macro, user, rationale)
 
 
 def _sit_stamp(sit: Situation) -> str:
@@ -1149,7 +1237,14 @@ def make_call(
             call.rationale = f"{call.rationale} | {stamp}" if call.rationale else stamp
         if live_note:
             call.rationale = f"{call.rationale} | {live_note}" if call.rationale else live_note
-        return call
+        from cfb_coach.game_score import score_call_note
+
+        snote = score_call_note(sit)
+        if snote:
+            call.rationale = f"{call.rationale} | {snote}" if call.rationale else snote
+        from cfb_coach.vod_model.live import apply_cfb_call
+
+        return apply_cfb_call(call, sit, opponent_id, db, dynasty=dynasty)
 
     if is_cpu_opponent(opponent_id):
         # CPU games = offense-only coaching — never emit D calls / D macros

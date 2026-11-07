@@ -641,12 +641,13 @@ def build_prep_plan(
     tips = call_emphasis_tips(opponent_id, opp)
     eg = effective_gameplan(opponent_id, db)
 
-    # Live meta scout — rich prep edge (Alabama users ~once/season)
+    # Daily AI research (scheduled agent) — `prep --live-scout` runs the old web scraper
     scout_dict: dict[str, Any] = {}
     try:
-        from cfb_coach.meta_scout import apply_scout_bias, run_meta_scout
+        from cfb_coach.ai_research import prep_research
+        from cfb_coach.meta_scout import apply_scout_bias
 
-        scout = run_meta_scout(offline=offline, refresh=refresh_meta)
+        scout = prep_research("cfb27", offline=offline)
         proposed, tips, affect = apply_scout_bias(
             proposed, scout, dynasty=dynasty, tips=tips
         )
@@ -743,6 +744,14 @@ def build_prep_plan(
         "doctrine": doctrine_line(),
         "meta_scout": scout_dict,
     }
+    try:  # scouting from his logged snaps + the daily research's counters for him
+        from cfb_coach.ai_research import opponent_lines
+        from cfb_coach.scouting import scout_opponent, scouting_lines
+
+        plan["scouting_lines"] = scouting_lines(scout_opponent(db, opponent_id))
+        plan["opponent_research"] = opponent_lines("cfb27", opponent_id)
+    except Exception:  # noqa: BLE001 — never break prep
+        plan["scouting_lines"], plan["opponent_research"] = [], []
     # v1.12: learned zone plan (open / red zone / goal line) aligned to the meta
     try:
         from cfb_coach.meta_align import build_prep_alignment
@@ -800,6 +809,16 @@ def build_prep_plan(
             pass
     if db is not None and persist:
         save_prep_deltas(db, opponent_id, proposed, shown)
+    try:
+        from cfb_coach.vod_model.prep_hook import integrate_cfb
+
+        vod_report = integrate_cfb(
+            db, opponent_id, dynasty=dynasty or "alabama", persist=bool(db is not None and persist),
+        )
+        if vod_report:
+            plan["vod_report"] = vod_report
+    except Exception:  # noqa: BLE001 — a bad model file must not break prep
+        pass
     return plan
 
 
@@ -862,6 +881,11 @@ def format_prep_minimal_text(plan: dict[str, Any]) -> str:
         lines.append("## Audibles (4 per formation)")
         for f, ps in (book.get("audibles") or {}).items():
             lines.append(f"  {f}: " + " | ".join(ps))
+        lines.append("")
+    from cfb_coach.vod_model.report import format_vod_section
+
+    lines.extend(format_vod_section(plan.get("vod_report")))
+    if plan.get("vod_report"):
         lines.append("")
     lo = plan.get("loadout") or {}
     lines.append(f"## Macros — {lo.get('meter') or (plan.get('slot_budget') or {}).get('meter') or ''}")
@@ -1014,6 +1038,9 @@ def format_delta_text(plan: dict[str, Any]) -> str:
         lines.append(f"  - {t}")
     lines.append("")
     lines.append("Live caller ranks each call with these zone weights + meta priors. Inventory (formations→plays) is in the browser view.")
+    from cfb_coach.vod_model.report import format_vod_section
+
+    lines.extend(format_vod_section(plan.get("vod_report")))
     return "\n".join(lines)
 
 

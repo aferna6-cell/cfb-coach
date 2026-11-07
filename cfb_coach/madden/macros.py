@@ -1,9 +1,10 @@
-"""Madden macros (v1.17) — 10 research-built DEFENSE macros per opponent, with buttons.
+"""Madden Custom Adjustments.
 
-Defense macros and their settings come from the research DB (``madden/research_db.py``,
-refreshed by the daily research routine and pulled by every prep): every Custom Adjustments
-field gets the value a cited source names, else Default. Offense uses no macros — see
-``madden/adjustments.py``.
+Defense macros come from the research DB: every editor field gets the value a cited
+source names, else Default. Offense macros (user games) are Aidan's confirmed Custom
+Adjustments — route / protection / blocking rows he wrote, everything else Default.
+A user-game loadout is 8 per side (``LOADOUT_N``). EA's screen allows 10; ``PER_SIDE``
+is only the store cap so an older list of 10 is not cut off until the next prep.
 
 Status starts meta_grounded and is overridden per Madden DB by postgame (proven / failed)
 via meta key `macro_status_json`.
@@ -12,6 +13,7 @@ via meta key `macro_status_json`.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from cfb_coach.macros import FAILED, META_GROUNDED, PROVEN, UNVALIDATED, normalize_status
@@ -19,7 +21,8 @@ from cfb_coach.madden import research_db as rdb
 from cfb_coach.madden.macro_pool import display_name, families, macro_side, pool_macro
 
 GAME = "madden27"
-PER_SIDE = 10  # v1.17: 10 defense macros per opponent (offense = adjustments, no macros)
+PER_SIDE = 10  # EA's documented active cap; the store will keep up to this many ids
+LOADOUT_N = 8  # user-game Custom Adjustments per side (offense and defense)
 USER_ACTIVE_CAP = 8  # legacy (pre-v1.17) Active-8 cap: only used to read / migrate old selections
 STATUS_META_KEY = "macro_status_json"
 
@@ -49,7 +52,14 @@ def macro_status(name: str | None, db: Any = None) -> str:
     if key in over:
         return over[key]
     m = pool_macro(key)
-    return normalize_status((m or {}).get("validated_status")) if m else UNVALIDATED
+    if m:
+        return normalize_status(m.get("validated_status"))
+    from cfb_coach.macros import get_macro
+
+    off = get_macro(key)
+    if off and (off.get("side") or "") == "offense":
+        return normalize_status(off.get("validated_status"))
+    return UNVALIDATED
 
 
 def tag_live(name: str | None, db: Any = None) -> str:
@@ -90,14 +100,56 @@ def key_settings(mid: str, limit: int = 6) -> str:
     return " · ".join(bits[:limit]) + (f" · … (+{more} more — open the macro)" if more > 0 else "")
 
 
-def _pairs_in_book(mid: str, book: dict[str, list[str]] | None, *, cap: int = 6) -> list[str]:
+def _four_man(name: str) -> bool:
+    n = (name or "").lower()
+    if n.startswith("dime") or "3-2" in n:
+        return False
+    return n.startswith("nickel") or n.startswith("4-3") or n.startswith("4-2")
+
+
+def book_pairs(mid: str, book: dict[str, list[str]] | None, *, cap: int = 8) -> tuple[list[str], str]:
+    """In-book plays the research base actually names, plus a verification note.
+
+    A cited play that is not in the trimmed book is named in the note and never
+    replaced with a different play. ``any`` means the source did not name one play,
+    so the note lists the matching fronts in the book instead of inventing a call.
+    """
     m = pool_macro(mid) or {}
     base = m.get("base") or {}
-    play = str(base.get("play") or "")
+    play = str(base.get("play") or "").strip()
+    formation = str(base.get("formation") or "").strip()
     if not book:
-        return [m["shell_pair"]] if m.get("shell_pair") else []
-    out = [f"{p} ({f})" for f, ps in book.items() for p in ps if play and p.lower() in play.lower()]
-    return out[:cap]
+        cited = m.get("shell_pair") or ""
+        return [], (f"Cited base: {cited}." if cited else "")
+    if play.lower() == "any":
+        fronts = [f for f in book if _four_man(f)] if "4-man" in formation.lower() else list(book)
+        note = (f"Cited base is {formation or 'any front'} / any play — not one named call. "
+                f"Set this adjustment on the trimmed book: {', '.join(fronts) or 'no matching front'}.")
+        return [f"{f} (any call in this formation)" for f in fronts[:cap]], note
+    tokens = [t.strip() for t in re.split(r"/|,| or ", play) if t.strip() and t.strip().lower() != "any"]
+    out: list[str] = []
+    matched: set[str] = set()
+    for form, plays in book.items():
+        for p in plays:
+            for tok in tokens:
+                t = tok.lower()
+                if t == p.lower() or (len(t) >= 6 and t in p.lower()):
+                    out.append(f"{p} ({form})")
+                    matched.add(tok)
+                    break
+            if len(out) >= cap:
+                break
+    missing = [t for t in tokens if t not in matched]
+    note = ""
+    if missing:
+        note = ("VERIFY: cited play " + ", ".join(missing) + " is not in the trimmed custom book. "
+                "Do not add that play.")
+    return out[:cap], note
+
+
+def _pairs_in_book(mid: str, book: dict[str, list[str]] | None, *, cap: int = 6) -> list[str]:
+    pairs, _note = book_pairs(mid, book, cap=cap)
+    return pairs
 
 
 def macro_detail(mid: str, book: dict[str, list[str]] | None = None) -> dict[str, Any]:
@@ -110,6 +162,7 @@ def macro_detail(mid: str, book: dict[str, list[str]] | None = None) -> dict[str
     for r in rows:
         s = srcs.get(r.get("source") or "")
         r["research"] = (f"{s['title']}" + (f" — {r['note']}" if r.get("note") else "")) if s else ""
+    pairs, note = book_pairs(key, book)
     return {
         "id": key,
         "side": "defense",
@@ -127,7 +180,8 @@ def macro_detail(mid: str, book: dict[str, list[str]] | None = None) -> dict[str
         "settings_source": ("research-built from the research DB (daily routine); every field without a "
                             "cited value is Default — " + rdb.status()["line"]),
         "fire_when": meta.get("when_to_arm") or "",
-        "pairs_with": _pairs_in_book(key, book),
+        "pairs_with": pairs,
+        "pair_note": note,
         "shell_pair": meta.get("shell_pair") or "",
         "key": key_settings(key),
         "purpose": meta.get("purpose") or "",
@@ -158,6 +212,10 @@ def copy_block(detail: dict[str, Any]) -> str:
     lines.append(f"In game: {detail.get('buttons')}")
     if detail.get("fire_when"):
         lines.append(f"Fire when: {detail['fire_when']}")
+    if detail.get("pairs_with"):
+        lines.append("Pairs with (trimmed book): " + ", ".join(detail["pairs_with"]))
+    if detail.get("pair_note"):
+        lines.append(detail["pair_note"])
     return "\n".join(lines)
 
 
@@ -176,12 +234,23 @@ def missing_settings_report(ids: list[str]) -> list[str]:
 
 
 def copy_checklist(selection: dict[str, list[str]]) -> str:
-    """One checklist for the defense 10: name, researched fields, button to fire it."""
-    ids = list(selection.get("defense") or [])
-    if not ids:
-        return "DEFENSE: none (CPU game = offense only; offense uses adjustments, not macros)"
-    lines = [f"DEFENSE ({len(ids)}) — build in Create & Share > Custom Adjustments > Defense, then set Active"]
-    for i, mid in enumerate(ids, 1):
+    """One checklist: offense Custom Adjustments, then the defense ones."""
+    offense = list(selection.get("offense") or [])
+    defense = list(selection.get("defense") or [])
+    if not offense and not defense:
+        return "No Custom Adjustments (CPU game = offense only; adjustments, not macros)."
+    lines = [f"CUSTOM ADJUSTMENTS — {len(offense)} offense + {len(defense)} defense. "
+             "Create & Share > Custom Adjustments, then set Active. In game: LB."]
+    if offense:
+        from cfb_coach.madden.offense_macros import activate_buttons as o_buttons
+        from cfb_coach.madden.offense_macros import xbox_name
+
+        lines.append(f"OFFENSE ({len(offense)})")
+        for i, mid in enumerate(offense, 1):
+            lines.append(f"  [ ] {i:>2}. {xbox_name(mid)} — confirmed settings only, rest Default — "
+                         f"fire: {o_buttons(mid)}")
+    lines.append(f"DEFENSE ({len(defense)})")
+    for i, mid in enumerate(defense, 1):
         n = len(rdb.researched_rows(mid))
         flag = f"{n} researched field(s), rest Default" if n else "[!] no researched fields"
         lines.append(f"  [ ] {i:>2}. {display_name(mid)} — {flag} — fire: {activate_buttons(mid)}")
@@ -205,16 +274,36 @@ def _clean(ids: list[Any], side: str) -> list[str]:
     return out[:PER_SIDE]
 
 
-def store_selection(db: Any, opponent_id: str, selection: dict[str, list[str]]) -> None:
+def store_selection(
+    db: Any,
+    opponent_id: str,
+    selection: dict[str, list[str]],
+    *,
+    gameplan: dict[str, Any] | None = None,
+) -> None:
+    """Schema 2 stores Custom Adjustment ids. Play-call packages are not macros."""
     from datetime import datetime, timezone
+
+    from cfb_coach.madden.offense_macros import clean_ids
 
     if db is None:
         return
-    db.set_meta(ACTIVE_META_KEY.format(opp=opponent_id), json.dumps({
+    packages = {"offense": [], "defense": []}
+    if gameplan:
+        for side in ("offense", "defense"):
+            packages[side] = [
+                {"id": m.get("id"), "formation": m.get("formation"), "play": m.get("play"), "label": m.get("label")}
+                for m in (gameplan.get(side) or [])
+                if m.get("formation") and m.get("play")
+            ]
+    payload: dict[str, Any] = {
         "schema": 2,
-        "offense": [],
+        "offense": clean_ids(selection.get("offense") or []),
         "defense": _clean(selection.get("defense") or [], "defense"),
-        "ts": datetime.now(timezone.utc).isoformat()}))
+        "call_packages": packages,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    db.set_meta(ACTIVE_META_KEY.format(opp=opponent_id), json.dumps(payload))
 
 
 def migrate_selection(db: Any, opponent_id: str) -> bool:
@@ -241,9 +330,14 @@ def migrate_selection(db: Any, opponent_id: str) -> bool:
 
 
 def migrate_all_selections(db: Any) -> list[str]:
-    """Migrate every opponent's stored Active 8 in this Madden DB (e.g. jaxon)."""
+    """Migrate every opponent's stored Active 8 in this Madden DB (e.g. jaxon).
+
+    Also drops a one-time bogus ``proven`` mark when that macro's learned weight
+    is still at or below the suppress line (O-RPO after the 19-0 CPU game).
+    """
     if db is None:
         return []
+    migrate_proven_below_suppress(db)
     rows = db.conn.execute("SELECT key FROM meta WHERE key LIKE 'active_macros:%'").fetchall()
     return [r[0].split(":", 1)[1] for r in rows if migrate_selection(db, r[0].split(":", 1)[1])]
 
@@ -270,8 +364,43 @@ def load_selection(db: Any, opponent_id: str) -> dict[str, list[str]] | None:
         rec = json.loads(raw)
     except ValueError:
         return None
-    sel = {"offense": [], "defense": _clean(rec.get("defense") or [], "defense")}
-    return sel if sel["defense"] else None
+    from cfb_coach.madden.offense_macros import clean_ids
+
+    defense = _clean(rec.get("defense") or [], "defense")
+    if not defense:
+        # Older preps stored play-call ids in defense and the real macros in research_defense.
+        defense = _clean(rec.get("research_defense") or [], "defense")
+    offense = clean_ids(rec.get("offense") or [])
+    if not defense and not offense:
+        return None
+    return {"offense": offense, "defense": defense}
+
+
+def load_gameplan(db: Any, opponent_id: str) -> dict[str, list[dict[str, Any]]] | None:
+    """The 8+8 call packages stored with this opponent's schema-2 selection."""
+    if db is None:
+        return None
+    raw = db.get_meta(ACTIVE_META_KEY.format(opp=opponent_id))
+    if not raw:
+        return None
+    try:
+        rec = json.loads(raw)
+    except ValueError:
+        return None
+    packages = dict(rec.get("packages") or {})
+    if not packages:
+        return None
+
+    def expand(ids: list[Any]) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for item in ids or []:
+            if isinstance(item, dict):
+                out.append(item)
+            elif item in packages:
+                out.append(packages[item])
+        return out
+
+    return {"offense": expand(rec.get("offense") or []), "defense": expand(rec.get("defense") or [])}
 
 
 def load_active(db: Any, opponent_id: str) -> list[str] | None:
@@ -280,10 +409,14 @@ def load_active(db: Any, opponent_id: str) -> list[str] | None:
 
 
 def as_selection(active: list[str] | dict[str, list[str]] | None) -> dict[str, list[str]]:
-    """Normalize a flat list or {offense, defense} into per-side lists (order kept)."""
+    """Normalize a flat list or {offense, defense} into per-side Custom Adjustment ids."""
+    from cfb_coach.madden.offense_macros import clean_ids
+
     if isinstance(active, dict):
-        return {"offense": [], "defense": [str(x).upper() for x in active.get("defense") or []]}
-    return {"offense": [], "defense": [str(x).upper() for x in active or [] if pool_macro(str(x))]}
+        return {"offense": clean_ids(active.get("offense") or []),
+                "defense": _clean(active.get("defense") or [], "defense")}
+    ids = [str(x) for x in active or []]
+    return {"offense": clean_ids(ids), "defense": _clean(ids, "defense")}
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +424,9 @@ def as_selection(active: list[str] | dict[str, list[str]] | None) -> dict[str, l
 # ---------------------------------------------------------------------------
 
 LEARNED_SUPPRESS = -0.15
+# Benched unless the user opts in. Same names as madden/meta_scout._EXPERIMENTAL.
+EXPERIMENTAL_MACROS = frozenset({"HEAT", "O-RPO"})
+PROVEN_SUPPRESS_META = "macro_proven_suppress_v1"
 
 
 def macro_info(mid: str, why: str, *, weight: float | None = None) -> dict[str, Any]:
@@ -315,6 +451,134 @@ def _suppressed(mid: str, weights: dict[str, float] | None) -> bool:
     return w is not None and w <= LEARNED_SUPPRESS
 
 
+def is_experimental_macro(mid: str | None) -> bool:
+    """True for a lab macro (O-RPO, HEAT) that prep must not auto-fill."""
+    key = (mid or "").upper()
+    if key in EXPERIMENTAL_MACROS:
+        return True
+    try:
+        from cfb_coach.madden.data import load_macro_catalog
+
+        cat = (load_macro_catalog().get("macros") or {}).get(key) or {}
+    except Exception:  # noqa: BLE001
+        return False
+    return str(cat.get("inventory") or "") == "benched"
+
+
+def experimental_opt_in(
+    mid: str,
+    *,
+    allow: bool | None = None,
+    swaps: set[str] | None = None,
+) -> bool:
+    """Config flag opts every experimental macro in. ``--swap-macro ID`` opts in one."""
+    if allow is None or swaps is None:
+        from cfb_coach.madden.franchise import load_config
+
+        cfg = load_config()
+        if allow is None:
+            allow = bool(cfg.get("experimental_macros"))
+        if swaps is None:
+            swaps = {str(x).upper() for x in (cfg.get("experimental_swaps") or [])}
+    named = {str(x).upper() for x in (swaps or set())}
+    return bool(allow) or (mid or "").upper() in named
+
+
+def slot_eligible(
+    mid: str,
+    weights: dict[str, float] | None,
+    *,
+    allow: bool | None = None,
+    swaps: set[str] | None = None,
+) -> bool:
+    """A prep slot stays empty for a suppressed macro or an experimental one that was not opted in."""
+    if _suppressed(mid, weights):
+        return False
+    if is_experimental_macro(mid) and not experimental_opt_in(mid, allow=allow, swaps=swaps):
+        return False
+    return True
+
+
+def clear_status(db: Any, name: str) -> None:
+    cur = status_overrides(db)
+    cur.pop((name or "").upper(), None)
+    db.set_meta(STATUS_META_KEY, json.dumps(cur))
+
+
+def migrate_proven_below_suppress(db: Any) -> list[str]:
+    """Once per DB: drop ``proven`` when every stored weight for that macro is at or below suppress.
+
+    O-RPO was marked proven on any gain >= 0 (11/15) while its learned weight was -2.22.
+    A later legitimate proven mark is left alone — this does not run again.
+    """
+    if db is None:
+        return []
+    try:
+        if db.get_meta(PROVEN_SUPPRESS_META):
+            return []
+    except Exception:  # noqa: BLE001
+        return []
+    weights: dict[str, list[float]] = {}
+    try:
+        for r in db.conn.execute("SELECT macro, weight FROM macro_weights").fetchall():
+            w = float(r["weight"] or 0.0)
+            if w == 0.0:
+                continue
+            weights.setdefault(str(r["macro"]).upper(), []).append(w)
+    except Exception:  # noqa: BLE001
+        weights = {}
+    cleared: list[str] = []
+    for name, status in list(status_overrides(db).items()):
+        if status != PROVEN:
+            continue
+        ws = weights.get(name.upper(), [])
+        if ws and max(ws) <= LEARNED_SUPPRESS:
+            clear_status(db, name)
+            cleared.append(name)
+    try:
+        db.set_meta(PROVEN_SUPPRESS_META, "1")
+    except Exception:  # noqa: BLE001
+        pass
+    return cleared
+
+
+def macros_cooled_this_half(db: Any, session_id: str | None, quarter: Any) -> set[str]:
+    """Macro ids that gave up the ball on a snap already logged in this half.
+
+    The half is the same window as the in-game bench: quarters 1–2, then 3 and later.
+    No session or no quarter means nothing is cooled.
+    """
+    from cfb_coach.ingame import half_of
+    from cfb_coach.outcome import parse_outcome
+
+    if db is None or not session_id:
+        return set()
+    try:
+        half = half_of(int(quarter)) if quarter not in (None, "") else None
+    except (TypeError, ValueError):
+        half = None
+    if half is None:
+        return set()
+    try:
+        rows = db.get_session_snaps(session_id)
+    except Exception:  # noqa: BLE001
+        return set()
+    out: set[str] = set()
+    for r in rows:
+        try:
+            q = r["quarter"]
+        except (KeyError, IndexError, TypeError):
+            q = None
+        if half_of(q) != half:
+            continue
+        if parse_outcome(r["result"]).kind not in ("int", "fumble"):
+            continue
+        name = str(r["macro"] or "").split(" [", 1)[0].strip().upper()
+        if name and name != "NONE":
+            out.add(name)
+    return out
+
+
 def best_for_family(family: str | None, ranked: list[str], weights: dict[str, float] | None = None) -> str | None:
     """Highest-ranked macro in ``ranked`` (the defense 10, prep order) that answers ``family``."""
     if not family:
@@ -325,9 +589,12 @@ def best_for_family(family: str | None, ranked: list[str], weights: dict[str, fl
 
 
 __all__ = [
-    "FAILED", "META_GROUNDED", "PER_SIDE", "PROVEN", "USER_ACTIVE_CAP", "activate_buttons", "as_selection",
+    "FAILED", "LOADOUT_N", "META_GROUNDED", "PER_SIDE", "PROVEN", "USER_ACTIVE_CAP", "activate_buttons",
+    "as_selection", "book_pairs",
     "attach_detail", "best_for_family", "copy_block", "copy_checklist", "key_settings", "legacy_picks",
-    "load_active", "load_selection", "macro_detail", "macro_info", "macro_side", "macro_status",
-    "migrate_all_selections", "migrate_selection", "missing_settings_report", "set_status", "settings_rows",
+    "load_active", "load_gameplan", "load_selection", "macro_detail", "macro_info", "macro_side", "macro_status",
+    "clear_status", "experimental_opt_in", "is_experimental_macro", "macros_cooled_this_half",
+    "migrate_all_selections", "migrate_proven_below_suppress", "migrate_selection",
+    "missing_settings_report", "set_status", "settings_rows", "slot_eligible",
     "split_loadout", "status_overrides", "store_selection", "tag_live",
 ]

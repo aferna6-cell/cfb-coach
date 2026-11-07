@@ -33,6 +33,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "lab_team": None,
     "offense_book": "auto",  # auto = start on stock Buccaneers, research may recommend a switch
     "defense_book": "auto",  # auto = start on stock 49ers
+    "live_macros": True,  # False = play shows no Custom Adjustment (config --no-macros)
+    # Experimental macros (O-RPO, HEAT) stay out of the primary list unless one of these is set.
+    "experimental_macros": False,
+    "experimental_swaps": [],
+    # VOD model prior. Models dir stays empty here — set CFB_COACH_VOD_MODELS or --vod-models.
+    "vod_prior": True,
+    "vod_freeze_book": False,
+    "vod_models_dir": "",
 }
 
 _PROFILE_ALIASES = {
@@ -136,6 +144,13 @@ def save_config(
     clear_lab: bool = False,
     offense_book: str | None = None,
     defense_book: str | None = None,
+    live_macros: bool | None = None,
+    experimental_macros: bool | None = None,
+    swap_macro: str | None = None,
+    unswap_macro: str | None = None,
+    vod_prior: bool | None = None,
+    vod_freeze_book: bool | None = None,
+    vod_models_dir: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Update the on-disk config. Returns (config, warnings)."""
     path = config_path()
@@ -165,6 +180,24 @@ def save_config(
         if raw:
             mode, book = parse_choice(side, raw)  # raises ValueError on an unknown book
             cfg[key] = mode if mode != "stock" else f"stock:{book}"
+    if live_macros is not None:
+        cfg["live_macros"] = bool(live_macros)
+    if experimental_macros is not None:
+        cfg["experimental_macros"] = bool(experimental_macros)
+    if vod_prior is not None:
+        cfg["vod_prior"] = bool(vod_prior)
+    if vod_freeze_book is not None:
+        cfg["vod_freeze_book"] = bool(vod_freeze_book)
+    if vod_models_dir is not None:
+        cfg["vod_models_dir"] = str(vod_models_dir).strip()
+    swaps = [str(x).upper() for x in (cfg.get("experimental_swaps") or []) if str(x).strip()]
+    if swap_macro:
+        key = str(swap_macro).upper()
+        if key not in swaps:
+            swaps.append(key)
+    if unswap_macro:
+        swaps = [s for s in swaps if s != str(unswap_macro).upper()]
+    cfg["experimental_swaps"] = swaps
     cfg["updated_ts"] = datetime.now(timezone.utc).isoformat()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
@@ -232,7 +265,9 @@ def doctrine_line(team: str | None = None) -> str:
     who = f"primary team {team}" if team else "primary team TBD"
     return (
         f"Doctrine (Madden 27 Franchise): meta-grounded scheme pack, {who}. "
-        "One tell = log + mild bump; targeted macro only on REPEATED tendency this game. "
-        "User games: 10 research-built defense macros per opponent, offense calls carry pre-snap adjustments (with buttons); CPU = offense-only. "
+        "One tell = log + mild bump; targeted macro on a REPEATED tendency this game, "
+        "or when its when-to-fire matches the snap. config --no-macros turns live macros off. "
+        "User games: 8 offense + 8 defense Custom Adjustments (LB); "
+        "CPU = 8 offense macros, no defense macros. "
         "Most D snaps Nickel Over Cover 4 Quarters / Cover 3 Match / Tampa 2 with no macro (rush four, drop seven)."
     )
