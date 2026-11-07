@@ -216,3 +216,50 @@ def test_undo_after_a_dropped_name(kdb):
     assert [r["coverage_typed"] for r in _stored(kdb, c)] == ["Cover 3 Cloud", names[0]]
     c.undo_last()
     assert [r["coverage_typed"] for r in _stored(kdb, c)] == ["Cover 3 Cloud"]
+
+def test_parser_dropped_play_is_stored_and_used_by_next_call(kdb):
+    """The old parser's NULL is not permission to discard an exact typed play."""
+    raw = "Thunder Smoke"
+    assert ds.form_store(raw) is None  # check this fixture is genuinely unrecognized
+    exact = ds.resolve(raw).key
+    assert exact                           # but the new catalog knows the installed call
+    _prime(kdb)
+    c = _ctrl(kdb)
+    c.call_only("1&10 my 25")
+    c.result_and_call(outcome="+6", sit_raw="2&4 my 31", their=raw)
+    stored = _stored(kdb, c)
+    assert len(stored) == 1
+    assert stored[0]["coverage_seen"] is None
+    assert stored[0]["coverage_typed"] == raw
+    assert ds.stored_label_weights(None, raw) == {exact: 1.0}
+
+    # Read the exact text as evidence for the NEXT offensive decision.
+    from cfb_coach.madden.model import offense_route_ranker as rr
+    context = rr.info_of(c.last_call)["coverage"]
+    assert context["basis"].endswith("+defense_knowledge")
+    assert dict(context["top"]).get(exact, 0.0) > 0.0
+
+
+def test_unknown_typed_play_is_preserved_without_inventing_a_scheme(kdb):
+    """Unknown exact text remains useful for a later catalog update."""
+    raw = "User typed custom defense XYZ"
+    assert ds.form_store(raw) is None
+    assert not ds.resolve(raw).key
+    _prime(kdb)
+    c = _ctrl(kdb)
+    c.call_only("1&10 my 25")
+    c.result_and_call(outcome="+3", sit_raw="2&7 my 28", their=raw)
+    stored = _stored(kdb, c)
+    assert stored[0]["coverage_seen"] is None
+    assert stored[0]["coverage_typed"] == raw
+    assert ds.stored_label_weights(None, raw) == {}
+
+
+def test_blank_opponent_field_never_copies_next_situation_into_exact_call(kdb):
+    """Do not treat the next down/spot as the opponent's named coverage."""
+    _prime(kdb)
+    c = _ctrl(kdb)
+    c.call_only("1&10 my 25")
+    c.result_and_call(outcome="+3", sit_raw="2&7 my 28", their="")
+    stored = _stored(kdb, c)
+    assert stored[0]["coverage_typed"] is None
