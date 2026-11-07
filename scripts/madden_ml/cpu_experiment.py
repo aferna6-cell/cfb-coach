@@ -67,6 +67,8 @@ def cmd_prepare(a) -> int:
     con_b.close()
     con_c.close()
     print(f"live DB (not modified): {src}\nbackup: {backup}  sha256={_sha(backup)[:16]}…\nexperiment copy: {copy}")
+    if a.backup_only:
+        return 0
     env = {**os.environ, "HOME": str(work / "home")}                    # keep every eval write away from ~/.cfb-coach
     (work / "home").mkdir(exist_ok=True)
     out = work / "readiness"
@@ -327,6 +329,8 @@ def main() -> int:
         p.set_defaults(fn=fn)
         if name in ("prepare", "summary"):
             p.add_argument("--work", default="~/cfb_cpu_experiment")
+            if name == "prepare":
+                p.add_argument("--backup-only", action="store_true", help="make the backup + copy and stop")
         if name == "enable":
             p.add_argument("--artifact", required=True)
             p.add_argument("--report")
