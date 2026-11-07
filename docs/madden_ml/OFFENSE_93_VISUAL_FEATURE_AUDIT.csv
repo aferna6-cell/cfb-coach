@@ -1,0 +1,95 @@
+<PARSED TEXT FOR SHEET: 1 / 1 TABS
+TAB NAME: OFFENSE_93_VISUAL_FEATURE_AUDIT.csv>index,formation,play,source_name,eligible,reason,route_ink_pixels,deep_share,horizontal_share,left_share,right_share,image_sha256
+0,Gun 5WR Tight,Clear Deep,Clear Deep,True,,2106,0.31434,0.45601,0.28015,0.16999,7b245fffe77bc6f8a1f85daf9ed5ccec4948d3c2bb0dc6cda998738b07fc0101
+1,Gun 5WR Tight,Cluster Bunch,Cluster Bunch,True,,2317,0.10099,0.53272,0.16185,0.36642,ead80e510759276041f4dbd2125cddfca7ed13405f4d1528eea3cc5231f4e4ff
+2,Gun 5WR Tight,L Spot,Z Spot,False,MISMATCHED SITE LABEL: confirm play identity on Xbox before modeling,1652,0.15012,0.51917,0.01574,0.42554,127344e1f30b9ddd873265dca85d0378769555f92e58d930d4e217cf371784ba
+3,Gun 5WR Tight,Mesh,Mesh,True,,2316,0.13558,0.53239,0.19948,0.39162,7f6fba764abd0a1ccef75042cf1bac4cfc6b4bcbfd58b1ea56a7fd5202e8c483
+4,Gun 5WR Tight,Mesh Post,Mesh Post,True,,2256,0.20479,0.51125,0.18484,0.32447,bb67e86b11498cef320fb8c216ca2ad414bd13e711fabb3275383858d17545c4
+5,Gun 5WR Tight,Mills Double Out,Mills Double Out,True,,2072,0.09604,0.51604,0.43436,0.10714,5f04bc833da374c4b02229f9a60c5dbc0f039537c82907249fe2a09b4fb09057
+6,Gun 5WR Tight,Mtn Double Post,Mtn Double Post,True,,2105,0.27173,0.50962,0.31734,0.27458,87336f21c0fde24d6234bd4c4def24df7ff1ab0439c238ceeee762f991c3b5d5
+7,Gun 5WR Tight,Mtn Fork Salem,Mtn Fork Salem,True,,2154,0.18849,0.52421,0.07846,0.46147,7293cade09185874a9b33bc2d0f9357c547a7bd8fc01b86742c5dc56d1581463
+8,Gun 5WR Tight,Mtn Post Swirl,Mtn Post Swirl,True,,1976,0.14119,0.51163,0.30314,0.27834,2f6ebf8aa35fe91ca92939a69158e12df5c1a04636e37de92d0acd659a4a5af0
+9,Gun 5WR Tight,QB Draw,QB Draw,True,,54,0.0,0.45882,0.0,0.0,753aafc3641c24ddc41f6eae420dbfd80c5ebf77b9d51ba24267b3774da79d2c
+10,Gun 5WR Tight,Salem Smash Under,Salem Smash Under,True,,1968,0.24238,0.51367,0.10925,0.24746,b3fdeeec8df03bc1ea75f840b40e75244209d768122e24f883778a2ad447c599
+11,Gun 5WR Tight,Slot Dig Wide Corner,Slot Dig Wide Corner,True,,1747,0.26789,0.48157,0.3257,0.22038,8f80bf673492b2aad8271653bc939c9f07e10e745d524302a1bbd8efff26c67e
+12,Gun 5WR Tight,Smash Dagger,Smash Dagger,True,,1714,0.24504,0.48512,0.35531,0.11027,f28e083e367dc0caa45d5c8426c27aaec68b81d2383e8cfcc1b4a915de1db392
+13,Gun 5WR Tight,Spacing,Spacing,True,,1754,0.15279,0.52398,0.44755,0.29818,14b636461d34de7e57349140d400be2ef59eb6ab677b87ef3ed88d8eeadcb347
+14,Gun 5WR Tight,Zl Spot Shake,Z Spot Shake,False,MISMATCHED SITE LABEL: confirm play identity on Xbox before modeling,2198,0.10282,0.53998,0.38717,0.32894,532f4cf5170ffc5fcf45c4e4de992397153826671a63d8f0df2055cae68934e4
+15,Gun Doubles Clamp Stack,Counter Y,Counter Y,True,,87,0.0,0.51908,0.0,0.0,737079d9b687af37f48a7a55b6baf2544abfad6c0b1f47ec8ebdf0e51e86e60a
+16,Gun Doubles Clamp Stack,Curl Ohio,Curl Ohio,True,,1712,0.1139,0.48404,0.54206,0.12734,5f38ea1d523656b33c4bde84c79c40906e4fc6ab9006b577065e54c925cdc4d6
+17,Gun Doubles Clamp Stack,Flood Seam,Flood Seam,True,,2498,0.1225,0.50558,0.19095,0.43195,c8e0e6a4411e948834c58b4fe043a52de65be765f114773ad9e680ed7c9837a5
+18,Gun Doubles Clamp Stack,HB Mid Zone,HB Mid Zone,True,,95,0.0,0.49286,0.0,0.0,bf81d7dc26b1c8ffb9cb9b82f3ccbfe032bba3009ec8a0402d89c101c33b3a00
+19,Gun Doubles Clamp Stack,HB Slip Screen,HB Slip Screen,True,,1707,0.35794,0.44887,0.46221,0.0,35c6d5e1df28bdf3832943eee52cea62d73806eb466ab6801aead08fda3f8494
+20,Gun Doubles Clamp Stack,Hitch HB Rail,Hitch HB Rail,True,,1912,0.08473,0.51232,0.26674,0.23379,ac3c3127a182d2bb87a1d3dc97a1da474e97b64720928fa872a9cb9172ded86b
+21,Gun Doubles Clamp Stack,Inside Zone,Inside Zone,True,,83,0.0,0.48413,0.0,0.0,e0bec0f76231e0e37fd02a9ab1c238e3eb51602a058be73ee55ce4ea97c40dd1
+22,Gun Doubles Clamp Stack,Mtn Choice Gos Y-Shake,Mtn Choice Go's Y-Shake,True,,2178,0.14509,0.51179,0.2135,0.2764,a7bfa5fd590f5cdd6cd627cc2bce3cfd7b02ca41adaf5a94a4db0a5405180ca7
+23,Gun Doubles Clamp Stack,Mtn Counter Y,Mtn Counter Y,True,,296,0.0,0.5406,0.0,0.0,6bb668b0b32d0f3c20ae31b1d8b9e26251f62e5148339ebf04886fc170bb77f7
+24,Gun Doubles Clamp Stack,Mtn FK Rub,Mtn FK Rub,True,,1853,0.16945,0.49274,0.18942,0.32434,d70700841686572e9332f94cc9fe4a2c42c6b027599aa15e70d72e2a4ebaf06e
+25,Gun Doubles Clamp Stack,Mtn Flood HB Sneak,Mtn Flood HB Sneak,True,,2560,0.16562,0.53183,0.14922,0.38594,c92a9a91a2a6d2cb0f006714f09c6eb64c2585d73db71f485303bf6584651781
+26,Gun Doubles Clamp Stack,Mtn Rub Smash,Mtn Rub Smash,True,,1891,0.25119,0.51721,0.52512,0.31359,b02318f26edb9f0f48466f4f6a900dae7432d8e86b58a73e99b8d96bab4a9a4c
+27,Gun Doubles Clamp Stack,Mtn Salem Drag,Mtn Salem Drag,True,,1989,0.0538,0.53213,0.20915,0.11815,42969423bf0cf7b64fc4aa7fee12ca0a71d1d57fd5106fb847a2563cf550bc87
+28,Gun Doubles Clamp Stack,Mtn Shuffle Drive Choice,Mtn Shuffle Drive Choice,True,,2707,0.06317,0.5288,0.36387,0.12154,bb555059125f187084a93f56b0379bba2b1332b1c2337c95dd14174d65cb298d
+29,Gun Doubles Clamp Stack,Mtn Shuffle Mesh Rail,Mtn Shuffle Mesh Rail,True,,2052,0.18908,0.51785,0.19444,0.24903,93facef8ca37ecce963a4aa0a30d60bb169c851e63bc445943b1178034b87b98
+30,Gun Doubles Clamp Stack,Mtn Shuffle Verts Smash,Mtn Shuffle Verts Smash,True,,2538,0.25571,0.50367,0.26517,0.171,7e0549601541f5722a6dad11fc6b10ed4a1dae2310cc9e37b763a52766cf4a0a
+31,Gun Doubles Clamp Stack,PA Post Shot Choice,PA Post Shot Choice,True,,2093,0.2752,0.50133,0.24367,0.31151,83bbefe5395ea945a908c38bdc5a2a67ef16ad1c4355d5a8522490f7bd439a44
+32,Gun Doubles Clamp Stack,Portland Ywheel,Portland Y Wheel,True,,2345,0.25288,0.50363,0.2,0.29979,cba1e9810002ffbac260675b62e892af992b8b86429a6ea7aa7285de69d82fa8
+33,Gun Doubles Clamp Stack,Return Bench,Return Bench,True,,1973,0.22149,0.53255,0.17638,0.30563,f9e928a96d3ae4e804827a82e8ff1c79c88bcc57d394415b355af88c2a399345
+34,Gun Doubles Clamp Stack,Return PA Z Over,Return PA Z Over,True,,1948,0.22331,0.52632,0.38142,0.096,ddb58ec60e4dca59408265abad18037f867215bfed15c87ba7bbd5c47d94b7f4
+35,Gun Doubles Clamp Stack,Return RPO Zone Alert,Return RPO Zone Alert,True,,1074,0.0,0.5569,0.30074,0.33613,f8c9e9c8402b6df19d7e9ea75d2a879b88ee6cf5cd889f0dcd333686042bd46a
+36,Gun Doubles Clamp Stack,RPO Alert Out,RPO Alert Out,True,,1177,0.1096,0.49206,0.47324,0.31521,1c2a13c1cc2b855c368b028fae250c342cfc5f7f5afed0cb1819ccd39737c885
+37,Gun Doubles Clamp Stack,Same Side Zone,Same Side Zone,True,,133,0.29323,0.43434,0.29323,0.0,e6ea7d5caeeda1ecdd60dcd1aa7576b7003fa85cba618a81dfcc9b8d1d38a08b
+38,Gun Doubles Clamp Stack,Spot Choice,Spot Choice,True,,2391,0.24007,0.52603,0.15098,0.39105,bc8a99d9f3d28491a85a5a32a759a6fe664b4335edc84993a151f4eb62772b71
+39,Gun Doubles Clamp Stack,Texas Smash,Texas Smash,True,,2069,0.20445,0.49038,0.32721,0.21315,fc865fdf8b565d440dd846b717c29b8e3b14e6b762a6f645b8dbfbc7c58960c6
+40,Gun Doubles Clamp Stack,Texas Y-Stutter Wheel,Texas Y-Stutter Wheel,True,,2330,0.15494,0.51216,0.2897,0.15536,a815f8206f2b7ea396dd9184912b9ec1b0668707d786bf01dc9cfd09a472f17b
+41,Gun Doubles Clamp Stack,Y Ohio Return,Y Ohio Return,True,,2624,0.16654,0.51134,0.30412,0.23666,1e5208b4a18219ed11794e5e32657581021f461d31e12954866dbd8d3df4f691
+42,Gun Trips X Nasty,HB Mid Draw,HB Mid Draw,True,,63,0.0,0.47475,0.0,0.0,49801f2c8d86b29fb793ec054e733ff23070a608382171c3e978f9325c6e637a
+43,Gun Trips X Nasty,HB Off Tackle,HB Off Tackle,True,,86,0.0,0.55303,0.0,0.0,86f936a5e6990f3323305d86312fd6e319c5d2fe409e41842ccd1170f292f244
+44,Gun Trips X Nasty,HB Slip Screen,HB Slip Screen,True,,2021,0.36665,0.46159,0.20485,0.44433,e9c7d4cb43d41ec69aa5b368d50eb46c8d0a11b92517c494d283dd34ef5bbc0e
+45,Gun Trips X Nasty,Hi Lo Cross,Hi Lo Cross,True,,2522,0.11182,0.54772,0.02102,0.31245,aab219b8445d1ff37272cebb2e78bd3baac88997d650a894829857d7626ea3fb
+46,Gun Trips X Nasty,Hi Lo Dig,Hi Lo Dig,True,,2574,0.19425,0.51586,0.24553,0.28283,bc947903c36ff3c53742a8096984244a3845e2f267685b9f8fba1b7b028ae4f2
+47,Gun Trips X Nasty,Inside Zone,Inside Zone,True,,114,0.0,0.50847,0.0,0.0,6287a0f8165f0e096d9316756fc9bea12bea70363a4746f80b7e0c60ac62f96e
+48,Gun Trips X Nasty,Mid Zone,Mid Zone,True,,125,0.0,0.53333,0.0,0.0,b43fca0699a6acaa4a092210bb3532e4da4676e5ceee977d380ec009a118d02a
+49,Gun Trips X Nasty,Mtn Drag Sluggo,Mtn Drag Sluggo,True,,2361,0.18467,0.51313,0.31173,0.28208,5b6c67413e632a92403a5f522b1fd677ee0bfcea37fed91769d74651b85cf888
+50,Gun Trips X Nasty,Mtn HB Swing,Mtn HB Swing,True,,967,0.0,0.56298,0.49018,0.29162,95428cdb2323b9d026f411fef2b08ea30ad4d8ca77a8d1992ea3480d6c05326e
+51,Gun Trips X Nasty,Mtn Slot Fades,Mtn Slot Fades,True,,1611,0.20981,0.4844,0.41527,0.36065,cd1317ee744db0c7a6ca52413e87eabcfe02c7d2a327653da5d71850ed5349e8
+52,Gun Trips X Nasty,Mtn Spot Y Corner,Mtn Spot Y Corner,True,,2146,0.21715,0.51481,0.12768,0.43383,d8931256efdc1ae3e3d1c885551f752ee71ffebd84f8ede08597e2ab770c2c7c
+53,Gun Trips X Nasty,Mtn Stick Wheel,Mtn Stick Wheel,True,,2233,0.24586,0.50219,0.21137,0.52485,dbdb6545342113ff08b84c614209ee5daa5e93c435830d61f7f16436c8fc6327
+54,Gun Trips X Nasty,Mtn Triple Slants,Mtn Triple Slants,True,,2125,0.05035,0.5109,0.304,0.18306,59926fe96b9882b7d5ba63ac05a952fd979d2fedfbc01398150b7c79fadb609d
+55,Gun Trips X Nasty,PA X Cross Shot,PA X Cross Shot,True,,1720,0.39186,0.51409,0.10174,0.36279,7b0fb724836af22ee73df44ab0235b99e4e6d41094bc61f1490a7f161a310a19
+56,Gun Trips X Nasty,Quick Fork Zig,Quick Fork Zig,True,,1799,0.0,0.54003,0.31684,0.33519,fc0b101a331702968d1aa24779c2084ff7405a27d2f07690e1ef69c2c4cbe82a
+57,Gun Trips X Nasty,Quick Short Post,Quick Short Post,True,,1335,0.01948,0.51576,0.38727,0.30187,440bf2fdafd68a8934bd43b3c64682217b8ca2c6cbaf685af2a2e913fcb05af8
+58,Gun Trips X Nasty,Quick Unders,Quick Unders,True,,1552,0.0,0.52925,0.27513,0.12564,7b2505095827a3e4cc18a5ff3f647324bc89a13824378d8f37561b71144e6f05
+59,Gun Trips X Nasty,Slot Fade H Wheel,Slot Fade H Wheel,True,,1875,0.1904,0.49597,0.30773,0.30347,788539d8d84bc0ea68afe3fe4b48425b4ddc5c55c098bad2884a79fe4cc5ee65
+60,Gun Trips X Nasty,Switch HB Wheel,Switch HB Wheel,True,,2225,0.2373,0.50222,0.31461,0.24719,f3164df2de90eef812f47f0ee899c30927a8729a3ddab5239196fb2858749273
+61,Gun Trips X Nasty,Verticals X Shallow,Verticals X Shallow,True,,1911,0.21455,0.4856,0.17635,0.26792,cdaa6a1aeaa4f6f3c3e0ccf950dccc1d1b1e1bbed63398440d5ac4ff50d6fe0c
+62,Gun Trips X Nasty,WR Smash,WR Smash,True,,2134,0.23055,0.49624,0.14667,0.35614,f666fd93bab2510f310b007128c46398ab8e7253828ce673c568f4f1e0278cac
+63,Pistol Deuce Close,Bench,Bench,True,,2186,0.32251,0.52197,0.29186,0.28134,77ddd6247805fe8adf77dbe4708ac77e402aeb3ebdb4aea18b325710e5cd4372
+64,Pistol Deuce Close,Counter Y,Counter Y,True,,112,0.0,0.49123,0.0,0.0,1e80d72cee2ac1e68b83f863490aa5058d8595717898cb506dc99bfa6e9356ef
+65,Pistol Deuce Close,HB Dive,HB Dive,True,,78,0.0,0.42105,0.0,0.0,a83114424b2511268f47162ec4d539021e54107f4fd1529fb1a64bf4ffeda1a0
+66,Pistol Deuce Close,HB Stretch,HB Stretch,True,,119,0.0,0.54054,0.0,0.0,1b22514e028d848c515662db01b1a582c0a5bcbc0bbd0bc9d5bd54e357a4813e
+67,Pistol Deuce Close,Inside Zone Split,Inside Zone Split,True,,80,0.0,0.42373,0.0,0.0,3975f34d4d388bb80d712ef5f2bb285002e1a566dec5f63a4a0dfa091ecb4660
+68,Pistol Deuce Close,Mesh Spot,Mesh Spot,True,,1816,0.163,0.49676,0.13877,0.21476,1999a8685f19c7f807f4ecf99b030f9908a61495769c72a288dc86357c9cb7ed
+69,Pistol Deuce Close,Mtn Counter Lt,Mtn Counter Lt,True,,331,0.0,0.53772,0.0,0.0,0a2037d1b30ce77ab8517b58c1fe0e973e0d029e89276404cfe593bdc0e3484f
+70,Pistol Deuce Close,Mtn PA Flood,Mtn PA Flood,True,,1886,0.10498,0.52898,0.0,0.34252,5da051a2b6e526cd315a2ff6c4aff7952cf935c93fbfeb088f2e1385f83120a2
+71,Pistol Deuce Close,Mtn Zone Split,Mtn Zone Split,True,,371,0.0,0.54419,0.0,0.0593,b6b3b77fec2ff7ebcd9f35247b91828851a9f162f9423839c06b8205fc2cd226
+72,Pistol Deuce Close,PA Boot Y Leak,PA Boot Y Leak,True,,2043,0.11992,0.53009,0.0,0.29418,97939b08d1a539a002048d2c19ff042f35e4d94207e2c665dc1fdb4e5d53ac34
+73,Pistol Deuce Close,PA Z Over,PA Z Over,True,,1463,0.22967,0.52214,0.26179,0.0,8b4f2bdd63f0df5899d9ce99b99a7ff480601b013017ef13094d42ca626430c0
+74,Pistol Deuce Close,Y Lead Read Option,Y Lead Read Option,True,,178,0.0,0.50685,0.0,0.0,a2a704aedfb253a77ae0cf166d7784316ce8094bcb2a6165b207ffe343d3c57d
+75,Pistol Trips,HB Counter,HB Counter,True,,77,0.0,0.49565,0.0,0.0,0198050c1a008e425661f275964b50500a45708912f8a128827bec9b84807dfa
+76,Pistol Trips,HB Dive,HB Dive,True,,72,0.0,0.43519,0.0,0.0,b86fb1a820a9ff835045b7a9252875065ee682a6168e64674f342308bdda1a46
+77,Pistol Trips,HB Draw,HB Draw,True,,57,0.0,0.46053,0.0,0.0,1894c338c01f6433ed1ae913f28c9e393375e0b49e2cc8721b5c4938c22762b4
+78,Pistol Trips,HB Slip Screen,HB Slip Screen,True,,1802,0.36737,0.44333,0.55438,0.0,7323f6787198037279b5a1134031ad7526f9cc0844e5460ab7ca28ab24fa2a0e
+79,Pistol Trips,HB Stretch,HB Stretch,True,,105,0.0,0.55215,0.0,0.0,a2666affbe6f0eb53e65e77c87396ce854b885406baba88f044b0471ddd036d0
+80,Pistol Trips,HB Zone WK,HB Zone WK,True,,82,0.0,0.50413,0.0,0.0,0f6a2ade507850b8b63a27322fafc02a7ecd9ea1ae05b68e3b74e07fb196dcb5
+81,Pistol Trips,Inside Cross,Inside Cross,True,,1837,0.14535,0.52753,0.27001,0.0,fc5783e9abf01779541b3046c246d038435ed15ad9b2e6ab4f8b5f967c720029
+82,Pistol Trips,PA Boot,PA Boot,True,,1860,0.27312,0.52696,0.34516,0.1,3765c51fa42a8cc08aad1cb4c8b6c6cb48c442be6c25b5a825143735720fc852
+83,Pistol Trips,PA Boot Lt,PA Boot Lt,True,,1868,0.08137,0.51237,0.72752,0.0,792fda88068a28e9b92d35a07630c1a49469b05c5914321f68aa2c62be9e5f3c
+84,Pistol Trips,PA HB Flat,PA HB Flat,True,,2373,0.29836,0.4958,0.39781,0.16814,12a756daf1f11483ae45fd82361f96540b3601fd2e61dce5b881eebb7278b2de
+85,Pistol Trips,Pin Pull Sweep,Pin Pull Sweep,True,,111,0.0,0.54913,0.0,0.0,f1c2c3d08538b0a87ba5dbf54d7327ce38f2722708ce4163cb5a043b93ac36a4
+86,Pistol Trips,Read Option,Read Option,True,,172,0.0,0.51613,0.0,0.0,7fc55d6ca1b0d98d87afbea863127c03a235aeb0f69fd891b0ee0458e68bcdb6
+87,Pistol Trips,RPO Alert Bubble,RPO Alert Bubble,True,,318,0.0,0.51927,0.63836,0.0,34717fb5ae06e127fb4dee18e113b5a25f71c217423c3c36001aef4c6dd5d90a
+88,Pistol Trips,Slants,Slants,True,,1591,0.0,0.55,0.34318,0.2225,01e5f48a7d5a33f51d9cbb3c1a440f256bf70b2da115b143eb359ba7a692fdd6
+89,Pistol Trips,Smash,Smash,True,,1848,0.36742,0.46559,0.40801,0.20509,cfe9b05160b535d31530f4db259a5a271002dfa636ce6e71fa7317093d2d2cfd
+90,Pistol Trips,Strong Power,Strong Power,True,,94,0.0,0.46853,0.0,0.0,9515f07a6f51eb6c22a8adfe7b8342065d484c9450343ddb2265c80d8d18ccd3
+91,Pistol Trips,Verticals,Verticals,True,,1764,0.25454,0.47046,0.44444,0.13492,1ea51e2044dc3cbfef999a3fe9e4f5ce92674f8b3d6ec9221c64386be5b6fb75
+92,Pistol Trips,X Spot,X Spot,True,,1249,0.04564,0.51539,0.83427,0.0,f57526ceffbff0feb77098824a1d1c7095fc355ba76817691b626566f869dca6

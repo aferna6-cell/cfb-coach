@@ -27,12 +27,13 @@ from typing import Any, Mapping, Sequence
 from cfb_coach.madden.model import experimental_model as em
 from cfb_coach.madden.model import offense_assignments as oa
 from cfb_coach.madden.model import offense_play_features as pf
+from cfb_coach.madden.model import offense_art_features as af
 
 MODEL_KIND = "offense_structural.v1"
 ARTIFACT_SCHEMA = "madden27.offense_structural.artifact.v1"
 N0 = 30.0                      # residual shrink: alpha = n / (n + N0)
 STD_FLOOR = 0.15
-LAMBDA = {"form": 20.0, "hint": 30.0, "route": 12.0, "concept": 15.0, "match": 8.0}
+LAMBDA = {"form": 20.0, "hint": 30.0, "route": 12.0, "concept": 15.0, "match": 8.0, "art": 24.0}
 EXTRAPOLATION_SHRINK = 0.5      # modified (never-seen) plays get half the modeled structural gain
 MAX_EXTRAPOLATED_LOGIT = 0.30   # and never more than this, whatever the weights say
 MIN_ROWS_FOR_RESIDUAL = 25     # below this the residual is switched off (offset only)
@@ -97,6 +98,7 @@ class StructuralArtifact:
     global_mix: dict[str, float] = field(default_factory=dict)
     opponent_mix: dict[str, dict[str, float]] = field(default_factory=dict)
     assignment_digest: str = ""
+    art_digest: str = ""
     feature_version: str = pf.FEATURE_VERSION
     trained_games: int = 0
     notes: str = ""
@@ -131,6 +133,8 @@ def validate_artifact(a: StructuralArtifact) -> list[str]:
         errs.append("feature names differ from the current feature schema (retrain)")
     if a.feature_version != pf.FEATURE_VERSION:
         errs.append("feature version mismatch")
+    if a.art_digest != af.data_digest():
+        errs.append("route-art feature bank changed or missing; retrain")
     d = len(a.names)
     if len(a.weights) != d + 1 or len(a.mean) != d or len(a.scale) != d:
         errs.append("weight/scale dimensions inconsistent")
@@ -182,6 +186,7 @@ def train(rows: Sequence[Mapping[str, Any]], *, penalty_scale: float = 1.0,
     sup = [r for r in rows if is_verified_offense(r) and offense_label(r, "success") is not None]
     art = StructuralArtifact(names=list(pf.feature_names()), base=base.to_dict(),
                              assignment_digest=oa.database_digest(oa.load_effective()),
+                             art_digest=af.data_digest(),
                              penalties={k: v * penalty_scale for k, v in LAMBDA.items()})
     art.global_mix = _mix_from_rows(sup)
     by_opp: dict[str, list[Mapping[str, Any]]] = {}

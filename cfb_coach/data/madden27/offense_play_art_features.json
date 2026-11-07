@@ -1,0 +1,3676 @@
+{
+  "coverage": {
+    "model_eligible": 91,
+    "quarantined_name_conflicts": 2,
+    "total": 93
+  },
+  "extraction": "HSV-like pixel classification of top play-art region; fixed normalized spatial statistics, no OCR",
+  "feature_names": [
+    "art_present",
+    "art_ink_density",
+    "art_yellow_share",
+    "art_red_share",
+    "art_cyan_share",
+    "art_left_share",
+    "art_middle_share",
+    "art_right_share",
+    "art_shallow_share",
+    "art_intermediate_share",
+    "art_deep_share",
+    "art_deep_left",
+    "art_deep_middle",
+    "art_deep_right",
+    "art_horizontal_share",
+    "art_spread"
+  ],
+  "inventory_fingerprint": "OFF-3C6D-E543",
+  "limitations": "Route-colored occupancy, NOT per-player route names, OL blocks, route order, or adjusted play-art effects.",
+  "plays": [
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.12346,
+        "art_deep_middle": 0.11301,
+        "art_deep_right": 0.07787,
+        "art_deep_share": 0.31434,
+        "art_horizontal_share": 0.45601,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.39554,
+        "art_left_share": 0.28015,
+        "art_middle_share": 0.54986,
+        "art_present": 1.0,
+        "art_red_share": 0.16192,
+        "art_right_share": 0.16999,
+        "art_shallow_share": 0.29012,
+        "art_spread": 0.54188,
+        "art_yellow_share": 0.83808
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "red": 341,
+        "yellow": 1765
+      },
+      "image_sha256": "7b245fffe77bc6f8a1f85daf9ed5ccec4948d3c2bb0dc6cda998738b07fc0101",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/clear-deep.png",
+      "model_eligible": true,
+      "play": "Clear Deep",
+      "reason": "",
+      "route_ink_pixels": 2106,
+      "site_play_name": "Clear Deep",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.10099,
+        "art_deep_share": 0.10099,
+        "art_horizontal_share": 0.53272,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.34527,
+        "art_left_share": 0.16185,
+        "art_middle_share": 0.47173,
+        "art_present": 1.0,
+        "art_red_share": 0.25205,
+        "art_right_share": 0.36642,
+        "art_shallow_share": 0.55373,
+        "art_spread": 0.66763,
+        "art_yellow_share": 0.74795
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "red": 584,
+        "yellow": 1733
+      },
+      "image_sha256": "ead80e510759276041f4dbd2125cddfca7ed13405f4d1528eea3cc5231f4e4ff",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/cluster-bunch.png",
+      "model_eligible": true,
+      "play": "Cluster Bunch",
+      "reason": "",
+      "route_ink_pixels": 2317,
+      "site_play_name": "Cluster Bunch",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": false,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.08717,
+        "art_deep_right": 0.06295,
+        "art_deep_share": 0.15012,
+        "art_horizontal_share": 0.51917,
+        "art_ink_density": 0.826,
+        "art_intermediate_share": 0.28027,
+        "art_left_share": 0.01574,
+        "art_middle_share": 0.55872,
+        "art_present": 1.0,
+        "art_red_share": 0.10109,
+        "art_right_share": 0.42554,
+        "art_shallow_share": 0.56961,
+        "art_spread": 0.5527,
+        "art_yellow_share": 0.89891
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "red": 167,
+        "yellow": 1485
+      },
+      "image_sha256": "127344e1f30b9ddd873265dca85d0378769555f92e58d930d4e217cf371784ba",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/z-spot.png",
+      "model_eligible": false,
+      "play": "L Spot",
+      "reason": "MISMATCHED SITE LABEL: confirm play identity on Xbox before modeling",
+      "route_ink_pixels": 1652,
+      "site_play_name": "Z Spot",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.07772,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.05786,
+        "art_deep_share": 0.13558,
+        "art_horizontal_share": 0.53239,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.18826,
+        "art_left_share": 0.19948,
+        "art_middle_share": 0.40889,
+        "art_present": 1.0,
+        "art_red_share": 0.21503,
+        "art_right_share": 0.39162,
+        "art_shallow_share": 0.67617,
+        "art_spread": 0.67056,
+        "art_yellow_share": 0.78497
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "red": 498,
+        "yellow": 1818
+      },
+      "image_sha256": "7f6fba764abd0a1ccef75042cf1bac4cfc6b4bcbfd58b1ea56a7fd5202e8c483",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/mesh.png",
+      "model_eligible": true,
+      "play": "Mesh",
+      "reason": "",
+      "route_ink_pixels": 2316,
+      "site_play_name": "Mesh",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.07757,
+        "art_deep_middle": 0.07314,
+        "art_deep_right": 0.05408,
+        "art_deep_share": 0.20479,
+        "art_horizontal_share": 0.51125,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.22429,
+        "art_left_share": 0.18484,
+        "art_middle_share": 0.49069,
+        "art_present": 1.0,
+        "art_red_share": 0.20833,
+        "art_right_share": 0.32447,
+        "art_shallow_share": 0.57092,
+        "art_spread": 0.56898,
+        "art_yellow_share": 0.79167
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "red": 470,
+        "yellow": 1786
+      },
+      "image_sha256": "bb67e86b11498cef320fb8c216ca2ad414bd13e711fabb3275383858d17545c4",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/mesh-post.png",
+      "model_eligible": true,
+      "play": "Mesh Post",
+      "reason": "",
+      "route_ink_pixels": 2256,
+      "site_play_name": "Mesh Post",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.09604,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.09604,
+        "art_horizontal_share": 0.51604,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.46477,
+        "art_left_share": 0.43436,
+        "art_middle_share": 0.45849,
+        "art_present": 1.0,
+        "art_red_share": 0.22346,
+        "art_right_share": 0.10714,
+        "art_shallow_share": 0.43919,
+        "art_spread": 0.61981,
+        "art_yellow_share": 0.77654
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "red": 463,
+        "yellow": 1609
+      },
+      "image_sha256": "5f04bc833da374c4b02229f9a60c5dbc0f039537c82907249fe2a09b4fb09057",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/mills-double-out.png",
+      "model_eligible": true,
+      "play": "Mills Double Out",
+      "reason": "",
+      "route_ink_pixels": 2072,
+      "site_play_name": "Mills Double Out",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.53444,
+        "art_deep_left": 0.14252,
+        "art_deep_middle": 0.12589,
+        "art_deep_right": 0.00333,
+        "art_deep_share": 0.27173,
+        "art_horizontal_share": 0.50962,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.34109,
+        "art_left_share": 0.31734,
+        "art_middle_share": 0.40808,
+        "art_present": 1.0,
+        "art_red_share": 0.0,
+        "art_right_share": 0.27458,
+        "art_shallow_share": 0.38717,
+        "art_spread": 0.6115,
+        "art_yellow_share": 0.46556
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "cyan": 1125,
+        "yellow": 980
+      },
+      "image_sha256": "87336f21c0fde24d6234bd4c4def24df7ff1ab0439c238ceeee762f991c3b5d5",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/mtn-double-post.png",
+      "model_eligible": true,
+      "play": "Mtn Double Post",
+      "reason": "",
+      "route_ink_pixels": 2105,
+      "site_play_name": "Mtn Double Post",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.42618,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.11606,
+        "art_deep_right": 0.07242,
+        "art_deep_share": 0.18849,
+        "art_horizontal_share": 0.52421,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.4415,
+        "art_left_share": 0.07846,
+        "art_middle_share": 0.46007,
+        "art_present": 1.0,
+        "art_red_share": 0.27577,
+        "art_right_share": 0.46147,
+        "art_shallow_share": 0.37001,
+        "art_spread": 0.50786,
+        "art_yellow_share": 0.29805
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "cyan": 918,
+        "red": 594,
+        "yellow": 642
+      },
+      "image_sha256": "7293cade09185874a9b33bc2d0f9357c547a7bd8fc01b86742c5dc56d1581463",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/mtn-fork-salem.png",
+      "model_eligible": true,
+      "play": "Mtn Fork Salem",
+      "reason": "",
+      "route_ink_pixels": 2154,
+      "site_play_name": "Mtn Fork Salem",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.3502,
+        "art_deep_left": 0.00354,
+        "art_deep_middle": 0.13664,
+        "art_deep_right": 0.00101,
+        "art_deep_share": 0.14119,
+        "art_horizontal_share": 0.51163,
+        "art_ink_density": 0.988,
+        "art_intermediate_share": 0.31731,
+        "art_left_share": 0.30314,
+        "art_middle_share": 0.41852,
+        "art_present": 1.0,
+        "art_red_share": 0.0,
+        "art_right_share": 0.27834,
+        "art_shallow_share": 0.5415,
+        "art_spread": 0.5666,
+        "art_yellow_share": 0.6498
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "cyan": 692,
+        "yellow": 1284
+      },
+      "image_sha256": "2f6ebf8aa35fe91ca92939a69158e12df5c1a04636e37de92d0acd659a4a5af0",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/mtn-post-swirl.png",
+      "model_eligible": true,
+      "play": "Mtn Post Swirl",
+      "reason": "",
+      "route_ink_pixels": 1976,
+      "site_play_name": "Mtn Post Swirl",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.45882,
+        "art_ink_density": 0.027,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.01234,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "red": 54
+      },
+      "image_sha256": "753aafc3641c24ddc41f6eae420dbfd80c5ebf77b9d51ba24267b3774da79d2c",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/qb-draw.png",
+      "model_eligible": true,
+      "play": "QB Draw",
+      "reason": "",
+      "route_ink_pixels": 54,
+      "site_play_name": "QB Draw",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.00152,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0686,
+        "art_deep_right": 0.17378,
+        "art_deep_share": 0.24238,
+        "art_horizontal_share": 0.51367,
+        "art_ink_density": 0.984,
+        "art_intermediate_share": 0.44207,
+        "art_left_share": 0.10925,
+        "art_middle_share": 0.64329,
+        "art_present": 1.0,
+        "art_red_share": 0.32978,
+        "art_right_share": 0.24746,
+        "art_shallow_share": 0.31555,
+        "art_spread": 0.49513,
+        "art_yellow_share": 0.6687
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "cyan": 3,
+        "red": 649,
+        "yellow": 1316
+      },
+      "image_sha256": "b3fdeeec8df03bc1ea75f840b40e75244209d768122e24f883778a2ad447c599",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/salem-smash-under.png",
+      "model_eligible": true,
+      "play": "Salem Smash Under",
+      "reason": "",
+      "route_ink_pixels": 1968,
+      "site_play_name": "Salem Smash Under",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.17916,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.08872,
+        "art_deep_share": 0.26789,
+        "art_horizontal_share": 0.48157,
+        "art_ink_density": 0.8735,
+        "art_intermediate_share": 0.38695,
+        "art_left_share": 0.3257,
+        "art_middle_share": 0.45392,
+        "art_present": 1.0,
+        "art_red_share": 0.27361,
+        "art_right_share": 0.22038,
+        "art_shallow_share": 0.34516,
+        "art_spread": 0.60525,
+        "art_yellow_share": 0.72639
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "red": 478,
+        "yellow": 1269
+      },
+      "image_sha256": "8f80bf673492b2aad8271653bc939c9f07e10e745d524302a1bbd8efff26c67e",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/slot-dig-wide-corner.png",
+      "model_eligible": true,
+      "play": "Slot Dig Wide Corner",
+      "reason": "",
+      "route_ink_pixels": 1747,
+      "site_play_name": "Slot Dig Wide Corner",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.00058,
+        "art_deep_left": 0.15578,
+        "art_deep_middle": 0.08926,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.24504,
+        "art_horizontal_share": 0.48512,
+        "art_ink_density": 0.857,
+        "art_intermediate_share": 0.39732,
+        "art_left_share": 0.35531,
+        "art_middle_share": 0.53442,
+        "art_present": 1.0,
+        "art_red_share": 0.29988,
+        "art_right_share": 0.11027,
+        "art_shallow_share": 0.35764,
+        "art_spread": 0.54395,
+        "art_yellow_share": 0.69953
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "cyan": 1,
+        "red": 514,
+        "yellow": 1199
+      },
+      "image_sha256": "f28e083e367dc0caa45d5c8426c27aaec68b81d2383e8cfcc1b4a915de1db392",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/smash-dagger.png",
+      "model_eligible": true,
+      "play": "Smash Dagger",
+      "reason": "",
+      "route_ink_pixels": 1714,
+      "site_play_name": "Smash Dagger",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.00057,
+        "art_deep_left": 0.15279,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.15279,
+        "art_horizontal_share": 0.52398,
+        "art_ink_density": 0.877,
+        "art_intermediate_share": 0.19897,
+        "art_left_share": 0.44755,
+        "art_middle_share": 0.25428,
+        "art_present": 1.0,
+        "art_red_share": 0.09863,
+        "art_right_share": 0.29818,
+        "art_shallow_share": 0.64823,
+        "art_spread": 0.77774,
+        "art_yellow_share": 0.9008
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "cyan": 1,
+        "red": 173,
+        "yellow": 1580
+      },
+      "image_sha256": "14b636461d34de7e57349140d400be2ef59eb6ab677b87ef3ed88d8eeadcb347",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/spacing.png",
+      "model_eligible": true,
+      "play": "Spacing",
+      "reason": "",
+      "route_ink_pixels": 1754,
+      "site_play_name": "Spacing",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": false,
+      "features": {
+        "art_cyan_share": 0.00091,
+        "art_deep_left": 0.05687,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.04595,
+        "art_deep_share": 0.10282,
+        "art_horizontal_share": 0.53998,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.28298,
+        "art_left_share": 0.38717,
+        "art_middle_share": 0.28389,
+        "art_present": 1.0,
+        "art_red_share": 0.13194,
+        "art_right_share": 0.32894,
+        "art_shallow_share": 0.61419,
+        "art_spread": 0.8235,
+        "art_yellow_share": 0.86715
+      },
+      "formation": "Gun 5WR Tight",
+      "graphic_layers": {
+        "cyan": 2,
+        "red": 290,
+        "yellow": 1906
+      },
+      "image_sha256": "532f4cf5170ffc5fcf45c4e4de992397153826671a63d8f0df2055cae68934e4",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_5wr_tight/z-spot-shake.png",
+      "model_eligible": false,
+      "play": "Zl Spot Shake",
+      "reason": "MISMATCHED SITE LABEL: confirm play identity on Xbox before modeling",
+      "route_ink_pixels": 2198,
+      "site_play_name": "Z Spot Shake",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-5wr-tight"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.51908,
+        "art_ink_density": 0.0435,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.05214,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "red": 87
+      },
+      "image_sha256": "737079d9b687af37f48a7a55b6baf2544abfad6c0b1f47ec8ebdf0e51e86e60a",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/counter-y.png",
+      "model_eligible": true,
+      "play": "Counter Y",
+      "reason": "",
+      "route_ink_pixels": 87,
+      "site_play_name": "Counter Y",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.1139,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.1139,
+        "art_horizontal_share": 0.48404,
+        "art_ink_density": 0.856,
+        "art_intermediate_share": 0.4264,
+        "art_left_share": 0.54206,
+        "art_middle_share": 0.33061,
+        "art_present": 1.0,
+        "art_red_share": 0.125,
+        "art_right_share": 0.12734,
+        "art_shallow_share": 0.4597,
+        "art_spread": 0.66495,
+        "art_yellow_share": 0.875
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "red": 214,
+        "yellow": 1498
+      },
+      "image_sha256": "5f38ea1d523656b33c4bde84c79c40906e4fc6ab9006b577065e54c925cdc4d6",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/curl-ohio.png",
+      "model_eligible": true,
+      "play": "Curl Ohio",
+      "reason": "",
+      "route_ink_pixels": 1712,
+      "site_play_name": "Curl Ohio",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.00801,
+        "art_deep_left": 0.05444,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.06805,
+        "art_deep_share": 0.1225,
+        "art_horizontal_share": 0.50558,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.41313,
+        "art_left_share": 0.19095,
+        "art_middle_share": 0.3771,
+        "art_present": 1.0,
+        "art_red_share": 0.29103,
+        "art_right_share": 0.43195,
+        "art_shallow_share": 0.46437,
+        "art_spread": 0.61564,
+        "art_yellow_share": 0.70096
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 20,
+        "red": 727,
+        "yellow": 1751
+      },
+      "image_sha256": "c8e0e6a4411e948834c58b4fe043a52de65be765f114773ad9e680ed7c9837a5",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/flood-seam.png",
+      "model_eligible": true,
+      "play": "Flood Seam",
+      "reason": "",
+      "route_ink_pixels": 2498,
+      "site_play_name": "Flood Seam",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.49286,
+        "art_ink_density": 0.0475,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.04606,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "red": 95
+      },
+      "image_sha256": "bf81d7dc26b1c8ffb9cb9b82f3ccbfe032bba3009ec8a0402d89c101c33b3a00",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/hb-mid-zone.png",
+      "model_eligible": true,
+      "play": "HB Mid Zone",
+      "reason": "",
+      "route_ink_pixels": 95,
+      "site_play_name": "HB Mid Zone",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.01172,
+        "art_deep_left": 0.17633,
+        "art_deep_middle": 0.18161,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.35794,
+        "art_horizontal_share": 0.44887,
+        "art_ink_density": 0.8535,
+        "art_intermediate_share": 0.31107,
+        "art_left_share": 0.46221,
+        "art_middle_share": 0.53779,
+        "art_present": 1.0,
+        "art_red_share": 0.07499,
+        "art_right_share": 0.0,
+        "art_shallow_share": 0.33099,
+        "art_spread": 0.51938,
+        "art_yellow_share": 0.9133
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 20,
+        "red": 128,
+        "yellow": 1559
+      },
+      "image_sha256": "35c6d5e1df28bdf3832943eee52cea62d73806eb466ab6801aead08fda3f8494",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/hb-slip-screen.png",
+      "model_eligible": true,
+      "play": "HB Slip Screen",
+      "reason": "",
+      "route_ink_pixels": 1707,
+      "site_play_name": "HB Slip Screen",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.08473,
+        "art_deep_share": 0.08473,
+        "art_horizontal_share": 0.51232,
+        "art_ink_density": 0.956,
+        "art_intermediate_share": 0.45136,
+        "art_left_share": 0.26674,
+        "art_middle_share": 0.49948,
+        "art_present": 1.0,
+        "art_red_share": 0.32531,
+        "art_right_share": 0.23379,
+        "art_shallow_share": 0.46391,
+        "art_spread": 0.63132,
+        "art_yellow_share": 0.67469
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "red": 622,
+        "yellow": 1290
+      },
+      "image_sha256": "ac3c3127a182d2bb87a1d3dc97a1da474e97b64720928fa872a9cb9172ded86b",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/hitch-hb-rail.png",
+      "model_eligible": true,
+      "play": "Hitch HB Rail",
+      "reason": "",
+      "route_ink_pixels": 1912,
+      "site_play_name": "Hitch HB Rail",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.48413,
+        "art_ink_density": 0.0415,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.0306,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "red": 83
+      },
+      "image_sha256": "e0bec0f76231e0e37fd02a9ab1c238e3eb51602a058be73ee55ce4ea97c40dd1",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/inside-zone.png",
+      "model_eligible": true,
+      "play": "Inside Zone",
+      "reason": "",
+      "route_ink_pixels": 83,
+      "site_play_name": "Inside Zone",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.44582,
+        "art_deep_left": 0.06887,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.07622,
+        "art_deep_share": 0.14509,
+        "art_horizontal_share": 0.51179,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.25253,
+        "art_left_share": 0.2135,
+        "art_middle_share": 0.5101,
+        "art_present": 1.0,
+        "art_red_share": 0.0,
+        "art_right_share": 0.2764,
+        "art_shallow_share": 0.60239,
+        "art_spread": 0.55751,
+        "art_yellow_share": 0.55418
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 971,
+        "yellow": 1207
+      },
+      "image_sha256": "a7bfa5fd590f5cdd6cd627cc2bce3cfd7b02ca41adaf5a94a4db0a5405180ca7",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/mtn-choice-go-s-y-shake.png",
+      "model_eligible": true,
+      "play": "Mtn Choice Gos Y-Shake",
+      "reason": "",
+      "route_ink_pixels": 2178,
+      "site_play_name": "Mtn Choice Go's Y-Shake",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.70946,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.5406,
+        "art_ink_density": 0.148,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 0.29054,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.10394,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 210,
+        "red": 86
+      },
+      "image_sha256": "6bb668b0b32d0f3c20ae31b1d8b9e26251f62e5148339ebf04886fc170bb77f7",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/mtn-counter-y.png",
+      "model_eligible": true,
+      "play": "Mtn Counter Y",
+      "reason": "",
+      "route_ink_pixels": 296,
+      "site_play_name": "Mtn Counter Y",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.41338,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.07933,
+        "art_deep_right": 0.09012,
+        "art_deep_share": 0.16945,
+        "art_horizontal_share": 0.49274,
+        "art_ink_density": 0.9265,
+        "art_intermediate_share": 0.26336,
+        "art_left_share": 0.18942,
+        "art_middle_share": 0.48624,
+        "art_present": 1.0,
+        "art_red_share": 0.21371,
+        "art_right_share": 0.32434,
+        "art_shallow_share": 0.56719,
+        "art_spread": 0.54428,
+        "art_yellow_share": 0.37291
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 766,
+        "red": 396,
+        "yellow": 691
+      },
+      "image_sha256": "d70700841686572e9332f94cc9fe4a2c42c6b027599aa15e70d72e2a4ebaf06e",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/mtn-fk-rub.png",
+      "model_eligible": true,
+      "play": "Mtn FK Rub",
+      "reason": "",
+      "route_ink_pixels": 1853,
+      "site_play_name": "Mtn FK Rub",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.26914,
+        "art_deep_left": 0.00781,
+        "art_deep_middle": 0.00508,
+        "art_deep_right": 0.15273,
+        "art_deep_share": 0.16562,
+        "art_horizontal_share": 0.53183,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.25781,
+        "art_left_share": 0.14922,
+        "art_middle_share": 0.46484,
+        "art_present": 1.0,
+        "art_red_share": 0.20469,
+        "art_right_share": 0.38594,
+        "art_shallow_share": 0.57656,
+        "art_spread": 0.60637,
+        "art_yellow_share": 0.52617
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 689,
+        "red": 524,
+        "yellow": 1347
+      },
+      "image_sha256": "c92a9a91a2a6d2cb0f006714f09c6eb64c2585d73db71f485303bf6584651781",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/mtn-flood-hb-sneak.png",
+      "model_eligible": true,
+      "play": "Mtn Flood HB Sneak",
+      "reason": "",
+      "route_ink_pixels": 2560,
+      "site_play_name": "Mtn Flood HB Sneak",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.40878,
+        "art_deep_left": 0.16446,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.08673,
+        "art_deep_share": 0.25119,
+        "art_horizontal_share": 0.51721,
+        "art_ink_density": 0.9455,
+        "art_intermediate_share": 0.16499,
+        "art_left_share": 0.52512,
+        "art_middle_share": 0.16129,
+        "art_present": 1.0,
+        "art_red_share": 0.0,
+        "art_right_share": 0.31359,
+        "art_shallow_share": 0.58382,
+        "art_spread": 0.79997,
+        "art_yellow_share": 0.59122
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 773,
+        "yellow": 1118
+      },
+      "image_sha256": "b02318f26edb9f0f48466f4f6a900dae7432d8e86b58a73e99b8d96bab4a9a4c",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/mtn-rub-smash.png",
+      "model_eligible": true,
+      "play": "Mtn Rub Smash",
+      "reason": "",
+      "route_ink_pixels": 1891,
+      "site_play_name": "Mtn Rub Smash",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.56662,
+        "art_deep_left": 0.0538,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0538,
+        "art_horizontal_share": 0.53213,
+        "art_ink_density": 0.9945,
+        "art_intermediate_share": 0.29915,
+        "art_left_share": 0.20915,
+        "art_middle_share": 0.6727,
+        "art_present": 1.0,
+        "art_red_share": 0.0,
+        "art_right_share": 0.11815,
+        "art_shallow_share": 0.64706,
+        "art_spread": 0.48487,
+        "art_yellow_share": 0.43338
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 1127,
+        "yellow": 862
+      },
+      "image_sha256": "42969423bf0cf7b64fc4aa7fee12ca0a71d1d57fd5106fb847a2563cf550bc87",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/mtn-salem-drag.png",
+      "model_eligible": true,
+      "play": "Mtn Salem Drag",
+      "reason": "",
+      "route_ink_pixels": 1989,
+      "site_play_name": "Mtn Salem Drag",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.30846,
+        "art_deep_left": 0.06317,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.06317,
+        "art_horizontal_share": 0.5288,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.37865,
+        "art_left_share": 0.36387,
+        "art_middle_share": 0.51459,
+        "art_present": 1.0,
+        "art_red_share": 0.20983,
+        "art_right_share": 0.12154,
+        "art_shallow_share": 0.55818,
+        "art_spread": 0.67786,
+        "art_yellow_share": 0.48171
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 835,
+        "red": 568,
+        "yellow": 1304
+      },
+      "image_sha256": "bb555059125f187084a93f56b0379bba2b1332b1c2337c95dd14174d65cb298d",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/mtn-shuffle-drive-choice.png",
+      "model_eligible": true,
+      "play": "Mtn Shuffle Drive Choice",
+      "reason": "",
+      "route_ink_pixels": 2707,
+      "site_play_name": "Mtn Shuffle Drive Choice",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.31043,
+        "art_deep_left": 0.10575,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.08333,
+        "art_deep_share": 0.18908,
+        "art_horizontal_share": 0.51785,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.20224,
+        "art_left_share": 0.19444,
+        "art_middle_share": 0.55653,
+        "art_present": 1.0,
+        "art_red_share": 0.18762,
+        "art_right_share": 0.24903,
+        "art_shallow_share": 0.60867,
+        "art_spread": 0.6333,
+        "art_yellow_share": 0.50195
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 637,
+        "red": 385,
+        "yellow": 1030
+      },
+      "image_sha256": "93facef8ca37ecce963a4aa0a30d60bb169c851e63bc445943b1178034b87b98",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/mtn-shuffle-mesh-rail.png",
+      "model_eligible": true,
+      "play": "Mtn Shuffle Mesh Rail",
+      "reason": "",
+      "route_ink_pixels": 2052,
+      "site_play_name": "Mtn Shuffle Mesh Rail",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.2502,
+        "art_deep_left": 0.09299,
+        "art_deep_middle": 0.09338,
+        "art_deep_right": 0.06935,
+        "art_deep_share": 0.25571,
+        "art_horizontal_share": 0.50367,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.44996,
+        "art_left_share": 0.26517,
+        "art_middle_share": 0.56383,
+        "art_present": 1.0,
+        "art_red_share": 0.20764,
+        "art_right_share": 0.171,
+        "art_shallow_share": 0.29433,
+        "art_spread": 0.56519,
+        "art_yellow_share": 0.54216
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 635,
+        "red": 527,
+        "yellow": 1376
+      },
+      "image_sha256": "7e0549601541f5722a6dad11fc6b10ed4a1dae2310cc9e37b763a52766cf4a0a",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/mtn-shuffle-verts-smash.png",
+      "model_eligible": true,
+      "play": "Mtn Shuffle Verts Smash",
+      "reason": "",
+      "route_ink_pixels": 2538,
+      "site_play_name": "Mtn Shuffle Verts Smash",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0688,
+        "art_deep_middle": 0.13282,
+        "art_deep_right": 0.07358,
+        "art_deep_share": 0.2752,
+        "art_horizontal_share": 0.50133,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.51457,
+        "art_left_share": 0.24367,
+        "art_middle_share": 0.44482,
+        "art_present": 1.0,
+        "art_red_share": 0.20975,
+        "art_right_share": 0.31151,
+        "art_shallow_share": 0.21022,
+        "art_spread": 0.59391,
+        "art_yellow_share": 0.79025
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "red": 439,
+        "yellow": 1654
+      },
+      "image_sha256": "83bbefe5395ea945a908c38bdc5a2a67ef16ad1c4355d5a8522490f7bd439a44",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/pa-post-shot-choice.png",
+      "model_eligible": true,
+      "play": "PA Post Shot Choice",
+      "reason": "",
+      "route_ink_pixels": 2093,
+      "site_play_name": "PA Post Shot Choice",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.19147,
+        "art_deep_right": 0.06141,
+        "art_deep_share": 0.25288,
+        "art_horizontal_share": 0.50363,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.20768,
+        "art_left_share": 0.2,
+        "art_middle_share": 0.50021,
+        "art_present": 1.0,
+        "art_red_share": 0.1838,
+        "art_right_share": 0.29979,
+        "art_shallow_share": 0.53945,
+        "art_spread": 0.56256,
+        "art_yellow_share": 0.8162
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "red": 431,
+        "yellow": 1914
+      },
+      "image_sha256": "cba1e9810002ffbac260675b62e892af992b8b86429a6ea7aa7285de69d82fa8",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/portland-y-wheel.png",
+      "model_eligible": true,
+      "play": "Portland Ywheel",
+      "reason": "",
+      "route_ink_pixels": 2345,
+      "site_play_name": "Portland Y Wheel",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.24582,
+        "art_deep_left": 0.01014,
+        "art_deep_middle": 0.07653,
+        "art_deep_right": 0.13482,
+        "art_deep_share": 0.22149,
+        "art_horizontal_share": 0.53255,
+        "art_ink_density": 0.9865,
+        "art_intermediate_share": 0.17486,
+        "art_left_share": 0.17638,
+        "art_middle_share": 0.51799,
+        "art_present": 1.0,
+        "art_red_share": 0.2666,
+        "art_right_share": 0.30563,
+        "art_shallow_share": 0.60365,
+        "art_spread": 0.63789,
+        "art_yellow_share": 0.48758
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 485,
+        "red": 526,
+        "yellow": 962
+      },
+      "image_sha256": "f9e928a96d3ae4e804827a82e8ff1c79c88bcc57d394415b355af88c2a399345",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/return-bench.png",
+      "model_eligible": true,
+      "play": "Return Bench",
+      "reason": "",
+      "route_ink_pixels": 1973,
+      "site_play_name": "Return Bench",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.23871,
+        "art_deep_left": 0.09138,
+        "art_deep_middle": 0.09497,
+        "art_deep_right": 0.03696,
+        "art_deep_share": 0.22331,
+        "art_horizontal_share": 0.52632,
+        "art_ink_density": 0.974,
+        "art_intermediate_share": 0.34856,
+        "art_left_share": 0.38142,
+        "art_middle_share": 0.52259,
+        "art_present": 1.0,
+        "art_red_share": 0.24127,
+        "art_right_share": 0.096,
+        "art_shallow_share": 0.42813,
+        "art_spread": 0.55042,
+        "art_yellow_share": 0.52002
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 465,
+        "red": 470,
+        "yellow": 1013
+      },
+      "image_sha256": "ddb58ec60e4dca59408265abad18037f867215bfed15c87ba7bbd5c47d94b7f4",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/return-pa-z-over.png",
+      "model_eligible": true,
+      "play": "Return PA Z Over",
+      "reason": "",
+      "route_ink_pixels": 1948,
+      "site_play_name": "Return PA Z Over",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.42272,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.5569,
+        "art_ink_density": 0.537,
+        "art_intermediate_share": 0.4041,
+        "art_left_share": 0.30074,
+        "art_middle_share": 0.36313,
+        "art_present": 1.0,
+        "art_red_share": 0.48138,
+        "art_right_share": 0.33613,
+        "art_shallow_share": 0.5959,
+        "art_spread": 0.72659,
+        "art_yellow_share": 0.0959
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 454,
+        "red": 517,
+        "yellow": 103
+      },
+      "image_sha256": "f8c9e9c8402b6df19d7e9ea75d2a879b88ee6cf5cd889f0dcd333686042bd46a",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/return-rpo-zone-alert.png",
+      "model_eligible": true,
+      "play": "Return RPO Zone Alert",
+      "reason": "",
+      "route_ink_pixels": 1074,
+      "site_play_name": "Return RPO Zone Alert",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.1096,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.1096,
+        "art_horizontal_share": 0.49206,
+        "art_ink_density": 0.5885,
+        "art_intermediate_share": 0.51487,
+        "art_left_share": 0.47324,
+        "art_middle_share": 0.21155,
+        "art_present": 1.0,
+        "art_red_share": 0.43585,
+        "art_right_share": 0.31521,
+        "art_shallow_share": 0.37553,
+        "art_spread": 0.75609,
+        "art_yellow_share": 0.56415
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "red": 513,
+        "yellow": 664
+      },
+      "image_sha256": "1c2a13c1cc2b855c368b028fae250c342cfc5f7f5afed0cb1819ccd39737c885",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/rpo-alert-out.png",
+      "model_eligible": true,
+      "play": "RPO Alert Out",
+      "reason": "",
+      "route_ink_pixels": 1177,
+      "site_play_name": "RPO Alert Out",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.29323,
+        "art_deep_left": 0.29323,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.29323,
+        "art_horizontal_share": 0.43434,
+        "art_ink_density": 0.0665,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.29323,
+        "art_middle_share": 0.70677,
+        "art_present": 1.0,
+        "art_red_share": 0.70677,
+        "art_right_share": 0.0,
+        "art_shallow_share": 0.70677,
+        "art_spread": 0.39743,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 39,
+        "red": 94
+      },
+      "image_sha256": "e6ea7d5caeeda1ecdd60dcd1aa7576b7003fa85cba618a81dfcc9b8d1d38a08b",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/same-side-zone.png",
+      "model_eligible": true,
+      "play": "Same Side Zone",
+      "reason": "",
+      "route_ink_pixels": 133,
+      "site_play_name": "Same Side Zone",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.12254,
+        "art_deep_right": 0.11752,
+        "art_deep_share": 0.24007,
+        "art_horizontal_share": 0.52603,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.19699,
+        "art_left_share": 0.15098,
+        "art_middle_share": 0.45797,
+        "art_present": 1.0,
+        "art_red_share": 0.28942,
+        "art_right_share": 0.39105,
+        "art_shallow_share": 0.56294,
+        "art_spread": 0.71009,
+        "art_yellow_share": 0.71058
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "red": 692,
+        "yellow": 1699
+      },
+      "image_sha256": "bc8a99d9f3d28491a85a5a32a759a6fe664b4335edc84993a151f4eb62772b71",
+      "image_size": [
+        378,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/spot-choice.png",
+      "model_eligible": true,
+      "play": "Spot Choice",
+      "reason": "",
+      "route_ink_pixels": 2391,
+      "site_play_name": "Spot Choice",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.12615,
+        "art_deep_middle": 0.0783,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.20445,
+        "art_horizontal_share": 0.49038,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.43064,
+        "art_left_share": 0.32721,
+        "art_middle_share": 0.45964,
+        "art_present": 1.0,
+        "art_red_share": 0.15611,
+        "art_right_share": 0.21315,
+        "art_shallow_share": 0.36491,
+        "art_spread": 0.62904,
+        "art_yellow_share": 0.84389
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "red": 323,
+        "yellow": 1746
+      },
+      "image_sha256": "fc865fdf8b565d440dd846b717c29b8e3b14e6b762a6f645b8dbfbc7c58960c6",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/texas-smash.png",
+      "model_eligible": true,
+      "play": "Texas Smash",
+      "reason": "",
+      "route_ink_pixels": 2069,
+      "site_play_name": "Texas Smash",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.00944,
+        "art_deep_left": 0.00858,
+        "art_deep_middle": 0.0794,
+        "art_deep_right": 0.06695,
+        "art_deep_share": 0.15494,
+        "art_horizontal_share": 0.51216,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.39442,
+        "art_left_share": 0.2897,
+        "art_middle_share": 0.55494,
+        "art_present": 1.0,
+        "art_red_share": 0.23219,
+        "art_right_share": 0.15536,
+        "art_shallow_share": 0.45064,
+        "art_spread": 0.60892,
+        "art_yellow_share": 0.75837
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "cyan": 22,
+        "red": 541,
+        "yellow": 1767
+      },
+      "image_sha256": "a815f8206f2b7ea396dd9184912b9ec1b0668707d786bf01dc9cfd09a472f17b",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/texas-y-stutter-wheel.png",
+      "model_eligible": true,
+      "play": "Texas Y-Stutter Wheel",
+      "reason": "",
+      "route_ink_pixels": 2330,
+      "site_play_name": "Texas Y-Stutter Wheel",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.09756,
+        "art_deep_middle": 0.06898,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.16654,
+        "art_horizontal_share": 0.51134,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.33384,
+        "art_left_share": 0.30412,
+        "art_middle_share": 0.45922,
+        "art_present": 1.0,
+        "art_red_share": 0.27553,
+        "art_right_share": 0.23666,
+        "art_shallow_share": 0.49962,
+        "art_spread": 0.61589,
+        "art_yellow_share": 0.72447
+      },
+      "formation": "Gun Doubles Clamp Stack",
+      "graphic_layers": {
+        "red": 723,
+        "yellow": 1901
+      },
+      "image_sha256": "1e5208b4a18219ed11794e5e32657581021f461d31e12954866dbd8d3df4f691",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_doubles_clamp_stack/y-ohio-return.png",
+      "model_eligible": true,
+      "play": "Y Ohio Return",
+      "reason": "",
+      "route_ink_pixels": 2624,
+      "site_play_name": "Y Ohio Return",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-doubles-clamp-stack"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.47475,
+        "art_ink_density": 0.0315,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.01365,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 63
+      },
+      "image_sha256": "49801f2c8d86b29fb793ec054e733ff23070a608382171c3e978f9325c6e637a",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/hb-mid-draw.png",
+      "model_eligible": true,
+      "play": "HB Mid Draw",
+      "reason": "",
+      "route_ink_pixels": 63,
+      "site_play_name": "HB Mid Draw",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.55303,
+        "art_ink_density": 0.043,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.07208,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 86
+      },
+      "image_sha256": "86f936a5e6990f3323305d86312fd6e319c5d2fe409e41842ccd1170f292f244",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/hb-off-tackle.png",
+      "model_eligible": true,
+      "play": "HB Off Tackle",
+      "reason": "",
+      "route_ink_pixels": 86,
+      "site_play_name": "HB Off Tackle",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.07669,
+        "art_deep_middle": 0.13261,
+        "art_deep_right": 0.15735,
+        "art_deep_share": 0.36665,
+        "art_horizontal_share": 0.46159,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.36071,
+        "art_left_share": 0.20485,
+        "art_middle_share": 0.35082,
+        "art_present": 1.0,
+        "art_red_share": 0.04503,
+        "art_right_share": 0.44433,
+        "art_shallow_share": 0.27264,
+        "art_spread": 0.58873,
+        "art_yellow_share": 0.95497
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 91,
+        "yellow": 1930
+      },
+      "image_sha256": "e9c7d4cb43d41ec69aa5b368d50eb46c8d0a11b92517c494d283dd34ef5bbc0e",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/hb-slip-screen.png",
+      "model_eligible": true,
+      "play": "HB Slip Screen",
+      "reason": "",
+      "route_ink_pixels": 2021,
+      "site_play_name": "HB Slip Screen",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.01031,
+        "art_deep_middle": 0.0345,
+        "art_deep_right": 0.06701,
+        "art_deep_share": 0.11182,
+        "art_horizontal_share": 0.54772,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.2839,
+        "art_left_share": 0.02102,
+        "art_middle_share": 0.66653,
+        "art_present": 1.0,
+        "art_red_share": 0.22205,
+        "art_right_share": 0.31245,
+        "art_shallow_share": 0.60428,
+        "art_spread": 0.48219,
+        "art_yellow_share": 0.77795
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 560,
+        "yellow": 1962
+      },
+      "image_sha256": "aab219b8445d1ff37272cebb2e78bd3baac88997d650a894829857d7626ea3fb",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/hi-lo-cross.png",
+      "model_eligible": true,
+      "play": "Hi Lo Cross",
+      "reason": "",
+      "route_ink_pixels": 2522,
+      "site_play_name": "Hi Lo Cross",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.08936,
+        "art_deep_middle": 0.1049,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.19425,
+        "art_horizontal_share": 0.51586,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.28205,
+        "art_left_share": 0.24553,
+        "art_middle_share": 0.47164,
+        "art_present": 1.0,
+        "art_red_share": 0.22494,
+        "art_right_share": 0.28283,
+        "art_shallow_share": 0.5237,
+        "art_spread": 0.67455,
+        "art_yellow_share": 0.77506
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 579,
+        "yellow": 1995
+      },
+      "image_sha256": "bc947903c36ff3c53742a8096984244a3845e2f267685b9f8fba1b7b028ae4f2",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/hi-lo-dig.png",
+      "model_eligible": true,
+      "play": "Hi Lo Dig",
+      "reason": "",
+      "route_ink_pixels": 2574,
+      "site_play_name": "Hi Lo Dig",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.50847,
+        "art_ink_density": 0.057,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.05192,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 114
+      },
+      "image_sha256": "6287a0f8165f0e096d9316756fc9bea12bea70363a4746f80b7e0c60ac62f96e",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/inside-zone.png",
+      "model_eligible": true,
+      "play": "Inside Zone",
+      "reason": "",
+      "route_ink_pixels": 114,
+      "site_play_name": "Inside Zone",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.53333,
+        "art_ink_density": 0.0625,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.07495,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 125
+      },
+      "image_sha256": "b43fca0699a6acaa4a092210bb3532e4da4676e5ceee977d380ec009a118d02a",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/mid-zone.png",
+      "model_eligible": true,
+      "play": "Mid Zone",
+      "reason": "",
+      "route_ink_pixels": 125,
+      "site_play_name": "Mid Zone",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.34519,
+        "art_deep_left": 0.07243,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.11224,
+        "art_deep_share": 0.18467,
+        "art_horizontal_share": 0.51313,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.29521,
+        "art_left_share": 0.31173,
+        "art_middle_share": 0.40618,
+        "art_present": 1.0,
+        "art_red_share": 0.13088,
+        "art_right_share": 0.28208,
+        "art_shallow_share": 0.52012,
+        "art_spread": 0.57179,
+        "art_yellow_share": 0.52393
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "cyan": 815,
+        "red": 309,
+        "yellow": 1237
+      },
+      "image_sha256": "5b6c67413e632a92403a5f522b1fd677ee0bfcea37fed91769d74651b85cf888",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/mtn-drag-sluggo.png",
+      "model_eligible": true,
+      "play": "Mtn Drag Sluggo",
+      "reason": "",
+      "route_ink_pixels": 2361,
+      "site_play_name": "Mtn Drag Sluggo",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.50982,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.56298,
+        "art_ink_density": 0.4835,
+        "art_intermediate_share": 0.39504,
+        "art_left_share": 0.49018,
+        "art_middle_share": 0.2182,
+        "art_present": 1.0,
+        "art_red_share": 0.0,
+        "art_right_share": 0.29162,
+        "art_shallow_share": 0.60496,
+        "art_spread": 0.81159,
+        "art_yellow_share": 0.49018
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "cyan": 493,
+        "yellow": 474
+      },
+      "image_sha256": "95428cdb2323b9d026f411fef2b08ea30ad4d8ca77a8d1992ea3480d6c05326e",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/mtn-hb-swing.png",
+      "model_eligible": true,
+      "play": "Mtn HB Swing",
+      "reason": "",
+      "route_ink_pixels": 967,
+      "site_play_name": "Mtn HB Swing",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.24395,
+        "art_deep_left": 0.10118,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.10863,
+        "art_deep_share": 0.20981,
+        "art_horizontal_share": 0.4844,
+        "art_ink_density": 0.8055,
+        "art_intermediate_share": 0.18374,
+        "art_left_share": 0.41527,
+        "art_middle_share": 0.22408,
+        "art_present": 1.0,
+        "art_red_share": 0.29671,
+        "art_right_share": 0.36065,
+        "art_shallow_share": 0.60646,
+        "art_spread": 0.67564,
+        "art_yellow_share": 0.45934
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "cyan": 393,
+        "red": 478,
+        "yellow": 740
+      },
+      "image_sha256": "cd1317ee744db0c7a6ca52413e87eabcfe02c7d2a327653da5d71850ed5349e8",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/mtn-slot-fades.png",
+      "model_eligible": true,
+      "play": "Mtn Slot Fades",
+      "reason": "",
+      "route_ink_pixels": 1611,
+      "site_play_name": "Mtn Slot Fades",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.23159,
+        "art_deep_left": 0.01771,
+        "art_deep_middle": 0.05545,
+        "art_deep_right": 0.14399,
+        "art_deep_share": 0.21715,
+        "art_horizontal_share": 0.51481,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.30568,
+        "art_left_share": 0.12768,
+        "art_middle_share": 0.43849,
+        "art_present": 1.0,
+        "art_red_share": 0.06431,
+        "art_right_share": 0.43383,
+        "art_shallow_share": 0.47717,
+        "art_spread": 0.53407,
+        "art_yellow_share": 0.7041
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "cyan": 497,
+        "red": 138,
+        "yellow": 1511
+      },
+      "image_sha256": "d8931256efdc1ae3e3d1c885551f752ee71ffebd84f8ede08597e2ab770c2c7c",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/mtn-spot-y-corner.png",
+      "model_eligible": true,
+      "play": "Mtn Spot Y Corner",
+      "reason": "",
+      "route_ink_pixels": 2146,
+      "site_play_name": "Mtn Spot Y Corner",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.21988,
+        "art_deep_left": 0.11196,
+        "art_deep_middle": 0.06673,
+        "art_deep_right": 0.06717,
+        "art_deep_share": 0.24586,
+        "art_horizontal_share": 0.50219,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.27049,
+        "art_left_share": 0.21137,
+        "art_middle_share": 0.26377,
+        "art_present": 1.0,
+        "art_red_share": 0.06628,
+        "art_right_share": 0.52485,
+        "art_shallow_share": 0.48365,
+        "art_spread": 0.61778,
+        "art_yellow_share": 0.71384
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "cyan": 491,
+        "red": 148,
+        "yellow": 1594
+      },
+      "image_sha256": "dbdb6545342113ff08b84c614209ee5daa5e93c435830d61f7f16436c8fc6327",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/mtn-stick-wheel.png",
+      "model_eligible": true,
+      "play": "Mtn Stick Wheel",
+      "reason": "",
+      "route_ink_pixels": 2233,
+      "site_play_name": "Mtn Stick Wheel",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.30212,
+        "art_deep_left": 0.05035,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.05035,
+        "art_horizontal_share": 0.5109,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.45412,
+        "art_left_share": 0.304,
+        "art_middle_share": 0.51294,
+        "art_present": 1.0,
+        "art_red_share": 0.20894,
+        "art_right_share": 0.18306,
+        "art_shallow_share": 0.49553,
+        "art_spread": 0.56235,
+        "art_yellow_share": 0.48894
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "cyan": 642,
+        "red": 444,
+        "yellow": 1039
+      },
+      "image_sha256": "59926fe96b9882b7d5ba63ac05a952fd979d2fedfbc01398150b7c79fadb609d",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/mtn-triple-slants.png",
+      "model_eligible": true,
+      "play": "Mtn Triple Slants",
+      "reason": "",
+      "route_ink_pixels": 2125,
+      "site_play_name": "Mtn Triple Slants",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.04709,
+        "art_deep_middle": 0.19651,
+        "art_deep_right": 0.14826,
+        "art_deep_share": 0.39186,
+        "art_horizontal_share": 0.51409,
+        "art_ink_density": 0.86,
+        "art_intermediate_share": 0.43779,
+        "art_left_share": 0.10174,
+        "art_middle_share": 0.53547,
+        "art_present": 1.0,
+        "art_red_share": 0.3436,
+        "art_right_share": 0.36279,
+        "art_shallow_share": 0.17035,
+        "art_spread": 0.4804,
+        "art_yellow_share": 0.6564
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 591,
+        "yellow": 1129
+      },
+      "image_sha256": "7b0fb724836af22ee73df44ab0235b99e4e6d41094bc61f1490a7f161a310a19",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/pa-x-cross-shot.png",
+      "model_eligible": true,
+      "play": "PA X Cross Shot",
+      "reason": "",
+      "route_ink_pixels": 1720,
+      "site_play_name": "PA X Cross Shot",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.54003,
+        "art_ink_density": 0.8995,
+        "art_intermediate_share": 0.60589,
+        "art_left_share": 0.31684,
+        "art_middle_share": 0.34797,
+        "art_present": 1.0,
+        "art_red_share": 0.30072,
+        "art_right_share": 0.33519,
+        "art_shallow_share": 0.39411,
+        "art_spread": 0.72531,
+        "art_yellow_share": 0.69928
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 541,
+        "yellow": 1258
+      },
+      "image_sha256": "fc0b101a331702968d1aa24779c2084ff7405a27d2f07690e1ef69c2c4cbe82a",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/quick-fork-zig.png",
+      "model_eligible": true,
+      "play": "Quick Fork Zig",
+      "reason": "",
+      "route_ink_pixels": 1799,
+      "site_play_name": "Quick Fork Zig",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.01948,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.01948,
+        "art_horizontal_share": 0.51576,
+        "art_ink_density": 0.6675,
+        "art_intermediate_share": 0.31985,
+        "art_left_share": 0.38727,
+        "art_middle_share": 0.31086,
+        "art_present": 1.0,
+        "art_red_share": 0.26816,
+        "art_right_share": 0.30187,
+        "art_shallow_share": 0.66067,
+        "art_spread": 0.77265,
+        "art_yellow_share": 0.73184
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 358,
+        "yellow": 977
+      },
+      "image_sha256": "440bf2fdafd68a8934bd43b3c64682217b8ca2c6cbaf685af2a2e913fcb05af8",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/quick-short-post.png",
+      "model_eligible": true,
+      "play": "Quick Short Post",
+      "reason": "",
+      "route_ink_pixels": 1335,
+      "site_play_name": "Quick Short Post",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.14433,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.52925,
+        "art_ink_density": 0.776,
+        "art_intermediate_share": 0.21327,
+        "art_left_share": 0.27513,
+        "art_middle_share": 0.59923,
+        "art_present": 1.0,
+        "art_red_share": 0.24098,
+        "art_right_share": 0.12564,
+        "art_shallow_share": 0.78673,
+        "art_spread": 0.56558,
+        "art_yellow_share": 0.61469
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "cyan": 224,
+        "red": 374,
+        "yellow": 954
+      },
+      "image_sha256": "7b2505095827a3e4cc18a5ff3f647324bc89a13824378d8f37561b71144e6f05",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/quick-unders.png",
+      "model_eligible": true,
+      "play": "Quick Unders",
+      "reason": "",
+      "route_ink_pixels": 1552,
+      "site_play_name": "Quick Unders",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.00053,
+        "art_deep_left": 0.0144,
+        "art_deep_middle": 0.09067,
+        "art_deep_right": 0.08533,
+        "art_deep_share": 0.1904,
+        "art_horizontal_share": 0.49597,
+        "art_ink_density": 0.9375,
+        "art_intermediate_share": 0.24427,
+        "art_left_share": 0.30773,
+        "art_middle_share": 0.3888,
+        "art_present": 1.0,
+        "art_red_share": 0.23893,
+        "art_right_share": 0.30347,
+        "art_shallow_share": 0.56533,
+        "art_spread": 0.74571,
+        "art_yellow_share": 0.76053
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "cyan": 1,
+        "red": 448,
+        "yellow": 1426
+      },
+      "image_sha256": "788539d8d84bc0ea68afe3fe4b48425b4ddc5c55c098bad2884a79fe4cc5ee65",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/slot-fade-h-wheel.png",
+      "model_eligible": true,
+      "play": "Slot Fade H Wheel",
+      "reason": "",
+      "route_ink_pixels": 1875,
+      "site_play_name": "Slot Fade H Wheel",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.07056,
+        "art_deep_middle": 0.09843,
+        "art_deep_right": 0.06831,
+        "art_deep_share": 0.2373,
+        "art_horizontal_share": 0.50222,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.22517,
+        "art_left_share": 0.31461,
+        "art_middle_share": 0.4382,
+        "art_present": 1.0,
+        "art_red_share": 0.28674,
+        "art_right_share": 0.24719,
+        "art_shallow_share": 0.53753,
+        "art_spread": 0.57249,
+        "art_yellow_share": 0.71326
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 638,
+        "yellow": 1587
+      },
+      "image_sha256": "f3164df2de90eef812f47f0ee899c30927a8729a3ddab5239196fb2858749273",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/switch-hb-wheel.png",
+      "model_eligible": true,
+      "play": "Switch HB Wheel",
+      "reason": "",
+      "route_ink_pixels": 2225,
+      "site_play_name": "Switch HB Wheel",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.13972,
+        "art_deep_right": 0.07483,
+        "art_deep_share": 0.21455,
+        "art_horizontal_share": 0.4856,
+        "art_ink_density": 0.9555,
+        "art_intermediate_share": 0.24594,
+        "art_left_share": 0.17635,
+        "art_middle_share": 0.55573,
+        "art_present": 1.0,
+        "art_red_share": 0.21559,
+        "art_right_share": 0.26792,
+        "art_shallow_share": 0.53951,
+        "art_spread": 0.60747,
+        "art_yellow_share": 0.78441
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "red": 412,
+        "yellow": 1499
+      },
+      "image_sha256": "cdaa6a1aeaa4f6f3c3e0ccf950dccc1d1b1e1bbed63398440d5ac4ff50d6fe0c",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/verticals-x-shallow.png",
+      "model_eligible": true,
+      "play": "Verticals X Shallow",
+      "reason": "",
+      "route_ink_pixels": 1911,
+      "site_play_name": "Verticals X Shallow",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.00094,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.07873,
+        "art_deep_right": 0.15183,
+        "art_deep_share": 0.23055,
+        "art_horizontal_share": 0.49624,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.35005,
+        "art_left_share": 0.14667,
+        "art_middle_share": 0.49719,
+        "art_present": 1.0,
+        "art_red_share": 0.27648,
+        "art_right_share": 0.35614,
+        "art_shallow_share": 0.4194,
+        "art_spread": 0.62434,
+        "art_yellow_share": 0.72259
+      },
+      "formation": "Gun Trips X Nasty",
+      "graphic_layers": {
+        "cyan": 2,
+        "red": 590,
+        "yellow": 1542
+      },
+      "image_sha256": "f666fd93bab2510f310b007128c46398ab8e7253828ce673c568f4f1e0278cac",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "gun_trips_x_nasty/wr-smash.png",
+      "model_eligible": true,
+      "play": "WR Smash",
+      "reason": "",
+      "route_ink_pixels": 2134,
+      "site_play_name": "WR Smash",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/gun-trips-x-nasty"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.04026,
+        "art_deep_left": 0.16102,
+        "art_deep_middle": 0.00046,
+        "art_deep_right": 0.16102,
+        "art_deep_share": 0.32251,
+        "art_horizontal_share": 0.52197,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.4753,
+        "art_left_share": 0.29186,
+        "art_middle_share": 0.42681,
+        "art_present": 1.0,
+        "art_red_share": 0.26578,
+        "art_right_share": 0.28134,
+        "art_shallow_share": 0.2022,
+        "art_spread": 0.72885,
+        "art_yellow_share": 0.69396
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "cyan": 88,
+        "red": 581,
+        "yellow": 1517
+      },
+      "image_sha256": "77ddd6247805fe8adf77dbe4708ac77e402aeb3ebdb4aea18b325710e5cd4372",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/bench.png",
+      "model_eligible": true,
+      "play": "Bench",
+      "reason": "",
+      "route_ink_pixels": 2186,
+      "site_play_name": "Bench",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.49123,
+        "art_ink_density": 0.056,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.05158,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "red": 112
+      },
+      "image_sha256": "1e80d72cee2ac1e68b83f863490aa5058d8595717898cb506dc99bfa6e9356ef",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/counter-y.png",
+      "model_eligible": true,
+      "play": "Counter Y",
+      "reason": "",
+      "route_ink_pixels": 112,
+      "site_play_name": "Counter Y",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.42105,
+        "art_ink_density": 0.039,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.01363,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "red": 78
+      },
+      "image_sha256": "a83114424b2511268f47162ec4d539021e54107f4fd1529fb1a64bf4ffeda1a0",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/hb-dive.png",
+      "model_eligible": true,
+      "play": "HB Dive",
+      "reason": "",
+      "route_ink_pixels": 78,
+      "site_play_name": "HB Dive",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.54054,
+        "art_ink_density": 0.0595,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.07828,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "red": 119
+      },
+      "image_sha256": "1b22514e028d848c515662db01b1a582c0a5bcbc0bbd0bc9d5bd54e357a4813e",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/hb-stretch.png",
+      "model_eligible": true,
+      "play": "HB Stretch",
+      "reason": "",
+      "route_ink_pixels": 119,
+      "site_play_name": "HB Stretch",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.42373,
+        "art_ink_density": 0.04,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.01447,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "red": 80
+      },
+      "image_sha256": "3975f34d4d388bb80d712ef5f2bb285002e1a566dec5f63a4a0dfa091ecb4660",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/inside-zone-split.png",
+      "model_eligible": true,
+      "play": "Inside Zone Split",
+      "reason": "",
+      "route_ink_pixels": 80,
+      "site_play_name": "Inside Zone Split",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.00055,
+        "art_deep_left": 0.08095,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.08205,
+        "art_deep_share": 0.163,
+        "art_horizontal_share": 0.49676,
+        "art_ink_density": 0.908,
+        "art_intermediate_share": 0.2109,
+        "art_left_share": 0.13877,
+        "art_middle_share": 0.64648,
+        "art_present": 1.0,
+        "art_red_share": 0.33921,
+        "art_right_share": 0.21476,
+        "art_shallow_share": 0.6261,
+        "art_spread": 0.44919,
+        "art_yellow_share": 0.66024
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "cyan": 1,
+        "red": 616,
+        "yellow": 1199
+      },
+      "image_sha256": "1999a8685f19c7f807f4ecf99b030f9908a61495769c72a288dc86357c9cb7ed",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/mesh-spot.png",
+      "model_eligible": true,
+      "play": "Mesh Spot",
+      "reason": "",
+      "route_ink_pixels": 1816,
+      "site_play_name": "Mesh Spot",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.7281,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.53772,
+        "art_ink_density": 0.1655,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 0.2719,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.11557,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "cyan": 241,
+        "red": 90
+      },
+      "image_sha256": "0a2037d1b30ce77ab8517b58c1fe0e973e0d029e89276404cfe593bdc0e3484f",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/mtn-counter-lt.png",
+      "model_eligible": true,
+      "play": "Mtn Counter Lt",
+      "reason": "",
+      "route_ink_pixels": 331,
+      "site_play_name": "Mtn Counter Lt",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.19194,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.06734,
+        "art_deep_right": 0.03765,
+        "art_deep_share": 0.10498,
+        "art_horizontal_share": 0.52898,
+        "art_ink_density": 0.943,
+        "art_intermediate_share": 0.54772,
+        "art_left_share": 0.0,
+        "art_middle_share": 0.65748,
+        "art_present": 1.0,
+        "art_red_share": 0.29958,
+        "art_right_share": 0.34252,
+        "art_shallow_share": 0.3473,
+        "art_spread": 0.42409,
+        "art_yellow_share": 0.50848
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "cyan": 362,
+        "red": 565,
+        "yellow": 959
+      },
+      "image_sha256": "5da051a2b6e526cd315a2ff6c4aff7952cf935c93fbfeb088f2e1385f83120a2",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/mtn-pa-flood.png",
+      "model_eligible": true,
+      "play": "Mtn PA Flood",
+      "reason": "",
+      "route_ink_pixels": 1886,
+      "site_play_name": "Mtn PA Flood",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.74663,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.54419,
+        "art_ink_density": 0.1855,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 0.9407,
+        "art_present": 1.0,
+        "art_red_share": 0.25337,
+        "art_right_share": 0.0593,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.2194,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "cyan": 277,
+        "red": 94
+      },
+      "image_sha256": "b6b3b77fec2ff7ebcd9f35247b91828851a9f162f9423839c06b8205fc2cd226",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/mtn-zone-split.png",
+      "model_eligible": true,
+      "play": "Mtn Zone Split",
+      "reason": "",
+      "route_ink_pixels": 371,
+      "site_play_name": "Mtn Zone Split",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.03475,
+        "art_deep_right": 0.08517,
+        "art_deep_share": 0.11992,
+        "art_horizontal_share": 0.53009,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.35438,
+        "art_left_share": 0.0,
+        "art_middle_share": 0.70582,
+        "art_present": 1.0,
+        "art_red_share": 0.2046,
+        "art_right_share": 0.29418,
+        "art_shallow_share": 0.5257,
+        "art_spread": 0.45038,
+        "art_yellow_share": 0.7954
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "red": 418,
+        "yellow": 1625
+      },
+      "image_sha256": "97939b08d1a539a002048d2c19ff042f35e4d94207e2c665dc1fdb4e5d53ac34",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/pa-boot-y-leak.png",
+      "model_eligible": true,
+      "play": "PA Boot Y Leak",
+      "reason": "",
+      "route_ink_pixels": 2043,
+      "site_play_name": "PA Boot Y Leak",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.22625,
+        "art_deep_left": 0.14559,
+        "art_deep_middle": 0.08407,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.22967,
+        "art_horizontal_share": 0.52214,
+        "art_ink_density": 0.7315,
+        "art_intermediate_share": 0.38551,
+        "art_left_share": 0.26179,
+        "art_middle_share": 0.73821,
+        "art_present": 1.0,
+        "art_red_share": 0.37867,
+        "art_right_share": 0.0,
+        "art_shallow_share": 0.38483,
+        "art_spread": 0.32316,
+        "art_yellow_share": 0.39508
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "cyan": 331,
+        "red": 554,
+        "yellow": 578
+      },
+      "image_sha256": "8b4f2bdd63f0df5899d9ce99b99a7ff480601b013017ef13094d42ca626430c0",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/pa-z-over.png",
+      "model_eligible": true,
+      "play": "PA Z Over",
+      "reason": "",
+      "route_ink_pixels": 1463,
+      "site_play_name": "PA Z Over",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.50685,
+        "art_ink_density": 0.089,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 0.54494,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.06152,
+        "art_yellow_share": 0.45506
+      },
+      "formation": "Pistol Deuce Close",
+      "graphic_layers": {
+        "red": 97,
+        "yellow": 81
+      },
+      "image_sha256": "a2a704aedfb253a77ae0cf166d7784316ce8094bcb2a6165b207ffe343d3c57d",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_deuce_close/y-lead-read-option.png",
+      "model_eligible": true,
+      "play": "Y Lead Read Option",
+      "reason": "",
+      "route_ink_pixels": 178,
+      "site_play_name": "Y Lead Read Option",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-deuce-close"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.49565,
+        "art_ink_density": 0.0385,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.0376,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "red": 77
+      },
+      "image_sha256": "0198050c1a008e425661f275964b50500a45708912f8a128827bec9b84807dfa",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/hb-counter.png",
+      "model_eligible": true,
+      "play": "HB Counter",
+      "reason": "",
+      "route_ink_pixels": 77,
+      "site_play_name": "HB Counter",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.43519,
+        "art_ink_density": 0.036,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.01268,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "red": 72
+      },
+      "image_sha256": "b86fb1a820a9ff835045b7a9252875065ee682a6168e64674f342308bdda1a46",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/hb-dive.png",
+      "model_eligible": true,
+      "play": "HB Dive",
+      "reason": "",
+      "route_ink_pixels": 72,
+      "site_play_name": "HB Dive",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.46053,
+        "art_ink_density": 0.0285,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.02782,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "red": 57
+      },
+      "image_sha256": "1894c338c01f6433ed1ae913f28c9e393375e0b49e2cc8721b5c4938c22762b4",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/hb-draw.png",
+      "model_eligible": true,
+      "play": "HB Draw",
+      "reason": "",
+      "route_ink_pixels": 57,
+      "site_play_name": "HB Draw",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.00055,
+        "art_deep_left": 0.19312,
+        "art_deep_middle": 0.17425,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.36737,
+        "art_horizontal_share": 0.44333,
+        "art_ink_density": 0.901,
+        "art_intermediate_share": 0.33685,
+        "art_left_share": 0.55438,
+        "art_middle_share": 0.44562,
+        "art_present": 1.0,
+        "art_red_share": 0.00388,
+        "art_right_share": 0.0,
+        "art_shallow_share": 0.29578,
+        "art_spread": 0.50912,
+        "art_yellow_share": 0.99556
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "cyan": 1,
+        "red": 7,
+        "yellow": 1794
+      },
+      "image_sha256": "7323f6787198037279b5a1134031ad7526f9cc0844e5460ab7ca28ab24fa2a0e",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/hb-slip-screen.png",
+      "model_eligible": true,
+      "play": "HB Slip Screen",
+      "reason": "",
+      "route_ink_pixels": 1802,
+      "site_play_name": "HB Slip Screen",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.55215,
+        "art_ink_density": 0.0525,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.068,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "red": 105
+      },
+      "image_sha256": "a2666affbe6f0eb53e65e77c87396ce854b885406baba88f044b0471ddd036d0",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/hb-stretch.png",
+      "model_eligible": true,
+      "play": "HB Stretch",
+      "reason": "",
+      "route_ink_pixels": 105,
+      "site_play_name": "HB Stretch",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.50413,
+        "art_ink_density": 0.041,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.04324,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "red": 82
+      },
+      "image_sha256": "0f6a2ade507850b8b63a27322fafc02a7ecd9ea1ae05b68e3b74e07fb196dcb5",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/hb-zone-wk.png",
+      "model_eligible": true,
+      "play": "HB Zone WK",
+      "reason": "",
+      "route_ink_pixels": 82,
+      "site_play_name": "HB Zone WK",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.03593,
+        "art_deep_left": 0.06913,
+        "art_deep_middle": 0.07621,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.14535,
+        "art_horizontal_share": 0.52753,
+        "art_ink_density": 0.9185,
+        "art_intermediate_share": 0.31682,
+        "art_left_share": 0.27001,
+        "art_middle_share": 0.72999,
+        "art_present": 1.0,
+        "art_red_share": 0.18617,
+        "art_right_share": 0.0,
+        "art_shallow_share": 0.53783,
+        "art_spread": 0.35701,
+        "art_yellow_share": 0.7779
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "cyan": 66,
+        "red": 342,
+        "yellow": 1429
+      },
+      "image_sha256": "fc5783e9abf01779541b3046c246d038435ed15ad9b2e6ab4f8b5f967c720029",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/inside-cross.png",
+      "model_eligible": true,
+      "play": "Inside Cross",
+      "reason": "",
+      "route_ink_pixels": 1837,
+      "site_play_name": "Inside Cross",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.15538,
+        "art_deep_left": 0.07796,
+        "art_deep_middle": 0.19516,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.27312,
+        "art_horizontal_share": 0.52696,
+        "art_ink_density": 0.93,
+        "art_intermediate_share": 0.37849,
+        "art_left_share": 0.34516,
+        "art_middle_share": 0.55484,
+        "art_present": 1.0,
+        "art_red_share": 0.30376,
+        "art_right_share": 0.1,
+        "art_shallow_share": 0.34839,
+        "art_spread": 0.53182,
+        "art_yellow_share": 0.54086
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "cyan": 289,
+        "red": 565,
+        "yellow": 1006
+      },
+      "image_sha256": "3765c51fa42a8cc08aad1cb4c8b6c6cb48c442be6c25b5a825143735720fc852",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/pa-boot.png",
+      "model_eligible": true,
+      "play": "PA Boot",
+      "reason": "",
+      "route_ink_pixels": 1860,
+      "site_play_name": "PA Boot",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.00054,
+        "art_deep_left": 0.08137,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.08137,
+        "art_horizontal_share": 0.51237,
+        "art_ink_density": 0.934,
+        "art_intermediate_share": 0.49893,
+        "art_left_share": 0.72752,
+        "art_middle_share": 0.27248,
+        "art_present": 1.0,
+        "art_red_share": 0.26767,
+        "art_right_share": 0.0,
+        "art_shallow_share": 0.4197,
+        "art_spread": 0.42835,
+        "art_yellow_share": 0.7318
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "cyan": 1,
+        "red": 500,
+        "yellow": 1367
+      },
+      "image_sha256": "792fda88068a28e9b92d35a07630c1a49469b05c5914321f68aa2c62be9e5f3c",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/pa-boot-lt.png",
+      "model_eligible": true,
+      "play": "PA Boot Lt",
+      "reason": "",
+      "route_ink_pixels": 1868,
+      "site_play_name": "PA Boot Lt",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.08007,
+        "art_deep_left": 0.15887,
+        "art_deep_middle": 0.13949,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.29836,
+        "art_horizontal_share": 0.4958,
+        "art_ink_density": 1.0,
+        "art_intermediate_share": 0.21702,
+        "art_left_share": 0.39781,
+        "art_middle_share": 0.43405,
+        "art_present": 1.0,
+        "art_red_share": 0.24863,
+        "art_right_share": 0.16814,
+        "art_shallow_share": 0.48462,
+        "art_spread": 0.63191,
+        "art_yellow_share": 0.6713
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "cyan": 190,
+        "red": 590,
+        "yellow": 1593
+      },
+      "image_sha256": "12a756daf1f11483ae45fd82361f96540b3601fd2e61dce5b881eebb7278b2de",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/pa-hb-flat.png",
+      "model_eligible": true,
+      "play": "PA HB Flat",
+      "reason": "",
+      "route_ink_pixels": 2373,
+      "site_play_name": "PA HB Flat",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.54913,
+        "art_ink_density": 0.0555,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.07021,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "red": 111
+      },
+      "image_sha256": "f1c2c3d08538b0a87ba5dbf54d7327ce38f2722708ce4163cb5a043b93ac36a4",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/pin-pull-sweep.png",
+      "model_eligible": true,
+      "play": "Pin Pull Sweep",
+      "reason": "",
+      "route_ink_pixels": 111,
+      "site_play_name": "Pin Pull Sweep",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.51613,
+        "art_ink_density": 0.086,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 0.5814,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.06275,
+        "art_yellow_share": 0.4186
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "red": 100,
+        "yellow": 72
+      },
+      "image_sha256": "7fc55d6ca1b0d98d87afbea863127c03a235aeb0f69fd891b0ee0458e68bcdb6",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/read-option.png",
+      "model_eligible": true,
+      "play": "Read Option",
+      "reason": "",
+      "route_ink_pixels": 172,
+      "site_play_name": "Read Option",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.51927,
+        "art_ink_density": 0.159,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.63836,
+        "art_middle_share": 0.36164,
+        "art_present": 1.0,
+        "art_red_share": 0.67925,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.38017,
+        "art_yellow_share": 0.32075
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "red": 216,
+        "yellow": 102
+      },
+      "image_sha256": "34717fb5ae06e127fb4dee18e113b5a25f71c217423c3c36001aef4c6dd5d90a",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/rpo-alert-bubble.png",
+      "model_eligible": true,
+      "play": "RPO Alert Bubble",
+      "reason": "",
+      "route_ink_pixels": 318,
+      "site_play_name": "RPO Alert Bubble",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.55,
+        "art_ink_density": 0.7955,
+        "art_intermediate_share": 0.33124,
+        "art_left_share": 0.34318,
+        "art_middle_share": 0.43432,
+        "art_present": 1.0,
+        "art_red_share": 0.25896,
+        "art_right_share": 0.2225,
+        "art_shallow_share": 0.66876,
+        "art_spread": 0.73092,
+        "art_yellow_share": 0.74104
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "red": 412,
+        "yellow": 1179
+      },
+      "image_sha256": "01e5f48a7d5a33f51d9cbb3c1a440f256bf70b2da115b143eb359ba7a692fdd6",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/slants.png",
+      "model_eligible": true,
+      "play": "Slants",
+      "reason": "",
+      "route_ink_pixels": 1591,
+      "site_play_name": "Slants",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.00054,
+        "art_deep_left": 0.14123,
+        "art_deep_middle": 0.10877,
+        "art_deep_right": 0.11742,
+        "art_deep_share": 0.36742,
+        "art_horizontal_share": 0.46559,
+        "art_ink_density": 0.924,
+        "art_intermediate_share": 0.29762,
+        "art_left_share": 0.40801,
+        "art_middle_share": 0.3869,
+        "art_present": 1.0,
+        "art_red_share": 0.31277,
+        "art_right_share": 0.20509,
+        "art_shallow_share": 0.33496,
+        "art_spread": 0.68662,
+        "art_yellow_share": 0.68669
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "cyan": 1,
+        "red": 578,
+        "yellow": 1269
+      },
+      "image_sha256": "cfe9b05160b535d31530f4db259a5a271002dfa636ce6e71fa7317093d2d2cfd",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/smash.png",
+      "model_eligible": true,
+      "play": "Smash",
+      "reason": "",
+      "route_ink_pixels": 1848,
+      "site_play_name": "Smash",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0,
+        "art_deep_left": 0.0,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.0,
+        "art_horizontal_share": 0.46853,
+        "art_ink_density": 0.047,
+        "art_intermediate_share": 0.0,
+        "art_left_share": 0.0,
+        "art_middle_share": 1.0,
+        "art_present": 1.0,
+        "art_red_share": 1.0,
+        "art_right_share": 0.0,
+        "art_shallow_share": 1.0,
+        "art_spread": 0.03506,
+        "art_yellow_share": 0.0
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "red": 94
+      },
+      "image_sha256": "9515f07a6f51eb6c22a8adfe7b8342065d484c9450343ddb2265c80d8d18ccd3",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/strong-power.png",
+      "model_eligible": true,
+      "play": "Strong Power",
+      "reason": "",
+      "route_ink_pixels": 94,
+      "site_play_name": "Strong Power",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.04478,
+        "art_deep_left": 0.1712,
+        "art_deep_middle": 0.08333,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.25454,
+        "art_horizontal_share": 0.47046,
+        "art_ink_density": 0.882,
+        "art_intermediate_share": 0.44955,
+        "art_left_share": 0.44444,
+        "art_middle_share": 0.42063,
+        "art_present": 1.0,
+        "art_red_share": 0.21202,
+        "art_right_share": 0.13492,
+        "art_shallow_share": 0.29592,
+        "art_spread": 0.61354,
+        "art_yellow_share": 0.7432
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "cyan": 79,
+        "red": 374,
+        "yellow": 1311
+      },
+      "image_sha256": "1ea51e2044dc3cbfef999a3fe9e4f5ce92674f8b3d6ec9221c64386be5b6fb75",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/verticals.png",
+      "model_eligible": true,
+      "play": "Verticals",
+      "reason": "",
+      "route_ink_pixels": 1764,
+      "site_play_name": "Verticals",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    },
+    {
+      "exact_name_match": true,
+      "features": {
+        "art_cyan_share": 0.0008,
+        "art_deep_left": 0.04564,
+        "art_deep_middle": 0.0,
+        "art_deep_right": 0.0,
+        "art_deep_share": 0.04564,
+        "art_horizontal_share": 0.51539,
+        "art_ink_density": 0.6245,
+        "art_intermediate_share": 0.32266,
+        "art_left_share": 0.83427,
+        "art_middle_share": 0.16573,
+        "art_present": 1.0,
+        "art_red_share": 0.16333,
+        "art_right_share": 0.0,
+        "art_shallow_share": 0.63171,
+        "art_spread": 0.46554,
+        "art_yellow_share": 0.83587
+      },
+      "formation": "Pistol Trips",
+      "graphic_layers": {
+        "cyan": 1,
+        "red": 204,
+        "yellow": 1044
+      },
+      "image_sha256": "f57526ceffbff0feb77098824a1d1c7095fc355ba76817691b626566f869dca6",
+      "image_size": [
+        387,
+        211
+      ],
+      "manifest_crop": "pistol_trips/x-spot.png",
+      "model_eligible": true,
+      "play": "X Spot",
+      "reason": "",
+      "route_ink_pixels": 1249,
+      "site_play_name": "X Spot",
+      "source": "user_supplied_screenshot_of_third_party_website",
+      "source_url": "https://acemadden.com/playbooks/madden27/buccaneers/pistol-trips"
+    }
+  ],
+  "schema": "madden27.offense_route_art_features.v1",
+  "training_rights": "Images were user-supplied for private analysis; original website images not reproduced in repository."
+}
