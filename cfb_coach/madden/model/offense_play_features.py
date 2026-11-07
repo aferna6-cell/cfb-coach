@@ -274,10 +274,18 @@ def group_of(name: str) -> str:
 
 
 def full_vector(s: PlayStructure, dist: Mapping[str, float]) -> list[float]:
-    f = structure_features(s)
-    f.update(matchup_features(s, dist))
-    # These describe the ORIGINAL stock play-art layout, even for hypothetical
-    # hot-routed candidates. Never claim the source image depicts that adjustment.
+    # PR #106's 40 sourced route assignments came from a provider that does not
+    # permit ML training use. They may be displayed for research, but MUST NOT
+    # enter model training/scoring. Only first-party-verified player routes do.
+    trainable = replace(
+        s, routes=tuple((slot, spec, tier) for slot, spec, tier in s.routes
+                        if tier in ("diagram_verified", "in_game_verified")),
+        sourced_concepts=(),
+    )
+    f = structure_features(trainable)
+    f.update(matchup_features(trainable, dist))
+    # Screenshot-derived path geometry is stock-play context, not an exact
+    # player-specific route assignment and not a hot-route transformation.
     f.update(af.art_features(s.formation, s.play))
     return [f.get(n, 0.0) for n in _ALL_NAMES]
 
