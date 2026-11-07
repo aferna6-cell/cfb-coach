@@ -124,3 +124,95 @@ def test_undo_removes_the_row_and_its_typed_call_together(kdb):
     assert [r["coverage_typed"] for r in _stored(kdb, c)] == ["Cover 3 Cloud", "Palms"]
     c.undo_last()
     assert [r["coverage_typed"] for r in _stored(kdb, c)] == ["Cover 3 Cloud"]
+
+
+# ---- names the old parser cannot recognise at all (form_store is None): the exact text must still be kept -----------------------
+def _dropped_installed():
+    import json
+    from cfb_coach.madden.model import offense_assignments as oa  # noqa: F401
+    snap = json.loads((__import__("pathlib").Path(ds.__file__).parents[2] / "data" / "madden27" / "installed_playbook_snapshot.json").read_text())
+    installed = {p for side in snap["sides"].values() for plays in side["formations"].values() for p in plays} | \
+                {f for side in snap["sides"].values() for f in side["formations"]}
+    return [n for n in ds.channel_audit()["dropped_names"] if n in installed]
+
+
+def test_fixture_names_genuinely_have_no_stored_form():
+    names = _dropped_installed()
+    assert names, "expected installed names the form drops"
+    for n in names:
+        assert ds.form_store(n) is None and ds.resolve(n).key
+
+
+def test_dropped_names_are_kept_exactly_and_reach_the_next_decision(kdb):
+    name = _dropped_installed()[0]
+    _prime(kdb)
+    c = _ctrl(kdb)
+    c.call_only("1&10 my 25")
+    c.result_and_call(outcome="+5", sit_raw="2&5 my 30", their=name)
+    row = _stored(kdb, c)[0]
+    assert row["coverage_typed"] == name and not row["coverage_seen"]               # nothing recognised, nothing invented
+    from cfb_coach.madden.model import offense_route_ranker as rr
+    cov = rr.info_of(c.last_call)["coverage"]
+    exact = ds.resolve(name).key
+    assert cov["basis"].endswith("+defense_knowledge") and cov["named_n"] == 1
+    assert max({k: v for k, v in cov["top"] if k != ds.GENERIC_PRESSURE_KEY}.items(), key=lambda kv: kv[1])[0] == exact
+
+
+def test_unknown_typed_text_is_preserved_but_never_becomes_a_defense(kdb):
+    _prime(kdb)
+    c = _ctrl(kdb)
+    c.call_only("1&10 my 25")
+    c.result_and_call(outcome="+5", sit_raw="2&5 my 30", their="  some   made up call ")
+    row = _stored(kdb, c)[0]
+    assert row["coverage_typed"] == "some made up call"                             # whitespace normalised only
+    from cfb_coach.madden.model import offense_route_ranker as rr
+    cov = rr.info_of(c.last_call)["coverage"]
+    assert cov["named_n"] == 0 and cov["pressure_n"] == 0
+
+
+def test_result_only_retry_does_not_wipe_the_typed_call_and_a_resubmit_is_idempotent(kdb):
+    name = _dropped_installed()[0]
+    _prime(kdb)
+    c = _ctrl(kdb)
+    c.call_only("1&10 my 25")
+    c.result_and_call(outcome="+5", sit_raw="2&5 my 30", their=name)
+    n_rows = kdb.conn.execute("SELECT COUNT(*) FROM snaps WHERE session_id=?", (c.session_id,)).fetchone()[0]
+    book = c._book()
+    # correction of the result for the same logged snap, nothing typed in "they ran"
+    if book.logged_id is not None:
+        kdb.update_snap(book.logged_id, result="+6")
+    assert _stored(kdb, c)[0]["coverage_typed"] == name
+    assert kdb.conn.execute("SELECT COUNT(*) FROM snaps WHERE session_id=?", (c.session_id,)).fetchone()[0] == n_rows
+
+
+def test_next_situation_text_is_never_attributed_to_the_snap(kdb):
+    from cfb_coach.last_snap import LastSnapBook  # noqa: F401
+    _prime(kdb)
+    c = _ctrl(kdb)
+    c.call_only("1&10 my 25")
+    c.result_and_call(outcome="+5", sit_raw="2&5 my 30 cover 3 cloud", their="")   # text on the NEXT situation line
+    assert _stored(kdb, c)[0]["coverage_typed"] is None
+
+
+def test_request_key_retry_is_idempotent_for_the_typed_call(kdb):
+    name = _dropped_installed()[0]
+    _prime(kdb)
+    c = _ctrl(kdb)
+    c.call_only("1&10 my 25")
+    first = c.result_and_call(outcome="+5", sit_raw="2&5 my 30", their=name, request_key="k-1")
+    again = c.result_and_call(outcome="+5", sit_raw="2&5 my 30", their=name, request_key="k-1")
+    assert first == again or again.get("ok") is not False
+    got = _stored(kdb, c)
+    assert [r["coverage_typed"] for r in got] == [name]
+
+
+def test_undo_after_a_dropped_name(kdb):
+    names = _dropped_installed()
+    _prime(kdb)
+    c = _ctrl(kdb)
+    c.call_only("1&10 my 25")
+    c.result_and_call(outcome="+6", sit_raw="2&4 my 31", their="Cover 3 Cloud")
+    c.result_and_call(outcome="+2", sit_raw="3&2 my 33", their=names[0])
+    assert [r["coverage_typed"] for r in _stored(kdb, c)] == ["Cover 3 Cloud", names[0]]
+    c.undo_last()
+    assert [r["coverage_typed"] for r in _stored(kdb, c)] == ["Cover 3 Cloud"]

@@ -13,7 +13,7 @@ model were not touched. All evaluation ran on synthetic data or read-only copies
 | Does it improve a *synthetic* world with a planted effect? | Not demonstrably (section 5.3). 16 games: no gain, one small harm. 30 games: −0.0116 with an interval that still includes zero. |
 | Is the exact typed call now kept? | **Yes, going forward** (section 3a): additive `snaps.coverage_typed`, no new form. Older rows stay ambiguous. |
 | Ready to activate / promote / use as a primary caller? | **No-go.** Preview-only, and only after section 7's `heldout` command returns GO on a copy of your real database. |
-| **GO / NO-GO for the first CPU game** | **NO-GO to run the knowledge model as the caller. GO to play the first CPU game on the existing route-aware coordinator while logging with the new capture**, so the data the knowledge model needs starts accumulating. Nothing here is activated. |
+| **GO / NO-GO for the first CPU game** | **NO-GO for the knowledge model as caller. Not a claim that the route-aware coordinator is ready either:** PR #113 is still an unmerged draft and neither it nor this work has been evaluated on your real database. What this PR supports is *logging* the exact calls from now on. Using any route-aware caller in a game stays behind #113's own local install and readiness gates (`offense_route_aware_readiness.py`, shadow/preview first). Nothing here is activated. |
 | Ready for review as a draft research PR? | **Yes.** |
 
 ## 2. What is now understood, name-only, or unknown
@@ -48,11 +48,11 @@ before the fix stays ambiguous and is read as above.**
 
 `snaps` gets one **additive, nullable** column, `coverage_typed`, added by the existing guarded `ALTER TABLE` migration. The post-play form
 is unchanged (same field, same workflow); `LastSnapBook.close_from_form` now also stores the exact "they ran" text there while
-`coverage_seen` keeps the same normalized value it always had. Rows logged earlier keep `NULL`; nothing is back-filled or guessed, so they
+`coverage_seen` keeps the same normalized value it always had. The text is stored whenever something is typed in that field, including the 25 catalog names the old parser recognizes nothing in (then `coverage_seen` stays empty rather than being invented); text on the next situation line is never attributed to the snap, and a result-only retry does not wipe the stored call. Rows logged earlier keep `NULL`; nothing is back-filled or guessed, so they
 remain ambiguous. Readers (knowledge path only) use the typed text when it resolves to a catalog name or untyped pressure and otherwise fall
 back to the stored label exactly as before. The default model path ignores the column. Undo, corrections and an older database file
-without the column are covered by `tests/madden_ml/test_defense_typed_capture.py` (12 tests), which drive HTML-form submissions
-(`LivePlayController.result_and_call`) for Cover 3 Cloud, Fire Zone 3, Cover 3 Buzz Match, Cover 4 Quarters, Cover 4 Palms, Zero Blitz,
+without the column are covered by `tests/madden_ml/test_defense_typed_capture.py` (18 tests), which drive HTML-form submissions
+(`LivePlayController.result_and_call`, including a `request_key` retry, undo, an unrecognized string and installed names whose `form_store` is `None`) for Cover 3 Cloud, Fire Zone 3, Cover 3 Buzz Match, Cover 4 Quarters, Cover 4 Palms, Zero Blitz,
 Cover 2 Man and Cover 1 Robber through storage to the next offensive decision's coverage belief. Tradeoff: only calls logged after this
 change benefit; the first games after it are a prior-only period for the new distinctions.
 

@@ -561,12 +561,18 @@ class LastSnapBook:
             executed_play = None
             executed_macro = None
             executed_verification = "unknown"
-        typed_call = None
-        if not defense and cov:
-            # Preserve exactly what was typed (the normalized coverage stays as it was); no new input, same field.
-            typed_call = (their or "").strip() or ((next_raw or "").strip() if next_raw and not their_look else None) or None
+        # Exact "they ran" text, kept whether or not the old parser recognized a coverage in it (25 catalog names yield none).
+        # Only what was typed in THIS field is stored: text from the next situation line is never attributed to this snap.
+        # Key absent = leave any stored value alone (e.g. a result-only retry); None = the look changed and cannot be attributed.
+        typed_fields: dict[str, Any] = {}
+        their_text = " ".join((their or "").split())[:200]
+        if not defense:
+            if their_text:
+                typed_fields["coverage_typed"] = their_text
+            elif cov:
+                typed_fields["coverage_typed"] = None
         spec = {
-            "coverage_typed": typed_call,
+            **typed_fields,
             "result": outcome.strip() if canon == "unknown" else canon,
             "coverage": cov,
             "concept": concept,
