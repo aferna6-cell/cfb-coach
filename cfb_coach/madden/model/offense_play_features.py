@@ -17,7 +17,7 @@ from cfb_coach.madden.model import offense_assignments as oa
 from cfb_coach.madden.model import offense_art_features as af
 from cfb_coach.madden.model.coverage_intelligence import SCHEMES
 
-FEATURE_VERSION = "offense_play_features.v2_route_art"
+FEATURE_VERSION = "offense_play_features.v3_route_art_matchup"
 FORMATIONS = ("Gun 5WR Tight", "Gun Doubles Clamp Stack", "Gun Trips X Nasty", "Pistol Deuce Close", "Pistol Trips")
 PLAY_TYPES = ("pass", "run", "play_action", "screen", "rpo", "option")
 STRUCT_CONCEPTS = ("mesh", "flood", "levels", "drive", "smash", "dagger", "mills", "stick", "spacing",
@@ -211,6 +211,35 @@ def _shell_probs(dist: Mapping[str, float]) -> dict[str, float]:
     return out
 
 
+def art_matchup_features(s: PlayStructure, dist: Mapping[str, float]) -> dict[str, float]:
+    """Interactions between *observed stock art geometry* and PRE-snap coverage priors.
+
+    These are data features, not hand-coded matchup wins. Learned coefficients
+    determine whether a specific route shape is useful against each coverage.
+    No dynamic player assignment or adjusted screenshot is implied.
+    """
+    f = {name: 0.0 for name in _ART_MATCH_NAMES}
+    a = af.art_features(s.formation, s.play)
+    if not a["art_present"]:
+        return f
+    probs = _shell_probs(dist)
+    man = probs["one_high_man"] + probs["two_high_man"]
+    three = probs["three_deep_spot"] + probs["three_deep_match"]
+    f["am_man_horizontal"] = man * a["art_horizontal_share"]
+    f["am_man_shallow"] = man * a["art_shallow_share"]
+    f["am_pressure_shallow"] = probs["pressure"] * a["art_shallow_share"]
+    f["am_two_high_deep_middle"] = probs["two_high_zone"] * a["art_deep_middle"]
+    f["am_three_deep_wide"] = three * (a["art_deep_left"] + a["art_deep_right"])
+    f["am_quarters_deep"] = probs["quarters"] * a["art_deep_share"]
+    f["am_palms_shallow_outside"] = probs["palms"] * a["art_shallow_share"] * (
+        a["art_left_share"] + a["art_right_share"])
+    f["am_split_lateral_asymmetry"] = probs["split_field"] * abs(
+        a["art_left_share"] - a["art_right_share"])
+    f["am_cover6_deep_left"] = dist.get("cover_6", 0.0) * a["art_deep_left"]
+    f["am_cover9_deep_right"] = dist.get("cover_9", 0.0) * a["art_deep_right"]
+    return f
+
+
 def matchup_features(s: PlayStructure, dist: Mapping[str, float]) -> dict[str, float]:
     """P(shell) x structural stress of the KNOWN routes. Zero when routes are unknown."""
     f = {n: 0.0 for n in _MATCH_NAMES}
@@ -260,10 +289,15 @@ _MATCH_NAMES: tuple[str, ...] = (
     "m_info", "m_entropy", "m_one_high_man", "m_pressure_quick", "m_pressure_slow", "m_two_high_man",
     "m_two_high_zone", "m_three_deep_spot", "m_three_deep_match", "m_quarters", "m_palms", "m_four_drop",
     "m_split_field")
-_ALL_NAMES: tuple[str, ...] = _STRUCT_NAMES + _MATCH_NAMES + af.FEATURE_NAMES
+_ART_MATCH_NAMES: tuple[str, ...] = (
+    "am_man_horizontal", "am_man_shallow", "am_pressure_shallow",
+    "am_two_high_deep_middle", "am_three_deep_wide", "am_quarters_deep",
+    "am_palms_shallow_outside", "am_split_lateral_asymmetry",
+    "am_cover6_deep_left", "am_cover9_deep_right")
+_ALL_NAMES: tuple[str, ...] = _STRUCT_NAMES + _MATCH_NAMES + af.FEATURE_NAMES + _ART_MATCH_NAMES
 # Weak-prior groups get a larger L2 penalty in the model (name hints are low trust).
 GROUPS = {"form": ("form_",), "hint": ("hint_",), "route": ("r_", "known_", "has_", "ol_"),
-          "concept": ("s_c_",), "match": ("m_",), "art": ("art_",)}
+          "concept": ("s_c_",), "match": ("m_",), "art": ("art_", "am_")}
 
 
 def group_of(name: str) -> str:
@@ -287,6 +321,7 @@ def full_vector(s: PlayStructure, dist: Mapping[str, float]) -> list[float]:
     # Screenshot-derived path geometry is stock-play context, not an exact
     # player-specific route assignment and not a hot-route transformation.
     f.update(af.art_features(s.formation, s.play))
+    f.update(art_matchup_features(s, dist))
     return [f.get(n, 0.0) for n in _ALL_NAMES]
 
 
