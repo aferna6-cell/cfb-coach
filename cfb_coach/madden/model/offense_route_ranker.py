@@ -248,14 +248,21 @@ def finalize(ctx: RouteContext, call: Any, *, sit: Any, opponent_id: str, game_i
             artifact_digest=sm.artifact_digest(ctx.art) if ctx.art else "")
         if ctx.art is not None and getattr(call, "formation", None) and getattr(call, "play", None):
             cand = (call.formation, call.play)
-            conf = _confirmations()
             situation = od.Situation(down=getattr(sit, "down", None), distance=getattr(sit, "distance", None),
                                      yardline=getattr(sit, "yardline", None), opponent_id=opponent_id,
                                      opponent_type="cpu" if str(opponent_id).lower().startswith("cpu") else "human",
                                      mix=ctx.mix)
-            dec = od.decide(ctx.art, situation, [cand], confirmations=conf,
-                            mode="live", allow_adjustments=True, priors=ctx.priors, learned_cells=ctx.learned)
+            selected_call = isinstance(getattr(call, "ml_offense_action", None), dict)
+            dec = od.decide(ctx.art, situation, [cand], confirmations=None if selected_call else _confirmations(),
+                            mode="live", allow_adjustments=not selected_call, priors=ctx.priors, learned_cells=ctx.learned)
+            if selected_call:
+                advice.use_selected_call(dec, call)
+                if ctx.priors and dec.final_structure.adjustments:
+                    dec.matchup = fpri.matchup_edge(dec.final_structure, ctx.mix, learned=ctx.learned)
             card = advice.build_card(dec, ctx.mix)
+            if selected_call:
+                card["CALL ACTION"] = advice.call_action_identity(call)
+                call.read_or_user = " → ".join(card[k] for k in ("PRIMARY READ", "SECONDARY READ", "CHECKDOWN"))
             if ctx.exploration:
                 info["exploration"] = ctx.exploration
             if ctx.priors and dec.matchup:

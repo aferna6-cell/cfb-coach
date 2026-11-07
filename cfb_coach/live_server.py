@@ -316,6 +316,11 @@ class LivePlayController:
             return {"status": "unavailable", "label": "READS UNAVAILABLE", "note": "no read card for this call", "reads": []}
         if (card.get("FORMATION"), card.get("PLAY")) != (getattr(call, "formation", None), getattr(call, "play", None)):
             return {"status": "unavailable", "label": "READS UNAVAILABLE", "note": "card does not match the displayed play", "reads": []}
+        if isinstance(getattr(call, "ml_offense_action", None), dict):
+            from cfb_coach.madden.model.offense_presnap_advice import call_action_identity
+
+            if card.get("CALL ACTION") != call_action_identity(call):
+                return {"status": "unavailable", "label": "READS UNAVAILABLE", "note": "card does not match the displayed action", "reads": []}
         label = "PREVIEW \u2014 model is not calling this play" if mode == "route_aware_preview" or not ra.get("applied") else "ROUTE-AWARE"
         reads = []
         for key, order in self._READ_KEYS:
