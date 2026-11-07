@@ -1285,6 +1285,7 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
             design = designer.design_offense(
                 db, opponent_id=args.opponent,
                 max_formations=args.max_formations, artifact=supplied_artifact,
+                must_add=tuple(getattr(args, "add_formation", None) or ()),
             )
             if args.stage:
                 design = designer.stage_design(db, design)
@@ -2415,6 +2416,8 @@ def build_ml_subparser(sub: Any) -> None:
     )
     p_od.add_argument("--opponent", "-o", default="cpu")
     p_od.add_argument("--max-formations", type=int, default=DEFAULT_MAX_FORMATIONS)
+    p_od.add_argument("--add-formation", action="append", default=[], metavar="NAME",
+                      help="add this catalogued formation (repeatable). Installed formations are always retained until the 15 cap.")
     p_od.add_argument("--artifact", default=None,
                       help="Optional offline-trained model JSON for design only; never installs the model")
     p_od.add_argument("--text", action="store_true",
