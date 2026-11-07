@@ -1,0 +1,63 @@
+{
+  "schema": "madden27.offense_personnel_evidence.v1",
+  "recorded_offense_fingerprint": "OFF-3C6D-E543",
+  "evidence_granularity": "formation personnel counts; no player alignment or assignment inference",
+  "source_notes": "Madden School explicitly lists 00 and 12 formations. The 11 personnel counts use standard football 11-personnel semantics, with Madden formation identification corroborated by public Madden coverage. None is a play-art verification.",
+  "formations": {
+    "Gun 5WR Tight": {
+      "WR": 5,
+      "TE": 0,
+      "HB": 0,
+      "QB": 1,
+      "OL": 5,
+      "basis": "source_documented",
+      "source_url": "https://www.madden-school.com/playbooks/buccaneers/offense/",
+      "player_slots_unmapped": true,
+      "all_11_play_assignments_verified": false
+    },
+    "Gun Doubles Clamp Stack": {
+      "WR": 3,
+      "TE": 1,
+      "HB": 1,
+      "QB": 1,
+      "OL": 5,
+      "basis": "football_convention_from_11_personnel_identification",
+      "source_url": "https://madden.tools/playbooks/formation/shotgun/doubles-stack-clamp",
+      "player_slots_unmapped": true,
+      "all_11_play_assignments_verified": false
+    },
+    "Gun Trips X Nasty": {
+      "WR": 3,
+      "TE": 1,
+      "HB": 1,
+      "QB": 1,
+      "OL": 5,
+      "basis": "football_convention_from_11_personnel_identification",
+      "source_url": "https://madden.tools/playbooks/formation/shotgun/trips-x-nasty",
+      "player_slots_unmapped": true,
+      "all_11_play_assignments_verified": false
+    },
+    "Pistol Deuce Close": {
+      "WR": 2,
+      "TE": 2,
+      "HB": 1,
+      "QB": 1,
+      "OL": 5,
+      "basis": "source_documented",
+      "source_url": "https://www.madden-school.com/playbooks/buccaneers/offense/",
+      "player_slots_unmapped": true,
+      "all_11_play_assignments_verified": false
+    },
+    "Pistol Trips": {
+      "WR": 3,
+      "TE": 1,
+      "HB": 1,
+      "QB": 1,
+      "OL": 5,
+      "basis": "football_convention_from_11_personnel_identification",
+      "source_url": "https://madden.tools/playbooks/formation/pistol/trips",
+      "player_slots_unmapped": true,
+      "all_11_play_assignments_verified": false
+    }
+  }
+}
