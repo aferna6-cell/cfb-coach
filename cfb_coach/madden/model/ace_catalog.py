@@ -272,7 +272,10 @@ def discover(fetcher: Fetcher, *, game: str = "madden27", sides: Iterable[str] =
             if ids and ids == seen_first:
                 break
             seen_first = seen_first or ids
-            for r in parsed.records:
+            fresh = [r for r in parsed.records if r["id"] not in out]
+            if not fresh:
+                break                       # the site serves the LAST page again for any page number past the end (observed): no new plays = done
+            for r in fresh:
                 out.setdefault(r["id"], r)
             quarantine += [{**q, "side": side, "page": page} for q in parsed.quarantined]
             stats["pages"][f"{side}:{page}"] = parsed.tiles_seen

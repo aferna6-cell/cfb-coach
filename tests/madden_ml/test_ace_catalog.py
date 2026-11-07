@@ -325,3 +325,15 @@ def test_files_named_with_the_sites_art_slug_match_through_the_second_key(tmp_pa
     r = subprocess.run(cli + ["extract", "--images", str(imgs), "--side", "offense"], capture_output=True, text=True)
     assert "extracted 1 images" in r.stdout
     assert (tmp_path / "s" / "extractions").glob("*test-play-two*")
+
+
+def test_discovery_stops_when_the_site_repeats_its_last_page(tmp_path):
+    """Observed on the live site: any page number past the end returns the last page again (not an empty page, not page 1)."""
+    last = html("listing_offense_p1.html")
+    pages = {"/playbooks/plays/madden27?page=1": html("listing_defense_p1.html").replace("defense", "offense"),
+             "/playbooks/plays/madden27?page=2": last}
+    for n in range(3, 40):
+        pages[f"/playbooks/plays/madden27?page={n}"] = last                                   # endless repeats of the last page
+    st, f = fetcher(tmp_path, pages)
+    recs, q, stats = ac.discover(f, sides=("offense",))
+    assert len(recs) == 3 and f.requests <= 5                                                 # robots + pages 1, 2, 3 (+ at most one more)
