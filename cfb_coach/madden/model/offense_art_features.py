@@ -53,8 +53,11 @@ def validate(data: Mapping[str, Any]) -> None:
             raise RouteArtError(f'{key}: missing source-name approval')
         if not p['model_eligible'] and p.get('exact_name_match'):
             raise RouteArtError(f'{key}: incongruent approval flags')
-    if sum(p['model_eligible'] for p in rows) != 91:
-        raise RouteArtError('expected 91 unambiguous source matches, 2 quarantined label conflicts')
+    usable = sum(p['model_eligible'] for p in rows)
+    counts = data.get('coverage', {})
+    if counts.get('total') != 93 or counts.get('model_eligible') != usable or \
+            counts.get('quarantined_name_conflicts') != 93-usable:
+        raise RouteArtError('visual feature-bank approval counts do not match records')
 
 
 @lru_cache(maxsize=1)
