@@ -94,3 +94,32 @@ def test_unlicensed_third_party_route_rows_not_used_for_model_training():
     values = dict(zip(pf.feature_names(),pf.full_vector(s, {'unknown':1.0})))
     assert values['known_route_frac'] == 0.0
     assert values['art_present'] == 1.0
+
+
+def test_visual_coverage_interactions_are_specific_and_nonheuristic():
+    s = pf.structure_lookup('Gun Trips X Nasty','Mtn Stick Wheel')
+    names = pf.feature_names()
+    palms = dict(zip(names,pf.full_vector(s, {'cover_4_palms':1.0})))
+    quarters = dict(zip(names,pf.full_vector(s, {'cover_4_quarters':1.0})))
+    assert palms['am_palms_shallow_outside'] > 0
+    assert palms['am_quarters_deep'] == 0
+    assert quarters['am_palms_shallow_outside'] == 0
+    assert quarters['am_quarters_deep'] > 0
+    # Interactions are descriptive quantities; the model learns their weights.
+    assert sm.LAMBDA['art'] > 0 and pf.group_of('am_palms_shallow_outside') == 'art'
+
+
+def test_cover6_cover9_receive_separate_route_art_interactions():
+    s = pf.structure_lookup('Gun 5WR Tight', 'Mesh')
+    names = pf.feature_names()
+    a = dict(zip(names,pf.full_vector(s, {'cover_6':1.0})))
+    b = dict(zip(names,pf.full_vector(s, {'cover_9':1.0})))
+    assert a['am_cover6_deep_left'] > 0 and a['am_cover9_deep_right'] == 0
+    assert b['am_cover9_deep_right'] > 0 and b['am_cover6_deep_left'] == 0
+
+
+def test_unknown_opponent_coverage_gives_zero_art_coverage_features():
+    s = pf.structure_lookup('Gun 5WR Tight','Mesh')
+    f=dict(zip(pf.feature_names(),pf.full_vector(s, {'unknown':1.0})))
+    assert all(f[n]==0.0 for n in pf.feature_names() if n.startswith('am_'))
+    assert f['art_present']==1.0
