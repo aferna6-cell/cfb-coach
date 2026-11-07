@@ -161,7 +161,17 @@ def parse_listing(page_html: str, *, version: str = "", side_hint: str | None = 
         texts = [htmllib.unescape(t).strip() for t in TEXT_RE.findall(body)]
         why = None
         if not img:
-            why = "tile has no play-art image"
+            # a real, listed play whose tile carries no art (observed: 20 offense plays). Keep it, with no art_url; never drop a listed play.
+            nm = texts[-1] if texts else None
+            if not nm:
+                why = "tile has no play-art image and no visible name"
+            else:
+                rec = new_record(game=m.group("game"), version=version, side=m.group("side"), formation_slug=m.group("f"), play_slug=m.group("p"), play_name=nm,
+                                 personnel_group=texts[0] if len(texts) > 1 else None, detail_url=BASE + m.group(1), art_url=None, source_version=version,
+                                 permission=permission, retrieved_at=retrieved_at)
+                rec["source"]["no_art_in_listing"] = True
+                recs.append(rec)
+                continue
         elif (img.group("f"), img.group("side")) != (m.group("f"), m.group("side")):
             why = "image formation/side does not match the link (layout change or mis-linked tile)"
         elif side_hint and m.group("side") != side_hint:

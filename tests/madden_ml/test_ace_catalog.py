@@ -337,3 +337,11 @@ def test_discovery_stops_when_the_site_repeats_its_last_page(tmp_path):
     st, f = fetcher(tmp_path, pages)
     recs, q, stats = ac.discover(f, sides=("offense",))
     assert len(recs) == 3 and f.requests <= 5                                                 # robots + pages 1, 2, 3 (+ at most one more)
+
+
+def test_a_listed_play_with_no_art_tile_is_kept_without_an_art_url_not_quarantined():
+    tile = ('<a href="/playbooks/plays/madden27/offense/fixture-formation-a/no-art-play"><div class="play-art-shimmer"></div>'
+            '<div><div>3WR</div><div>No Art Play</div></div></a>')
+    p = ac.parse_listing("<html>" + tile + "</html>")
+    assert not p.quarantined and p.records[0]["play_name"] == "No Art Play" and p.records[0]["art_url"] is None
+    assert p.records[0]["source"]["no_art_in_listing"] is True and ac.validate({r["id"]: r for r in p.records}) == []
