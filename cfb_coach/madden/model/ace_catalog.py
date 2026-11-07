@@ -37,6 +37,36 @@ EVIDENCE_TIERS = ("unknown", "football_inference", "source_documented", "diagram
 VERIFIED = ("diagram_verified", "in_game_verified")
 
 
+SCOPES = ("metadata_bulk", "images_download", "images_local_storage", "ml_training", "redistribution")
+
+
+def load_authorization(store: "Store") -> dict[str, Any] | None:
+    p = store.root / "authorization.json"
+    return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else None
+
+
+def record_authorization(store: "Store", *, sender: str, date: str, scopes: Iterable[str], restrictions: str, private_reference: str, summary: str) -> dict[str, Any]:
+    """Store a MINIMAL authorization record: who/when, which scopes the grant actually covers, restrictions, and a private pointer to the email.
+    ``scopes`` must come from what the email says; redistribution is never implied by any other scope."""
+    scopes = sorted(set(scopes))
+    bad = [x for x in scopes if x not in SCOPES]
+    if bad:
+        raise ValueError(f"unknown scope(s) {bad}; choose from {SCOPES}")
+    if not (sender and date and summary and private_reference):
+        raise ValueError("sender, date, summary and private_reference are all required (no invented or empty authorizations)")
+    rec = {"sender": sender, "date": date, "scopes": scopes, "restrictions": restrictions, "private_reference": private_reference,
+           "summary": summary, "recorded_at": now(), "note": "summary written by the owner from the actual email; the email itself is not stored here"}
+    (store.root / "authorization.json").write_text(json.dumps(rec, indent=1), encoding="utf-8")
+    return rec
+
+
+def require_scope(store: "Store", scope: str) -> dict[str, Any]:
+    a = load_authorization(store)
+    if not a or scope not in a["scopes"]:
+        raise PermissionError(f"no recorded authorization covers {scope!r}; run `authorize` with what the email actually grants (or stop)")
+    return a
+
+
 def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 

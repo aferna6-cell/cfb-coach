@@ -229,3 +229,25 @@ def test_ingest_cli_extract_review_and_approval_rules(tmp_path):
     assert "promoted 1" in subprocess.run(cli + ["approve", "--file", str(csvp)], capture_output=True, text=True).stdout
     done = ac.Store(tmp_path / "s").read()[rid]
     assert done["evidence"]["tier"] == "diagram_verified" and done["offense"]["assignments"]["routes"] and ac.validate({rid: done}) == []
+
+
+def test_authorization_is_structured_scoped_and_never_invented(tmp_path):
+    st = ac.Store(tmp_path / "s")
+    with pytest.raises(PermissionError, match="no recorded authorization"):
+        ac.require_scope(st, "images_download")
+    with pytest.raises(ValueError, match="required"):
+        ac.record_authorization(st, sender="", date="2026-11-07", scopes=["metadata_bulk"], restrictions="", private_reference="r", summary="s")
+    with pytest.raises(ValueError, match="unknown scope"):
+        ac.record_authorization(st, sender="x@y", date="2026-11-07", scopes=["everything"], restrictions="", private_reference="r", summary="s")
+    ac.record_authorization(st, sender="support@example.test", date="2026-11-07", scopes=["metadata_bulk"], restrictions="private use only", private_reference="mailbox ref", summary="metadata only")
+    assert ac.require_scope(st, "metadata_bulk")["scopes"] == ["metadata_bulk"]
+    for scope in ("images_download", "ml_training", "redistribution"):                     # a grant for one scope never implies another
+        with pytest.raises(PermissionError):
+            ac.require_scope(st, scope)
+
+
+def test_cli_art_refuses_without_the_images_scope(tmp_path):
+    base = [sys.executable, str(ROOT / "scripts/madden_ml/ace_catalog.py"), "--store", str(tmp_path / "s")]
+    subprocess.run(base + ["authorize", "--sender", "a@b.test", "--date", "2026-11-07", "--scopes", "metadata_bulk", "--reference", "r", "--summary", "metadata only"], check=True, capture_output=True)
+    r = subprocess.run(base + ["art"], capture_output=True, text=True)
+    assert r.returncode != 0 and "images_download" in (r.stderr + r.stdout)

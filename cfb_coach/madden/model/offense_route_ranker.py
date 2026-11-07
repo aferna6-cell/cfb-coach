@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from cfb_coach.madden.model import experimental_model as em
+from cfb_coach.madden.model import football_priors as fpri
 from cfb_coach.madden.model import offense_decision as od
 from cfb_coach.madden.model import offense_live_coverage as lc
 from cfb_coach.madden.model import offense_presnap_advice as advice
@@ -62,6 +63,21 @@ def set_mode(db: Any, mode: str) -> None:
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
     db.set_meta(META_MODE, mode)
+
+
+ENV_PRIORS = "CFB_COACH_FOOTBALL_PRIORS"
+META_PRIORS = "ml_football_priors"
+
+
+def football_priors_on(db: Any = None) -> bool:
+    """Opt-in (default OFF so the running CPU experiment is unchanged): env CFB_COACH_FOOTBALL_PRIORS=1 or db meta ml_football_priors=1."""
+    raw = os.environ.get(ENV_PRIORS)
+    if raw is None and db is not None:
+        try:
+            raw = db.get_meta(META_PRIORS)
+        except Exception:  # noqa: BLE001
+            raw = None
+    return str(raw or "").strip().lower() in ("1", "true", "on", "yes")
 
 
 def default_artifact_path() -> Path:
@@ -117,6 +133,10 @@ class RouteContext:
     coverage: dict[str, Any] = field(default_factory=dict)
     mix: dict[str, float] = field(default_factory=dict)
     applied: bool = False
+    priors: bool = False
+    learned: dict[tuple[str, str], float] | None = None
+    adaptive: dict[str, Any] | None = None
+    exploration: dict[str, Any] | None = None
     error: str = ""
     n_scored: int = 0
     latency_ms: float = 0.0
@@ -152,6 +172,10 @@ def apply(mode: str, ranked: list[dict[str, Any]], pairs: list[tuple[str, str]],
         mix, cov = _coverage(db, art, opponent_id, session_id, snap_seq)
         ctx.mix, ctx.coverage = mix, cov
         scored_pairs = list(all_pairs)      # EVERY installed play is scored; no situational shortlist
+        ctx.priors = football_priors_on(db)
+        if ctx.priors:
+            from cfb_coach.madden.model import adaptive_priors as ap
+            ctx.learned, ctx.adaptive = ap.learned_cells(db, opponent_id, session_id)
         template = em.rank_candidates(em.ExperimentalArtifact.from_dict(art.base), scored_pairs,
                                       **{k: v for k, v in rank_kwargs.items() if k != "heuristic"})
         rows = []
@@ -164,12 +188,25 @@ def apply(mode: str, ranked: list[dict[str, Any]], pairs: list[tuple[str, str]],
             row["components"] = {**dict(r.get("components") or {}), "route_aware_residual_logit": sc.residual_logit}
             row["base_probability"] = float(r["probability"])
             row["probability"] = sc.probability
+            if ctx.priors:                                   # structured football prior (+ learned cells): changes the SCORE, hence the ranking
+                e = fpri.matchup_edge(s, mix, learned=ctx.learned)
+                row["football_prior_edge"] = e["edge"]
+                row["probability"] = sm._sigmoid(sm._logit(sc.probability) + e["edge"])
+                row["components"]["football_prior_edge_logit"] = e["edge"]
             row["route_aware_se"] = sc.logit_se
             row["route_aware_known_routes"] = s.n_known
             rows.append(row)
             if (time.perf_counter() - started) * 1000.0 > budget_ms:
                 raise RouteAwareUnavailable("latency budget exhausted while scoring")
         rows.sort(key=lambda x: (-x["probability"], x.get("uncertainty", 1.0), x["formation"], x["play"]))
+        if ctx.priors and os.environ.get("CFB_COACH_EXPLORE") == "1":     # optional, cautious, logged; off by default
+            from cfb_coach.madden.model import adaptive_priors as ap
+            ctx.exploration = ap.exploration_choice(rows, situation={"down": getattr(sit, "down", None), "yardline": getattr(sit, "yardline", None)})
+            if ctx.exploration["explored"]:
+                f, p_ = ctx.exploration["chosen"]
+                pick = next(r for r in rows if (r["formation"], r["play"]) == (f, p_))
+                rows.remove(pick)
+                rows.insert(0, pick)
         for i, r in enumerate(rows, 1):
             r["rank"] = i
         ctx.rows, ctx.n_scored = rows, len(rows)
@@ -217,8 +254,12 @@ def finalize(ctx: RouteContext, call: Any, *, sit: Any, opponent_id: str, game_i
                                      opponent_type="cpu" if str(opponent_id).lower().startswith("cpu") else "human",
                                      mix=ctx.mix)
             dec = od.decide(ctx.art, situation, [cand], confirmations=conf,
-                            mode="live", allow_adjustments=True)
+                            mode="live", allow_adjustments=True, priors=ctx.priors, learned_cells=ctx.learned)
             card = advice.build_card(dec, ctx.mix)
+            if ctx.exploration:
+                info["exploration"] = ctx.exploration
+            if ctx.priors and dec.matchup:
+                info["football_priors"] = {"edge": round(dec.matchup["edge"], 4), "cells": dec.matchup["cells"], "adaptive": ctx.adaptive}
             info["card"] = card
             info["adjustment"] = dec.adjustment
             info["call_probability"] = round(dec.probability, 4)

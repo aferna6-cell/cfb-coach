@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from cfb_coach.madden.model import offense_decision as od
+from cfb_coach.madden.model import football_priors as fpri
 from cfb_coach.madden.model import offense_play_features as pf
 from cfb_coach.madden.model import offense_structural_model as sm
 from cfb_coach.madden.model import offense_taxonomy as tx
@@ -48,7 +49,7 @@ def _shell_dist(dist: Mapping[str, float]) -> dict[str, float]:
     return pf._shell_probs(dist)
 
 
-def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None) -> dict[str, Any]:
+def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *, priors: bool | None = None) -> dict[str, Any]:
     s = decision.final_structure
     if s is None:
         raise ValueError("decision has no play structure")
@@ -56,7 +57,9 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None) ->
     shells = _shell_dist(dist)
     top = max(shells, key=shells.get) if shells and max(shells.values()) > 0 else "unknown"
     top_p = shells.get(top, 0.0)
+    use_priors = bool(getattr(decision, "football_priors", False)) if priors is None else priors
     primary = secondary = checkdown = "UNKNOWN: this play's receiver routes are not annotated yet"
+    conditioned: list[str] = []
     basis = "unknown"
     why = []
     hint = s.hint
@@ -68,6 +71,8 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None) ->
             order, basis = documented, "DOCUMENTED (third-party published read order; not Xbox-verified)"
         else:
             def aff(item: tuple[str, tx.RouteSpec]) -> float:
+                if use_priors and mix:                  # coverage-conditioned prior preference of this route family under the opponent's mixture
+                    return fpri.route_read_scores(item[1].family, mix) + 0.01 * item[1].meta.man_beater
                 return sum(shells.get(sh, 0.0) for sh in _AFFINITY.get(item[1].family, ())) \
                     + 0.01 * item[1].meta.man_beater
             order = [sl for sl, _ in sorted(by_slot.items(), key=lambda kv: -aff(kv))
@@ -75,9 +80,17 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None) ->
             basis = ("INFERRED from football principles for the expected coverage" if not s.adjustments else
                      "INFERRED (hot route changed the play; documented order no longer applies)")
         order = [o for o in order if by_slot[o].meta.category != "blocking"]
+        if use_priors and mix and basis.startswith("DOCUMENTED"):
+            def _aff(sl: str) -> float:
+                return fpri.route_read_scores(by_slot[sl].family, mix) + 0.01 * by_slot[sl].meta.man_beater
+            conditioned = sorted(order, key=lambda sl: -_aff(sl))                  # shown beside the documented order, never replacing it
         primary = _describe(order[0], by_slot[order[0]]) if order else primary
         secondary = _describe(order[1], by_slot[order[1]]) if len(order) > 1 else "UNKNOWN"
-        cd = [(sl, sp) for sl, sp in by_slot.items() if sp.family in _CHECKDOWN and sl not in order[:2]]
+        keep_in = any(a.action_id in ("off.pass_protection", "off.chip_block") for a in getattr(decision, "actions", ()))
+        cd = [(sl, sp) for sl, sp in by_slot.items() if sp.family in _CHECKDOWN and sl not in order[:2]
+              and not (keep_in and sl.startswith(("HB", "FB")))]               # a back kept in to block is not an outlet
+        if keep_in:
+            why.append("back kept in to protect: not offered as the checkdown")
         checkdown = _describe(*cd[0]) if cd else "UNKNOWN: no documented outlet route"
         concepts = sorted(s.concepts())
         if concepts:
@@ -102,6 +115,7 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None) ->
         "FORMATION": decision.formation, "PLAY": decision.play, "ADJUSTMENT": decision.adjustment,
         "PRIMARY READ": primary, "SECONDARY READ": secondary, "CHECKDOWN": checkdown,
         "DEFENSIVE INDICATOR": indicator, "WHY": "; ".join(why), "READ BASIS": basis,
+        "COVERAGE-CONDITIONED ORDER": conditioned or None,
         "EXECUTABLE NOW": "yes" if decision.executable_now else "NO - adjustment not yet confirmed in-game; run the stock play",
     }
 

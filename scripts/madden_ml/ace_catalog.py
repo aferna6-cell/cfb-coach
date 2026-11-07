@@ -32,20 +32,37 @@ from cfb_coach.madden.model import ace_catalog as ac  # noqa: E402
 DEFAULT_STORE = Path.home() / "cfb_acemadden"
 
 
-def _permission(a) -> dict:
+def cmd_authorize(a) -> int:
+    store = ac.Store(a.store)
+    try:
+        rec = ac.record_authorization(store, sender=a.sender, date=a.date, scopes=[x for x in a.scopes.split(",") if x], restrictions=a.restrictions,
+                                      private_reference=a.reference, summary=a.summary)
+    except ValueError as exc:
+        print(f"not recorded: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps({k: rec[k] for k in ("sender", "date", "scopes", "restrictions")}, indent=1))
+    return 0
+
+
+def _permission(a, store=None) -> dict:
+    auth = ac.load_authorization(store) if store is not None else None
+    if auth:
+        return {"status": "authorized", "scopes": auth["scopes"], "sender": auth["sender"], "date": auth["date"], "restrictions": auth["restrictions"],
+                "contact": ac.PERMISSION_CONTACT}
     note = (getattr(a, "permission_note", None) or "").strip()
     return {"status": "owner_attested" if note else "public_metadata_only", "note": note, "contact": ac.PERMISSION_CONTACT,
             "terms_checked": "https://acemadden.com/terms (rev. 2026-06-03): copyright on play art; silent on automated collection/ML training"}
 
 
 def _fetcher(a, store):
-    return ac.Fetcher(store, delay=a.delay, permission_note=(a.permission_note or None))
+    auth = ac.load_authorization(store)
+    return ac.Fetcher(store, delay=a.delay, permission_note=(a.permission_note or (auth["summary"] if auth else None)))
 
 
 def cmd_discover(a) -> int:
     store = ac.Store(a.store)
     f = _fetcher(a, store)
-    recs, quarantine, stats = ac.discover(f, game=a.game, max_pages=a.max_pages, permission=_permission(a))
+    recs, quarantine, stats = ac.discover(f, game=a.game, max_pages=a.max_pages, permission=_permission(a, store))
     forms = {}
     for r in recs.values():
         forms.setdefault((r["side"], r["formation_slug"]), 0)
@@ -59,7 +76,8 @@ def cmd_discover(a) -> int:
 def cmd_sync(a) -> int:
     store = ac.Store(a.store)
     f = _fetcher(a, store)
-    perm = _permission(a)
+    ac.require_scope(store, "metadata_bulk") if a.max_pages is None else None   # bulk sync needs the scope; small samples do not
+    perm = _permission(a, store)
     recs, quarantine, stats = ac.discover(f, game=a.game, max_pages=a.max_pages, permission=perm)
     if a.details:
         for r in recs.values():
@@ -83,11 +101,11 @@ def cmd_sync(a) -> int:
 
 
 def cmd_import(a) -> int:
-    if not a.permission_note:
+    if not a.permission_note and not ac.load_authorization(ac.Store(a.store)):
         print("import needs --permission-note (the licence/authorisation this export came under)", file=sys.stderr)
         return 2
     store = ac.Store(a.store)
-    recs, bad = ac.import_export(a.file, game=a.game, version=a.version, permission=_permission(a))
+    recs, bad = ac.import_export(a.file, game=a.game, version=a.version, permission=_permission(a, store))
     errs = [e for e in ac.validate(recs) if not e.startswith("info:")]
     if errs:
         print("validation failed; nothing written:\n  " + "\n  ".join(errs[:20]), file=sys.stderr)
@@ -101,6 +119,8 @@ def cmd_import(a) -> int:
 
 def cmd_art(a) -> int:
     store = ac.Store(a.store)
+    ac.require_scope(store, "images_download")
+    ac.require_scope(store, "images_local_storage")
     f = _fetcher(a, store)
     recs = store.read()
     done = 0
@@ -111,7 +131,7 @@ def cmd_art(a) -> int:
         h = hashlib.sha256(png).hexdigest()
         (store.root / "raw").mkdir(exist_ok=True)
         (store.root / "raw" / f"{r['side']}__{r['formation_slug']}__{r['play_slug']}.png").write_bytes(png)
-        r["art_sha256"], r["permitted_use"] = h, _permission(a)
+        r["art_sha256"], r["permitted_use"] = h, _permission(a, store)
         r["content_hash"] = ac.content_hash(r)
         done += 1
         if a.limit and done >= a.limit:
@@ -151,7 +171,7 @@ def main() -> int:
     ap.add_argument("--delay", type=float, default=1.5, help="seconds between requests (be gentle)")
     ap.add_argument("--permission-note", default="", help="record of the written permission you hold (stored with every record)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for n, fn in (("discover", cmd_discover), ("sync", cmd_sync), ("import", cmd_import), ("art", cmd_art), ("validate", cmd_validate), ("audit", cmd_audit)):
+    for n, fn in (("discover", cmd_discover), ("sync", cmd_sync), ("import", cmd_import), ("art", cmd_art), ("validate", cmd_validate), ("audit", cmd_audit), ("authorize", cmd_authorize)):
         p = sub.add_parser(n)
         p.set_defaults(fn=fn)
         if n in ("discover", "sync"):
@@ -161,6 +181,11 @@ def main() -> int:
         if n == "import":
             p.add_argument("--file", required=True)
             p.add_argument("--version", default="")
+        if n == "authorize":
+            p.add_argument("--sender", required=True); p.add_argument("--date", required=True)
+            p.add_argument("--scopes", required=True, help="comma list of what the email grants: " + ",".join(ac.SCOPES))
+            p.add_argument("--restrictions", default=""); p.add_argument("--reference", required=True, help="private pointer to the email (not the email text)")
+            p.add_argument("--summary", required=True, help="your own truthful summary of the grant")
         if n == "art":
             p.add_argument("--side", choices=ac.SIDES)
             p.add_argument("--limit", type=int, default=0)
