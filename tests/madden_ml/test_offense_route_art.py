@@ -11,11 +11,11 @@ from cfb_coach.madden.model import offense_play_features as pf
 from cfb_coach.madden.model import offense_structural_model as sm
 
 
-def test_93_art_features_and_two_unverified_name_aliases():
+def test_93_art_features_including_two_user_approved_alias_assumptions():
     x = art.load()
     assert x['coverage']['total'] == 93
-    assert x['coverage']['model_eligible'] == 91
-    assert x['coverage']['quarantined_name_conflicts'] == 2
+    assert x['coverage']['model_eligible'] == 93
+    assert x['coverage']['quarantined_name_conflicts'] == 0
     assert len({(r['formation'],r['play']) for r in x['plays']}) == 93
 
 
@@ -27,11 +27,32 @@ def test_madden_file_provenance_and_no_image_binaries():
     assert art.data_digest() == hashlib.sha256(art.DATA.read_bytes()).hexdigest()
 
 
-def test_name_mismatches_are_quarantined():
-    for p in ('L Spot','Zl Spot Shake'):
-        assert art.status('Gun 5WR Tight', p) == 'label_discrepancy_quarantined'
-        assert not any(art.art_features('Gun 5WR Tight',p).values())
+def test_user_approved_cross_site_names_have_nonzero_stock_route_art():
+    for play, source_name in [('L Spot', 'Z Spot'), ('Zl Spot Shake', 'Z Spot Shake')]:
+        assert art.status('Gun 5WR Tight', play) == 'visual_layout_available'
+        features = art.art_features('Gun 5WR Tight', play)
+        assert features['art_present'] == 1.0
+        assert any(v > 0.0 for v in features.values())
+        rec = next(p for p in art.load()['plays'] if p['play'] == play)
+        assert rec['site_play_name'] == source_name
+        assert not rec['exact_name_match']
+        assert rec['user_approved_alias']  # assumption, not independent Xbox verification
+        s = pf.structure_lookup('Gun 5WR Tight', play)
+        vector = dict(zip(pf.feature_names(), pf.full_vector(s, {'unknown': 1.0})))
+        assert vector['art_present'] == 1.0
     assert art.status('Gun 5WR Tight', 'Mesh') == 'visual_layout_available'
+
+
+def test_unapproved_source_aliases_still_fail_closed():
+    bad = copy.deepcopy(art.load())
+    candidate = next(p for p in bad['plays'] if p['play'] == 'L Spot')
+    candidate['user_approved_alias'] = False
+    with pytest.raises(art.RouteArtError):
+        art.validate(bad)
+    candidate['user_approved_alias'] = True
+    candidate['site_play_name'] = 'Unrelated Play'
+    with pytest.raises(art.RouteArtError):
+        art.validate(bad)
 
 
 def test_unknown_play_cannot_inherit_some_other_play_art():
