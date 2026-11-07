@@ -8,8 +8,9 @@ Example:
   python build_offense_art_features.py --captures ~/Madden27_93_offense_play_art_captures \
       --snapshot installed_playbook_snapshot.json --out offense_play_art_features.json
 
-Only exact formation+play source-label matches become model-eligible. Ambiguous cross-site
-aliases are captured but quarantined unless a future in-game verification resolves them.
+Exact source-label matches are model-eligible. Two *explicit user-approved* cross-site
+name aliases are also eligible for geometry-only learning, without claiming
+independent Xbox verification or known player assignments.
 """
 from __future__ import annotations
 
@@ -27,6 +28,12 @@ except ImportError as exc:
     raise SystemExit('Pillow is required for offline compilation: pip install Pillow') from exc
 
 SCHEMA = 'madden27.offense_route_art_features.v1'
+# User specifically approved these two source-to-installed play-art correspondences.
+# This is an ASSUMPTION for visual geometry, not independent Xbox verification.
+USER_APPROVED_ALIASES = {
+    ('Gun 5WR Tight', 'L Spot'): 'Z Spot',
+    ('Gun 5WR Tight', 'Zl Spot Shake'): 'Z Spot Shake',
+}
 # 16 fairly low-dimensional, conservative summaries; no per-player labels are inferred.
 FEATURE_NAMES = (
     'art_present',
@@ -138,14 +145,19 @@ def build(captures: Path, snapshot: Path) -> dict:
         # Minor apostrophe/spacing variations are not substantive; true label changes are quarantined.
         norm = lambda z: re.sub(r"[^a-z0-9]", "", z.lower())
         match = norm(e['site_play_name']) == norm(e['installed_play_name'])
+        approved_alias = (not match and
+                          USER_APPROVED_ALIASES.get(key) == e['site_play_name'])
         bykey[key] = {
             'formation': key[0], 'play': key[1],
             'site_play_name': e['site_play_name'], 'exact_name_match': match,
             'source': 'user_supplied_screenshot_of_third_party_website',
             'source_url': e.get('website_url',''),
             'manifest_crop': e['capture_path'],
-            'model_eligible': bool(match),
-            'reason': '' if match else 'MISMATCHED SITE LABEL: confirm play identity on Xbox before modeling',
+            'model_eligible': bool(match or approved_alias),
+            'user_approved_alias': bool(approved_alias),
+            'reason': ('user-approved cross-site alias assumption; NOT independently Xbox-verified'
+                       if approved_alias else '' if match else
+                       'MISMATCHED SITE LABEL: confirm play identity on Xbox before modeling'),
             **stats,
         }
     if set(bykey) != expected:
