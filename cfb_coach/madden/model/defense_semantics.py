@@ -317,7 +317,7 @@ def _channel() -> dict[str, Any]:
 _LEGACY_TYPED = ("cover 1", "cover 2", "cover 3", "cover 4", "cover 0", "cover 0 blitz", "cover 2 spot", "trap 2", "cover 9")
 
 
-def stored_label_weights(label: Any) -> dict[str, float]:
+def stored_label_weights(label: Any, typed: Any = None) -> dict[str, float]:
     """Mix keys (summing to 1) for a label READ FROM THE DATABASE, or {} when nothing usable.
 
     * ``pressure`` / ``blitz`` -> the generic-pressure key (a pressure was reported; its type is unknown).
@@ -325,7 +325,17 @@ def stored_label_weights(label: Any) -> dict[str, float]:
       mixture over those names plus its own exact reading. That is the maximum-entropy assumption; it is revisited the day capture is
       lossless. It keeps family-level structure and blurs variant detail instead of pretending the variant was observed.
     * A label the form can never produce (e.g. "Cover 3 Cloud") was captured losslessly and is read exactly.
+    * ``typed`` is the exact text the user entered (``snaps.coverage_typed``, NULL on every row logged before it existed). When it
+      resolves to a catalog name or to untyped pressure it is read EXACTLY and the lossy stored label is ignored; when it is empty or
+      unrecognized the stored label is read as above, so older rows stay ambiguous and nothing is invented.
     """
+    t = _norm(typed)
+    if t:
+        if t in _GENERIC_PRESSURE:
+            return {GENERIC_PRESSURE_KEY: 1.0}
+        k = resolve(typed).key
+        if k:
+            return {k: 1.0}
     norm = _norm(label)
     if not norm:
         return {}
@@ -365,7 +375,11 @@ def family_counts(labels: Iterable[Any], *, stored: bool = True) -> dict[str, fl
     """
     out: dict[str, float] = {}
     for lab in labels:
-        w = stored_label_weights(lab) if stored else ({resolve(lab).key: 1.0} if resolve(lab).key else {})
+        if isinstance(lab, tuple):                      # (stored label, exact typed text)
+            lab, typed = lab
+        else:
+            typed = None
+        w = stored_label_weights(lab, typed) if stored else ({resolve(lab).key: 1.0} if resolve(lab).key else {})
         for k, v in w.items():
             out[k] = out.get(k, 0.0) + v
     return out

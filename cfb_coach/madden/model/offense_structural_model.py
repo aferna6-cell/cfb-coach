@@ -190,7 +190,7 @@ def _mix_from_rows(rows: Sequence[Mapping[str, Any]], knowledge: bool = False) -
         if str(r.get("side") or "offense") != "offense" or r.get("result") in (None, ""):
             continue
         if knowledge:
-            for k, w in ds.stored_label_weights(r.get("coverage_seen")).items():
+            for k, w in ds.stored_label_weights(r.get("coverage_seen"), r.get("coverage_typed")).items():
                 counts[k] = counts.get(k, 0.0) + w
             continue
         lab = hb.normalize_label(r.get("coverage_seen"))

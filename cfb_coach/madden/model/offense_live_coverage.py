@@ -87,16 +87,18 @@ def coverage_for_next_snap(conn: sqlite3.Connection, *, session_id: str,
     """
     if not session_id or not opponent_id or (next_snap_seq is not None and int(next_snap_seq) <= 0):
         raise ValueError("session_id, opponent_id and (when given) a positive next_snap_seq required")
+    # coverage_typed (exact entered text) exists on databases that have logged a snap since it was added; older files lack it.
+    typed_col = "coverage_typed" if any(c[1] == "coverage_typed" for c in conn.execute("PRAGMA table_info(snaps)").fetchall()) else "NULL"
     if next_snap_seq is None:
         # LIVE: the next call is made after every previous snap of this game was closed through the form,
         # so every closed row already in the DB is strictly earlier. (snap_seq can be NULL on older rows.)
         history = conn.execute(
-            "SELECT snap_seq, coverage_seen FROM snaps WHERE session_id = ? AND opponent_id = ? "
+            f"SELECT snap_seq, coverage_seen, {typed_col} FROM snaps WHERE session_id = ? AND opponent_id = ? "
             "AND side = 'offense' AND result IS NOT NULL AND trim(result) != '' "
             "ORDER BY id DESC LIMIT ?", (session_id, opponent_id, MAX_PRIOR_SNAPS)).fetchall()
     else:
         history = conn.execute(
-            "SELECT snap_seq, coverage_seen FROM snaps WHERE session_id = ? AND opponent_id = ? "
+            f"SELECT snap_seq, coverage_seen, {typed_col} FROM snaps WHERE session_id = ? AND opponent_id = ? "
             "AND side = 'offense' AND snap_seq IS NOT NULL AND snap_seq < ? "
             "AND result IS NOT NULL AND trim(result) != '' "
             "ORDER BY snap_seq DESC, id DESC LIMIT ?",
@@ -124,7 +126,7 @@ def _knowledge_context(history: "list[Any]", prior_mix: Mapping[str, float] | No
 
     A reported-but-untyped pressure now carries its own key instead of vanishing; an unrecognized label still adds no mass.
     """
-    per_label = [ds.stored_label_weights(r[1]) for r in history]
+    per_label = [ds.stored_label_weights(r[1], r[2]) for r in history]
     counts: Counter = Counter()
     for w in per_label:
         counts.update(w)

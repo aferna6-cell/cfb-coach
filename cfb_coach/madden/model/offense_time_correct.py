@@ -51,7 +51,7 @@ def annotate(rows: Sequence[Mapping[str, Any]], *, knowledge: bool = False) -> l
         # that was closed (a result was entered). Defense-side rows describe our defense, not their coverage.
         if str(r.get("side") or "") == "offense" and _closed(r):
             dq.appendleft(hb.normalize_label(r.get("coverage_seen")))
-            rdq.appendleft(r.get("coverage_seen"))
+            rdq.appendleft((r.get("coverage_seen"), r.get("coverage_typed")))
     return out
 
 
@@ -85,7 +85,7 @@ def prior_as_of(rows: Sequence[Mapping[str, Any]], *, knowledge: bool = False) -
         if str(r.get("side") or "") != "offense" or not _closed(r):
             continue
         if knowledge:
-            weights = ds.stored_label_weights(r.get("coverage_seen"))
+            weights = ds.stored_label_weights(r.get("coverage_seen"), r.get("coverage_typed"))
             if not weights:
                 continue
             g = str(r.get("game_id") or r.get("session_id") or "")

@@ -96,22 +96,23 @@ def test_knowledge_artifact_drives_the_live_ranker_and_scores_all_93_plays(kdb):
     assert info["latency_ms"] < 150
 
 
-def test_typed_calls_pass_through_the_existing_form_and_untyped_pressure_now_reaches_the_model(kdb, ddb):
-    """"Fire Zone 3" is stored by today's form as "pressure"; "Zero Blitz" as "Cover 0". Both artifacts see the same stored entries."""
+def test_typed_calls_are_kept_exactly_and_the_normalized_label_is_unchanged(kdb, ddb):
+    """The form still stores "pressure" / "Cover 0" in coverage_seen (unchanged), and now ALSO the exact text in coverage_typed."""
     for db, knowledge in ((kdb, True), (ddb, False)):
         _prime(db)
         c = _ctrl(db)
         c.call_only("1&10 my 25")
         c.result_and_call(outcome="+6", sit_raw="2&4 my 31", their="Fire Zone 3")
         c.result_and_call(outcome="+2", sit_raw="3&2 my 33", their="Zero Blitz")
-        rows = [r[0] for r in db.conn.execute("SELECT coverage_seen FROM snaps WHERE side='offense' AND session_id=? AND result IS NOT NULL ORDER BY id", (c.session_id,))]
-        assert rows == ["pressure", "Cover 0"]                                 # the lossy channel, observed in the real database
+        rows = [tuple(r) for r in db.conn.execute("SELECT coverage_seen, coverage_typed FROM snaps WHERE side='offense' AND session_id=? AND result IS NOT NULL ORDER BY id", (c.session_id,))]
+        assert rows == [("pressure", "Fire Zone 3"), ("Cover 0", "Zero Blitz")]
         cov = rr.info_of(c.last_call)["coverage"]
-        assert cov["pressure_n"] == 1 and cov["named_n"] == 1
         keys = {k for k, _ in cov["top"]}
         if knowledge:
-            assert cov["basis"].endswith("+defense_knowledge") and ds.GENERIC_PRESSURE_KEY in keys
+            assert cov["basis"].endswith("+defense_knowledge") and cov["named_n"] == 2 and cov["pressure_n"] == 0
+            assert {ds.resolve("Fire Zone 3").key, ds.resolve("Zero Blitz").key} <= keys
         else:
+            assert cov["pressure_n"] == 1 and cov["named_n"] == 1
             assert cov["basis"] == "closed_manual_postplay_coverage_with_historical_prior" and not any(k.startswith("dk:") for k in keys)
 
 
@@ -132,8 +133,8 @@ def test_beliefs_stay_inside_the_game_and_move_with_what_was_entered(kdb):
     c.call_only("1&10 my 25")
     shares = []
     for sit in ["2&4 my 31", "1&10 my 41", "2&8 my 43"]:
-        c.result_and_call(outcome="+6", sit_raw=sit, their="Fire Zone 3")           # stored as "pressure"
-        shares.append(dict(rr.info_of(c.last_call)["coverage"]["top"]).get(ds.GENERIC_PRESSURE_KEY, 0.0))
+        c.result_and_call(outcome="+6", sit_raw=sit, their="Fire Zone 3")           # coverage_seen "pressure"; exact text kept
+        shares.append(dict(rr.info_of(c.last_call)["coverage"]["top"]).get(ds.resolve("Fire Zone 3").key, 0.0))
     assert shares == sorted(shares) and shares[-1] > shares[0] > 0
     c2 = _ctrl(kdb)
     c2.call_only("1&10 my 25")

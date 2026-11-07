@@ -416,6 +416,9 @@ def test_existing_files_are_only_modified_where_the_integration_needs_it():
         # four files differ from the #112 baseline. They are #115's reviewed changes, not additions of the defense-knowledge work.
         "cfb_coach/data/madden27/offense_play_art_features.json", "cfb_coach/madden/model/offense_art_features.py",
         "scripts/madden_ml/build_offense_art_features.py", "tests/madden_ml/test_offense_route_art.py",
+        # Issue #116 priority 1: the existing post-play form's typed "they ran" text is kept in one additive nullable column
+        # (snaps.coverage_typed) instead of being lost; capture path + schema + dataset row only.
+        "cfb_coach/db.py", "cfb_coach/last_snap.py", "cfb_coach/madden/model/dataset.py",
     }
     assert touched <= allowed, f"unexpected modifications: {sorted(touched - allowed)}"
 
