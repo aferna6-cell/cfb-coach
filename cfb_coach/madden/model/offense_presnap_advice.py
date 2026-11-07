@@ -5,6 +5,8 @@ a football-derived one INFERRED, and a play with no route knowledge says UNKNOWN
 """
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import replace
 from typing import Any, Mapping
 
 from cfb_coach.madden.model import offense_decision as od
@@ -47,6 +49,61 @@ def _describe(slot: str, r: tx.RouteSpec) -> str:
 
 def _shell_dist(dist: Mapping[str, float]) -> dict[str, float]:
     return pf._shell_probs(dist)
+
+
+def call_action_identity(call: Any) -> dict[str, Any]:
+    """Snapshot the attached execution plan, not just its formation/play."""
+    return deepcopy({"macro": getattr(call, "macro", None),
+                     "adjustment": getattr(call, "adjustment", None),
+                     "macro_settings": (getattr(call, "macro_info", None) or {}).get("settings")})
+
+
+def use_selected_call(decision: od.Decision, call: Any) -> None:
+    """Project the attached joint call into a card decision; never select another action.
+
+    The live catalog resolver may have paired a macro after joint scoring. The
+    attached call is authoritative. Unrepresentable effects suppress the stock
+    progression rather than implying it still applies.
+    """
+    from cfb_coach.madden import research_db
+    from cfb_coach.madden.adjustments import executable as ex
+
+    stock = decision.final_structure
+    if stock is None:
+        raise ValueError("decision has no play structure")
+    adjustment = getattr(call, "adjustment", None) or {}
+    macro = getattr(call, "macro", None)
+    decision.adjustment = ("MACRO " + str(macro) if macro else
+                           str(adjustment.get("label") or adjustment.get("id") or od.NO_ADJUSTMENT))
+    decision.basis = "selected_joint_call"
+    if macro or adjustment:
+        decision.matchup = None   # stock matchup is not the selected action's effect
+    decision.notes = [str((getattr(call, "ml_offense_action", None) or {}).get("reason") or "")]
+    actions = []
+    unknown = bool(macro)
+    rows = {r["id"]: r for r in research_db.offense_adjustments()}
+    ids = adjustment.get("parts") or ([adjustment.get("id")] if adjustment else [])
+    for action_id in ids:
+        row = rows.get(action_id) or {}
+        if not adjustment.get("parts"):
+            row = {**row, **adjustment}
+        kind = row.get("kind") or row.get("type")
+        if kind == "hot_route" and row.get("target") and row.get("route"):
+            actions.append(ex.PlannedAction("off.hot_route", {"target": row["target"], "route": row["route"]}))
+        else:
+            # Protection, custom macros and generic targets may change who can
+            # release. No exact receiver effects are documented by this payload.
+            unknown = True
+    decision.actions = tuple(actions)
+    if not unknown:
+        try:
+            decision.final_structure = od._apply_actions(stock, decision.actions, {})
+        except pf.StructureError:
+            unknown = True
+    if unknown:
+        decision.final_structure = replace(stock, routes=(), read_order=(), sourced_concepts=(),
+                                           hint={**stock.hint, "play_type": "unknown"})
+        decision.notes.append("selected adjustment's receiver effects are not representable; read order UNKNOWN")
 
 
 def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *, priors: bool | None = None) -> dict[str, Any]:
@@ -113,8 +170,15 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *,
         why.append("no sourced route data for this play")
     indicator = INDICATOR[top] + (f" (expected {top_p:.0%} from {src})" if top != "unknown" else "")
     lo, hi = decision.interval
-    why.append(f"model {decision.probability:.0%} success (90% range {lo:.0%}-{hi:.0%})")
-    if decision.adjustment != od.NO_ADJUSTMENT:
+    if decision.basis == "selected_joint_call":
+        if decision.adjustment == od.NO_ADJUSTMENT:
+            why.append(f"model {decision.probability:.0%} success (90% range {lo:.0%}-{hi:.0%})")
+        else:
+            why.append(f"stock model {decision.stock_probability:.0%} success; selected action effect not estimated")
+        why.extend(n for n in decision.notes if n)
+    else:
+        why.append(f"model {decision.probability:.0%} success (90% range {lo:.0%}-{hi:.0%})")
+    if decision.adjustment != od.NO_ADJUSTMENT and decision.basis != "selected_joint_call":
         why.append(f"gain {decision.probability - decision.stock_probability:+.1%} vs stock; {decision.basis}")
     return {
         "FORMATION": decision.formation, "PLAY": decision.play, "ADJUSTMENT": decision.adjustment,
