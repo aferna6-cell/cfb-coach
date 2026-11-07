@@ -88,13 +88,13 @@ mixture over the catalog names the *current parser* maps to it (maximum-entropy;
 cannot produce (for example `Cover 3 Cloud`) is read exactly, so lossless capture is picked up automatically. Family structure
 survives; variant detail is blurred rather than invented. An untyped `pressure` stays untyped.
 
-**Not changed here:** the capture path. Preserving the typed call text would be the single largest improvement to what any model can
-learn, but it alters what the live database stores, so it is left as an explicit owner decision (see the readiness report).
+**Capture fix:** the exact typed call is now also stored in `snaps.coverage_typed` (additive nullable column; `coverage_seen` unchanged).
+`stored_label_weights(label, typed)` reads the typed text exactly when it resolves; rows without it stay ambiguous as described above.
 
 ## How it enters the model
 
 ```
-post-play form -> snaps.coverage_seen -> stored_label_weights -> dk: mix (same-game earlier snaps + prior from earlier games)
+post-play form -> snaps.coverage_seen (+ coverage_typed) -> stored_label_weights -> dk: mix (same-game earlier snaps + prior from earlier games)
    -> scheme_distribution:  legacy projection (unchanged classes)  +  family_mix
    -> full_vector(names=artifact.names):  135 legacy features  [+ 71 dk_* features only for a knowledge artifact]
    -> learned residual (same trainer, same nested game-level selection, 'do no harm' fallback)

@@ -39,8 +39,20 @@ become `pressure`; `Cover 2 Match` becomes `Cover 3 Match`.
 Consequences: (1) a stored `Cover 3 Sky` is not evidence of Sky, (2) the Sky / Cloud / Buzz / Hole / Robber / Palms distinctions this
 work documents are **invisible to the model** unless the typed call survives, and (3) the history already used by the current model
 carries the same ambiguity. The code handles this by reading a stored label as a uniform mixture over the calls the *current parser*
-maps to it (family structure kept, variant blurred) and reading a label the form can never produce as exact. **The capture path itself
-was not changed** (it alters what your database stores); see decision 1 in section 8.
+maps to it (family structure kept, variant blurred) and reading a label the form can never produce as exact. **Capture is now fixed going forward (section 3a); history logged
+before the fix stays ambiguous and is read as above.**
+
+### 3a. Capture fix (issue #116, priority 1)
+
+`snaps` gets one **additive, nullable** column, `coverage_typed`, added by the existing guarded `ALTER TABLE` migration. The post-play form
+is unchanged (same field, same workflow); `LastSnapBook.close_from_form` now also stores the exact "they ran" text there while
+`coverage_seen` keeps the same normalized value it always had. Rows logged earlier keep `NULL`; nothing is back-filled or guessed, so they
+remain ambiguous. Readers (knowledge path only) use the typed text when it resolves to a catalog name or untyped pressure and otherwise fall
+back to the stored label exactly as before. The default model path ignores the column. Undo, corrections and an older database file
+without the column are covered by `tests/madden_ml/test_defense_typed_capture.py` (12 tests), which drive HTML-form submissions
+(`LivePlayController.result_and_call`) for Cover 3 Cloud, Fire Zone 3, Cover 3 Buzz Match, Cover 4 Quarters, Cover 4 Palms, Zero Blitz,
+Cover 2 Man and Cover 1 Robber through storage to the next offensive decision's coverage belief. Tradeoff: only calls logged after this
+change benefit; the first games after it are a prior-only period for the new distinctions.
 
 ## 4. Delta against prior work
 
@@ -85,7 +97,15 @@ pressure *tendency*, which is exactly what the model learns. The valid control s
 
 **Production protocol (nested game-level selection with the "do no harm" fallback), chronological held-out folds, game-clustered bootstrap:**
 
-<!--RUN16-->
+**16 games × 40 snaps (13 held-out folds), effect strength 2.0**
+
+| World | Verified games | Held-out folds | Δ log loss (knowledge − baseline) | 95% interval | Verdict |
+|---|---:|---:|---:|---|---|
+| A planted signal TODAYS CAPTURE | 16 | 13 | +0.0009 | +0.0000 .. +0.0027 | NO-GO |
+| B planted signal LOSSLESS CAPTURE counterfactual | 16 | 13 | +0.0057 | +0.0000 .. +0.0171 | NO-GO |
+| C null no effect | 16 | 13 | +0.0001 | -0.0017 .. +0.0016 | NO-GO |
+| D planted labels shuffled globally NULL CONTROL | 16 | 13 | -0.0001 | -0.0002 .. +0.0000 | NO-GO |
+| E planted labels shuffled within game DIAGNOSTIC | 16 | 13 | +0.0068 | +0.0002 .. +0.0189 | NO-GO |
 
 <!--RUN30-->
 
@@ -143,10 +163,8 @@ preview run has been reviewed.
 
 ## 8. Decisions for you
 
-1. **Lossless capture of the typed call (largest lever).** Today the model cannot see any distinction the form collapses. Storing the
-   typed text next to the parsed hint would change what your database writes, so it was left alone. The reader already handles it: a label
-   the form cannot produce is read exactly. The synthetic counterfactual (5.3) suggests it is worth roughly a quarter more gain on top of
-   what pressure-versus-coverage alone gives, in that world only.
+1. **Lossless capture of the typed call: done in this PR** (section 3a; additive column, no workflow change). Review the migration before
+   merging. The "lossless capture" rows in 5.3 are now the relevant model of what new games will store.
 2. **Screenshots** for tier 1 (section 6).
 3. **Run section 7** on a copy of your real database and read the `heldout` verdict. Nothing else should be acted on first.
 
