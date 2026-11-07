@@ -91,6 +91,8 @@ def extract(image_path: Path) -> dict:
     horiz = sum((x+1,y) in pixels for x,y in pixels)
     vert = sum((x,y+1) in pixels for x,y in pixels)
     spatial = lambda c: round(c / n, 5)
+    mean_x = sum(x_values) / n
+    lateral_spread = math.sqrt(max(0.0, sum((x - mean_x) ** 2 for x in x_values) / n))
     values = {
         'art_present': 1.0,
         'art_ink_density': round(min(1.0, n / 2000.0),5),
@@ -107,7 +109,7 @@ def extract(image_path: Path) -> dict:
         'art_deep_middle': spatial(by_deep_lateral[1]),
         'art_deep_right': spatial(by_deep_lateral[2]),
         'art_horizontal_share': round(horiz / max(1, horiz+vert),5),
-        'art_spread': round(min(1.0, math.sqrt(max(0., sum((x - sum(x_values)/n)**2 for x in x_values)/n))*3),5),
+        'art_spread': round(min(1.0, lateral_spread * 3), 5),
     }
     return {'features': values, 'image_size': [w, h], 'route_ink_pixels': n,
             'image_sha256': hashlib.sha256(image_path.read_bytes()).hexdigest(),
