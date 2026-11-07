@@ -77,7 +77,7 @@ SOURCES: dict[str, dict] = {
         "kind": "educational_article", "title": "Civil.GG Zone Drop Hook Defense Guide (CFB 27 & Madden 27)",
         "url": "https://www.civil.gg/tips/zone-drop-hook-defense-guide", "published": None, "fetched": True,
         "quality": "third_party_education_version_unverified", "license": "third-party site; cite only", "trainable_text": False,
-        "note": "States Hard Flats play 0-5 yards from the line of scrimmage. Accessed 2026-09-29 (earlier research run)."},
+        "accessed": "2026-09-29", "note": "States Hard Flats play 0-5 yards from the line of scrimmage. Read in an earlier research run, not today."},
     "prodigy_multiple_d": {
         "kind": "name_catalog", "title": "Madden Prodigy - Madden 27 Multiple D defense playbook",
         "url": "https://www.maddenprodigy.com/playbooks/madden-27-multiple-d-defense/", "published": None, "fetched": True,

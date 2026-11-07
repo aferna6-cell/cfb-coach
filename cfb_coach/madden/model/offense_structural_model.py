@@ -468,6 +468,8 @@ def score(a: StructuralArtifact, s: pf.PlayStructure, *, down: Any = None, dista
     """``cov`` = this row's ``presnap_cov`` (earlier same-game coverage counts); ignored if ``mix`` is given."""
     if mix is None:
         prior, src = pre_snap_mix(a, opponent_id)
+        if cov and a.uses_defense_knowledge and "dk_counts" not in cov:
+            raise ValueError("row was annotated without defense knowledge: call annotate(rows, knowledge=True)")
         if cov and (cov.get("dk_counts") if a.uses_defense_knowledge else cov.get("counts")):
             mix, src = tc.mix_from(prior, cov, knowledge=a.uses_defense_knowledge), src + "+same_game"
         else:

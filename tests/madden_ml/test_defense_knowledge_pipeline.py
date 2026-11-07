@@ -383,6 +383,16 @@ def test_shadow_replay_runs_a_knowledge_artifact_on_recorded_games_and_never_act
     assert max(out["latency_ms_max"], 0) < 150
 
 
+def test_a_knowledge_artifact_refuses_rows_annotated_without_knowledge_instead_of_dropping_evidence(arts, world):
+    _, dk = arts
+    row = next(r for r in world if r["side"] == "offense")
+    legacy_cov = {k: v for k, v in row[tc.KEY].items() if k != "dk_counts"}
+    s = sm.structure_any(row["action_formation"], row["action_play"])
+    with pytest.raises(ValueError, match="annotated without defense knowledge"):
+        sm.score(dk, s, down=1, distance=10, yardline=30, opponent_id="cpu", cov=legacy_cov)
+    assert 0.0 < sm.score(dk, s, down=1, distance=10, yardline=30, opponent_id="cpu", cov=row[tc.KEY]).probability < 1.0
+
+
 def test_scoring_every_installed_play_stays_inside_the_150ms_budget(arts):
     book = [(p["formation"], p["play"]) for p in oa.load_effective()["plays"]]
     for art, mix in ((arts[0], {"cover3": 0.5, "cover_2_man": 0.5}), (arts[1], {"dk:cover_3_sky": 0.4, "dk:fire_zone_3": 0.3, "dk:cover_2_man": 0.3})):

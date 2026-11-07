@@ -311,7 +311,9 @@ def build_catalog() -> dict[str, Any]:
         "status_vocabulary": list(L.STATUS_ORDER), "feature_eligible_statuses": list(L.FEATURE_ELIGIBLE_STATUS),
         "feature_policy": ("Model features may use only axis values with feature_eligible=true (name tokens, EA-documented mechanics, licensed "
                            "football definitions). Third-party text and per-position jobs are never model inputs. Stress hypotheses are never inputs."),
-        "sources": {k: dict(v, feature_use=(k not in NO_FEATURE_USE)) for k, v in sorted(L.SOURCES.items())},
+        "sources": {k: dict(v, feature_use=(k not in NO_FEATURE_USE),
+                            accessed=(v.get("accessed") or (L.ACCESSED if v["fetched"] else None)))
+                    for k, v in sorted(L.SOURCES.items())},
         "lexicon": {"bases": L.BASES, "variants": L.VARIANTS, "pressure": L.PRESSURE, "formations": L.FORMATIONS},
         "summary": summary, "entries": entries,
     }

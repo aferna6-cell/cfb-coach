@@ -1,6 +1,6 @@
 {
  "built_for_fingerprint": "DEF-F1CF-1862",
- "digest": "31d74361c50e38ab4052",
+ "digest": "367c5f9af372acd68e3f",
  "entries": [
   {
    "aliases": [],
@@ -42570,11 +42570,12 @@
  "schema": "madden27.defense_play_catalog.v1",
  "sources": {
   "civil_zone_drop_hook": {
+   "accessed": "2026-09-29",
    "feature_use": false,
    "fetched": true,
    "kind": "educational_article",
    "license": "third-party site; cite only",
-   "note": "States Hard Flats play 0-5 yards from the line of scrimmage. Accessed 2026-09-29 (earlier research run).",
+   "note": "States Hard Flats play 0-5 yards from the line of scrimmage. Read in an earlier research run, not today.",
    "published": null,
    "quality": "third_party_education_version_unverified",
    "title": "Civil.GG Zone Drop Hook Defense Guide (CFB 27 & Madden 27)",
@@ -42582,6 +42583,7 @@
    "url": "https://www.civil.gg/tips/zone-drop-hook-defense-guide"
   },
   "domain_convention": {
+   "accessed": null,
    "feature_use": true,
    "fetched": false,
    "kind": "author_domain_knowledge",
@@ -42594,6 +42596,7 @@
    "url": null
   },
   "ea_deep_dive": {
+   "accessed": "2026-11-07",
    "feature_use": true,
    "fetched": true,
    "kind": "official_documentation",
@@ -42606,6 +42609,7 @@
    "url": "https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay"
   },
   "mutgg_cover1": {
+   "accessed": "2026-11-07",
    "feature_use": false,
    "fetched": true,
    "kind": "educational_article",
@@ -42618,6 +42622,7 @@
    "url": "https://www.mut.gg/news/ask-huddle-42-cover-1-explained-in-madden/"
   },
   "mutgg_cover3_naming": {
+   "accessed": null,
    "feature_use": false,
    "fetched": false,
    "kind": "educational_article",
@@ -42630,6 +42635,7 @@
    "url": "https://www.mut.gg/news/"
   },
   "prodigy_multiple_d": {
+   "accessed": "2026-11-07",
    "feature_use": false,
    "fetched": true,
    "kind": "name_catalog",
@@ -42642,6 +42648,7 @@
    "url": "https://www.maddenprodigy.com/playbooks/madden-27-multiple-d-defense/"
   },
   "repo_audit_115": {
+   "accessed": "2026-11-07",
    "feature_use": true,
    "fetched": true,
    "kind": "repository_record",
@@ -42654,6 +42661,7 @@
    "url": "docs/madden_ml/DEFENSIVE_COVERAGE_GAP_AUDIT_20261107.md"
   },
   "repo_snapshot": {
+   "accessed": "2026-11-07",
    "feature_use": true,
    "fetched": true,
    "kind": "repository_record",
@@ -42666,6 +42674,7 @@
    "url": "cfb_coach/data/madden27/installed_playbook_snapshot.json"
   },
   "repo_third_party_annotations": {
+   "accessed": "2026-11-07",
    "feature_use": false,
    "fetched": true,
    "kind": "repository_record",
@@ -42678,6 +42687,7 @@
    "url": "cfb_coach/data/madden27/installed_play_annotations.json"
   },
   "wiki_46": {
+   "accessed": "2026-11-07",
    "feature_use": true,
    "fetched": true,
    "kind": "encyclopedia",
@@ -42690,6 +42700,7 @@
    "url": "https://en.wikipedia.org/wiki/46_defense"
   },
   "wiki_glossary": {
+   "accessed": "2026-11-07",
    "feature_use": true,
    "fetched": true,
    "kind": "encyclopedia",
@@ -42702,6 +42713,7 @@
    "url": "https://en.wikipedia.org/wiki/Glossary_of_American_football"
   },
   "wiki_nickel": {
+   "accessed": "2026-11-07",
    "feature_use": true,
    "fetched": true,
    "kind": "encyclopedia",
@@ -42714,6 +42726,7 @@
    "url": "https://en.wikipedia.org/wiki/Nickel_defense"
   },
   "wiki_prevent": {
+   "accessed": "2026-11-07",
    "feature_use": true,
    "fetched": true,
    "kind": "encyclopedia",
@@ -42726,6 +42739,7 @@
    "url": "https://en.wikipedia.org/wiki/Prevent_defense"
   },
   "wiki_tampa_2": {
+   "accessed": "2026-11-07",
    "feature_use": true,
    "fetched": true,
    "kind": "encyclopedia",
@@ -42738,6 +42752,7 @@
    "url": "https://en.wikipedia.org/wiki/Tampa_2"
   },
   "wiki_zone_blitz": {
+   "accessed": "2026-11-07",
    "feature_use": true,
    "fetched": true,
    "kind": "encyclopedia",
