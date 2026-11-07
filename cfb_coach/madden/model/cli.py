@@ -368,6 +368,40 @@ def cmd_ml_heuristic(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ml_offense_ranker(args: argparse.Namespace) -> int:
+    """Select / preview / roll back the route-aware offensive ranker (default: experimental = unchanged)."""
+    from cfb_coach.madden.model import offense_route_ranker as rr
+
+    path = _announce_db()
+    db = open_explicit_madden_db(path, read_only=False)
+    try:
+        if getattr(args, "artifact", None):
+            art_path = Path(args.artifact).expanduser()
+            art = rr.load_artifact(art_path)               # refuses a stale / invalid artifact
+            db.set_meta(rr.META_ARTIFACT, str(art_path))
+            print(f"route-aware artifact: {art_path} (games={art.trained_games}, rows={art.n_train}, "
+                  f"residual_active={art.residual_active})")
+        if args.mode:
+            if args.mode != "experimental":
+                p = rr.resolve_artifact_path(db)
+                if p is None:
+                    print("error: no route-aware artifact installed; train one and pass --artifact PATH.", file=sys.stderr)
+                    return 2
+                rr.load_artifact(p)
+            rr.set_mode(db, args.mode)
+        env = os.environ.get(rr.ENV_MODE)
+        print(f"offense ranker (stored): {db.get_meta(rr.META_MODE) or 'experimental'}")
+        print(f"offense ranker (effective this shell): {rr.resolve_mode(db)}" + (f"  [env {rr.ENV_MODE} overrides]" if env else ""))
+        print(f"artifact: {rr.resolve_artifact_path(db)}")
+        print("rollback: python -m cfb_coach ml offense-ranker experimental")
+        return 0
+    except rr.RouteAwareUnavailable as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        db.close()
+
+
 def cmd_ml_experimental(args: argparse.Namespace) -> int:
     """Enable opt-in experimental ML offense selection (not competitive hybrid)."""
     path = _announce_db()
@@ -2120,6 +2154,14 @@ def build_ml_subparser(sub: Any) -> None:
         help="Retrain the experimental artifact before enabling",
     )
     p_ex.set_defaults(func=cmd_ml_experimental)
+
+    p_or = ml_sub.add_parser(
+        "offense-ranker",
+        help="Select the offense ranker: experimental (default) | route_aware_preview | route_aware",
+    )
+    p_or.add_argument("mode", nargs="?", choices=["experimental", "route_aware_preview", "route_aware"])
+    p_or.add_argument("--artifact", help="route-aware artifact to install (validated)")
+    p_or.set_defaults(func=cmd_ml_offense_ranker)
 
     p_pf = ml_sub.add_parser(
         "experimental-preflight",

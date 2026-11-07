@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts' / 'madden_ml'))  # the builder lives in scripts/
 import build_offense_completion_queue as module
 
 ROOT = Path(__file__).resolve().parent

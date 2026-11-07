@@ -17,6 +17,7 @@ Pure stdlib (sparse Newton), so it can run inside the 150 ms live budget.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -28,12 +29,14 @@ from cfb_coach.madden.model import experimental_model as em
 from cfb_coach.madden.model import offense_assignments as oa
 from cfb_coach.madden.model import offense_play_features as pf
 from cfb_coach.madden.model import offense_art_features as af
+from cfb_coach.madden.model import offense_time_correct as tc
+from cfb_coach.madden.model import historical_defense_baseline as hb
 
 MODEL_KIND = "offense_structural.v1"
 ARTIFACT_SCHEMA = "madden27.offense_structural.artifact.v1"
 N0 = 30.0                      # residual shrink: alpha = n / (n + N0)
 STD_FLOOR = 0.15
-LAMBDA = {"form": 20.0, "hint": 30.0, "route": 12.0, "concept": 15.0, "match": 8.0, "art": 24.0}
+LAMBDA = {"form": 20.0, "hint": 30.0, "route": 12.0, "concept": 15.0, "match": 8.0, "art": 24.0, "sit": 20.0}
 EXTRAPOLATION_SHRINK = 0.5      # modified (never-seen) plays get half the modeled structural gain
 MAX_EXTRAPOLATED_LOGIT = 0.30   # and never more than this, whatever the weights say
 MIN_ROWS_FOR_RESIDUAL = 25     # below this the residual is switched off (offset only)
@@ -90,6 +93,8 @@ class StructuralArtifact:
     weights: list[float] = field(default_factory=list)       # index 0 = bias
     cov: list[list[float]] = field(default_factory=list)     # (d+1)x(d+1) inverse penalized Hessian
     support_max: list[float] = field(default_factory=list)   # per-feature max |value| seen in training
+    selection: dict[str, Any] = field(default_factory=dict)  # nested model-selection record (inner held-out games)
+    penalty_scale_chosen: float = 1.0
     n_train: int = 0
     n_positive: int = 0
     alpha: float = 0.0
@@ -156,12 +161,14 @@ def validate_artifact(a: StructuralArtifact) -> list[str]:
 
 
 def _mix_from_rows(rows: Sequence[Mapping[str, Any]]) -> dict[str, float]:
-    from cfb_coach.madden.model.opponent_tendencies import coverage_bucket_name
-
+    """Historical coverage shares from CLOSED offense snaps (labels exactly as specific as entered)."""
     counts: dict[str, float] = {}
     for r in rows:
-        b = coverage_bucket_name(r.get("coverage_seen"))   # EARLIER games only: caller guarantees
-        if b != "unknown":
+        if str(r.get("side") or "offense") != "offense" or r.get("result") in (None, ""):
+            continue
+        lab = hb.normalize_label(r.get("coverage_seen"))
+        if lab in hb.KNOWN_COVERAGES:
+            b = hb.GENERIC_TO_BUCKET.get(lab, lab)
             counts[b] = counts.get(b, 0.0) + 1.0
     tot = sum(counts.values())
     return {k: v / tot for k, v in counts.items()} if tot else {}
@@ -176,21 +183,132 @@ def pre_snap_mix(a: StructuralArtifact, opponent_id: str | None) -> tuple[dict[s
     return {}, "none"
 
 
-def train(rows: Sequence[Mapping[str, Any]], *, penalty_scale: float = 1.0,
+AUTO_SCALES = (1.0, 4.0, 16.0)          # candidate L2 multipliers tried by nested selection
+MIN_GAMES_FOR_SELECTION = 6              # fewer verified games than this -> residual stays OFF (base coordinator only)
+SELECTION_MARGIN = 0.002                 # a residual must beat the base by this much held-out log loss to be switched on
+
+
+def train(rows: Sequence[Mapping[str, Any]], *, penalty_scale: float | None = None,
           use_matchup: bool = True, max_iter: int = 12) -> StructuralArtifact:
-    """Fit on verified supervised offense rows. ``rows`` must be EARLIER games only."""
+    """Fit on verified supervised offense rows. ``rows`` must be EARLIER games only.
+
+    ``penalty_scale=None`` (default) runs nested, game-level model selection: rolling-origin over the LAST games of
+    the training set picks the L2 multiplier, and the residual is switched on only if it beats the base coordinator
+    on those inner held-out games ("do no harm"). A number fixes the multiplier (sensitivity runs, tests).
+    """
+    key = _rows_key(rows, penalty_scale, use_matchup, max_iter)
+    hit = _TRAIN_CACHE.get(key)
+    if hit is not None:
+        return copy.deepcopy(hit)
+    art = _train_uncached(rows, penalty_scale=penalty_scale, use_matchup=use_matchup, max_iter=max_iter)
+    if len(_TRAIN_CACHE) >= 48:
+        _TRAIN_CACHE.pop(next(iter(_TRAIN_CACHE)))
+    _TRAIN_CACHE[key] = copy.deepcopy(art)
+    return art
+
+
+_TRAIN_CACHE: dict[str, "StructuralArtifact"] = {}
+
+
+def _rows_key(rows: Sequence[Mapping[str, Any]], *parts: Any) -> str:
+    """Content digest so identical training data is fitted once per process (evaluation re-fits the same folds)."""
+    h = hashlib.sha256(repr(parts).encode())
+    for r in rows:
+        h.update(repr((r.get("game_id"), r.get("side"), r.get("action_formation"), r.get("action_play"), r.get("down"),
+                       r.get("distance"), r.get("yardline"), r.get("result"), r.get("coverage_seen"),
+                       r.get("eligibility"), r.get("opponent_id"))).encode())
+    return h.hexdigest()
+
+
+def _train_uncached(rows: Sequence[Mapping[str, Any]], *, penalty_scale: float | None, use_matchup: bool,
+                    max_iter: int) -> StructuralArtifact:
+    rows = tc.annotate(rows)
+    if penalty_scale is not None:
+        return _train_core(rows, penalty_scale=penalty_scale, use_matchup=use_matchup, max_iter=max_iter)
+    from cfb_coach.madden.model.heldout_eval import is_verified_offense, offense_label
+
+    games: list[str] = []
+    for r in rows:
+        g = str(r.get("game_id"))
+        if is_verified_offense(r) and offense_label(r, "success") is not None and g not in games:
+            games.append(g)
+    sel: dict[str, Any] = {"games": len(games), "scales": {}}
+    if len(games) < MIN_GAMES_FOR_SELECTION:
+        art = _train_core(rows, penalty_scale=AUTO_SCALES[1], use_matchup=use_matchup, max_iter=max_iter)
+        art.residual_active = False
+        sel["decision"] = f"fewer than {MIN_GAMES_FOR_SELECTION} verified games: residual OFF, existing coordinator only"
+        art.selection, art.notes = sel, sel["decision"]
+        return art
+    n_inner = max(2, min(4, len(games) // 3))
+    by_game: dict[str, list] = {}
+    for r in rows:
+        by_game.setdefault(str(r.get("game_id")), []).append(r)
+    ll_base: list[float] = []
+    ll_scale: dict[float, list[float]] = {sc: [] for sc in AUTO_SCALES}
+
+    def _ll(y: int, p: float) -> float:
+        p = min(1 - 1e-6, max(1e-6, p))
+        return -(y * math.log(p) + (1 - y) * math.log(1 - p))
+
+    for test_g in games[-n_inner:]:
+        earlier = games[:games.index(test_g)]
+        train_rows = [r for g in earlier for r in by_game[g]]
+        test_rows = [r for r in by_game[test_g] if is_verified_offense(r) and offense_label(r, "success") is not None]
+        for sc in AUTO_SCALES:
+            a = _train_core(train_rows, penalty_scale=sc, use_matchup=use_matchup, max_iter=max_iter)
+            if not a.residual_active:
+                continue
+            for r in test_rows:
+                y = offense_label(r, "success")
+                st = structure_any(str(r.get("action_formation") or ""), str(r.get("action_play") or ""))
+                scr = score(a, st, down=r.get("down"), distance=r.get("distance"), yardline=r.get("yardline"),
+                            opponent_id=r.get("opponent_id"), opponent_type=r.get("opponent_type"), cov=r.get(tc.KEY))
+                ll_scale[sc].append(_ll(y, scr.probability))
+                if sc == AUTO_SCALES[0]:
+                    ll_base.append(_ll(y, scr.base_probability))
+    base_ll = statistics_mean(ll_base)
+    best, best_ll = None, None
+    for sc in AUTO_SCALES:
+        m = statistics_mean(ll_scale[sc])
+        sel["scales"][str(sc)] = None if m is None else round(m, 5)
+        if m is not None and (best_ll is None or m < best_ll):
+            best, best_ll = sc, m
+    sel["inner_base_log_loss"] = None if base_ll is None else round(base_ll, 5)
+    sel["inner_games"] = n_inner
+    use = best is not None and base_ll is not None and best_ll < base_ll - SELECTION_MARGIN
+    art = _train_core(rows, penalty_scale=best or AUTO_SCALES[1], use_matchup=use_matchup, max_iter=max_iter)
+    if not use:
+        art.residual_active = False
+        sel["decision"] = "residual OFF: no penalty beat the existing coordinator on inner held-out games"
+    else:
+        sel["decision"] = f"residual ON: penalty x{best} beat the existing coordinator on inner held-out games"
+    art.selection, art.penalty_scale_chosen = sel, float(best or AUTO_SCALES[1])
+    art.notes = (art.notes + " | " if art.notes else "") + sel["decision"]
+    return art
+
+
+def statistics_mean(xs: Sequence[float]) -> float | None:
+    return sum(xs) / len(xs) if xs else None
+
+
+def _train_core(rows: Sequence[Mapping[str, Any]], *, penalty_scale: float = 1.0,
+                use_matchup: bool = True, max_iter: int = 12) -> StructuralArtifact:
     from cfb_coach.madden.model import dataset as dataset_mod
     from cfb_coach.madden.model.heldout_eval import is_verified_offense, offense_label
 
+    rows = tc.annotate(rows)                       # same-game earlier coverage only, per row
+    priors = tc.prior_as_of(rows)                   # historical prior from EARLIER games only, per row
     base = em.train_experimental([dict(r) for r in rows], side="offense")
-    sup = [r for r in rows if is_verified_offense(r) and offense_label(r, "success") is not None]
+    keep = [i for i, r in enumerate(rows) if is_verified_offense(r) and offense_label(r, "success") is not None]
+    sup = [rows[i] for i in keep]
+    sup_prior = [priors[i] for i in keep]
     art = StructuralArtifact(names=list(pf.feature_names()), base=base.to_dict(),
                              assignment_digest=oa.database_digest(oa.load_effective()),
                              art_digest=af.data_digest(),
                              penalties={k: v * penalty_scale for k, v in LAMBDA.items()})
-    art.global_mix = _mix_from_rows(sup)
+    art.global_mix = _mix_from_rows(rows)
     by_opp: dict[str, list[Mapping[str, Any]]] = {}
-    for r in sup:
+    for r in rows:
         by_opp.setdefault(str(r.get("opponent_id") or ""), []).append(r)
     art.opponent_mix = {k: m for k, v in by_opp.items() if k and len(v) >= 8 for m in [_mix_from_rows(v)] if m}
     art.trained_games = len({r.get("game_id") for r in sup})
@@ -202,18 +320,25 @@ def train(rows: Sequence[Mapping[str, Any]], *, penalty_scale: float = 1.0,
     if n < MIN_ROWS_FOR_RESIDUAL:
         art.notes = f"only {n} verified rows; residual disabled (base coordinator only)"
         return art
+    # Cross-fitted offsets: each game's base-coordinator logit comes from a base fit on the OTHER games, so the
+    # residual learns from out-of-sample base errors instead of an in-sample base that already memorized them.
+    game_ids = sorted({str(r.get("game_id")) for r in sup})
+    fold_base: dict[str, em.ExperimentalArtifact] = {}
+    if len(game_ids) >= 2:
+        for g in game_ids:
+            fold_base[g] = em.train_experimental([dict(r) for r in rows if str(r.get("game_id")) != g], side="offense")
     X, y, off = [], [], []
-    for r in sup:
+    for r, prior in zip(sup, sup_prior):
         s = structure_any(str(r.get("action_formation") or ""), str(r.get("action_play") or ""))
-        mix, _ = pre_snap_mix(art, r.get("opponent_id"))
+        mix = tc.mix_from(prior, r.get(tc.KEY))
         dist, _ = pf.scheme_distribution(mix)
-        vec = pf.full_vector(s, dist)
+        vec = pf.full_vector(s, dist, {"down": r.get("down"), "distance": r.get("distance"), "yardline": r.get("yardline")})
         if not use_matchup:
             vec = [v if not nm.startswith("m_") else 0.0 for nm, v in zip(art.names, vec)]
         X.append(vec)
         y.append(offense_label(r, "success"))
-        pred = em.predict_success(base, formation=s.formation, play=s.play, down=r.get("down"),
-                                  distance=r.get("distance"), yardline=_to_int(r.get("yardline")),
+        pred = em.predict_success(fold_base.get(str(r.get("game_id")), base), formation=s.formation, play=s.play,
+                                  down=r.get("down"), distance=r.get("distance"), yardline=_to_int(r.get("yardline")),
                                   opponent_id=r.get("opponent_id"), opponent_type=r.get("opponent_type"))
         off.append(_logit(float(pred["probability"])))
     art.n_positive = int(sum(y))
@@ -302,15 +427,21 @@ def base_probability(a: StructuralArtifact, s: pf.PlayStructure, *, down: Any = 
 
 def score(a: StructuralArtifact, s: pf.PlayStructure, *, down: Any = None, distance: Any = None, yardline: Any = None,
           opponent_id: str | None = None, opponent_type: str | None = None,
-          mix: Mapping[str, float] | None = None, base_p: float | None = None) -> Score:
+          mix: Mapping[str, float] | None = None, base_p: float | None = None,
+          cov: Mapping[str, Any] | None = None) -> Score:
+    """``cov`` = this row's ``presnap_cov`` (earlier same-game coverage counts); ignored if ``mix`` is given."""
     if mix is None:
-        mix, src = pre_snap_mix(a, opponent_id)
+        prior, src = pre_snap_mix(a, opponent_id)
+        if cov and cov.get("counts"):
+            mix, src = tc.mix_from(prior, cov), src + "+same_game"
+        else:
+            mix = prior
     else:
         src = "caller_supplied"
     dist, _ = pf.scheme_distribution(mix)
     bp = base_p if base_p is not None else base_probability(a, s, down=down, distance=distance, yardline=yardline,
                                                               opponent_id=opponent_id, opponent_type=opponent_type)
-    res, var = residual_and_var(a, pf.full_vector(s, dist))
+    res, var = residual_and_var(a, pf.full_vector(s, dist, {"down": down, "distance": distance, "yardline": yardline}))
     p = _sigmoid(_logit(bp) + res)
     return Score(p, bp, res, math.sqrt(var), src)
 
@@ -359,12 +490,13 @@ class DeltaScorer:
     """Stock-vs-modified scoring with the stock vector, mix and distribution computed once per play."""
 
     def __init__(self, a: StructuralArtifact, stock: pf.PlayStructure, *, mix: Mapping[str, float] | None,
-                 opponent_id: str | None = None):
+                 opponent_id: str | None = None, sit: Mapping[str, Any] | None = None):
         self.a = a
         if mix is None:
             mix, _ = pre_snap_mix(a, opponent_id)
         self.dist, _ = pf.scheme_distribution(mix)
-        self.za = dict(_z(a, pf.full_vector(stock, self.dist)))
+        self.sit = sit
+        self.za = dict(_z(a, pf.full_vector(stock, self.dist, sit)))
         self.k = a.alpha * EXTRAPOLATION_SHRINK
 
     def score(self, mod: pf.PlayStructure) -> tuple[float, float, list[str]]:
@@ -372,7 +504,7 @@ class DeltaScorer:
         a = self.a
         if not a.residual_active:
             return 0.0, 0.0, ["residual inactive"]
-        vec = pf.full_vector(mod, self.dist)
+        vec = pf.full_vector(mod, self.dist, self.sit)
         outside = [n for n, v, m in zip(a.names, vec, a.support_max) if abs(v) > m + 1e-9] if a.support_max \
             else ["no recorded training support"]
         zb = dict(_z(a, vec))
