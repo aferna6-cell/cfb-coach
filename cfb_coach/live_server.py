@@ -289,6 +289,7 @@ class LivePlayController:
             "input_audit": (info.get("pre_snap_action_context") or {}).get("input_audit")
             or info.get("input_audit"),
             "football_reason": info.get("football_reason"),
+            "route_aware": info.get("route_aware"),
         }
 
     @staticmethod
@@ -313,6 +314,11 @@ class LivePlayController:
                     f"\n  heuristic kept visible: {info.get('heuristic_formation')}/{info.get('heuristic_play')}"
                     f"\n  (opt-in pilot — not a validated competitive model)"
                 )
+        from cfb_coach.madden.model.offense_route_ranker import format_lines, info_of
+
+        extra = format_lines(info_of(call))
+        if extra:
+            text += "\n" + "\n".join(extra)
         return text
 
     def _ensure_tracker(self) -> Any:

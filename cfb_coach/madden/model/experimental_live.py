@@ -778,9 +778,7 @@ def apply_experimental_offense(
         except Exception:  # noqa: BLE001 — a tendency lookup must not change the call
             tendency = None
         clock.begin("rank")
-        ranked = exp_mod.rank_candidates(
-            artifact,
-            pairs,
+        _rank_kwargs = dict(
             down=getattr(sit, "down", None),
             distance=getattr(sit, "distance", None),
             yardline=getattr(sit, "yardline", None),
@@ -793,6 +791,17 @@ def apply_experimental_offense(
             near_tie_margin=0.0,
             tendency=tendency,
         )
+        ranked = exp_mod.rank_candidates(artifact, pairs, **_rank_kwargs)
+        # Selectable route-aware ranker (default OFF: mode 'experimental' leaves everything above unchanged).
+        route_ctx = None
+        from cfb_coach.madden.model import offense_route_ranker as _rr
+
+        _route_mode = _rr.resolve_mode(db)
+        if _route_mode != "experimental":
+            ranked, pairs, route_ctx = _rr.apply(
+                _route_mode, ranked, pairs, all_pairs, sit=sit, opponent_id=opponent_id, db=db,
+                session_id=session_id or game_id, snap_seq=snap_seq, rank_kwargs=_rank_kwargs,
+                started=started, budget_ms=budget)
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
@@ -950,8 +959,13 @@ def apply_experimental_offense(
         if blocked:
             return _fallback(MLStatus.INVALID_OUTPUT, latency, detail=blocked)
 
+        route_info = None
+        if route_ctx is not None:
+            route_info = _rr.finalize(route_ctx, call, sit=sit, opponent_id=opponent_id,
+                                      game_id=session_id or game_id, snap_seq=snap_seq)
         trace = _mark(latency, False)
         info = {
+            "route_aware": route_info,
             "heuristic_formation": heur_form,
             "heuristic_play": heur_play,
             "ml_formation": ml_form,
@@ -1184,6 +1198,18 @@ def maybe_apply_experimental(
         from cfb_coach.madden.playbook import active_books, eligible
 
         if inference_mod.resolve_mode(db) is not CoachingMode.EXPERIMENTAL:
+            # Optional, side-effect-free preview of the route-aware ranker (selected explicitly; default off).
+            from cfb_coach.madden.model import offense_route_ranker as _rr
+
+            if _rr.resolve_mode(db) == "route_aware_preview":
+                _extras = getattr(sit, "extras", None) or {}
+                _sid = session_id or (_extras.get("session_id") if isinstance(_extras, dict) else None) or None
+                _book = book
+                if _book is None:
+                    _book = eligible(active_books(db, ("offense",))).get("offense") or {}
+                if _book:
+                    _rr.preview_for_call(call, sit=sit, opponent_id=opponent_id, db=db, book=_book,
+                                         session_id=_sid, snap_seq=snap_seq)
             return call
         if str(getattr(call, "side", "") or "").startswith("d"):
             return call

@@ -212,7 +212,8 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
                              eligible_receivers=s.skill_slots, play_clock_remaining=situation.play_clock_remaining,
                              coach_mode=situation.coach_mode)
 
-        scorer = sm.DeltaScorer(artifact, s, mix=mix, opponent_id=situation.opponent_id)
+        scorer = sm.DeltaScorer(artifact, s, mix=mix, opponent_id=situation.opponent_id,
+                                sit={"down": situation.down, "distance": situation.distance, "yardline": situation.yardline})
         base_logit = sm._logit(sc.probability)
 
         def consider(actions: tuple[ex.PlannedAction, ...]) -> PlanScore | None:

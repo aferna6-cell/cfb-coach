@@ -17,7 +17,7 @@ from cfb_coach.madden.model import offense_assignments as oa
 from cfb_coach.madden.model import offense_art_features as af
 from cfb_coach.madden.model.coverage_intelligence import SCHEMES
 
-FEATURE_VERSION = "offense_play_features.v3_route_art_matchup"
+FEATURE_VERSION = "offense_play_features.v4_situation_interactions"
 FORMATIONS = ("Gun 5WR Tight", "Gun Doubles Clamp Stack", "Gun Trips X Nasty", "Pistol Deuce Close", "Pistol Trips")
 PLAY_TYPES = ("pass", "run", "play_action", "screen", "rpo", "option")
 STRUCT_CONCEPTS = ("mesh", "flood", "levels", "drive", "smash", "dagger", "mills", "stick", "spacing",
@@ -203,6 +203,10 @@ def scheme_distribution(mix: Mapping[str, float] | None) -> tuple[dict[str, floa
             schemes = (bucket,)
         else:
             schemes = BUCKET_TO_SCHEMES.get(bucket, ("unknown",))
+            # A GENERIC label ("Cover 2") means "a Cover 2 that was not identified as a specific scheme".
+            # Schemes that are separately named in this same mix keep exactly their own probability.
+            unnamed = tuple(sc for sc in schemes if sc not in mix)
+            schemes = unnamed or schemes
         for sc in schemes:
             out[sc] = out.get(sc, 0.0) + max(0.0, float(v)) / total / len(schemes)
     return out, "opponent_coverage_mix_uniform_within_bucket"
@@ -300,10 +304,53 @@ _ART_MATCH_NAMES: tuple[str, ...] = (
     "am_two_high_deep_middle", "am_three_deep_wide", "am_quarters_deep",
     "am_palms_shallow_outside", "am_split_lateral_asymmetry",
     "am_cover6_deep_left", "am_cover9_deep_right")
-_ALL_NAMES: tuple[str, ...] = _STRUCT_NAMES + _MATCH_NAMES + af.FEATURE_NAMES + _ART_MATCH_NAMES
+SIT_BUCKETS = ("short", "medium", "long", "redzone", "goal", "backed")
+SIT_SHAPES = ("art_deep", "art_shallow", "art_horizontal", "is_run", "is_pass")
+_SIT_NAMES: tuple[str, ...] = tuple(f"sx_{b}_{g}" for b in SIT_BUCKETS for g in SIT_SHAPES)
+
+
+def situation_buckets(down: Any, distance: Any, yardline: Any) -> list[str]:
+    """Which situation buckets are active. Pre-snap fields only; None leaves a bucket off."""
+    def _i(v: Any) -> int | None:
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+    d, dist, yl = _i(down), _i(distance), _i(yardline)
+    out: list[str] = []
+    if dist is not None:
+        out.append("short" if dist <= 3 else "medium" if dist <= 7 else "long")
+    if yl is not None:
+        if yl >= 99 - 2:
+            out.append("goal")
+        elif yl >= 80:
+            out.append("redzone")
+        elif yl <= 10:
+            out.append("backed")
+    return out
+
+
+def situation_features(s: "PlayStructure", sit: Mapping[str, Any] | None) -> dict[str, float]:
+    """Situation-bucket x play-shape interactions. Learned weights decide what (if anything) they mean."""
+    f = {n: 0.0 for n in _SIT_NAMES}
+    if not sit:
+        return f
+    a = af.art_features(s.formation, s.play)
+    ptype = s.hint.get("play_type", "unknown")
+    shape = {"art_deep": a["art_deep_share"], "art_shallow": a["art_shallow_share"],
+             "art_horizontal": a["art_horizontal_share"],
+             "is_run": 1.0 if ptype in ("run", "option") else 0.0,
+             "is_pass": 1.0 if ptype in ("pass", "play_action", "screen", "rpo") else 0.0}
+    for b in situation_buckets(sit.get("down"), sit.get("distance"), sit.get("yardline")):
+        for g, v in shape.items():
+            f[f"sx_{b}_{g}"] = v
+    return f
+
+
+_ALL_NAMES: tuple[str, ...] = _STRUCT_NAMES + _MATCH_NAMES + af.FEATURE_NAMES + _ART_MATCH_NAMES + _SIT_NAMES
 # Weak-prior groups get a larger L2 penalty in the model (name hints are low trust).
 GROUPS = {"form": ("form_",), "hint": ("hint_",), "route": ("r_", "known_", "has_", "ol_"),
-          "concept": ("s_c_",), "match": ("m_",), "art": ("art_", "am_")}
+          "concept": ("s_c_",), "match": ("m_",), "art": ("art_", "am_"), "sit": ("sx_",)}
 
 
 def group_of(name: str) -> str:
@@ -313,7 +360,7 @@ def group_of(name: str) -> str:
     return "route"
 
 
-def full_vector(s: PlayStructure, dist: Mapping[str, float]) -> list[float]:
+def full_vector(s: PlayStructure, dist: Mapping[str, float], sit: Mapping[str, Any] | None = None) -> list[float]:
     # PR #106's 40 sourced route assignments came from a provider that does not
     # permit ML training use. They may be displayed for research, but MUST NOT
     # enter model training/scoring. Only first-party-verified player routes do.
@@ -328,6 +375,7 @@ def full_vector(s: PlayStructure, dist: Mapping[str, float]) -> list[float]:
     # player-specific route assignment and not a hot-route transformation.
     f.update(af.art_features(s.formation, s.play))
     f.update(art_matchup_features(s, dist))
+    f.update(situation_features(s, sit))
     return [f.get(n, 0.0) for n in _ALL_NAMES]
 
 

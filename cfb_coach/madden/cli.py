@@ -595,6 +595,13 @@ def _write_overlay(path: Path | None, text: str, short: str) -> None:
     )
 
 
+def _route_aware_text(call) -> str:
+    """Route-aware (or preview) lines for the terminal loop; empty unless that ranker is selected."""
+    from cfb_coach.madden.model.offense_route_ranker import format_lines, info_of
+
+    return "\n".join(format_lines(info_of(call)))
+
+
 def _confirm_heuristic_offense(args: argparse.Namespace, opponent_id: str) -> bool:
     """True when a human session may start on the heuristic offense caller."""
     print(
@@ -792,6 +799,8 @@ def cmd_play(args: argparse.Namespace) -> int:
         _maybe_shadow(db, sit, call, oid)
         print(call.headline())
         print(call.format())
+        if _route_aware_text(call):
+            print(_route_aware_text(call))
         if args.why:
             print(f"  ({call.rationale})")
         _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
@@ -989,6 +998,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             _maybe_shadow(db, sit, call, oid, session_id=term_sess.session_id)
             print(call.headline())
             print(call.format())
+            if _route_aware_text(call):
+                print(_route_aware_text(call))
             _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
             last_call, last_sit = call, sit
             snap_book.remember_call(call, sit, opp_look=logged_look)

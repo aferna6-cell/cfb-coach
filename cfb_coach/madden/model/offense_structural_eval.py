@@ -20,6 +20,7 @@ from cfb_coach.madden.model import heldout_eval as he
 from cfb_coach.madden.model import offense_assignments as oa
 from cfb_coach.madden.model import offense_decision as od
 from cfb_coach.madden.model import offense_structural_model as sm
+from cfb_coach.madden.model import offense_time_correct as tc
 
 EVAL_VERSION = "offense_structural_eval.v1"
 MIN_GAMES_FOR_CLAIM = 8
@@ -30,7 +31,7 @@ class StructuralSuccess:
 
     targets = ("success",)
 
-    def __init__(self, name: str = "structural_features", *, use_matchup: bool = True, penalty_scale: float = 1.0):
+    def __init__(self, name: str = "structural_features", *, use_matchup: bool = True, penalty_scale: float | None = None):
         self.name = name
         self.use_matchup = use_matchup
         self.penalty_scale = penalty_scale
@@ -43,7 +44,8 @@ class StructuralSuccess:
         assert self.art is not None
         s = sm.structure_any(str(row.get("action_formation") or ""), str(row.get("action_play") or ""))
         sc = sm.score(self.art, s, down=row.get("down"), distance=row.get("distance"), yardline=row.get("yardline"),
-                      opponent_id=row.get("opponent_id"), opponent_type=row.get("opponent_type"))
+                      opponent_id=row.get("opponent_id"), opponent_type=row.get("opponent_type"),
+                      cov=row.get(tc.KEY))
         return {"success": sc.probability}
 
 
@@ -54,6 +56,7 @@ def predictive_models() -> list[he.Predictor]:
         he.ExperimentalSuccess(),
         StructuralSuccess("structural_features"),
         StructuralSuccess("structural_no_matchup", use_matchup=False),
+        StructuralSuccess("structural_fixed_penalty_x1", penalty_scale=1.0),
         StructuralSuccess("structural_penalty_x0.3", penalty_scale=0.3),
         StructuralSuccess("structural_penalty_x3", penalty_scale=3.0),
     ]
@@ -125,7 +128,8 @@ def behavior_eval(data: he.EvalData, folds: Sequence[he.Fold], *, max_snaps_per_
 
 def evaluate(data: he.EvalData, *, min_train_games: int = he.DEFAULT_MIN_TRAIN_GAMES, n_boot: int = he.DEFAULT_BOOTSTRAP,
              seed: int = he.DEFAULT_SEED, run_behavior: bool = True) -> dict[str, Any]:
-    rows = data.rows
+    rows = tc.annotate(data.rows)
+    data = he.EvalData(rows=rows, game_order=data.game_order, decisions=data.decisions, source=data.source)
     verified = [r for r in rows if he.is_verified_offense(r)]
     book = {(p["formation"], p["play"]) for p in oa.load_effective()["plays"]}
     games = len({r.get("game_id") for r in verified})

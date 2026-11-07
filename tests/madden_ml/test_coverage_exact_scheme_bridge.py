@@ -33,4 +33,7 @@ def test_historical_model_does_not_make_a_certain_cover2_claim():
     rows=[{"coverage":"cover_2_unspecified","opponent_id":"cpu","down":1,"distance":10}]
     p=hb.predict_coverage(rows,{"opponent_id":"cpu","down":1,"distance":10})
     mix=hb.offense_model_mix(p)
-    assert "cover_2_spot" not in mix and "cover2" in mix
+    # predict_coverage gives EVERY supported class prior mass ("never assert impossible"), so cover_2_spot is present;
+    # what must hold is that the generic Cover 2 label did not promote it above the other unobserved named schemes.
+    assert "cover2" in mix and mix["cover_2_spot"] == pytest.approx(mix["cover_2_man"]) == pytest.approx(mix["tampa_2"])
+    assert mix["cover2"] > 3 * mix["cover_2_spot"]
