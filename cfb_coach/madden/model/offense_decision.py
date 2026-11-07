@@ -82,6 +82,8 @@ class PlanScore:
     comparison: dict[str, Any]
     accepted: bool = False
     reject_reason: str = ""
+    formation: str = ""          # full identity of the play this plan modifies (a play NAME alone is not unique across formations)
+    play: str = ""
 
 
 @dataclass
@@ -263,7 +265,7 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
             except pf.StructureError as exc:
                 return None if "already runs" in str(exc) else PlanScore(
                     actions, label_for(actions), sc.probability, 0.0, 0.0, 0.0, [str(exc)], False, {},
-                    reject_reason=str(exc))
+                    reject_reason=str(exc), formation=s.formation, play=s.play)
             gain, se, outside = scorer.score(mod)
             if priors:                                  # the transformed play has different concepts: re-evaluate its matchup, don't reuse the stock one
                 e_mod = fpri.matchup_edge(mod, mix, learned=learned_cells)
@@ -274,7 +276,7 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
                 if a_.action_id in NON_ROUTE_ACTIONS:
                     gain, se = gain + g_, (se * se + se_ * se_) ** 0.5
             p = sm._sigmoid(base_logit + gain)
-            ps = PlanScore(actions, f"{s.play}: {label_for(actions)}", p, gain, se, p - sc.probability, [], False, {})
+            ps = PlanScore(actions, f"{s.play}: {label_for(actions)}", p, gain, se, p - sc.probability, [], False, {}, formation=s.formation, play=s.play)
             # Cheap numeric screens first; Madden legality only for survivors.
             if outside:
                 ps.reject_reason = "modified play outside training support: " + ", ".join(outside[:3])
@@ -369,13 +371,12 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
     decision.truncated = truncated
     if accepted:
         win = max(accepted, key=lambda p: (p.probability, -p.gain_se, p.label))
-        play_name = win.label.split(": ", 1)[0]
-        s = next(st for st, _ in ranked if st.play == play_name)
+        s = next(st for st, _ in ranked if (st.formation, st.play) == (win.formation, win.play))
         decision.formation, decision.play = s.formation, s.play
         decision.adjustment = label_for(win.actions)
         decision.actions = win.actions
         decision.probability = win.probability
-        decision.stock_probability = next(sc.probability for st, sc in ranked if st.play == play_name)
+        decision.stock_probability = next(sc.probability for st, sc in ranked if (st.formation, st.play) == (win.formation, win.play))
         lg = sm._logit(win.probability)
         decision.interval = (sm._sigmoid(lg - 1.64 * win.gain_se), sm._sigmoid(lg + 1.64 * win.gain_se))
         decision.executable_now = win.executable_now

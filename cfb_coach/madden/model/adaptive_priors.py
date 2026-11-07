@@ -25,37 +25,11 @@ from cfb_coach.madden.model import football_priors as fp
 
 VERSION = "adaptive_priors.v1"
 OBS_PRECISION = 0.25            # p0 (1 - p0) at p0 = 0.5
-OPPONENT_PRIOR_SD = 0.10        # how far an opponent may drift from the Madden-level posterior before data says so
 Z_CLIP = 2.0
 
-# representative descriptor per coverage group, used only to read the structured prior lift of a (group, concept) cell
-GROUP_REP = {"man": {"shell": "1", "type": "man", "variants": set(), "press": "standard"},
-             "cover_0": {"shell": "0", "type": "man", "variants": set(), "press": "standard"},
-             "cover_2_zone": {"shell": "2", "type": "spot_zone", "variants": set(), "press": "standard"},
-             "cover_3_spot": {"shell": "3", "type": "spot_zone", "variants": set(), "press": "standard"},
-             "cover_3_match": {"shell": "3", "type": "match", "variants": set(), "press": "standard"},
-             "cover_4": {"shell": "4", "type": "match", "variants": set(), "press": "standard"},
-             "pressure": {"shell": "unk", "type": "unk", "variants": set(), "press": "unspecified"}}
-
-
-def prior_cell(group: str, concept: str) -> tuple[float, float]:
-    """(mu0, s0) of a cell from the structured priors. Cells with no prior start at 0 with a wide sd."""
-    lift, conf_w, ids = fp.lift_for(GROUP_REP[group], concept)
-    if not ids:
-        return 0.0, 0.20
-    conf = min(1.0, conf_w / len(ids))
-    return lift, max(0.07, 0.20 - 0.12 * conf)
-
-
-def _post(mu0: float, s0: float, obs: Sequence[tuple[float, float]]) -> tuple[float, float]:
-    """Normal-normal update. obs = [(z, trust)]. Returns (mean, sd)."""
-    prec = 1.0 / (s0 * s0)
-    num = mu0 * prec
-    for z, t in obs:
-        w = OBS_PRECISION * t
-        prec += w
-        num += w * z
-    return num / prec, math.sqrt(1.0 / prec)
+GROUP_SD = 0.07          # how far evidence pooled over a whole coverage GROUP may move every variant in it
+VARIANT_SD = 0.06        # extra, variant-specific correction (Robber vs Cover 1, Man vs Zone, Spot vs Match, Quarters vs Palms)
+OPPONENT_SD = 0.10       # this opponent's deviation from the Madden-wide picture
 
 
 @functools.lru_cache(maxsize=4096)
@@ -68,19 +42,10 @@ def _concepts_of(formation: str, play: str) -> tuple[tuple[str, float], ...]:
 
 
 @functools.lru_cache(maxsize=1024)
-def _groups_of(label: str, typed: str) -> tuple[tuple[str, float], ...]:
-    """Revealed coverage text -> {group: weight}. Exact typed text wins; a collapsed stored label is a uniform mixture (see defense_semantics)."""
+def _keys_of(label: str, typed: str) -> tuple[tuple[str, float], ...]:
+    """Revealed coverage text -> {mix key: weight}. Exact typed text wins; a collapsed stored label is a uniform mixture (see defense_semantics)."""
     from cfb_coach.madden.model import defense_semantics as ds
-    w = ds.stored_label_weights(label or None, typed or None)
-    out: dict[str, float] = {}
-    for key, p in w.items():
-        d = fp.descriptor(key)
-        g = fp.route_group(d) if d else None
-        if g:
-            out[g] = out.get(g, 0.0) + p
-    if "man" in out and not any(k for k in out if k != "man"):
-        pass
-    return tuple(sorted(out.items()))
+    return tuple(sorted(ds.stored_label_weights(label or None, typed or None).items()))
 
 
 def _exec_weight(row: Mapping[str, Any]) -> float:
@@ -88,7 +53,10 @@ def _exec_weight(row: Mapping[str, Any]) -> float:
 
 
 def observations(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Closed offense snaps -> per-cell evidence. Rows are in time order; ONLY earlier rows may be passed for a given prediction."""
+    """Closed offense snaps -> per-cell evidence. Rows are in time order; ONLY earlier rows may be passed for a given prediction.
+
+    Each observation stores the RESIDUAL e = z - (the structured prior lift for that exact coverage descriptor), so learning corrects the prior of the
+    variant that was actually seen instead of replacing it."""
     from cfb_coach.outcome import outcome_success
     closed = [r for r in rows if str(r.get("side") or "offense") == "offense" and str(r.get("result") or "").strip()]
     ys = [bool(outcome_success(r["result"], "offense")) for r in closed]
@@ -98,35 +66,74 @@ def observations(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         res = str(r["result"]).lower()
         if "penalty" in res:
             continue                                                    # a flag says nothing about the concept
-        attr = 0.5 if ("sack" in res or "fumble" in res or "int" in res and "incomplete" not in res) else 1.0
-        groups = _groups_of(str(r.get("coverage_seen") or ""), str(r.get("coverage_typed") or ""))
-        if not groups:
+        attr = 0.5 if ("sack" in res or "fumble" in res or ("int" in res and "incomplete" not in res)) else 1.0
+        keys = _keys_of(str(r.get("coverage_seen") or ""), str(r.get("coverage_typed") or ""))
+        if not keys:
             continue                                                    # no revealed coverage: nothing to attribute
         f, p = r.get("executed_formation") or r.get("formation"), r.get("executed_play") or r.get("play")
         if r.get("executed_verification") not in ("verified", "confirmed") and r.get("executed_play") and r.get("executed_play") != r.get("play"):
-            f, p = r.get("formation"), r.get("play")                    # unattested "used different": fall back to the shown call, flagged by weight
+            f, p = r.get("formation"), r.get("play")                    # unattested "used different": fall back to the shown call
         z = max(-Z_CLIP, min(Z_CLIP, ((1.0 if y else 0.0) - p0) / (p0 * (1 - p0))))
         for concept, trust in _concepts_of(str(f), str(p)):
-            for g, gw in groups:
-                out.append({"cell": (g, concept), "z": z, "trust": trust * gw * attr * _exec_weight(r), "opponent": r.get("opponent_id")})
+            for key, kw in keys:
+                d = fp.descriptor(key)
+                g, v = (fp.learning_group(d), fp.variant_key(d)) if d else (None, None)
+                if not g or not v:
+                    continue
+                prior_lift = fp.lift_for(d, concept)[0]
+                out.append({"g": ("g", g, concept), "v": ("v", v, concept), "e": z - prior_lift, "trust": trust * kw * attr * _exec_weight(r),
+                            "opponent": r.get("opponent_id")})
     return out
 
 
-def posterior_cells(rows: Iterable[Mapping[str, Any]], opponent_id: str | None) -> tuple[dict[tuple[str, str], float], dict[str, Any]]:
-    obs = observations(rows)
-    by_cell: dict[tuple[str, str], list[dict[str, Any]]] = {}
+def _fit(obs: Sequence[tuple[float, float]], sd: float, prior_mean: float = 0.0) -> float:
+    """Posterior mean of a residual: normal prior N(prior_mean, sd^2), observations (e, trust) with precision 0.25 * trust."""
+    prec = 1.0 / (sd * sd)
+    num = prior_mean * prec
+    for e, t in obs:
+        w = OBS_PRECISION * t
+        prec += w
+        num += w * e
+    return num / prec
+
+
+def _madden_residuals(obs: Sequence[Mapping[str, Any]]) -> dict[tuple[str, str, str], float]:
+    """Group residuals first, then variant residuals on what the group residual did not explain. Every snap is used ONCE at each level."""
+    res: dict[tuple[str, str, str], float] = {}
+    by_g: dict[tuple, list] = {}
     for o in obs:
-        by_cell.setdefault(o["cell"], []).append(o)
-    learned: dict[tuple[str, str], float] = {}
-    info: dict[str, Any] = {"version": VERSION, "observations": len(obs), "cells_updated": {}}
-    for cell, items in by_cell.items():
-        mu0, s0 = prior_cell(*cell)
-        mu_m, sd_m = _post(mu0, s0, [(o["z"], o["trust"]) for o in items])
-        mine = [(o["z"], o["trust"]) for o in items if opponent_id and o["opponent"] == opponent_id]
-        mu_o, sd_o = _post(mu_m, OPPONENT_PRIOR_SD, mine) if mine else (mu_m, sd_m)
-        learned[cell] = mu_o
-        info["cells_updated"][f"{cell[0]}|{cell[1]}"] = {"prior": round(mu0, 4), "madden": round(mu_m, 4), "opponent": round(mu_o, 4),
-                                                           "n_madden": round(sum(t for _, t in [(o["z"], o["trust"]) for o in items]), 2), "n_opponent": round(sum(t for _, t in mine), 2)}
+        by_g.setdefault(o["g"], []).append(o)
+    for k, items in by_g.items():
+        res[k] = _fit([(o["e"], o["trust"]) for o in items], GROUP_SD)
+    by_v: dict[tuple, list] = {}
+    for o in obs:
+        by_v.setdefault(o["v"], []).append(o)
+    for k, items in by_v.items():
+        res[k] = _fit([(o["e"] - res.get(o["g"], 0.0), o["trust"]) for o in items], VARIANT_SD)
+    return res
+
+
+def posterior_cells(rows: Iterable[Mapping[str, Any]], opponent_id: str | None) -> tuple[dict[tuple[str, str, str], float], dict[str, Any]]:
+    """Residual corrections for ``football_priors.matchup_edge``: keys ("g", group, concept) and ("v", variant, concept).
+
+    For a known opponent the Madden-wide level is estimated from the OTHER opponents only, and this opponent's snaps enter exactly once, at the
+    opponent level (leave-one-opponent-out). So no snap is counted in both the Madden-wide and the opponent posterior."""
+    obs = observations(rows)
+    others = [o for o in obs if not (opponent_id and o["opponent"] == opponent_id)]
+    mine = [o for o in obs if opponent_id and o["opponent"] == opponent_id]
+    base = _madden_residuals(others if opponent_id else obs)
+    learned = dict(base)
+    info: dict[str, Any] = {"version": VERSION, "observations": len(obs), "opponent_observations": len(mine), "madden_observations": len(others if opponent_id else obs), "cells_updated": {}}
+    by_cell: dict[tuple, list] = {}
+    for o in mine:
+        by_cell.setdefault(o["g"], []).append(o)
+    for g_key, items in by_cell.items():
+        # what the Madden-wide residuals (without this opponent) already explain for each of this opponent's snaps
+        rem = [(o["e"] - base.get(o["g"], 0.0) - base.get(o["v"], 0.0), o["trust"]) for o in items]
+        d_o = _fit(rem, OPPONENT_SD)
+        learned[g_key] = base.get(g_key, 0.0) + d_o                       # the opponent residual rides on the group key
+        info["cells_updated"][f"{g_key[1]}|{g_key[2]}"] = {"madden_residual": round(base.get(g_key, 0.0), 4), "opponent_residual": round(d_o, 4),
+                                                           "n_opponent": round(sum(t for _, t in rem), 2)}
     return learned, info
 
 

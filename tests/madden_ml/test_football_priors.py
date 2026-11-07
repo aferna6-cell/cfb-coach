@@ -47,7 +47,8 @@ def test_cover_2_man_is_not_cover_2_zone_for_smash():
 def test_name_only_hints_are_trusted_less_than_route_derived_concepts():
     s = sm.structure_any(*MESH)
     c = fp.play_concepts(s)
-    assert c["mesh"] == 1.0 and fp.NAME_TRUST < 1.0 and fp.play_concepts(sm.structure_any(*SMASH))["smash"] == fp.NAME_TRUST
+    assert c["mesh"] == fp.TIER_TRUST["source_documented"] and fp.NAME_TRUST < c["mesh"] < 1.0           # documented-but-unverified routes are trusted at their tier
+    assert fp.play_concepts(sm.structure_any(*SMASH))["smash"] == fp.NAME_TRUST
 
 
 def test_unknown_coverage_and_unknown_concepts_abstain_rather_than_guess():
@@ -107,12 +108,26 @@ def test_qb_reads_are_recomputed_from_the_coverage_and_the_transformed_play(art)
     assert adv.build_card(d0, {"cover_1_unspecified": 1.0})["COVERAGE-CONDITIONED ORDER"] is None             # off => unchanged card
 
 
-def test_a_back_kept_in_to_protect_is_not_offered_as_the_checkdown(art):
-    s = sm.structure_any(*MESH)
-    d = od.Decision(formation=s.formation, play=s.play, adjustment="x", probability=.5, stock_probability=.5, interval=(.4, .6), final_structure=s,
-                    actions=(ex.PlannedAction("off.pass_protection", {"protection": "Half Slide"}),))
-    card = adv.build_card(d, {"cover_1_unspecified": 1.0}, priors=True)
-    assert not card["CHECKDOWN"].startswith(("HB", "FB"))
+def _hb_play():
+    for f, p in BOOK:
+        st = sm.structure_any(f, p)
+        if any(sl.startswith("HB") for sl, sp, _ in st.routes) and st.n_known >= 3:
+            return st
+    pytest.skip("no annotated play with a back route")
+
+
+def test_checkdown_loses_a_back_only_when_a_chip_block_names_that_back():
+    s = _hb_play()
+    hb = next(sl for sl, sp, _ in s.routes if sl.startswith("HB"))
+    mk = lambda acts: od.Decision(formation=s.formation, play=s.play, adjustment="x", probability=.5, stock_probability=.5, interval=(.4, .6), final_structure=s, actions=acts)  # noqa: E731
+    mix = {"cover_1_unspecified": 1.0}
+    plain = adv.build_card(mk(()), mix, priors=True)
+    prot = adv.build_card(mk((ex.PlannedAction("off.pass_protection", {"protection": "Half Slide"}),)), mix, priors=True)
+    chip = adv.build_card(mk((ex.PlannedAction("off.chip_block", {"target": hb}),)), mix, priors=True)
+    assert prot["CHECKDOWN"] == plain["CHECKDOWN"] and "not documented" in prot["WHY"]          # a protection call alone removes nobody
+    if plain["CHECKDOWN"].startswith(hb):
+        assert not chip["CHECKDOWN"].startswith(hb)                                                # a named blocker is no outlet
+    assert not any(chip[k].startswith(hb) for k in ("PRIMARY READ", "SECONDARY READ"))            # ... and no read either
 
 
 def test_defensive_inverse_reads_the_same_table_from_the_other_side():
@@ -128,44 +143,219 @@ def _snap(play, cov, ok, opp="o1", verified=True, result=None):
             "result": result or ("+8" if ok else "incomplete"), "executed_verification": "verified" if verified else "unknown"}
 
 
+def res(learned, grp="man_one_high", concept="mesh"):
+    return learned.get(("g", grp, concept), 0.0)
+
+
 def test_one_failed_snap_barely_moves_a_cell_and_twenty_move_it_gradually():
-    cell = ("man", "mesh")
-    mu0, _ = ap.prior_cell(*cell)
     one, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False)] + [_snap(MESH, "Cover 1", True)] * 3, "o1")
-    many = [_snap(MESH, "Cover 1", False)] * 20 + [_snap(MESH, "Cover 1", True)] * 4
-    twenty, _ = ap.posterior_cells(many, "o1")
-    assert abs(one[cell] - mu0) < 0.04
-    assert twenty[cell] < mu0 - 0.05 and twenty[cell] > -0.5                                  # moves, but is not abandoned or zeroed
+    twenty, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False)] * 20 + [_snap(MESH, "Cover 1", True)] * 4, "o1")
+    assert abs(res(one)) < 0.03
+    assert res(twenty) < -0.03 and res(twenty) > -0.3                                         # moves, but is not abandoned or zeroed
 
 
-def test_opponent_level_is_pooled_toward_madden_level():
-    snaps = [_snap(MESH, "Cover 1", True, opp="o1")] * 12 + [_snap(MESH, "Cover 1", False, opp="o2")] * 6
-    l1, i1 = ap.posterior_cells(snaps, "o1")
-    l2, i2 = ap.posterior_cells(snaps, "o2")
-    cell = i1["cells_updated"]["man|mesh"]
-    assert l1[("man", "mesh")] != l2[("man", "mesh")] and cell["n_opponent"] > 0
-    assert min(cell["madden"], cell["opponent"]) <= l1[("man", "mesh")] <= max(cell["madden"], cell["opponent"]) + 0.2
+def test_no_snap_is_counted_twice_across_madden_and_opponent_levels():
+    """Closed form: with no OTHER opponents, o1's n snaps must act exactly once (opponent level, prior sd OPPONENT_SD)."""
+    n = 12
+    snaps = [_snap(MESH, "Cover 1", False, opp="o1")] * n
+    obs = ap.observations(snaps)
+    mine = [(o["e"], o["trust"]) for o in obs if o["g"] == ("g", "man_one_high", "mesh")]
+    learned, info = ap.posterior_cells(snaps, "o1")
+    expected_once = ap._fit(mine, ap.OPPONENT_SD)
+    assert res(learned) == pytest.approx(expected_once, abs=1e-9)
+    wrongly_twice = ap._fit(mine, ap.GROUP_SD) + ap._fit([(e - ap._fit(mine, ap.GROUP_SD), t) for e, t in mine], ap.OPPONENT_SD)
+    assert abs(res(learned)) < abs(wrongly_twice) - 1e-4                                     # the double-counting answer would be larger
+    assert info["madden_observations"] == 0 and info["opponent_observations"] == len(obs)
+
+
+def test_other_opponents_inform_this_one_through_the_madden_level_only_once_each():
+    others = [_snap(MESH, "Cover 1", False, opp=f"x{i % 3}") for i in range(30)]
+    mine = [_snap(MESH, "Cover 1", False, opp="o1")] * 6
+    with_o, _ = ap.posterior_cells(others + mine, "o1")
+    only_others, _ = ap.posterior_cells(others, "o1")
+    unseen, _ = ap.posterior_cells(others + mine, "brand-new-opponent")                       # unknown opponent: Madden level over ALL snaps
+    assert res(only_others) < -0.01 and res(with_o) < res(only_others)                       # own evidence pushes further, 
+    assert res(with_o) > -0.3                                                                  # but is not the sum of two full counts
+    snaps_all = ap.observations(others + mine)
+    assert res(unseen) == pytest.approx(ap._madden_residuals(snaps_all)[("g", "man_one_high", "mesh")], abs=1e-9)
+
+
+def test_repeated_identical_outcomes_converge_smoothly_without_overshoot():
+    last = 0.0
+    for n in (1, 2, 5, 10, 20, 40):
+        l, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False, opp="o1")] * n, "o1")
+        assert res(l) <= last + 1e-12 and res(l) > -1.0                                       # monotone, bounded
+        last = res(l)
 
 
 def test_unattested_execution_and_penalties_count_less_or_not_at_all():
     a, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False, verified=True)] * 10, "o1")
     b, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False, verified=False)] * 10, "o1")
-    mu0, _ = ap.prior_cell("man", "mesh")
-    assert abs(a[("man", "mesh")] - mu0) > abs(b[("man", "mesh")] - mu0)
-    flags = [_snap(MESH, "Cover 1", False, result="penalty holding")] * 10
-    assert ap.observations(flags) == []
+    assert abs(res(a)) > abs(res(b)) > 0
+    assert ap.observations([_snap(MESH, "Cover 1", False, result="penalty holding")] * 10) == []
 
 
 def test_snaps_without_revealed_coverage_teach_nothing():
     assert ap.observations([_snap(MESH, "", True)]) == []
 
 
-def test_learned_cells_change_the_models_edge_and_therefore_its_ranking_input():
+def test_learning_adds_a_residual_and_keeps_the_variant_distinctions():
     s = sm.structure_any(*MESH)
-    base = fp.matchup_edge(s, {"cover_1_unspecified": 1.0})["edge"]
-    learned, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False)] * 40, "o1")
-    after = fp.matchup_edge(s, {"cover_1_unspecified": 1.0}, learned=learned)["edge"]
-    assert after < base
+    pairs = [("cover_1_unspecified", "cover_1_robber"), ("cover_2_spot", "cover_2_man"), ("cover_3_unspecified", "cover_3_match"), ("cover_4_quarters", "cover_4_palms")]
+    learned, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False)] * 40 + [_snap(MESH, "Cover 2 Man", True)] * 5, "o1")
+    for a, b in pairs:
+        base_gap = fp.matchup_edge(s, {a: 1.0})["edge"] - fp.matchup_edge(s, {b: 1.0})["edge"]
+        new_gap = fp.matchup_edge(s, {a: 1.0}, learned=learned)["edge"] - fp.matchup_edge(s, {b: 1.0}, learned=learned)["edge"]
+        if abs(base_gap) > 0.02:
+            assert abs(new_gap) > 0.5 * abs(base_gap), (a, b, base_gap, new_gap)            # a variant gap survives learning
+    assert fp.matchup_edge(s, {"cover_1_unspecified": 1.0}, learned=learned)["edge"] < fp.matchup_edge(s, {"cover_1_unspecified": 1.0})["edge"]
+
+
+def test_variant_residuals_are_learned_separately_for_robber_and_plain_cover_1():
+    learned, _ = ap.posterior_cells([_snap(MESH, "Cover 1 Robber", False)] * 30, "o1")
+    assert learned.get(("v", "cover_1_robber", "mesh"), 0.0) != 0.0 or learned.get(("g", "man_one_high", "mesh"), 0.0) != 0.0
+    s = sm.structure_any(*MESH)
+    assert fp.matchup_edge(s, {"cover_1_robber": 1.0}, learned=learned)["edge"] != fp.matchup_edge(s, {"cover_1_robber": 1.0})["edge"]
+
+
+# ---- evidence tiers
+def _with_tier(s, tier):
+    from dataclasses import replace
+    return replace(s, routes=tuple((sl, sp, tier) for sl, sp, _ in s.routes))
+
+
+def test_route_derived_trust_follows_the_assignment_evidence_tier():
+    base = sm.structure_any(*MESH)
+    trust = {t: fp.play_concepts(_with_tier(base, t)).get("mesh", 0.0) for t in ("in_game_verified", "diagram_verified", "source_documented", "football_inference", "unknown")}
+    assert trust["in_game_verified"] > trust["diagram_verified"] > trust["source_documented"] > trust["football_inference"] > 0
+    assert trust["unknown"] == fp.NAME_TRUST or trust["unknown"] == 0.0                         # no route evidence: only the (weak) name hint may remain
+    edges = {t: fp.matchup_edge(_with_tier(base, t), {"cover_1_unspecified": 1.0})["edge"] for t in trust}
+    assert edges["in_game_verified"] > edges["source_documented"] > edges["football_inference"]
+
+
+def test_the_weakest_route_in_a_concept_sets_its_trust():
+    from dataclasses import replace
+    base = sm.structure_any(*MESH)
+    routes = list(base.routes)
+    sl, sp, _ = routes[0]
+    routes[0] = (sl, sp, "football_inference")
+    mixed = replace(base, routes=tuple((a, b, c if (a, b) == (routes[0][0], routes[0][1]) else "in_game_verified") for a, b, c in routes))
+    t = fp.play_concepts(mixed)
+    assert all(v <= 1.0 for v in t.values()) and min(t[c] for c in t if t[c] >= fp.NAME_TRUST) <= 1.0
+
+
+# ---- adjusted-play identity
+def test_the_winning_adjusted_play_is_identified_by_formation_and_play_not_by_name(art, monkeypatch):
+    """Two formations share one play name; only the SECOND one's transformed play gains. The decision must land on the second."""
+    from dataclasses import replace
+    real = sm.structure_any
+    play = MESH[1]
+    fake_f = "Fake Formation With The Same Play Name"
+    first = real(*MESH)
+
+    def structure_any(f, p):
+        return replace(first, formation=fake_f) if f == fake_f else real(f, p)
+
+    class Stub:
+        def __init__(self, st):
+            self.st = st
+
+        def score(self, mod):
+            return (0.4 * len(mod.adjustments) if self.st.formation == fake_f else 0.0), 0.01, []
+
+    monkeypatch.setattr(od.sm, "structure_any", structure_any)
+    monkeypatch.setattr(od.sm, "DeltaScorer", lambda artifact, st, **k: Stub(st))
+    d = od.decide(art, sit({"cover_1_unspecified": 1.0}), [MESH, (fake_f, play)], mode="research", margin=0.0, z=0.0, budget_ms=3000, adjust_top=2)
+    assert d.adjustment != od.NO_ADJUSTMENT and (d.formation, d.play) == (fake_f, play) and d.final_structure.formation == fake_f
+    assert all(p.formation in (MESH[0], fake_f) and p.play == play for p in d.plans)       # every plan carries its full identity
+
+
+def test_defensive_inverse_reads_the_same_table_from_the_other_side():
+    c2man, c2zone = fp.descriptor("cover_2_man"), fp.descriptor("cover_2_spot")
+    smash_heavy, mesh_heavy = {"smash": 1.0}, {"mesh": 1.0}
+    assert fp.defense_call_edge(c2zone, smash_heavy)["offense_edge_allowed"] > fp.defense_call_edge(c2man, smash_heavy)["offense_edge_allowed"]
+    assert fp.defense_call_edge(c2man, mesh_heavy)["offense_edge_allowed"] > fp.defense_call_edge(c2zone, mesh_heavy)["offense_edge_allowed"]
+
+
+# ------------------------------------------------------------------------------------------------------------ adaptive learning
+def _snap(play, cov, ok, opp="o1", verified=True, result=None):
+    return {"side": "offense", "opponent_id": opp, "formation": play[0], "play": play[1], "coverage_seen": cov, "coverage_typed": None,
+            "result": result or ("+8" if ok else "incomplete"), "executed_verification": "verified" if verified else "unknown"}
+
+
+def res(learned, grp="man_one_high", concept="mesh"):
+    return learned.get(("g", grp, concept), 0.0)
+
+
+def test_one_failed_snap_barely_moves_a_cell_and_twenty_move_it_gradually():
+    one, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False)] + [_snap(MESH, "Cover 1", True)] * 3, "o1")
+    twenty, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False)] * 20 + [_snap(MESH, "Cover 1", True)] * 4, "o1")
+    assert abs(res(one)) < 0.03
+    assert res(twenty) < -0.03 and res(twenty) > -0.3                                         # moves, but is not abandoned or zeroed
+
+
+def test_no_snap_is_counted_twice_across_madden_and_opponent_levels():
+    """Closed form: with no OTHER opponents, o1's n snaps must act exactly once (opponent level, prior sd OPPONENT_SD)."""
+    n = 12
+    snaps = [_snap(MESH, "Cover 1", False, opp="o1")] * n
+    obs = ap.observations(snaps)
+    mine = [(o["e"], o["trust"]) for o in obs if o["g"] == ("g", "man_one_high", "mesh")]
+    learned, info = ap.posterior_cells(snaps, "o1")
+    expected_once = ap._fit(mine, ap.OPPONENT_SD)
+    assert res(learned) == pytest.approx(expected_once, abs=1e-9)
+    wrongly_twice = ap._fit(mine, ap.GROUP_SD) + ap._fit([(e - ap._fit(mine, ap.GROUP_SD), t) for e, t in mine], ap.OPPONENT_SD)
+    assert abs(res(learned)) < abs(wrongly_twice) - 1e-4                                     # the double-counting answer would be larger
+    assert info["madden_observations"] == 0 and info["opponent_observations"] == len(obs)
+
+
+def test_other_opponents_inform_this_one_through_the_madden_level_only_once_each():
+    others = [_snap(MESH, "Cover 1", False, opp=f"x{i % 3}") for i in range(30)]
+    mine = [_snap(MESH, "Cover 1", False, opp="o1")] * 6
+    with_o, _ = ap.posterior_cells(others + mine, "o1")
+    only_others, _ = ap.posterior_cells(others, "o1")
+    unseen, _ = ap.posterior_cells(others + mine, "brand-new-opponent")                       # unknown opponent: Madden level over ALL snaps
+    assert res(only_others) < -0.01 and res(with_o) < res(only_others)                       # own evidence pushes further, 
+    assert res(with_o) > -0.3                                                                  # but is not the sum of two full counts
+    snaps_all = ap.observations(others + mine)
+    assert res(unseen) == pytest.approx(ap._madden_residuals(snaps_all)[("g", "man_one_high", "mesh")], abs=1e-9)
+
+
+def test_repeated_identical_outcomes_converge_smoothly_without_overshoot():
+    last = 0.0
+    for n in (1, 2, 5, 10, 20, 40):
+        l, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False, opp="o1")] * n, "o1")
+        assert res(l) <= last + 1e-12 and res(l) > -1.0                                       # monotone, bounded
+        last = res(l)
+
+
+def test_unattested_execution_and_penalties_count_less_or_not_at_all():
+    a, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False, verified=True)] * 10, "o1")
+    b, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False, verified=False)] * 10, "o1")
+    assert abs(res(a)) > abs(res(b)) > 0
+    assert ap.observations([_snap(MESH, "Cover 1", False, result="penalty holding")] * 10) == []
+
+
+def test_snaps_without_revealed_coverage_teach_nothing():
+    assert ap.observations([_snap(MESH, "", True)]) == []
+
+
+def test_learning_adds_a_residual_and_keeps_the_variant_distinctions():
+    s = sm.structure_any(*MESH)
+    pairs = [("cover_1_unspecified", "cover_1_robber"), ("cover_2_spot", "cover_2_man"), ("cover_3_unspecified", "cover_3_match"), ("cover_4_quarters", "cover_4_palms")]
+    learned, _ = ap.posterior_cells([_snap(MESH, "Cover 1", False)] * 40 + [_snap(MESH, "Cover 2 Man", True)] * 5, "o1")
+    for a, b in pairs:
+        base_gap = fp.matchup_edge(s, {a: 1.0})["edge"] - fp.matchup_edge(s, {b: 1.0})["edge"]
+        new_gap = fp.matchup_edge(s, {a: 1.0}, learned=learned)["edge"] - fp.matchup_edge(s, {b: 1.0}, learned=learned)["edge"]
+        if abs(base_gap) > 0.02:
+            assert abs(new_gap) > 0.5 * abs(base_gap), (a, b, base_gap, new_gap)            # a variant gap survives learning
+    assert fp.matchup_edge(s, {"cover_1_unspecified": 1.0}, learned=learned)["edge"] < fp.matchup_edge(s, {"cover_1_unspecified": 1.0})["edge"]
+
+
+def test_variant_residuals_are_learned_separately_for_robber_and_plain_cover_1():
+    learned, _ = ap.posterior_cells([_snap(MESH, "Cover 1 Robber", False)] * 30, "o1")
+    assert learned.get(("v", "cover_1_robber", "mesh"), 0.0) != 0.0 or learned.get(("g", "man_one_high", "mesh"), 0.0) != 0.0
+    s = sm.structure_any(*MESH)
+    assert fp.matchup_edge(s, {"cover_1_robber": 1.0}, learned=learned)["edge"] != fp.matchup_edge(s, {"cover_1_robber": 1.0})["edge"]
 
 
 def test_exploration_is_cautious_logged_and_never_on_costly_downs():

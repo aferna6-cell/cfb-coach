@@ -80,17 +80,22 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *,
             basis = ("INFERRED from football principles for the expected coverage" if not s.adjustments else
                      "INFERRED (hot route changed the play; documented order no longer applies)")
         order = [o for o in order if by_slot[o].meta.category != "blocking"]
+        acts = list(getattr(decision, "actions", ()))
+        blocking_slots = {str(a.params.get("target")) for a in acts if a.action_id == "off.chip_block" and a.params.get("target")}
+        order = [o for o in order if o not in blocking_slots]                       # a player assigned to block is not a read
         if use_priors and mix and basis.startswith("DOCUMENTED"):
             def _aff(sl: str) -> float:
                 return fpri.route_read_scores(by_slot[sl].family, mix) + 0.01 * by_slot[sl].meta.man_beater
             conditioned = sorted(order, key=lambda sl: -_aff(sl))                  # shown beside the documented order, never replacing it
         primary = _describe(order[0], by_slot[order[0]]) if order else primary
         secondary = _describe(order[1], by_slot[order[1]]) if len(order) > 1 else "UNKNOWN"
-        keep_in = any(a.action_id in ("off.pass_protection", "off.chip_block") for a in getattr(decision, "actions", ()))
-        cd = [(sl, sp) for sl, sp in by_slot.items() if sp.family in _CHECKDOWN and sl not in order[:2]
-              and not (keep_in and sl.startswith(("HB", "FB")))]               # a back kept in to block is not an outlet
-        if keep_in:
-            why.append("back kept in to protect: not offered as the checkdown")
+        # A back leaves the checkdown list ONLY when a selected action demonstrably changes THAT player's assignment: a chip block names its target.
+        # A pass-protection call (Half/Full Slide) is not known to keep the back in, so it removes nobody and the card says so.
+        cd = [(sl, sp) for sl, sp in by_slot.items() if sp.family in _CHECKDOWN and sl not in order[:2] and sl not in blocking_slots]
+        if blocking_slots & set(by_slot):
+            why.append("chip block assigned to " + ", ".join(sorted(blocking_slots & set(by_slot))) + ": not offered as the checkdown")
+        if any(a.action_id == "off.pass_protection" for a in acts):
+            why.append("protection call: its effect on the backs' assignments is not documented, so no checkdown was removed")
         checkdown = _describe(*cd[0]) if cd else "UNKNOWN: no documented outlet route"
         concepts = sorted(s.concepts())
         if concepts:
