@@ -19,7 +19,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
+from dataclasses import replace as _dc_replace
+
 from cfb_coach.madden.adjustments import executable as ex
+from cfb_coach.madden.model import football_priors as fpri
 from cfb_coach.madden.model import offense_diversity as div
 from cfb_coach.madden.model import offense_play_features as pf
 from cfb_coach.madden.model import offense_structural_model as sm
@@ -100,6 +103,8 @@ class Decision:
     evidence: str = "catalog_only"
     basis: str = "stock_play"
     notes: list[str] = field(default_factory=list)
+    matchup: dict[str, Any] | None = None
+    football_priors: bool = False
 
     def as_log(self) -> dict[str, Any]:
         return {
@@ -111,6 +116,7 @@ class Decision:
             "executable_now": self.executable_now, "mix_source": self.mix_source,
             "latency_ms": round(self.latency_ms, 2), "truncated": self.truncated,
             "evidence": self.evidence, "basis": self.basis, "notes": self.notes,
+            "football_priors": self.football_priors, "matchup": (None if not self.matchup else {"edge": round(self.matchup["edge"], 4), "cells": self.matchup["cells"]}),
             "ranking": [{k: (round(v, 4) if isinstance(v, float) else v) for k, v in r.items()} for r in self.ranking[:8]],
             "considered_plans": [{"label": p.label, "p": round(p.probability, 4), "gain": round(p.gain_prob, 4),
                                   "accepted": p.accepted, "reject": p.reject_reason} for p in self.plans[:12]],
@@ -183,7 +189,8 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
            margin: float = DEFAULT_MARGIN, z: float = DEFAULT_Z, budget_ms: float = DEFAULT_BUDGET_MS,
            adjust_top: int = 5, max_pairs: int | None = None, allow_adjustments: bool = True,
            recent_calls: Sequence[Any] | None = None, beam_width: int = BEAM_WIDTH, pool_size: int = POOL_SIZE,
-           extra_actions: Sequence[ex.PlannedAction] = (), non_route_gain: Mapping[str, tuple[float, float]] | None = None) -> Decision:
+           extra_actions: Sequence[ex.PlannedAction] = (), non_route_gain: Mapping[str, tuple[float, float]] | None = None,
+           priors: bool = False, learned_cells: Mapping[tuple[str, str], float] | None = None) -> Decision:
     """``mode='live'`` requires confirmed Madden executability; ``'research'`` scores but marks not executable."""
     if mode not in ("live", "research"):
         raise ValueError(mode)
@@ -195,9 +202,17 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
               opponent_id=situation.opponent_id, opponent_type=situation.opponent_type)
     mix = situation.mix
     ranked: list[tuple[pf.PlayStructure, sm.Score]] = []
+    edges: dict[tuple[str, str], dict[str, Any]] = {}
     for form, play in candidates:
         s = sm.structure_any(form, play)
-        ranked.append((s, sm.score(artifact, s, mix=mix, **kw)))
+        sc = sm.score(artifact, s, mix=mix, **kw)
+        if priors:
+            # football prior: expected logit lift of this play's concepts vs the opponent's coverage MIXTURE, added to the learned score
+            e = fpri.matchup_edge(s, mix, learned=learned_cells)
+            edges[(form, play)] = e
+            lg = sm._logit(sc.probability) + e["edge"]
+            sc = _dc_replace(sc, probability=sm._sigmoid(lg), logit_se=(sc.logit_se ** 2 + e["se"] ** 2) ** 0.5)
+        ranked.append((s, sc))
     ranked.sort(key=lambda t: (-t[1].probability, t[1].logit_se, t[0].formation, t[0].play))
     if recent_calls:
         # Existing variety logic: only reorders plays inside the indifference band (+ extra band when the
@@ -221,6 +236,9 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
                         probability=best.probability, stock_probability=best.probability,
                         interval=best.interval, final_structure=best_s, ranking=ranking,
                         mix_source=best.mix_source, evidence=_evidence(best_s))
+    decision.football_priors = bool(priors)
+    if priors:
+        decision.matchup = edges.get((decision.formation, decision.play))
     if not allow_adjustments:
         decision.latency_ms = (time.perf_counter() - t0) * 1000
         return decision
@@ -247,8 +265,12 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
                     actions, label_for(actions), sc.probability, 0.0, 0.0, 0.0, [str(exc)], False, {},
                     reject_reason=str(exc))
             gain, se, outside = scorer.score(mod)
+            if priors:                                  # the transformed play has different concepts: re-evaluate its matchup, don't reuse the stock one
+                e_mod = fpri.matchup_edge(mod, mix, learned=learned_cells)
+                gain += e_mod["edge"] - edges[(s.formation, s.play)]["edge"]
+                se = (se * se + e_mod["se"] ** 2) ** 0.5
             for a_ in actions:                         # evidence-backed gains of non-route actions (protection etc.); none by default
-                g_, se_ = (non_route_gain or {}).get(a_.action_id, (0.0, 0.0))
+                g_, se_ = (non_route_gain or {}).get(a_.action_id, fpri.protection_edge(mix) if priors and a_.action_id == "off.pass_protection" else (0.0, 0.0))
                 if a_.action_id in NON_ROUTE_ACTIONS:
                     gain, se = gain + g_, (se * se + se_ * se_) ** 0.5
             p = sm._sigmoid(base_logit + gain)
@@ -358,10 +380,15 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
         decision.interval = (sm._sigmoid(lg - 1.64 * win.gain_se), sm._sigmoid(lg + 1.64 * win.gain_se))
         decision.executable_now = win.executable_now
         decision.final_structure = _apply_actions(s, win.actions, macro_effects)
+        if priors:
+            decision.matchup = fpri.matchup_edge(decision.final_structure, mix, learned=learned_cells)
         decision.evidence = _evidence(s)
         decision.basis = BASIS
         decision.notes.append("adjustment scored by structural extrapolation; training never saw hot-routed plays")
     if truncated:
         decision.notes.append("adjustment search truncated by the latency budget")
+    if priors and decision.matchup is None:
+        decision.matchup = edges.get((decision.formation, decision.play))
+    decision.football_priors = bool(priors)
     decision.latency_ms = (time.perf_counter() - t0) * 1000
     return decision
