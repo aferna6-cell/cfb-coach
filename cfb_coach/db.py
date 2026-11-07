@@ -477,6 +477,7 @@ class CoachDB:
         executed_adjustment_id: str | None = None,
         adjustment_confirmed: bool = False,
         coverage_typed: str | None = None,
+        concept_typed: str | None = None,
     ) -> int:
         self._migrate_ml_snap_columns()
         self._migrate_madden_call_outcome()
@@ -511,6 +512,8 @@ class CoachDB:
                     fields["ml_decision_id"] = ml_decision_id
                 if coverage_typed is not None:
                     fields["coverage_typed"] = coverage_typed
+                if concept_typed is not None:
+                    fields["concept_typed"] = concept_typed
                 self.update_snap(row_id, **fields)
                 self._finish_snap_log(
                     row_id,
@@ -575,6 +578,8 @@ class CoachDB:
         row_id = int(cur.lastrowid)
         if coverage_typed is not None:
             self.update_snap(row_id, coverage_typed=coverage_typed)
+        if concept_typed is not None:
+            self.update_snap(row_id, concept_typed=concept_typed)
         self._finish_snap_log(
             row_id,
             result=result,
@@ -654,6 +659,7 @@ class CoachDB:
             "result",
             "coverage_seen",
             "coverage_typed",
+            "concept_typed",
             "concept_seen",
             "notes",
             "executed_status",
@@ -1656,6 +1662,8 @@ class CoachDB:
             "data_source": "TEXT",
             # Exact text typed into "they ran" (additive; NULL on every older row, which stays ambiguous).
             "coverage_typed": "TEXT",
+            # Exact opponent offensive play text typed while playing defense (same idea, same field, additive).
+            "concept_typed": "TEXT",
         }
         for name, typ in additions.items():
             if name in cols:

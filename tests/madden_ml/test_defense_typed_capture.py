@@ -263,3 +263,59 @@ def test_blank_opponent_field_never_copies_next_situation_into_exact_call(kdb):
     c.result_and_call(outcome="+3", sit_raw="2&7 my 28", their="")
     stored = _stored(kdb, c)
     assert stored[0]["coverage_typed"] is None
+
+
+# ---- playing DEFENSE: the opponent's offensive play name you type is kept exactly (concept_seen stays the normalized value) ----------
+class _DCall:
+    side = "defense"
+    formation = "Nickel Over"
+    play = "Cover 4 Quarters"
+
+    def __init__(self, sit):
+        self.sit = sit
+
+    def format(self):
+        return "Nickel Over | Cover 4 Quarters"
+
+
+def test_opponent_offensive_names_typed_on_defense_are_preserved_exactly(tmp_path):
+    from cfb_coach.last_snap import LastSnapBook
+    from cfb_coach.madden.situation import parse_madden_situation
+    db = CoachDB(tmp_path / "d.db", seed={"opponents": {"cpu": {"display_name": "CPU", "team_now": "DET", "skill": "cpu", "confidence": "low", "profile_json": "{}"}}})
+    book = LastSnapBook(db, "cpu", parse_madden_situation, session_id="def1")
+    typed = ["PA Crossers", "Hitch Seam", "Inside Zone Weak", "Gun Bunch Wk Y Cross", "Some Custom Play"]
+    for i, name in enumerate(typed):
+        sit = parse_madden_situation(f"d {i + 1}&10 opp 25")
+        book.remember_call(_DCall(sit), sit)
+        book.close_from_form("+4", their=name)
+    rows = db.conn.execute("SELECT side, concept_seen, concept_typed, coverage_typed, our_call, formation, play FROM snaps WHERE session_id='def1' ORDER BY id").fetchall()
+    assert [r["concept_typed"] for r in rows] == typed                                   # exact
+    assert [r["concept_seen"] for r in rows][:2] == ["Crossers", "Four Verticals"]       # normalized value unchanged (the lossy part)
+    assert all(r["coverage_typed"] is None and r["side"] == "defense" and r["formation"] == "Nickel Over" and r["play"] == "Cover 4 Quarters" for r in rows)
+    book.undo()
+    assert db.conn.execute("SELECT COUNT(*) FROM snaps WHERE session_id='def1'").fetchone()[0] == len(typed) - 1
+    db.close()
+
+
+def test_full_snap_record_is_saved_for_every_play_in_order(kdb):
+    """Recommended play, attested execution, exact+normalized coverage, result, opponent, game and snap order, per snap."""
+    _prime(kdb)
+    c = _ctrl(kdb)
+    c.call_only("1&10 my 25")
+    plan = [("Cover 3 Cloud", "+6", "2&4 my 31"), ("Zero Blitz", "+2", "3&2 my 33"), ("Thunder Smoke", "-1", "1&10 my 40")]
+    shown = []
+    for typed, outcome, nxt in plan:
+        call = c.last_call
+        shown.append((call.formation, call.play))
+        c.result_and_call(outcome=outcome, sit_raw=nxt, their=typed, executed_status="used_recommended")
+    rows = kdb.conn.execute("SELECT * FROM snaps WHERE session_id=? AND side='offense' AND result IS NOT NULL ORDER BY id", (c.session_id,)).fetchall()
+    assert len(rows) == 3
+    assert [(r["formation"], r["play"]) for r in rows] == shown                       # the recommended call that was on screen
+    assert [r["coverage_typed"] for r in rows] == [p[0] for p in plan]               # exact entered defense
+    assert [r["result"] for r in rows] == ["+6", "+2", "-1"]
+    assert all(r["opponent_id"] == "cpu" and r["session_id"] == c.session_id for r in rows)
+    assert all(r["executed_status"] == "identified" and r["executed_verification"] == "verified"
+               and (r["executed_formation"], r["executed_play"]) == (r["formation"], r["play"]) for r in rows)
+    seqs = [r["snap_seq"] for r in rows]
+    assert all(s is not None for s in seqs) and seqs == sorted(seqs) and len(set(seqs)) == 3
+    assert len({r["ml_snap_id"] for r in rows}) == 3 and all(r["ml_decision_id"] for r in rows)

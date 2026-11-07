@@ -571,6 +571,8 @@ class LastSnapBook:
                 typed_fields["coverage_typed"] = their_text
             elif cov:
                 typed_fields["coverage_typed"] = None
+        elif their_text:
+            typed_fields["concept_typed"] = their_text
         spec = {
             **typed_fields,
             "result": outcome.strip() if canon == "unknown" else canon,
@@ -825,6 +827,7 @@ class LastSnapBook:
         logged_penalty = penalty_for_log(result, None)
         inserted = self.logged_id is None
         typed_call = spec.get("coverage_typed")
+        typed_concept = spec.get("concept_typed")
         prev_row = {
             "result": prev_result,
             "coverage_seen": prev_coverage,
@@ -844,8 +847,9 @@ class LastSnapBook:
             except Exception:  # noqa: BLE001 — undo falls back to an empty execution
                 current = None
             if current is not None:
-                if "coverage_typed" in current.keys():
-                    prev_row["coverage_typed"] = current["coverage_typed"]
+                for _tc in ("coverage_typed", "concept_typed"):
+                    if _tc in current.keys():
+                        prev_row[_tc] = current[_tc]
                 prev_row["executed_status"] = current["executed_status"] or "unknown"
                 prev_row["executed_formation"] = current["executed_formation"]
                 prev_row["executed_play"] = current["executed_play"]
@@ -868,6 +872,7 @@ class LastSnapBook:
                 result=result,
                 coverage_seen=coverage,
                 coverage_typed=typed_call,
+                concept_typed=typed_concept,
                 concept_seen=concept,
                 notes=snap_notes_for(sit),
                 session_id=self.session_id,
@@ -899,6 +904,7 @@ class LastSnapBook:
                 result=result,
                 coverage_seen=coverage,
                 **({"coverage_typed": typed_call} if "coverage_typed" in spec else {}),
+                **({"concept_typed": typed_concept} if "concept_typed" in spec else {}),
                 concept_seen=concept,
                 executed_status=executed_status,
                 executed_formation=executed_formation,
