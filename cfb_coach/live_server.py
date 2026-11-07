@@ -228,6 +228,7 @@ class LivePlayController:
                 if self.last_call is not None and not self.ended else None
             ),
             "ml_experimental": self._ml_experimental_state(),
+            "qb_reads": self._qb_reads_state(),
         }
 
     def _pending_recommendation(self) -> dict[str, Any] | None:
@@ -291,6 +292,41 @@ class LivePlayController:
             "football_reason": info.get("football_reason"),
             "route_aware": info.get("route_aware"),
         }
+
+    _READ_KEYS = (("PRIMARY READ", "1st"), ("SECONDARY READ", "2nd"), ("CHECKDOWN", "3rd"))
+    UNKNOWN_READS = "Target unknown \u2014 this play's receiver routes have not been verified yet"
+
+    def _qb_reads_state(self) -> dict[str, Any] | None:
+        """Read order for the CURRENT pending call only, from its already-finalized route-aware card. No new inference, no latency.
+
+        Never shows another play's card (the card must name exactly the call on screen) and never turns UNKNOWN into a player.
+        """
+        call = self.last_call
+        if call is None or self.ended or not str(getattr(call, "side", "") or "offense").startswith("o"):
+            return None
+        info = getattr(call, "ml_experimental", None)
+        ra = info.get("route_aware") if isinstance(info, dict) else None
+        if not isinstance(ra, dict):
+            return {"status": "unavailable", "label": "READS UNAVAILABLE", "note": "route-aware read panel is off for this call", "reads": []}
+        mode = str(ra.get("mode") or "")
+        if ra.get("fallback_reason"):
+            return {"status": "fallback", "label": "FALLBACK \u2014 existing coordinator called this play", "note": str(ra.get("fallback_reason")), "reads": []}
+        card = ra.get("card")
+        if not isinstance(card, dict):
+            return {"status": "unavailable", "label": "READS UNAVAILABLE", "note": "no read card for this call", "reads": []}
+        if (card.get("FORMATION"), card.get("PLAY")) != (getattr(call, "formation", None), getattr(call, "play", None)):
+            return {"status": "unavailable", "label": "READS UNAVAILABLE", "note": "card does not match the displayed play", "reads": []}
+        label = "PREVIEW \u2014 model is not calling this play" if mode == "route_aware_preview" or not ra.get("applied") else "ROUTE-AWARE"
+        reads = []
+        for key, order in self._READ_KEYS:
+            text = str(card.get(key) or "")
+            if text and not text.upper().startswith("UNKNOWN") and not text.startswith("n/a"):
+                reads.append({"order": order, "name": key.replace(" READ", ""), "text": text})
+        if not reads:
+            return {"status": "unknown", "label": label, "note": self.UNKNOWN_READS, "reads": []}
+        basis = str(card.get("READ BASIS") or "")
+        return {"status": "known", "label": label, "reads": reads,
+                "basis": "documented order" if basis.startswith("DOCUMENTED") else ("inferred for expected coverage" if basis.startswith("INFERRED") else "name-level hint")}
 
     @staticmethod
     def _format_call_text(call: Any) -> str:
@@ -1356,6 +1392,11 @@ def render_live_html(ctrl: LivePlayController) -> str:
   #live-admin {{ margin-top: 1rem; color: var(--muted); }}
   #live-admin > summary {{ cursor: pointer; font-size: .8rem; padding: .5rem 0; }}
   #call {{ margin: .65rem 0 1.15rem; }}
+  .qbreads {{ margin: -.4rem 0 1rem; padding: .5rem .75rem; border-left: 4px solid #4a90d9; background: rgba(74,144,217,.10); }}
+  .qbreads .qbl {{ font-size: .8rem; font-weight: 700; letter-spacing: .04em; opacity: .85; }}
+  .qbreads ol {{ margin: .25rem 0 0; padding-left: 0; list-style: none; font-size: 1.25rem; font-weight: 700; }}
+  .qbreads li {{ margin: .15rem 0; }} .qbreads li b {{ display: inline-block; min-width: 3.2rem; }}
+  .qbreads .qbn {{ font-size: .95rem; opacity: .85; }}
 </style>
 </head>
 <body>
@@ -1364,6 +1405,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
   <div class="dyn" id="dyn"{' hidden' if compact_madden else ''}>{_dyn_line(ctrl)}</div>
   <div class="heard" id="heard"{' hidden' if compact_madden else ''}>vs {_esc(ctrl.opponent_id)}</div>
   <div class="call" id="call"{' aria-live="polite"' if compact_madden else ''}>{_esc(_call_main(ctrl))}</div>
+  {'<section id="qb-reads" class="qbreads" aria-live="polite"><div id="qb-reads-label" class="qbl"></div><ol id="qb-reads-list"></ol><div id="qb-reads-note" class="qbn"></div></section>' if compact_madden else ''}
   {_macro_box_html(None if compact_madden else ctrl.macro_state())}
   {"""<div id="offense-action-now" class="action-now" hidden></div>
   <div id="conditional-action-now" class="action-now" hidden></div>
@@ -1529,6 +1571,25 @@ $("game-clock").addEventListener("input", () => {{ clockTyped = true; }});
 
 function setErr(msg) {{ $("err").textContent = msg || ""; }}
 
+function renderQbReads(q) {{
+  const box = $("qb-reads");
+  if (!box) return;
+  const list = $("qb-reads-list");
+  list.textContent = "";
+  box.hidden = !q;
+  $("qb-reads-label").textContent = q ? "QB READS \u00b7 " + q.label : "";
+  $("qb-reads-note").textContent = q ? ((q.reads && q.reads.length ? (q.basis || "") : (q.note || ""))) : "";
+  if (!q) return;
+  (q.reads || []).forEach(r => {{
+    const li = document.createElement("li");
+    const b = document.createElement("b");
+    b.textContent = r.order;
+    li.appendChild(b);
+    li.appendChild(document.createTextNode(" " + r.text));
+    list.appendChild(li);
+  }});
+}}
+
 function renderState(st) {{
   if (!st) return;
   if (compactMadden) {{
@@ -1537,6 +1598,7 @@ function renderState(st) {{
       ? rec.formation + " — " + rec.play
       : (st.ended ? "GAME OVER" : "Waiting for next play");
     renderMacro(null);
+    renderQbReads(st.qb_reads);
     const mlBox = $("ml-experimental");
     if (mlBox) {{ mlBox.hidden = true; mlBox.textContent = ""; }}
   }} else {{
