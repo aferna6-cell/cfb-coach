@@ -42,3 +42,9 @@ Full repository universe (PR #123/#126, unchanged): offense 3,432 unique pairs a
 `cfb_coach.madden.model.catalog_semantics.export()` returns `madden27.catalog_semantics.v1`, which contains `funnel`, `rights` and `feature_rows[{key, stage, eligible, features}]`.
 Keys match `football_universe.play_key`. `features` is non-empty **only** when `eligible` (stage `model_feature_eligible`: concept verified by rule from at least 3
 human-reviewed skill slots, with no disagreements). Today every row is ineligible. Consume it offline and additively. Do not treat a missing row as negative evidence.
+
+## Full AceMadden listing sync (2026-11-07, counts only; data stays in the private store)
+Sync took 10m41s with 0 quarantined. Offense: 8,574 plays, 8,554 with art URLs and 20 without, across 420 unique formations. Defense: 1,578 plays, all with art URLs,
+across 90 unique formations. The unique-play listing has no team-book membership, so playbook membership stays `unknown` until a detail or team-book pass.
+Art download is running (resumable, 1.5 s delay). The `art` command now checkpoints every 200 images and records a per-play `art_error` instead
+of losing the run. It still stops on 401/403.

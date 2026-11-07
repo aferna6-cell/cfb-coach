@@ -127,13 +127,25 @@ def cmd_art(a) -> int:
     for k, r in sorted(recs.items()):
         if r.get("art_sha256") or not r.get("art_url") or (a.side and r["side"] != a.side):
             continue
-        png = f.art(r)
+        try:
+            png = f.art(r)
+        except PermissionError:
+            store.write_atomic(recs)          # keep progress, then stop: 401/403 is never bypassed
+            raise
+        except Exception as e:                 # one bad image must not lose the run; record the reason, retry on rerun
+            r["art_error"] = f"{type(e).__name__}: {e}"[:200]
+            failed = locals().get("failed", 0) + 1
+            continue
+        r.pop("art_error", None)
         h = hashlib.sha256(png).hexdigest()
         (store.root / "raw").mkdir(exist_ok=True)
         (store.root / "raw" / f"{r['side']}__{r['formation_slug']}__{r['play_slug']}.png").write_bytes(png)
         r["art_sha256"], r["permitted_use"] = h, _permission(a, store)
         r["content_hash"] = ac.content_hash(r)
         done += 1
+        if done % 200 == 0:                    # checkpoint so an interruption loses at most 200 hashes
+            store.write_atomic(recs)
+            print(f"checkpoint {done} downloaded", flush=True)
         if a.limit and done >= a.limit:
             break
     store.write_atomic(recs)
