@@ -12,6 +12,7 @@ import math
 import sqlite3
 from typing import Any, Mapping
 
+from cfb_coach.madden.model import defense_semantics as ds
 from cfb_coach.madden.model import historical_defense_baseline as hb
 
 # Before enough evidence accumulates, keep the learned historical prior dominant.
@@ -77,7 +78,7 @@ def count_labels(labels: "list[str]") -> tuple[Counter, int, int, int]:
 
 def coverage_for_next_snap(conn: sqlite3.Connection, *, session_id: str,
                            opponent_id: str, next_snap_seq: int | None,
-                           prior_mix: Mapping[str, float] | None = None) -> CoverageContext:
+                           prior_mix: Mapping[str, float] | None = None, knowledge: bool = False) -> CoverageContext:
     """Consume only *closed* prior offense snaps in this session/opponent.
 
     The caller must supply the NEXT snap's sequence number, not the last
@@ -101,6 +102,8 @@ def coverage_for_next_snap(conn: sqlite3.Connection, *, session_id: str,
             "ORDER BY snap_seq DESC, id DESC LIMIT ?",
             (session_id, opponent_id, int(next_snap_seq), MAX_PRIOR_SNAPS),
         ).fetchall()
+    if knowledge:
+        return _knowledge_context(history, prior_mix, session_id, next_snap_seq)
     labels = [hb.normalize_label(r[1]) for r in history]
     named = [x for x in labels if x in hb.KNOWN_COVERAGES]
     # A generic 'Cover 2' remains a generic Cover 2 probability. Do not turn
@@ -113,3 +116,22 @@ def coverage_for_next_snap(conn: sqlite3.Connection, *, session_id: str,
                            unknown_n=sum(x == hb.UNRESOLVED for x in labels),
                            recent_named=tuple(named[:5]), session_id=session_id,
                            next_snap_seq=int(next_snap_seq or 0))
+
+
+def _knowledge_context(history: "list[Any]", prior_mix: Mapping[str, float] | None, session_id: str,
+                       next_snap_seq: int | None) -> CoverageContext:
+    """Same closed, earlier, same-game rows, resolved against the defense knowledge catalog (``dk:*`` keys).
+
+    A reported-but-untyped pressure now carries its own key instead of vanishing; an unrecognized label still adds no mass.
+    """
+    per_label = [ds.stored_label_weights(r[1]) for r in history]
+    counts: Counter = Counter()
+    for w in per_label:
+        counts.update(w)
+    n_pressure = sum(set(w) == {ds.GENERIC_PRESSURE_KEY} for w in per_label)
+    named_keys = [max(w, key=w.get) for w in per_label if w and set(w) != {ds.GENERIC_PRESSURE_KEY}]
+    mix = blend_counts(counts, prior_mix)
+    return CoverageContext(mix=mix, history_n=len(per_label), named_n=len(named_keys), pressure_n=n_pressure,
+                           unknown_n=sum(not w for w in per_label), recent_named=tuple(named_keys[:5]), session_id=session_id,
+                           next_snap_seq=int(next_snap_seq or 0),
+                           basis="closed_manual_postplay_coverage_with_historical_prior+defense_knowledge")

@@ -209,9 +209,11 @@ def coverage_sensitivity(rows: Sequence[Mapping[str, Any]], folds: Sequence[he.F
 # ------------------------------------------------------------------------------------------ 3.1 shadow replay
 
 def shadow_replay(data: he.EvalData, *, out_path: Path, max_snaps_per_game: int = 80,
-                  min_train_games: int = 3) -> dict[str, Any]:
-    """Replay RECORDED held-out games snap by snap: both coordinators on the same time-correct state; log, never act."""
-    rows = tc.annotate(data.rows)
+                  min_train_games: int = 3, defense_knowledge: bool = False) -> dict[str, Any]:
+    """Replay RECORDED held-out games snap by snap: both coordinators on the same time-correct state; log, never act.
+
+    ``defense_knowledge=True`` trains and replays the opt-in defense-knowledge artifact instead of the default one."""
+    rows = tc.annotate(data.rows, knowledge=defense_knowledge)
     folds = he.make_folds(rows, data.game_order, is_test_row=he.is_verified_offense, mode="chronological",
                           min_train_games=min_train_games)
     by_game: dict[str, list] = {}
@@ -225,7 +227,7 @@ def shadow_replay(data: he.EvalData, *, out_path: Path, max_snaps_per_game: int 
     with out_path.open("w", encoding="utf-8") as fh:
         for f in folds:
             train = [r for g in f.train_games for r in by_game.get(g, [])]
-            art = sm.train(train)
+            art = sm.train(train, defense_knowledge=defense_knowledge)
             base_art = em.ExperimentalArtifact.from_dict(art.base)
             test = [r for r in by_game.get(f.test_game, []) if he.is_verified_offense(r)][:max_snaps_per_game]
             for r in test:
@@ -237,7 +239,7 @@ def shadow_replay(data: he.EvalData, *, out_path: Path, max_snaps_per_game: int 
                                        "prior_coverage_counts": r[tc.KEY]["counts"], "prior_named": r[tc.KEY]["n_named"]}
                 try:
                     prior, _ = sm.pre_snap_mix(art, r.get("opponent_id"))
-                    mix = tc.mix_from(prior, r[tc.KEY])
+                    mix = tc.mix_from(prior, r[tc.KEY], knowledge=defense_knowledge)
                     sit = od.Situation(down=r.get("down"), distance=r.get("distance"), yardline=r.get("yardline"),
                                        opponent_id=r.get("opponent_id"), opponent_type=r.get("opponent_type"), mix=mix)
                     dec = od.decide(art, sit, book, mode="live")

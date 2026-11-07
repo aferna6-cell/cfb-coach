@@ -194,6 +194,7 @@ class PilotSession:
         context = live_cov.coverage_for_next_snap(
             conn, session_id=session_id, opponent_id=opp,
             next_snap_seq=next_snap_seq, prior_mix=prior,
+            knowledge=getattr(self.artifact, "uses_defense_knowledge", False),
         )
         updated = dict(situation)
         updated["mix"] = context.mix
