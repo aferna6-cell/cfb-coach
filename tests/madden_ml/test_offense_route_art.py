@@ -1,0 +1,86 @@
+"""PR #110: deterministic Madden 27 route-art features, no copyrighted images shipped."""
+from __future__ import annotations
+
+import copy
+import hashlib
+
+import pytest
+
+from cfb_coach.madden.model import offense_art_features as art
+from cfb_coach.madden.model import offense_play_features as pf
+from cfb_coach.madden.model import offense_structural_model as sm
+
+
+def test_93_art_features_and_two_unverified_name_aliases():
+    x = art.load()
+    assert x['coverage']['total'] == 93
+    assert x['coverage']['model_eligible'] == 91
+    assert x['coverage']['quarantined_name_conflicts'] == 2
+    assert len({(r['formation'],r['play']) for r in x['plays']}) == 93
+
+
+def test_madden_file_provenance_and_no_image_binaries():
+    d = art.load()
+    assert d['inventory_fingerprint'] == 'OFF-3C6D-E543'
+    assert all(len(p['image_sha256']) == 64 for p in d['plays'])
+    assert all(set(p['features']) == set(art.FEATURE_NAMES) for p in d['plays'])
+    assert art.data_digest() == hashlib.sha256(art.DATA.read_bytes()).hexdigest()
+
+
+def test_name_mismatches_are_quarantined():
+    for p in ('L Spot','Zl Spot Shake'):
+        assert art.status('Gun 5WR Tight', p) == 'label_discrepancy_quarantined'
+        assert not any(art.art_features('Gun 5WR Tight',p).values())
+    assert art.status('Gun 5WR Tight', 'Mesh') == 'visual_layout_available'
+
+
+def test_unknown_play_cannot_inherit_some_other_play_art():
+    assert art.status('Unknown','Mesh') == 'not_in_installed_book'
+    assert art.art_features('Unknown','Mesh') == {k: 0.0 for k in art.FEATURE_NAMES}
+
+
+def test_two_similar_named_plays_have_distinct_route_geometry():
+    assert art.art_features('Gun 5WR Tight','Mesh') != art.art_features('Gun 5WR Tight','Mesh Post')
+    assert art.art_features('Gun 5WR Tight','Mesh Post') != art.art_features('Gun 5WR Tight','QB Draw')
+
+
+def test_art_features_enter_real_structural_model_vector():
+    s = pf.structure_lookup('Gun 5WR Tight','Mesh')
+    assert s is not None
+    names = pf.feature_names()
+    vec = pf.full_vector(s, {'unknown':1.0})
+    assert len(names) == len(vec)
+    fv = dict(zip(names,vec))
+    for k,v in art.art_features(s.formation,s.play).items():
+        assert fv[k] == pytest.approx(v)
+    assert sm.LAMBDA['art'] > 0
+    assert pf.group_of('art_deep_share') == 'art'
+
+
+def test_visual_art_is_stock_context_not_fictional_modified_route_art():
+    s = pf.structure_lookup('Pistol Trips','Slants')
+    modified = pf.apply_hot_route(s, 'WR1', 'Streak')
+    stock = dict(zip(pf.feature_names(),pf.full_vector(s, {'unknown':1.0})))
+    adj = dict(zip(pf.feature_names(),pf.full_vector(modified, {'unknown':1.0})))
+    for k in art.FEATURE_NAMES:
+        assert stock[k] == adj[k]
+    assert modified.adjustments
+
+
+def test_artifact_retraining_required_when_visual_bank_changes():
+    a = sm.StructuralArtifact()
+    a.art_digest = 'stale'
+    assert any('route-art' in e for e in sm.validate_artifact(a))
+
+
+def test_corrupt_visual_values_rejected():
+    bad = copy.deepcopy(art.load())
+    bad['plays'][0]['features']['art_spread'] = -1
+    with pytest.raises(art.RouteArtError):
+        art.validate(bad)
+
+
+def test_documented_source_does_not_claim_exact_player_route():
+    for p in art.load()['plays']:
+        assert not any(k.startswith('WR') or k.startswith('OL') for k in p['features'])
+        assert 'source' in p and 'site_play_name' in p
