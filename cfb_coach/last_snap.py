@@ -561,10 +561,11 @@ class LastSnapBook:
             executed_play = None
             executed_macro = None
             executed_verification = "unknown"
-        typed_call = None
-        if not defense and cov:
-            # Preserve exactly what was typed (the normalized coverage stays as it was); no new input, same field.
-            typed_call = (their or "").strip() or ((next_raw or "").strip() if next_raw and not their_look else None) or None
+        # On offense, retain the opponent's EXACT post-play call text even when
+        # the legacy coverage parser cannot recognize it (cov is None).
+        # Do not copy next_raw: it describes the next situation and is not
+        # necessarily an opponent call. Keep coverage_seen unchanged.
+        typed_call = (their or "").strip() or None if not defense else None
         spec = {
             "coverage_typed": typed_call,
             "result": outcome.strip() if canon == "unknown" else canon,
