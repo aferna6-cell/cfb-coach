@@ -134,6 +134,16 @@ def _rdp(p: list[tuple[float, float]], eps: float) -> list[tuple[float, float]]:
     return [p[0], p[-1]]
 
 
+def _simplify(path: list[tuple[float, float]], eps: float = 4.0, min_end: float = 14.0) -> list[tuple[float, float]]:
+    """RDP, then drop end stubs shorter than ``min_end`` px (corner artefacts of the dilated mask / arrowheads)."""
+    pts = _rdp(path, eps)
+    while len(pts) > 2 and math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]) < min_end:
+        pts = pts[1:]
+    while len(pts) > 2 and math.hypot(pts[-1][0] - pts[-2][0], pts[-1][1] - pts[-2][1]) < min_end:
+        pts = pts[:-1]
+    return pts
+
+
 def _markers(white: np.ndarray) -> list[dict[str, Any]]:
     out = []
     for c in _components(white, 6):
@@ -149,7 +159,7 @@ def _markers(white: np.ndarray) -> list[dict[str, Any]]:
 
 def _family(path: list[tuple[float, float]], start_x: float) -> dict[str, Any]:
     """Coarse shape label from the simplified polyline. A SUGGESTION for the reviewer; never a taxonomy assignment."""
-    pts = _rdp(path, 4.0)
+    pts = _simplify(path)
     segs = []
     for (x1, y1), (x2, y2) in zip(pts, pts[1:]):
         segs.append((x2 - x1, -(y2 - y1)))                     # dx right, dy UPFIELD
@@ -159,7 +169,13 @@ def _family(path: list[tuple[float, float]], start_x: float) -> dict[str, Any]:
     first = segs[0]
     ang = math.degrees(math.atan2(abs(first[0]), max(first[1], 1e-6))) if first[1] > 0 else 90.0
     label = "unknown_complex"
-    if len(segs) == 1:
+    (cx1, cy1), (cx2, cy2) = pts[0], pts[-1]
+    chord = math.hypot(cx2 - cx1, cy2 - cy1) or 1.0
+    dev = max(abs((cy2 - cy1) * (x - cx1) - (cx2 - cx1) * (y - cy1)) / chord for x, y in pts)
+    chord_ang = math.degrees(math.atan2(abs(cx2 - cx1), max(-(cy2 - cy1), 1e-6))) if cy2 < cy1 else 90.0
+    if len(segs) > 1 and dev <= 16 and cy2 < cy1 and chord >= 40:
+        label = "vertical" if chord_ang < 20 else ("diagonal_upfield" if chord_ang < 70 else "flat_or_horizontal")
+    elif len(segs) == 1:
         label = "vertical" if ang < 20 else ("diagonal_upfield" if first[1] > 0 and ang < 70 else "flat_or_horizontal")
         if first[1] < 0:
             label = "backward_or_swing"
@@ -255,7 +271,7 @@ def analyze(source: bytes | str | Path, side: str) -> dict[str, Any]:
             owner = min(players, key=lambda m: math.hypot(start[0] - m["x"], start[1] - m["y"]), default=None)
             d_owner = math.hypot(start[0] - owner["x"], start[1] - owner["y"]) if owner else 1e9
             r = {"colour": ln["colour"], "start": [round(start[0], 1), round(start[1], 1)], "end": [round(end[0], 1), round(end[1], 1)],
-                 "polyline": [[round(x, 1), round(y, 1)] for x, y in _rdp(path, 4.0)],
+                 "polyline": [[round(x, 1), round(y, 1)] for x, y in _simplify(path)],
                  "owner_marker_index": owner["index_left_to_right"] if owner and d_owner <= 22 else None,
                  "owner_distance_px": round(d_owner, 1) if owner else None, **_family(path, start[0])}
             if r["owner_marker_index"] is None:
