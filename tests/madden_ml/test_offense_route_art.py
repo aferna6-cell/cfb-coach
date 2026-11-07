@@ -84,3 +84,13 @@ def test_documented_source_does_not_claim_exact_player_route():
     for p in art.load()['plays']:
         assert not any(k.startswith('WR') or k.startswith('OL') for k in p['features'])
         assert 'source' in p and 'site_play_name' in p
+
+
+def test_unlicensed_third_party_route_rows_not_used_for_model_training():
+    # Source-documented routes are kept for review, but the ML vector uses only
+    # screenshot-derived visual geometry or first-party verified named routes.
+    s = pf.structure_lookup('Gun Trips X Nasty', 'Mtn Stick Wheel')
+    assert s.n_known > 0
+    values = dict(zip(pf.feature_names(),pf.full_vector(s, {'unknown':1.0})))
+    assert values['known_route_frac'] == 0.0
+    assert values['art_present'] == 1.0
