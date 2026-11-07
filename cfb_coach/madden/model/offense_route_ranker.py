@@ -129,7 +129,8 @@ def _coverage(db: Any, art: sm.StructuralArtifact, opponent_id: str, session_id:
         return lc.blend_counts({}, prior), {"basis": "historical_prior_only", "prior_source": prior_src,
                                             "history_n": 0, "named_n": 0, "pressure_n": 0, "unknown_n": 0}
     ctx = lc.coverage_for_next_snap(db.conn, session_id=session_id, opponent_id=opponent_id,
-                                    next_snap_seq=snap_seq if snap_seq and snap_seq > 0 else None, prior_mix=prior)
+                                    next_snap_seq=snap_seq if snap_seq and snap_seq > 0 else None, prior_mix=prior,
+                                    knowledge=art.uses_defense_knowledge)
     out = ctx.as_log()
     out["prior_source"] = prior_src
     return ctx.mix, out

@@ -11,9 +11,11 @@ The existing `offense_structural_model.py` now consumes these features through `
 ### Coverage
 
 - All **93/93** installed play tiles captured and represented in the numerical JSON.
-- **91/93** pass the cross-source identity check and are used by the model.
-- Two unmatched aliases, `Gun 5WR Tight / L Spot` (image says `Z Spot`) and `Gun 5WR Tight / Zl Spot Shake` (image says `Z Spot Shake`), are stored for review but return zeros when scored. They are not silently mapped.
+- **91/93** have exact cross-source name matches; the remaining **2/93** are enabled through an explicit user-approved alias assumption. **93/93** are available for geometry-only learning.
+- User-approved assumptions: `Gun 5WR Tight / L Spot` uses the image labeled `Z Spot`; `Gun 5WR Tight / Zl Spot Shake` uses `Z Spot Shake`. Exact-name-match remains **false**; source labels and the user-approval basis are retained. These are NOT independently verified with Xbox play art.
 - All 93 have visual features; **0/93** have all eleven player assignments verified by these feature vectors.
+
+Changing the cached geometry bank changes its digest: **retrain and validate any structural artifact before using the updated aliases in a CPU pilot.** Existing model artifacts are deliberately rejected when their art digest is stale.
 
 This is meaningful *route-layout knowledge*, not a full typed route tree. For example, the model now sees that Mesh and Mesh Post have different downfield occupancy rather than treating them as unrelated string names. When a route is adjusted, the visual features continue to mean the **stock play's visual layout**, and player-specific adjustments are still handled through the separate assignment-aware system, subject to actual control confirmation. No code pretends that an adjusted screenshot was observed.
 
@@ -48,7 +50,7 @@ This PR does not claim to win more games. Compare the original experimental mode
 ### Acceptance and limitations
 
 - Every numeric visual record has a crop hash and source page URL, but the source site's images are not redistributed in Git.
-- Coverage match: 91 model-eligible / 2 withheld; 93 images analyzed.
+- Coverage match: 91 exact + 2 explicitly user-approved assumptions = **93 model-eligible**; 93 images analyzed.
 - No fabricated per-player route or blocking assignments.
 - Strict 150 ms existing decision budget remains unchanged; real-time inference is JSON lookup + arithmetic.
 - CPU-only; no production database or live caller changes.

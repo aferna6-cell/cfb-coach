@@ -561,7 +561,20 @@ class LastSnapBook:
             executed_play = None
             executed_macro = None
             executed_verification = "unknown"
+        # Exact "they ran" text, kept whether or not the old parser recognized a coverage in it (25 catalog names yield none).
+        # Only what was typed in THIS field is stored: text from the next situation line is never attributed to this snap.
+        # Key absent = leave any stored value alone (e.g. a result-only retry); None = the look changed and cannot be attributed.
+        typed_fields: dict[str, Any] = {}
+        their_text = " ".join((their or "").split())[:200]
+        if not defense:
+            if their_text:
+                typed_fields["coverage_typed"] = their_text
+            elif cov:
+                typed_fields["coverage_typed"] = None
+        elif their_text:
+            typed_fields["concept_typed"] = their_text
         spec = {
+            **typed_fields,
             "result": outcome.strip() if canon == "unknown" else canon,
             "coverage": cov,
             "concept": concept,
@@ -813,6 +826,8 @@ class LastSnapBook:
         logged_yards = coerce_logged_yards(result, None)
         logged_penalty = penalty_for_log(result, None)
         inserted = self.logged_id is None
+        typed_call = spec.get("coverage_typed")
+        typed_concept = spec.get("concept_typed")
         prev_row = {
             "result": prev_result,
             "coverage_seen": prev_coverage,
@@ -826,13 +841,15 @@ class LastSnapBook:
         if not inserted and self.logged_id is not None:
             try:
                 current = self.db.conn.execute(
-                    "SELECT executed_status, executed_formation, executed_play, "
-                    "executed_macro, executed_verification FROM snaps WHERE id = ?",
+                    "SELECT * FROM snaps WHERE id = ?",
                     (self.logged_id,),
                 ).fetchone()
             except Exception:  # noqa: BLE001 — undo falls back to an empty execution
                 current = None
             if current is not None:
+                for _tc in ("coverage_typed", "concept_typed"):
+                    if _tc in current.keys():
+                        prev_row[_tc] = current[_tc]
                 prev_row["executed_status"] = current["executed_status"] or "unknown"
                 prev_row["executed_formation"] = current["executed_formation"]
                 prev_row["executed_play"] = current["executed_play"]
@@ -854,6 +871,8 @@ class LastSnapBook:
                 quarter=quarter if quarter is not None else ctx.get("quarter"),
                 result=result,
                 coverage_seen=coverage,
+                coverage_typed=typed_call,
+                concept_typed=typed_concept,
                 concept_seen=concept,
                 notes=snap_notes_for(sit),
                 session_id=self.session_id,
@@ -884,6 +903,8 @@ class LastSnapBook:
                 self.logged_id,
                 result=result,
                 coverage_seen=coverage,
+                **({"coverage_typed": typed_call} if "coverage_typed" in spec else {}),
+                **({"concept_typed": typed_concept} if "concept_typed" in spec else {}),
                 concept_seen=concept,
                 executed_status=executed_status,
                 executed_formation=executed_formation,

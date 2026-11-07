@@ -51,9 +51,16 @@ def main() -> int:
     ap.add_argument("--selfcheck", action="store_true", help="no DB: run the pipeline on planted synthetic data (NOT evidence)")
     ap.add_argument("--install", action="store_true", help="copy the artifact where the live coach looks (does not enable it)")
     ap.add_argument("--run-tests", action="store_true")
+    ap.add_argument("--defense-knowledge", action="store_true",
+                    help="train and replay the OPT-IN defense-knowledge artifact (issue #116). Cannot be combined with --install: a knowledge "
+                         "artifact is only ever previewed by explicit path. Compare it with the default using defense_knowledge_eval.py heldout.")
     ap.add_argument("--bootstrap", type=int, default=1000)
     ap.add_argument("--min-train-games", type=int, default=3)
     a = ap.parse_args()
+    if a.defense_knowledge and a.install:
+        print("refusing --install with --defense-knowledge: preview a knowledge artifact explicitly with "
+              "`python -m cfb_coach ml offense-ranker route_aware_preview --artifact <path>`", file=sys.stderr)
+        return 2
     out = Path(a.out).expanduser().resolve()
     live = (Path.home() / ".cfb-coach").resolve()
     if out == live or live in out.parents:
@@ -75,12 +82,13 @@ def main() -> int:
     report["data_audit"] = rd.audit_data(data, a.db)
     print("training data audit done:", report["data_audit"]["usable_for_supervised_training"], "usable verified offense snaps")
     report["evaluation"] = rd.evaluate_models(data, n_boot=a.bootstrap, min_train_games=a.min_train_games)
-    art = sm.train(data.rows)
-    art_path = sm.save_artifact(art, out / "offense_route_aware.json")
+    art = sm.train(data.rows, defense_knowledge=a.defense_knowledge)
+    art_path = sm.save_artifact(art, out / ("offense_route_aware_defense_knowledge.json" if a.defense_knowledge else "offense_route_aware.json"))
     report["artifact"] = {"path": str(art_path), "digest": sm.artifact_digest(art), "trained_games": art.trained_games,
                           "verified_rows": art.n_train, "residual_active": art.residual_active, "notes": art.notes,
                           "feature_version": art.feature_version, "n_features": len(art.names), "valid": sm.validate_artifact(art) == []}
-    report["shadow_replay"] = rd.shadow_replay(data, out_path=out / "shadow_replay.jsonl", min_train_games=a.min_train_games) \
+    report["shadow_replay"] = rd.shadow_replay(data, out_path=out / "shadow_replay.jsonl", min_train_games=a.min_train_games,
+                                                   defense_knowledge=a.defense_knowledge) \
         if report["evaluation"].get("folds") else None
     report["scenarios"] = rd.scenario_suite(art, out / "scenario_tmp")
     shutil.rmtree(out / "scenario_tmp", ignore_errors=True)

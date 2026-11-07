@@ -16,8 +16,12 @@ from cfb_coach.madden.model import offense_taxonomy as tx
 from cfb_coach.madden.model import offense_assignments as oa
 from cfb_coach.madden.model import offense_art_features as af
 from cfb_coach.madden.model.coverage_intelligence import SCHEMES
+from cfb_coach.madden.model import defense_semantics as ds
 
 FEATURE_VERSION = "offense_play_features.v4_situation_interactions"
+# Opt-in extension: the same vector PLUS the ``dk_*`` defensive-knowledge block. An artifact trained on it records this version, so
+# artifacts trained on FEATURE_VERSION keep working untouched and can never be scored with the extended vector by accident.
+FEATURE_VERSION_DK = "offense_play_features.v5_defense_knowledge"
 FORMATIONS = ("Gun 5WR Tight", "Gun Doubles Clamp Stack", "Gun Trips X Nasty", "Pistol Deuce Close", "Pistol Trips")
 PLAY_TYPES = ("pass", "run", "play_action", "screen", "rpo", "option")
 STRUCT_CONCEPTS = ("mesh", "flood", "levels", "drive", "smash", "dagger", "mills", "stick", "spacing",
@@ -120,8 +124,8 @@ def _mean(xs: Sequence[float]) -> float:
     return sum(xs) / len(xs) if xs else 0.0
 
 
-def feature_names() -> tuple[str, ...]:
-    return tuple(_ALL_NAMES)
+def feature_names(defense_knowledge: bool = False) -> tuple[str, ...]:
+    return tuple(_ALL_NAMES_DK if defense_knowledge else _ALL_NAMES)
 
 
 def structure_features(s: PlayStructure) -> dict[str, float]:
@@ -189,12 +193,28 @@ BUCKET_TO_SCHEMES = {
 }
 
 
+class SchemeDist(dict):
+    """A plain ``{scheme: probability}`` dict (equal to what ``scheme_distribution`` always returned) that also carries the
+    structured defense mix when the caller supplied defense-knowledge keys (``dk:*``). Legacy consumers never see the extra data."""
+
+    family_mix: dict[str, float] | None = None
+    dk_expected: dict[str, float] | None = None
+
+
 def scheme_distribution(mix: Mapping[str, float] | None) -> tuple[dict[str, float], str]:
-    """Opponent coverage-bucket shares -> scheme probabilities. Empty/None -> an explicit 'unknown' prior."""
+    """Opponent coverage-bucket shares -> scheme probabilities. Empty/None -> an explicit 'unknown' prior.
+
+    ``dk:*`` keys (defense-knowledge labels) are projected to their parent bucket for the legacy features and ALSO kept as
+    ``family_mix`` for the opt-in ``dk_*`` block. A mix with only legacy keys behaves exactly as before.
+    """
     if not mix or sum(max(0.0, float(v)) for v in mix.values()) <= 0:
-        return {"unknown": 1.0}, "no_pre_snap_information"
+        return SchemeDist({"unknown": 1.0}), "no_pre_snap_information"
     total = sum(max(0.0, float(v)) for v in mix.values())
-    out: dict[str, float] = {}
+    family: dict[str, float] | None = None
+    if any(ds.is_key(k) for k in mix):
+        family = {k: max(0.0, float(v)) / total for k, v in mix.items() if ds.is_key(k)}
+        mix = ds.project_legacy(mix)
+    out = SchemeDist()
     for bucket, v in mix.items():
         # New research-sidecar coverage probabilities may identify the precise
         # scheme (e.g. Palms vs Quarters). Preserve that distinction instead of
@@ -209,6 +229,7 @@ def scheme_distribution(mix: Mapping[str, float] | None) -> tuple[dict[str, floa
             schemes = unnamed or schemes
         for sc in schemes:
             out[sc] = out.get(sc, 0.0) + max(0.0, float(v)) / total / len(schemes)
+    out.family_mix = family
     return out, "opponent_coverage_mix_uniform_within_bucket"
 
 
@@ -348,9 +369,10 @@ def situation_features(s: "PlayStructure", sit: Mapping[str, Any] | None) -> dic
 
 
 _ALL_NAMES: tuple[str, ...] = _STRUCT_NAMES + _MATCH_NAMES + af.FEATURE_NAMES + _ART_MATCH_NAMES + _SIT_NAMES
+_ALL_NAMES_DK: tuple[str, ...] = _ALL_NAMES + ds.DK_NAMES
 # Weak-prior groups get a larger L2 penalty in the model (name hints are low trust).
 GROUPS = {"form": ("form_",), "hint": ("hint_",), "route": ("r_", "known_", "has_", "ol_"),
-          "concept": ("s_c_",), "match": ("m_",), "art": ("art_", "am_"), "sit": ("sx_",)}
+          "concept": ("s_c_",), "match": ("m_",), "art": ("art_", "am_"), "sit": ("sx_",), "dk": ("dk_",)}
 
 
 def group_of(name: str) -> str:
@@ -360,7 +382,10 @@ def group_of(name: str) -> str:
     return "route"
 
 
-def full_vector(s: PlayStructure, dist: Mapping[str, float], sit: Mapping[str, Any] | None = None) -> list[float]:
+def full_vector(s: PlayStructure, dist: Mapping[str, float], sit: Mapping[str, Any] | None = None,
+                names: Sequence[str] | None = None) -> list[float]:
+    """The model's input vector. ``names`` defaults to the standard feature set; pass an artifact's ``names`` to get exactly its
+    columns (including the opt-in ``dk_*`` block, which is zero-information when ``dist`` carries no defense-knowledge mix)."""
     # PR #106's 40 sourced route assignments came from a provider that does not
     # permit ML training use. They may be displayed for research, but MUST NOT
     # enter model training/scoring. Only first-party-verified player routes do.
@@ -373,10 +398,21 @@ def full_vector(s: PlayStructure, dist: Mapping[str, float], sit: Mapping[str, A
     f.update(matchup_features(trainable, dist))
     # Screenshot-derived path geometry is stock-play context, not an exact
     # player-specific route assignment and not a hot-route transformation.
-    f.update(af.art_features(s.formation, s.play))
+    art = af.art_features(s.formation, s.play)
+    f.update(art)
     f.update(art_matchup_features(s, dist))
     f.update(situation_features(s, sit))
-    return [f.get(n, 0.0) for n in _ALL_NAMES]
+    cols = _ALL_NAMES if names is None else names
+    if len(cols) > len(_ALL_NAMES):
+        expected = getattr(dist, "dk_expected", None)
+        if expected is None:
+            expected = ds.expected_axes(getattr(dist, "family_mix", None))
+            try:
+                dist.dk_expected = expected                  # type: ignore[attr-defined]  (cached once per opponent mix, reused per play)
+            except AttributeError:
+                pass
+        f.update(ds.dk_features(art, expected))
+    return [f.get(n, 0.0) for n in cols]
 
 
 _CACHE: dict[str, PlayStructure] = {}

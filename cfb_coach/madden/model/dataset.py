@@ -297,6 +297,7 @@ def _normalize_row(raw: Mapping[str, Any], *, provenance: str) -> dict[str, Any]
         "behavior_propensity": behavior_propensity,
         "propensity_method": row.get("propensity_method") or "unknown",
         "coverage_seen": row.get("coverage_seen"),  # post-snap; never a pre-snap feature
+        "coverage_typed": row.get("coverage_typed"),  # exact entered text (post-snap); NULL on older rows
         "concept_seen": row.get("concept_seen"),
         "source_path": row.get("source_path"),
         "trusted_vod": bool(row.get("trusted_vod")),
