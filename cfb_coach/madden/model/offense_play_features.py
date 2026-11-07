@@ -14,9 +14,10 @@ from typing import Any, Mapping, Sequence
 
 from cfb_coach.madden.model import offense_taxonomy as tx
 from cfb_coach.madden.model import offense_assignments as oa
+from cfb_coach.madden.model import offense_art_features as af
 from cfb_coach.madden.model.coverage_intelligence import SCHEMES
 
-FEATURE_VERSION = "offense_play_features.v1"
+FEATURE_VERSION = "offense_play_features.v2_route_art"
 FORMATIONS = ("Gun 5WR Tight", "Gun Doubles Clamp Stack", "Gun Trips X Nasty", "Pistol Deuce Close", "Pistol Trips")
 PLAY_TYPES = ("pass", "run", "play_action", "screen", "rpo", "option")
 STRUCT_CONCEPTS = ("mesh", "flood", "levels", "drive", "smash", "dagger", "mills", "stick", "spacing",
@@ -259,10 +260,10 @@ _MATCH_NAMES: tuple[str, ...] = (
     "m_info", "m_entropy", "m_one_high_man", "m_pressure_quick", "m_pressure_slow", "m_two_high_man",
     "m_two_high_zone", "m_three_deep_spot", "m_three_deep_match", "m_quarters", "m_palms", "m_four_drop",
     "m_split_field")
-_ALL_NAMES: tuple[str, ...] = _STRUCT_NAMES + _MATCH_NAMES
+_ALL_NAMES: tuple[str, ...] = _STRUCT_NAMES + _MATCH_NAMES + af.FEATURE_NAMES
 # Weak-prior groups get a larger L2 penalty in the model (name hints are low trust).
 GROUPS = {"form": ("form_",), "hint": ("hint_",), "route": ("r_", "known_", "has_", "ol_"),
-          "concept": ("s_c_",), "match": ("m_",)}
+          "concept": ("s_c_",), "match": ("m_",), "art": ("art_",)}
 
 
 def group_of(name: str) -> str:
@@ -275,6 +276,9 @@ def group_of(name: str) -> str:
 def full_vector(s: PlayStructure, dist: Mapping[str, float]) -> list[float]:
     f = structure_features(s)
     f.update(matchup_features(s, dist))
+    # These describe the ORIGINAL stock play-art layout, even for hypothetical
+    # hot-routed candidates. Never claim the source image depicts that adjustment.
+    f.update(af.art_features(s.formation, s.play))
     return [f.get(n, 0.0) for n in _ALL_NAMES]
 
 
