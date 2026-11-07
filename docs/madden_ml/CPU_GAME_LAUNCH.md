@@ -19,12 +19,12 @@ python scripts/madden_ml/cpu_experiment.py summary            # verdict, every g
 `prepare` runs `offense_route_aware_readiness.py --run-tests` (retrains the offense artifact from your recorded games using all 93
 approved play-art records; checks model validity, candidate legality, 150 ms latency) and `defense_knowledge_eval.py heldout` (knowledge
 model vs the route-aware coordinator on whole held-out games). Read the summary. **Lack of a significant improvement does not block an
-experimental CPU test; a FAILED integration/safety/performance gate, or a model shown to be *worse*, does** (the next step refuses).
+experimental CPU test. `prepare` exits non-zero (and writes no usable manifest) if any evaluation step fails or if any of the 8 integration/safety/performance gates is not PASS, and it discards earlier reports first. `enable` re-verifies, from a manifest with checksums, that the report, artifact and 93-play art bank are the untampered product of that one `prepare` of YOUR database; a model shown to be *worse* is refused, `NOT EVALUATED` or a non-significant lift is allowed.**
 
 ## 2. Enable (explicit, CPU opponents only, reversible)
 ```bash
 python -m cfb_coach ml experimental --retrain            # only if no experimental offense artifact exists yet (writes the artifact + mode)
-python scripts/madden_ml/cpu_experiment.py enable --artifact ~/cfb_cpu_experiment/readiness/offense_route_aware.json --i-approve-cpu-experiment
+python scripts/madden_ml/cpu_experiment.py enable --artifact ~/cfb_cpu_experiment/readiness/offense_route_aware.json --work ~/cfb_cpu_experiment --i-approve-cpu-experiment
 python scripts/madden_ml/cpu_experiment.py status       # verify: ranker route_aware, artifact loads, playbook coverage, fallbacks, adjustments
 ```
 Want the model to *show* its pick while the old coordinator still calls? Add `--preview` to `enable` for the first few snaps.
@@ -45,7 +45,8 @@ Expect "custom adjustments: 0": hot-route adjustments cannot be scored yet (no f
 
 ## 4. Roll back immediately
 ```bash
-python scripts/madden_ml/cpu_experiment.py rollback     # ranker -> experimental (previous behaviour) on the next call
+python scripts/madden_ml/cpu_experiment.py rollback           # restores the EXACT saved ranker, artifact and ML mode (e.g. a prior preview setup)
+python scripts/madden_ml/cpu_experiment.py rollback --safe    # only force the ranker to 'experimental', touch nothing else
 # or, for the current shell only:  unset CFB_COACH_OFFENSE_RANKER
 # or restore everything from the backup: copy ~/cfb_cpu_experiment/backup/<file>.db over ~/.cfb-coach/madden27.db (app closed)
 ```

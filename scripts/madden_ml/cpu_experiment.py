@@ -69,17 +69,51 @@ def cmd_prepare(a) -> int:
     print(f"live DB (not modified): {src}\nbackup: {backup}  sha256={_sha(backup)[:16]}…\nexperiment copy: {copy}")
     if a.backup_only:
         return 0
+    import shutil
     env = {**os.environ, "HOME": str(work / "home")}                    # keep every eval write away from ~/.cfb-coach
     (work / "home").mkdir(exist_ok=True)
-    out = work / "readiness"
+    out, dk = work / "readiness", work / "defense_knowledge"
+    for stale in (out, dk, work / "prepare_manifest.json"):             # never reuse a previous run's report or artifact
+        if stale.is_dir():
+            shutil.rmtree(stale)
+        elif stale.exists():
+            stale.unlink()
     rc = subprocess.call([sys.executable, str(ROOT / "scripts/madden_ml/offense_route_aware_readiness.py"), "--db", str(copy),
                           "--out", str(out), "--run-tests"], env=env)
-    dk = work / "defense_knowledge"
     rc2 = subprocess.call([sys.executable, str(ROOT / "scripts/madden_ml/defense_knowledge_eval.py"), "heldout", "--db", str(copy),
                            "--out", str(dk)], env=env)
-    print(f"\nreadiness exit={rc}, defensive-knowledge held-out exit={rc2}\nartifact for `enable`: {out / 'offense_route_aware.json'}")
+    rep_p, art_p = out / "readiness_report.json", out / "offense_route_aware.json"
+    problems = []
+    if rc != 0:
+        problems.append(f"readiness evaluation exited {rc}")
+    if rc2 != 0:
+        problems.append(f"defensive-knowledge held-out comparison exited {rc2}")
+    if not rep_p.is_file() or not art_p.is_file():
+        problems.append("readiness report or artifact was not produced")
+    if problems:
+        print("\nPREPARE FAILED (nothing is enabled, no manifest written):\n  " + "\n  ".join(problems), file=sys.stderr)
+        return 1
+    rep = json.loads(rep_p.read_text())
+    if not rep.get("real_data") or str(copy) not in str(rep.get("source", "")):
+        print("PREPARE FAILED: the report was not produced from this experiment copy", file=sys.stderr)
+        return 1
+    manifest = {"schema": "cpu_experiment.prepare.v1", "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "source_db": str(src),
+                "backup": str(backup), "backup_sha256": _sha(backup), "copy": str(copy), "copy_sha256": _sha(copy),
+                "report": str(rep_p), "report_sha256": _sha(rep_p), "artifact": str(art_p), "artifact_sha256": _sha(art_p),
+                "artifact_digest": rep["artifact"]["digest"], "art_bank": _art_bank(), "readiness_verdict": rep["readiness"]["verdict"]}
+    (work / "prepare_manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
+    gate_errs, _q = gate_errors(rep)
+    if gate_errs:
+        print("\nPREPARE INCOMPLETE: the evaluation ran, but the pilot cannot be enabled from it:\n  " + "\n  ".join(gate_errs), file=sys.stderr)
+        return 2
+    print(f"\nreadiness exit={rc}, defensive-knowledge held-out exit={rc2}; manifest: {work / 'prepare_manifest.json'}")
     print("next: python scripts/madden_ml/cpu_experiment.py summary --work", work)
     return 0
+
+
+def _art_bank() -> dict:
+    d = json.loads((ROOT / "cfb_coach/data/madden27/offense_play_art_features.json").read_text())
+    return {"fingerprint": d.get("inventory_fingerprint"), **d["coverage"], "file_sha256": _sha(ROOT / "cfb_coach/data/madden27/offense_play_art_features.json")}
 
 
 def cmd_summary(a) -> int:
@@ -178,32 +212,71 @@ def cmd_status(a) -> int:
 
 
 # --------------------------------------------------------------------------------------------------------- enable / rollback
+REQUIRED_GATES = ("coverage_feedback_connected", "no_cross_game_or_future_leakage", "no_invalid_formations_plays_or_adjustments",
+                  "adjustment_gate", "latency_within_150ms", "interface_displays_recommendation", "shadow_replay_clean",
+                  "regression_and_integration_tests")
+
+
+def gate_errors(rep: dict) -> tuple[list[str], dict]:
+    gates = rep["readiness"]["gates"]
+    errs = []
+    for g in REQUIRED_GATES:                                           # present AND PASS; "not FAIL" is not enough
+        if g not in gates:
+            errs.append(f"required gate missing: {g}")
+        elif gates[g]["status"] != "PASS":
+            errs.append(f"required gate {g} is {gates[g]['status']}: {gates[g]['detail']}")
+    q = gates.get("model_quality_vs_existing_coordinator", {})
+    if q.get("status") == "FAIL":
+        errs.append(f"model is explicitly WORSE than the existing coordinator on held-out games: {q.get('detail')}")
+    elif q.get("status") not in ("PASS", "NOT EVALUATED"):          # NOT EVALUATED / non-significant lift may proceed as an owner-approved experiment
+        errs.append("model-quality gate missing")
+    return errs, q
+
+
+def verify_prepared(work: Path, artifact: Path, live_db: Path) -> dict:
+    """Fail closed: the report + artifact must be the untampered product of ONE successful `prepare` against the intended DB."""
+    mp = work / "prepare_manifest.json"
+    if not mp.is_file():
+        raise SystemExit(f"no prepare manifest at {mp}; run `prepare` (a failed or missing prepare cannot be enabled)")
+    m = json.loads(mp.read_text())
+    errs = []
+    if Path(m["artifact"]).resolve() != artifact.resolve():
+        errs.append("artifact is not the one `prepare` produced")
+    for key, path in (("artifact_sha256", m["artifact"]), ("report_sha256", m["report"]), ("copy_sha256", m["copy"])):
+        if not Path(path).is_file() or _sha(Path(path)) != m[key]:
+            errs.append(f"{Path(path).name} changed or is missing since prepare ({key})")
+    if Path(m["source_db"]).resolve() != live_db.resolve():
+        errs.append(f"prepare was run against {m['source_db']}, not {live_db}")
+    if m["art_bank"] != _art_bank() or m["art_bank"].get("model_eligible") != 93 or m["art_bank"].get("total") != 93:
+        errs.append("the 93-play art bank changed since prepare (or is not 93/93 eligible)")
+    if errs:
+        raise SystemExit("not enabling:\n  " + "\n  ".join(errs))
+    rep = json.loads(Path(m["report"]).read_text())
+    if not rep.get("real_data") or str(m["copy"]) not in str(rep.get("source", "")):
+        errs.append("report was not produced from the prepared copy of your database")
+    if not rep["artifact"].get("valid") or rep["artifact"]["digest"] != m["artifact_digest"]:
+        errs.append("artifact invalid or digest mismatch")
+    gate_errs, q = gate_errors(rep)
+    errs += gate_errs
+    if errs:
+        raise SystemExit("not enabling:\n  " + "\n  ".join(errs))
+    return {"manifest": m, "quality": f"{q['status']}: {q['detail']}"}
+
+
 def cmd_enable(a) -> int:
     from cfb_coach.madden.model import experimental_live as xl
     from cfb_coach.madden.model import inference
     from cfb_coach.madden.model import offense_route_ranker as rr
-    from cfb_coach.madden.model import offense_structural_model as sm
     from cfb_coach.madden.model.schema import CoachingMode
     if not a.i_approve_cpu_experiment:
         raise SystemExit("refusing: pass --i-approve-cpu-experiment (this makes the route-aware model the primary offensive caller, CPU opponents only)")
     art_path = Path(a.artifact).expanduser()
-    rep_path = Path(a.report).expanduser() if a.report else art_path.parent / "readiness_report.json"
-    if not rep_path.is_file():
-        raise SystemExit(f"no readiness report beside the artifact ({rep_path}); run `prepare` first")
-    rep = json.loads(rep_path.read_text())
-    if not rep.get("real_data"):
-        raise SystemExit("that readiness report is a synthetic self-check, not your data")
-    bad = []
-    gates = rep["readiness"]["gates"]
-    for k, v in gates.items():
-        if v["status"] == "FAIL" or (k == "model_quality_vs_existing_coordinator" and v["status"] == "FAIL"):
-            bad.append(f"{k}: {v['detail']}")
-    if bad:
-        raise SystemExit("gate failure, not enabling:\n  " + "\n  ".join(bad))
+    live = _live_db(a.db)
+    info = verify_prepared(Path(a.work).expanduser(), art_path, live)
     art = rr.load_artifact(art_path)                                       # refuses stale / invalid
     if art.uses_defense_knowledge:
         raise SystemExit("this is a defense-knowledge artifact; use the default route-aware artifact for the first game")
-    db = _open_db(_live_db(a.db))
+    db = _open_db(live)
     try:
         if xl.resolve_artifact_path(db) is None:
             raise SystemExit("no experimental offense artifact installed. Run once: python -m cfb_coach ml experimental --retrain")
@@ -211,32 +284,38 @@ def cmd_enable(a) -> int:
         if pb.get("error") or pb["present"] < pb["scored"] and not a.allow_partial_playbook:
             raise SystemExit(f"applied offense playbook has {pb.get('present')}/{pb['scored']} scored plays ({pb.get('error') or 'missing plays'}); "
                              "fix it or pass --allow-partial-playbook (the model never selects a play outside the applied book)")
-        prev = {"ranker": db.get_meta(rr.META_MODE) or "experimental", "artifact": db.get_meta(rr.META_ARTIFACT),
-                "ml_mode": str(inference.resolve_mode(db)) if hasattr(inference, "resolve_mode") else None,
-                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-        db.set_meta(ROLLBACK_META, json.dumps(prev))
+        if not db.get_meta(ROLLBACK_META) or str(rr.resolve_mode(db)) == "experimental":
+            # exact raw values (None = unset) so rollback restores precisely this state; never overwrite the ORIGINAL record when re-enabling
+            db.set_meta(ROLLBACK_META, json.dumps({"ranker": db.get_meta(rr.META_MODE), "artifact": db.get_meta(rr.META_ARTIFACT),
+                                                   "ml_mode": db.get_meta("ml_mode"), "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
         db.set_meta(rr.META_ARTIFACT, str(art_path))
         inference.set_mode(db, CoachingMode.EXPERIMENTAL)
         rr.set_mode(db, "route_aware_preview" if a.preview else "route_aware")
         print(f"ENABLED: offense ranker = {'route_aware_preview' if a.preview else 'route_aware'} (CPU opponents only); artifact {art_path}")
-        print("previous settings saved; roll back with:  python scripts/madden_ml/cpu_experiment.py rollback")
+        print(f"model quality gate: {info['quality']}")
+        print("roll back with:  python scripts/madden_ml/cpu_experiment.py rollback   (exact previous values; add --safe for ranker-only)")
     finally:
         db.close()
     return 0
 
 
 def cmd_rollback(a) -> int:
-    from cfb_coach.madden.model import inference
     from cfb_coach.madden.model import offense_route_ranker as rr
-    from cfb_coach.madden.model.schema import CoachingMode
     db = _open_db(_live_db(a.db))
     try:
         raw = db.get_meta(ROLLBACK_META)
-        prev = json.loads(raw) if raw else {"ranker": "experimental", "ml_mode": None}
-        rr.set_mode(db, "experimental")                                   # the instant, mandatory part
-        if prev.get("ml_mode") and "HEURISTIC" in str(prev["ml_mode"]).upper():
-            inference.set_mode(db, CoachingMode.HEURISTIC)
-        print(f"rolled back: offense ranker = experimental; ML mode restored to {prev.get('ml_mode') or '(unchanged)'}")
+        if a.safe or not raw:
+            rr.set_mode(db, "experimental")                               # the instant, always-safe state
+            print("rolled back (safe): offense ranker = experimental; ML mode and artifact left as they are"
+                  + ("" if raw or a.safe else "  [no saved record found]"))
+            return 0
+        prev = json.loads(raw)
+        db.set_meta(rr.META_MODE, prev["ranker"] if prev.get("ranker") is not None else "experimental")   # unset == experimental
+        db.set_meta(rr.META_ARTIFACT, prev["artifact"] if prev.get("artifact") is not None else "")        # "" is ignored by the resolver
+        db.set_meta("ml_mode", prev["ml_mode"] if prev.get("ml_mode") is not None else "heuristic")        # unset == heuristic
+        db.set_meta(ROLLBACK_META, "")
+        print(f"rolled back to the exact previous state: ranker={prev.get('ranker') or '(unset=experimental)'} artifact={prev.get('artifact') or '(unset)'} "
+              f"ml_mode={prev.get('ml_mode') or '(unset=heuristic)'}")
         print("(env override, if you used one: unset CFB_COACH_OFFENSE_RANKER)")
     finally:
         db.close()
@@ -331,9 +410,11 @@ def main() -> int:
             p.add_argument("--work", default="~/cfb_cpu_experiment")
             if name == "prepare":
                 p.add_argument("--backup-only", action="store_true", help="make the backup + copy and stop")
+        if name == "rollback":
+            p.add_argument("--safe", action="store_true", help="only force the ranker back to experimental; leave everything else")
         if name == "enable":
             p.add_argument("--artifact", required=True)
-            p.add_argument("--report")
+            p.add_argument("--work", default="~/cfb_cpu_experiment")
             p.add_argument("--preview", action="store_true", help="route_aware_preview: show the model's pick but keep the existing coordinator calling")
             p.add_argument("--allow-partial-playbook", action="store_true")
             p.add_argument("--i-approve-cpu-experiment", action="store_true")
