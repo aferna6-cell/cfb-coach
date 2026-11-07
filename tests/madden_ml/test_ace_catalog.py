@@ -345,3 +345,28 @@ def test_a_listed_play_with_no_art_tile_is_kept_without_an_art_url_not_quarantin
     p = ac.parse_listing("<html>" + tile + "</html>")
     assert not p.quarantined and p.records[0]["play_name"] == "No Art Play" and p.records[0]["art_url"] is None
     assert p.records[0]["source"]["no_art_in_listing"] is True and ac.validate({r["id"]: r for r in p.records}) == []
+
+
+def test_progress_file_reports_a_healthy_finished_and_a_dead_job(tmp_path):
+    st = ac.Store(tmp_path / "s")
+    prog = ac.Progress(st, "sync")
+    prog.beat(phase="discover:offense", page=3, records=72)
+    s = ac.job_status(st)
+    assert s["state"] == "running" and s["process_alive"] and s["health"] == "healthy" and s["counters"]["records"] == 72
+    prog.finish("completed")
+    assert ac.job_status(st)["health"] == "finished"
+    dead = json.loads((st.root / "progress.json").read_text())
+    dead.update(state="running", pid=2 ** 22 + 12345)
+    (st.root / "progress.json").write_text(json.dumps(dead))
+    assert ac.job_status(st)["health"].startswith("DEAD")
+    dead.update(pid=__import__("os").getpid(), heartbeat="2020-01-01T00:00:00Z")
+    (st.root / "progress.json").write_text(json.dumps(dead))
+    assert ac.job_status(st)["health"].startswith("STALE")
+
+
+def test_discovery_heartbeats_each_page(tmp_path):
+    pages = {"/playbooks/plays/madden27?page=1": html("listing_offense_p1.html"), "/playbooks/plays/madden27?page=2": "<html></html>"}
+    st, f = fetcher(tmp_path, pages)
+    prog = ac.Progress(st, "sync")
+    ac.discover(f, sides=("offense",), progress=prog)
+    assert ac.job_status(st)["counters"]["page"] == 1 and ac.job_status(st)["counters"]["records"] == 2

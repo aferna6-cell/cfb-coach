@@ -262,8 +262,43 @@ class Fetcher:
         return self._get(rec["art_url"].removeprefix(self.base))
 
 
+class Progress:
+    """Health/progress file for long jobs (``progress.json``): phase, counters, pid, heartbeat. ``status`` reads it; a stale heartbeat means a hung/dead job."""
+
+    def __init__(self, store: "Store", job: str):
+        self.path, self.state = store.root / "progress.json", {"job": job, "pid": os.getpid(), "state": "running", "started": now(), "counters": {}}
+        self.beat()
+
+    def beat(self, **counters: Any) -> None:
+        self.state["counters"].update(counters)
+        self.state["heartbeat"] = now()
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.state, indent=1), encoding="utf-8")
+        os.replace(tmp, self.path)
+
+    def finish(self, state: str = "completed", **counters: Any) -> None:
+        self.state["state"] = state
+        self.beat(**counters)
+
+
+def job_status(store: "Store", *, stale_after_s: int = 300) -> dict[str, Any]:
+    p = store.root / "progress.json"
+    if not p.is_file():
+        return {"state": "no job recorded"}
+    st = json.loads(p.read_text(encoding="utf-8"))
+    alive = False
+    try:
+        os.kill(int(st["pid"]), 0)
+        alive = True
+    except (OSError, ValueError, KeyError):
+        pass
+    age = (datetime.now(timezone.utc) - datetime.strptime(st["heartbeat"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)).total_seconds()
+    health = "finished" if st["state"] != "running" else ("healthy" if alive and age <= stale_after_s else ("STALE: no heartbeat" if alive else "DEAD: process gone while marked running"))
+    return {**st, "process_alive": alive, "heartbeat_age_s": int(age), "health": health}
+
+
 def discover(fetcher: Fetcher, *, game: str = "madden27", sides: Iterable[str] = SIDES, max_pages: int | None = None, version: str = "",
-             permission: Mapping[str, Any] | None = None) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+             permission: Mapping[str, Any] | None = None, progress: "Progress | None" = None) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     """Walk listing pages until one repeats or is empty. Returns (records, quarantined, stats). Writes nothing."""
     out: dict[str, dict[str, Any]] = {}
     quarantine: list[dict[str, Any]] = []
@@ -290,6 +325,8 @@ def discover(fetcher: Fetcher, *, game: str = "madden27", sides: Iterable[str] =
             quarantine += [{**q, "side": side, "page": page} for q in parsed.quarantined]
             stats["pages"][f"{side}:{page}"] = parsed.tiles_seen
             stats["tiles"] += parsed.tiles_seen
+            if progress:
+                progress.beat(phase=f"discover:{side}", page=page, records=len(out), requests=fetcher.requests)
             page += 1
     stats["records"], stats["quarantined"] = len(out), len(quarantine)
     return out, quarantine, stats
