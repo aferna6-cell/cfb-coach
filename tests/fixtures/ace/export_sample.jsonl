@@ -1,0 +1,5 @@
+{"side": "offense", "formation": "Fixture Formation A", "play": "Test Play One", "playbooks": "Book X|Book Y", "personnel_group": "3WR"}
+{"side": "offense", "formation": "Fixture Formation A", "play": "Test Play One", "playbooks": "Book Z", "personnel_group": "3WR"}
+{"side": "defense", "formation": "Fixture Front", "play": "Test Cover 3", "playbooks": "Book D"}
+{"side": "offense", "formation": "Fixture Formation A", "play": "Has Assignments", "assignments": {"x": 1}}
+{"side": "sideways", "formation": "F", "play": "P"}

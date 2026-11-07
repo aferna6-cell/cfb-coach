@@ -420,7 +420,7 @@ def test_existing_files_are_only_modified_where_the_integration_needs_it():
         # (snaps.coverage_typed) instead of being lost; capture path + schema + dataset row only.
         "cfb_coach/db.py", "cfb_coach/last_snap.py", "cfb_coach/madden/model/dataset.py",
         # Issue #120: additive formation policy (no removals before the 15 cap) in the designer + CLI flag.
-        "cfb_coach/madden/model/offense_designer.py",
+        "cfb_coach/madden/model/offense_designer.py", "cfb_coach/madden/model/cli.py",
     }
     assert touched <= allowed, f"unexpected modifications: {sorted(touched - allowed)}"
 
