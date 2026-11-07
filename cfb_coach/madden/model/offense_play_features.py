@@ -196,7 +196,13 @@ def scheme_distribution(mix: Mapping[str, float] | None) -> tuple[dict[str, floa
     total = sum(max(0.0, float(v)) for v in mix.values())
     out: dict[str, float] = {}
     for bucket, v in mix.items():
-        schemes = BUCKET_TO_SCHEMES.get(bucket, ("unknown",))
+        # New research-sidecar coverage probabilities may identify the precise
+        # scheme (e.g. Palms vs Quarters). Preserve that distinction instead of
+        # re-bucketing it as an unknown label. Generic history remains generic.
+        if bucket in SCHEMES and bucket != "unknown":
+            schemes = (bucket,)
+        else:
+            schemes = BUCKET_TO_SCHEMES.get(bucket, ("unknown",))
         for sc in schemes:
             out[sc] = out.get(sc, 0.0) + max(0.0, float(v)) / total / len(schemes)
     return out, "opponent_coverage_mix_uniform_within_bucket"
