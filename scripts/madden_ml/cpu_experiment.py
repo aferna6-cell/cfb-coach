@@ -82,6 +82,8 @@ def cmd_prepare(a) -> int:
                           "--out", str(out), "--run-tests"], env=env)
     rc2 = subprocess.call([sys.executable, str(ROOT / "scripts/madden_ml/defense_knowledge_eval.py"), "heldout", "--db", str(copy),
                            "--out", str(dk)], env=env)
+    rc3 = subprocess.call([sys.executable, str(ROOT / "scripts/madden_ml/football_priors_eval.py"), "--db", str(copy), "--out", str(work / "football_priors")], env=env)
+    print(f"football-priors held-out comparison exit={rc3} (informational; result in {work / 'football_priors' / 'football_priors_eval.json'})")
     rep_p, art_p = out / "readiness_report.json", out / "offense_route_aware.json"
     problems = []
     if rc != 0:
@@ -196,6 +198,7 @@ def cmd_status(a) -> int:
             from cfb_coach.madden.model import offense_structural_model as sm
             print(f"  loads OK: games={art.trained_games} rows={art.n_train} residual_active={art.residual_active} "
                   f"features={len(art.names)} digest={sm.artifact_digest(art)[:12]} knowledge={art.uses_defense_knowledge}")
+        print(f"football priors in the live score: {'ON' if rr.football_priors_on(db) else 'off'}")
         pb = _playbook_check(db)
         print(f"applied offense playbook contains {pb['present']}/{pb['scored']} of the plays the model scores"
               + (f"  [{pb.get('book_name')}]" if pb.get("book_name") else ""))
@@ -287,10 +290,11 @@ def cmd_enable(a) -> int:
         if not db.get_meta(ROLLBACK_META) or str(rr.resolve_mode(db)) == "experimental":
             # exact raw values (None = unset) so rollback restores precisely this state; never overwrite the ORIGINAL record when re-enabling
             db.set_meta(ROLLBACK_META, json.dumps({"ranker": db.get_meta(rr.META_MODE), "artifact": db.get_meta(rr.META_ARTIFACT),
-                                                   "ml_mode": db.get_meta("ml_mode"), "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
+                                                   "ml_mode": db.get_meta("ml_mode"), "priors": db.get_meta(rr.META_PRIORS), "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}))
         db.set_meta(rr.META_ARTIFACT, str(art_path))
         inference.set_mode(db, CoachingMode.EXPERIMENTAL)
         rr.set_mode(db, "route_aware_preview" if a.preview else "route_aware")
+        db.set_meta(rr.META_PRIORS, "1" if a.football_priors else (db.get_meta(rr.META_PRIORS) or "0"))
         print(f"ENABLED: offense ranker = {'route_aware_preview' if a.preview else 'route_aware'} (CPU opponents only); artifact {art_path}")
         print(f"model quality gate: {info['quality']}")
         print("roll back with:  python scripts/madden_ml/cpu_experiment.py rollback   (exact previous values; add --safe for ranker-only)")
@@ -306,6 +310,7 @@ def cmd_rollback(a) -> int:
         raw = db.get_meta(ROLLBACK_META)
         if a.safe or not raw:
             rr.set_mode(db, "experimental")                               # the instant, always-safe state
+            db.set_meta(rr.META_PRIORS, "0")
             print("rolled back (safe): offense ranker = experimental; ML mode and artifact left as they are"
                   + ("" if raw or a.safe else "  [no saved record found]"))
             return 0
@@ -313,6 +318,7 @@ def cmd_rollback(a) -> int:
         db.set_meta(rr.META_MODE, prev["ranker"] if prev.get("ranker") is not None else "experimental")   # unset == experimental
         db.set_meta(rr.META_ARTIFACT, prev["artifact"] if prev.get("artifact") is not None else "")        # "" is ignored by the resolver
         db.set_meta("ml_mode", prev["ml_mode"] if prev.get("ml_mode") is not None else "heuristic")        # unset == heuristic
+        db.set_meta(rr.META_PRIORS, prev.get("priors") if prev.get("priors") is not None else "0")
         db.set_meta(ROLLBACK_META, "")
         print(f"rolled back to the exact previous state: ranker={prev.get('ranker') or '(unset=experimental)'} artifact={prev.get('artifact') or '(unset)'} "
               f"ml_mode={prev.get('ml_mode') or '(unset=heuristic)'}")
@@ -415,6 +421,7 @@ def main() -> int:
         if name == "enable":
             p.add_argument("--artifact", required=True)
             p.add_argument("--work", default="~/cfb_cpu_experiment")
+            p.add_argument("--football-priors", action="store_true", help="make the structured football priors + learned cells part of the live score (opt-in; rollback restores)")
             p.add_argument("--preview", action="store_true", help="route_aware_preview: show the model's pick but keep the existing coordinator calling")
             p.add_argument("--allow-partial-playbook", action="store_true")
             p.add_argument("--i-approve-cpu-experiment", action="store_true")

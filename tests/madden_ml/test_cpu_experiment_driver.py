@@ -165,3 +165,16 @@ def test_prepare_fails_closed_and_discards_stale_results(tmp_path):
     assert r.returncode != 0 and ("PREPARE FAILED" in r.stderr or "PREPARE INCOMPLETE" in r.stderr)
     stale = work / "readiness" / "readiness_report.json"
     assert not stale.exists() or "stale" not in stale.read_text()                                  # the old report was discarded, never reused
+
+
+def test_football_priors_are_opt_in_visible_in_status_and_rolled_back(world):
+    d, db_path, art = world
+    work, pa = _prepared(d, db_path, art)
+    _enable(d, db_path, pa, work)
+    assert "football priors in the live score: off" in _run(d, db_path, "status")             # default enable leaves them off
+    _run(d, db_path, "rollback")
+    work, pa = _prepared(d, db_path, art)
+    out = _run(d, db_path, "enable", "--artifact", str(pa), "--work", str(work), "--i-approve-cpu-experiment", "--football-priors")
+    assert "ENABLED" in out and "football priors in the live score: ON" in _run(d, db_path, "status")
+    _run(d, db_path, "rollback")
+    assert "football priors in the live score: off" in _run(d, db_path, "status")
