@@ -368,6 +368,25 @@ def cmd_ml_heuristic(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_ml_universe(args: argparse.Namespace) -> int:
+    """Read-only football universe: coverage report or search (installed AND non-installed plays)."""
+    from cfb_coach.madden.model import football_universe as fu
+
+    u = fu.load()
+    if args.action == "report":
+        print(json.dumps(fu.coverage_report(u), indent=2))
+        return 0
+    if not args.query:
+        print("search needs a query", file=sys.stderr)
+        return 2
+    inst = True if args.installed else (False if args.not_installed else None)
+    for e in fu.search(args.query, side=args.side, installed=inst, limit=args.limit, u=u):
+        t = "".join(c if e["tiers"][k] else "-" for c, k in zip("NDGR", ("name_decomposed", "image_geometry", "structure_known", "roles_verified")))
+        print(f"{e['side'][:3]} [{t}] {'INSTALLED' if e['installed'] else 'research '}  {e['formation']} / {e['play']}   books: {', '.join(e['books'][:3])}")
+    print("legend: N=name decomposed D=image geometry G=some assignments known R=roles verified (first-party)")
+    return 0
+
+
 def cmd_ml_offense_ranker(args: argparse.Namespace) -> int:
     """Select / preview / roll back the route-aware offensive ranker (default: experimental = unchanged)."""
     from cfb_coach.madden.model import offense_route_ranker as rr
@@ -2163,6 +2182,15 @@ def build_ml_subparser(sub: Any) -> None:
     p_or.add_argument("mode", nargs="?", choices=["experimental", "route_aware_preview", "route_aware"])
     p_or.add_argument("--artifact", help="route-aware artifact to install (validated)")
     p_or.set_defaults(func=cmd_ml_offense_ranker)
+
+    p_un = ml_sub.add_parser("universe", help="Football universe (both sides): coverage report or search. Read-only.")
+    p_un.add_argument("action", choices=["report", "search"])
+    p_un.add_argument("query", nargs="?")
+    p_un.add_argument("--side", choices=["offense", "defense"])
+    p_un.add_argument("--installed", action="store_true")
+    p_un.add_argument("--not-installed", action="store_true")
+    p_un.add_argument("--limit", type=int, default=15)
+    p_un.set_defaults(func=cmd_ml_universe)
 
     p_pf = ml_sub.add_parser(
         "experimental-preflight",

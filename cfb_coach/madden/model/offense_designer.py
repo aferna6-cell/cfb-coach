@@ -367,6 +367,13 @@ def design_offense(
             "Predicted success is observational/shrinkage, not proof new plays win more.",
         ],
     }
+    try:                                                                   # informational only: how much is actually KNOWN about each formation
+        from cfb_coach.madden.model import football_universe as fu
+        uni = fu.load()
+        proposal["universe_evidence"] = {f: fu.formation_evidence("offense", f, uni) for f in formations}
+        proposal["universe_digest"] = uni["digest"]
+    except (OSError, KeyError, ValueError):
+        proposal["universe_evidence"] = {}
     proposal["proposal_id"] = _identity(proposal)
     proposal["max_formations"] = max_formations
     proposal["pregame_diagnostic"] = pregame_input_diagnostic(proposal.get("provenance"))
