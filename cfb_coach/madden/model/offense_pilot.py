@@ -142,7 +142,8 @@ class PilotSession:
         with self.log_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps({"schema": LOG_SCHEMA, **rec}, sort_keys=True, default=str) + "\n")
 
-    def recommend(self, situation: Mapping[str, Any], *, game_id: str = "") -> dict[str, Any]:
+    def recommend(self, situation: Mapping[str, Any], *, game_id: str = "",
+                  coverage_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
         sit = od.Situation.from_mapping({k: v for k, v in situation.items() if k != "game_id"})
         if (sit.opponent_type or "").lower() != "cpu":
             raise PilotRefused("pilot is human-vs-CPU only; opponent_type must be 'cpu'")
@@ -172,10 +173,32 @@ class PilotSession:
             "fallback_reason": fallback, "artifact_digest": sm.artifact_digest(self.artifact),
             "assignment_digest": self.artifact.assignment_digest, "executed": "not_confirmed",
             "latency_ms": round((time.perf_counter() - t0) * 1000, 2), "card": card,
+            "coverage_history": dict(coverage_context or {}),
         }
         self._append(record)
         self.recent.append((primary["formation"], primary["play"]))
         return record
+
+    def recommend_from_logged_game(self, conn: Any, situation: Mapping[str, Any], *,
+                                  session_id: str, next_snap_seq: int,
+                                  game_id: str = "") -> dict[str, Any]:
+        """Read previously CLOSED user-entered coverage without any extra logging.
+
+        The prior is the already trained model's opponent/global coverage mix.
+        Only previous snaps of this SAME opponent and game contribute to the
+        current-game adjustment. This method is opt-in for a CPU-only pilot.
+        """
+        from cfb_coach.madden.model import offense_live_coverage as live_cov
+        opp = str(situation.get("opponent_id") or "")
+        prior, _ = sm.pre_snap_mix(self.artifact, opp)
+        context = live_cov.coverage_for_next_snap(
+            conn, session_id=session_id, opponent_id=opp,
+            next_snap_seq=next_snap_seq, prior_mix=prior,
+        )
+        updated = dict(situation)
+        updated["mix"] = context.mix
+        return self.recommend(updated, game_id=game_id or session_id,
+                              coverage_context=context.as_log())
 
     def confirm_execution(self, rec_id: str, *, formation: str, play: str, adjustment: str = od.NO_ADJUSTMENT,
                           status: str = "executed") -> dict[str, Any]:

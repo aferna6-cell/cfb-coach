@@ -185,7 +185,7 @@ BUCKET_TO_SCHEMES = {
     "cover0": ("cover_0",), "cover1": ("cover_1_hole", "cover_1_robber", "cover_1_contain", "cover_1_man_other"),
     "cover2": ("cover_2_spot", "cover_2_man", "tampa_2"), "cover2_man": ("cover_2_man",),
     "cover3": ("cover_3_spot", "cover_3_match"), "cover4": ("cover_4_quarters", "cover_4_palms", "cover_4_drop"),
-    "cover6": ("cover_6",), "pressure": ("cover_0",), "other": ("unknown",), "unknown": ("unknown",),
+    "cover6": ("cover_6",), "pressure": ("unknown",), "other": ("unknown",), "unknown": ("unknown",),
 }
 
 

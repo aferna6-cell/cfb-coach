@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
+from urllib.parse import quote
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -92,7 +94,22 @@ def _situation(a: argparse.Namespace) -> dict:
 
 def _run(a: argparse.Namespace, mode: str) -> int:
     sess = _session(a, mode)
-    rec = sess.recommend(_situation(a), game_id=a.game or "")
+    using_history = bool(a.history_db or a.session_id or a.next_snap_seq is not None)
+    if using_history:
+        if not (a.history_db and a.session_id and a.next_snap_seq is not None):
+            raise pilot.PilotRefused("coverage feedback requires --history-db, --session-id, and --next-snap-seq")
+        path = Path(a.history_db).expanduser().resolve()
+        # Opening a live Madden DB read-only is safe; this does not write to it.
+        with sqlite3.connect("file:" + quote(str(path), safe="/") + "?mode=ro", uri=True) as conn:
+            rec = sess.recommend_from_logged_game(
+                conn, _situation(a), session_id=a.session_id,
+                next_snap_seq=a.next_snap_seq, game_id=a.game or a.session_id)
+    else:
+        rec = sess.recommend(_situation(a), game_id=a.game or "")
+    if rec.get("coverage_history"):
+        ctx = rec["coverage_history"]
+        print(f"Previous-play coverage samples: {ctx['named_n']} named / "
+              f"{ctx['pressure_n']} pressure-only / {ctx['unknown_n']} unknown")
     print(advice.format_card(rec["card"]) if "PRIMARY READ" in rec["card"] else json.dumps(rec["card"], indent=1))
     print(f"\nrec_id={rec['rec_id']}  latency={rec['latency_ms']}ms  baseline_agrees={rec['baseline_agrees']}"
           + (f"  FALLBACK={rec['fallback_reason']}" if rec["fallback_reason"] else ""))
@@ -140,6 +157,9 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--yardline", type=int, required=True, help="yards from own goal line, 1-99")
         p.add_argument("--opponent", default="cpu"); p.add_argument("--opponent-type", default="cpu")
         p.add_argument("--play-clock", type=float); p.add_argument("--game")
+        p.add_argument("--history-db", help="Existing Madden SQLite DB, read-only; no extra logger")
+        p.add_argument("--session-id", help="Current game session ID from existing UI")
+        p.add_argument("--next-snap-seq", type=int, help="Sequence number of the NEXT unplayed snap")
         p.set_defaults(fn=lambda a, n=name: _run(a, n))
     p = sub.add_parser("approve"); p.add_argument("--by", required=True); p.set_defaults(fn=cmd_approve)
     p = sub.add_parser("confirm"); p.add_argument("--rec-id", required=True); p.add_argument("--formation", required=True)
