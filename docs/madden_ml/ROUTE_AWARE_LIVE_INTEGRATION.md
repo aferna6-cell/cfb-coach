@@ -83,3 +83,23 @@ E adjustment legality (unconfirmed adjustments never offered live; NO ADJUSTMENT
 * Pre-snap "showing" coverage typed in the form is not used by the route-aware model.
 * Reads on the card come only from routes that exist in the recommended play; 85 of 93 plays have none documented, so their reads say UNKNOWN.
 * Coverage labels in the database are manual entries, not independently verified.
+
+## What was actually executed in the development environment (2026-11-07)
+
+**The ~30-game database was not available**, so no real training, held-out comparison or live CPU session happened here.
+Executed instead (all synthetic, planted-signal; proves plumbing and learnability only, NOT model quality):
+
+* Full suite: 1504 passed, 4 skipped, 1 failed (pre-existing, root/chmod environment test). Untouched #112 head: 4 failed (2 inherited
+  test bugs from #111, 1 from #108/#110, 1 environment); this PR fixes the three real ones.
+* `offense_route_aware_readiness.py --selfcheck` (30 synthetic games, 1,800 verified rows, planted coverage x shallow-route effect that
+  CONTRADICTS football convention):
+  * learned the planted effect (`am_man_shallow` strongly negative); nested selection switched the residual ON (penalty x1);
+  * held-out whole games, rolling origin: log loss 0.6909 vs existing coordinator 0.6951 (diff -0.0042, 95% CI [-0.0092, +0.0002]);
+    a fixed-penalty variant was worse (+0.0075) and train/held-out gap 0.058 -> 0.027 with selection;
+  * on pure-noise labels, selection switches the residual OFF (tested), so the existing coordinator stays in charge;
+  * 1,620 replayed shadow decisions: 0 illegal, 0 errors, p95 15 ms; agrees with the existing coordinator 63% of the time (planted data);
+  * scenarios A/B/C/E/F pass through the real live controller; live-path diversity 17 distinct plays / 40 snaps (route-aware) vs 32 (current ranker);
+    the raw model alone is concentrated, so the existing anti-repeat policy matters.
+* Real-data gate `model_quality_vs_existing_coordinator`: **NOT EVALUATED**.
+
+Findings about the existing features worth knowing: `art_horizontal_share` has almost no spread across plays (sd 0.03), so it cannot carry signal.
