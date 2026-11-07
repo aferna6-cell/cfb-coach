@@ -103,3 +103,9 @@ Executed instead (all synthetic, planted-signal; proves plumbing and learnabilit
 * Real-data gate `model_quality_vs_existing_coordinator`: **NOT EVALUATED**.
 
 Findings about the existing features worth knowing: `art_horizontal_share` has almost no spread across plays (sd 0.03), so it cannot carry signal.
+
+## Defensive knowledge features (issue #116, opt-in)
+
+An artifact trained with `defense_knowledge=True` adds a `dk_*` feature block (catalog-derived structure of the opponent's defense) and is
+refused if the catalog changed. The default artifact and vector are unchanged. See `DEFENSE_KNOWLEDGE_BASE_V1.md` and
+`DEFENSE_KNOWLEDGE_READINESS.md`; `offense_route_aware_readiness.py --defense-knowledge` trains and replays it (and refuses `--install`).
