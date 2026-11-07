@@ -374,14 +374,17 @@ def test_live_card_adjustment_is_legal_and_reads_only_name_real_routes(world):
     c = _ctrl(db)
     for i in range(8):
         c.call_only("2&8 my 35") if i == 0 else c.result_and_call(outcome="+4", sit_raw="2&8 my 35", their="cover 3")
-        card = _info(c)["card"]
-        assert card["ADJUSTMENT"] == od.NO_ADJUSTMENT or card["ADJUSTMENT"].startswith(("HOT ROUTE", "MACRO"))
-        assert card["EXECUTABLE NOW"] == "yes"
+        info = _info(c)
+        # diagnostics: an intermittent failure of this test was seen only in long full-suite runs; keep everything needed to explain a recurrence
+        ctx = f"snap {i}: call={c.last_call.formation}/{c.last_call.play} fallback={info.get('fallback_reason')!r} latency_ms={info.get('latency_ms')} card={info.get('card')}"
+        card = info["card"]
+        assert card["ADJUSTMENT"] == od.NO_ADJUSTMENT or card["ADJUSTMENT"].startswith(("HOT ROUTE", "MACRO")), ctx
+        assert card["EXECUTABLE NOW"] == "yes", ctx
         rec = oa.index(oa.load_database())[(c.last_call.formation, c.last_call.play)]
         known = {s for s, v in rec["slots"].items() if v["category"] == "route"}
         for field in ("PRIMARY READ", "SECONDARY READ"):
             txt = card[field]
-            assert txt.startswith(("UNKNOWN", "RUN", "RPO", "n/a")) or txt.split()[0] in known   # never a made-up route
+            assert txt.startswith(("UNKNOWN", "RUN", "RPO", "n/a")) or txt.split()[0] in known, f"{field}={txt!r} known={sorted(known)} {ctx}"   # never a made-up route
 
 
 # --------------------------------------------------------------------------- nested model selection ("do no harm")

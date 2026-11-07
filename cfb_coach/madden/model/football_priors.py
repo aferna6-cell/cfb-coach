@@ -20,6 +20,9 @@ from typing import Any, Iterable, Mapping, Sequence
 
 VERSION = "football_priors.v1"
 NAME_TRUST = 0.35
+# How much a route-derived concept is believed, by the WEAKEST evidence tier among the routes that formed it. An unannotated route is not in the
+# structure at all; a hot-route transform keeps a commanded route but infers its depth/side, so it is football_inference.
+TIER_TRUST = {"in_game_verified": 1.0, "diagram_verified": 0.9, "source_documented": 0.6, "football_inference": 0.5, "unknown": 0.0}
 EDGE_CAP = 0.60            # logit; summed lifts never exceed this, so stacked hypotheses cannot dominate learned evidence
 CONCEPT_ALIASES = {"flood": "flood_sail", "four_verticals": "four_verts"}
 
@@ -204,6 +207,15 @@ def route_group(desc: Mapping[str, Any]) -> str | None:
     return None
 
 
+def learning_group(desc: Mapping[str, Any]) -> str | None:
+    """Pooling unit for learned residuals. Finer than ``route_group`` so Cover 1 evidence never moves Cover 2 Man (and vice versa)."""
+    if profile_matches(desc, "cover_2_man"):
+        return "cover_2_man"
+    if profile_matches(desc, "man_one_high"):
+        return "man_one_high"
+    return route_group(desc)
+
+
 # ---------------------------------------------------------------------------------------------------- coverage descriptors
 _LEGACY = {  # legacy mix keys (historical_defense_baseline buckets) -> descriptors
     "cover_0": ("0", "man", ()), "cover_1_unspecified": ("1", "man", ()), "cover_1_robber": ("1", "man", ("robber",)),
@@ -239,11 +251,17 @@ def descriptor(key: str) -> dict[str, Any] | None:
 
 # ---------------------------------------------------------------------------------------------------- concepts of a play
 def play_concepts(structure: Any) -> dict[str, float]:
-    """concept id -> trust. Route-derived concepts count 1.0; a name-only hint counts NAME_TRUST (a name is not a diagram)."""
+    """concept id -> trust. Route-derived concepts are trusted by the weakest evidence tier of the routes that formed them
+    (in-game 1.0 > diagram 0.9 > source-documented 0.6 > inferred 0.5 > unknown 0); a name-only hint counts NAME_TRUST (a name is not a diagram)."""
     out: dict[str, float] = {}
     try:
-        for c in structure.concepts():
-            out[CONCEPT_ALIASES.get(c, c)] = 1.0
+        tier_by_label = {sp.label: tier for _, sp, tier in structure.routes}
+        all_tiers = [tier for _, _, tier in structure.routes]
+        for c, hit in structure.concepts().items():
+            tiers = [tier_by_label[l] for l in hit.get("routes", ()) if l in tier_by_label] or all_tiers
+            trust = min((TIER_TRUST.get(t, 0.5) for t in tiers), default=0.0)
+            if trust > 0:
+                out[CONCEPT_ALIASES.get(c, c)] = max(out.get(CONCEPT_ALIASES.get(c, c), 0.0), trust)
     except Exception:                                       # noqa: BLE001
         pass
     from cfb_coach.madden.model import football_knowledge as fk
@@ -271,6 +289,15 @@ def _desc(key: str):
     return _DESC_CACHE[key]
 
 
+VARIANT_ORDER = ("cover_1_robber", "cover_1_hole", "cover_2_man", "cover_2_trap", "cover_3_cloud", "cover_3_buzz", "cover_3_match", "palms", "quarters",
+                 "man_one_high", "cover_2_zone", "cover_3_spot", "cover_4", "cover_6", "cover_0", "pressure_zone", "pressure_man", "pressure")
+
+
+def variant_key(desc: Mapping[str, Any]) -> str | None:
+    """The most specific profile this coverage matches. Learned residuals are kept per variant so Robber != Cover 1, Man != Zone, Spot != Match, Quarters != Palms."""
+    return next((v for v in VARIANT_ORDER if profile_matches(desc, v)), None)
+
+
 def lift_for(desc: Mapping[str, Any], concept: str, *, side_factor: float = 1.0) -> tuple[float, float, list[str]]:
     """(lift, confidence-weighted strength, prior ids) of one concept vs one coverage descriptor: matching profile deltas add."""
     lift, conf_w, ids = 0.0, 0.0, []
@@ -284,10 +311,11 @@ def lift_for(desc: Mapping[str, Any], concept: str, *, side_factor: float = 1.0)
     return lift, conf_w, ids
 
 
-def matchup_edge(structure: Any, mix: Mapping[str, float] | None, *, learned: Mapping[tuple[str, str], float] | None = None) -> dict[str, Any]:
+def matchup_edge(structure: Any, mix: Mapping[str, float] | None, *, learned: Mapping[tuple[str, str, str], float] | None = None) -> dict[str, Any]:
     """Expected logit lift of this play against the opponent's coverage MIXTURE (opponent unseen => the mixture is the prior).
 
-    ``learned`` optionally replaces a cell's prior lift with the posterior from ``adaptive_priors`` keyed (profile-group, concept).
+    ``learned`` holds RESIDUALS from ``adaptive_priors`` keyed ("g", coverage group, concept) and ("v", variant, concept). They are ADDED to the
+    variant-specific prior lift; they never replace it, so Robber vs Cover 1, Man vs Zone, Spot vs Match and Quarters vs Palms keep their distinctions.
     Returns edge (capped), se (uncertainty from prior confidence), and the cells that produced it (the auditable explanation)."""
     concepts = play_concepts(structure)
     total, var, cells = 0.0, 0.0, []
@@ -303,9 +331,9 @@ def matchup_edge(structure: Any, mix: Mapping[str, float] | None, *, learned: Ma
             lift, conf_w, ids = lift_for(d, concept)
             if not ids:
                 continue
-            grp = route_group(d) or "other"
-            if learned and (grp, concept) in learned:
-                lift = learned[(grp, concept)]
+            grp = learning_group(d) or "other"
+            if learned:
+                lift += learned.get(("g", grp, concept), 0.0) + learned.get(("v", variant_key(d) or "other", concept), 0.0)
             total += w * trust * lift
             var += (w * trust) ** 2 * max(0.0, 0.12 - 0.1 * min(1.0, conf_w / len(ids))) ** 2 * 4
             cells.append({"coverage": key, "concept": concept, "lift": round(lift, 4), "weight": round(w * trust, 4), "priors": ids})

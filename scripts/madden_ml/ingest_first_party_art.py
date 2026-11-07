@@ -27,31 +27,59 @@ from cfb_coach.madden.model import play_art_extract as pe  # noqa: E402
 SOURCE_OK = ("user_screenshot:", "user_recording:", "licensed_export:")
 
 
+def _parse_name(stem: str, default_side: str | None) -> tuple[str | None, str, str]:
+    """``<side>__<formation>__<play>`` (what ``ace_catalog.py art`` writes) or ``<formation>__<play>`` (the site's art name / your own captures)."""
+    parts = stem.split("__")
+    if len(parts) == 3 and parts[0] in ac.SIDES:
+        return parts[0], parts[1], parts[2]
+    if len(parts) == 2:
+        return default_side, parts[0], parts[1]
+    return None, "", ""
+
+
+def _index(recs: dict, game: str) -> tuple[dict, dict]:
+    """(identity -> id, art-file-name -> id). The art file name can differ from the link slug on the live site, so it is a second key."""
+    by_ident = {(r["side"], r["formation_slug"], r["play_slug"]): k for k, r in recs.items()}
+    by_art = {}
+    for k, r in recs.items():
+        if r.get("art_url"):
+            by_art[(r["side"], Path(r["art_url"]).stem)] = k
+    return by_ident, by_art
+
+
 def cmd_extract(a) -> int:
     store = ac.Store(a.store)
     recs = store.read()
+    by_ident, by_art = _index(recs, a.game)
     out = store.root / "extractions"
     out.mkdir(exist_ok=True)
-    n = skipped = 0
+    done = unmatched = unnamed = 0
     for img in sorted(Path(a.images).expanduser().glob("*.png")):
-        if "__" not in img.stem:
-            skipped += 1
+        side, f, p = _parse_name(img.stem, a.side)
+        if not f:
+            unnamed += 1
             continue
-        f, p = img.stem.split("__", 1)
-        rid = ac.record_id(a.game, a.side, ac.slug(f), ac.slug(p))
+        rid = None
+        sides = (side,) if side else ac.SIDES
+        for sd in sides:
+            rid = by_ident.get((sd, ac.slug(f), ac.slug(p))) or by_art.get((sd, f"{f}__{p}"))
+            if rid:
+                side = sd
+                break
+        if rid is None:
+            unmatched += 1                                   # never guess an identity: it is reported and skipped
+            continue
         data = img.read_bytes()
-        ex = pe.analyze(data, a.side)
+        ex = pe.analyze(data, side)
         ex.update({"id": rid, "art_sha256": hashlib.sha256(data).hexdigest(), "file": img.name})
         (out / f"{ac.slug(rid)}.json").write_text(json.dumps(ex, indent=1), encoding="utf-8")
         pe.render_overlay(data, ex).save(out / f"{ac.slug(rid)}_overlay.png")
-        if rid in recs:
-            recs[rid]["art_sha256"] = ex["art_sha256"]
-            recs[rid]["content_hash"] = ac.content_hash(recs[rid])
-        else:
-            skipped += 1
-        n += 1
+        recs[rid]["art_sha256"] = ex["art_sha256"]
+        recs[rid]["content_hash"] = ac.content_hash(recs[rid])
+        done += 1
     store.write_atomic(recs)
-    print(f"extracted {n} images into {out} ({skipped} not matched to a catalogue record or not named formation__play). Tier: diagram_extracted_unreviewed.")
+    print(f"extracted {done} images into {out} ({unmatched} did not match a catalogue record, {unnamed} not named <formation>__<play> or <side>__<formation>__<play>). "
+          "Tier: diagram_extracted_unreviewed.")
     return 0
 
 
@@ -69,11 +97,14 @@ def cmd_review(a) -> int:
         rows.append({"id": ex["id"], "side": ex["side"], "counts": json.dumps(c), "issues": "; ".join(issues) or "none flagged",
                      "overlay": f.name.replace(".json", "_overlay.png"), "approved": "", "source": "", "reviewer_notes": ""})
     q = store.root / "review_queue.csv"
-    with q.open("w", encoding="utf-8", newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=list(rows[0]) if rows else ["id"])
-        w.writeheader()
-        w.writerows(rows)
-    print(f"{len(rows)} plays queued: {q}  (open the overlay next to the original art; set approved=yes + source only for what you can confirm)")
+    fields = list(rows[0]) if rows else ["id"]
+    for name, subset in (("review_queue.csv", rows), ("review_queue_offense.csv", [r for r in rows if r["side"] == "offense"]),
+                         ("review_queue_defense.csv", [r for r in rows if r["side"] == "defense"])):
+        with (store.root / name).open("w", encoding="utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=fields)
+            w.writeheader()
+            w.writerows(subset)
+    print(f"{len(rows)} plays queued ({sum(r['side'] == 'offense' for r in rows)} offense, {sum(r['side'] == 'defense' for r in rows)} defense): {q}  (open the overlay next to the original art; set approved=yes + source only for what you can confirm)")
     return 0
 
 
@@ -109,7 +140,7 @@ def main() -> int:
     ap.add_argument("--store", default=str(Path.home() / "cfb_acemadden"))
     ap.add_argument("--game", default="madden27")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("extract"); p.add_argument("--images", required=True); p.add_argument("--side", choices=ac.SIDES, required=True); p.set_defaults(fn=cmd_extract)
+    p = sub.add_parser("extract"); p.add_argument("--images", required=True); p.add_argument("--side", choices=ac.SIDES, default=None, help="needed only for files named <formation>__<play>.png; <side>__<formation>__<play>.png carries its own side"); p.set_defaults(fn=cmd_extract)
     p = sub.add_parser("review"); p.set_defaults(fn=cmd_review)
     p = sub.add_parser("approve"); p.add_argument("--file", required=True); p.set_defaults(fn=cmd_approve)
     a = ap.parse_args()

@@ -161,7 +161,17 @@ def parse_listing(page_html: str, *, version: str = "", side_hint: str | None = 
         texts = [htmllib.unescape(t).strip() for t in TEXT_RE.findall(body)]
         why = None
         if not img:
-            why = "tile has no play-art image"
+            # a real, listed play whose tile carries no art (observed: 20 offense plays). Keep it, with no art_url; never drop a listed play.
+            nm = texts[-1] if texts else None
+            if not nm:
+                why = "tile has no play-art image and no visible name"
+            else:
+                rec = new_record(game=m.group("game"), version=version, side=m.group("side"), formation_slug=m.group("f"), play_slug=m.group("p"), play_name=nm,
+                                 personnel_group=texts[0] if len(texts) > 1 else None, detail_url=BASE + m.group(1), art_url=None, source_version=version,
+                                 permission=permission, retrieved_at=retrieved_at)
+                rec["source"]["no_art_in_listing"] = True
+                recs.append(rec)
+                continue
         elif (img.group("f"), img.group("side")) != (m.group("f"), m.group("side")):
             why = "image formation/side does not match the link (layout change or mis-linked tile)"
         elif side_hint and m.group("side") != side_hint:
@@ -252,8 +262,43 @@ class Fetcher:
         return self._get(rec["art_url"].removeprefix(self.base))
 
 
+class Progress:
+    """Health/progress file for long jobs (``progress.json``): phase, counters, pid, heartbeat. ``status`` reads it; a stale heartbeat means a hung/dead job."""
+
+    def __init__(self, store: "Store", job: str):
+        self.path, self.state = store.root / "progress.json", {"job": job, "pid": os.getpid(), "state": "running", "started": now(), "counters": {}}
+        self.beat()
+
+    def beat(self, **counters: Any) -> None:
+        self.state["counters"].update(counters)
+        self.state["heartbeat"] = now()
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.state, indent=1), encoding="utf-8")
+        os.replace(tmp, self.path)
+
+    def finish(self, state: str = "completed", **counters: Any) -> None:
+        self.state["state"] = state
+        self.beat(**counters)
+
+
+def job_status(store: "Store", *, stale_after_s: int = 300) -> dict[str, Any]:
+    p = store.root / "progress.json"
+    if not p.is_file():
+        return {"state": "no job recorded"}
+    st = json.loads(p.read_text(encoding="utf-8"))
+    alive = False
+    try:
+        os.kill(int(st["pid"]), 0)
+        alive = True
+    except (OSError, ValueError, KeyError):
+        pass
+    age = (datetime.now(timezone.utc) - datetime.strptime(st["heartbeat"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)).total_seconds()
+    health = "finished" if st["state"] != "running" else ("healthy" if alive and age <= stale_after_s else ("STALE: no heartbeat" if alive else "DEAD: process gone while marked running"))
+    return {**st, "process_alive": alive, "heartbeat_age_s": int(age), "health": health}
+
+
 def discover(fetcher: Fetcher, *, game: str = "madden27", sides: Iterable[str] = SIDES, max_pages: int | None = None, version: str = "",
-             permission: Mapping[str, Any] | None = None) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+             permission: Mapping[str, Any] | None = None, progress: "Progress | None" = None) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     """Walk listing pages until one repeats or is empty. Returns (records, quarantined, stats). Writes nothing."""
     out: dict[str, dict[str, Any]] = {}
     quarantine: list[dict[str, Any]] = []
@@ -272,11 +317,16 @@ def discover(fetcher: Fetcher, *, game: str = "madden27", sides: Iterable[str] =
             if ids and ids == seen_first:
                 break
             seen_first = seen_first or ids
-            for r in parsed.records:
+            fresh = [r for r in parsed.records if r["id"] not in out]
+            if not fresh:
+                break                       # the site serves the LAST page again for any page number past the end (observed): no new plays = done
+            for r in fresh:
                 out.setdefault(r["id"], r)
             quarantine += [{**q, "side": side, "page": page} for q in parsed.quarantined]
             stats["pages"][f"{side}:{page}"] = parsed.tiles_seen
             stats["tiles"] += parsed.tiles_seen
+            if progress:
+                progress.beat(phase=f"discover:{side}", page=page, records=len(out), requests=fetcher.requests)
             page += 1
     stats["records"], stats["quarantined"] = len(out), len(quarantine)
     return out, quarantine, stats

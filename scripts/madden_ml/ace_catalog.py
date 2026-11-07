@@ -78,7 +78,13 @@ def cmd_sync(a) -> int:
     f = _fetcher(a, store)
     ac.require_scope(store, "metadata_bulk") if a.max_pages is None else None   # bulk sync needs the scope; small samples do not
     perm = _permission(a, store)
-    recs, quarantine, stats = ac.discover(f, game=a.game, max_pages=a.max_pages, permission=perm)
+    prog = ac.Progress(store, "sync")
+    try:
+        recs, quarantine, stats = ac.discover(f, game=a.game, max_pages=a.max_pages, permission=perm, progress=prog)
+    except BaseException:
+        prog.finish("failed")
+        raise
+    prog.beat(phase="validate+write")
     if a.details:
         for r in recs.values():
             try:
@@ -97,6 +103,7 @@ def cmd_sync(a) -> int:
     for q in quarantine:
         store.append("quarantine.jsonl", q)
     print(json.dumps(ac.sync(store, recs, scope_sides=ac.SIDES), indent=2), f"quarantined={len(quarantine)}")
+    prog.finish("completed", records=len(recs), quarantined=len(quarantine))
     return 0
 
 
@@ -124,6 +131,8 @@ def cmd_art(a) -> int:
     f = _fetcher(a, store)
     recs = store.read()
     done = 0
+    prog = ac.Progress(store, "art")
+    todo = sum(1 for r in recs.values() if not r.get("art_sha256") and r.get("art_url") and (not a.side or r["side"] == a.side))
     for k, r in sorted(recs.items()):
         if r.get("art_sha256") or not r.get("art_url") or (a.side and r["side"] != a.side):
             continue
@@ -134,10 +143,26 @@ def cmd_art(a) -> int:
         r["art_sha256"], r["permitted_use"] = h, _permission(a, store)
         r["content_hash"] = ac.content_hash(r)
         done += 1
+        prog.beat(phase="art", downloaded=done, remaining=todo - done, requests=f.requests)
+        if done % 25 == 0:
+            store.write_atomic(recs)                                  # checkpoint: a crash loses at most 25 images of bookkeeping; files are kept and the job is resumable
         if a.limit and done >= a.limit:
             break
     store.write_atomic(recs)
+    prog.finish("completed", downloaded=done)
     print(f"downloaded {done} images into {store.root / 'raw'} (private; not for redistribution)")
+    return 0
+
+
+def cmd_status(a) -> int:
+    store = ac.Store(a.store)
+    recs = store.read()
+    waterfall = {side: {"listed": sum(r["side"] == side for r in recs.values()),
+                        "art_url_present": sum(r["side"] == side and bool(r.get("art_url")) for r in recs.values()),
+                        "art_downloaded": sum(r["side"] == side and bool(r.get("art_sha256")) for r in recs.values()),
+                        "geometry_extracted": sum(json.loads(f.read_text()).get("side") == side for f in (store.root / "extractions").glob("*.json")) if (store.root / "extractions").is_dir() else 0,
+                        "verified": sum(r["side"] == side and r["evidence"]["tier"] in ac.VERIFIED for r in recs.values())} for side in ac.SIDES}
+    print(json.dumps({"job": ac.job_status(store), "waterfall": waterfall}, indent=2))
     return 0
 
 
@@ -171,7 +196,7 @@ def main() -> int:
     ap.add_argument("--delay", type=float, default=1.5, help="seconds between requests (be gentle)")
     ap.add_argument("--permission-note", default="", help="record of the written permission you hold (stored with every record)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for n, fn in (("discover", cmd_discover), ("sync", cmd_sync), ("import", cmd_import), ("art", cmd_art), ("validate", cmd_validate), ("audit", cmd_audit), ("authorize", cmd_authorize)):
+    for n, fn in (("discover", cmd_discover), ("sync", cmd_sync), ("import", cmd_import), ("art", cmd_art), ("validate", cmd_validate), ("audit", cmd_audit), ("authorize", cmd_authorize), ("status", cmd_status)):
         p = sub.add_parser(n)
         p.set_defaults(fn=fn)
         if n in ("discover", "sync"):

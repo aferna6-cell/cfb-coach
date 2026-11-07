@@ -29,7 +29,8 @@ TIER = "diagram_extracted_unreviewed"
 PANEL = (556, 258)
 
 # hue buckets in degrees; measured from AceMadden panels, recorded in output as colour names only (no football meaning attached)
-HUES = {"red": (330, 20), "yellow": (40, 75), "green": (90, 150), "blue": (200, 255), "purple": (256, 310)}
+HUES = {"red": (330, 20), "yellow": (40, 75), "green": (90, 150), "cyan": (165, 199), "blue": (200, 255), "purple": (256, 310)}
+BADGE_BY_COLOUR = {"offense": {"blue": "PASS", "red": "RUN"}, "defense": {"orange": "MAN", "purple": "MATCH", "blue": "ZONE", "red": "BLITZ"}}
 
 
 def _hue_name(h: float) -> str | None:
@@ -157,6 +158,31 @@ def _markers(white: np.ndarray) -> list[dict[str, Any]]:
     return out
 
 
+def _badge(arr: np.ndarray, side: str) -> dict[str, Any]:
+    """The coloured label chip at the bottom-left of the panel (e.g. MAN / MATCH / BLITZ / ZONE, PASS / RUN). Colour is measured; the word is the site's
+    convention and is recorded as a hint, not OCR'd and not verified."""
+    h, w = arr.shape[:2]
+    patch = arr[int(h * 0.90):int(h * 0.99), 2:int(w * 0.11)].reshape(-1, 3).astype(float)
+    px = patch[(patch.max(1) - patch.min(1)) > 60]                       # saturated chip pixels only
+    if len(px) < 40:
+        return {"colour": None, "hint": None}
+    r, g, b = px.mean(0) / 255.0
+    hh, ss, vv = colorsys.rgb_to_hsv(r, g, b)
+    deg = hh * 360
+    name = "orange" if 15 <= deg < 40 else _hue_name(deg)
+    return {"colour": name, "hint": BADGE_BY_COLOUR[side].get(name), "basis": "chip colour; text not read; unverified"}
+
+
+def _white_bars(white: np.ndarray) -> list[dict[str, Any]]:
+    out = []
+    for c in _components(white, 20):
+        x0, x1, y0, y1 = c[:, 0].min(), c[:, 0].max(), c[:, 1].min(), c[:, 1].max()
+        w, hgt = x1 - x0 + 1, y1 - y0 + 1
+        if max(w, hgt) >= 25 and max(w, hgt) / max(1, min(w, hgt)) >= 4:
+            out.append({"x": round(float(c[:, 0].mean()), 1), "y_top": int(y0), "y_bottom": int(y1), "length_px": int(max(w, hgt)), "vertical": bool(hgt >= w)})
+    return sorted(out, key=lambda b: b["x"])
+
+
 def _family(path: list[tuple[float, float]], start_x: float) -> dict[str, Any]:
     """Coarse shape label from the simplified polyline. A SUGGESTION for the reviewer; never a taxonomy assignment."""
     pts = _simplify(path)
@@ -233,9 +259,11 @@ def analyze(source: bytes | str | Path, side: str) -> dict[str, Any]:
     chrome = np.zeros(arr.shape[:2], bool)
     chrome[int(arr.shape[0] * 0.88):, :] = True
     white = (s < 0.18) & (v > 0.86) & ~chrome
-    vivid = (s > 0.42) & (v > 0.42) & ~chrome
+    vivid = ((s > 0.42) & (v > 0.42) | (s > 0.18) & (v > 0.72) & (h >= 165) & (h <= 199)) & ~chrome      # second clause: pale cyan lines (backs / motion)
     dim = (s > 0.3) & (v > 0.22) & ~vivid & ~chrome        # translucent zone fills
     players = _markers(white)
+    badge = _badge(arr, side)
+    stubs = _white_bars(white)
     for i, p in enumerate(sorted(players, key=lambda m: (m["x"], m["y"]))):
         p["index_left_to_right"] = i
     colour_of = {}
@@ -285,7 +313,7 @@ def analyze(source: bytes | str | Path, side: str) -> dict[str, Any]:
     else:
         zones = []
         for name in ("blue", "purple", "yellow", "green", "red"):
-            m = dim & (hue_name == name)
+            m = _dilate(dim & (hue_name == name), 3) & ~chrome                       # a link line crossing an oval must not split it
             for comp in _components(m, 400):
                 x0, x1, y0, y1 = comp[:, 0].min(), comp[:, 0].max(), comp[:, 1].min(), comp[:, 1].max()
                 if (x1 - x0) < 25 or (y1 - y0) < 12:
@@ -311,6 +339,9 @@ def analyze(source: bytes | str | Path, side: str) -> dict[str, Any]:
                     "counts": {"markers": len(players), "zones": len(zones), "rush_arrows": len(rush), "links": len(links)}})
         if len(players) < 7:
             flags.append("fewer_than_7_defender_markers")
+    out["badge"] = badge
+    if side == "offense":
+        out["blocker_stubs"] = stubs
     out["needs_review"] = True
     return out
 

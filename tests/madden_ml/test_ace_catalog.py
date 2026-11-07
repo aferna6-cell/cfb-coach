@@ -41,7 +41,8 @@ class FakeOpener:
             raise urllib.error.HTTPError(req.full_url, self.errors[path], "x", {}, None)
         if path not in self.pages:
             raise urllib.error.HTTPError(req.full_url, 404, "nf", {}, None)
-        return FakeResp(self.pages[path].encode())
+        body = self.pages[path]
+        return FakeResp(body if isinstance(body, bytes) else body.encode())
 
 
 def fetcher(tmp_path, pages, errors=None, **kw):
@@ -251,3 +252,121 @@ def test_cli_art_refuses_without_the_images_scope(tmp_path):
     subprocess.run(base + ["authorize", "--sender", "a@b.test", "--date", "2026-11-07", "--scopes", "metadata_bulk", "--reference", "r", "--summary", "metadata only"], check=True, capture_output=True)
     r = subprocess.run(base + ["art"], capture_output=True, text=True)
     assert r.returncode != 0 and "images_download" in (r.stderr + r.stdout)
+
+
+def _panel_defense():
+    img = Image.new("RGB", pe.PANEL, (0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.ellipse([40, 10, 170, 50], fill=(0, 0, 96))                                            # dim blue zone fill (as in the real art)
+    d.rectangle([205, 190, 215, 200], fill=(255, 255, 255))                                  # square marker (a rusher)
+    d.line([210, 190, 210, 150], fill=(220, 20, 40), width=4)                                # red rush arrow
+    for x in (60, 140, 360, 440):
+        d.line([x - 4, 100, x + 4, 108], fill=(255, 255, 255), width=2)
+        d.line([x - 4, 108, x + 4, 100], fill=(255, 255, 255), width=2)
+    buf = io.BytesIO(); img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _load_script(name):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / "madden_ml" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_end_to_end_download_then_extract_matches_identity_and_routes_to_the_right_queue(tmp_path, monkeypatch):
+    """Fixture 'site' -> discover -> sync -> art download (script code path) -> extract (script, NO --side) -> review queues per side."""
+    import argparse
+    off_html = html("listing_offense_p1.html").replace("fixture-formation-a__test-play-two", "fixture-formation-a__test-play-tw0")   # art name differs from the link slug
+    pages = {"/playbooks/plays/madden27?page=1": off_html, "/playbooks/plays/madden27?page=2": "<html></html>",
+             "/playbooks/plays/madden27?page=1&side=defense": html("listing_defense_p1.html"), "/playbooks/plays/madden27?page=2&side=defense": "<html></html>",
+             "/play-art/madden27/offense/fixture-formation-a__test-play-one.png": _panel_offense(),
+             "/play-art/madden27/offense/fixture-formation-a__test-play-tw0.png": _panel_offense(),
+             "/play-art/madden27/defense/fixture-front__test-cover-3.png": _panel_defense()}
+    store_dir = tmp_path / "s"
+    st, f = fetcher(store_dir.parent, pages, permission_note="test authorization")
+    st = ac.Store(store_dir)
+    f.store = st
+    recs, q, stats = ac.discover(f, permission={"status": "authorized", "scopes": ["metadata_bulk"]})
+    assert len(recs) == 3 and not q
+    ac.sync(st, recs)
+    ac.record_authorization(st, sender="owner-supplied", date="2026-11-07", scopes=["images_download", "images_local_storage"], restrictions="private", private_reference="r", summary="test")
+    script = _load_script("ace_catalog")
+    monkeypatch.setattr(script, "_fetcher", lambda a, store: f)
+    n = script.cmd_art(argparse.Namespace(store=str(store_dir), side=None, limit=0, permission_note="", delay=0, game="madden27"))
+    assert n == 0
+    names = sorted(p.name for p in (store_dir / "raw").glob("*.png"))
+    assert names == ["defense__fixture-front__test-cover-3.png", "offense__fixture-formation-a__test-play-one.png", "offense__fixture-formation-a__test-play-two.png"]
+    cli = [sys.executable, str(ROOT / "scripts/madden_ml/ingest_first_party_art.py"), "--store", str(store_dir)]
+    r = subprocess.run(cli + ["extract", "--images", str(store_dir / "raw")], capture_output=True, text=True)         # no --side: the file names carry it
+    assert r.returncode == 0 and "extracted 3 images" in r.stdout and "0 did not match" in r.stdout, r.stdout + r.stderr
+    assert subprocess.run(cli + ["review"], capture_output=True, text=True).returncode == 0
+    off_q = (store_dir / "review_queue_offense.csv").read_text()
+    def_q = (store_dir / "review_queue_defense.csv").read_text()
+    assert "madden27|offense|fixture-formation-a|test-play-one" in off_q and "test-play-two" in off_q and "defense" not in off_q.split("\n", 1)[1]
+    assert "madden27|defense|fixture-front|test-cover-3" in def_q and "offense" not in def_q.split("\n", 1)[1]
+    ex_def = json.loads(next((store_dir / "extractions").glob("madden27-defense*.json")).read_text())
+    ex_off = json.loads(next((store_dir / "extractions").glob("madden27-offense*one*.json")).read_text())
+    assert ex_def["side"] == "defense" and ex_def["counts"]["zones"] >= 1 and ex_def["counts"]["rush_arrows"] == 1
+    assert ex_off["side"] == "offense" and ex_off["counts"]["routes"] == 3
+    after = ac.Store(store_dir).read()
+    assert all(r["art_sha256"] for r in after.values()) and ac.validate(after) == [] or all("info:" in e or "art stored" not in e for e in ac.validate(after))
+
+
+def test_files_named_with_the_sites_art_slug_match_through_the_second_key(tmp_path):
+    st = ac.Store(tmp_path / "s")
+    p = ac.parse_listing(html("listing_offense_p1.html").replace("fixture-formation-a__test-play-two", "fixture-formation-a__test-play-tw0"))
+    ac.sync(st, {r["id"]: r for r in p.records})
+    imgs = tmp_path / "i"
+    imgs.mkdir()
+    (imgs / "fixture-formation-a__test-play-tw0.png").write_bytes(_panel_offense())          # the site's own (typo) art name, no side in the name
+    cli = [sys.executable, str(ROOT / "scripts/madden_ml/ingest_first_party_art.py"), "--store", str(tmp_path / "s")]
+    r = subprocess.run(cli + ["extract", "--images", str(imgs), "--side", "offense"], capture_output=True, text=True)
+    assert "extracted 1 images" in r.stdout
+    assert (tmp_path / "s" / "extractions").glob("*test-play-two*")
+
+
+def test_discovery_stops_when_the_site_repeats_its_last_page(tmp_path):
+    """Observed on the live site: any page number past the end returns the last page again (not an empty page, not page 1)."""
+    last = html("listing_offense_p1.html")
+    pages = {"/playbooks/plays/madden27?page=1": html("listing_defense_p1.html").replace("defense", "offense"),
+             "/playbooks/plays/madden27?page=2": last}
+    for n in range(3, 40):
+        pages[f"/playbooks/plays/madden27?page={n}"] = last                                   # endless repeats of the last page
+    st, f = fetcher(tmp_path, pages)
+    recs, q, stats = ac.discover(f, sides=("offense",))
+    assert len(recs) == 3 and f.requests <= 5                                                 # robots + pages 1, 2, 3 (+ at most one more)
+
+
+def test_a_listed_play_with_no_art_tile_is_kept_without_an_art_url_not_quarantined():
+    tile = ('<a href="/playbooks/plays/madden27/offense/fixture-formation-a/no-art-play"><div class="play-art-shimmer"></div>'
+            '<div><div>3WR</div><div>No Art Play</div></div></a>')
+    p = ac.parse_listing("<html>" + tile + "</html>")
+    assert not p.quarantined and p.records[0]["play_name"] == "No Art Play" and p.records[0]["art_url"] is None
+    assert p.records[0]["source"]["no_art_in_listing"] is True and ac.validate({r["id"]: r for r in p.records}) == []
+
+
+def test_progress_file_reports_a_healthy_finished_and_a_dead_job(tmp_path):
+    st = ac.Store(tmp_path / "s")
+    prog = ac.Progress(st, "sync")
+    prog.beat(phase="discover:offense", page=3, records=72)
+    s = ac.job_status(st)
+    assert s["state"] == "running" and s["process_alive"] and s["health"] == "healthy" and s["counters"]["records"] == 72
+    prog.finish("completed")
+    assert ac.job_status(st)["health"] == "finished"
+    dead = json.loads((st.root / "progress.json").read_text())
+    dead.update(state="running", pid=2 ** 22 + 12345)
+    (st.root / "progress.json").write_text(json.dumps(dead))
+    assert ac.job_status(st)["health"].startswith("DEAD")
+    dead.update(pid=__import__("os").getpid(), heartbeat="2020-01-01T00:00:00Z")
+    (st.root / "progress.json").write_text(json.dumps(dead))
+    assert ac.job_status(st)["health"].startswith("STALE")
+
+
+def test_discovery_heartbeats_each_page(tmp_path):
+    pages = {"/playbooks/plays/madden27?page=1": html("listing_offense_p1.html"), "/playbooks/plays/madden27?page=2": "<html></html>"}
+    st, f = fetcher(tmp_path, pages)
+    prog = ac.Progress(st, "sync")
+    ac.discover(f, sides=("offense",), progress=prog)
+    assert ac.job_status(st)["counters"]["page"] == 1 and ac.job_status(st)["counters"]["records"] == 2
