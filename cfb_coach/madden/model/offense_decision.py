@@ -117,6 +117,14 @@ class Decision:
         }
 
 
+BEAM_WIDTH = 6      # search breadth (runtime bound), NOT a limit on how many adjustments a play may carry
+POOL_SIZE = 12      # single actions eligible to be combined
+
+
+def _key(a: ex.PlannedAction) -> tuple:
+    return (a.action_id, tuple(sorted(dict(a.params).items())))
+
+
 def label_for(actions: Sequence[ex.PlannedAction]) -> str:
     if not actions:
         return NO_ADJUSTMENT
@@ -141,16 +149,30 @@ def _evidence(s: pf.PlayStructure) -> str:
     return "catalog_only"
 
 
+NON_ROUTE_ACTIONS = ("off.pass_protection", "off.chip_block", "off.motion", "off.fake_snap")
+
+
 def _apply_actions(s: pf.PlayStructure, actions: Sequence[ex.PlannedAction],
                    macro_effects: Mapping[str, MacroEffect]) -> pf.PlayStructure:
+    """Ordered transformations of the VERIFIED stock structure. Two actions may never change the same receiver, and an
+    original assignment that is unknown is never invented (``apply_hot_route`` refuses). Reads are recomputed from the result:
+    ``apply_hot_route`` clears the stock read order, so a stale progression cannot leak through."""
+    touched: dict[str, str] = {}
     for a in actions:
         if a.action_id == "off.hot_route":
-            s = pf.apply_hot_route(s, a.params["target"], a.params["route"])
+            changes = {a.params["target"]: a.params["route"]}
+        elif a.action_id in NON_ROUTE_ACTIONS:
+            continue                                   # protection / blocking / motion: no receiver route changes
         else:
             eff = macro_effects.get(a.action_id.removeprefix("off.saved."))
             if eff is None or not eff.verified:
                 raise pf.StructureError("macro effect is not user-verified; cannot represent it")
-            s = pf.apply_route_changes(s, eff.changes)
+            changes = dict(eff.changes)
+        for slot in changes:
+            if slot in touched:
+                raise pf.StructureError(f"conflicting assignments: {slot} is changed by both {touched[slot]} and {a.action_id}")
+            touched[slot] = a.action_id
+        s = pf.apply_route_changes(s, changes)
     return s
 
 
@@ -159,8 +181,9 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
            loadout: ex.Loadout | None = None, confirmations: Mapping[str, Any] | None = None,
            macro_effects: Mapping[str, MacroEffect] | None = None, mode: str = "live",
            margin: float = DEFAULT_MARGIN, z: float = DEFAULT_Z, budget_ms: float = DEFAULT_BUDGET_MS,
-           adjust_top: int = 5, max_pairs: int = 6, allow_adjustments: bool = True,
-           recent_calls: Sequence[Any] | None = None) -> Decision:
+           adjust_top: int = 5, max_pairs: int | None = None, allow_adjustments: bool = True,
+           recent_calls: Sequence[Any] | None = None, beam_width: int = BEAM_WIDTH, pool_size: int = POOL_SIZE,
+           extra_actions: Sequence[ex.PlannedAction] = (), non_route_gain: Mapping[str, tuple[float, float]] | None = None) -> Decision:
     """``mode='live'`` requires confirmed Madden executability; ``'research'`` scores but marks not executable."""
     if mode not in ("live", "research"):
         raise ValueError(mode)
@@ -224,6 +247,10 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
                     actions, label_for(actions), sc.probability, 0.0, 0.0, 0.0, [str(exc)], False, {},
                     reject_reason=str(exc))
             gain, se, outside = scorer.score(mod)
+            for a_ in actions:                         # evidence-backed gains of non-route actions (protection etc.); none by default
+                g_, se_ = (non_route_gain or {}).get(a_.action_id, (0.0, 0.0))
+                if a_.action_id in NON_ROUTE_ACTIONS:
+                    gain, se = gain + g_, (se * se + se_ * se_) ** 0.5
             p = sm._sigmoid(base_logit + gain)
             ps = PlanScore(actions, f"{s.play}: {label_for(actions)}", p, gain, se, p - sc.probability, [], False, {})
             # Cheap numeric screens first; Madden legality only for survivors.
@@ -256,20 +283,63 @@ def decide(artifact: sm.StructuralArtifact, situation: Situation,
             ps = consider((ex.PlannedAction("off.hot_route", {"target": slot, "route": option}),))
             if ps is not None and (ps.accepted or ps.errors):   # errors are only set after the numeric screens passed
                 singles.append(ps)
-        singles.sort(key=lambda p: -p.gain_logit)
-        for a, b in itertools.islice(itertools.combinations(singles[:max_pairs], 2), 12):
-            if a.actions[0].params["target"] == b.actions[0].params["target"]:
-                continue
-            if (time.perf_counter() - t0) * 1000 > budget_ms:
-                truncated = True
-                break
-            consider(a.actions + b.actions)
         if loadout is not None:
             for entry in loadout.entries:
                 eff = macro_effects.get(entry.name)
                 if entry.side != "offense" or eff is None or not eff.verified or loadout.usable("offense", entry.name) is None:
                     continue
-                consider((ex.PlannedAction(f"off.saved.{entry.name}"),))
+                ps = consider((ex.PlannedAction(f"off.saved.{entry.name}"),))
+                if ps is not None and (ps.accepted or ps.errors):
+                    singles.append(ps)
+        for pa in extra_actions:
+            ps = consider((pa,))
+            if ps is not None and (ps.accepted or ps.errors):
+                singles.append(ps)
+        singles.sort(key=lambda p: -p.gain_logit)
+        # Bounded beam search over COMBINATIONS. The only limits are legality (validate_plan: eligible players, exclusive/conflicting
+        # controls, play clock), conflicting receiver assignments, evidence (a combination must beat its own parent on the lower
+        # confidence bound), and the latency budget. There is no cap on the number of adjustments in a plan.
+        # Dominance pruning: per receiver keep only its best two route options, so the pool spans DIFFERENT receivers
+        # (otherwise the top singles are all alternatives for one receiver and can never be combined).
+        per_target: dict[Any, int] = {}
+        pool = []
+        for p_ in singles:
+            tgt = p_.actions[0].params.get("target", p_.actions[0].action_id)
+            if per_target.get(tgt, 0) >= 2:
+                continue
+            per_target[tgt] = per_target.get(tgt, 0) + 1
+            pool.append(p_)
+        pool = pool[:pool_size]
+        beam = [p for p in singles[:beam_width] if p.accepted or not p.errors]
+        seen = {frozenset(_key(a) for a in p.actions) for p in singles}
+        while beam and not truncated:
+            nxt: list[PlanScore] = []
+            for parent in beam:
+                for single in pool:
+                    if (time.perf_counter() - t0) * 1000 > budget_ms:
+                        truncated = True
+                        break
+                    act = single.actions[0]
+                    if any(_key(act) == _key(x) for x in parent.actions):
+                        continue
+                    if act.action_id == "off.hot_route" and any(x.action_id == "off.hot_route" and x.params.get("target") == act.params.get("target")
+                                                                 for x in parent.actions):
+                        continue                          # one command per receiver: cheap pre-filter, the full check is _apply_actions
+                    combo = parent.actions + single.actions
+                    sig = frozenset(_key(x) for x in combo)
+                    if sig in seen:
+                        continue                          # dedupe: same set in a different order
+                    seen.add(sig)
+                    child = consider(combo)
+                    # dominance: keep only extensions that raise the lower confidence bound over the parent
+                    if child is not None and not child.reject_reason.startswith("modified play outside") \
+                            and (child.gain_logit - z * child.gain_se) > (parent.gain_logit - z * parent.gain_se) + 1e-9 \
+                            and (child.accepted or not child.errors):
+                        nxt.append(child)
+                if truncated:
+                    break
+            nxt.sort(key=lambda p: -(p.gain_logit - z * p.gain_se))
+            beam = nxt[:beam_width]
 
     # Best accepted plan must beat the best STOCK play by the margin, not just its own play.
     accepted = [p for p in plans if p.accepted and p.probability >= best.probability + margin]

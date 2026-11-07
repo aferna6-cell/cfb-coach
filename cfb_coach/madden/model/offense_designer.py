@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 from datetime import datetime, timezone
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from cfb_coach.madden import catalog, playbook, research_db
 from cfb_coach.madden.model import experimental_model
@@ -155,6 +155,65 @@ def _macro_drafts(formations: Mapping[str, list[str]], sources: Mapping[str, str
     return drafts[:8]
 
 
+SWAP_MIN_SCORE_GAP = 0.02   # an optional swap is only suggested when the evidence gap is at least this large
+
+
+def additive_book(*, active: Mapping[str, Any], chosen_formations: Mapping[str, list[str]], chosen_sources: Mapping[str, str],
+                  ranked: Sequence[Mapping[str, Any]], catalogue: Mapping[str, Mapping[str, list[str]]],
+                  max_formations: int = MAX_FORMATIONS, must_add: Sequence[str] = ()
+                  ) -> tuple[dict[str, list[str]], dict[str, str], list[dict[str, Any]], list[str]]:
+    """Retain every installed formation; add up to the cap; at the cap offer optional, evidence-backed swaps only."""
+    old = {f: list(p) for f, p in (active.get("formations") or {}).items()}
+    old_sources = dict(active.get("formation_sources") or {})
+    formations: dict[str, list[str]] = {}
+    sources: dict[str, str] = {}
+    notes: list[str] = []
+    for f, plays in old.items():                                         # every installed formation stays; never removed
+        src = old_sources.get(f)
+        if not (src and f in (catalogue.get(src) or {})):
+            src = chosen_sources.get(f) if f in (catalogue.get(chosen_sources.get(f) or "") or {}) else next((b for b, fm in catalogue.items() if f in fm), None)
+        if src and list(catalogue[src][f]) != plays:                     # diverged/partial install -> complete the SAME formation (REINSTALL), not drop it
+            plays = list(catalogue[src][f])
+        formations[f], sources[f] = plays, src or old_sources.get(f) or "installed"
+    score = {r["formation"]: float(r.get("score") or 0.0) for r in ranked}
+    room = max_formations - len(formations)
+    # owner-requested additions first (need a catalogued source), then the portfolio's own picks in rank order
+    wanted: list[tuple[str, list[str], str]] = []
+    for name in must_add:
+        if name in formations:
+            notes.append(f"{name} is already installed")
+            continue
+        src = next((b for b, fm in catalogue.items() if name in fm), None)
+        if src is None:
+            notes.append(f"{name}: no catalogued source found; not added")
+            continue
+        src = chosen_sources.get(name) or src
+        wanted.append((name, list(catalogue[src][name]) if src in catalogue and name in catalogue[src] else list(chosen_formations.get(name, [])), src))
+    for name, plays in chosen_formations.items():
+        if name not in formations and name not in {w[0] for w in wanted}:
+            wanted.append((name, list(plays), chosen_sources[name]))
+    for name, plays, src in wanted:
+        if room <= 0:
+            break
+        formations[name], sources[name] = plays, src
+        room -= 1
+    swaps: list[dict[str, Any]] = []
+    if len(old) >= max_formations:                                       # only when the book was ALREADY full before this proposal
+        notes.append(f"book is at the {max_formations}-formation cap: removals are only ever OPTIONAL swaps for the owner to decide")
+        installed_scored = sorted(((score.get(f, 0.0), f) for f in formations))
+        outside = sorted(((score.get(r["formation"], 0.0), r["formation"], r["source_book"]) for r in ranked if r["formation"] not in formations), reverse=True)
+        for (s_out, f_out), (s_in, f_in, src) in zip(installed_scored, outside):
+            if s_in - s_out >= SWAP_MIN_SCORE_GAP:
+                swaps.append({"action": "OPTIONAL_SWAP", "remove": f_out, "add": f_in, "add_source_book": src,
+                              "evidence": {"installed_score": round(s_out, 4), "candidate_score": round(s_in, 4), "gap": round(s_in - s_out, 4)},
+                              "requires_owner_approval": True})
+    else:
+        notes.append(f"{len(formations)} of {max_formations} formations: nothing is removed; unused formations may stay installed")
+    if len(formations) >= max_formations and len(old) < max_formations:
+        notes.append(f"this proposal fills the {max_formations}-formation cap; swaps can only be proposed from the next proposal on")
+    return formations, sources, swaps, notes
+
+
 def design_offense(
     db: Any,
     *,
@@ -162,8 +221,16 @@ def design_offense(
     max_formations: int = MAX_FORMATIONS,
     artifact: Any = None,
     catalogue: Mapping[str, dict[str, list[str]]] | None = None,
+    must_add: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Deterministic formation-level design. Installs ALL catalogued plays per chosen formation.
+    """Deterministic formation-level design.
+
+    ADDITIVE POLICY (owner, #120): every currently installed formation is retained, verbatim, until the book holds
+    ``max_formations`` (15). The model never proposes a removal merely because a formation scores poorly: it can simply
+    stop calling it. At the cap it may list OPTIONAL swaps (evidence attached) for the owner to accept or ignore.
+    ``must_add`` names owner-requested formations that are added first when a catalogued source exists.
+
+    Previously: Installs ALL catalogued plays per chosen formation.
 
     No individual play edits. The selected stock source is recorded because
     Madden's catalogued play list is stock-book-specific, not a guaranteed
@@ -193,8 +260,12 @@ def design_offense(
     if not chosen:
         raise ValueError("No eligible catalogued offensive plays were found")
 
-    formations = {r["formation"]: r["plays"] for r in chosen}
-    sources = {r["formation"]: r["source_book"] for r in chosen}
+    chosen_f = {r["formation"]: r["plays"] for r in chosen}
+    chosen_s = {r["formation"]: r["source_book"] for r in chosen}
+    formations, sources, optional_swaps, policy_notes = additive_book(
+        active=active, chosen_formations=chosen_f, chosen_sources=chosen_s, ranked=ranks,
+        catalogue=all_books, max_formations=max_formations, must_add=must_add,
+    )
     from cfb_coach.madden.model.offense_macro_lab import compose_drafts
 
     macro_blueprints = _macro_drafts(formations, sources)
@@ -250,6 +321,10 @@ def design_offense(
             "reason": "Model-designed whole formations with every catalogued play from selected source",
         },
         "changes": changes,
+        "optional_swaps": optional_swaps,
+        "formation_policy": {"mode": "additive_until_cap", "cap": max_formations, "installed_before": len(old),
+                             "installed_after": len(formations), "removals": [c["formation"] for c in changes if c["action"] == "REMOVE_FORMATION"],
+                             "notes": policy_notes},
         "candidate_formations": len(ranks), "ranked_formations": [
             {
                 "formation": row["formation"], "source_book": row["source_book"],
