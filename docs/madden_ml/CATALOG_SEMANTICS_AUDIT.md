@@ -91,3 +91,18 @@ No third-party art or extracted geometry is committed or redistributed.
 Private live reports: `/workspace/ace-responsibility-progress.json` and
 `/workspace/ace-responsibility-report.md` (counts and installed-offense proposal
 table; refreshed by the background job). Tests use synthetic art only.
+
+## Continued private collection and book-pointer pass
+
+`ace_playbook_memberships.py` refuses all requests while any art process is alive.
+After art exits it uses the existing public Fetcher (minimum 1.5-second delay,
+robots-aware, no cookies/login; 401/403 stop) to discover public book links and
+match their formation anchors against existing formation records only. Unmatched
+or side-ambiguous slugs remain unresolved. Unknown layouts stop rather than guess.
+It writes only private `formations.json` / `playbooks.json`, using pointers to the
+same unique formation records rather than copying formations between books.
+Raw art is not requested and catalog/authorization are never written by this pass.
+Resumable book checkpoints and synthetic tests cover deduplication, live-art guards,
+unchanged downloader-owned files and restricted robots access. Membership does
+not review or certify player responsibilities. Private live scrape reports now
+separately expose indexed, hashed, raw, extracted, art-error and installed counts.
