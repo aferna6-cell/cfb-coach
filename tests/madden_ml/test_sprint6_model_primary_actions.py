@@ -17,6 +17,7 @@ from cfb_coach.madden.model.schema import CoachingMode
 from cfb_coach.madden.playcaller import MaddenCall
 from cfb_coach.madden.situation import parse_madden_situation
 from cfb_coach.situation import Situation
+from tests.madden_ml.live_book import apply_offense_book
 
 
 def _seed() -> dict:
@@ -222,6 +223,7 @@ class ActionVerificationTests(unittest.TestCase):
         self.assertEqual(closed["executed_macro"], "MAN")
 
     def test_madden_drawer_collapsed_and_confirmation_unchecked(self) -> None:
+        apply_offense_book(self.db, {"Gun Bunch": ["Mesh"]})
         ctrl = LivePlayController(
             db=self.db, opponent_id="cpu",
             make_call=lambda sit, **kwargs: MaddenCall(

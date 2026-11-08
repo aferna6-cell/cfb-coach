@@ -1137,17 +1137,86 @@ def cmd_ml_defense_experimental(args: argparse.Namespace) -> int:
         db.close()
 
 
+def _validate_pregame_mix_flags(args: argparse.Namespace) -> None:
+    mix_path = getattr(args, "coverage_mix", None)
+    empty = bool(getattr(args, "empty_coverage_mix", False))
+    if mix_path and empty:
+        raise ValueError("--coverage-mix and --empty-coverage-mix are mutually exclusive")
+    if (mix_path or empty) and not getattr(args, "football_intelligence", False):
+        raise ValueError("Coverage mix flags require --football-intelligence")
+
+
+def _pregame_design_options(args: argparse.Namespace, db: Any) -> dict[str, Any]:
+    """Explicit command opt-in, independent of live environment configuration."""
+    from cfb_coach.madden.model.offense_designer import load_design_artifact
+
+    enabled = bool(getattr(args, "football_intelligence", False))
+    mix_path = getattr(args, "coverage_mix", None)
+    empty = bool(getattr(args, "empty_coverage_mix", False))
+    _validate_pregame_mix_flags(args)
+    payload = {"mix": {}, "mix_source": "unknown", "unknown_mass": 1.0}
+    if enabled:
+        if mix_path:
+            payload = json.loads(Path(mix_path).expanduser().read_text(encoding="utf-8"))
+        elif empty:
+            payload = {"mix": {}, "mix_source": "empty_control", "unknown_mass": 1.0}
+        else:
+            try:
+                from cfb_coach.madden.model.historical_coverage_mix import extract_opponent_history_mix
+            except ImportError as exc:
+                raise ValueError("Historical coverage extractor is missing; use --coverage-mix PATH or --empty-coverage-mix") from exc
+            payload = extract_opponent_history_mix(db.conn, opponent_id=args.opponent)
+        if not isinstance(payload, dict) or not isinstance(payload.get("mix"), dict):
+            raise ValueError("Coverage JSON must contain a mix object, mix_source and unknown_mass")
+        import math
+        mix = payload["mix"]
+        if (not isinstance(payload.get("mix_source"), str)
+                or not payload["mix_source"]
+                or not isinstance(payload.get("unknown_mass"), (int, float))
+                or not math.isfinite(payload["unknown_mass"])
+                or not 0 <= payload["unknown_mass"] <= 1
+                or any(not isinstance(k, str) or not isinstance(v, (int, float))
+                       or not math.isfinite(v) or v < 0 for k, v in mix.items())):
+            raise ValueError("Coverage mix needs nonnegative finite weights, a mix_source and unknown_mass in [0, 1]")
+    options = dict(priors_on=enabled, coverage_mix=payload["mix"],
+                   mix_source=payload["mix_source"], unknown_mass=payload["unknown_mass"],
+                   skip_adjustment_design=bool(getattr(args, "skip_adjustment_design", False)))
+    if getattr(args, "artifact", None):
+        options["artifact"] = load_design_artifact(Path(args.artifact).expanduser())
+    return options
+
+
+def _add_pregame_intelligence_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--football-intelligence", action="store_true",
+                        help="Opt into football-conditioned pregame scoring only; live defaults are unchanged")
+    parser.add_argument("--coverage-mix", metavar="PATH", help="Coverage JSON: mix, mix_source, unknown_mass")
+    parser.add_argument("--empty-coverage-mix", action="store_true", help="Explicit empty-mix comparison control")
+    parser.add_argument("--skip-adjustment-design", action="store_true", help="Skip adjustment package for debugging only")
+
+
 def cmd_ml_offense_coordinator(args: argparse.Namespace) -> int:
     """Read-only pregame plan or synthetic policy comparison."""
     from cfb_coach.madden.model.offense_coordinator_eval import compare_policies
     from cfb_coach.madden.model.offense_designer import design_offense
 
     if args.compare:
+        if any(getattr(args, key, None) for key in (
+            "football_intelligence", "coverage_mix", "empty_coverage_mix", "artifact", "skip_adjustment_design"
+        )):
+            print("Pregame design flags cannot be combined with --compare", file=sys.stderr)
+            return 2
         print(json.dumps(compare_policies(seed=args.seed), indent=2, default=str))
         return 0
-    db = open_madden_db(read_only=True)
     try:
-        plan = design_offense(db, opponent_id=args.opponent, max_formations=args.max_formations)
+        _validate_pregame_mix_flags(args)
+    except ValueError as exc:
+        print(f"Coordinator plan refused: {exc}", file=sys.stderr)
+        return 2
+    db = (open_explicit_madden_db(Path(args.db), read_only=True)
+          if getattr(args, "db", None) else open_madden_db(read_only=True))
+    try:
+        plan = design_offense(db, opponent_id=args.opponent, max_formations=args.max_formations,
+                              **_pregame_design_options(args, db))
         from cfb_coach.madden.model.offense_designer import plan_inspection
 
         inspection = plan_inspection(plan)
@@ -1158,7 +1227,7 @@ def cmd_ml_offense_coordinator(args: argparse.Namespace) -> int:
             payload = inspection
         print(json.dumps(payload, indent=2, default=str))
         return 0
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         print(f"Coordinator plan refused: {exc}", file=sys.stderr)
         return 2
     finally:
@@ -1204,6 +1273,11 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
     from cfb_coach.madden.model import offense_designer as designer
     from cfb_coach.madden.model import offense_design_browser as browser
 
+    try:
+        _validate_pregame_mix_flags(args)
+    except ValueError as exc:
+        print(f"Offense design unavailable: {exc}", file=sys.stderr)
+        return 2
     if args.show and (args.stage or args.confirm_installed or args.verify_macro or args.unverify_macro or args.rollback_design):
         print("--show cannot be combined with mutation flags", file=sys.stderr)
         return 2
@@ -1296,15 +1370,11 @@ def cmd_ml_offense_design(args: argparse.Namespace) -> int:
             display(browser.installed_design(db, args.opponent), "installed")
             return 0
         try:
-            supplied_artifact = None
-            if getattr(args, "artifact", None):
-                from cfb_coach.madden.model.experimental_model import load_artifact
-
-                supplied_artifact = load_artifact(Path(args.artifact).expanduser())
             design = designer.design_offense(
                 db, opponent_id=args.opponent,
-                max_formations=args.max_formations, artifact=supplied_artifact,
+                max_formations=args.max_formations,
                 must_add=tuple(getattr(args, "add_formation", None) or ()),
+                **_pregame_design_options(args, db),
             )
             if args.stage:
                 design = designer.stage_design(db, design)
@@ -2420,6 +2490,9 @@ def build_ml_subparser(sub: Any) -> None:
     p_coord.add_argument("--compare", action="store_true",
                          help="Compare the joint coordinator with model-primary on synthetic scenarios")
     p_coord.add_argument("--seed", type=int, default=11)
+    p_coord.add_argument("--db", default=None, help="SQLite path for read-only preview")
+    p_coord.add_argument("--artifact", default=None, help="Offline model for design only; never installed")
+    _add_pregame_intelligence_flags(p_coord)
     p_coord.set_defaults(func=cmd_ml_offense_coordinator)
 
     p_act = ml_sub.add_parser(
@@ -2470,6 +2543,7 @@ def build_ml_subparser(sub: Any) -> None:
         default=None,
         help="Madden SQLite path. Required for stage, confirm, verify, unverify, and rollback.",
     )
+    _add_pregame_intelligence_flags(p_od)
     p_od.set_defaults(func=cmd_ml_offense_design, cli_parser=p_od)
 
     p_gp = ml_sub.add_parser(

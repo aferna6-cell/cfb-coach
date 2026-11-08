@@ -143,6 +143,9 @@ class LivePlayController:
     # self-attested as following the final recommendation unless overridden.
     # This is user-reported evidence, NOT independently observed controller input.
     standing_execution_attestation: bool = False
+    # Explicit user-confirmed Madden action inventory; never generated from a proposal.
+    madden_adjustment_loadout: Any | None = None
+    madden_adjustment_confirmations: dict[str, Any] | None = None
     ml_tracker: Any | None = None
     # Durable HTTP idempotency: request_key -> last response (also persisted in DB).
     _idempotency_mem: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -897,9 +900,16 @@ class LivePlayController:
         else:
             kwargs["last_concept"] = self.last_concept
         try:
-            return self.make_call(sit, **kwargs)
+            call = self.make_call(sit, **kwargs)
         except TypeError:
-            return self.make_call(sit)
+            call = self.make_call(sit)
+        from cfb_coach.madden.playcaller import MaddenCall
+        if isinstance(call, MaddenCall) and call.side == "offense":
+            from cfb_coach.madden.model.offense_adjustment_designer import validate_live_call
+            validate_live_call(self.db, call, opponent_id=self.opponent_id,
+                               confirmations=self.madden_adjustment_confirmations,
+                               loadout=self.madden_adjustment_loadout)
+        return call
 
     def call_only(
         self,

@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from cfb_coach.madden import catalog, playbook, research_db
@@ -56,31 +57,64 @@ def _revoke_generated_macro_approvals(db: Any) -> None:
         pass
 
 
+def load_design_artifact(path: str | Path) -> experimental_model.ExperimentalArtifact:
+    """Load the fitted nested base without changing the live artifact loader."""
+    from cfb_coach.madden.model import offense_structural_model as structural
+
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("Offense design artifact must be a JSON object")
+    if raw.get("kind") == structural.MODEL_KIND or raw.get("schema") == structural.ARTIFACT_SCHEMA:
+        sart = structural.load_artifact(path)
+        art = experimental_model.ExperimentalArtifact.from_dict(sart.base)
+        art._pregame_artifact_loader = "structural_nested_base"
+    else:
+        art = experimental_model.load_artifact(path)
+        art._pregame_artifact_loader = "experimental"
+    return art
+
+
 def _load_artifact(db: Any) -> experimental_model.ExperimentalArtifact:
     path = resolve_artifact_path(db)
     if path:
-        return experimental_model.load_artifact(path)
-    # A preview can still be drawn before training, but is clearly labeled as
-    # prior-only, not an automatically trained/supervised model.
-    return experimental_model.ExperimentalArtifact(
+        return load_design_artifact(path)
+    art = experimental_model.ExperimentalArtifact(
         evidence_quality="prior_driven", note="No installed artifact; prior-only preview"
     )
+    art._pregame_artifact_loader = "prior_only"
+    return art
 
 
-def _rate(art: Any, form: str, play: str, opponent: str) -> float:
-    """Use model success estimates, not the heuristic's book/play ordering."""
-    from cfb_coach.opponents import is_cpu_opponent
+def _rate(
+    art: Any,
+    form: str,
+    play: str,
+    opponent: str,
+    *,
+    priors_on: bool = False,
+    coverage_mix: Mapping[str, float] | None = None,
+    learned: Mapping | None = None,
+    structure: Any | None = None,
+) -> float:
+    """Average shared pregame scores across generic probes; no coverage hint."""
+    from types import SimpleNamespace
+
+    from cfb_coach.madden.model.offense_pregame_scoring import score_pair
 
     # Multiple generic pre-snap situations; no post-snap coverage is assumed.
     checks = ((1, 10, 35), (2, 6, 50), (3, 7, 35))
     vals = [
-        experimental_model.predict_success(
-            art, formation=form, play=play, down=down, distance=distance,
-            yardline=yardline, opponent_id=opponent,
-            opponent_type="cpu" if is_cpu_opponent(opponent) else "human",
-            coverage_hint=None, coverage_source="none",
-            heuristic_bonus=0.0,
-        )["probability"]
+        score_pair(
+            art,
+            formation=form,
+            play=play,
+            probe=SimpleNamespace(down=down, distance=distance, yardline=yardline),
+            mix=coverage_mix,
+            opponent_id=opponent,
+            priors_on=priors_on,
+            learned=learned,
+            structure=structure,
+        ).total_probability
         for down, distance, yardline in checks
     ]
     return sum(vals) / len(vals)
@@ -89,6 +123,7 @@ def _rate(art: Any, form: str, play: str, opponent: str) -> float:
 def _play_rankings(
     art: Any, book: str, form: str, plays: list[str],
     opponent: str, current: Mapping[str, Any],
+    *, priors_on: bool = False, coverage_mix: Mapping[str, float] | None = None,
 ) -> list[dict[str, Any]]:
     old = (current.get("formations") or {}).get(form) or []
     ranked: list[dict[str, Any]] = []
@@ -97,7 +132,7 @@ def _play_rankings(
             continue
         is_run = catalog.is_run(play)
         concept = experimental_model._play_concept(play)
-        score = _rate(art, form, play, opponent)
+        score = _rate(art, form, play, opponent, priors_on=priors_on, coverage_mix=coverage_mix)
         # A small continuity preference, never a hard lock; the model may swap.
         if play in old:
             score += 0.012
@@ -222,6 +257,12 @@ def design_offense(
     artifact: Any = None,
     catalogue: Mapping[str, dict[str, list[str]]] | None = None,
     must_add: Sequence[str] = (),
+    priors_on: bool = False,
+    coverage_mix: Mapping[str, float] | None = None,
+    adjustment_pairs: Sequence[tuple[str, str]] = (),
+    skip_adjustment_design: bool = False,
+    mix_source: str = "unknown",
+    unknown_mass: float = 1.0,
 ) -> dict[str, Any]:
     """Deterministic formation-level design.
 
@@ -251,9 +292,19 @@ def design_offense(
     # list is not used. The helper keeps the run/pass portfolio constraint.
     from cfb_coach.madden.model.offense_portfolio import select_formation_portfolio
 
+    # The shared scorer/portfolio interface lands independently. Never silently
+    # claim a football-informed design on a stack that cannot consume its mix.
+    from inspect import signature
+    supported = signature(select_formation_portfolio).parameters
+    scoring_kwargs = {}
+    if "priors_on" in supported and "coverage_mix" in supported:
+        scoring_kwargs = {"priors_on": priors_on, "coverage_mix": coverage_mix}
+    elif priors_on or coverage_mix:
+        raise ValueError("Shared pregame portfolio scoring is not integrated yet")
     portfolio = select_formation_portfolio(
         art=art, all_books=all_books, active=active, opponent_id=opponent_id,
         max_formations=max_formations, db=db,
+        **scoring_kwargs,
     )
     chosen = portfolio["chosen"]
     ranks = portfolio["ranked"]
@@ -306,6 +357,11 @@ def design_offense(
     expected = _digest(active)
     proposal = {
         "schema": "ml_offense_design.v1", "opponent_id": opponent_id,
+        "football_intelligence": {
+            "priors_on": priors_on, "mix": dict(coverage_mix or {}),
+            "mix_source": mix_source, "unknown_mass": unknown_mass,
+            "artifact_loader": getattr(art, "_pregame_artifact_loader", "experimental"),
+        },
         "expected_applied_revision": int(active.get("rev") or 0),
         "expected_applied_hash": expected,
         "model_version": art.model_version,
@@ -378,7 +434,98 @@ def design_offense(
     proposal["max_formations"] = max_formations
     proposal["pregame_diagnostic"] = pregame_input_diagnostic(proposal.get("provenance"))
     proposal["football_plan"] = portfolio.get("football_plan")
+    pairs = list(adjustment_pairs)
+    if not pairs and not skip_adjustment_design:
+        pairs = _auto_adjustment_pairs(art, formations, sources, opponent_id,
+                                       priors_on=priors_on, coverage_mix=coverage_mix)
+    proposal["adjustment_designs"] = []
+    if pairs:
+        from functools import partial
+        from types import SimpleNamespace
+        from cfb_coach.madden.model.offense_adjustment_designer import design_adjustments
+        from cfb_coach.madden.model.offense_pregame_scoring import score_pair
+        from cfb_coach.madden.adjustments import executable as ex
+        from cfb_coach.madden.macros import load_selection
+        from cfb_coach.madden.model.offense_decision import MacroEffect
+
+        selection = load_selection(db, opponent_id)
+        names = (selection or {}).get("offense") or []
+        loadout = ex.Loadout(entries=tuple(
+            ex.LoadoutEntry(side="offense", name=name, slot="", installed=True,
+                            active=True, confirmed_by_user=False)
+            for name in names
+        )) if names else None
+        # Stored selection proves membership, not controls or route assignments.
+        # There is no persisted action-confirmation store on this command path.
+        confirmations = None
+        macro_effects = {}
+        for record in verified_created_macros(db, opponent_id):
+            changes, source = record.get("changes"), record.get("source")
+            if (isinstance(changes, Mapping) and changes
+                    and all(isinstance(slot, str) and slot.strip()
+                            and isinstance(route, str) and route.strip()
+                            for slot, route in changes.items())
+                    and isinstance(source, str) and source.strip()):
+                macro_effects[record["name"]] = MacroEffect(
+                    name=record["name"], changes=dict(changes), verified=True, source=source,
+                )
+        for form, play in dict.fromkeys(pairs):
+            if play not in formations.get(form, []):
+                raise ValueError("Adjustment design must use a selected stock play")
+            proposal["adjustment_designs"].append(design_adjustments(
+                art, formation=form, play=play, source_book=sources[form],
+                probe=SimpleNamespace(down=1, distance=10, yardline=35),
+                opponent_id=opponent_id, priors_on=priors_on, coverage_mix=coverage_mix,
+                score_pair_fn=partial(score_pair, mix_source=mix_source),
+                loadout=loadout, confirmations=confirmations,
+                macro_effects=macro_effects or None, proposed_macros=macro_blueprints,
+            ))
+    proposal["preparation_guide"] = preparation_guide(proposal, active=active)
     return proposal
+
+
+def _auto_adjustment_pairs(
+    art: Any, formations: Mapping[str, list[str]], sources: Mapping[str, str],
+    opponent: str, *, priors_on: bool, coverage_mix: Mapping[str, float] | None,
+) -> list[tuple[str, str]]:
+    """One highest-scoring stock pass per formation, never a cross-book union."""
+    pairs = []
+    for form, plays in formations.items():
+        stock = catalog.book_formations("offense", sources[form]).get(form, [])
+        eligible = sorted({p for p in plays if p in stock and not catalog.is_run(p)
+                           and "rpo" not in p.lower()})
+        if eligible:
+            best = max(eligible, key=lambda p: _rate(
+                art, form, p, opponent, priors_on=priors_on, coverage_mix=coverage_mix))
+            pairs.append((form, best))
+    return pairs
+
+
+def preparation_guide(proposal: Mapping[str, Any], *, active: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Manual checklist limited to the proposed book, never an executable loadout."""
+    book = proposal.get("book") or {}
+    installed = active or {}
+    rows = []
+    for form, plays in (book.get("formations") or {}).items():
+        source = (book.get("formation_sources") or {}).get(form)
+        confirmed = (list((installed.get("formations") or {}).get(form) or []) == list(plays)
+                     and (installed.get("formation_sources") or {}).get(form) == source)
+        rows.append({"formation": form, "source_book": source, "stock_plays": list(plays),
+                     "status": "CONFIRMED_INSTALLED" if confirmed else "MANUAL_INSTALL_AND_CONFIRM_REQUIRED"})
+    return {
+        "formations": rows,
+        "football_intelligence": proposal.get("football_intelligence"),
+        "adjustment_designs": list(proposal.get("adjustment_designs") or []),
+        "audibles": [{**a, "status": "DRAFT_NEEDS_IN_GAME_VERIFICATION", "arm_slot": None}
+                     for a in proposal.get("suggested_audibles") or []],
+        "macros": [{"name": m["name"], "base_pairs": m.get("base_pairs") or [],
+                    "settings": m.get("settings") or [], "source_ids": m.get("source_ids") or [],
+                    "status": "DRAFT_NEEDS_IN_GAME_VERIFICATION", "activation": "NOT_ARMED",
+                    "arm_slot": None, "controls": "UNKNOWN: verify in Madden"}
+                   for m in proposal.get("macro_blueprints") or []],
+        "installation": "Install every listed stock play from its exact source, then stage and confirm_installed with the proposal ID.",
+        "arming": "Separately verify audible/controller mappings and macro settings in Madden; attest installed active slots before arming. No slot is assigned by this proposal.",
+    }
 
 
 def pregame_input_diagnostic(provenance: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -463,6 +610,9 @@ def plan_inspection(proposal: Mapping[str, Any]) -> dict[str, Any]:
         "situation_coverage": proposal.get("situation_coverage"),
         "football_plan": proposal.get("football_plan"),
         "pregame_diagnostic": proposal.get("pregame_diagnostic"),
+        "preparation_guide": proposal.get("preparation_guide"),
+        "football_intelligence": proposal.get("football_intelligence"),
+        "adjustment_designs": proposal.get("adjustment_designs"),
         "macro_blueprints": [
             {
                 "name": macro.get("name"),
