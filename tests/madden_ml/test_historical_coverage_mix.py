@@ -51,3 +51,50 @@ def test_specific_opponent_id_and_empty():
     assert out["mix"] == pytest.approx({"cover_1_unspecified": 0.5, "cover_1_robber": 0.5})
     none = extract_opponent_history_mix(_db(), opponent_id="nobody")
     assert none["mix"] == {} and none["unknown_mass"] == 0.0 and none["mix_source"] == "opponent_history"
+
+
+@pytest.mark.parametrize("raw,key", [
+    ("quarterback scramble", None),
+    ("whole field zone", None),
+    ("palm tree", None),
+    ("Cover 9 trap", None),
+    ("Cover 4 robber", "cover_4_unspecified"),
+])
+def test_unrelated_words_and_conflicting_variants(raw, key):
+    assert map_coverage_seen(raw) == key
+
+
+@pytest.mark.parametrize("raw,key", [
+    ("quarter", "cover_4_quarters"),
+    ("quarters", "cover_4_quarters"),
+    ("palms", "cover_4_palms"),
+    ("Cover 4 palm", "cover_4_palms"),
+    ("Cover 4 hole", "cover_4_unspecified"),
+    ("Cover 4 trap", "cover_4_unspecified"),
+    ("Cover 2 quarters", "cover_2_unspecified"),
+    ("Cover 3 palms", "cover_3_unspecified"),
+    ("Cover 2 robber", "cover_2_unspecified"),
+    ("Cover 3 hole", "cover_3_unspecified"),
+    ("Cover 9 robber", None),
+    ("Cover 9 hole", None),
+    ("Cover 9 Tampa 2", None),
+    ("Cover 9 Cover 4 Quarters", None),
+    ("Cover 1 Cover 4 robber", None),
+    ("Cover 1 pressure", "cover_1_pressure"),
+    ("Cover 1 blitzing", "cover_1_unspecified"),
+    ("Cover 2 many", "cover_2_unspecified"),
+    ("trapdoor", None),
+    ("robbery", None),
+])
+def test_complete_tokens_and_variant_families(raw, key):
+    assert map_coverage_seen(raw) == key
+
+
+def test_unrecognized_word_does_not_create_historical_mix():
+    with sqlite3.connect(":memory:") as db:
+        db.execute("CREATE TABLE snaps (opponent_id TEXT, side TEXT, coverage_seen TEXT)")
+        db.execute("INSERT INTO snaps VALUES (?, ?, ?)", ("cpu", "offense", "quarterback scramble"))
+        out = extract_opponent_history_mix(db)
+    assert out["mix"] == {}
+    assert out["unknown_mass"] == 1.0
+    assert out["mix_source"] == "opponent_history"

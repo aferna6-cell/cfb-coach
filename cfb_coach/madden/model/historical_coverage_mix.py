@@ -21,11 +21,7 @@ from cfb_coach.opponents import is_cpu_opponent
 MIX_SOURCE = "opponent_history"
 UNKNOWN = "UNKNOWN"
 
-_SHELL = r"\b(?:cover|cov|c) ?{n}\b"
-
-
-def _shell(t: str, n: str) -> bool:
-    return re.search(_SHELL.format(n=n), t) is not None
+_SHELL = r"\b(?:cover|cov|c) ?(\d+)\b"
 
 
 def map_coverage_seen(raw: str | None) -> str | None:
@@ -33,51 +29,58 @@ def map_coverage_seen(raw: str | None) -> str | None:
     t = " ".join(re.sub(r"[^a-z0-9 ]+", " ", str(raw or "").lower().replace("_", " ").replace("-", " ")).split())
     if not t:
         return None
-    # Specific phrases first.
-    if "tampa" in t:
+    tokens = set(t.split())
+    shells = set(re.findall(_SHELL, t))
+    if "9" in shells or len(shells) > 1:
+        return None
+    shell = next(iter(shells), None)
+    # Complete tokens only; a variant cannot override a conflicting numbered shell.
+    if shell in (None, "2") and "tampa" in tokens:
         return "tampa_2"
-    if "palm" in t:
-        return "cover_4_palms"
-    if "quarter" in t:
-        return "cover_4_quarters"
-    if _shell(t, "4") and "drop" in t:
-        return "cover_4_drop"
-    if "robber" in t:
-        return "cover_1_robber"
-    if "hole" in t:
-        return "cover_1_hole"
-    if "trap" in t:
+    if shell in (None, "4"):
+        if "palms" in tokens or (shell == "4" and "palm" in tokens):
+            return "cover_4_palms"
+        if tokens.intersection({"quarter", "quarters"}):
+            return "cover_4_quarters"
+        if shell == "4" and "drop" in tokens:
+            return "cover_4_drop"
+    if shell in (None, "1"):
+        if "robber" in tokens:
+            return "cover_1_robber"
+        if "hole" in tokens:
+            return "cover_1_hole"
+    if shell in (None, "2") and "trap" in tokens:
         return "trap_2"
-    if _shell(t, "0"):
+    if shell == "0":
         return "cover_0"
-    if _shell(t, "6"):
+    if shell == "6":
         return "cover_6"
-    if _shell(t, "1") and ("pressure" in t or "blitz" in t):
+    if shell == "1" and tokens.intersection({"pressure", "blitz"}):
         return "cover_1_pressure"
-    if _shell(t, "2"):
-        if "invert" in t:
+    if shell == "2":
+        if "invert" in tokens:
             return "cover_2_invert"
-        if "man" in t:
+        if "man" in tokens:
             return "cover_2_man"
-        if "spot" in t:
+        if "spot" in tokens:
             return "cover_2_spot"
-    if _shell(t, "3"):
-        if "match" in t:
+    if shell == "3":
+        if "match" in tokens:
             return "cover_3_match"
-        if "sky" in t:
+        if "sky" in tokens:
             return "cover_3_sky"
-        if "spot" in t:
+        if "spot" in tokens:
             return "cover_3_spot"
     # Coarse buckets: never invent a variant.
-    if _shell(t, "1") or t in ("man", "single high", "singlehigh", "man free", "cover one"):
+    if shell == "1" or t in ("man", "single high", "singlehigh", "man free", "cover one"):
         return "cover_1_unspecified"
-    if _shell(t, "2"):
+    if shell == "2":
         return "cover_2_unspecified"
-    if _shell(t, "3"):
+    if shell == "3":
         return "cover_3_unspecified"
-    if _shell(t, "4"):
+    if shell == "4":
         return "cover_4_unspecified"
-    return None   # includes bare "pressure"/"blitz" (no shell) and Cover 9 (no descriptor entry)
+    return None   # includes bare "pressure"/"blitz" (no shell) and unknown numbered shells
 
 
 def _connect(db: Any) -> tuple[sqlite3.Connection, bool]:
