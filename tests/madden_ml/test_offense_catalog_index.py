@@ -1,5 +1,7 @@
 """Synthetic metadata only; these tests never access the private store."""
+import hashlib
 import json
+from copy import deepcopy
 import sys
 from types import ModuleType
 from dataclasses import asdict
@@ -270,3 +272,128 @@ def test_jsonl_duplicate_denied_rows_still_fail(tmp_path, rows):
     path = jsonl_feed(tmp_path, [dict(listing_id="one", model_use_permitted=False)] * 2)
     with pytest.raises(ValueError, match="Duplicate"):
         index.load_offense_universe(ace_store=store(tmp_path, rows), playbooks={}, provisional_export=path)
+
+
+@pytest.fixture
+def geometry():
+    return dict(
+        coordinate_frame="diagram_px_unreviewed",
+        markers=[dict(start_px=[10, 40], identity_hypothesis="UNKNOWN", slot="UNKNOWN",
+                      elements=[dict(kind="route_proposal", polyline=[[10, 40], [10, 10]],
+                                     breaks=[1], route_family_candidate="vertical",
+                                     flags=["unreviewed"])])],
+        unowned_elements=[dict(kind="route", polyline=[[30, 40], [40, 20]],
+                               route_family_candidate="diagonal_upfield", flags=["unowned"])],
+        play_flags=["provisional"], any_ambiguous=True,
+        concept_interactions="UNKNOWN", yards="UNKNOWN", qb_read="UNKNOWN", blocking="UNKNOWN",
+    )
+
+
+def test_geometry_lookup_retains_graph_without_wrapper(tmp_path, rows, books, geometry):
+    path = jsonl_feed(tmp_path, [dict(listing_id="one", geometry=geometry,
+                                     structure={"not_geometry": True}, export_only="not-retained"),
+                                dict(listing_id="two", assignments={"synthetic": True}),
+                                dict(listing_id="three", geometry=geometry,
+                                     model_use_permitted=False)])
+    result = index.load_offense_universe(ace_store=store(tmp_path, rows), playbooks=books,
+                                         provisional_export=path)
+    assert result.geometry_for("one") == geometry
+    assert result.geometry_for("three") == geometry  # Consumers gate model use.
+    assert result.geometry_for("two") is None
+    assert result.geometry_for("unknown") is None
+    assert result.entries[0].structure_ref == "provisional:#/entries/0"
+    assert result.entries[1].structure_ref == "provisional:#/entries/1"
+    assert result.entries[2].structure_ref is None
+    assert not result.entries[2].model_use_permitted
+    assert "flags" not in result.geometry_for("one")  # Never invent a top-level key.
+    assert "geometry" not in asdict(result.entries[0])
+    detached = result.geometry_for("one")
+    detached["markers"][0]["elements"][0]["polyline"][0][0] = 999
+    detached["unowned_elements"].clear()
+    assert result.geometry_for("one") == geometry
+    assert "_geometries" not in repr(result)
+
+
+def test_geometry_recursive_sanitization(tmp_path, rows, geometry):
+    forbidden = {key: "synthetic-private-marker" for key in
+                 ("art_url", "art_sha256", "source_detail_url", "diagram_ref")}
+    dirty = deepcopy(geometry)
+    dirty.update(forbidden)
+    dirty["markers"][0].update(forbidden)
+    dirty["markers"][0]["elements"][0].update(forbidden)
+    dirty["unowned_elements"][0].update(forbidden)
+    path = feed(tmp_path, {"one": dict(geometry=dirty, **forbidden)})
+    loaded = index.load_provisional_export(path)
+    assert loaded["entries"]["one"] == {"geometry": geometry}
+    result = index.load_offense_universe(ace_store=store(tmp_path, rows), playbooks={},
+                                         provisional_export=path)
+    assert result.geometry_for("one") == geometry
+    for serialized in (json.dumps(result.geometry_for("one")), json.dumps(asdict(result))):
+        assert "synthetic-private-marker" not in serialized
+        assert all(key not in serialized for key in forbidden)
+
+
+@pytest.mark.parametrize("change", ["polyline", "route_family_candidate"])
+def test_geometry_hash_tracks_graph_not_catalog(tmp_path, rows, geometry, change):
+    ace_store = store(tmp_path, rows)
+    def load(graph):
+        return index.load_offense_universe(ace_store=ace_store, playbooks={},
+            provisional_export=feed(tmp_path, {"one": dict(geometry=graph)}))
+    first = load(geometry)
+    changed = deepcopy(geometry)
+    route = changed["markers"][0]["elements"][0]
+    if change == "polyline":
+        route[change][1][0] = 20
+    else:
+        route[change] = "break_out"
+    second = load(changed)
+    assert first.catalog_hash == second.catalog_hash
+    assert first.geometry_hash != second.geometry_hash
+    assert first.entries == second.entries
+
+
+def test_geometry_hash_ignores_stripped_fields_and_input_order(tmp_path, rows, geometry):
+    ace_store = store(tmp_path, rows)
+    records = [dict(listing_id="two", geometry={}), dict(listing_id="one", geometry=geometry),
+               dict(listing_id="three", structure={"synthetic": True}),
+               dict(listing_id="not-in-catalog", geometry={"synthetic": True})]
+    def load(records):
+        return index.load_offense_universe(ace_store=ace_store, playbooks={},
+            provisional_export=jsonl_feed(tmp_path, records))
+    first = load(records)
+    changed = deepcopy(records)
+    changed[1]["geometry"]["art_url"] = "synthetic-art-marker"
+    changed[1]["geometry"]["markers"][0]["elements"][0]["diagram_ref"] = "synthetic-ref"
+    second = load(changed)
+    assert first.geometry_hash == second.geometry_hash
+    store(tmp_path, list(reversed(rows)))
+    third = load(list(reversed(changed)))
+    assert first.geometry_hash == third.geometry_hash
+    assert first.catalog_hash == third.catalog_hash
+    assert third.geometry_for("not-in-catalog") is None
+    assert third.geometry_for("two") == {}
+    payload = [{"listing_id": "one", "geometry": geometry}, {"listing_id": "two", "geometry": {}}]
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    assert first.geometry_hash == hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def test_metadata_only_geometry_hash(tmp_path, rows):
+    result = index.load_offense_universe(ace_store=store(tmp_path, rows), playbooks={})
+    assert all(result.geometry_for(entry.listing_id) is None for entry in result.entries)
+    assert result.geometry_hash == hashlib.sha256(b"[]").hexdigest()
+
+
+@pytest.mark.parametrize("not_geometry", [None, [], "synthetic", 1])
+def test_non_object_geometry_not_retained(tmp_path, rows, not_geometry):
+    result = index.load_offense_universe(ace_store=store(tmp_path, rows), playbooks={},
+        provisional_export=feed(tmp_path, {"one": dict(geometry=not_geometry,
+                                                      structure={"synthetic": True})}))
+    assert result.geometry_for("one") is None
+    assert result.entries[0].structure_ref == "provisional:#/entries/one"
+    assert result.geometry_hash == hashlib.sha256(b"[]").hexdigest()
+
+
+def test_metadata_only_positional_constructor_remains_compatible():
+    result = index.CatalogIndex(index.SCHEMA, 0, "synthetic-catalog", {}, (), ())
+    assert result.geometry_for("one") is None
+    assert result.geometry_hash == hashlib.sha256(b"[]").hexdigest()
