@@ -99,7 +99,7 @@ def test_installable_count_does_not_use_block_reason_or_breakdown(tiny_index):
         replace(tiny_index, entries=(replace(tiny_index.entries[0], model_use_permitted=True), tiny_index.entries[1])))["rights_feed_digest"]
 
 
-@pytest.mark.parametrize("field", ["catalog_hash", "artifact_hash", "opponent_history_hash", "priors_on", "rights_feed_digest"])
+@pytest.mark.parametrize("field", ["catalog_hash", "artifact_hash", "opponent_history_hash", "priors_on", "rights_feed_digest", "geometry_hash"])
 def test_each_cache_key_component_invalidates(field):
     values = dict(catalog_hash="catalog", artifact_hash="artifact", opponent_history_hash="history",
                   priors_on=False, rights_feed_digest="rights")

@@ -26,6 +26,34 @@ def digest(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+# Parameter tables predict_success reads (mirrored by name; no ranker import).
+SCORING_TABLES = (
+    "play_family", "play_concept", "play_vs_cov", "concept_vs_cov",
+    "down_distance", "concept_down_distance", "family_down_distance",
+    "conversion_concept_dd", "conversion_family_dd", "field_zone", "cpu_human",
+    "opponent", "research_concept_boost", "research_family_boost",
+)
+
+
+def _plain(value: Any) -> Any:
+    """JSON-stable form of a parameter table (tuples/keys become strings)."""
+    if isinstance(value, Mapping):
+        return {json.dumps(_plain(k), sort_keys=True, default=str) if not isinstance(k, str) else k: _plain(v)
+                for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return repr(value)
+
+
+def _nested_global_rate(art: Any) -> Any:
+    base = getattr(art, "base", None)
+    if isinstance(base, Mapping):
+        return base.get("global_rate")
+    return getattr(base, "global_rate", None) if base is not None else None
+
+
 def artifact_digest(art: Any) -> str:
     return digest({
         "model_version": art.model_version,
@@ -33,6 +61,9 @@ def artifact_digest(art: Any) -> str:
         "evidence_quality": art.evidence_quality,
         "n_supervised": art.n_supervised,
         "loader": getattr(art, "_pregame_artifact_loader", "experimental"),
+        "global_rate": _plain(getattr(art, "global_rate", None)),
+        "base_global_rate": _plain(_nested_global_rate(art)),
+        "tables": digest({t: _plain(getattr(art, t, None)) for t in SCORING_TABLES}),
     })
 
 
@@ -43,8 +74,15 @@ def opponent_history_digest(coverage_mix: Mapping | None, mix_source: str, unkno
 
 def catalog_provenance(catalogue: Mapping, catalog_index: Any = None) -> dict[str, Any]:
     """Hash only rights-relevant metadata; never art, URLs or structure payloads."""
+    geometry_hash = None
+    structure_refs = None
     if catalog_index is not None:
         entries = catalog_index.entries
+        geometry_hash = getattr(catalog_index, "geometry_hash", None)
+        # Geometry pointers only; never art, URLs or image hashes.
+        structure_refs = digest(sorted(
+            [str(getattr(e, "listing_id", "")), str(getattr(e, "structure_ref", None) or "")]
+            for e in entries))
         catalog_hash = catalog_index.catalog_hash
         n_indexed = catalog_index.n_indexed
         n_installable = sum(bool(e.installable) for e in entries)
@@ -59,15 +97,21 @@ def catalog_provenance(catalogue: Mapping, catalog_index: Any = None) -> dict[st
         tiers = {"name_only": n_indexed}
     rights = {"catalog_hash": catalog_hash, "n_indexed": n_indexed,
               "model_use_permitted": permitted, "feature_tier": tiers}
-    return {"catalog_hash": catalog_hash, "n_indexed": n_indexed,
-            "n_installable": n_installable, "rights_feed_digest": digest(rights)}
+    if catalog_index is not None:
+        rights["geometry_hash"] = geometry_hash
+        rights["structure_refs"] = structure_refs
+    out = {"catalog_hash": catalog_hash, "n_indexed": n_indexed,
+           "n_installable": n_installable, "rights_feed_digest": digest(rights)}
+    if geometry_hash:
+        out["geometry_hash"] = geometry_hash
+    return out
 
 
 def cache_key(*, catalog_hash: str, artifact_hash: str, opponent_history_hash: str,
-              priors_on: bool, rights_feed_digest: str) -> str:
+              priors_on: bool, rights_feed_digest: str, geometry_hash: str | None = "") -> str:
     return digest(dict(catalog_hash=catalog_hash, artifact_hash=artifact_hash,
                        opponent_history_hash=opponent_history_hash, priors_on=priors_on,
-                       rights_feed_digest=rights_feed_digest))
+                       rights_feed_digest=rights_feed_digest, geometry_hash=geometry_hash or ""))
 
 
 class ScoreCache:

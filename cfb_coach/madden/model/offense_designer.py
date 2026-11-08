@@ -316,6 +316,7 @@ def design_offense(
         catalog_hash=provenance["catalog_hash"], artifact_hash=provenance["artifact_hash"],
         opponent_history_hash=provenance["opponent_history_hash"], priors_on=priors_on,
         rights_feed_digest=provenance["rights_feed_digest"],
+        geometry_hash=provenance.get("geometry_hash") or "",
     ))
     score_cache.load()
     if not all_books:
@@ -537,6 +538,18 @@ def design_offense(
     return proposal
 
 
+def _stock_plays_for_source(source: str, form: str) -> list[str]:
+    """Sourced stock plays for a formation key: exact display name, then catalog.norm (index slugs)."""
+    book = catalog.book_formations("offense", source or "") or {}
+    if form in book:
+        return list(book[form] or [])
+    key = catalog.norm(form)
+    for display, plays in book.items():
+        if catalog.norm(display) == key:
+            return list(plays or [])
+    return []
+
+
 def _auto_adjustment_pairs(
     art: Any, formations: Mapping[str, list[str]], sources: Mapping[str, str],
     opponent: str, *, priors_on: bool, coverage_mix: Mapping[str, float] | None, score_cache: Any = None,
@@ -544,7 +557,7 @@ def _auto_adjustment_pairs(
     """One highest-scoring stock pass per formation, never a cross-book union."""
     pairs = []
     for form, plays in formations.items():
-        stock = catalog.book_formations("offense", sources[form]).get(form, [])
+        stock = _stock_plays_for_source(sources[form], form)
         eligible = sorted({p for p in plays if p in stock and not catalog.is_run(p)
                            and "rpo" not in p.lower()})
         if eligible:
@@ -578,7 +591,7 @@ def preparation_guide(proposal: Mapping[str, Any], *, active: Mapping[str, Any] 
         "provenance": {key: proposal.get(key) for key in (
             "catalog_hash", "n_indexed", "n_installable", "artifact_hash",
             "opponent_history_hash", "rights_feed_digest",
-        )},
+        )} | ({"geometry_hash": proposal["geometry_hash"]} if proposal.get("geometry_hash") else {}),
         "adjustment_designs": list(proposal.get("adjustment_designs") or []),
         "audibles": [{**a, "status": "DRAFT_NEEDS_IN_GAME_VERIFICATION", "arm_slot": None}
                      for a in proposal.get("suggested_audibles") or []],
@@ -747,7 +760,7 @@ def confirm_installed(db: Any, *, proposal_id: str, attestation: str) -> dict[st
     # Every pair must still be grounded in the indicated stock book.
     for form, ps in new["formations"].items():
         src = new["formation_sources"].get(form)
-        available = set(catalog.book_formations("offense", src or "").get(form) or [])
+        available = set(_stock_plays_for_source(src or "", form))
         if len(ps) != len(set(ps)) or set(ps) != available or len(ps) != len(available):
             raise ValueError(
                 f"Formation {form} is incomplete or diverged from sourced stock-book plays; "
