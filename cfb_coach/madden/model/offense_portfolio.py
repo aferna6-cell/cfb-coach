@@ -158,6 +158,7 @@ def _situation_value(
     coverage_mix: Mapping[str, float] | None = None,
     priors_on: bool = False,
     learned: Mapping[Any, float] | None = None,
+    tiers: Mapping[tuple[str, str], tuple[Any, Any]] | None = None,
 ) -> float:
     """Mean of the best few concepts that actually fit this situation.
 
@@ -173,10 +174,16 @@ def _situation_value(
         if situation == "goal_line" and catalog.is_deep(play) and "goal" not in play.lower():
             # Still scored, but the evaluator applies the compressed-space penalty.
             pass
+        extra = {}
+        if tiers and (formation, play) in tiers:
+            ft, mup = tiers[(formation, play)]
+            extra = {"feature_tier": ft, "model_use_permitted": mup}
         ps = score_pair(art, formation=formation, play=play, probe=probe, mix=coverage_mix,
-                        opponent_id=opponent_id, priors_on=priors_on, learned=learned)
+                        opponent_id=opponent_id, priors_on=priors_on, learned=learned, **extra)
         fit = explain_play(play, probe)
-        score = float(ps.total_probability) + float(fit["selection_delta"]) + float(fit["coordinator_delta"])
+        # #132: rank on the cold-start shrunk total (falls back to the raw composition).
+        value = getattr(ps, "shrunk_probability", None)
+        score = float(ps.total_probability if value is None else value) + float(fit["selection_delta"]) + float(fit["coordinator_delta"])
         concept = experimental_model._play_concept(play)
         if concept not in best or score > best[concept]:
             best[concept] = score
@@ -230,6 +237,7 @@ def select_formation_portfolio(
     coverage_mix: Mapping[str, float] | None = None,
     priors_on: bool = False,
     learned: Mapping[Any, float] | None = None,
+    catalog_index: Any = None,
 ) -> dict[str, Any]:
     """Greedy coverage across every catalogued formation. No favorite list.
 
@@ -241,8 +249,14 @@ def select_formation_portfolio(
     roster = load_verified_roster(db)
     profile = opponent_defense_profile(db, opponent_id)
     current = active.get("formations") or {}
+    audit = None
+    books: Mapping[str, Mapping[str, list[str]]] = all_books
+    if catalog_index is not None:
+        books, tiers, audit = _catalog_universe(art, catalog_index, all_books, opponent_id,
+                                                coverage_mix=coverage_mix, priors_on=priors_on, learned=learned)
+        scoring_options = dict(scoring_options, tiers=tiers)
     ranked: list[dict[str, Any]] = []
-    for source, formations in all_books.items():
+    for source, formations in books.items():
         for form, plays in formations.items():
             unique = list(dict.fromkeys(plays or []))
             if not unique:
@@ -385,7 +399,7 @@ def select_formation_portfolio(
             "suggested_audible": runs[0] if runs else None,
             "audible_status": "suggestion_only_not_installed",
         })
-    return {
+    result = {
         "chosen": chosen,
         "ranked": pool,
         "rationales": rationales,
@@ -427,3 +441,61 @@ def select_formation_portfolio(
             ),
         },
     }
+    if audit is not None:
+        result.update(audit)
+        result["football_plan"]["full_catalog"] = True
+        result["football_plan"]["chosen_only_installable"] = True
+    return result
+
+
+def _catalog_universe(art: Any, catalog_index: Any, all_books: Mapping[str, Mapping[str, list[str]]],
+                      opponent_id: str, *, coverage_mix: Mapping[str, float] | None, priors_on: bool,
+                      learned: Mapping[Any, float] | None) -> tuple[dict, dict, dict]:
+    """Score every evaluable listing (audit) and build the installable-only (source_book -> formation -> plays) universe.
+
+    Entries are duck-typed (CatalogEntry fields). A selected (source_book, formation) commits the complete stock list
+    from ``all_books`` when present, else every installable play the index lists for it. Non-installable rows are scored
+    and reported but never enter the universe."""
+    from cfb_coach.madden.model.offense_pregame_scoring import score_pair
+
+    entries = list(getattr(catalog_index, "entries", catalog_index) or ())
+    probe = PORTFOLIO_PROBES["normal"]
+    evaluated: list[dict[str, Any]] = []
+    blocked: list[dict[str, Any]] = []
+    tiers: dict[tuple[str, str], tuple[Any, Any]] = {}
+    collected: dict[str, dict[str, list[str]]] = {}
+    for e in entries:
+        lid, form, play = (getattr(e, "listing_id", None), getattr(e, "formation", None), getattr(e, "play", None))
+        if not lid or not form or not play:
+            blocked.append({"listing_id": lid, "formation": form, "play": play,
+                            "reason": "structurally unreadable listing (missing id/name)", "evaluated": False})
+            continue
+        ft = getattr(e, "feature_tier", None)
+        mup = getattr(e, "model_use_permitted", True)
+        tiers.setdefault((form, play), (ft, mup))
+        ps = score_pair(art, formation=form, play=play, probe=probe, mix=coverage_mix, opponent_id=opponent_id,
+                        priors_on=priors_on, learned=learned, feature_tier=ft, model_use_permitted=mup)
+        sources = tuple(getattr(e, "source_books", None) or ())
+        installable = bool(getattr(e, "installable", False)) and bool(sources)
+        row = {"listing_id": lid, "formation": form, "play": play, "source_books": list(sources),
+               "installable": installable, "feature_tier": ft, "assignment_status": ps.assignment_status,
+               "assignment_confidence": ps.assignment_confidence, "raw_probability": ps.total_probability,
+               "shrunk_probability": ps.shrunk_probability, "score_calibrated": ps.score_calibrated,
+               "score_available": ps.score_available, "evaluated": True}
+        evaluated.append(row)
+        if not installable:
+            blocked.append(dict(row, reason=getattr(e, "blocked_reason", None) or "not installable from a source book"))
+            continue
+        for sb in sources:
+            bucket = collected.setdefault(sb, {}).setdefault(form, [])
+            if play not in bucket:
+                bucket.append(play)
+    universe: dict[str, dict[str, list[str]]] = {}
+    for sb, forms in collected.items():
+        for form, plays in forms.items():
+            full = list((all_books.get(sb) or {}).get(form) or [])
+            universe.setdefault(sb, {})[form] = full if full else plays
+    audit = {"evaluated_listings": evaluated, "blocked_listings": blocked,
+             "catalog_universe": {sb: sorted(f) for sb, f in universe.items()},
+             "n_evaluated": len(evaluated), "n_blocked": len(blocked)}
+    return universe, tiers, audit

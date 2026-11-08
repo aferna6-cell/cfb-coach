@@ -78,6 +78,8 @@ def test_assignment_status_requires_documented_routes_not_name_hints():
     assert assignment_status(inferred)[0] != "verified"
     partial = replace(trusted, routes=inferred.routes[:1] + trusted.routes[1:])
     assert assignment_status(partial)[0] != "verified"
+    assert assignment_status(partial)[0] == "partial"
+    assert assignment_status(partial)[1] < assignment_status(trusted)[1]
     unknown = sm.structure_any("Unknown formation", "Uncatalogued XYZ")
     assert assignment_status(unknown) == ("unknown", 0.0)
     result = score(mix={}, structure=unknown)
@@ -113,3 +115,61 @@ def test_history_preserves_explicit_variants_and_drops_unspecific_spot():
     assert coverage_mix_from_seen(["Cover 3"]) == {"cover_3_unspecified": 1}
     assert coverage_mix_from_seen(["Cover 4"]) == {"cover_4_unspecified": 1}
     assert coverage_mix_from_seen(["Cover 0"]) == {"cover_0": 1}
+
+
+def test_inferred_routes_are_not_verified_or_provisional():
+    trusted = sm.structure_any("Pistol Trips", "Inside Cross")
+    inferred = replace(trusted, routes=tuple((slot, spec, "football_inference") for slot, spec, _ in trusted.routes))
+    assert assignment_status(inferred)[0] not in ("verified", "high_confidence_extracted")
+
+
+def test_feed_claiming_verified_without_documented_routes_is_not_verified():
+    trusted = sm.structure_any("Pistol Trips", "Inside Cross")
+    name_only = replace(trusted, routes=(), read_order=(), sourced_concepts=())
+    assert assignment_status(name_only, feature_tier="verified_assignments")[0] != "verified"
+    # documented routes still verify regardless of a weaker claimed tier
+    assert assignment_status(trusted, feature_tier="name_only")[0] == "verified"
+
+
+def test_high_confidence_extracted_shrinks_edge_and_hides_reads():
+    mix = {"cover_1_unspecified": 1}
+    with patch.object(em, "predict_success", return_value={"probability": 0.37}):
+        plain = score(mix=mix)
+        prov = score(mix=mix, feature_tier="high_confidence_extracted", model_use_permitted=True)
+        denied = score(mix=mix, feature_tier="high_confidence_extracted", model_use_permitted=False)
+    assert prov.assignment_status == "high_confidence_extracted"
+    conf = prov.assignment_confidence
+    assert conf == fp.TIER_TRUST["football_inference"]
+    raw_edge = prov.components["raw_matchup_edge"]
+    assert raw_edge == pytest.approx(plain.matchup_edge)
+    assert prov.matchup_edge == pytest.approx(raw_edge - (1 - conf) * raw_edge)
+    assert prov.components["reads"] == "UNKNOWN (provisional structure; not verified)"
+    assert denied.assignment_status != "high_confidence_extracted"
+
+
+def test_cold_start_shrinks_toward_artifact_global_rate():
+    art = em.ExperimentalArtifact(global_rate=0.4)  # synthetic test-only rate
+    unknown = sm.structure_any("Unknown formation", "Uncatalogued XYZ")
+    common = dict(formation="Gun 5WR Tight", play="Mesh", probe=PROBE, opponent_id="unknown", mix={}, priors_on=True)
+    with patch.object(em, "predict_success", return_value={"probability": 0.5, "evidence_quality": "prior_driven"}):
+        u = score_pair(art, structure=unknown, **common)
+        n = score_pair(art, **common)
+    assert u.assignment_status == "unknown"
+    assert u.shrunk_probability == pytest.approx(0.4)
+    assert u.score_calibrated is False and u.score_available is True
+    assert u.components["raw"] == 0.5 and u.components["shrunk"] == pytest.approx(0.4)
+    assert u.total_probability == 0.5  # raw composition preserved
+    assert n.assignment_status == "name_only"
+    assert n.shrunk_probability == pytest.approx(0.4 + fp.NAME_TRUST * (0.5 - 0.4))
+    assert n.score_calibrated is False
+
+
+def test_nested_base_global_rate_preferred_and_calibrated_base_not_shrunk():
+    from cfb_coach.madden.model.offense_pregame_scoring import resolve_global_rate
+    wrapper = SimpleNamespace(base=em.ExperimentalArtifact(global_rate=0.45), global_rate=0.5)
+    assert resolve_global_rate(wrapper) == 0.45
+    assert resolve_global_rate(SimpleNamespace(base={"global_rate": 0.42})) == 0.42
+    with patch.object(em, "predict_success", return_value={"probability": 0.61, "evidence_quality": "empirical"}):
+        r = score(mix={})
+    assert r.score_calibrated is True
+    assert r.shrunk_probability == r.total_probability == 0.61
