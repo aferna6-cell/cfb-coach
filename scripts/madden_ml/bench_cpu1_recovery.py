@@ -14,6 +14,16 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sys
+
+# python3 scripts/madden_ml/<script>.py places scripts/madden_ml first on
+# sys.path. Without this, Python can silently import an older site-packages
+# cfb_coach rather than this checkout. Both the compiler and CPU benchmark
+# must run the SAME code under review as the interactive coach.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) in sys.path:
+    sys.path.remove(str(_REPO_ROOT))
+sys.path.insert(0, str(_REPO_ROOT))
 import random
 import sqlite3
 import statistics
