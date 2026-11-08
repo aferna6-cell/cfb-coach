@@ -41,8 +41,11 @@ def main() -> int:
     dbfile = args.db.expanduser()
     if not dbfile.is_file():
         p.error(f"Database not found: {dbfile}")
-    with CoachDB.open_read_only(dbfile) as db:
+    db = CoachDB.open_read_only(dbfile)
+    try:
         inv = installed_inventory(db)
+    finally:
+        db.close()
     if not inv.get("installed") or not inv.get("play_count"):
         p.error("No confirmed installed offensive inventory in the database")
 
