@@ -889,6 +889,14 @@ def apply_experimental_offense(
                 session_id=session_id or game_id, snap_seq=snap_seq, rank_kwargs=_rank_kwargs,
                 started=started, budget_ms=budget)
         latency = (time.perf_counter() - started) * 1000.0
+        if route_attempted and route_ctx is not None and route_ctx.error:
+            # The route ranker catches internal errors and otherwise returns
+            # base rows. Record the actual fallback instead of quietly using
+            # the old rows as if route-aware scoring succeeded.
+            reason = (MLStatus.TIMEOUT if latency > budget
+                      or "latency budget" in route_ctx.error.lower()
+                      else MLStatus.EXCEPTION)
+            return _fallback(reason, latency, detail=route_ctx.error)
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
         if not ranked:
