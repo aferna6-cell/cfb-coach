@@ -135,7 +135,17 @@ def score_pair(art: Any, *, formation: str, play: str, probe: Any, mix: Mapping[
         e = fpri.matchup_edge(s, clean_mix, learned=learned)
         edge, se, cells, mass = float(e["edge"]), float(e["se"]), list(e["cells"]), float(e.get("mass") or 0.0)
     raw_edge = edge
-    provisional = status == "high_confidence_extracted" or (status == "partial" and not _route_tiers(s)[0])
+    # A successfully decoded provisional route is still *unreviewed* evidence.
+    # The geometry decoder labels ambiguous routes "partial" with n_known > 0;
+    # do not accidentally award their unshrunk matchup edge. Keep mixed
+    # documented/football-inference structures outside this special path.
+    _, route_tiers = _route_tiers(s)
+    provisional = status == "high_confidence_extracted" or (
+        status == "partial" and (
+            not route_tiers
+            or any(t == "partial" or t in PROVISIONAL_ROUTE_TIERS for t in route_tiers)
+        )
+    )
     if provisional and edge:
         edge = edge * conf  # confidence-weighted prior: shrink toward 0 by (1 - confidence)
     total = sm._sigmoid(sm._logit(base) + edge) if edge else base
