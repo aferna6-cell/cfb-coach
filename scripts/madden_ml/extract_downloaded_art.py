@@ -37,7 +37,9 @@ def slug(value):
 def identity(path):
     parts = path.stem.split('__')
     if (path.suffix == '.png' and len(parts) == 3 and parts[0] in ('offense', 'defense')
-            and all(re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', p) for p in parts[1:])):
+            and re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', parts[1])
+            # Play slugs keep literal site hyphen runs (e.g. 'curl--outs'); never normalised to an alias.
+            and re.fullmatch(r'[a-z0-9]+(?:-+[a-z0-9]+)*', parts[2])):
         return tuple(parts)
     return None
 

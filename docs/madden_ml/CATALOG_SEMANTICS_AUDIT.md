@@ -135,3 +135,29 @@ is not assignment verification. Every output remains
 same-colour segments and man/other responsibilities without sufficient geometry
 remain unknown; yards, reads, blocking, slots and colour meanings are not inferred.
 No live gameplay, training, priors, catalog or permission state is changed.
+
+## Issue #132 status (2026-11-08, catalog track)
+
+Rights: AceMadden scopes metadata_bulk, images_download, images_local_storage (2026-11-07), plus owner written
+confirmation 2026-11-08 (relayed by dr eggbot) permitting a separately staged PROVISIONAL/LOW_CONFIDENCE export of
+Ace-derived geometry as confidence-weighted priors and local VLM interpretation. Never verified; agreement is not
+verification; no player identity/QB reads/yards/blocking/slots/beaters; raw art, overlays and crops never committed,
+redistributed, or sent to third-party APIs. `catalog_semantics.export()` stays verified-only with zero eligible rows.
+
+Provisional channel: `cfb_coach/madden/model/provisional_catalog.py` (`export_provisional`, schema
+`madden27.catalog_semantics.provisional.v1`), writer `scripts/madden_ml/export_provisional_catalog.py`.
+Geometry is serialized only with `--include-ace-derived-geometry` (default off). CatalogEntry-aligned fields:
+feature_tier (high_confidence_extracted | partial | name_only | unknown; never verified_assignments), source_books
+(verified only, currently empty), source_book_status, installable, art_listed, ace_image_derived, first_party_derived,
+model_use_permitted, blocked_reason, structure_ref (private-store pointer).
+
+Independently recomputed funnel (private store, not committed):
+offense n_indexed 8574 / 420 formations; art URL 8554; downloaded + sha256-matched 8554 (0 mismatches); v2 extracted 8554
+(0 failures, including literal `curl--outs` after the parser fix); URL-less 20 (name_only, blocked_reason=no_art_url);
+tiers 6444 high_confidence_extracted / 2110 partial / 20 name_only; verified 0. Defense 1578/1578 downloaded, hashed, extracted
+(coverage priors only). Installable: 92 offense / 113 defense exact installed-snapshot triples. Membership: the public
+AceMadden index links only 6 team books (formation-level links; 3644 offense listings in a linked formation, low confidence);
+play-level source-book membership is 0 and stays unknown; formations.json is not regrouped. Alias audits (not aliased):
+Portland Ywheel vs portland-y-wheel, ten defensive exact-slug mismatches; three stale raw PNGs outside the index.
+VLM pass: not run (no local VLM runtime on the host; external APIs would be redistribution). `--vlm-sidecar` hook accepts
+play_key-keyed hypotheses as alternatives only.
