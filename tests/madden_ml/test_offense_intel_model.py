@@ -423,6 +423,13 @@ def test_existing_files_are_only_modified_where_the_integration_needs_it():
         "cfb_coach/madden/model/offense_designer.py", "cfb_coach/madden/model/cli.py",
         # Issue #124: football priors wired into the live ranker, the decision search and the QB-read card (opt-in, default off).
         "cfb_coach/madden/model/offense_route_ranker.py", "cfb_coach/madden/model/offense_presnap_advice.py",
+        # Issue #130: pregame portfolio hook + scoring (Strategist), live adjustment designer / inventory lock (Live), and
+        # the existing live-path fixtures that now lock their own in-memory book as the applied playbook.
+        "cfb_coach/madden/model/offense_portfolio.py", "cfb_coach/madden/model/offense_pregame_scoring.py",
+        "cfb_coach/madden/model/offense_adjustment_designer.py",
+        "tests/madden_ml/test_sprint41_blockers.py", "tests/madden_ml/test_sprint42_execution_recovery.py",
+        "tests/madden_ml/test_sprint4_experimental.py", "tests/madden_ml/test_sprint6_model_primary_actions.py",
+        "tests/madden_ml/test_wildcard_john_games.py", "tests/test_wildcard_john.py", "tests/madden_ml/test_wildcard_dual_ml.py",
     }
     assert touched <= allowed, f"unexpected modifications: {sorted(touched - allowed)}"
 

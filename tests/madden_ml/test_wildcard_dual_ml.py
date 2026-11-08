@@ -35,6 +35,7 @@ from cfb_coach.madden.model.schema import CoachingMode, ML_LATENCY_BUDGET_MS, ML
 from cfb_coach.madden.playbook import load_books
 from cfb_coach.madden.playcaller import MaddenCall, make_call
 from cfb_coach.madden.situation import parse_madden_situation
+from cfb_coach.madden.adjustments.executable import Loadout
 
 _OFFENSE_SITS = [
     "1&10 my 25",
@@ -67,6 +68,12 @@ _ACTIVE = {
     "offense": ["MATCH", "C2", "O-RUN", "C3", "MAN", "RZ", "ZERO", "PROT"],
     "defense": ["SAFE DEEP", "TAMPA MABLE", "QTRS OVERTOP", "SKY CONTAIN"],
 }
+# The offense macros _ACTIVE passes to make_call, confirmed armed in slots for the
+# live inventory lock (ML-selected calls fail closed on unarmed macros).
+_LOADOUT = Loadout.from_dict({"offense": [
+    {"name": name, "slot": f"S{i + 1}", "installed": True, "active": True, "confirmed_by_user": True}
+    for i, name in enumerate(_ACTIVE["offense"])
+]})
 
 
 def _percentile_ok(summary: dict[str, float]) -> bool:
@@ -301,6 +308,7 @@ class DualControlTests(unittest.TestCase):
             db=self.db, opponent_id="john", make_call=_make,
             parse_situation=parse_madden_situation, learn_summary=lambda: "synthetic",
             brand="Madden 27 Franchise", enable_execution_verify=True,
+            madden_adjustment_loadout=_LOADOUT,
         )
         ctrl.start()
         first = ctrl.call_only("1&10 my 25 showing cover 4")

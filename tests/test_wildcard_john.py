@@ -29,6 +29,7 @@ from cfb_coach.madden.situation import parse_madden_situation
 from cfb_coach.opponents import resolve_opponent
 from cfb_coach.seed import load_seed as load_cfb_seed
 from cfb_coach.vod_model.flags import use_cli_flags
+from tests.madden_ml.live_book import apply_offense_book
 
 _BOOK = {
     "offense": {"Gun Bunch": ["Inside Zone"]},
@@ -126,6 +127,7 @@ class JohnProfileTests(unittest.TestCase):
     def test_in_game_learning_updates_only_john(self) -> None:
         ensure_madden_opponent(self.db, "john")
         register_cold_start(self.db, "alex")
+        apply_offense_book(self.db, _BOOK["offense"], defense=_BOOK["defense"])
         gavin_before = _rows(self.db, "gavin")
         tiano_before = _rows(self.db, "tiano")
         alex_before = _rows(self.db, "alex")

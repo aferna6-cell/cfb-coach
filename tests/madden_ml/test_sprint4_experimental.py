@@ -21,6 +21,7 @@ from cfb_coach.madden.model.schema import (
     Verification,
 )
 from cfb_coach.madden.playcaller import MaddenCall, make_call
+from tests.madden_ml.live_book import apply_offense_book
 from cfb_coach.madden.situation import Situation
 
 
@@ -386,6 +387,7 @@ class ExperimentalHtmlTests(unittest.TestCase):
         inference.set_mode(self.db, CoachingMode.EXPERIMENTAL)
 
         book = _book()
+        apply_offense_book(self.db, book)
 
         def _make(sit, **kwargs):
             # Bypass full playbook lock for unit test — sealed experimental path only.

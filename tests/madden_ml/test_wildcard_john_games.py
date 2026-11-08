@@ -24,6 +24,8 @@ from cfb_coach.madden.model.schema import CoachingMode, ML_LATENCY_BUDGET_MS
 from cfb_coach.madden.playcaller import make_call
 from cfb_coach.madden.situation import parse_madden_situation
 from cfb_coach.vod_model.flags import use_cli_flags
+from cfb_coach.madden.adjustments.executable import Loadout
+from tests.madden_ml.live_book import apply_offense_book
 
 _ACTIVE = {
     "offense": ["MATCH", "C2", "O-RUN", "C3", "MAN", "RZ", "ZERO", "PROT"],
@@ -45,6 +47,12 @@ _CHAIN = [
     ("d 3&8", "sack", "", False, None),
     ("4&1 opp 40", "+2", "", False, None),
 ]
+# The same macros _ACTIVE passes to make_call, confirmed armed in slots for the
+# live inventory lock (ML-selected calls fail closed on unarmed macros).
+_LOADOUT = Loadout.from_dict({"offense": [
+    {"name": name, "slot": f"S{i + 1}", "installed": True, "active": True, "confirmed_by_user": True}
+    for i, name in enumerate(_ACTIVE["offense"])
+]})
 
 
 def _percentile(values: list[float], fraction: float) -> float:
@@ -71,6 +79,7 @@ class WildcardJohnGamesTest(unittest.TestCase):
         self.db = CoachDB(Path(self._td.name) / "synthetic.db", seed=mdata.load_seed())
         ensure_madden_opponent(self.db, "john")
         store_selection(self.db, "john", _ACTIVE)
+        apply_offense_book(self.db, _BOOK["offense"], defense=_BOOK["defense"])
         self.assertIs(inference.resolve_mode(self.db), CoachingMode.HEURISTIC)
         self.assertEqual(ML_LATENCY_BUDGET_MS, 150)
         artifact = experimental_model.train_experimental([], side="offense")
@@ -100,6 +109,7 @@ class WildcardJohnGamesTest(unittest.TestCase):
             db=self.db,
             opponent_id="john",
             make_call=self._make,
+            madden_adjustment_loadout=_LOADOUT,
             parse_situation=parse_madden_situation,
             learn_summary=lambda: "synthetic",
             brand="Madden 27 Franchise",

@@ -22,6 +22,7 @@ from cfb_coach.madden.model.schema import (
 from cfb_coach.madden.playcaller import MaddenCall
 from cfb_coach.madden.situation import parse_madden_situation
 from cfb_coach.situation import Situation
+from tests.madden_ml.live_book import apply_offense_book
 
 
 def _seed() -> dict:
@@ -172,6 +173,7 @@ class HtmlJoinIntegrationTests(unittest.TestCase):
         experimental_live.set_artifact_path(self.db, dest)
         inference.set_mode(self.db, CoachingMode.EXPERIMENTAL)
         book = _book()
+        apply_offense_book(self.db, book)
 
         def _make(sit, **kwargs):
             heur = MaddenCall(
@@ -403,6 +405,7 @@ class CpuReadinessAcceptanceTests(unittest.TestCase):
         experimental_live.set_artifact_path(self.db, dest)
         self.art_path = dest
         self.book = _book()
+        apply_offense_book(self.db, self.book)
 
         def _make(sit, **kwargs):
             heur = MaddenCall(

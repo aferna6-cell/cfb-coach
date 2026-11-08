@@ -33,6 +33,7 @@ from cfb_coach.madden.model.schema import (
 from cfb_coach.madden.playcaller import MaddenCall
 from cfb_coach.madden.situation import parse_madden_situation
 from cfb_coach.situation import Situation
+from tests.madden_ml.live_book import apply_offense_book
 
 GAME = execution_recovery.RECOVERY_GAME_ID
 ATTEST = execution_recovery.ATTESTATION_PHRASE
@@ -287,6 +288,7 @@ class UsedDifferentVerificationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             db = CoachDB(Path(td) / "t.db", seed=_seed())
             try:
+                apply_offense_book(db, {"Gun Bunch": ["Mesh"]})
 
                 def _make(sit, **kwargs):
                     return MaddenCall("offense", "Gun Bunch", "Mesh", "No adj", "a", "h")
@@ -496,6 +498,7 @@ class UndoRetryRegressionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             db = CoachDB(Path(td) / "t.db", seed=_seed())
             try:
+                apply_offense_book(db, {"Gun Bunch": ["Mesh"]})
 
                 def _make(sit, **kwargs):
                     return MaddenCall("offense", "Gun Bunch", "Mesh", "No adj", "a", "h")
