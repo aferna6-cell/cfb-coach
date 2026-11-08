@@ -70,6 +70,27 @@ class RouteRankerHotPathTests(unittest.TestCase):
         self.assertEqual(resolved["kind"], "none")
 
 
+    def test_incompatible_macro_skips_expensive_suggestion_lookup(self):
+        from cfb_coach.madden.model.offense_joint_decision import legal_plans_for_play
+
+        sit = Situation(raw="1st and 10", down=1, distance=10, yardline=35, side="offense")
+        book = {"Gun 5WR Tight": ["Mesh"]}
+        index = {"active": ["MAN"], "pair_sets": {"MAN": set()}, "cap": 2, "details": {}}
+        with mock.patch(
+            "cfb_coach.madden.offense_macros.suggest_for_snap",
+            side_effect=AssertionError("incompatible macro should never be evaluated"),
+        ):
+            plans = legal_plans_for_play(
+                formation="Gun 5WR Tight", play="Mesh", sit=sit,
+                book=book, active=["MAN"],
+                prediction={"probability": 0.5, "uncertainty": 0.6},
+                repeated=False, audibles=None, db=None, opponent_id="cpu",
+                evaluation={"coverage": {"state": "missing"}},
+                allow_macros=True, macro_index=index,
+            )
+        self.assertEqual([p["plan_id"] for p in plans], ["NO_ADJUSTMENT"])
+
+
 class PreviousExperimentalFallbackTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -128,6 +149,29 @@ class PreviousExperimentalFallbackTests(unittest.TestCase):
         self.assertEqual(decision.policy_source, PolicySource.FALLBACK)
         self.assertEqual(call.ml_experimental["fallback_source"], "previous_experimental_model")
         self.assertEqual(decision.fallback_reason, MLStatus.EXCEPTION)
+
+    def test_joint_timeout_with_armed_macros_uses_previous_ml(self):
+        pairs = [(row["formation"], row["play"]) for row in self.ranking]
+
+        def route_works(*args, **kwargs):
+            return self.ranking, pairs, SimpleNamespace(error="")
+
+        def joint_runs_out_of_time(**kwargs):
+            time.sleep(0.18)
+            return {}
+
+        with mock.patch(
+            "cfb_coach.madden.model.offense_joint_decision.choose_joint_action",
+            side_effect=joint_runs_out_of_time,
+        ):
+            call, decision = self._call(route_works)
+        self.assertEqual(call.play, "Four Verticals")
+        self.assertEqual(decision.fallback_reason, MLStatus.TIMEOUT)
+        self.assertEqual(
+            call.ml_experimental["fallback_source"], "previous_experimental_model"
+        )
+        self.assertIsNone(call.macro)
+        self.assertIsNone(call.adjustment)
 
     def test_route_timeout_uses_previous_ml_without_macros(self):
         def slow(*args, **kwargs):
