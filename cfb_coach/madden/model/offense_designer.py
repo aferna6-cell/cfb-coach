@@ -444,6 +444,31 @@ def design_offense(
         from types import SimpleNamespace
         from cfb_coach.madden.model.offense_adjustment_designer import design_adjustments
         from cfb_coach.madden.model.offense_pregame_scoring import score_pair
+        from cfb_coach.madden.adjustments import executable as ex
+        from cfb_coach.madden.macros import load_selection
+        from cfb_coach.madden.model.offense_decision import MacroEffect
+
+        selection = load_selection(db, opponent_id)
+        names = (selection or {}).get("offense") or []
+        loadout = ex.Loadout(entries=tuple(
+            ex.LoadoutEntry(side="offense", name=name, slot="", installed=True,
+                            active=True, confirmed_by_user=False)
+            for name in names
+        )) if names else None
+        # Stored selection proves membership, not controls or route assignments.
+        # There is no persisted action-confirmation store on this command path.
+        confirmations = None
+        macro_effects = {}
+        for record in verified_created_macros(db, opponent_id):
+            changes, source = record.get("changes"), record.get("source")
+            if (isinstance(changes, Mapping) and changes
+                    and all(isinstance(slot, str) and slot.strip()
+                            and isinstance(route, str) and route.strip()
+                            for slot, route in changes.items())
+                    and isinstance(source, str) and source.strip()):
+                macro_effects[record["name"]] = MacroEffect(
+                    name=record["name"], changes=dict(changes), verified=True, source=source,
+                )
         for form, play in dict.fromkeys(pairs):
             if play not in formations.get(form, []):
                 raise ValueError("Adjustment design must use a selected stock play")
@@ -452,6 +477,8 @@ def design_offense(
                 probe=SimpleNamespace(down=1, distance=10, yardline=35),
                 opponent_id=opponent_id, priors_on=priors_on, coverage_mix=coverage_mix,
                 score_pair_fn=partial(score_pair, mix_source=mix_source),
+                loadout=loadout, confirmations=confirmations,
+                macro_effects=macro_effects or None, proposed_macros=macro_blueprints,
             ))
     proposal["preparation_guide"] = preparation_guide(proposal, active=active)
     return proposal

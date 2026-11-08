@@ -280,3 +280,86 @@ def test_mix_flags_refused_before_database_open(command, monkeypatch, capsys):
     args = args_for(command, "--empty-coverage-mix")
     assert args.func(args) == 2
     assert "require --football-intelligence" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.parametrize("stored", [False, True])
+def test_adjustment_comparison_receives_stored_selection_and_blueprints(
+        explicit, stored, db, structural_path, monkeypatch):
+    from cfb_coach.madden import macros, offense_macros
+    from cfb_coach.madden.model import offense_adjustment_designer as adjustments
+
+    name = "MATCH"
+    assert offense_macros.known(name)
+    if stored:
+        macros.store_selection(db, "cpu", {"offense": [name], "defense": []})
+    stock = catalog.book_formations("offense", "Buccaneers")
+    form = "Gun Trips X Nasty"
+    pair = (form, next(p for p in stock[form] if not catalog.is_run(p) and "rpo" not in p.lower()))
+    captured = []
+    original = adjustments.design_adjustments
+    def capture(*args, **kwargs):
+        captured.append(kwargs)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(adjustments, "design_adjustments", capture)
+    plan = designer.design_offense(
+        db, opponent_id="cpu", max_formations=1,
+        artifact=designer.load_design_artifact(structural_path),
+        catalogue={"Buccaneers": {form: stock[form]}},
+        adjustment_pairs=[pair] if explicit else (),
+    )
+    assert len(captured) == len(plan["adjustment_designs"]) == 1
+    kwargs = captured[0]
+    assert kwargs["proposed_macros"] is plan["macro_blueprints"]
+    assert kwargs["proposed_macros"]
+    assert kwargs["confirmations"] is None
+    assert kwargs["macro_effects"] is None
+    if stored:
+        entries = kwargs["loadout"].entries
+        assert len(entries) == 1 and entries[0].name == name
+        assert entries[0].side == "offense" and entries[0].slot == ""
+        assert entries[0].installed and entries[0].active
+        assert not entries[0].confirmed_by_user
+        assert kwargs["loadout"].usable("offense", name) is None
+    else:
+        assert kwargs["loadout"] is None
+    candidates = plan["adjustment_designs"][0]["candidates"]
+    kinds = {row["kind"] for row in candidates}
+    assert "proposed_macro" in kinds
+    assert ("existing_macro" in kinds) is stored
+    for blueprint in plan["macro_blueprints"]:
+        row = next(row for row in candidates
+                   if row["kind"] == "proposed_macro" and row["label"] == blueprint["name"])
+        assert "DRAFT" in row["status"] and row["activation"] == "NOT_ARMED"
+        assert not row["executable_now"] and "UNKNOWN" in row["controls"]
+
+
+def test_adjustment_comparison_uses_only_sourced_verified_effects(db, structural_path, monkeypatch):
+    from cfb_coach.madden.model import offense_adjustment_designer as adjustments
+
+    records = [
+        {"name": "verified", "verified_armed": True,
+         "changes": {"WR1": "Slant"}, "source": "fixture route attestation"},
+        {"name": "opaque", "verified_armed": True, "settings": ["Slant"], "source": "fixture"},
+        {"name": "unsourced", "verified_armed": True, "changes": {"WR1": "Slant"}},
+        {"name": "unarmed", "verified_armed": False,
+         "changes": {"WR1": "Slant"}, "source": "fixture"},
+    ]
+    db.set_meta(designer.META_APPROVED.format(opponent="cpu"), json.dumps({"macros": records}))
+    original = adjustments.design_adjustments
+    captured = []
+    def capture(*args, **kwargs):
+        captured.append(kwargs)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(adjustments, "design_adjustments", capture)
+    stock = catalog.book_formations("offense", "Buccaneers")
+    form = "Gun Trips X Nasty"
+    designer.design_offense(db, opponent_id="cpu", max_formations=1,
+        artifact=designer.load_design_artifact(structural_path),
+        catalogue={"Buccaneers": {form: stock[form]}})
+    effects = captured[0]["macro_effects"]
+    assert set(effects) == {"verified"}
+    assert effects["verified"].changes == records[0]["changes"]
+    assert effects["verified"].source == records[0]["source"]
+    assert effects["verified"].verified
+    assert captured[0]["confirmations"] is None
