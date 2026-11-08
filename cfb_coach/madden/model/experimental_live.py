@@ -671,6 +671,7 @@ def apply_experimental_offense(
         detail: str | None = None,
     ) -> tuple[Any, CoachingDecision]:
         trace = _mark(latency, status is MLStatus.TIMEOUT)
+        prior_fallback_error: str | None = None
         # Route-aware failure is NOT permission to revert to the heuristic.
         # The previous experimental model already ranked the valid in-book
         # plays earlier in this SAME pre-snap decision. Reuse that prediction,
@@ -738,7 +739,8 @@ def apply_experimental_offense(
                     except Exception:  # Logging must not change the actual call.
                         logger.exception("could not log previous experimental fallback")
                 return prior_call, dec
-            except Exception:
+            except Exception as exc:
+                prior_fallback_error = f"{type(exc).__name__}: {exc}"
                 logger.exception("previous experimental fallback also failed")
         # Only an unavailable or invalid previous model may reach the last
         # resort, existing legal-inventory heuristic safeguard.
@@ -746,6 +748,8 @@ def apply_experimental_offense(
         note = f"fallback_source={source}"
         if detail:
             note = f"{note}; {detail}"
+        if prior_fallback_error:
+            note = f"{note}; prior_ml_failure={prior_fallback_error}"
         dec = CoachingDecision(
             decision_ts=decision_ts,
             latency_ms=latency,
@@ -784,6 +788,9 @@ def apply_experimental_offense(
             "fallback_reason": status.value,
             "fallback_source": source,
             "fallback_detail": detail,
+            "prior_ml_failure": prior_fallback_error,
+            "prior_ml_available": bool(previous_model_ranked),
+            "route_attempted": route_attempted,
             "latency_ms": trace.get("latency_ms"),
             "timed_out": trace.get("timed_out", False),
             "slowest_stage": trace.get("slowest_stage"),
