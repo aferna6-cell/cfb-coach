@@ -210,17 +210,54 @@ def test_live_gate_requires_confirmed_inventory_not_staged_proposal(db):
         ad.validate_live_call(db, call, opponent_id="cpu")
 
 
+def _heuristic_hot_route():
+    return MaddenCall("offense", *PAIR, "Hot route WR1 → Slant", "", adjustment={
+        "id": "hot_slant_vs_man", "side": "offense", "kind": "hot_route",
+        "label": "Hot route WR1 → Slant", "target": "WR1", "route": "Slant"})
+
+
+def _heuristic_run_audible(run="Inside Zone"):
+    return MaddenCall("offense", *PAIR, f"Audible → {run}", "", adjustment={
+        "id": "audible_run_vs_two_high", "side": "offense", "kind": "audible",
+        "label": f"Audible → {run}"})
+
+
 def test_live_hot_route_and_macro_require_separate_user_confirmation(db):
     install(db)
-    call = MaddenCall("offense", *PAIR, "No adj", "", adjustment={
-        "id": "hot_slant_vs_man", "target": "WR1", "route": "Slant", "kind": "hot_route"})
+    call = _heuristic_hot_route()
+    ad.validate_live_call(db, call, opponent_id="cpu")
+    with pytest.raises(ValueError, match="not confirmed"):
+        ad.validate_live_call(db, call, opponent_id="cpu", confirmations={})
+    with pytest.raises(ValueError, match="not confirmed"):
+        ad.validate_live_call(db, call, opponent_id="cpu", loadout=ex.Loadout())
+    call.ml_offense_action = {"kind": "adjustment"}
     with pytest.raises(ValueError, match="not confirmed"):
         ad.validate_live_call(db, call, opponent_id="cpu")
+    del call.ml_offense_action
     ad.validate_live_call(db, call, opponent_id="cpu", confirmations=confirms())
     call.adjustment = None
     call.macro = "unarmed"
+    ad.validate_live_call(db, call, opponent_id="cpu")
     with pytest.raises(ValueError, match="installed and armed"):
-        ad.validate_live_call(db, call, opponent_id="cpu")
+        ad.validate_live_call(db, call, opponent_id="cpu", confirmations={})
+
+
+def test_heuristic_audible_skips_lock_until_inventory_or_joint_action(db):
+    install(db)
+    call = _heuristic_run_audible()
+    ad.validate_live_call(db, call, opponent_id="cpu")
+    ad.validate_live_call(db, call, opponent_id="cpu", confirmations={})
+    missing = _heuristic_run_audible("Uninstalled Run")
+    with pytest.raises(ValueError, match="not a confirmed installed play"):
+        ad.validate_live_call(db, missing, opponent_id="cpu", confirmations={})
+    unnamed = MaddenCall("offense", *PAIR, "Audible → run audible", "", adjustment={
+        "id": "audible_run_vs_two_high", "side": "offense", "kind": "audible",
+        "target": "run audible", "route": ""})
+    with pytest.raises(ValueError, match="not a confirmed installed play"):
+        ad.validate_live_call(db, unnamed, opponent_id="cpu", confirmations={})
+    unnamed.ml_offense_action = {"kind": "adjustment"}
+    with pytest.raises(ValueError, match="not a confirmed installed play"):
+        ad.validate_live_call(db, unnamed, opponent_id="cpu")
 
 
 def test_controller_rejects_uninstalled_call_before_exposing_it(db):
@@ -231,6 +268,31 @@ def test_controller_rejects_uninstalled_call_before_exposing_it(db):
     assert controller.last_call is None
     install(db)
     assert controller._make(SimpleNamespace(side="offense")) is call
+
+
+def test_controller_keeps_heuristic_suggestions_when_inventory_unset(db):
+    install(db)
+    sit = SimpleNamespace(side="offense")
+    for call in (_heuristic_hot_route(), _heuristic_run_audible(),
+                 MaddenCall("offense", *PAIR, "No adj", "")):
+        controller = LivePlayController(db, "cpu", lambda *a, _c=call, **kw: _c,
+                                        lambda *a: None, lambda *a: "")
+        assert controller.madden_adjustment_confirmations is None
+        assert controller.madden_adjustment_loadout is None
+        assert controller._make(sit) is call
+
+
+def test_controller_still_fails_closed_on_joint_or_set_inventory(db):
+    install(db)
+    call = _heuristic_hot_route()
+    controller = LivePlayController(db, "cpu", lambda *a, **kw: call, lambda *a: None, lambda *a: "")
+    controller.madden_adjustment_confirmations = {}
+    with pytest.raises(ValueError, match="not confirmed"):
+        controller._make(SimpleNamespace(side="offense"))
+    controller.madden_adjustment_confirmations = None
+    call.ml_offense_action = {"kind": "adjustment"}
+    with pytest.raises(ValueError, match="not confirmed"):
+        controller._make(SimpleNamespace(side="offense"))
 
 
 def test_designer_only_passes_supported_shared_portfolio_keywords(db, monkeypatch):

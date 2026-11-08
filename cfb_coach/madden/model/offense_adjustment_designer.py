@@ -187,16 +187,43 @@ def design_adjustments(
             "search_truncated": truncated, "basis": od.BASIS}
 
 
+def _named_audible_play(row: Mapping[str, Any]) -> str | None:
+    """Play named by an audible suggestion, or None. Never invents a destination."""
+    for key in ("audible_to", "play", "to"):
+        value = row.get(key)
+        if isinstance(value, str) and value.strip() and value.strip() != "run audible":
+            return value.strip()
+    label = str(row.get("label") or "")
+    if "→" in label and label.lower().startswith("audible"):
+        dest = label.split("→", 1)[1].strip()
+        return dest or None
+    target = row.get("target")
+    if isinstance(target, str) and target.strip() and target.strip() != "run audible":
+        return target.strip()
+    return None
+
+
 def validate_live_call(db: Any, call: Any, *, opponent_id: str,
                        confirmations: Mapping[str, Any] | None = None,
                        loadout: ex.Loadout | None = None) -> None:
-    """Fail closed before displaying a Madden offense call outside confirmed inventory."""
+    """Fail closed before displaying a Madden offense call outside confirmed inventory.
+
+    The play-installed lock always applies. Heuristic display suggestions are not
+    rejected when confirmations and loadout are unset and the call is not a
+    selected joint action (no ml_offense_action). When inventory is set or the
+    call carries ml_offense_action, unconfirmed adjustments and macros fail closed.
+    """
     from cfb_coach.madden import playbook
     from cfb_coach.madden.model.offense_designer import verified_created_macros
 
     book = playbook.load_books(db).get("offense") or {}
-    if call.play not in (book.get("formations") or {}).get(call.formation, []):
+    installed = (book.get("formations") or {}).get(call.formation, [])
+    if call.play not in installed:
         raise ValueError("Live offense requires a confirmed installed formation/play")
+    inventory_set = confirmations is not None or loadout is not None
+    joint = isinstance(getattr(call, "ml_offense_action", None), dict)
+    if not inventory_set and not joint:
+        return
     if getattr(call, "macro", None):
         macro = str(call.macro)
         approved = any(m["name"] == macro and any(
@@ -218,8 +245,14 @@ def validate_live_call(db: Any, call: Any, *, opponent_id: str,
             actions.append(ex.PlannedAction("off.hot_route", {"target": row["target"], "route": row["route"]}))
         elif kind == "pass_protection" and row.get("route"):
             actions.append(ex.PlannedAction("off.pass_protection", {"protection": row["route"]}))
+        elif kind == "audible":
+            dest = _named_audible_play(row)
+            if dest is None or dest == call.play or dest not in installed:
+                raise ValueError("Live audible is not a confirmed installed play")
         else:
             raise ValueError("Live adjustment has UNKNOWN executable effects")
+    if not actions:
+        return
     stock = sm.structure_any(call.formation, call.play)
     ctx = ex.PlayContext("offense", call.formation, call.play, od._play_type(stock),
                          eligible_receivers=stock.skill_slots)

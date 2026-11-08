@@ -906,12 +906,9 @@ class LivePlayController:
         from cfb_coach.madden.playcaller import MaddenCall
         if isinstance(call, MaddenCall) and call.side == "offense":
             from cfb_coach.madden.model.offense_adjustment_designer import validate_live_call
-            from cfb_coach.madden.model.offense_route_ranker import _confirmations
-            confirmations = self.madden_adjustment_confirmations
-            if confirmations is None:
-                confirmations = _confirmations()
             validate_live_call(self.db, call, opponent_id=self.opponent_id,
-                               confirmations=confirmations, loadout=self.madden_adjustment_loadout)
+                               confirmations=self.madden_adjustment_confirmations,
+                               loadout=self.madden_adjustment_loadout)
         return call
 
     def call_only(
