@@ -370,12 +370,19 @@ def _resolve_model_adjustment(
     active_ids = clean_ids(list(active))
     policy_macro = resolved.get("macro") if kind == "macro" and macros_on else None
     catalog = _catalog_macro(policy_macro)
-    paired = _heuristic_catalog_macro(
-        sit=sit, zone=zone, play=play, coverage=coverage,
-        coverage_source=coverage_source, active=active, repeated=repeated,
-        book=book, weights=weights, score_phase=score_phase, cooled=cooled,
-        prepared=prepared,
-    )
+    # Only execute a catalog macro when the joint model explicitly chose
+    # THAT exact macro. Previously a legacy first-match suggestion silently
+    # overrode NO ADJUSTMENT and forced repetitive/unverified route packages.
+    paired = None
+    if kind == "macro" and catalog is not None:
+        candidate = _heuristic_catalog_macro(
+            sit=sit, zone=zone, play=play, coverage=coverage,
+            coverage_source=coverage_source, active=active, repeated=repeated,
+            book=book, weights=weights, score_phase=score_phase, cooled=cooled,
+            prepared=prepared,
+        )
+        if candidate and str(candidate.get("id")) == str(catalog.get("id")):
+            paired = candidate
     if paired is not None:
         macro: dict[str, Any] | None = paired
         adjustment: dict[str, Any] | None = None
