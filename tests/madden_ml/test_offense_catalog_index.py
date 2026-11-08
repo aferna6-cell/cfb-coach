@@ -487,18 +487,26 @@ def test_unverified_membership_never_adds_or_shrinks_norm_join(tmp_path):
     assert not result.entries[2].installable
 
 
-@pytest.mark.parametrize("evidence", ["first_party_playbook", "in_repo_stock"])
-def test_verified_first_party_membership_adds_known_book_extra(tmp_path, rows, books, evidence):
+def test_verified_first_party_membership_adds_known_book_extra(tmp_path, rows, books):
     ace_store = store(tmp_path, rows)
     baseline = index.load_offense_universe(ace_store=ace_store, playbooks=books)
     result = index.load_offense_universe(ace_store=ace_store, playbooks=books,
-        play_level_membership=membership_feed(tmp_path, [membership_row(verified=True, evidence=evidence)]))
+        play_level_membership=membership_feed(tmp_path, [membership_row(verified=True, evidence="first_party_playbook")]))
     assert result.entries[1].installable
     assert result.entries[1].source_books == ("Synthetic Book",)
     assert result.breakdown["installable"] == baseline.breakdown["installable"] + 1
     assert result.catalog_hash == baseline.catalog_hash
     assert result.geometry_hash == baseline.geometry_hash
     assert result.entries[0] == baseline.entries[0]
+
+
+def test_verified_in_repo_stock_does_not_add_extra(tmp_path, rows, books):
+    ace_store = store(tmp_path, rows)
+    baseline = index.load_offense_universe(ace_store=ace_store, playbooks=books)
+    result = index.load_offense_universe(ace_store=ace_store, playbooks=books,
+        play_level_membership=membership_feed(tmp_path, [membership_row(verified=True, evidence="in_repo_stock")]))
+    assert asdict(result) == asdict(baseline)
+    assert not result.entries[1].installable
 
 
 @pytest.mark.parametrize("overrides", [dict(source_book="Invented Book"),
@@ -509,7 +517,7 @@ def test_verified_membership_requires_known_book_and_exact_listing_identity(tmp_
     ace_store = store(tmp_path, rows)
     baseline = index.load_offense_universe(ace_store=ace_store, playbooks=books)
     result = index.load_offense_universe(ace_store=ace_store, playbooks=books,
-        play_level_membership=membership_feed(tmp_path, [membership_row(verified=True, **overrides)]))
+        play_level_membership=membership_feed(tmp_path, [membership_row(verified=True, evidence="first_party_playbook", **overrides)]))
     assert asdict(result) == asdict(baseline)
 
 
@@ -520,7 +528,7 @@ def test_membership_does_not_invent_l_z_or_o_zero_aliases(tmp_path, stock, listi
     rows = [dict(id="synthetic", side="offense", formation_slug="test-formation",
                  play_name=listing, play_slug=slug)]
     path = membership_feed(tmp_path, [membership_row(listing_id="synthetic",
-        formation_slug="test-formation", play_slug=slug)])
+        formation_slug="test-formation", play_slug=slug, verified=True, evidence="in_repo_stock")])
     result = index.load_offense_universe(ace_store=store(tmp_path, rows),
         playbooks={"Synthetic Book": {"Test Formation": [stock]}}, play_level_membership=path)
     assert not result.entries[0].installable

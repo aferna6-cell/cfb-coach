@@ -218,7 +218,8 @@ def load_offense_universe(
 
     Explicit playbooks mappings use the same shape as book_formations output:
     {book_name: {formation_name: [play_name, ...]}}. An empty mapping is honored.
-    Verified sidecar extras require a known book and exact listing/slug identity.
+    Verified sidecar extras require first_party_playbook evidence, a known book,
+    and exact listing/slug identity. Verified in_repo_stock rows do not add extras.
     Unverified sidecar rows never replace or narrow the stock join.
     score_available reports eligibility for later scoring, not a computed score.
     """
@@ -230,7 +231,8 @@ def load_offense_universe(
     verified_membership: dict[tuple[str, str, str], set[str]] = {}
     if play_level_membership is not None and Path(play_level_membership).is_file():
         for row in _load_play_level_membership(play_level_membership):
-            if row["verified"] and row["source_book"] in playbooks:
+            if (row["verified"] and row["evidence"] == "first_party_playbook"
+                    and row["source_book"] in playbooks):
                 key = (row["listing_id"], row["formation_slug"], row["play_slug"])
                 verified_membership.setdefault(key, set()).add(row["source_book"])
     membership: dict[tuple[str, str], set[str]] = {}
