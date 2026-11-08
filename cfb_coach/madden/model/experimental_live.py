@@ -726,7 +726,10 @@ def apply_experimental_offense(
                 }
                 _attach(prior_call, dec, info)
                 if commit and db is not None and snap_id:
-                    db.log_ml_decision(dec, agree=None)
+                    try:
+                        db.log_ml_decision(dec, agree=None)
+                    except Exception:  # Logging must not change the actual call.
+                        logger.exception("could not log previous experimental fallback")
                 return prior_call, dec
             except Exception:
                 logger.exception("previous experimental fallback also failed")
