@@ -370,12 +370,19 @@ def _resolve_model_adjustment(
     active_ids = clean_ids(list(active))
     policy_macro = resolved.get("macro") if kind == "macro" and macros_on else None
     catalog = _catalog_macro(policy_macro)
-    paired = _heuristic_catalog_macro(
-        sit=sit, zone=zone, play=play, coverage=coverage,
-        coverage_source=coverage_source, active=active, repeated=repeated,
-        book=book, weights=weights, score_phase=score_phase, cooled=cooled,
-        prepared=prepared,
-    )
+    # Only execute a catalog macro when the joint model explicitly chose
+    # THAT exact macro. Previously a legacy first-match suggestion silently
+    # overrode NO ADJUSTMENT and forced repetitive/unverified route packages.
+    paired = None
+    if kind == "macro" and catalog is not None:
+        candidate = _heuristic_catalog_macro(
+            sit=sit, zone=zone, play=play, coverage=coverage,
+            coverage_source=coverage_source, active=active, repeated=repeated,
+            book=book, weights=weights, score_phase=score_phase, cooled=cooled,
+            prepared=prepared,
+        )
+        if candidate and str(candidate.get("id")) == str(catalog.get("id")):
+            paired = candidate
     if paired is not None:
         macro: dict[str, Any] | None = paired
         adjustment: dict[str, Any] | None = None
@@ -623,6 +630,10 @@ def apply_experimental_offense(
     traced = False
     budget = float(ML_LATENCY_BUDGET_MS if budget_ms is None else budget_ms)
     scored_on = "unknown"
+    # Keep the already-computed prior experimental model ranking available if
+    # the more expensive route-aware stage runs out of budget or fails.
+    previous_model_ranked: list[dict[str, Any]] = []
+    route_attempted = False
     if commit is None:
         commit = bool(snap_id)
     heur_form = getattr(heuristic_call, "formation", None)
@@ -660,10 +671,85 @@ def apply_experimental_offense(
         detail: str | None = None,
     ) -> tuple[Any, CoachingDecision]:
         trace = _mark(latency, status is MLStatus.TIMEOUT)
+        prior_fallback_error: str | None = None
+        # Route-aware failure is NOT permission to revert to the heuristic.
+        # The previous experimental model already ranked the valid in-book
+        # plays earlier in this SAME pre-snap decision. Reuse that prediction,
+        # with no speculative macros or adjustments, even after a timeout.
+        if route_attempted and previous_model_ranked:
+            try:
+                from cfb_coach.madden.playcaller import MaddenCall
+                from cfb_coach.madden.data import reads_for
+
+                previous = next(
+                    r for r in previous_model_ranked
+                    if r["play"] in (book or {}).get(r["formation"], [])
+                )
+                form, play = previous["formation"], previous["play"]
+                prior_cand = candidate_in_book(
+                    book, side=Possession.OFFENSE, formation=form, play=play
+                )
+                prior_call = MaddenCall(
+                    "offense", form, play, "No adj", reads_for(play),
+                    "route-aware unavailable; previous experimental ML pick "
+                    "(no speculative adjustments)",
+                    macro=None, macro_info=None, adjustment=None,
+                )
+                dec = CoachingDecision(
+                    decision_ts=decision_ts, latency_ms=latency,
+                    latency_ms_model=latency,
+                    inference_budget_ms=ML_LATENCY_BUDGET_MS,
+                    mode=CoachingMode.EXPERIMENTAL,
+                    effective_mode=CoachingMode.EXPERIMENTAL,
+                    mode_downgrade_reason=f"route_aware_to_prior_experimental:{status.value}",
+                    game_id=game_id, snap_id=snap_id,
+                    session_id=session_id or game_id, snap_seq=snap_seq,
+                    model_version=artifact.model_version,
+                    policy_version=exp_mod.MODEL_KIND,
+                    policy_source=PolicySource.FALLBACK,
+                    heuristic_pick=heur_cand, final_pick=prior_cand,
+                    shadow_pick=None, shadow_status=status, fell_back=True,
+                    fallback_reason=status,
+                    propensity_method=PropensityMethod.DETERMINISTIC,
+                    accepted=Tri.UNKNOWN,
+                    opponent_context_key=opponent_context_key(opponent_id),
+                    ml_status_detail="fallback_source=previous_experimental_model"
+                    + (f"; {detail}" if detail else ""),
+                )
+                info = {
+                    "heuristic_formation": heur_form, "heuristic_play": heur_play,
+                    "ml_formation": form, "ml_play": play,
+                    "final_formation": form, "final_play": play,
+                    "model_version": artifact.model_version,
+                    "probability": previous.get("probability"),
+                    "evidence_quality": "prior_experimental_fallback",
+                    "explanation": "route-aware failed: prior experimental ML "
+                                   "selected this stock play; NO ADJUSTMENT",
+                    "fell_back": True, "fallback_reason": status.value,
+                    "fallback_source": "previous_experimental_model",
+                    "fallback_detail": detail,
+                    "latency_ms": trace.get("latency_ms"),
+                    "timed_out": trace.get("timed_out", False),
+                    "slowest_stage": trace.get("slowest_stage"),
+                }
+                _attach(prior_call, dec, info)
+                if commit and db is not None and snap_id:
+                    try:
+                        db.log_ml_decision(dec, agree=None)
+                    except Exception:  # Logging must not change the actual call.
+                        logger.exception("could not log previous experimental fallback")
+                return prior_call, dec
+            except Exception as exc:
+                prior_fallback_error = f"{type(exc).__name__}: {exc}"
+                logger.exception("previous experimental fallback also failed")
+        # Only an unavailable or invalid previous model may reach the last
+        # resort, existing legal-inventory heuristic safeguard.
         source = "heuristic_offense"
         note = f"fallback_source={source}"
         if detail:
             note = f"{note}; {detail}"
+        if prior_fallback_error:
+            note = f"{note}; prior_ml_failure={prior_fallback_error}"
         dec = CoachingDecision(
             decision_ts=decision_ts,
             latency_ms=latency,
@@ -702,6 +788,9 @@ def apply_experimental_offense(
             "fallback_reason": status.value,
             "fallback_source": source,
             "fallback_detail": detail,
+            "prior_ml_failure": prior_fallback_error,
+            "prior_ml_available": bool(previous_model_ranked),
+            "route_attempted": route_attempted,
             "latency_ms": trace.get("latency_ms"),
             "timed_out": trace.get("timed_out", False),
             "slowest_stage": trace.get("slowest_stage"),
@@ -792,17 +881,29 @@ def apply_experimental_offense(
             tendency=tendency,
         )
         ranked = exp_mod.rank_candidates(artifact, pairs, **_rank_kwargs)
+        # Keep this EXACT previous experimental model's ranking as the
+        # fallback. It must never inherit the heuristic's macro package.
+        previous_model_ranked = list(ranked)
         # Selectable route-aware ranker (default OFF: mode 'experimental' leaves everything above unchanged).
         route_ctx = None
         from cfb_coach.madden.model import offense_route_ranker as _rr
 
         _route_mode = _rr.resolve_mode(db)
+        route_attempted = _route_mode == "route_aware"
         if _route_mode != "experimental":
             ranked, pairs, route_ctx = _rr.apply(
                 _route_mode, ranked, pairs, all_pairs, sit=sit, opponent_id=opponent_id, db=db,
                 session_id=session_id or game_id, snap_seq=snap_seq, rank_kwargs=_rank_kwargs,
                 started=started, budget_ms=budget)
         latency = (time.perf_counter() - started) * 1000.0
+        if route_attempted and route_ctx is not None and route_ctx.error:
+            # The route ranker catches internal errors and otherwise returns
+            # base rows. Record the actual fallback instead of quietly using
+            # the old rows as if route-aware scoring succeeded.
+            reason = (MLStatus.TIMEOUT if latency > budget
+                      or "latency budget" in route_ctx.error.lower()
+                      else MLStatus.EXCEPTION)
+            return _fallback(reason, latency, detail=route_ctx.error)
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
         if not ranked:
@@ -860,8 +961,12 @@ def apply_experimental_offense(
                 strategy_previous = load_strategy(db, session_id or game_id or "")
             except Exception:  # noqa: BLE001
                 strategy_previous = None
+        # All installed plays have already been ML scored. Only the highest
+        # ranked finalists need expensive per-play adjustment enumeration;
+        # enumerating packages for all 306 was a major Game 1 timeout cause.
+        # This is a score-based shortlist, never a hardcoded play list.
         joint = choose_joint_action(
-            ranked=ranked, anchor=top, sit=sit, book=book,
+            ranked=ranked[:12], anchor=top, sit=sit, book=book,
             active=list(active or []), db=db, opponent_id=opponent_id,
             audibles=audibles, memory=memory,
             session_id=session_id or game_id,

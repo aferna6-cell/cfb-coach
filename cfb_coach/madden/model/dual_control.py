@@ -21,6 +21,11 @@ def displayed_label(call: Any) -> str:
     info = getattr(call, "ml_experimental", None)
     if isinstance(info, dict):
         if info.get("fell_back"):
+            # A timed-out *route-aware* stage can still produce a valid
+            # previous-experimental-model call. It must not be mislabeled
+            # as a heuristic call merely because route-aware fell back.
+            if info.get("fallback_source") == "previous_experimental_model":
+                return "EXPERIMENTAL"
             return "HEURISTIC"
         if info.get("ml_play"):
             return "EXPERIMENTAL"
