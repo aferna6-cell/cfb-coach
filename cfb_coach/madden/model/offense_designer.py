@@ -222,6 +222,9 @@ def design_offense(
     artifact: Any = None,
     catalogue: Mapping[str, dict[str, list[str]]] | None = None,
     must_add: Sequence[str] = (),
+    priors_on: bool = False,
+    coverage_mix: Mapping[str, float] | None = None,
+    adjustment_pairs: Sequence[tuple[str, str]] = (),
 ) -> dict[str, Any]:
     """Deterministic formation-level design.
 
@@ -251,9 +254,19 @@ def design_offense(
     # list is not used. The helper keeps the run/pass portfolio constraint.
     from cfb_coach.madden.model.offense_portfolio import select_formation_portfolio
 
+    # The shared scorer/portfolio interface lands independently. Never silently
+    # claim a football-informed design on a stack that cannot consume its mix.
+    from inspect import signature
+    supported = signature(select_formation_portfolio).parameters
+    scoring_kwargs = {}
+    if "priors_on" in supported and "coverage_mix" in supported:
+        scoring_kwargs = {"priors_on": priors_on, "coverage_mix": coverage_mix}
+    elif priors_on or coverage_mix:
+        raise ValueError("Shared pregame portfolio scoring is not integrated yet")
     portfolio = select_formation_portfolio(
         art=art, all_books=all_books, active=active, opponent_id=opponent_id,
         max_formations=max_formations, db=db,
+        **scoring_kwargs,
     )
     chosen = portfolio["chosen"]
     ranks = portfolio["ranked"]
@@ -378,7 +391,45 @@ def design_offense(
     proposal["max_formations"] = max_formations
     proposal["pregame_diagnostic"] = pregame_input_diagnostic(proposal.get("provenance"))
     proposal["football_plan"] = portfolio.get("football_plan")
+    proposal["preparation_guide"] = preparation_guide(proposal, active=active)
+    if adjustment_pairs:
+        from types import SimpleNamespace
+        from cfb_coach.madden.model.offense_adjustment_designer import design_adjustments
+        proposal["adjustment_designs"] = []
+        for form, play in dict.fromkeys(adjustment_pairs):
+            if play not in formations.get(form, []):
+                raise ValueError("Adjustment design must use a selected stock play")
+            proposal["adjustment_designs"].append(design_adjustments(
+                art, formation=form, play=play, source_book=sources[form],
+                probe=SimpleNamespace(down=1, distance=10, yardline=35),
+                opponent_id=opponent_id, priors_on=priors_on, coverage_mix=coverage_mix,
+            ))
     return proposal
+
+
+def preparation_guide(proposal: Mapping[str, Any], *, active: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Manual checklist limited to the proposed book, never an executable loadout."""
+    book = proposal.get("book") or {}
+    installed = active or {}
+    rows = []
+    for form, plays in (book.get("formations") or {}).items():
+        source = (book.get("formation_sources") or {}).get(form)
+        confirmed = (list((installed.get("formations") or {}).get(form) or []) == list(plays)
+                     and (installed.get("formation_sources") or {}).get(form) == source)
+        rows.append({"formation": form, "source_book": source, "stock_plays": list(plays),
+                     "status": "CONFIRMED_INSTALLED" if confirmed else "MANUAL_INSTALL_AND_CONFIRM_REQUIRED"})
+    return {
+        "formations": rows,
+        "audibles": [{**a, "status": "DRAFT_NEEDS_IN_GAME_VERIFICATION", "arm_slot": None}
+                     for a in proposal.get("suggested_audibles") or []],
+        "macros": [{"name": m["name"], "base_pairs": m.get("base_pairs") or [],
+                    "settings": m.get("settings") or [], "source_ids": m.get("source_ids") or [],
+                    "status": "DRAFT_NEEDS_IN_GAME_VERIFICATION", "activation": "NOT_ARMED",
+                    "arm_slot": None, "controls": "UNKNOWN: verify in Madden"}
+                   for m in proposal.get("macro_blueprints") or []],
+        "installation": "Install every listed stock play from its exact source, then stage and confirm_installed with the proposal ID.",
+        "arming": "Separately verify audible/controller mappings and macro settings in Madden; attest installed active slots before arming. No slot is assigned by this proposal.",
+    }
 
 
 def pregame_input_diagnostic(provenance: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -463,6 +514,7 @@ def plan_inspection(proposal: Mapping[str, Any]) -> dict[str, Any]:
         "situation_coverage": proposal.get("situation_coverage"),
         "football_plan": proposal.get("football_plan"),
         "pregame_diagnostic": proposal.get("pregame_diagnostic"),
+        "preparation_guide": proposal.get("preparation_guide"),
         "macro_blueprints": [
             {
                 "name": macro.get("name"),
