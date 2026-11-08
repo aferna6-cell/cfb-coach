@@ -44,6 +44,10 @@ _CHECKDOWN = ("flat", "swing", "angle", "texas", "drag", "block_and_release_hook
 
 def _describe(slot: str, r: tx.RouteSpec) -> str:
     pub = f" [{r.published}]" if r.published else ""
+    if slot.startswith("geom_"):
+        # Grok extracted shape/location, not the receiving player's identity.
+        # Never display anonymous geom_0 as if it were WR1/X/Y/B/RT.
+        return f"{r.side} {r.family.replace('_', ' ')} ({r.band}; receiver unverified)"
     return f"{slot} {r.family.replace('_', ' ')} ({r.band}, {r.side}){pub}"
 
 
@@ -134,8 +138,15 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *,
                     + 0.01 * item[1].meta.man_beater
             order = [sl for sl, _ in sorted(by_slot.items(), key=lambda kv: -aff(kv))
                      if by_slot[sl].meta.category != "blocking"]
-            basis = ("INFERRED from football principles for the expected coverage" if not s.adjustments else
-                     "INFERRED (hot route changed the play; documented order no longer applies)")
+            anonymous = all(slot.startswith("geom_") and tier in (
+                "partial", "high_confidence_extracted"
+            ) for slot, _, tier in s.routes)
+            if anonymous and not s.adjustments:
+                basis = ("INFERRED from unreviewed play-diagram geometry; "
+                         "approximate route shapes, receiver identities UNKNOWN")
+            else:
+                basis = ("INFERRED from football principles for the expected coverage" if not s.adjustments else
+                         "INFERRED (hot route changed the play; documented order no longer applies)")
         order = [o for o in order if by_slot[o].meta.category != "blocking"]
         acts = list(getattr(decision, "actions", ()))
         blocking_slots = {str(a.params.get("target")) for a in acts if a.action_id == "off.chip_block" and a.params.get("target")}
