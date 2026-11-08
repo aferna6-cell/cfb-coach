@@ -66,7 +66,7 @@ def test_failed_partial_png_retried_after_bytes_change(tmp_path):
     assert runner.process(path, out, set()) == 'extracted'
 
 
-def test_no_defender_marker_matching_or_colour_meaning_invented():
+def test_unowned_defense_leftovers_and_no_colour_meaning_invented():
     ex = {'extractor': runner.pe.EXTRACTOR_VERSION, 'flags': [],
           'players': [{'index_left_to_right': 0, 'shape': 'square', 'x': 100, 'y': 200}],
           'zones': [{'colour': 'blue', 'bbox': [0, 0, 200, 100]}],
@@ -106,3 +106,31 @@ def test_report_counts_missing_images_and_refuses_store_writes(tmp_path):
     assert 'Missing / Missing' in (tmp_path / 'report.md').read_text()
     with pytest.raises(ValueError, match='outside'):
         runner.make_report(store, inv, store / 'authorization')
+
+
+def test_defense_matches_carry_only_extractor_ownership():
+    ex = {'extractor': runner.pe.EXTRACTOR_VERSION, 'flags': [],
+          'players': [{'index_left_to_right': 0, 'shape': 'square', 'x': 100, 'y': 180}],
+          'zones': [{'colour': 'blue', 'owner_marker_index': 0, 'owner_distance_px': 45}],
+          'rush_arrows': [{'colour': 'red', 'owner_marker_index': 0, 'owner_distance_px': 5},
+                          {'colour': 'red', 'owner_marker_index': None,
+                           'association_flags': ['owner_ambiguous']}]}
+    sm = runner.proposed_responsibilities(ex, ('defense', 'fixture', 'one'), 'hash')
+    assert {m['kind'] for m in sm['markers'][0]['matched']} == {'zone_proposal', 'rush_proposal'}
+    assert sm['zones_unassociated'] == []
+    assert len(sm['rush_arrows_unassociated']) == 1
+    assert sm['rush_arrows_unassociated'][0]['association_flags'] == ['owner_ambiguous']
+    assert sm['markers'][0]['slot'] == 'unknown'
+    assert sm['verified'] == 0 and not sm['model_feature_eligible'] and sm['needs_review']
+
+
+def test_old_extractor_version_is_reprocessed(tmp_path):
+    path = image(tmp_path / 'raw')
+    out = tmp_path / 'extractions'
+    assert runner.process(path, out, set()) == 'extracted'
+    dest, summary, _ = runner.paths(out, runner.identity(path))
+    old = runner.load(dest)
+    old['extractor'] = 'play_art_extract.v1'
+    runner.atomic_json(dest, old)
+    assert runner.process(path, out, set()) == 'extracted'
+    assert runner.load(summary)['schema'] == 'downloaded_art_responsibilities.v2'

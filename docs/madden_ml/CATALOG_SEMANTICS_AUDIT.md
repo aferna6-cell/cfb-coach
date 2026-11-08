@@ -106,3 +106,32 @@ Resumable book checkpoints and synthetic tests cover deduplication, live-art gua
 unchanged downloader-owned files and restricted robots access. Membership does
 not review or certify player responsibilities. Private live scrape reports now
 separately expose indexed, hashed, raw, extracted, art-error and installed counts.
+
+
+## Responsibility extractor v2 (2026-11-08, ET)
+
+`play_art_extract.v2` / `downloaded_art_responsibilities.v2` reprocess old
+SHA-matched v1 outputs. Skeleton junction compression and tangent pairing retain
+separate same-colour crossing routes; only aligned short gaps are chained.
+Unresolved forks stop tracing and carry `trace_complete=false`,
+`suggested_shape=unknown_complex`, and `junction_ambiguous` (a visible start can
+still identify its marker). Shape labels remain geometric suggestions only.
+Zone-fill opening/closing joins narrow fragments, includes pale yellow/cyan and
+neutral fills, and rejects thin field/chrome lines. Nearest-marker ownership
+records distance and ambiguity; a visible white connector reaching the zone
+center can identify an otherwise merged defender marker and its zone owner.
+Red arrow starts match square markers. Unowned leftovers remain explicit.
+Installed-only overlays label zone/rush owners. Version-aware progress reports
+do not count stale v1 records as current v2 completion.
+
+Synthetic regression tests cover same-colour crossings, aligned gaps vs parallel
+routes, pale/fragmented zones, neutral white connectors, ambiguous/distant owners,
+square-marker rushes, version migration, read-only catalog/authorization, and
+proposal-only output. No raw art/extractions are committed. The private progress
+artifact is `/workspace/ace-responsibility-v2-progress.md`; visual sampler review
+is not assignment verification. Every output remains
+`diagram_extracted_unreviewed`, `needs_review=true`, `verified=0`, and
+`model_feature_eligible=false`. Missing markers, occluded starts, overlapping
+same-colour segments and man/other responsibilities without sufficient geometry
+remain unknown; yards, reads, blocking, slots and colour meanings are not inferred.
+No live gameplay, training, priors, catalog or permission state is changed.

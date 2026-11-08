@@ -27,7 +27,7 @@ SNAPSHOT = ROOT / 'cfb_coach/data/madden27/installed_playbook_snapshot.json'
 # Already owner-approved correspondences, also in build_offense_art_features.py.
 ALIASES = {('Gun 5WR Tight', 'L Spot'): 'Z Spot',
            ('Gun 5WR Tight', 'Zl Spot Shake'): 'Z Spot Shake'}
-SUMMARY_VERSION = 'downloaded_art_responsibilities.v1'
+SUMMARY_VERSION = 'downloaded_art_responsibilities.v2'
 
 
 def slug(value):
@@ -80,11 +80,11 @@ def paths(out, ident):
 
 
 def proposed_responsibilities(ex, ident, sha):
-    """Only carry extractor matches; defense has no per-marker zone association."""
+    """Only carry geometric extractor matches; no positional or colour semantics."""
     side, formation, play = ident
     flags = list(ex['flags'])
     if side == 'defense':
-        flags += ['zone_marker_association_unknown', 'rush_colour_interpretation_unverified']
+        flags += ['rush_colour_interpretation_unverified']
     markers = []
     for m in sorted(ex['players'], key=lambda x: x['index_left_to_right']):
         matches = []
@@ -92,7 +92,14 @@ def proposed_responsibilities(ex, ident, sha):
             if r['owner_marker_index'] == m['index_left_to_right']:
                 matches.append({'kind': 'route_proposal', 'route_index': i,
                                 'colour': r['colour'], 'suggested_shape': r['suggested_shape'],
-                                'polyline': r['polyline'], 'owner_distance_px': r['owner_distance_px']})
+                                'polyline': r['polyline'], 'owner_distance_px': r['owner_distance_px'],
+                                'association_flags': r.get('association_flags', []),
+                                'trace_complete': r.get('trace_complete', False)})
+        for key, kind in (('zones', 'zone_proposal'), ('rush_arrows', 'rush_proposal')):
+            for i, proposal in enumerate(ex.get(key, [])):
+                if proposal.get('owner_marker_index') == m['index_left_to_right']:
+                    matches.append({'kind': kind, 'proposal_index': i, **proposal,
+                                    'interpretation': 'unverified_extractor_proposal'})
         markers.append({'marker_index_left_to_right': m['index_left_to_right'],
                         'marker_shape': m['shape'], 'position_px': [m['x'], m['y']],
                         'slot': 'unknown', 'matched': matches or 'unknown',
@@ -100,13 +107,13 @@ def proposed_responsibilities(ex, ident, sha):
     return {'schema': SUMMARY_VERSION, 'side': side, 'formation_slug': formation,
             'play_slug': play, 'play_key': 'madden27|' + '|'.join(ident),
             'art_sha256': sha, 'extractor_version': ex['extractor'], 'tier': pe.TIER,
-            'needs_review': True, 'model_feature_eligible': False,
+            'needs_review': True, 'model_feature_eligible': False, 'verified': 0,
             'colour_meaning': 'UNVERIFIED (measured hue buckets only)',
             'markers': markers,
             'unmatched_routes': [r for r in ex.get('routes', []) if r['owner_marker_index'] is None],
-            'zones_unassociated': ex.get('zones', []),
+            'zones_unassociated': [z for z in ex.get('zones', []) if z.get('owner_marker_index') is None],
             'rush_arrows_unassociated': [{**r, 'colour': 'red', 'interpretation': 'unverified_extractor_proposal'}
-                                        for r in ex.get('rush_arrows', [])],
+                                        for r in ex.get('rush_arrows', []) if r.get('owner_marker_index') is None],
             'defender_links_unassociated': ex.get('defender_links', []), 'flags': flags}
 
 
@@ -166,6 +173,7 @@ def make_report(store, inventory, prefix):
         dest, summary, error = paths(out, ident)
         ex, sm = load(dest), load(summary)
         status[ident] = ('extracted' if ex.get('art_sha256') == sha and sm.get('art_sha256') == sha
+                         and ex.get('extractor') == pe.EXTRACTOR_VERSION and sm.get('schema') == SUMMARY_VERSION
                          else 'failed' if load(error).get('art_sha256') == sha else 'pending')
     full_indexed = Counter()
     for line in (store / 'catalog.jsonl').read_text().splitlines() if (store / 'catalog.jsonl').exists() else []:
@@ -189,7 +197,7 @@ def make_report(store, inventory, prefix):
     lines = ['# Private responsibility proposal progress', '', f"As of {report['as_of']} (America/New_York / ET).", '',
              '**Nothing is verified, geometry_reviewed, assignment_reviewed, or model_feature_eligible.**',
              'Measured line colours have unverified meaning. Slots, yards, reads and blocking remain unknown.',
-             'Defense zones/rush candidates have no marker association; red-to-rush interpretation is unverified.',
+             'Defense zone/rush owners are nearest-marker geometry proposals; ambiguity stays unmatched, interpretation unverified.',
              'Installed matching uses exact slugs plus the two previously owner-approved Gun 5WR Tight site aliases.', '',
              '| Scope | Side | Indexed | Downloaded | Extracted | Failed | Pending |',
              '|---|---|---:|---:|---:|---:|---:|']
@@ -215,6 +223,18 @@ def make_report(store, inventory, prefix):
                 lines.append(base + f" | {m['marker_index_left_to_right']} / {m['marker_shape']} | {r.get('suggested_shape', 'unknown')} | {r.get('colour', 'unknown')} | {', '.join(m['flags']) or 'none'} |")
         for r in summary['unmatched_routes']:
             lines.append(base + f" | unknown / unmatched | {r['suggested_shape']} | {r['colour']} | route_without_start_marker |")
+    lines += ['', '## Installed defense geometric proposals', '',
+              '| Formation | Play | Marker (slot unknown) | Proposal | Measured colour |',
+              '|---|---|---:|---|---|']
+    for row in inventory:
+        if row['side'] != 'defense' or status.get(row['identity']) != 'extracted':
+            continue
+        summary = load(paths(out, row['identity'])[1])
+        for marker in summary['markers']:
+            proposals = marker['matched'] if isinstance(marker['matched'], list) else [{}]
+            for proposal in proposals:
+                lines.append(f"| {row['formation']} | {row['play']} | {marker['marker_index_left_to_right']} | "
+                             f"{proposal.get('kind', 'unknown')} | {proposal.get('colour', 'unknown')} |")
     lines += ['', '## Missing installed images / exact identities', '']
     lines += [f"- {r['side']}: {r['formation']} / {r['play']} (no exact downloaded filename)." for r in report['missing_installed']]
     lines += ['', '## Visual sampler QA', '', json.dumps(report['sampler_qa'], indent=2), '',
