@@ -174,7 +174,9 @@ def _contextual_read_order(
         tier = evidence_tiers.get(slot)
         reliability = (0.55 if tier == "partial" else
                        0.8 if tier == "high_confidence_extracted" else 1.0)
-        score = reliability * cover_scores[slot] * known_mass
+        # Retain a very small generic route-quality prior for data-sparse
+        # situations and compatibility with the existing no-adjustment reads.
+        score = reliability * cover_scores[slot] * known_mass + 0.01 * route.meta.man_beater
         # Small documented-order tie break; the next-snap football evidence
         # may displace it only when the advantage is meaningful.
         if slot in doc:
