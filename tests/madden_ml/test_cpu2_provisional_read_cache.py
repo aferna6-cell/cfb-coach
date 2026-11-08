@@ -44,7 +44,7 @@ def test_live_geometry_enables_real_play_specific_read_card(tmp_path):
     assert modified.read_order == ()
     dec = Decision(
         formation=pair[0], play=pair[1],
-        adjustment="NO_ADJUSTMENT", probability=0.55,
+        adjustment="NO ADJUSTMENT", probability=0.55,
         stock_probability=0.55, interval=(0.43, 0.67),
         final_structure=modified,
     )
