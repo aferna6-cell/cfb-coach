@@ -110,7 +110,116 @@ def use_selected_call(decision: od.Decision, call: Any) -> None:
         decision.notes.append("selected adjustment's receiver effects are not representable; read order UNKNOWN")
 
 
-def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *, priors: bool | None = None) -> dict[str, Any]:
+def _contextual_read_order(
+    routes: Mapping[str, tx.RouteSpec],
+    documented: list[str],
+    *,
+    mix: Mapping[str, float] | None,
+    context: Mapping[str, Any] | None,
+    evidence_tiers: Mapping[str, str],
+) -> tuple[list[str], str, list[str]]:
+    """Rank ONLY routes shown by the selected play, using pre-snap beliefs.
+
+    These are football-informed *hypotheses*, NOT learned per-receiver open rates.
+    Published progressions are a small tie-breaker rather than a compulsory
+    decision; uncertain/unknown coverages shrink all coverage-specific evidence.
+    No previous-snap revealed call is passed as current-snap ground truth.
+    """
+    context = context or {}
+    doc = [slot for slot in documented if slot in routes and routes[slot].meta.category != "blocking"]
+    baseline = doc + [
+        slot for slot in routes
+        if slot not in doc and routes[slot].meta.category != "blocking"
+    ]
+    positive = {
+        k: float(w) for k, w in (mix or {}).items()
+        if isinstance(w, (float, int)) and not isinstance(w, bool) and 0 < w <= 1
+    }
+    total = sum(positive.values())
+    known_mass = (sum(w for k, w in positive.items() if fpri.descriptor(k) is not None)
+                  / total if total > 0 else 0.0)
+    # A diffuse, data-poor history should not override a documented progression.
+    informed = known_mass >= 0.35
+    cover_scores = {
+        slot: (fpri.route_read_scores(spec.family, positive) / max(total, 1e-9)
+               if informed else 0.0)
+        for slot, spec in routes.items()
+    }
+
+    distance = context.get("distance")
+    down = context.get("down")
+    urgent = (
+        isinstance(down, int) and down >= 3 and
+        isinstance(distance, (int, float)) and distance >= 8
+    )
+    short_to_gain = (
+        isinstance(down, int) and down >= 3 and
+        isinstance(distance, (int, float)) and distance <= 3
+    )
+    two_minute = bool(context.get("two_minute"))
+    score_us, score_them = context.get("score_us"), context.get("score_them")
+    trailing = (isinstance(score_us, (int, float)) and
+                isinstance(score_them, (int, float)) and score_us < score_them)
+    # Pressure is a *distribution* over possible next-snap defenses, not a
+    # hard switch caused by the one coverage revealed on the last snap.
+    pressure = sum(
+        w for k, w in positive.items()
+        if (fpri.descriptor(k) or {}).get("press") not in (None, "", "standard")
+        or k == "cover_0"
+    ) / max(total, 1e-9)
+
+    scores = {}
+    for slot in baseline:
+        route = routes[slot]
+        tier = evidence_tiers.get(slot)
+        reliability = (0.55 if tier == "partial" else
+                       0.8 if tier == "high_confidence_extracted" else 1.0)
+        # Retain a very small generic route-quality prior for data-sparse
+        # situations and compatibility with the existing no-adjustment reads.
+        score = reliability * cover_scores[slot] * known_mass + 0.01 * route.meta.man_beater
+        # Small documented-order tie break; the next-snap football evidence
+        # may displace it only when the advantage is meaningful.
+        if slot in doc:
+            score += 0.012 if slot == doc[0] else 0.004
+        if urgent:
+            score += (0.048 if route.band in ("intermediate", "deep")
+                      else -0.024 if route.band in ("short", "shallow") else 0.0)
+        elif short_to_gain:
+            score += (0.028 if route.band in ("short", "shallow")
+                      else -0.022 if route.band == "deep" else 0.0)
+        if trailing and two_minute:
+            score += 0.018 if route.family in ("out", "corner", "flat") else 0.0
+        if pressure > 0.0:
+            score += 0.035 * pressure if route.meta.quick else -0.045 * pressure
+        scores[slot] = score
+
+    order = sorted(baseline, key=lambda slot: (-scores[slot], baseline.index(slot)))
+    changed = bool(doc and order and order[0] != doc[0])
+    notes = []
+    if not informed:
+        notes.append("defensive coverage uncertain: documented ordering preferred where available")
+    if urgent:
+        notes.append(f"3rd/4th-and-long: look for routes reaching the sticks; verify actual window")
+    if short_to_gain:
+        notes.append("short to gain: prefer routes that can uncover quickly")
+    if trailing and two_minute:
+        notes.append("trailing in two-minute: boundary route gets a modest preference")
+    if pressure > 0.1:
+        notes.append(f"possible pressure ({pressure:.0%} of recognized pre-snap mix): quicker developing routes preferred")
+    if changed:
+        notes.append("current recommendation differs from published progression")
+    if doc:
+        basis = ("INFERRED contextual read order (published progression retained as reference)"
+                 if changed else
+                 "DOCUMENTED baseline retained after contextual pre-snap comparison (not Xbox-verified)")
+    elif baseline:
+        basis = "INFERRED contextual read order from known route shapes; not a verified QB progression"
+    else:
+        basis = "unknown"
+    return order, basis, notes
+
+
+def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *, priors: bool | None = None, situation: Mapping[str, Any] | None = None) -> dict[str, Any]:
     s = decision.final_structure
     if s is None:
         raise ValueError("decision has no play structure")
@@ -118,43 +227,40 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *,
     shells = _shell_dist(dist)
     top = max(shells, key=shells.get) if shells and max(shells.values()) > 0 else "unknown"
     top_p = shells.get(top, 0.0)
-    use_priors = bool(getattr(decision, "football_priors", False)) if priors is None else priors
     primary = secondary = checkdown = "UNKNOWN: this play's receiver routes are not annotated yet"
     conditioned: list[str] = []
     basis = "unknown"
     why = []
+    published_baseline: list[str] = []
     hint = s.hint
     play_type = hint.get("play_type", "unknown")
     if s.n_known:
         by_slot = {sl: sp for sl, sp, _ in s.routes}
         documented = [x for x in s.read_order if x in by_slot]
-        if documented and not s.adjustments:
-            order, basis = documented, "DOCUMENTED (third-party published read order; not Xbox-verified)"
-        else:
-            def aff(item: tuple[str, tx.RouteSpec]) -> float:
-                if use_priors and mix:                  # coverage-conditioned prior preference of this route family under the opponent's mixture
-                    return fpri.route_read_scores(item[1].family, mix) + 0.01 * item[1].meta.man_beater
-                return sum(shells.get(sh, 0.0) for sh in _AFFINITY.get(item[1].family, ())) \
-                    + 0.01 * item[1].meta.man_beater
-            order = [sl for sl, _ in sorted(by_slot.items(), key=lambda kv: -aff(kv))
-                     if by_slot[sl].meta.category != "blocking"]
-            anonymous = all(slot.startswith("geom_") and tier in (
-                "partial", "high_confidence_extracted"
-            ) for slot, _, tier in s.routes)
-            if anonymous and not s.adjustments:
-                basis = ("INFERRED from unreviewed play-diagram geometry; "
-                         "approximate route shapes, receiver identities UNKNOWN")
-            else:
-                basis = ("INFERRED from football principles for the expected coverage" if not s.adjustments else
-                         "INFERRED (hot route changed the play; documented order no longer applies)")
-        order = [o for o in order if by_slot[o].meta.category != "blocking"]
+        evidence_tiers = {slot: tier for slot, _, tier in s.routes}
+        order, basis, read_notes = _contextual_read_order(
+            by_slot, documented, mix=mix,
+            context=situation, evidence_tiers=evidence_tiers,
+        )
+        anonymous = all(slot.startswith("geom_") and tier in (
+            "partial", "high_confidence_extracted"
+        ) for slot, _, tier in s.routes)
+        if anonymous and not s.adjustments:
+            # Preserve the established diagnostic/provenance token consumed by
+            # the existing read coverage benchmark and regression tests.
+            basis = ("INFERRED from unreviewed play-diagram geometry; "
+                     "contextual coverage/situation preference, approximate "
+                     "route shapes, receiver identities UNKNOWN")
+        elif s.adjustments:
+            basis += " [selected hot routes; re-ranked after the changes]"
+        published_baseline = [_describe(sl, by_slot[sl]) for sl in documented]
+        if published_baseline:
+            why.append("published progression is a baseline, not a guaranteed best read")
+        why.extend(read_notes)
         acts = list(getattr(decision, "actions", ()))
         blocking_slots = {str(a.params.get("target")) for a in acts if a.action_id == "off.chip_block" and a.params.get("target")}
-        order = [o for o in order if o not in blocking_slots]                       # a player assigned to block is not a read
-        if use_priors and mix and basis.startswith("DOCUMENTED"):
-            def _aff(sl: str) -> float:
-                return fpri.route_read_scores(by_slot[sl].family, mix) + 0.01 * by_slot[sl].meta.man_beater
-            conditioned = sorted(order, key=lambda sl: -_aff(sl))                  # shown beside the documented order, never replacing it
+        order = [o for o in order if o not in blocking_slots]
+        conditioned = [_describe(sl, by_slot[sl]) for sl in order]
         primary = _describe(order[0], by_slot[order[0]]) if order else primary
         secondary = _describe(order[1], by_slot[order[1]]) if len(order) > 1 else "UNKNOWN"
         # A back leaves the checkdown list ONLY when a selected action demonstrably changes THAT player's assignment: a chip block names its target.
@@ -196,6 +302,16 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *,
         "PRIMARY READ": primary, "SECONDARY READ": secondary, "CHECKDOWN": checkdown,
         "DEFENSIVE INDICATOR": indicator, "WHY": "; ".join(why), "READ BASIS": basis,
         "COVERAGE-CONDITIONED ORDER": conditioned or None,
+        "PUBLISHED BASELINE": published_baseline or None,
+        "READ INPUTS": {
+            "coverage_mix": ("historical pre-snap probability mixture, not last-snap certainty"
+                             if mix else "none supplied"),
+            "down": (situation or {}).get("down"),
+            "distance": (situation or {}).get("distance"),
+            "two_minute": (situation or {}).get("two_minute"),
+            "score_us": (situation or {}).get("score_us"),
+            "score_them": (situation or {}).get("score_them"),
+        },
         "EXECUTABLE NOW": "yes" if decision.executable_now else "NO - adjustment not yet confirmed in-game; run the stock play",
     }
 

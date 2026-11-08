@@ -296,7 +296,16 @@ def finalize(ctx: RouteContext, call: Any, *, sit: Any, opponent_id: str, game_i
                 advice.use_selected_call(dec, call)
                 if ctx.priors and dec.final_structure.adjustments:
                     dec.matchup = fpri.matchup_edge(dec.final_structure, ctx.mix, learned=ctx.learned)
-            card = advice.build_card(dec, ctx.mix)
+            card = advice.build_card(
+                dec, ctx.mix, situation={
+                    "down": getattr(sit, "down", None),
+                    "distance": getattr(sit, "distance", None),
+                    "yardline": getattr(sit, "yardline", None),
+                    "two_minute": getattr(sit, "two_minute", False),
+                    "score_us": getattr(sit, "score_us", None),
+                    "score_them": getattr(sit, "score_them", None),
+                },
+            )
             if selected_call:
                 card["CALL ACTION"] = advice.call_action_identity(call)
                 call.read_or_user = " → ".join(card[k] for k in ("PRIMARY READ", "SECONDARY READ", "CHECKDOWN"))
