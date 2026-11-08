@@ -12,10 +12,48 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 from cfb_coach.madden.model import provisional_catalog as pc  # noqa: E402
-from scripts.madden_ml.extract_downloaded_art import identity, installed_inventory  # noqa: E402
+from scripts.madden_ml.extract_downloaded_art import identity, installed_inventory, slug  # noqa: E402
 
 # Recorded audits only; NOT aliases (no identity rewrite is applied).
+# extract_downloaded_art.ALIASES may rewrite two Gun 5WR Tight names for art matching;
+# those rewrites must never mark a listing installable or "exact".
 ALIAS_AUDIT_NOTE = "installed name slug has no exact site slug; unresolved alias audit, no alias invented"
+NEAR_MISS_NOTES = {
+    "madden27|offense|gun-5wr-tight|l-spot": (
+        "Gun 5WR Tight / L Spot (ASCII L, 0x4c) vs Ace listing z-spot / Z Spot: not an exact slug match. "
+        "In-repo playbooks.json uses both L Spot and Z Spot as distinct play names in different books, "
+        "including some of the same formations. No first-party Xbox evidence they are the same play; no alias invented."
+    ),
+    "madden27|offense|gun-5wr-tight|zl-spot-shake": (
+        "Gun 5WR Tight / Zl Spot Shake (Z + lowercase L) vs Ace listing z-spot-shake / Z Spot Shake: "
+        "not an exact slug match. No first-party Xbox evidence they are the same play; no alias invented."
+    ),
+    "madden27|offense|gun-5wr-tight|z-spot": (
+        "Ace listing Z Spot / z-spot is a near-miss for installed snapshot Gun 5WR Tight / L Spot (ASCII L, 0x4c); "
+        "not an exact match. L Spot and Z Spot appear as distinct strings in in-repo playbooks.json. No alias invented."
+    ),
+    "madden27|offense|gun-5wr-tight|z-spot-shake": (
+        "Ace listing Z Spot Shake / z-spot-shake is a near-miss for installed snapshot Gun 5WR Tight / Zl Spot Shake; "
+        "not an exact match. No alias invented."
+    ),
+}
+
+
+def exact_installed_and_audits(inv, catalog_ids):
+    """Use the snapshot's own play names. Never treat art-matching aliases as exact identities."""
+    installed = set()
+    audits = {}
+    for r in inv:
+        ident = (r["side"], slug(r["formation"]), slug(r["play"]))
+        key = pc.play_key(*ident)
+        if key in catalog_ids:
+            installed.add(ident)
+        else:
+            audits[key] = NEAR_MISS_NOTES.get(key, f"{r['formation']} / {r['play']}: {ALIAS_AUDIT_NOTE}")
+    for key, note in NEAR_MISS_NOTES.items():
+        audits.setdefault(key, note)
+    return installed, audits
+
 
 
 def main():
@@ -30,12 +68,7 @@ def main():
     cat = [json.loads(l) for l in (o.store / 'catalog.jsonl').open()]
     ids = {r['id'] for r in cat}
     inv = installed_inventory()
-    installed = {r['identity'] for r in inv}
-    audits = {}
-    for r in inv:
-        k = pc.play_key(*r['identity'])
-        if k not in ids:
-            audits[k] = f"{r['formation']} / {r['play']}: {ALIAS_AUDIT_NOTE}"
+    installed, audits = exact_installed_and_audits(inv, ids)
     fb = {}
     for key, f in json.loads((o.store / 'formations.json').read_text())['formations'].items():
         fb[f"{f['side']}|{f['formation_slug']}"] = f.get('playbooks', [])
@@ -83,7 +116,9 @@ def main():
         'literal_double_hyphen_slugs': [r['id'] for r in cat if '--' in r['play_slug']],
         'notes': {'madden27|offense|gun-doubles-clamp-stack|portland-ywheel':
                   'installed name slugs to portland-ywheel; site index lists portland-y-wheel; a stale raw file named portland-ywheel.png exists outside the index; not aliased',
-                  'double_hyphen': 'filename parser now accepts literal hyphen runs in play slugs; slug kept verbatim (curl--outs), not normalised'}}, indent=1) + '\n')
+                  **NEAR_MISS_NOTES,
+                  'double_hyphen': 'filename parser now accepts literal hyphen runs in play slugs; slug kept verbatim (curl--outs), not normalised',
+                  'installable_policy': 'installable only for exact snapshot slugs; extract_downloaded_art.ALIASES are art-matching near-misses, not exact identities'}}, indent=1) + '\n')
     (o.out / 'audit_report.json').write_text(json.dumps(report, indent=1) + '\n')
     print(json.dumps({s: {k: v for k, v in report[s].items() if k != 'url_less'} for s in ('offense', 'defense')}, indent=1))
     print(json.dumps({k: report[k] for k in ('raw_png_total', 'raw_unparsed', 'raw_not_in_catalog', 'unresolved_alias_audits')}, indent=1))

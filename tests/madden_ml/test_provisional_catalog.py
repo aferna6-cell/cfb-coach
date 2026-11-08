@@ -83,3 +83,48 @@ def test_installable_only_for_installed_identity(tmp_path):
     by = {r["play_key"]: r for r in rows}
     assert by["madden27|offense|fa|p-one"]["installable"] and by["madden27|offense|fa|p-one"]["installed_book_match"] == "matched"
     assert by["madden27|offense|fb|amb"]["installed_book_match"] == "unmatched_alias" and not by["madden27|offense|fb|amb"]["installable"]
+
+
+def test_site_label_near_misses_are_not_exact_installable(tmp_path):
+    cat = [
+        {"id": "madden27|offense|gun-5wr-tight|z-spot", "game": "madden27", "side": "offense",
+         "formation_slug": "gun-5wr-tight", "play_slug": "z-spot", "play_name": "Z Spot",
+         "personnel_group": "5WR Tight", "art_url": None, "art_sha256": None, "playbooks": []},
+        {"id": "madden27|offense|gun-5wr-tight|z-spot-shake", "game": "madden27", "side": "offense",
+         "formation_slug": "gun-5wr-tight", "play_slug": "z-spot-shake", "play_name": "Z Spot Shake",
+         "personnel_group": "5WR Tight", "art_url": None, "art_sha256": None, "playbooks": []},
+    ]
+    installed = {("offense", "gun-5wr-tight", "l-spot"), ("offense", "gun-5wr-tight", "zl-spot-shake")}
+    notes = {
+        "madden27|offense|gun-5wr-tight|z-spot": "near miss, not aliased",
+        "madden27|offense|gun-5wr-tight|z-spot-shake": "near miss, not aliased",
+    }
+    rows = {r["play_key"]: r for r in pc.build_rows(cat, raw_dir=tmp_path, extraction_dir=None,
+                                                    installed=installed, alias_audits=notes)}
+    for key in notes:
+        assert not rows[key]["installable"]
+        assert rows[key]["installable_basis"] is None
+        assert rows[key]["installed_book_match"] == "unmatched_alias"
+
+
+def test_exact_installed_ignores_art_matching_aliases():
+    from scripts.madden_ml.export_provisional_catalog import exact_installed_and_audits
+    inv = [
+        {"side": "offense", "formation": "Gun 5WR Tight", "play": "L Spot",
+         "identity": ("offense", "gun-5wr-tight", "z-spot"), "identity_basis": "owner_approved_site_alias"},
+        {"side": "offense", "formation": "Gun 5WR Tight", "play": "Zl Spot Shake",
+         "identity": ("offense", "gun-5wr-tight", "z-spot-shake"), "identity_basis": "owner_approved_site_alias"},
+        {"side": "offense", "formation": "Gun 5WR Tight", "play": "Mesh",
+         "identity": ("offense", "gun-5wr-tight", "mesh"), "identity_basis": "exact_slug"},
+    ]
+    ids = {"madden27|offense|gun-5wr-tight|z-spot", "madden27|offense|gun-5wr-tight|z-spot-shake",
+           "madden27|offense|gun-5wr-tight|mesh"}
+    installed, audits = exact_installed_and_audits(inv, ids)
+    assert ("offense", "gun-5wr-tight", "mesh") in installed
+    assert ("offense", "gun-5wr-tight", "z-spot") not in installed
+    assert ("offense", "gun-5wr-tight", "z-spot-shake") not in installed
+    assert ("offense", "gun-5wr-tight", "l-spot") not in installed
+    assert "madden27|offense|gun-5wr-tight|l-spot" in audits
+    assert "madden27|offense|gun-5wr-tight|zl-spot-shake" in audits
+    assert "madden27|offense|gun-5wr-tight|z-spot" in audits
+    assert "madden27|offense|gun-5wr-tight|z-spot-shake" in audits

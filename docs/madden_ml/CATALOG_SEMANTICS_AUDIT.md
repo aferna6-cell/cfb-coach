@@ -155,9 +155,13 @@ Independently recomputed funnel (private store, not committed):
 offense n_indexed 8574 / 420 formations; art URL 8554; downloaded + sha256-matched 8554 (0 mismatches); v2 extracted 8554
 (0 failures, including literal `curl--outs` after the parser fix); URL-less 20 (name_only, blocked_reason=no_art_url);
 tiers 6444 high_confidence_extracted / 2110 partial / 20 name_only; verified 0. Defense 1578/1578 downloaded, hashed, extracted
-(coverage priors only). Installable: 92 offense / 113 defense exact installed-snapshot triples. Membership: the public
+(coverage priors only). Installable: 90 offense / 113 defense exact installed-snapshot triples. Two additional offense listings
+(Gun 5WR Tight Z Spot and Z Spot Shake) are unresolved near-misses of installed L Spot (ASCII L) and Zl Spot Shake,
+not exact matches and not marked installable; in-repo playbooks.json uses L Spot and Z Spot as distinct strings.
+Membership: the public
 AceMadden index links only 6 team books (formation-level links; 3644 offense listings in a linked formation, low confidence);
 play-level source-book membership is 0 and stays unknown; formations.json is not regrouped. Alias audits (not aliased):
-Portland Ywheel vs portland-y-wheel, ten defensive exact-slug mismatches; three stale raw PNGs outside the index.
+Portland Ywheel vs portland-y-wheel, Gun 5WR Tight L Spot vs Z Spot, Zl Spot Shake vs Z Spot Shake, and ten defensive
+exact-slug mismatches; three stale raw PNGs outside the index.
 VLM pass: not run (no local VLM runtime on the host; external APIs would be redistribution). `--vlm-sidecar` hook accepts
 play_key-keyed hypotheses as alternatives only.

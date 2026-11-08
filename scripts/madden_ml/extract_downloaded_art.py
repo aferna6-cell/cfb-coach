@@ -24,7 +24,10 @@ sys.path.insert(0, str(ROOT))
 from cfb_coach.madden.model import play_art_extract as pe  # noqa: E402
 
 SNAPSHOT = ROOT / 'cfb_coach/data/madden27/installed_playbook_snapshot.json'
-# Already owner-approved correspondences, also in build_offense_art_features.py.
+# Art-matching near-misses only, also listed in build_offense_art_features.py.
+# Used to locate downloaded Ace filenames for installed-book overlays.
+# These are not exact identities and must not mark catalog rows installable.
+# L Spot vs Z Spot and Zl Spot Shake vs Z Spot Shake remain unresolved (see alias_audits).
 ALIASES = {('Gun 5WR Tight', 'L Spot'): 'Z Spot',
            ('Gun 5WR Tight', 'Zl Spot Shake'): 'Z Spot Shake'}
 SUMMARY_VERSION = 'downloaded_art_responsibilities.v2'
