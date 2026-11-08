@@ -3,7 +3,7 @@
 Base: `claude/football-priors-fixes` (PR #126) at 1943e66. Branch: `grok/catalog-semantics`. No live caller, ranker, training, promotion,
 gameplay DB, CPU pilot, defense activation or champion model is touched.
 
-## Catalog process status
+## Catalog process status (initial audit; superseded by the private download/extraction update below)
 - No AceMadden ingestion process is running on the box, and the box has no private store (`~/cfb_acemadden`, `authorization.json`). The
   8,554 + 20 offensive / 1,578 defensive listing crawl from PR #126 lives only in that sandbox and was not committed.
 - Sync was **not resumed**: bulk sync and art download both need an `authorization.json` on the store that records the AceMadden grant (sender, date,
@@ -48,3 +48,46 @@ Sync took 10m41s with 0 quarantined. Offense: 8,574 plays, 8,554 with art URLs a
 across 90 unique formations. The unique-play listing has no team-book membership, so playbook membership stays `unknown` until a detail or team-book pass.
 Art download is running (resumable, 1.5 s delay). The `art` command now checkpoints every 200 images and records a per-play `art_error` instead
 of losing the run. It still stops on 401/403.
+
+## Parallel private diagram proposals (2026-11-07, approximately 10:02 PM ET)
+
+The art downloader remains independent. `scripts/madden_ml/extract_downloaded_art.py`
+uses only local PNGs and the existing `play_art_extract.analyze` implementation.
+It never writes the downloader's catalog, authorization or checkpoint files and
+never requests the site. Extraction and compact responsibility JSONs are private
+under the store's `extractions/`; optional overlays are limited to installed plays.
+A single-store lock, atomic JSON writes and SHA-256 resume checks allow incremental
+rescans without racing the downloader. Filenames preserve identity boundaries.
+
+| Scope | Side | Indexed | Downloaded PNGs | Proposed extractions | Failed |
+|---|---|---:|---:|---:|---:|
+| full_catalog | offense | 8574 | 3173 | 41 | 0 |
+| full_catalog | defense | 1578 | 1578 | 475 | 0 |
+| installed | offense | 93 | 41 | 41 | 0 |
+| installed | defense | 123 | 113 | 113 | 0 |
+
+These are a moving snapshot, not a new semantic certification. Installed matching
+is exact by formation/play slug, except the two previously owner-approved
+Gun 5WR Tight site-name aliases. At this pass 52 installed offense images are not
+yet present and 10 defense entries have no exact matching downloaded filename;
+we do not infer a replacement from a similar name. All downloaded exact matches
+in both installed books have proposals. The background pass prioritizes the
+remaining defense before the remaining offense, then scans for new downloads.
+
+Six installed diagrams were visually compared to their extraction overlays (three
+offense, three defense), as sampler QA only. Straight stems and red arrow locations
+are often spatially captured, but touching same-colour offensive tracks merge or
+lose branches. Blue defensive ellipses split at field lines, underneath zone fills
+are often omitted, and pale links/watermarks cause missing or extra markers. These
+are known limitations, not corrected assignments or geometry review.
+
+Every result remains `diagram_extracted_unreviewed`. Marker indices are geometric,
+not WR/TE/HB slots. Defensive zones and rush candidates are not assigned to
+individual defenders; interpreting red as rush remains unverified. No yards, read
+order, blocking scheme, coverage beater or eligibility is inferred. Human/in-game
+review remains necessary. No priors, training, caller, ranker or gameplay DB changed.
+No third-party art or extracted geometry is committed or redistributed.
+
+Private live reports: `/workspace/ace-responsibility-progress.json` and
+`/workspace/ace-responsibility-report.md` (counts and installed-offense proposal
+table; refreshed by the background job). Tests use synthetic art only.
