@@ -140,6 +140,7 @@ class RouteContext:
     error: str = ""
     n_scored: int = 0
     latency_ms: float = 0.0
+    installed_pairs_digest: str = ""
 
 
 def _coverage(db: Any, art: sm.StructuralArtifact, opponent_id: str, session_id: str | None,
@@ -172,6 +173,8 @@ def apply(mode: str, ranked: list[dict[str, Any]], pairs: list[tuple[str, str]],
         mix, cov = _coverage(db, art, opponent_id, session_id, snap_seq)
         ctx.mix, ctx.coverage = mix, cov
         scored_pairs = list(all_pairs)      # EVERY installed play is scored; no situational shortlist
+        from cfb_coach.madden.model.offense_live_read_cache import pairs_digest
+        ctx.installed_pairs_digest = pairs_digest(scored_pairs)
         ctx.priors = football_priors_on(db)
         if ctx.priors:
             from cfb_coach.madden.model import adaptive_priors as ap
@@ -212,7 +215,9 @@ def apply(mode: str, ranked: list[dict[str, Any]], pairs: list[tuple[str, str]],
             if ctx.priors:                                   # structured football prior (+ learned cells): changes the SCORE, hence the ranking
                 e = fpri.matchup_edge(s, mix, learned=ctx.learned)
                 row["football_prior_edge"] = e["edge"]
-                row["probability"] = sm._sigmoid(sm._logit(sc.probability) + e["edge"])
+                # sc is absent when the learned structural residual is off.
+                # The football prior still works on the base ML probability.
+                row["probability"] = sm._sigmoid(sm._logit(probability) + e["edge"])
                 row["components"]["football_prior_edge_logit"] = e["edge"]
             row["route_aware_se"] = se
             row["route_aware_known_routes"] = s.n_known
@@ -276,6 +281,17 @@ def finalize(ctx: RouteContext, call: Any, *, sit: Any, opponent_id: str, game_i
             selected_call = isinstance(getattr(call, "ml_offense_action", None), dict)
             dec = od.decide(ctx.art, situation, [cand], confirmations=None if selected_call else _confirmations(),
                             mode="live", allow_adjustments=not selected_call, priors=ctx.priors, learned_cells=ctx.learned)
+            # The pregame geometry compiler writes anonymous route hints for
+            # the exact installed inventory. Use them ONLY for displaying the
+            # final QB-read card, not to invent receiver identities, alter
+            # model weights, or load third-party catalog images during play.
+            if selected_call and dec.final_structure is not None:
+                from cfb_coach.madden.model.offense_live_read_cache import structure_for_live_read
+
+                dec.final_structure = structure_for_live_read(
+                    cand[0], cand[1], dec.final_structure,
+                    installed_pairs_digest=ctx.installed_pairs_digest,
+                )
             if selected_call:
                 advice.use_selected_call(dec, call)
                 if ctx.priors and dec.final_structure.adjustments:
