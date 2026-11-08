@@ -225,7 +225,6 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *,
     shells = _shell_dist(dist)
     top = max(shells, key=shells.get) if shells and max(shells.values()) > 0 else "unknown"
     top_p = shells.get(top, 0.0)
-    use_priors = bool(getattr(decision, "football_priors", False)) if priors is None else priors
     primary = secondary = checkdown = "UNKNOWN: this play's receiver routes are not annotated yet"
     conditioned: list[str] = []
     basis = "unknown"
@@ -245,7 +244,7 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *,
             "partial", "high_confidence_extracted"
         ) for slot, _, tier in s.routes)
         if anonymous and not s.adjustments:
-            basis += " [unreviewed diagram geometry; receiver identities UNKNOWN]"
+            basis += " [unreviewed play-diagram geometry; receiver identities UNKNOWN]"
         elif s.adjustments:
             basis += " [selected hot routes; re-ranked after the changes]"
         published_baseline = [_describe(sl, by_slot[sl]) for sl in documented]
@@ -299,7 +298,8 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *,
         "COVERAGE-CONDITIONED ORDER": conditioned or None,
         "PUBLISHED BASELINE": published_baseline or None,
         "READ INPUTS": {
-            "coverage_mix": "pre-snap opponent distribution, not last-snap coverage as certainty",
+            "coverage_mix": ("historical pre-snap probability mixture, not last-snap certainty"
+                             if mix else "none supplied"),
             "down": (situation or {}).get("down"),
             "distance": (situation or {}).get("distance"),
             "two_minute": (situation or {}).get("two_minute"),
