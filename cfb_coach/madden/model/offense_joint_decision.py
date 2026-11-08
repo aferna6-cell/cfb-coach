@@ -264,7 +264,16 @@ def legal_plans_for_play(
             if macro_index is not None
             else clean_ids(list(active))
         )
+        pair = f"{play} ({formation})"
         for mid in armed:
+            # Check O(1) play compatibility BEFORE the expensive per-macro
+            # suggestion/tendency lookup. CPU Game 1's wide book otherwise
+            # called suggest_for_snap repeatedly even for incompatible macros.
+            if macro_index is not None:
+                if pair not in (macro_index.get("pair_sets") or {}).get(mid, ()):
+                    continue
+            elif pair not in pairs_in_book(mid, book, cap=full_cap):
+                continue
             try:
                 suggestion = suggest_for_snap(
                     zone=zone, play=play, coverage=getattr(sit, "coverage_hint", None),
@@ -277,15 +286,11 @@ def legal_plans_for_play(
                 continue
             if not suggestion or suggestion.get("id") != mid:
                 continue
-            pair = f"{play} ({formation})"
-            if macro_index is not None:
-                if pair not in (macro_index.get("pair_sets") or {}).get(mid, ()):
-                    continue
-                detail = cached_offense_detail(macro_index, mid, book)
-            elif pair not in pairs_in_book(mid, book, cap=full_cap):
-                continue
-            else:
-                detail = offense_detail(mid, book)
+            detail = (
+                cached_offense_detail(macro_index, mid, book)
+                if macro_index is not None
+                else offense_detail(mid, book)
+            )
             if detail.get("needs_settings") or detail.get("gaps") or not detail.get("settings"):
                 continue
             if not _verified_button_sequence(suggestion.get("buttons")):
