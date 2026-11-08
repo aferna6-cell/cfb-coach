@@ -67,20 +67,36 @@ def _load_artifact(db: Any) -> experimental_model.ExperimentalArtifact:
     )
 
 
-def _rate(art: Any, form: str, play: str, opponent: str) -> float:
-    """Use model success estimates, not the heuristic's book/play ordering."""
-    from cfb_coach.opponents import is_cpu_opponent
+def _rate(
+    art: Any,
+    form: str,
+    play: str,
+    opponent: str,
+    *,
+    priors_on: bool = False,
+    coverage_mix: Mapping[str, float] | None = None,
+    learned: Mapping | None = None,
+    structure: Any | None = None,
+) -> float:
+    """Average shared pregame scores across generic probes; no coverage hint."""
+    from types import SimpleNamespace
+
+    from cfb_coach.madden.model.offense_pregame_scoring import score_pair
 
     # Multiple generic pre-snap situations; no post-snap coverage is assumed.
     checks = ((1, 10, 35), (2, 6, 50), (3, 7, 35))
     vals = [
-        experimental_model.predict_success(
-            art, formation=form, play=play, down=down, distance=distance,
-            yardline=yardline, opponent_id=opponent,
-            opponent_type="cpu" if is_cpu_opponent(opponent) else "human",
-            coverage_hint=None, coverage_source="none",
-            heuristic_bonus=0.0,
-        )["probability"]
+        score_pair(
+            art,
+            formation=form,
+            play=play,
+            probe=SimpleNamespace(down=down, distance=distance, yardline=yardline),
+            mix=coverage_mix,
+            opponent_id=opponent,
+            priors_on=priors_on,
+            learned=learned,
+            structure=structure,
+        ).total_probability
         for down, distance, yardline in checks
     ]
     return sum(vals) / len(vals)

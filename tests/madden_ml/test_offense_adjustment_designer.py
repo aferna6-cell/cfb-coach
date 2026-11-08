@@ -258,3 +258,39 @@ def test_designer_only_passes_supported_shared_portfolio_keywords(db, monkeypatc
     monkeypatch.setattr(portfolio, "select_formation_portfolio", new)
     designer.design_offense(db, priors_on=True, coverage_mix={"cover_3_match": 1.}, **common)
     assert observed == [(True, {"cover_3_match": 1.})]
+
+
+
+def test_rate_is_thin_wrapper_around_score_pair(monkeypatch):
+    calls = []
+
+    class Fake:
+        total_probability = 0.41
+
+    def fake_score_pair(art, **kwargs):
+        calls.append(kwargs)
+        return Fake()
+
+    monkeypatch.setattr("cfb_coach.madden.model.offense_pregame_scoring.score_pair", fake_score_pair)
+    mix = {"cover_1_robber": 1.0}
+    assert designer._rate(
+        object(), "Gun 5WR Tight", "Mesh", "unknown",
+        priors_on=True, coverage_mix=mix,
+    ) == 0.41
+    assert len(calls) == 3
+    assert all(c["formation"] == "Gun 5WR Tight" for c in calls)
+    assert all(c["play"] == "Mesh" for c in calls)
+    assert all(c["opponent_id"] == "unknown" for c in calls)
+    assert all(c["priors_on"] is True for c in calls)
+    assert all(c["mix"] == mix for c in calls)
+    assert {(c["probe"].down, c["probe"].distance, c["probe"].yardline) for c in calls} == {
+        (1, 10, 35), (2, 6, 50), (3, 7, 35),
+    }
+
+
+def test_rate_priors_change_mesh_score_on_cover_1_unspecified():
+    art = em.ExperimentalArtifact()
+    mix = {"cover_1_unspecified": 1.0}
+    off = designer._rate(art, "Gun 5WR Tight", "Mesh", "unknown", priors_on=False, coverage_mix=mix)
+    on = designer._rate(art, "Gun 5WR Tight", "Mesh", "unknown", priors_on=True, coverage_mix=mix)
+    assert off != on
