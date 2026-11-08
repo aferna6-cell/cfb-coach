@@ -176,24 +176,45 @@ def apply(mode: str, ranked: list[dict[str, Any]], pairs: list[tuple[str, str]],
         if ctx.priors:
             from cfb_coach.madden.model import adaptive_priors as ap
             ctx.learned, ctx.adaptive = ap.learned_cells(db, opponent_id, session_id)
-        template = em.rank_candidates(em.ExperimentalArtifact.from_dict(art.base), scored_pairs,
-                                      **{k: v for k, v in rank_kwargs.items() if k != "heuristic"})
+        # The experimental model already scored the situational candidates.
+        # Reuse those predictions: don't rescore the same large inventory.
+        # Only previously excluded installed plays need a new base estimate.
+        by_pair = {(r["formation"], r["play"]): r for r in ranked}
+        missing = [pair for pair in scored_pairs if pair not in by_pair]
+        if missing:
+            extra = em.rank_candidates(
+                em.ExperimentalArtifact.from_dict(art.base), missing,
+                **{k: v for k, v in rank_kwargs.items() if k != "heuristic"}
+            )
+            by_pair.update({(r["formation"], r["play"]): r for r in extra})
+        template = [by_pair[pair] for pair in scored_pairs]
         rows = []
         for r in template:
             s = sm.structure_any(r["formation"], r["play"])
-            sc = sm.score(art, s, down=getattr(sit, "down", None), distance=getattr(sit, "distance", None),
-                          yardline=getattr(sit, "yardline", None), opponent_id=opponent_id,
-                          opponent_type=rank_kwargs.get("opponent_type"), mix=mix, base_p=float(r["probability"]))
+            # CPU Game 1's residual was disabled. sm.score() would still
+            # build expensive route vectors just to return zero residual.
+            if art.residual_active:
+                sc = sm.score(
+                    art, s, down=getattr(sit, "down", None),
+                    distance=getattr(sit, "distance", None),
+                    yardline=getattr(sit, "yardline", None),
+                    opponent_id=opponent_id,
+                    opponent_type=rank_kwargs.get("opponent_type"),
+                    mix=mix, base_p=float(r["probability"]),
+                )
+                probability, residual, se = sc.probability, sc.residual_logit, sc.logit_se
+            else:
+                probability, residual, se = float(r["probability"]), 0.0, 0.0
             row = dict(r)
-            row["components"] = {**dict(r.get("components") or {}), "route_aware_residual_logit": sc.residual_logit}
+            row["components"] = {**dict(r.get("components") or {}), "route_aware_residual_logit": residual}
             row["base_probability"] = float(r["probability"])
-            row["probability"] = sc.probability
+            row["probability"] = probability
             if ctx.priors:                                   # structured football prior (+ learned cells): changes the SCORE, hence the ranking
                 e = fpri.matchup_edge(s, mix, learned=ctx.learned)
                 row["football_prior_edge"] = e["edge"]
                 row["probability"] = sm._sigmoid(sm._logit(sc.probability) + e["edge"])
                 row["components"]["football_prior_edge_logit"] = e["edge"]
-            row["route_aware_se"] = sc.logit_se
+            row["route_aware_se"] = se
             row["route_aware_known_routes"] = s.n_known
             rows.append(row)
             if (time.perf_counter() - started) * 1000.0 > budget_ms:
