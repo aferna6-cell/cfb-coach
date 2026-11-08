@@ -10,7 +10,8 @@ personnel_group, art_listed. Dictionaries are sorted by their canonical JSON,
 preserving duplicates. Neither art locations/digests nor derived structure,
 source-book joins, or provisional feed contents enter this listing identity.
 
-Provisional v1 integration accepts ``entries`` as a list of records or a mapping
+Provisional v1 integration accepts a JSONL header followed by records, or a
+single JSON object with ``entries`` as a list of records or a mapping
 keyed by listing id. Records use listing_id (or id), and nonempty structure,
 geometry, or assignments. References are JSON pointers into that separately
 loaded feed, not paths supplied by a record. All such features remain partial
@@ -67,10 +68,24 @@ class CatalogIndex:
 
 def load_provisional_export(path: str | Path) -> dict:
     """Read the separate provisional feed; never invoke the verified exporter."""
+    text = Path(path).read_text(encoding="utf-8")
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise ValueError("Invalid provisional export JSON") from exc
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        # Producer envelope: a header object, then one entry per nonblank line.
+        objects = []
+        for line_number, line in enumerate(text.splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                objects.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid provisional export JSON at line {line_number}") from exc
+        if not objects:
+            raise ValueError("Invalid provisional export JSON: empty feed")
+        data = objects[0]
+        if isinstance(data, dict):
+            data = {**data, "entries": objects[1:]}
     if not isinstance(data, dict) or data.get("schema") != PROVISIONAL_SCHEMA:
         raise ValueError(f"Expected provisional schema {PROVISIONAL_SCHEMA}")
     entries = data.get("entries", [])
@@ -78,6 +93,31 @@ def load_provisional_export(path: str | Path) -> dict:
         raise ValueError("Provisional entries must be a list or listing-id mapping")
     if any(not isinstance(row, dict) for row in (entries.values() if isinstance(entries, dict) else entries)):
         raise ValueError("Each provisional entry must be an object")
+    return _sanitized(data)
+
+
+def _sanitized(value):
+    """Remove private art locators/digests even in nested producer metadata."""
+    if isinstance(value, dict):
+        return {key: _sanitized(item) for key, item in value.items()
+                if key not in {"art_sha256", "source_detail_url", "art_url"}}
+    if isinstance(value, list):
+        return [_sanitized(item) for item in value]
+    return value
+
+
+def _load_alias_audits(path: str | Path) -> dict:
+    """Read advisory near-misses, never translate them into matching aliases.
+
+    Literal listing ids (including double hyphens) remain untouched. The audit
+    does not override the existing catalog.norm / ace_catalog.slug join policy.
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError("Invalid alias audit JSON") from exc
+    if not isinstance(data, dict) or data.get("schema") != "madden27.catalog_alias_audit.v1":
+        raise ValueError("Expected alias audit schema madden27.catalog_alias_audit.v1")
     return data
 
 
@@ -90,7 +130,7 @@ def _keys(*values: str) -> set[str]:
             (catalog.norm(value), catalog.norm(ace_catalog.slug(value))) if key}
 
 
-def _provisional_rows(data: dict) -> dict[str, tuple[str, str]]:
+def _provisional_rows(data: dict) -> dict[str, tuple[str | None, str, bool]]:
     entries = data.get("entries", [])
     pairs = entries.items() if isinstance(entries, dict) else enumerate(entries)
     result = {}
@@ -102,15 +142,16 @@ def _provisional_rows(data: dict) -> dict[str, tuple[str, str]]:
             raise ValueError("Provisional entry missing listing_id")
         if listing_id in result:
             raise ValueError("Duplicate provisional listing_id")
-        # Explicitly disallowed features must not be consumed. Metadata/name use
-        # stays permitted independently of permission to use a structure.
-        if row.get("model_use_permitted") is False:
-            continue
-        if not any(row.get(field) for field in ("structure", "geometry", "assignments")):
-            continue
-        tier = "high_confidence_extracted" if row.get("feature_tier") == "high_confidence_extracted" else "partial"
+        permitted = row.get("model_use_permitted") is not False
+        has_structure = permitted and any(row.get(field) for field in ("structure", "geometry", "assignments"))
+        tier = row.get("feature_tier")
+        if tier not in {"high_confidence_extracted", "partial", "name_only"}:
+            tier = "partial" if has_structure else "name_only"
+        if not has_structure:
+            tier = "name_only"
         token = str(key).replace("~", "~0").replace("/", "~1")
-        result[listing_id] = (f"provisional:#/entries/{token}", tier)
+        reference = f"provisional:#/entries/{token}" if has_structure else None
+        result[listing_id] = (reference, tier, permitted)
     return result
 
 
@@ -119,6 +160,7 @@ def load_offense_universe(
     ace_store: str | Path = "/home/box/cfb_acemadden",
     playbooks: Mapping | None = None,
     provisional_export: str | Path | None = None,
+    alias_audits: str | Path | None = None,
 ) -> CatalogIndex:
     """Index every offense row, including malformed-name/id and duplicate rows.
 
@@ -126,6 +168,8 @@ def load_offense_universe(
     {book_name: {formation_name: [play_name, ...]}}. An empty mapping is honored.
     score_available reports eligibility for later scoring, not a computed score.
     """
+    if alias_audits is not None:
+        _load_alias_audits(alias_audits)  # Advisory only: do not apply aliases.
     if playbooks is None:
         playbooks = {book: catalog.book_formations("offense", book)
                      for book in catalog.book_names("offense")}
@@ -144,7 +188,8 @@ def load_offense_universe(
     metadata = []
     blocked = []
     breakdown = dict.fromkeys(("evaluated", "score_available", "structure_supported",
-                               "verified_assignments", "name_only", "unknown",
+                               "verified_assignments", "high_confidence_extracted", "partial",
+                               "name_only", "unknown",
                                "source_book_mapped", "installable"), 0)
     with (Path(ace_store) / "catalog.jsonl").open(encoding="utf-8") as stream:
         for line_number, line in enumerate(stream, 1):
@@ -170,17 +215,22 @@ def load_offense_universe(
                     for p in _keys(play, play_slug):
                         source_books.update(membership.get((f, p), ()))
             installable = bool(source_books)
-            structure_ref, tier = structures.get(listing_id, (None, "name_only")) if readable else (None, "unknown")
+            structure_ref, tier, permitted = (
+                structures.get(listing_id, (None, "name_only", True))
+                if readable else (None, "unknown", True)
+            )
             reasons = []
             if not readable:
                 reasons.append("structurally unreadable: missing id or formation/play name")
+            if not permitted:
+                reasons.append("provisional feed prohibits model use")
             if not installable:
                 reasons.append("unresolved source-book membership: no verified stock-book triple")
             reason = "; ".join(reasons) or None
             entry = CatalogEntry(
                 listing_id, formation, play, formation_slug, play_slug, personnel,
                 tier, tuple(sorted(source_books)), "mapped" if installable else "unresolved",
-                installable, art_listed, bool(structure_ref), False, True, reason, structure_ref,
+                installable, art_listed, bool(structure_ref), False, permitted, reason, structure_ref,
             )
             entries.append(entry)
             metadata.append(dict(listing_id=listing_id, formation=formation, play=play,
@@ -190,6 +240,8 @@ def load_offense_universe(
                 blocked.append(dict(listing_id=listing_id, formation=formation, play=play, reason=reason))
             for key, present in (("evaluated", readable), ("score_available", readable),
                                  ("structure_supported", bool(structure_ref)),
+                                 ("high_confidence_extracted", tier == "high_confidence_extracted"),
+                                 ("partial", tier == "partial"),
                                  ("name_only", tier == "name_only"), ("unknown", tier == "unknown"),
                                  ("source_book_mapped", installable), ("installable", installable)):
                 breakdown[key] += int(present)
