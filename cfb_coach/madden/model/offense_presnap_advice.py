@@ -244,7 +244,11 @@ def build_card(decision: od.Decision, mix: Mapping[str, float] | None = None, *,
             "partial", "high_confidence_extracted"
         ) for slot, _, tier in s.routes)
         if anonymous and not s.adjustments:
-            basis += " [unreviewed play-diagram geometry; receiver identities UNKNOWN]"
+            # Preserve the established diagnostic/provenance token consumed by
+            # the existing read coverage benchmark and regression tests.
+            basis = ("INFERRED from unreviewed play-diagram geometry; "
+                     "contextual coverage/situation preference, approximate "
+                     "route shapes, receiver identities UNKNOWN")
         elif s.adjustments:
             basis += " [selected hot routes; re-ranked after the changes]"
         published_baseline = [_describe(sl, by_slot[sl]) for sl in documented]
