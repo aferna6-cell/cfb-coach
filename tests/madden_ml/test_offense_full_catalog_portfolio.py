@@ -121,7 +121,7 @@ def test_display_key_merges_slug_and_display_and_preserves_listing_tiers():
     slug_entry.model_use_permitted = False
     display_entry = entry(display, indexed[1], [source], tier="high_confidence_extracted")
     with patch.object(em, "predict_success", return_value={"probability": .5}):
-        universe, tiers, audit = portfolio._catalog_universe(
+        universe, tiers, structures, audit = portfolio._catalog_universe(
             em.ExperimentalArtifact(), [slug_entry, display_entry], {source: {display: stock}},
             "unknown", coverage_mix={}, priors_on=False, learned=None)
     assert universe == {source: {display: list(dict.fromkeys(stock))}}
@@ -129,3 +129,36 @@ def test_display_key_merges_slug_and_display_and_preserves_listing_tiers():
     assert tiers[(display, indexed[1])] == ("high_confidence_extracted", True)
     assert (display, "L Spot") not in tiers
     assert {r["formation"] for r in audit["evaluated_listings"]} == {slug, display}
+
+
+def test_situation_ranking_uses_slug_tiers_under_display_name_without_inventing_stock_tiers():
+    from cfb_coach.madden.model import offense_pregame_scoring as scoring
+
+    display, slug, play = "Gun Tight Doubles", "gun-tight-doubles", "Inside Zone"
+    tiers = {(slug, "inside-zone"): ("partial", False)}
+    with patch.object(em, "predict_success", return_value={"probability": .5}), patch.object(
+            scoring, "score_pair", wraps=scoring.score_pair) as spy:
+        portfolio._situation_value(
+            em.ExperimentalArtifact(), display, [play, "L Spot"], "unknown", "normal",
+            portfolio.PORTFOLIO_PROBES["normal"], tiers=tiers)
+    calls = {c.kwargs["play"]: c.kwargs for c in spy.call_args_list}
+    assert calls[play]["feature_tier"] == "partial"
+    assert calls[play]["model_use_permitted"] is False
+    assert "feature_tier" not in calls["L Spot"]
+    assert "model_use_permitted" not in calls["L Spot"]
+    assert all(c["structure"] is not None for c in calls.values())
+    assert portfolio._scoring_lookup(tiers, display, "O 1 Trap") is None
+    assert portfolio._scoring_lookup({(slug, "01 Trap"): ("partial", True)}, display, "O 1 Trap") is None
+    assert portfolio._scoring_lookup({(slug, "Z Spot"): ("partial", True)}, display, "L Spot") is None
+
+
+def test_non_catalog_ranking_always_passes_first_party_structure():
+    from cfb_coach.madden.model import offense_pregame_scoring as scoring
+    from cfb_coach.madden.model import offense_structural_model as sm
+
+    formation, play = "Gun Doubles Clamp Stack", "Mtn Shuffle Verts Smash"
+    with patch.object(em, "predict_success", return_value={"probability": .5}), patch.object(
+            scoring, "score_pair", wraps=scoring.score_pair) as spy:
+        run({"Buccaneers": {formation: [play]}})
+    assert len(spy.call_args_list) == len(portfolio.SITUATION_NAMES)
+    assert all(c.kwargs["structure"] is sm.structure_any(formation, play) for c in spy.call_args_list)

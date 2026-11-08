@@ -162,3 +162,46 @@ def test_unsupported_frame_or_malformed_polyline_is_not_geometry_evidence():
 
 def test_documented_tier_claim_is_never_copied_to_decoded_routes():
     assert {t for _, _, t in decode(smash(), tier="source_documented").routes} == {"partial"}
+
+
+@pytest.mark.parametrize("formation", ["gun-doubles-clamp-stack", "Gun Doubles Clamp Stack"])
+def test_documented_display_and_slug_routes_win_unchanged(formation):
+    play = "Mtn Shuffle Verts Smash"
+    first_party = sm.structure_any("Gun Doubles Clamp Stack", play)
+    assert len(first_party.routes) == 5
+    assert {tier for _, _, tier in first_party.routes} == {"source_documented"}
+    resolved = resolve_scoring_structure(
+        formation, play, geometry=smash(), feature_tier="high_confidence_extracted",
+        model_use_permitted=True)
+    assert resolved is first_party
+    assert not any(slot.startswith("geom_") for slot, _, _ in resolved.routes)
+
+
+def test_ranking_consumes_decoded_structure_and_no_geometry_changes_situation_scores():
+    from cfb_coach.madden.model import offense_pregame_scoring as scoring
+
+    entry = SimpleNamespace(listing_id="synthetic", formation="gun-test-wide", play=PLAY,
+                            feature_tier="high_confidence_extracted", model_use_permitted=True,
+                            source_books=("Test",), installable=True)
+    books = {"Test": {FORMATION: [PLAY]}}
+
+    def run(geometry):
+        index = SimpleNamespace(entries=[entry], geometry_for=lambda lid: geometry)
+        with patch.object(scoring, "score_pair", wraps=scoring.score_pair) as spy:
+            result = portfolio.select_formation_portfolio(
+                art=em.ExperimentalArtifact(), all_books=books, active={}, opponent_id="unknown",
+                max_formations=1, catalog_index=index, coverage_mix={"cover_2_unspecified": 1},
+                priors_on=True)
+        # The audit is first and uses the slug; ranking uses the display key.
+        ranking_calls = [c for c in spy.call_args_list if c.kwargs["formation"] == FORMATION]
+        assert len(ranking_calls) == len(portfolio.SITUATION_NAMES)
+        assert all(c.kwargs["structure"] is not None for c in ranking_calls)
+        assert all(c.kwargs["feature_tier"] == "high_confidence_extracted" for c in ranking_calls)
+        return result["ranked"][0]["situation_scores"], ranking_calls
+
+    with patch.object(em, "predict_success", return_value={"probability": .5}):
+        decoded_scores, decoded_calls = run(smash())
+        fallback_scores, fallback_calls = run(None)
+    assert decoded_scores != fallback_scores
+    assert all("smash" in c.kwargs["structure"].concepts() for c in decoded_calls)
+    assert all(c.kwargs["structure"].n_known == 0 for c in fallback_calls)

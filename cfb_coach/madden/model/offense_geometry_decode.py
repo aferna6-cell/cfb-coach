@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from functools import lru_cache
 from math import isfinite
 from statistics import median
 
+from cfb_coach.madden import catalog
 from cfb_coach.madden.model import offense_structural_model as sm
 from cfb_coach.madden.model.offense_play_features import PlayStructure
 from cfb_coach.madden.model.offense_taxonomy import RouteSpec
@@ -111,6 +113,18 @@ def decode_provisional_geometry(
                          skill_slots=(), personnel_tier="unknown", hint=fallback.hint)
 
 
+@lru_cache(maxsize=1)
+def _display_pairs() -> dict[tuple[str, str], tuple[tuple[str, str], ...]]:
+    pairs: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    for book in catalog.book_names("offense"):
+        for formation, plays in catalog.book_formations("offense", book).items():
+            for play in plays:
+                bucket = pairs.setdefault((catalog.norm(formation), catalog.norm(play)), [])
+                if (formation, play) not in bucket:
+                    bucket.append((formation, play))
+    return {key: tuple(values) for key, values in pairs.items()}
+
+
 def resolve_scoring_structure(
     formation: str,
     play: str,
@@ -125,6 +139,10 @@ def resolve_scoring_structure(
     first_party = sm.structure_any(formation, play)
     if any(tier in _DOCUMENTED for _, _, tier in first_party.routes):
         return first_party
+    for display, stock_play in _display_pairs().get((catalog.norm(formation), catalog.norm(play)), ()):
+        documented = sm.structure_any(display, stock_play)
+        if any(tier in _DOCUMENTED for _, _, tier in documented.routes):
+            return documented
     if geometry is not None and model_use_permitted:
         decoded = decode_provisional_geometry(geometry, formation=formation, play=play,
                                               feature_tier=feature_tier or "partial")
