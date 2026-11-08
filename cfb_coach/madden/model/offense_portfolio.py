@@ -154,8 +154,17 @@ def _situation_value(
     opponent_id: str,
     situation: str,
     probe: Any,
+    *,
+    coverage_mix: Mapping[str, float] | None = None,
+    priors_on: bool = False,
+    learned: Mapping[Any, float] | None = None,
 ) -> float:
-    """Mean of the best few concepts that actually fit this situation."""
+    """Mean of the best few concepts that actually fit this situation.
+
+    The model probability comes from ``offense_pregame_scoring.score_pair``: the trained model's base value, plus (only
+    when ``priors_on`` and a coverage mix is given) the live ``matchup_edge`` logit lift. Defaults reproduce the old path."""
+    from cfb_coach.madden.model.offense_pregame_scoring import score_pair
+
     zone = _zone_for(situation)
     best: dict[str, float] = {}
     for play in plays:
@@ -164,17 +173,10 @@ def _situation_value(
         if situation == "goal_line" and catalog.is_deep(play) and "goal" not in play.lower():
             # Still scored, but the evaluator applies the compressed-space penalty.
             pass
-        pred = experimental_model.predict_success(
-            art, formation=formation, play=play,
-            down=getattr(probe, "down", None),
-            distance=getattr(probe, "distance", None),
-            yardline=getattr(probe, "yardline", None),
-            opponent_id=opponent_id,
-            coverage_hint=None, coverage_source="none",
-            heuristic_bonus=0.0,
-        )
+        ps = score_pair(art, formation=formation, play=play, probe=probe, mix=coverage_mix,
+                        opponent_id=opponent_id, priors_on=priors_on, learned=learned)
         fit = explain_play(play, probe)
-        score = float(pred["probability"]) + float(fit["selection_delta"]) + float(fit["coordinator_delta"])
+        score = float(ps.total_probability) + float(fit["selection_delta"]) + float(fit["coordinator_delta"])
         concept = experimental_model._play_concept(play)
         if concept not in best or score > best[concept]:
             best[concept] = score
@@ -225,8 +227,17 @@ def select_formation_portfolio(
     opponent_id: str,
     max_formations: int,
     db: Any = None,
+    coverage_mix: Mapping[str, float] | None = None,
+    priors_on: bool = False,
+    learned: Mapping[Any, float] | None = None,
 ) -> dict[str, Any]:
-    """Greedy coverage across every catalogued formation. No favorite list."""
+    """Greedy coverage across every catalogued formation. No favorite list.
+
+    ``coverage_mix``/``priors_on`` route coverage knowledge through ``score_pair`` (matchup_edge); off by default."""
+    # Omit optional keywords on the legacy/default call surface.
+    scoring_options = {}
+    if coverage_mix is not None or priors_on or learned is not None:
+        scoring_options = dict(coverage_mix=coverage_mix, priors_on=priors_on, learned=learned)
     roster = load_verified_roster(db)
     profile = opponent_defense_profile(db, opponent_id)
     current = active.get("formations") or {}
@@ -240,6 +251,7 @@ def select_formation_portfolio(
             for name in SITUATION_NAMES:
                 by_situation[name] = round(_situation_value(
                     art, form, unique, opponent_id, name, PORTFOLIO_PROBES[name],
+                    **scoring_options,
                 ), 6)
             if sum(by_situation.values()) <= 0:
                 continue
