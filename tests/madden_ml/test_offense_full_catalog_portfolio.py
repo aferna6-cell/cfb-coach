@@ -99,7 +99,7 @@ def test_slug_index_formation_commits_full_display_name_stock():
     index = [entry(slug, p, [source]) for p in stock if p != "L Spot"]
 
     def predict(art, *, formation, play, **kw):
-        return {"probability": 0.9 if formation == slug else 0.3, "evidence_quality": "empirical"}
+        return {"probability": 0.9 if catalog.norm(formation) == catalog.norm(display) else 0.3, "evidence_quality": "empirical"}
 
     with patch.object(em, "predict_success", side_effect=predict):
         out = portfolio.select_formation_portfolio(
@@ -107,6 +107,25 @@ def test_slug_index_formation_commits_full_display_name_stock():
             opponent_id="unknown", max_formations=3, coverage_mix={"cover_1_unspecified": 1}, priors_on=True,
             catalog_index=index)
     chosen = {r["formation"]: r for r in out["chosen"]}
-    assert slug in chosen and chosen[slug]["source_book"] == source
-    assert "L Spot" in chosen[slug]["plays"]
-    assert chosen[slug]["plays"] == list(dict.fromkeys(stock))
+    assert slug not in chosen
+    assert display in chosen and chosen[display]["source_book"] == source
+    assert "L Spot" in chosen[display]["plays"]
+    assert chosen[display]["plays"] == list(dict.fromkeys(stock))
+
+
+def test_display_key_merges_slug_and_display_and_preserves_listing_tiers():
+    source, display, slug = "Buccaneers", "Gun Tight Doubles", "gun-tight-doubles"
+    stock = list(catalog.book_formations("offense", source)[display])
+    indexed = [p for p in stock if p != "L Spot"]
+    slug_entry = entry(slug, indexed[0], [source], tier="partial")
+    slug_entry.model_use_permitted = False
+    display_entry = entry(display, indexed[1], [source], tier="high_confidence_extracted")
+    with patch.object(em, "predict_success", return_value={"probability": .5}):
+        universe, tiers, audit = portfolio._catalog_universe(
+            em.ExperimentalArtifact(), [slug_entry, display_entry], {source: {display: stock}},
+            "unknown", coverage_mix={}, priors_on=False, learned=None)
+    assert universe == {source: {display: list(dict.fromkeys(stock))}}
+    assert tiers[(display, indexed[0])] == ("partial", False)
+    assert tiers[(display, indexed[1])] == ("high_confidence_extracted", True)
+    assert (display, "L Spot") not in tiers
+    assert {r["formation"] for r in audit["evaluated_listings"]} == {slug, display}

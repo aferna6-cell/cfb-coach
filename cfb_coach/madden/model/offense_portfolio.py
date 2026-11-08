@@ -468,7 +468,9 @@ def _catalog_universe(art: Any, catalog_index: Any, all_books: Mapping[str, Mapp
     from ``all_books`` when present, else every installable play the index lists for it. Non-installable rows are scored
     and reported but never enter the universe."""
     from cfb_coach.madden.model.offense_pregame_scoring import score_pair
+    from cfb_coach.madden.model.offense_geometry_decode import resolve_scoring_structure
 
+    geometry_for = getattr(catalog_index, "geometry_for", None)
     entries = list(getattr(catalog_index, "entries", catalog_index) or ())
     probe = PORTFOLIO_PROBES["normal"]
     evaluated: list[dict[str, Any]] = []
@@ -484,8 +486,13 @@ def _catalog_universe(art: Any, catalog_index: Any, all_books: Mapping[str, Mapp
         ft = getattr(e, "feature_tier", None)
         mup = getattr(e, "model_use_permitted", True)
         tiers.setdefault((form, play), (ft, mup))
+        geom = geometry_for(lid) if callable(geometry_for) else None
+        structure = resolve_scoring_structure(
+            form, play, geometry=geom, feature_tier=ft,
+            model_use_permitted=bool(mup) if mup is not None else True)
         ps = score_pair(art, formation=form, play=play, probe=probe, mix=coverage_mix, opponent_id=opponent_id,
-                        priors_on=priors_on, learned=learned, feature_tier=ft, model_use_permitted=mup)
+                        priors_on=priors_on, learned=learned, feature_tier=ft, model_use_permitted=mup,
+                        structure=structure)
         sources = tuple(getattr(e, "source_books", None) or ())
         installable = bool(getattr(e, "installable", False)) and bool(sources)
         row = {"listing_id": lid, "formation": form, "play": play, "source_books": list(sources),
@@ -504,8 +511,19 @@ def _catalog_universe(art: Any, catalog_index: Any, all_books: Mapping[str, Mapp
     universe: dict[str, dict[str, list[str]]] = {}
     for sb, forms in collected.items():
         for form, plays in forms.items():
-            full = _stock_plays(all_books.get(sb) or {}, form)
-            universe.setdefault(sb, {})[form] = full if full else plays
+            book = all_books.get(sb) or {}
+            display = form if form in book else next(
+                (name for name in book if catalog.norm(name) == catalog.norm(form)), form)
+            full = _stock_plays(book, form)
+            key = display if full else form
+            bucket = universe.setdefault(sb, {}).setdefault(key, [])
+            for play in full if full else plays:
+                if play not in bucket:
+                    bucket.append(play)
+            if key != form:
+                for play in plays:
+                    if (form, play) in tiers:
+                        tiers.setdefault((key, play), tiers[(form, play)])
     audit = {"evaluated_listings": evaluated, "blocked_listings": blocked,
              "catalog_universe": {sb: sorted(f) for sb, f in universe.items()},
              "n_evaluated": len(evaluated), "n_blocked": len(blocked)}
