@@ -42,6 +42,13 @@ def _identity(proposal: Mapping[str, Any]) -> str:
         "book": proposal["book"],
         "macro_blueprints": proposal["macro_blueprints"],
         "opponent_id": proposal["opponent_id"],
+        "football_intelligence": proposal.get("football_intelligence"),
+        "catalog_hash": proposal.get("catalog_hash"),
+        "n_indexed": proposal.get("n_indexed"),
+        "n_installable": proposal.get("n_installable"),
+        "artifact_hash": proposal.get("artifact_hash"),
+        "opponent_history_hash": proposal.get("opponent_history_hash"),
+        "rights_feed_digest": proposal.get("rights_feed_digest"),
     })
 
 
@@ -256,6 +263,7 @@ def design_offense(
     max_formations: int = MAX_FORMATIONS,
     artifact: Any = None,
     catalogue: Mapping[str, dict[str, list[str]]] | None = None,
+    catalog_index: Any = None,
     must_add: Sequence[str] = (),
     priors_on: bool = False,
     coverage_mix: Mapping[str, float] | None = None,
@@ -283,7 +291,34 @@ def design_offense(
     all_books = dict(catalogue) if catalogue is not None else {
         b: catalog.book_formations("offense", b) for b in catalog.book_names("offense")
     }
+    # Keep the full-universe loader and offline cache out of live imports.
+    if catalogue is None and catalog_index is None:
+        from cfb_coach.madden.model.offense_catalog_index import load_offense_universe
+
+        feed_dir = Path("/workspace/madden_ml/issue_132_catalog_track")
+        feed = feed_dir / "provisional_catalog_offense.v1.jsonl"
+        aliases = feed_dir / "alias_audits.json"
+        index_options = {}
+        if feed.is_file():
+            index_options["provisional_export"] = feed
+        if aliases.is_file():
+            index_options["alias_audits"] = aliases
+        catalog_index = load_offense_universe(**index_options)
+    from cfb_coach.madden.model.offense_score_cache import (
+        ScoreCache, artifact_digest, cache_key, catalog_provenance, opponent_history_digest,
+    )
+
     art = artifact if artifact is not None else _load_artifact(db)
+    provenance = catalog_provenance(all_books, catalog_index)
+    provenance["artifact_hash"] = artifact_digest(art)
+    provenance["opponent_history_hash"] = opponent_history_digest(coverage_mix, mix_source, unknown_mass)
+    score_cache = ScoreCache(cache_key(
+        catalog_hash=provenance["catalog_hash"], artifact_hash=provenance["artifact_hash"],
+        opponent_history_hash=provenance["opponent_history_hash"], priors_on=priors_on,
+        rights_feed_digest=provenance["rights_feed_digest"],
+        geometry_hash=provenance.get("geometry_hash") or "",
+    ))
+    score_cache.load()
     if not all_books:
         raise ValueError("No Madden offensive formation catalog is available")
 
@@ -301,11 +336,23 @@ def design_offense(
         scoring_kwargs = {"priors_on": priors_on, "coverage_mix": coverage_mix}
     elif priors_on or coverage_mix:
         raise ValueError("Shared pregame portfolio scoring is not integrated yet")
+    if catalog_index is not None:
+        if "catalog_index" not in supported:
+            raise ValueError("Shared portfolio cannot consume the full catalog index")
+        scoring_kwargs["catalog_index"] = catalog_index
     portfolio = select_formation_portfolio(
         art=art, all_books=all_books, active=active, opponent_id=opponent_id,
         max_formations=max_formations, db=db,
         **scoring_kwargs,
     )
+    # Preserve the portfolio's already-computed full-universe scalar scores.
+    # Do not call a second ranker or intercept Strategist's scorer.
+    for row in portfolio.get("evaluated_listings", ()):
+        score = row.get("shrunk_probability")
+        if row.get("score_available") and isinstance(score, (int, float)):
+            score_cache.record(
+                ["catalog_listing_normal_probe.v1", row["listing_id"], row["formation"], row["play"], opponent_id], score,
+            )
     chosen = portfolio["chosen"]
     ranks = portfolio["ranked"]
     if not chosen:
@@ -357,6 +404,7 @@ def design_offense(
     expected = _digest(active)
     proposal = {
         "schema": "ml_offense_design.v1", "opponent_id": opponent_id,
+        **provenance,
         "football_intelligence": {
             "priors_on": priors_on, "mix": dict(coverage_mix or {}),
             "mix_source": mix_source, "unknown_mass": unknown_mass,
@@ -391,6 +439,7 @@ def design_offense(
         "formation_rationales": portfolio["rationales"],
         "situation_coverage": portfolio["situation_coverage"],
         "provenance": {
+            **provenance,
             "model_version": art.model_version,
             "evidence_quality": art.evidence_quality,
             "supervised_examples": art.n_supervised,
@@ -437,7 +486,7 @@ def design_offense(
     pairs = list(adjustment_pairs)
     if not pairs and not skip_adjustment_design:
         pairs = _auto_adjustment_pairs(art, formations, sources, opponent_id,
-                                       priors_on=priors_on, coverage_mix=coverage_mix)
+                                       priors_on=priors_on, coverage_mix=coverage_mix, score_cache=score_cache)
     proposal["adjustment_designs"] = []
     if pairs:
         from functools import partial
@@ -480,23 +529,47 @@ def design_offense(
                 loadout=loadout, confirmations=confirmations,
                 macro_effects=macro_effects or None, proposed_macros=macro_blueprints,
             ))
+    # A cache is expendable: a read-only/full temporary directory cannot block a preview.
+    try:
+        score_cache.store()
+    except OSError:
+        pass
     proposal["preparation_guide"] = preparation_guide(proposal, active=active)
     return proposal
 
 
+def _stock_plays_for_source(source: str, form: str) -> list[str]:
+    """Sourced stock plays for a formation key: exact display name, then catalog.norm (index slugs)."""
+    book = catalog.book_formations("offense", source or "") or {}
+    if form in book:
+        return list(book[form] or [])
+    key = catalog.norm(form)
+    for display, plays in book.items():
+        if catalog.norm(display) == key:
+            return list(plays or [])
+    return []
+
+
 def _auto_adjustment_pairs(
     art: Any, formations: Mapping[str, list[str]], sources: Mapping[str, str],
-    opponent: str, *, priors_on: bool, coverage_mix: Mapping[str, float] | None,
+    opponent: str, *, priors_on: bool, coverage_mix: Mapping[str, float] | None, score_cache: Any = None,
 ) -> list[tuple[str, str]]:
     """One highest-scoring stock pass per formation, never a cross-book union."""
     pairs = []
     for form, plays in formations.items():
-        stock = catalog.book_formations("offense", sources[form]).get(form, [])
+        stock = _stock_plays_for_source(sources[form], form)
         eligible = sorted({p for p in plays if p in stock and not catalog.is_run(p)
                            and "rpo" not in p.lower()})
         if eligible:
-            best = max(eligible, key=lambda p: _rate(
-                art, form, p, opponent, priors_on=priors_on, coverage_mix=coverage_mix))
+            def rate(play: str) -> float:
+                def compute() -> float:
+                    return _rate(art, form, play, opponent, priors_on=priors_on, coverage_mix=coverage_mix)
+                if score_cache is None:
+                    return compute()
+                return score_cache.get_or_compute(
+                    ["auto_adjustment_generic_probes.v1", form, play, opponent], compute,
+                )
+            best = max(eligible, key=rate)
             pairs.append((form, best))
     return pairs
 
@@ -515,6 +588,10 @@ def preparation_guide(proposal: Mapping[str, Any], *, active: Mapping[str, Any] 
     return {
         "formations": rows,
         "football_intelligence": proposal.get("football_intelligence"),
+        "provenance": {key: proposal.get(key) for key in (
+            "catalog_hash", "n_indexed", "n_installable", "artifact_hash",
+            "opponent_history_hash", "rights_feed_digest",
+        )} | ({"geometry_hash": proposal["geometry_hash"]} if proposal.get("geometry_hash") else {}),
         "adjustment_designs": list(proposal.get("adjustment_designs") or []),
         "audibles": [{**a, "status": "DRAFT_NEEDS_IN_GAME_VERIFICATION", "arm_slot": None}
                      for a in proposal.get("suggested_audibles") or []],
@@ -683,7 +760,7 @@ def confirm_installed(db: Any, *, proposal_id: str, attestation: str) -> dict[st
     # Every pair must still be grounded in the indicated stock book.
     for form, ps in new["formations"].items():
         src = new["formation_sources"].get(form)
-        available = set(catalog.book_formations("offense", src or "").get(form) or [])
+        available = set(_stock_plays_for_source(src or "", form))
         if len(ps) != len(set(ps)) or set(ps) != available or len(ps) != len(available):
             raise ValueError(
                 f"Formation {form} is incomplete or diverged from sourced stock-book plays; "
