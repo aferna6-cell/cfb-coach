@@ -32,6 +32,11 @@ def main() -> int:
     source = args.db.expanduser().resolve()
     if not source.is_file():
         p.error(f"database not found: {source}")
+    # The simulated benchmark redirects CFB_COACH_DB to a temporary copy.
+    # Explicitly retain the separately compiled, read-only route hint cache.
+    read_cache = source.parent / "madden_ml_experimental" / "offense_live_reads.json"
+    if read_cache.is_file():
+        os.environ.setdefault("CFB_COACH_OFFENSE_READ_CACHE", str(read_cache))
 
     # Consistent SQLite backup; never open original for writes.
     with tempfile.TemporaryDirectory(prefix="cfb_cpu1_bench_") as directory:
@@ -92,6 +97,7 @@ def main() -> int:
                 if blocked:
                     raise RuntimeError(f"Live recommended unsupported adjustment: {blocked}")
                 info = getattr(call, "ml_experimental", None) or {}
+                card = (info.get("route_aware") or {}).get("card") or {}
                 if i >= 2:
                     rows.append({
                         "wall_ms": round(wall, 3),
@@ -107,6 +113,8 @@ def main() -> int:
                         "route_attempted": info.get("route_attempted"),
                         "play": [call.formation, call.play],
                         "macro": call.macro,
+                        "read_basis": card.get("READ BASIS"),
+                        "primary_read": card.get("PRIMARY READ"),
                     })
         finally:
             db.close()
@@ -140,6 +148,19 @@ def main() -> int:
             for stage in sorted({str(row["slowest_stage"]) for row in rows})
         },
         "macro_recommendations": sum(bool(x["macro"]) for x in rows),
+        "route_diagram_read_cards": sum(
+            "unreviewed play-diagram geometry" in (x.get("read_basis") or "")
+            for x in rows
+        ),
+        "read_basis_counts": {
+            basis: sum(x.get("read_basis") == basis for x in rows)
+            for basis in sorted({str(x.get("read_basis")) for x in rows})
+        },
+        "sample_read_cards": [
+            {"play": x["play"], "basis": x.get("read_basis"),
+             "primary": x.get("primary_read")}
+            for x in rows if x.get("read_basis")
+        ][:6],
         "all_calls_installed_legal": True,
         "adjustment_screen": "production dual_control gate; editor effects require separate confirmation",
         "note": "Benchmark simulated pre-snap calls on a temporary database; not a Madden game.",
