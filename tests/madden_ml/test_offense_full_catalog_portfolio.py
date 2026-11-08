@@ -89,3 +89,24 @@ def test_installable_entry_without_full_book_commits_index_plays():
     out = run({}, index)
     assert [r["formation"] for r in out["chosen"]] == [OUT_FORMATION]
     assert out["chosen"][0]["plays"] == list(dict.fromkeys(stock))
+
+
+def test_slug_index_formation_commits_full_display_name_stock():
+    """Index formation is a slug; all_books keys are display names. A stock play with no index row is still committed."""
+    source, display, slug = "Buccaneers", "Gun Tight Doubles", "gun-tight-doubles"
+    stock = catalog.book_formations("offense", source)[display]
+    assert "L Spot" in stock and catalog.norm(slug) == catalog.norm(display)
+    index = [entry(slug, p, [source]) for p in stock if p != "L Spot"]
+
+    def predict(art, *, formation, play, **kw):
+        return {"probability": 0.9 if formation == slug else 0.3, "evidence_quality": "empirical"}
+
+    with patch.object(em, "predict_success", side_effect=predict):
+        out = portfolio.select_formation_portfolio(
+            art=em.ExperimentalArtifact(), all_books={source: {display: list(stock)}}, active={},
+            opponent_id="unknown", max_formations=3, coverage_mix={"cover_1_unspecified": 1}, priors_on=True,
+            catalog_index=index)
+    chosen = {r["formation"]: r for r in out["chosen"]}
+    assert slug in chosen and chosen[slug]["source_book"] == source
+    assert "L Spot" in chosen[slug]["plays"]
+    assert chosen[slug]["plays"] == list(dict.fromkeys(stock))

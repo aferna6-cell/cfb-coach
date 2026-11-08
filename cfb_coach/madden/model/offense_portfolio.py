@@ -448,6 +448,17 @@ def select_formation_portfolio(
     return result
 
 
+def _stock_plays(book: Mapping[str, list[str]], form: str) -> list[str]:
+    """Complete stock list for an index formation: exact key, else the display key equal under ``catalog.norm``."""
+    if form in book:
+        return list(book[form] or [])
+    key = catalog.norm(form)
+    for display, plays in book.items():
+        if catalog.norm(display) == key:
+            return list(plays or [])
+    return []
+
+
 def _catalog_universe(art: Any, catalog_index: Any, all_books: Mapping[str, Mapping[str, list[str]]],
                       opponent_id: str, *, coverage_mix: Mapping[str, float] | None, priors_on: bool,
                       learned: Mapping[Any, float] | None) -> tuple[dict, dict, dict]:
@@ -493,7 +504,7 @@ def _catalog_universe(art: Any, catalog_index: Any, all_books: Mapping[str, Mapp
     universe: dict[str, dict[str, list[str]]] = {}
     for sb, forms in collected.items():
         for form, plays in forms.items():
-            full = list((all_books.get(sb) or {}).get(form) or [])
+            full = _stock_plays(all_books.get(sb) or {}, form)
             universe.setdefault(sb, {})[form] = full if full else plays
     audit = {"evaluated_listings": evaluated, "blocked_listings": blocked,
              "catalog_universe": {sb: sorted(f) for sb, f in universe.items()},
