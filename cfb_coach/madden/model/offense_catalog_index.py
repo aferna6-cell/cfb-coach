@@ -1,7 +1,8 @@
 """Full offense universe with metadata-only entries, independent of verified assignment exports.
 
-Membership uses only the in-repo stock-book (book -> formation -> plays) map.
-No aliases, images, or metadata-declared book memberships are trusted.
+Membership preserves the in-repo stock-book (book -> formation -> plays) map
+and may add verified first-party play-level sidecar rows. No aliases, images,
+or provisional metadata-declared book memberships are trusted.
 
 ``catalog_hash`` is SHA256 of UTF-8 JSON (sort_keys=True, separators=(',', ':'),
 ensure_ascii=True) of a sorted list of permitted metadata dictionaries. Each
@@ -40,6 +41,7 @@ from cfb_coach.madden.model import ace_catalog
 
 SCHEMA = "madden27.offense_catalog_index.v1"
 PROVISIONAL_SCHEMA = "madden27.catalog_semantics.provisional.v1"
+MEMBERSHIP_SCHEMA = "madden27.source_book_membership.play_level.v1"
 
 
 @dataclass(frozen=True)
@@ -137,6 +139,37 @@ def _load_alias_audits(path: str | Path) -> dict:
     return data
 
 
+def _load_play_level_membership(path: str | Path) -> list[dict]:
+    """Validate the separate JSONL sidecar; formation hints never grant membership."""
+    records = []
+    with Path(path).open(encoding="utf-8") as stream:
+        for line_number, line in enumerate(stream, 1):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"Invalid play-level membership JSON at line {line_number}") from exc
+            if not isinstance(record, dict):
+                raise ValueError(f"Play-level membership record must be an object at line {line_number}")
+            records.append(record)
+    if not records or records[0].get("schema") != MEMBERSHIP_SCHEMA:
+        raise ValueError(f"Expected play-level membership schema {MEMBERSHIP_SCHEMA}")
+    header, *rows = records
+    if "n_rows" in header and (type(header["n_rows"]) is not int or header["n_rows"] != len(rows)):
+        raise ValueError("Play-level membership n_rows does not match records")
+    for row in rows:
+        evidence = row.get("evidence")
+        if not isinstance(evidence, str) or evidence not in {"in_repo_stock", "first_party_playbook"}:
+            raise ValueError("Unsupported play-level membership evidence token")
+        if not isinstance(row.get("verified"), bool):
+            raise ValueError("Play-level membership verified must be a bool")
+        if any(not _text(row.get(key)) for key in
+               ("listing_id", "formation_slug", "play_slug", "source_book")):
+            raise ValueError("Play-level membership requires listing_id, formation_slug, play_slug and source_book")
+    return rows
+
+
 def _text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
@@ -179,11 +212,14 @@ def load_offense_universe(
     playbooks: Mapping | None = None,
     provisional_export: str | Path | None = None,
     alias_audits: str | Path | None = None,
+    play_level_membership: str | Path | None = None,
 ) -> CatalogIndex:
     """Index every offense row, including malformed-name/id and duplicate rows.
 
     Explicit playbooks mappings use the same shape as book_formations output:
     {book_name: {formation_name: [play_name, ...]}}. An empty mapping is honored.
+    Verified sidecar extras require a known book and exact listing/slug identity.
+    Unverified sidecar rows never replace or narrow the stock join.
     score_available reports eligibility for later scoring, not a computed score.
     """
     if alias_audits is not None:
@@ -191,6 +227,12 @@ def load_offense_universe(
     if playbooks is None:
         playbooks = {book: catalog.book_formations("offense", book)
                      for book in catalog.book_names("offense")}
+    verified_membership: dict[tuple[str, str, str], set[str]] = {}
+    if play_level_membership is not None and Path(play_level_membership).is_file():
+        for row in _load_play_level_membership(play_level_membership):
+            if row["verified"] and row["source_book"] in playbooks:
+                key = (row["listing_id"], row["formation_slug"], row["play_slug"])
+                verified_membership.setdefault(key, set()).add(row["source_book"])
     membership: dict[tuple[str, str], set[str]] = {}
     for book, formations in playbooks.items():
         for formation, plays in formations.items():
@@ -233,6 +275,7 @@ def load_offense_universe(
                 for f in _keys(formation, formation_slug):
                     for p in _keys(play, play_slug):
                         source_books.update(membership.get((f, p), ()))
+                source_books.update(verified_membership.get((listing_id, formation_slug, play_slug), ()))
             installable = bool(source_books)
             overlay = structures.get(listing_id, (None, "name_only", True, None))
             if overlay[3] is not None:

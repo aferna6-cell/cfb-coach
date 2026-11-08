@@ -397,3 +397,131 @@ def test_metadata_only_positional_constructor_remains_compatible():
     result = index.CatalogIndex(index.SCHEMA, 0, "synthetic-catalog", {}, (), ())
     assert result.geometry_for("one") is None
     assert result.geometry_hash == hashlib.sha256(b"[]").hexdigest()
+
+
+
+def membership_feed(tmp_path, records, schema=index.MEMBERSHIP_SCHEMA):
+    path = tmp_path / "synthetic-membership.jsonl"
+    path.write_text("\n".join(json.dumps(row) for row in
+        [dict(schema=schema, n_rows=len(records)), *records]))
+    return path
+
+
+def membership_row(**overrides):
+    return dict(dict(listing_id="two", formation_slug="other-test", play_slug="test-dive",
+                     source_book="Synthetic Book", evidence="in_repo_stock", verified=False),
+                **overrides)
+
+
+def test_missing_membership_preserves_stock_join(tmp_path, rows, books):
+    ace_store = store(tmp_path, rows)
+    baseline = index.load_offense_universe(ace_store=ace_store, playbooks=books)
+    result = index.load_offense_universe(ace_store=ace_store, playbooks=books,
+                                         play_level_membership=tmp_path / "absent.jsonl")
+    assert asdict(result) == asdict(baseline)
+
+
+@pytest.mark.parametrize("evidence", ["formation_hint", "alias_guess", "name_similarity", "unknown", None, [], {}])
+def test_membership_rejects_untrusted_evidence(tmp_path, rows, evidence):
+    with pytest.raises(ValueError, match="evidence"):
+        index.load_offense_universe(ace_store=store(tmp_path, rows), playbooks={},
+            play_level_membership=membership_feed(tmp_path, [membership_row(evidence=evidence)]))
+
+
+@pytest.mark.parametrize("verified", [None, "true", 1, 0, [], {}])
+def test_membership_requires_boolean_verified(tmp_path, rows, verified):
+    with pytest.raises(ValueError, match="verified"):
+        index.load_offense_universe(ace_store=store(tmp_path, rows), playbooks={},
+            play_level_membership=membership_feed(tmp_path, [membership_row(verified=verified)]))
+
+
+def test_membership_schema_and_json_validation(tmp_path, rows):
+    ace_store = store(tmp_path, rows)
+    path = membership_feed(tmp_path, [], schema="wrong")
+    with pytest.raises(ValueError, match="schema"):
+        index.load_offense_universe(ace_store=ace_store, playbooks={}, play_level_membership=path)
+    path.write_text(json.dumps(dict(schema=index.MEMBERSHIP_SCHEMA)) + "\nnot-json")
+    with pytest.raises(ValueError, match="JSON.*line 2"):
+        index.load_offense_universe(ace_store=ace_store, playbooks={}, play_level_membership=path)
+    path.write_text("")
+    with pytest.raises(ValueError, match="schema"):
+        index.load_offense_universe(ace_store=ace_store, playbooks={}, play_level_membership=path)
+
+
+@pytest.mark.parametrize("records,header", [
+    ([1], {}),
+    ([membership_row()], {"n_rows": 2}),
+    ([membership_row(listing_id="")], {}),
+    ([membership_row(source_book=None)], {}),
+])
+def test_membership_invalid_present_records_fail(tmp_path, rows, records, header):
+    path = membership_feed(tmp_path, records)
+    if header:
+        data = path.read_text().splitlines()
+        data[0] = json.dumps(dict(schema=index.MEMBERSHIP_SCHEMA, **header))
+        path.write_text("\n".join(data))
+    with pytest.raises(ValueError, match="membership"):
+        index.load_offense_universe(ace_store=store(tmp_path, rows), playbooks={},
+                                    play_level_membership=path)
+
+
+def test_unverified_membership_never_adds_or_shrinks_norm_join(tmp_path):
+    rows = [dict(id="shock", side="offense", formation_slug="test-formation",
+                 play_name="Shock H Option", play_slug="shock-h-option"),
+            dict(id="curl", side="offense", formation_slug="test-formation",
+                 play_name="Curl & Outs", play_slug="curl--outs"),
+            dict(id="extra", side="offense", formation_slug="test-formation",
+                 play_name="Unmatched", play_slug="unmatched")]
+    books = {"Synthetic Book": {"Test Formation": ["Shockh Option", "Curl Outs"]},
+             "Second Synthetic": {"Test Formation": ["Shockh Option"]}}
+    ace_store = store(tmp_path, rows)
+    baseline = index.load_offense_universe(ace_store=ace_store, playbooks=books)
+    records = [membership_row(listing_id="shock", formation_slug="test-formation",
+                              play_slug="shock-h-option"),
+               membership_row(listing_id="extra", formation_slug="test-formation", play_slug="unmatched")]
+    result = index.load_offense_universe(ace_store=ace_store, playbooks=books,
+                                         play_level_membership=membership_feed(tmp_path, records))
+    assert asdict(result) == asdict(baseline)
+    assert result.entries[0].source_books == ("Second Synthetic", "Synthetic Book")
+    assert result.entries[1].source_books == ("Synthetic Book",)
+    assert not result.entries[2].installable
+
+
+@pytest.mark.parametrize("evidence", ["first_party_playbook", "in_repo_stock"])
+def test_verified_first_party_membership_adds_known_book_extra(tmp_path, rows, books, evidence):
+    ace_store = store(tmp_path, rows)
+    baseline = index.load_offense_universe(ace_store=ace_store, playbooks=books)
+    result = index.load_offense_universe(ace_store=ace_store, playbooks=books,
+        play_level_membership=membership_feed(tmp_path, [membership_row(verified=True, evidence=evidence)]))
+    assert result.entries[1].installable
+    assert result.entries[1].source_books == ("Synthetic Book",)
+    assert result.breakdown["installable"] == baseline.breakdown["installable"] + 1
+    assert result.catalog_hash == baseline.catalog_hash
+    assert result.geometry_hash == baseline.geometry_hash
+    assert result.entries[0] == baseline.entries[0]
+
+
+@pytest.mark.parametrize("overrides", [dict(source_book="Invented Book"),
+                                        dict(listing_id="not-in-catalog"),
+                                        dict(formation_slug="wrong-formation"),
+                                        dict(play_slug="wrong-play")])
+def test_verified_membership_requires_known_book_and_exact_listing_identity(tmp_path, rows, books, overrides):
+    ace_store = store(tmp_path, rows)
+    baseline = index.load_offense_universe(ace_store=ace_store, playbooks=books)
+    result = index.load_offense_universe(ace_store=ace_store, playbooks=books,
+        play_level_membership=membership_feed(tmp_path, [membership_row(verified=True, **overrides)]))
+    assert asdict(result) == asdict(baseline)
+
+
+@pytest.mark.parametrize("stock,listing,slug", [("L Spot", "Z Spot", "z-spot"),
+                                               ("Zl Spot Shake", "Z Spot Shake", "z-spot-shake"),
+                                               ("O 1 Trap", "01 Trap", "01-trap")])
+def test_membership_does_not_invent_l_z_or_o_zero_aliases(tmp_path, stock, listing, slug):
+    rows = [dict(id="synthetic", side="offense", formation_slug="test-formation",
+                 play_name=listing, play_slug=slug)]
+    path = membership_feed(tmp_path, [membership_row(listing_id="synthetic",
+        formation_slug="test-formation", play_slug=slug)])
+    result = index.load_offense_universe(ace_store=store(tmp_path, rows),
+        playbooks={"Synthetic Book": {"Test Formation": [stock]}}, play_level_membership=path)
+    assert not result.entries[0].installable
+    assert result.entries[0].source_books == ()
