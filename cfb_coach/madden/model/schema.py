@@ -1288,8 +1288,20 @@ class CoachingDecision:
                 raise ValueError("fallback is only allowed in hybrid or experimental mode")
             if self.fallback_reason is None:
                 raise ValueError("fallback requires a fallback_reason")
-            if self.policy_source is not PolicySource.HEURISTIC:
-                raise ValueError("a model fallback has policy_source heuristic")
+            # Route-aware experimental mode has an independently computed
+            # *previous experimental ML* ranker. It may select the legal
+            # fallback play without reverting to the heuristic policy.
+            previous_experimental = (
+                self.mode is CoachingMode.EXPERIMENTAL
+                and self.effective_mode is CoachingMode.EXPERIMENTAL
+                and self.policy_source is PolicySource.FALLBACK
+                and self.final_pick is not None
+                and "fallback_source=previous_experimental_model" in (
+                    self.ml_status_detail or ""
+                )
+            )
+            if self.policy_source is not PolicySource.HEURISTIC and not previous_experimental:
+                raise ValueError("model fallback must be heuristic or verified previous experimental ML")
         elif self.fallback_reason is not None:
             raise ValueError("fallback_reason is set only when fallback is true")
 
