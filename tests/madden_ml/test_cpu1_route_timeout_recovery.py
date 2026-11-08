@@ -70,6 +70,19 @@ class RouteRankerHotPathTests(unittest.TestCase):
         self.assertEqual(resolved["kind"], "none")
 
 
+    def test_previous_model_fallback_display_is_not_labeled_heuristic(self):
+        from cfb_coach.madden.model.dual_control import displayed_label
+        call = MaddenCall(
+            "offense", "Gun 5WR Tight", "Mesh", "No adj", "Primary", ""
+        )
+        call.ml_experimental = {
+            "fell_back": True, "fallback_source": "previous_experimental_model",
+            "ml_play": "Mesh",
+        }
+        self.assertEqual(displayed_label(call), "EXPERIMENTAL")
+        call.ml_experimental["fallback_source"] = "heuristic_offense"
+        self.assertEqual(displayed_label(call), "HEURISTIC")
+
     def test_incompatible_macro_skips_expensive_suggestion_lookup(self):
         from cfb_coach.madden.model.offense_joint_decision import legal_plans_for_play
 
