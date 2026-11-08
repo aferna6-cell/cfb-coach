@@ -100,6 +100,11 @@ def main() -> int:
                             "full_model" if info.get("fell_back") is False else "unattributed"
                         ),
                         "reason": info.get("fallback_reason"),
+                        "slowest_stage": info.get("slowest_stage"),
+                        "fallback_detail": info.get("fallback_detail"),
+                        "prior_ml_failure": info.get("prior_ml_failure"),
+                        "prior_ml_available": info.get("prior_ml_available"),
+                        "route_attempted": info.get("route_attempted"),
                         "play": [call.formation, call.play],
                         "macro": call.macro,
                     })
@@ -126,6 +131,14 @@ def main() -> int:
             x["source"] not in ("full_model", "previous_experimental_model") for x in rows
         ),
         "timeout_count": sum(x["reason"] == "timeout" for x in rows),
+        "fallback_samples": [
+            {k: v for k, v in row.items() if k not in ("play",)}
+            for row in rows if row["source"] != "full_model"
+        ][:5],
+        "slowest_stage_samples": {
+            stage: sum(row["slowest_stage"] == stage for row in rows)
+            for stage in sorted({str(row["slowest_stage"]) for row in rows})
+        },
         "macro_recommendations": sum(bool(x["macro"]) for x in rows),
         "all_calls_installed_legal": True,
         "adjustment_screen": "production dual_control gate; editor effects require separate confirmation",
