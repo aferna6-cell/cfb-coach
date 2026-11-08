@@ -40,15 +40,17 @@ def main() -> int:
         with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as src:
             with sqlite3.connect(copied) as dst:
                 src.backup(dst)
-        # Keep all generated shadow logs outside the owner's ~/.cfb-coach.
-        os.environ["HOME"] = str(root)
+        # Redirect ChatGPT Coach's data directory and all generated logs.
+        # Don't change HOME: on some installs that also disrupts the Python
+        # module/package environment and makes optional modules disappear.
+        os.environ["CFB_COACH_DB"] = str(root / "cfb.db")
         os.environ["CFB_COACH_MADDEN_DB"] = str(copied)
 
         from cfb_coach.db import CoachDB
         from cfb_coach.madden.playcaller import make_call
         from cfb_coach.madden.situation import Situation
-        from cfb_coach.madden.model.offense_adjustment_designer import validate_live_call
-        from types import SimpleNamespace
+        from cfb_coach.madden import playbook, macros
+        from cfb_coach.madden.model.dual_control import adjustment_block_reason
 
         cases = [
             ("1st and 10", 1, 10, 35),
@@ -60,6 +62,10 @@ def main() -> int:
         rows = []
         db = CoachDB(copied)
         try:
+            installed = (playbook.load_books(db).get("offense") or {}).get("formations") or {}
+            if not installed:
+                raise RuntimeError("No confirmed installed offensive playbook in the copied database")
+            armed = (macros.load_selection(db, "cpu") or {}).get("offense") or []
             for i in range(args.samples + 2):
                 raw, down, distance, yardline = cases[i % len(cases)]
                 sit = Situation(
@@ -73,10 +79,18 @@ def main() -> int:
                     live_macros=args.with_macros,
                 )
                 wall = (time.perf_counter() - t0) * 1000.0
-                validate_live_call(
-                    db, SimpleNamespace(formation=call.formation, play=call.play),
-                    opponent_id="cpu",
+                # Use the actual applied inventory and production's
+                # adjustment safety screen, without depending on a separate
+                # pregame-designer module that may be absent locally.
+                if call.play not in installed.get(call.formation, ()):
+                    raise RuntimeError(
+                        f"Live recommended non-installed play: {call.formation}/{call.play}"
+                    )
+                blocked = adjustment_block_reason(
+                    call, side="offense", armed=armed, db=db, opponent_id="cpu",
                 )
+                if blocked:
+                    raise RuntimeError(f"Live recommended unsupported adjustment: {blocked}")
                 info = getattr(call, "ml_experimental", None) or {}
                 if i >= 2:
                     rows.append({
@@ -114,6 +128,7 @@ def main() -> int:
         "timeout_count": sum(x["reason"] == "timeout" for x in rows),
         "macro_recommendations": sum(bool(x["macro"]) for x in rows),
         "all_calls_installed_legal": True,
+        "adjustment_screen": "production dual_control gate; editor effects require separate confirmation",
         "note": "Benchmark simulated pre-snap calls on a temporary database; not a Madden game.",
     }
     print(json.dumps(summary, indent=2))
