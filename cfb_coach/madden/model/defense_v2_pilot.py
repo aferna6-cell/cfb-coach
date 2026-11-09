@@ -31,6 +31,11 @@ class Snap:
     context: str
     concept: str | None
     offense_success: bool
+    yards: int | None = None
+    touchdown: bool | None = None
+    explosive: bool | None = None
+    turnover: bool | None = None
+    converted: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -82,6 +87,7 @@ def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Sna
            " FROM snaps s JOIN game_sessions g ON g.session_id=s.session_id"
            " WHERE s.side='defense' AND g.dynasty=? ORDER BY g.started_ts,s.id")
     from cfb_coach.madden.model.defense_v1 import offense_won
+    from cfb_coach.outcome import parse_outcome
     from cfb_coach.madden.defense_select import call_family
     from cfb_coach.madden.situation import concept_family
 
@@ -110,9 +116,19 @@ def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Sna
         normalized = concept_family(concept)
         if normalized not in CONCEPTS:
             normalized = None
+        parsed = parse_outcome(str(result))
+        known_result = parsed.kind != "unknown"
+        conversion = (True if parsed.kind == "convert" else
+                      (bool(parsed.yards >= int(dist)) if
+                       parsed.yards is not None and dist is not None and
+                       down is not None and int(down) >= 3 else None))
         rows.append(Snap(str(session), str(opponent or ""), str(started or ""),
                          int(seq) if seq is not None else None, str(formation), str(play),
-                         fam, context_key(down, dist), normalized, bool(won)))
+                         fam, context_key(down, dist), normalized, bool(won),
+                         yards=parsed.yards, touchdown=(parsed.kind == "td") if known_result else None,
+                         explosive=(parsed.yards >= 20) if parsed.yards is not None else None,
+                         turnover=parsed.is_turnover if known_result else None,
+                         converted=conversion))
         stats["admitted_verified"] += 1
     stats["games"] = len({r.session for r in rows})
     stats["seq_known"] = sum(r.seq is not None for r in rows)
@@ -169,11 +185,22 @@ def fit(rows: Sequence[Snap]) -> dict[str, Any]:
     matchup: dict[str, list[int]] = {}
     play: dict[str, list[int]] = {}
     concepts: Counter[str] = Counter()
+    outcomes: dict[str, dict[str, float | int]] = {}
     for r in rows:
         _add(glob, "all", r.offense_success)
         _add(ctx, r.context, r.offense_success)
         _add(fam, _key(r.context, r.family), r.offense_success)
         _add(play, _key(r.context, r.formation, r.play), r.offense_success)
+        aux = outcomes.setdefault(_key(r.context, r.family), {})
+        for attr, metric in (("touchdown", "td"), ("explosive", "explosive"),
+                             ("turnover", "turnover"), ("converted", "conversion")):
+            val = getattr(r, attr)
+            if val is not None:
+                aux[metric + "_n"] = int(aux.get(metric + "_n", 0)) + 1
+                aux[metric + "_yes"] = int(aux.get(metric + "_yes", 0)) + int(bool(val))
+        if r.yards is not None:
+            aux["yards_n"] = int(aux.get("yards_n", 0)) + 1
+            aux["yards_sum"] = float(aux.get("yards_sum", 0.0)) + r.yards
         if r.concept is not None:
             concepts[r.concept] += 1
             _add(matchup, _key(r.context, r.family, r.concept), r.offense_success)
@@ -181,6 +208,7 @@ def fit(rows: Sequence[Snap]) -> dict[str, Any]:
              "n_verified": len(rows), "n_games": len({r.session for r in rows}),
              "global": glob, "contexts": ctx, "families": fam, "matchups": matchup,
              "plays": play, "concept_counts": dict(concepts),
+             "outcome_targets": outcomes,
              "evidence": "verified execution only; observational, not causal"}
     model["structural"] = _fit_structural(rows, model)
     return model
