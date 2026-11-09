@@ -956,6 +956,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Required for defensive V2: explicit isolated test-franchise DB file; must match --db.",
     )
     p_play.add_argument(
+        "--defense-installed-fingerprint", default=None, metavar="HASH",
+        help="Required for V2: fingerprint of exact confirmed installed defensive plays (after physical Madden verification).",
+    )
+    p_play.add_argument(
         "--defense-action-confirmations", default=None, metavar="JSON",
         help="Optional V2 owner-verified individual Xbox controls file. Without it, NO ADJUSTMENT.",
     )
