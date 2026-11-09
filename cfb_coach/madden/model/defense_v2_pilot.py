@@ -372,3 +372,99 @@ def evaluate(rows: Sequence[Snap], *, bootstraps: int = 400, seed: int = 27) -> 
             "game_cluster_bootstrap_95ci": interval,
             "prediction_gate": "PASS" if passes else "NO_GO",
             "live_activation": "NOT_ALLOWED", "observational_only": True}
+
+
+
+def compare_champion_challenger(
+    rows: Sequence[Snap], champion: Mapping[str, Any], *,
+    bootstraps: int = 400, seed: int = 27,
+) -> dict[str, Any]:
+    """Prospective, whole-game evaluation relative to a *saved* V2 champion.
+
+    Only games strictly after the saved champion's training cutoff qualify.
+    At each test game the challenger is refit exclusively on earlier games.
+    Games with unknown or duplicate sequence numbers are never replayed.
+    A predictive comparison is not an online policy-value experiment.
+    """
+    if champion.get("schema") != SCHEMA or champion.get("policy") != "shadow_only":
+        raise ValueError("saved champion must be a V2 shadow artifact")
+    cutoff = champion.get("trained_through_started_ts")
+    trained = champion.get("trained_sessions")
+    if not isinstance(cutoff, str) or not cutoff or not isinstance(trained, list):
+        raise ValueError("saved champion lacks source-traceable chronological cutoff")
+    games: dict[str, list[Snap]] = defaultdict(list)
+    for row in rows:
+        games[row.session].append(row)
+    results: list[tuple[str, float, float, int]] = []
+    for session, holdout in sorted(
+        games.items(), key=lambda item: (min(r.started_ts for r in item[1]), item[0])
+    ):
+        start = min(r.started_ts for r in holdout)
+        if session in trained or start <= cutoff:
+            continue
+        earlier = [r for r in rows if r.started_ts < start and r.session != session]
+        if not earlier:
+            continue
+        challenger = fit(earlier)
+        champion_loss = challenger_loss = 0.0
+        seen_seq: set[int] = set()
+        scored = 0
+        for row in sorted(holdout, key=lambda r: (r.seq is None, r.seq or 0)):
+            if row.seq is None or row.seq <= 0 or row.seq in seen_seq:
+                continue
+            seen_seq.add(row.seq)
+            champ_concepts = concept_belief(
+                champion, holdout, session=session, opponent=row.opponent,
+                next_seq=row.seq)
+            challeng_concepts = concept_belief(
+                challenger, holdout, session=session, opponent=row.opponent,
+                next_seq=row.seq)
+            pred_champ = sum(
+                champ_concepts[c] * offense_risk(
+                    champion, row.context, row.formation, row.play, row.family, c)[0]
+                for c in CONCEPTS
+            )
+            pred_chall = sum(
+                challeng_concepts[c] * offense_risk(
+                    challenger, row.context, row.formation, row.play, row.family, c)[0]
+                for c in CONCEPTS
+            )
+            champion_loss += logloss(pred_champ, row.offense_success)
+            challenger_loss += logloss(pred_chall, row.offense_success)
+            scored += 1
+        if scored:
+            results.append((session, champion_loss, challenger_loss, scored))
+    n = sum(x[3] for x in results)
+    gain = sum(x[1] - x[2] for x in results) / n if n else 0.0
+    interval = None
+    if len(results) >= 2:
+        rng = random.Random(seed)
+        samples = []
+        for _ in range(bootstraps):
+            sample = [rng.choice(results) for __ in results]
+            m = sum(x[3] for x in sample)
+            samples.append(sum(x[1] - x[2] for x in sample) / m)
+        samples.sort()
+        interval = [
+            samples[int(0.025 * (bootstraps - 1))],
+            samples[int(0.975 * (bootstraps - 1))],
+        ]
+    passed = (
+        n >= MIN_EVAL_SNAPS and len(results) >= MIN_GAMES and
+        interval is not None and interval[0] > 0 and gain >= 0.02
+    )
+    return {
+        "saved_champion_cutoff": cutoff,
+        "prospective_test_games": len(results),
+        "prospective_test_snaps": n,
+        "challenger_minus_champion_logloss_gain": round(gain, 6),
+        "game_cluster_bootstrap_95ci": interval,
+        "candidate_predictive_gate": "PASS" if passed else "NO_GO",
+        "automatic_promotion": False,
+        "live_policy_improvement_proven": False,
+        "per_game": [
+            {"session": g, "champion_logloss": round(c/n_g, 5),
+             "challenger_logloss": round(v/n_g, 5), "n": n_g}
+            for g, c, v, n_g in results
+        ],
+    }
