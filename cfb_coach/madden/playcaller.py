@@ -935,6 +935,7 @@ def make_call(
     defense_franchise: str | None = None,
     defense_action_confirmations: str | None = None,
     defense_installed_fingerprint: str | None = None,
+    defense_verified_roles: str | None = None,
     cpu_defense: bool = False,
 ) -> MaddenCall:
     """One call. `playbook` = {side: {formation: [plays]}} locked by prep; defaults to the
@@ -1024,6 +1025,7 @@ def make_call(
                 franchise=str(defense_franchise or ""),
                 action_confirmations=defense_action_confirmations,
                 confirmed_inventory_fingerprint=defense_installed_fingerprint,
+                verified_roles_path=defense_verified_roles,
             )
         elif (not cold and not cpu) or allow_human_defense_ml or wants_v1:
             # Explicit, defense-only opt-in. Never auto-change offense or CPU mode.
