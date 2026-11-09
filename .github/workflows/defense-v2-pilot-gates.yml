@@ -33,7 +33,9 @@ jobs:
             tests/madden_ml/test_defense_v2_outcomes.py \
             tests/madden_ml/test_defense_v2_adjustments_user.py \
             tests/madden_ml/test_defense_v2_action_training.py \
-            tests/madden_ml/test_defense_v2_joint_live.py
+            tests/madden_ml/test_defense_v2_joint_live.py \
+            tests/madden_ml/test_defense_v2_cold_start.py \
+            tests/madden_ml/test_cpu_both_sides_pregame.py
       - name: Wider Madden ML regression audit (informational; parent branch has known failures)
         continue-on-error: true
         run: |
@@ -50,3 +52,4 @@ jobs:
           python -m py_compile cfb_coach/madden/cli.py
           python -m py_compile cfb_coach/cli.py
           python -m py_compile scripts/madden_ml/defense_v2_pilot.py
+          python -m py_compile scripts/madden_ml/cpu_both_sides_pregame.py
