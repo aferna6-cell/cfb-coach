@@ -46,6 +46,7 @@ jobs:
             cfb_coach/madden/model/defense_v2_roles.py \
             cfb_coach/madden/model/playbook_architect.py \
             scripts/madden_ml/defense_v2_pregame.py \
+            scripts/madden_ml/defense_v2_preflight.py \
             scripts/madden_ml/defense_v2_postgame.py \
             scripts/madden_ml/bench_defense_v2.py \
             cfb_coach/madden/model/defense_v2_postgame.py \
