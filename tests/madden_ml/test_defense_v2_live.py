@@ -69,8 +69,8 @@ def test_live_v2_actual_displayed_model_pick_and_logging(tmp_path, monkeypatch):
     assert final.defense_v2["defender_assignments"] == "UNKNOWN"
     assert final.defense_v2["earlier_opponent_concepts"] == 2
     assert final.macro is None and final.adjustment is None
-    assert db.logged
-    assert db.logged[-1].policy_version == v2.SCHEMA
+    assert not db.logged  # a call without sealed snap_id must not be logged prematurely
+    assert final._pending_ml_decision.policy_version == v2.SCHEMA
     db.conn.close()
 
 
