@@ -1852,6 +1852,7 @@ function renderState(st) {{
   syncExecDiffVisibility();
   if (unifiedUI) {{
     nextBasis = st.unified && st.unified.pending_state || null;
+    if (nextBasis && nextBasis.side) $("side").value = nextBasis.side;
     nextManualOverride = false;
     nextPreview = null;
     refreshNextPreview();
