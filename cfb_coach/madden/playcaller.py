@@ -58,7 +58,12 @@ class MaddenCall:
         a = self.adjustment
         if not a:
             return ""
-        return f"ADJ: {a['label']} — press {a['buttons']}" + (f"  · why: {a['why']}" if a.get("why") else "")
+        # A source-backed defensive adjustment may exist in Madden without
+        # needing the exact Xbox button path. Show the adjustment itself.
+        buttons = str(a.get("buttons") or "").strip()
+        how = " — press " + buttons if buttons else ""
+        why = f"  · why: {a['why']}" if a.get("why") else ""
+        return f"ADJ: {a['label']}" + how + why
 
     def headline(self) -> str:
         """'PLAY: Mesh Post (Gun 5WR Tight) + ADJ: Hot route WR1 → Slant' (offense) or
@@ -75,6 +80,12 @@ class MaddenCall:
             line = format_offense(self.formation, self.play, self.adj_or_macro, self.read_or_user)
         else:
             line = format_defense(self.formation, self.play, self.adj_or_macro, self.read_or_user)
+            # Defensive V2 gets an actual prioritized USER read sequence
+            # analogous to offensive PRIMARY -> SECONDARY, not merely a static
+            # positional "user linebacker" hint. Existing callers unchanged.
+            guidance = getattr(self, "user_guidance", None)
+            if isinstance(guidance, dict) and guidance.get("first_read") and guidance.get("second_read"):
+                line += f"\n  USER READ: {guidance['first_read']} → {guidance['second_read']}"
         if self.suggest_macro:
             line += f"\n  SUGGEST macro: {self.suggest_macro}"
         if self.macro_line():
@@ -1002,15 +1013,16 @@ def make_call(
 
         cold = is_cold_start_opponent(opponent_id, db)
         wants_v1 = defense_model == "v1"
+        wants_v2 = defense_model == "v2"
         if isinstance(sit.extras, dict):
             sit.extras["defense_armed_ids"] = list(sel.get("defense") or [])
             if allow_human_defense_ml:
                 sit.extras["require_trained_defense_artifact"] = True
-            if wants_v1:
-                sit.extras["defense_model"] = "v1"
+            if wants_v1 or wants_v2:
+                sit.extras["defense_model"] = defense_model
             if defense_model_path:
                 sit.extras["defense_model_path"] = defense_model_path
-        if (not cold and not cpu) or allow_human_defense_ml or wants_v1:
+        if (not cold and not cpu) or allow_human_defense_ml or wants_v1 or wants_v2:
             # Explicit, defense-only opt-in. Never auto-change offense or CPU mode.
             # This function fails closed to the established defensive caller.
             try:

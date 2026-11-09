@@ -1,0 +1,75 @@
+name: Defensive V2 targeted CPU both-sides pregame gates
+
+on:
+  push:
+    branches:
+      - madden-ml/defense-v2-test-franchise-foundation
+  pull_request:
+    branches:
+      - madden-ml/cpu2-verification-learning-release
+  workflow_dispatch:
+
+jobs:
+  verified-evidence-and-chronology:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+          python -m pip install pillow
+      - name: Test defensive V2 CPU verification and time fences
+        run: |
+          PYTHONPATH=. python -m pytest -q tests/madden_ml/test_defense_v2_pilot.py \
+            tests/madden_ml/test_defense_v2_live.py \
+            tests/madden_ml/test_defense_v2_playbook.py \
+            tests/madden_ml/test_defense_v2_structure.py \
+            tests/madden_ml/test_defense_v2_postgame.py \
+            tests/madden_ml/test_defense_v2_outcomes.py \
+            tests/madden_ml/test_defense_v2_adjustments_user.py \
+            tests/madden_ml/test_defense_v2_action_training.py \
+            tests/madden_ml/test_defense_v2_joint_live.py \
+            tests/madden_ml/test_defense_v2_cold_start.py \
+            tests/madden_ml/test_cpu_both_sides_pregame.py \
+            tests/madden_ml/test_defense_v2_core_benchmark.py
+      - name: Real stock-catalog defensive cold-start portfolio smoke
+        run: |
+          PYTHONPATH=. python - <<'PY'
+          import json
+          from cfb_coach.madden import catalog
+          from cfb_coach.madden.model import defense_v2_pilot, defense_v2_playbook
+          book = defense_v2_playbook.propose(
+              catalogue={src: catalog.book_formations("defense", src)
+                         for src in catalog.book_names("defense")},
+              model=defense_v2_pilot.cold_start("ci-preview-only"),
+          )
+          assert 1 <= book["n_formations"] <= 15
+          assert all(set(plays) <= set(catalog.book_formations("defense", book["formation_sources"][form])[form])
+                     for form, plays in book["formations"].items())
+          print("COLDSTART_DEFENSE_PREVIEW=" + json.dumps({
+              "n_formations": book["n_formations"],
+              "n_plays": book["n_plays"],
+              "formations": list(book["formations"]),
+              "sources": book["formation_sources"],
+              "status": "source-backed pregame proposal, NOT physically installed",
+          }, sort_keys=True))
+          PY
+      - name: Compile defensive V2 model and CLI
+        run: |
+          python -m py_compile cfb_coach/madden/model/defense_v2_pilot.py
+          python -m py_compile cfb_coach/madden/model/defense_v2_playbook.py
+          python -m py_compile cfb_coach/madden/model/defense_v2_adjustments.py
+          python -m py_compile cfb_coach/madden/model/defense_v2_knowledge.py
+          python -m py_compile cfb_coach/madden/model/defense_v2_live.py
+          python -m py_compile cfb_coach/madden/model/defense_coordinator.py
+          python -m py_compile cfb_coach/madden/playcaller.py
+          python -m py_compile cfb_coach/madden/cli.py
+          python -m py_compile cfb_coach/cli.py
+          python -m py_compile scripts/madden_ml/defense_v2_pilot.py
+          python -m py_compile scripts/madden_ml/cpu_both_sides_pregame.py
+          python -m py_compile scripts/madden_ml/bench_defense_v2_scoring.py

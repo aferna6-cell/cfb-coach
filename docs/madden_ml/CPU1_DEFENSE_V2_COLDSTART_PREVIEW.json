@@ -1,0 +1,147 @@
+{
+  "schema": "madden.defense.v2.coldstart.catalog_preview.v1",
+  "status": "PROPOSAL_ONLY_NOT_INSTALLED",
+  "generated_date": "2026-11-09",
+  "source_catalog_accessed": "2026-09-28",
+  "model_artifact": "V2 untrained explicit coldstart, no executed defensive evidence",
+  "franchise_specific_training": false,
+  "opponent_personnel_known": false,
+  "selection_evidence": "actual V2 formation portfolio code evaluated in GitHub CI on source catalog",
+  "selected_formations": 6,
+  "selected_stock_plays": 81,
+  "max_formations": 15,
+  "requires_physical_editor_installation": true,
+  "requires_installed_book_lock": true,
+  "not_an_offensive_playbook": true,
+  "formations": [
+    {
+      "formation": "Dime 2-3 Odd",
+      "source_book": "Raiders",
+      "formation_family": "Dime",
+      "plays": [
+        "Cover 1 Contain Spy",
+        "Cover 1 Robber Press",
+        "Cover 2 Hard Flat",
+        "Cover 2 Man",
+        "Cover 2 Match",
+        "Cover 3 Cloud",
+        "Cover 3 Hard Flat",
+        "Cover 3 Lock",
+        "Cover 3 Seam",
+        "Cover 4 Drop",
+        "Cover 6",
+        "DB Fire 2",
+        "DBL Safety Go",
+        "Edge Blitz 1",
+        "Edge Blitz 2",
+        "Edge Blitz 3",
+        "FS Zone Blitz",
+        "Okie Eagle 3",
+        "Okieroll 2",
+        "Overload 3 Seam Press",
+        "SS Zone Blitz",
+        "Strg Corner 2 Fire",
+        "Tampa 2",
+        "Zero Blitz"
+      ],
+      "play_count": 24
+    },
+    {
+      "formation": "3-4 Cub",
+      "source_book": "Lions",
+      "formation_family": "3-4",
+      "plays": [
+        "Cover 1 Hole",
+        "Cover 3 Sky",
+        "Gap Press",
+        "OLB Blitz",
+        "Sting Pinch",
+        "Trio Sky Zone"
+      ],
+      "play_count": 6
+    },
+    {
+      "formation": "Nickel 2-4 Dbl Mug",
+      "source_book": "Vikings",
+      "formation_family": "Nickel",
+      "plays": [
+        "Blitz Loop 3",
+        "Coffee House 3 Seam",
+        "Cover 1 Hole",
+        "Cover 2 Invert",
+        "Cover 3 Seam",
+        "Cover 3 Sky",
+        "Field Sim 3",
+        "LB Blitz 3",
+        "Mid Blitz 0",
+        "Nickel 2 Trap",
+        "Nickel Dog 3 Buzz",
+        "Nickel Overload 3",
+        "Nickel Sim 2",
+        "SS Blitz 3",
+        "Tampa 2"
+      ],
+      "play_count": 15
+    },
+    {
+      "formation": "2-4-5 Over Wide",
+      "source_book": "Raiders",
+      "formation_family": "Goal Line",
+      "plays": [
+        "Cover 1 Hole",
+        "Cover 1 Robber",
+        "Cover 1 Sting",
+        "Cover 2 Man",
+        "Cover 3 Cloud Show 2",
+        "Cover 3 Sim Pressure",
+        "Cover 3 Sky",
+        "Cover 4 Quarters",
+        "Cover 6",
+        "Double CB Blitz",
+        "Fire Man",
+        "Free Fire 3",
+        "Invert 2 Sim",
+        "Mikesam Cross 3",
+        "Sam Blitz 3",
+        "Tampa 2",
+        "Thunder Smoke",
+        "Will Blitz 3"
+      ],
+      "play_count": 18
+    },
+    {
+      "formation": "4-3 Even 6-1",
+      "source_book": "49ers",
+      "formation_family": "4-3",
+      "plays": [
+        "Cover 1 Hole",
+        "Cover 1 MLB Blitz",
+        "Cover 3 Buzz",
+        "Cover 4 Quarters",
+        "Sam Blitz 3",
+        "Sam Will Blitz"
+      ],
+      "play_count": 6
+    },
+    {
+      "formation": "3-3-5 3 High Penny",
+      "source_book": "Vikings",
+      "formation_family": "3-3-5",
+      "plays": [
+        "3 Double Buzz",
+        "3 Double Cloud",
+        "Cover 2 Lurk",
+        "Cover 3 Sky",
+        "Cover 4 Drop",
+        "Cover 6 Invert",
+        "Edge Blitz 2",
+        "Edge Blitz 3",
+        "Hot Blitz 3",
+        "Mike Blitz 0",
+        "Mike Sim 2",
+        "Tampa 2"
+      ],
+      "play_count": 12
+    }
+  ]
+}

@@ -642,8 +642,9 @@ def cmd_play(args: argparse.Namespace) -> int:
     defense_model = getattr(args, "defense_model", None)
     defense_model_path = getattr(args, "defense_model_path", None)
     explicit_defense_v1 = defense_model == "v1" and not offense_only
+    explicit_defense_v2 = defense_model == "v2" and not offense_only
     human_defense_ml = (
-        bool(getattr(args, "ml_defense_control", False)) or explicit_defense_v1
+        bool(getattr(args, "ml_defense_control", False)) or explicit_defense_v1 or explicit_defense_v2
     ) and not offense_only
     if not cpu and human_ml_control and explicit_heuristic:
         print(
@@ -669,7 +670,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             )
             db.close()
             return 2
-    if human_defense_ml and not explicit_defense_v1:
+    if human_defense_ml and not (explicit_defense_v1 or explicit_defense_v2):
         from cfb_coach.madden.model import defense_coordinator as defense_mode
 
         if defense_mode.mode(db) != "experimental":
@@ -700,11 +701,27 @@ def cmd_play(args: argparse.Namespace) -> int:
         print("  Instant rollback for next call: python -m cfb_coach ml heuristic")
     elif not cpu:
         print("HUMAN OFFENSE ML PILOT: OFF (heuristic offense; --heuristic-offense).")
-    if defense_model == "v1" and offense_only:
-        print("HUMAN DEFENSE V1: ignored (CPU games are offense-only; add --cpu-defense to opt in).")
+    if defense_model in ("v1", "v2") and offense_only:
+        print("DEFENSE MODEL: ignored (CPU games are offense-only; add --cpu-defense to opt in).")
     if cpu_defense:
         print("CPU DEFENSE: ON for this play session only (--cpu-defense).")
-    if explicit_defense_v1:
+    if explicit_defense_v2:
+        import os
+        franchise = os.environ.get("CFB_COACH_DEFENSE_V2_TEST_FRANCHISE")
+        artifact = os.environ.get("CFB_COACH_DEFENSE_V2_ARTIFACT")
+        if not franchise or not artifact:
+            print("Defensive V2 requires explicit testing-franchise and shadow-artifact environment variables.", file=sys.stderr)
+            db.close()
+            return 2
+        print("DEFENSE V2: EXPERIMENTAL TEST FRANCHISE ONLY.")
+        print("  A ZERO-EVIDENCE V2 COLD START is allowed when explicitly prepared; it is UNTRAINED.") 
+        print("  Invalid artifacts fall back to the established caller; gameplay benefit unproven.")
+        print(f"  Required game franchise identity: {franchise}; artifact: {artifact}")
+        print("  V2 may recommend EA-documented individual adjustments only when expected benefit clears its risk gate.")
+        print("  No Xbox button sequences required; adjusted-play benefits are research estimates, not proven results.")
+        print("  Missing targets/unknown assignment effects remain NO ADJUSTMENT.")
+        print("  Rollback: omit --defense-model v2 on the next session.")
+    elif explicit_defense_v1:
         from cfb_coach.madden.model.defense_v1 import resolve_artifact_path
 
         v1_path = resolve_artifact_path(defense_model_path)
