@@ -2078,21 +2078,21 @@ function currentOutcome() {{
 function parseNextOutcome(raw) {{
   const txt = String(raw || "").trim().toLowerCase();
   if (!txt) return {{automatic:false, reason:"Enter the previous result to fill the next situation."}};
-  if (/\b(?:td|touchdown|interception|intercepted|int|fumble|turnover|safety|punt|stop|convert(?:ed)?|first\s+down)\b/.test(txt))
+  if (/\\b(?:td|touchdown|interception|intercepted|int|fumble|turnover|safety|punt|stop|convert(?:ed)?|first\\s+down)\\b/.test(txt))
     return {{automatic:false, reason:"Possession/spot may have changed — set the next side, down and yard line manually."}};
   let m;
-  if ((m = txt.match(/^(?:gain|gained|pick\s*up|pickup)\s*(?:of\s*)?[:+]?(-?\d+)\b/)))
+  if ((m = txt.match(/^(?:gain|gained|pick\\s*up|pickup)\\s*(?:of\\s*)?[:+]?(-?\\d+)\\b/)))
     return {{automatic:true, yards:Math.abs(Number(m[1]))}};
-  if ((m = txt.match(/^(?:loss|lost|lose)\s*[:+]?(-?\d+)\b/)))
+  if ((m = txt.match(/^(?:loss|lost|lose)\\s*[:+]?(-?\\d+)\\b/)))
     return {{automatic:true, yards:-Math.abs(Number(m[1]))}};
-  if ((m = txt.match(/^([+-]\d+)\b/))) return {{automatic:true, yards:Number(m[1])}};
-  if (/^(?:inc|incomp|incomplete)\b/.test(txt)) return {{automatic:true, yards:0}};
-  if (/^sack(?:ed)?\b/.test(txt)) {{
-    m = txt.match(/-?\d+/);
+  if ((m = txt.match(/^([+-]\\d+)\\b/))) return {{automatic:true, yards:Number(m[1])}};
+  if (/^(?:inc|incomp|incomplete)\\b/.test(txt)) return {{automatic:true, yards:0}};
+  if (/^sack(?:ed)?\\b/.test(txt)) {{
+    m = txt.match(/-?\\d+/);
     return m ? {{automatic:true, yards:-Math.abs(Number(m[0]))}}
              : {{automatic:false, reason:"Enter sack yardage, e.g. sack -6, or set the next spot manually."}};
   }}
-  if ((m = txt.match(/^(\d+)\b/))) return {{automatic:true, yards:Number(m[1])}};
+  if ((m = txt.match(/^(\\d+)\\b/))) return {{automatic:true, yards:Number(m[1])}};
   return {{automatic:false, reason:"Result cannot determine the next spot — enter it manually."}};
 }}
 
