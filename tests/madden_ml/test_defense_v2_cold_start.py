@@ -27,14 +27,14 @@ def test_cold_start_has_zero_executed_evidence_and_per_game_cutoff(tmp_path):
         live._model(str(art), "0000-01-01", "first-game", "test-franchise")
 
 
-def test_cold_start_cannot_forge_verified_game_counts():
+def test_cold_start_cannot_forge_verified_game_counts(tmp_path):
     model = v2.cold_start("test-franchise")
     model["n_verified"] = 2
     model["n_games"] = 1
-    assert model["cold_start"] is True
-    # Historical facts remain facts; a nonzero model with cold_start flag
-    # cannot be passed off as the true zero-evidence prior state.
-    assert model["n_verified"] != 0
+    art = tmp_path / "forged_coldstart.json"
+    art.write_text(json.dumps(model), encoding="utf-8")
+    with pytest.raises(ValueError, match="inconsistent"):
+        live._model(str(art), "2026-11-10", "first-game", "test-franchise")
     with pytest.raises(ValueError):
         v2.cold_start("")
 
