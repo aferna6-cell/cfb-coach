@@ -170,6 +170,14 @@ def restore(args: argparse.Namespace) -> int:
     src = args.source_db.expanduser().resolve()
     workdir = args.workdir.expanduser().resolve()
     out_db = workdir / "madden27-lions.db"
+    # Refuse even user-specified output paths inside protected primary or
+    # Unified test directories. The copy should always be independent.
+    primary_root = src.parent
+    unified_root = (Path.home() / "unified_v1_cpu1").resolve()
+    if (workdir == src or workdir == primary_root or
+            workdir.is_relative_to(primary_root) or
+            workdir == unified_root or workdir.is_relative_to(unified_root)):
+        raise RestoreError("Refusing to write into the source/primary or Unified V1 data directory")
     manifest = load_manifest()
     with _read_only_source(src) as source:
         _verify_db(source)
@@ -278,6 +286,14 @@ def check(args: argparse.Namespace) -> int:
         model_path = Path(_get_meta(c, "ml_experimental_artifact") or "")
     if not model_path.is_file():
         raise RestoreError("Restored model artifact is missing")
+    report_path = workdir / "RESTORE_REPORT.json"
+    if not report_path.is_file():
+        raise RestoreError("Restoration report missing; cannot establish artifact provenance")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if (report.get("restored_db") != str(db_path) or
+            report.get("model_artifact") != str(model_path) or
+            report.get("model_sha256") != digest(model_path)):
+        raise RestoreError("Restored model hash/path differs from original restoration; no GO")
     from cfb_coach.madden.model.experimental_model import load_artifact
     from cfb_coach.db import CoachDB
     from cfb_coach.madden.playcaller import make_call
