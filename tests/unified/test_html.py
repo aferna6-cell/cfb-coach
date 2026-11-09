@@ -102,13 +102,16 @@ def test_offense_defense_offense_through_http_persists_everything_correctly(rig)
     assert "OPPONENT OFFENSE" in st["unified"]["result_perspective"]
     o2 = {o.snap_id: o for o in rig.store.load_observations()}["h1-0002"]
     assert o2.executed_status == "confirmed" and o2.executed.play.play_id == o2.recommended.play.play_id and o2.outcome.yards == 5.0
-    assert rig.session.model.provenance == {"our_offense_executed": 2}  # snap 2 auto-attested on Submit
+    # An owner-confirmed execution is stored, but world-model training also requires
+    # a revealed opponent call. No opponent call was supplied for snap 2.
+    assert o2.opponent_action is None
+    assert rig.session.model.provenance == {"our_offense_executed": 1}
     # result of the DEFENSIVE snap = opponent offense yards, executed confirmed; back to offense
     c, d = sub(rig, "1&10 my 30", "offense", "gain 12", "Gun Trips X Nasty | Hi Lo Cross", "used_recommended")
     assert d["ok"] and d["state"]["pending_recommendation"]["side"] == "offense" and d["state"]["pending_recommendation"]["snap_id"] == "h1-0004"
     o3 = {o.snap_id: o for o in rig.store.load_observations()}["h1-0003"]
     assert o3.state.our_side == DEF and o3.executed_status == "confirmed" and o3.outcome.yards == 12.0 and o3.opponent_action.side == OFF
-    assert rig.session.model.provenance == {"our_offense_executed": 2, "our_defense_executed": 1}
+    assert rig.session.model.provenance == {"our_offense_executed": 1, "our_defense_executed": 1}
     assert "UNDONE" not in json.dumps(d["state"]["log"]) and [r["formation"][:2] for r in d["state"]["log"]] == ["O1", "O2", "D3", "O4"]
     ids = [o.snap_id for o in rig.store.load_observations()]
     assert ids == [f"h1-000{i}" for i in range(1, 5)]
