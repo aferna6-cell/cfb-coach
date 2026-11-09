@@ -48,7 +48,7 @@ def test_goal_to_go_uses_remaining_distance():
 def test_fourth_down_conversion_but_not_failure():
     expect(state(DEF, 4, 2, 43), "gain 3", "d 1&10 opp 46")
     projection = next_situation(state(DEF, 4, 4, 43), "incomplete")
-    assert not projection["automatic"] and "Fourth-down" in projection["reason"]
+    assert not projection["automatic"] and "turnover on downs" in projection["reason"].lower()
 
 
 def test_turnovers_scores_unknown_and_unclear_sacks_require_manual():
