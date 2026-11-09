@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from functools import lru_cache
 import json
 import math
 import random
@@ -161,6 +162,7 @@ def _key(*parts: str) -> str:
     return json.dumps(parts, separators=(",", ":"))
 
 
+@lru_cache(maxsize=4096)
 def semantic_tokens(formation: str, play: str) -> tuple[str, ...]:
     """Evidence-eligible semantic features, not invented eleven-player duties."""
     from cfb_coach.madden.model import defense_semantics as ds
