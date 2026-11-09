@@ -206,7 +206,9 @@ def user_guidance(*, play: str, formation: str, family: str,
         "scram": "contain QB, then legal plaster",
         "unknown": "run key first, hold assignment",
     }[primary]
-    text = user_role + "; " + compact_focus
+    # Existing format_defense treats slash as a second user job separator;
+    # hyphenate role pairs so the entire tactical read survives unchanged.
+    text = user_role.replace("/", "-") + "; " + compact_focus
     return {
         "role": user_role, "first_read": first, "second_read": priority,
         "avoid": structure["caution"], "predicted_concept": primary,
