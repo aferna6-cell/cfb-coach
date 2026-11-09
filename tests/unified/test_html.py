@@ -71,6 +71,7 @@ def sub(rig, sit, side, outcome="", their="", executed=None, **kw):
 def test_page_is_the_established_page_with_the_unified_panel(rig):
     code, html, _ = rig.cl.req("GET", "/")
     assert code == 200 and "Submit → log + new PLAY" in html and 'id="unified-panel"' in html and "btn-ran-recommended" in html and "id=\"side\"" in html
+    assert 'id="auto-next-status"' in html and "projectNextSituation" in html and "auto_advance" in html
     code, st, _ = rig.cl.req("GET", "/api/state")
     u = st["unified"]
     assert u["decision_model"] == "unified_v1" and u["artifact"] == "test_artifact:abc" and "COLD-START" in u["model_mode"]
