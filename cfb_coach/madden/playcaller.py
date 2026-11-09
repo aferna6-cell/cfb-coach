@@ -93,6 +93,25 @@ class MaddenCall:
             from cfb_coach.madden.model.defense_v1 import comparison_detail
 
             line += f"\n  {comparison_detail(log)}"
+        v2 = getattr(self, "defense_v2", None)
+        if isinstance(v2, dict) and v2.get("applied"):
+            observed = v2.get("coverage_knowledge") or {}
+            known = list(observed.get("known") or [])
+            guesses = list(observed.get("hypotheses") or [])
+            if known:
+                line += "\n  SCHEME VERIFIED: " + " ; ".join(str(k) for k in known[:2])
+            elif guesses:
+                line += "\n  SCHEME INFERRED: " + " ; ".join(str(k) for k in guesses[:2])
+            else:
+                line += "\n  SCHEME: unverified coverage/assignments"
+            player_count = int(v2.get("verified_player_roles") or 0)
+            line += (
+                f"\n  PLAYER ASSIGNMENTS: {player_count}/11 Xbox-verified"
+                if player_count else "\n  PLAYER ASSIGNMENTS: UNKNOWN (not guessed)"
+            )
+            line += "\n  ADJUSTMENTS: " + (
+                "individual controller-verified actions" if self.adjustment else "NO ADJUSTMENT"
+            )
         note = getattr(self, "ml_defense_fallback", None)
         if isinstance(note, dict) and note.get("fell_back") and note.get("fallback_reason"):
             line += f"\n  fallback_reason: {note['fallback_reason']}"
