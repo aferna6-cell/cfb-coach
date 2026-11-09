@@ -60,6 +60,7 @@ def main() -> int:
             if out == args.db.resolve() or Path.home().joinpath(".cfb-coach") in out.parents:
                 p.error("refusing to place a shadow artifact in the live data directory")
             model = v2.fit(rows)
+            model["trained_franchise"] = args.franchise
             model["trained_sessions"] = sorted({r.session for r in rows})
             model["trained_through_started_ts"] = max(r.started_ts for r in rows)
             out.parent.mkdir(parents=True, exist_ok=True)
