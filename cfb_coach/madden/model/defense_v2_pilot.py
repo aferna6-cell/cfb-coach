@@ -296,6 +296,46 @@ def offense_risk(model: Mapping[str, Any], context: str, formation: str,
         "family": family_n, "play": play_n, "matchup": matchup_n}
 
 
+def auxiliary_risk(model: Mapping[str, Any], context: str, family: str) -> dict[str, float | int]:
+    """Smoothed observational secondary targets. UNKNOWN means abstain, not zero."""
+    raw = (model.get("outcome_targets") or {}).get(_key(context, family)) or {}
+    metrics: dict[str, float | int] = {}
+    if not raw:
+        return metrics
+    # These are weak generic shrinkage priors, not learned play effects.
+    defaults = {"td": (0.05, 20.0), "explosive": (0.10, 16.0),
+                "turnover": (0.04, 20.0), "conversion": (0.30, 12.0)}
+    for metric, (prior, strength) in defaults.items():
+        n = int(raw.get(metric + "_n", 0))
+        if n >= 10:
+            yes = int(raw.get(metric + "_yes", 0))
+            metrics[metric] = (yes + strength * prior) / (n + strength)
+            metrics[metric + "_n"] = n
+    n_yards = int(raw.get("yards_n", 0))
+    if n_yards >= 10:
+        metrics["expected_yards"] = (float(raw.get("yards_sum", 0.0)) + 12 * 5.0) / (n_yards + 12)
+        metrics["yards_n"] = n_yards
+    return metrics
+
+
+def defensive_utility_risk(predicted_success: float, metrics: Mapping[str, float | int]) -> float:
+    """Higher is worse for defense. Weights are transparent utility preferences,
+    not pre-programmed coverage counters; data supplies each available outcome.
+    """
+    risk = predicted_success
+    if "expected_yards" in metrics:
+        risk += 0.002 * (float(metrics["expected_yards"]) - 5.0)
+    if "td" in metrics:
+        risk += 0.15 * (float(metrics["td"]) - 0.05)
+    if "explosive" in metrics:
+        risk += 0.10 * (float(metrics["explosive"]) - 0.10)
+    if "turnover" in metrics:
+        risk -= 0.10 * (float(metrics["turnover"]) - 0.04)
+    if "conversion" in metrics:
+        risk += 0.06 * (float(metrics["conversion"]) - 0.30)
+    return risk
+
+
 def concept_belief(model: Mapping[str, Any], prior_snaps: Sequence[Snap | Observation], *,
                    session: str, opponent: str, next_seq: int) -> dict[str, float]:
     """Update concept distribution using strictly earlier same-game evidence."""
@@ -338,11 +378,15 @@ def rank(model: Mapping[str, Any], *, context: str, calls: Sequence[Mapping[str,
             p, _n = offense_risk(model, context, form, play, fam, concept)
             weighted += float(belief.get(concept, 0)) * p
         _, support = offense_risk(model, context, form, play, fam, None)
+        secondary = auxiliary_risk(model, context, fam)
+        risk = defensive_utility_risk(weighted, secondary)
         scores.append({"formation": form, "play": play, "family": fam,
-                       "predicted_offense_success": round(weighted, 5), "support": support,
+                       "predicted_offense_success": round(weighted, 5),
+                       "defensive_utility_risk": round(risk, 5), "secondary_outcomes": secondary,
+                       "support": support,
                        "structural_model_active": bool((model.get("structural") or {}).get("active")),
                        "learned_structural_delta": round(structural_delta(model, form, play), 5)})
-    scores.sort(key=lambda x: (x["predicted_offense_success"], x["formation"], x["play"]))
+    scores.sort(key=lambda x: (x["defensive_utility_risk"], x["formation"], x["play"]))
     return {"schema": SCHEMA, "applied": False, "ready_for_live": False,
             "model_games": model["n_games"], "model_snaps": model["n_verified"],
             "ranked": scores, "reason": "observational shadow predictions; no verified live gate"}
