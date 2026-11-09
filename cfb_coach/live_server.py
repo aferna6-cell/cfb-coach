@@ -2464,6 +2464,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             game_clock=body.get("game_clock"),
                             game_clock_fresh=_fresh_flag(body.get("game_clock_fresh")),
                             verify_touched=body.get("verify_touched") is True,
+                            auto_advance=body.get("auto_advance") is True,
                         ),
                     )
                     return
