@@ -641,9 +641,30 @@ def cmd_play(args: argparse.Namespace) -> int:
     explicit_heuristic = bool(getattr(args, "heuristic_offense", False)) and not cpu
     defense_model = getattr(args, "defense_model", None)
     defense_model_path = getattr(args, "defense_model_path", None)
+    defense_test_db = getattr(args, "defense_test_db", None)
+    defense_franchise = getattr(args, "defense_franchise", None)
     explicit_defense_v1 = defense_model == "v1" and not offense_only
+    explicit_defense_v2 = defense_model == "v2" and not offense_only
+    if defense_model == "v2":
+        from pathlib import Path
+        try:
+            assert not offense_only, "CPU defensive V2 requires --cpu-defense"
+            assert all((defense_model_path, defense_test_db, defense_franchise)), (
+                "V2 requires --defense-model-path, --defense-test-db and --defense-franchise"
+            )
+            assert Path(str(db.path)).expanduser().resolve() == Path(str(defense_test_db)).expanduser().resolve(), (
+                "V2 test DB does not match active --db database"
+            )
+            live_data = (Path.home() / ".cfb-coach").resolve()
+            assert live_data not in Path(str(defense_test_db)).expanduser().resolve().parents, (
+                "V2 cannot operate inside the primary ~/.cfb-coach data directory"
+            )
+        except AssertionError as exc:
+            print(f"REFUSING DEFENSIVE V2: {exc}", file=sys.stderr)
+            db.close()
+            return 2
     human_defense_ml = (
-        bool(getattr(args, "ml_defense_control", False)) or explicit_defense_v1
+        bool(getattr(args, "ml_defense_control", False)) or explicit_defense_v1 or explicit_defense_v2
     ) and not offense_only
     if not cpu and human_ml_control and explicit_heuristic:
         print(
@@ -669,7 +690,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             )
             db.close()
             return 2
-    if human_defense_ml and not explicit_defense_v1:
+    if human_defense_ml and not explicit_defense_v1 and not explicit_defense_v2:
         from cfb_coach.madden.model import defense_coordinator as defense_mode
 
         if defense_mode.mode(db) != "experimental":
@@ -688,6 +709,8 @@ def cmd_play(args: argparse.Namespace) -> int:
     offense_controller = "EXPERIMENTAL" if human_ml_control else "HEURISTIC"
     if offense_only:
         defense_controller = "OFF"
+    elif explicit_defense_v2:
+        defense_controller = "EXPERIMENTAL V2 (test-franchise only)"
     elif human_defense_ml:
         defense_controller = "EXPERIMENTAL"
     else:
@@ -700,6 +723,11 @@ def cmd_play(args: argparse.Namespace) -> int:
         print("  Instant rollback for next call: python -m cfb_coach ml heuristic")
     elif not cpu:
         print("HUMAN OFFENSE ML PILOT: OFF (heuristic offense; --heuristic-offense).")
+    if defense_model == "v2" and not offense_only:
+        print(f"DEFENSE V2: isolated test {defense_franchise}; model={defense_model_path}")
+        print("  V2 is an experimental learned outcome caller. No adjustment unless verified and supported.")
+        print("  Model failure preserves existing defensive call; no automatic training or promotion.")
+        print("  Rollback: omit --defense-model v2 and its three test-franchise flags.")
     if defense_model == "v1" and offense_only:
         print("HUMAN DEFENSE V1: ignored (CPU games are offense-only; add --cpu-defense to opt in).")
     if cpu_defense:
@@ -794,6 +822,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             allow_human_defense_ml=human_defense_ml,
             defense_model=defense_model,
             defense_model_path=defense_model_path,
+            defense_test_db=defense_test_db,
+            defense_franchise=defense_franchise,
             cpu_defense=cpu_defense,
         )
         _maybe_shadow(db, sit, call, oid)
@@ -821,6 +851,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             kwargs.setdefault("allow_human_defense_ml", human_defense_ml)
             kwargs.setdefault("defense_model", defense_model)
             kwargs.setdefault("defense_model_path", defense_model_path)
+            kwargs.setdefault("defense_test_db", defense_test_db)
+            kwargs.setdefault("defense_franchise", defense_franchise)
             kwargs.setdefault("cpu_defense", cpu_defense)
             return make_call(sit, oid, db, **kwargs)
 
@@ -990,6 +1022,8 @@ def cmd_play(args: argparse.Namespace) -> int:
                 allow_human_defense_ml=human_defense_ml,
                 defense_model=defense_model,
                 defense_model_path=defense_model_path,
+                defense_test_db=defense_test_db,
+                defense_franchise=defense_franchise,
                 cpu_defense=cpu_defense,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
