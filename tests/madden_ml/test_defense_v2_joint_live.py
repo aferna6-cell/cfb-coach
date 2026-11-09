@@ -37,7 +37,7 @@ def test_explicit_test_franchise_live_call_has_optional_adjustment_and_user_read
         "defense": {"locked_ts": "2026-11-11", "formations": installed}
     })
     monkeypatch.setattr(old, "_model_decision", lambda **kwargs: FakeDecision())
-    monkeypatch.setattr(old, "_book_candidate", lambda **kwargs: None)
+    monkeypatch.setattr(old, "_book_candidate", lambda *args, **kwargs: None)
     monkeypatch.setattr(old, "_stamp_decision",
                         lambda call, decision, db, extras:
                         setattr(call, "_pending_ml_decision", decision))
