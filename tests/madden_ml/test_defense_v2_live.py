@@ -49,6 +49,10 @@ def situation(seq=3):
                                    "snap_id": None, "game_id": "new-game"})
 
 
+def verified_book_hash():
+    return live.installed_fingerprint({"Nickel Over": ["Cover 3 Sky"]})
+
+
 def call():
     return MaddenCall("defense", "Nickel Over", "Cover 2 Man", "No adj",
                       "Check alignment", "existing caller")
@@ -62,7 +66,7 @@ def test_live_v2_actual_displayed_model_pick_and_logging(tmp_path, monkeypatch):
         original, situation(), "cpu-test", db,
         {"Nickel Over": ["Cover 3 Sky"]},
         model_path="/irrelevant/test-model.json", test_db=str(db.path),
-        franchise="test-franchise")
+        franchise="test-franchise", confirmed_inventory_fingerprint=verified_book_hash())
     assert final is not original
     assert final.play == "Cover 3 Sky" and final.formation == "Nickel Over"
     assert final.defense_v2["applied"] is True
@@ -85,7 +89,8 @@ def test_live_v2_rejects_other_db_and_franchise_without_mutation(tmp_path, monke
         res = live.maybe_apply_v2(
             original, situation(), "cpu-test", db,
             {"Nickel Over": ["Cover 3 Sky"]},
-            model_path="/irrelevant/model.json", **kwargs)
+            model_path="/irrelevant/model.json",
+            confirmed_inventory_fingerprint=verified_book_hash(), **kwargs)
         assert res is original and res.defense_v2["applied"] is False
     assert not db.logged
     db.conn.close()
@@ -99,14 +104,14 @@ def test_live_v2_rejects_same_game_and_missing_seq(tmp_path, monkeypatch):
     res = live.maybe_apply_v2(call(), situation(), "cpu-test", db,
                               {"Nickel Over": ["Cover 3 Sky"]},
                               model_path="/irrelevant/model.json", test_db=str(db.path),
-                              franchise="test-franchise")
+                              franchise="test-franchise", confirmed_inventory_fingerprint=verified_book_hash())
     assert res.defense_v2["applied"] is False
     safe = artifact()
     monkeypatch.setattr(live, "load_model", lambda _: safe)
     res = live.maybe_apply_v2(call(), situation(seq=0), "cpu-test", db,
                               {"Nickel Over": ["Cover 3 Sky"]},
                               model_path="/irrelevant/model.json", test_db=str(db.path),
-                              franchise="test-franchise")
+                              franchise="test-franchise", confirmed_inventory_fingerprint=verified_book_hash())
     assert res.defense_v2["applied"] is False
     db.conn.close()
 
@@ -117,7 +122,7 @@ def test_live_v2_book_cap_is_enforced(tmp_path, monkeypatch):
     book = {f"Form {n}": ["Cover 3 Sky"] for n in range(16)}
     res = live.maybe_apply_v2(call(), situation(), "cpu-test", db, book,
                               model_path="/irrelevant/model.json",
-                              test_db=str(db.path), franchise="test-franchise")
+                              test_db=str(db.path), franchise="test-franchise", confirmed_inventory_fingerprint=verified_book_hash())
     assert not res.defense_v2["applied"]
     db.conn.close()
 
@@ -157,6 +162,7 @@ def test_verified_action_is_only_shown_with_real_execution_support(tmp_path, mon
         call(), situation(), "cpu-test", db,
         {"Nickel Over": ["Cover 3 Sky"]},
         model_path="unused", test_db=str(db.path), franchise="test-franchise",
+        confirmed_inventory_fingerprint=verified_book_hash(),
         action_confirmations=str(confirmed),
     )
     assert result.defense_v2["applied"] is True
@@ -168,6 +174,7 @@ def test_verified_action_is_only_shown_with_real_execution_support(tmp_path, mon
         call(), situation(), "cpu-test", db,
         {"Nickel Over": ["Cover 3 Sky"]},
         model_path="unused", test_db=str(db.path), franchise="test-franchise",
+        confirmed_inventory_fingerprint=verified_book_hash(),
     )
     assert stock.adjustment is None
     db.conn.close()
