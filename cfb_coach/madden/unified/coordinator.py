@@ -169,18 +169,24 @@ class UnifiedCoordinator:
         fb = {"occurred": False, "reason": None}
         try:
             candidates = self.legal_candidates()
-            # Exact play repetition is a hard owner constraint, not a post-scoring
-            # substitution. The solver sees only the permitted candidates and
-            # ranks them with the same objective, odds and uncertainty.
-            # The previous same-side recommendation counts even if the owner
-            # ultimately ran something else: we must not *recommend* it twice.
-            if prev is not None and prev.recommended is not None:
-                last_play_id = prev.recommended.play.play_id
-                fresh = [a for a in candidates if a.play.play_id != last_play_id]
-                # Preserve a viable NO ADJUSTMENT candidate. One-play books are
-                # allowed to repeat because there is no legal alternative.
+            # Do not convert a repeated A call into a deterministic A-B-A-B
+            # pattern. The installed playbook has hundreds of possible calls:
+            # cool down exact plays seen in the last four *same-side* decisions,
+            # while letting the trained solver rank every remaining candidate.
+            # Reduce the window only if a tiny installed book has no legal
+            # no-adjustment alternative; never fabricate a play or silently
+            # substitute after optimization.
+            recent_play_ids = [
+                self.snaps[sid].recommended.play.play_id
+                for sid in prev_ids[-4:]
+                if self.snaps[sid].recommended is not None
+            ]
+            for window in range(len(recent_play_ids), 0, -1):
+                forbidden = set(recent_play_ids[-window:])
+                fresh = [a for a in candidates if a.play.play_id not in forbidden]
                 if any(a.no_adjustment and a.executable for a in fresh):
                     candidates = fresh
+                    break
             dec = self.solver.decide(st, self.side, candidates, belief, recent_own_families=recent,
                                      deadline_ms=self.budget)
             if dec.fallback:
