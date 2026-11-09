@@ -24,7 +24,7 @@ def _print(data: dict | list) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("mode", choices=("inventory", "audit", "train", "evaluate", "preview", "design", "postgame"))
+    p.add_argument("mode", choices=("inventory", "audit", "train", "evaluate", "preview", "design", "postgame", "cold-start"))
     p.add_argument("--db", type=Path, required=True, help="explicit path to an existing Madden DB")
     p.add_argument("--franchise", help="exact recorded game_sessions.dynasty, not a guess")
     p.add_argument("--out", type=Path, help="output SHADOW artifact, outside live game data")
@@ -44,6 +44,22 @@ def main() -> int:
             _print(v2.available_franchises(conn))
             return 0
         rows, stats = v2.verified_rows(conn, franchise=args.franchise)
+        if args.mode == "cold-start":
+            if not args.out:
+                p.error("cold-start requires --out outside the live game directory")
+            if rows:
+                p.error("verified defensive executions exist: use train, not cold-start")
+            out = args.out.resolve()
+            if out == args.db.resolve() or Path.home().joinpath(".cfb-coach") in out.parents:
+                p.error("refusing to place a cold-start artifact in the live data directory")
+            model = v2.cold_start(args.franchise)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(model, indent=2, sort_keys=True), encoding="utf-8")
+            _print({"status": "EXPERIMENTAL_PRIOR_ONLY_NOT_TRAINED",
+                    "artifact": str(out), "franchise": args.franchise,
+                    "verified_defensive_executions": 0,
+                    "gameplay_effectiveness_proven": False})
+            return 0
         if args.mode == "audit":
             _print({"franchise": args.franchise, **stats})
             return 0
