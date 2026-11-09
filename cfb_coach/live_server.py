@@ -1954,7 +1954,7 @@ async function apiAction(path, body) {{
   try {{
     res = await fetch(path, {{
       method: "POST",
-      headers: {{"Content-Type": "application/json"}},
+      headers: Object.assign({{"Content-Type": "application/json"}}, window.UNIFIED_TOKEN ? {{"X-Unified-Token": window.UNIFIED_TOKEN}} : {{}}),
       body: JSON.stringify(payload),
     }});
   }} catch (netErr) {{

@@ -329,3 +329,62 @@ def test_html_check_command_reports_pass(tmp_path, capsys):
     rc = main(["html-check", "--confirmed-books", str(_books_file(tmp_path)), "--calls", "15", "--workdir", str(tmp_path / "w")])
     out = capsys.readouterr().out
     assert rc == 0 and "HTML CHECK: PASS" in out
+
+
+# ---------------------------------------------------------------------------------------------- security: rebinding / CSRF / XSS
+def _raw(rig, method, path, headers, body=b""):
+    import http.client
+    c = http.client.HTTPConnection(rig.cl.host, rig.cl.port, timeout=10)
+    c.putrequest(method, path, skip_host=True, skip_accept_encoding=True)
+    for k, v in headers.items():
+        c.putheader(k, v)
+    c.putheader("Content-Length", str(len(body)))
+    c.endheaders(body)
+    r = c.getresponse()
+    data = r.read()
+    c.close()
+    return r.status, data
+
+
+def test_localhost_api_rejects_rebinding_cross_origin_and_tokenless_posts(rig):
+    host = f"127.0.0.1:{rig.cl.port}"
+    token = rig.cl.token or (rig.cl.page() and rig.cl.token)
+    body = json.dumps({"sit": "1&10 my 25", "side": "offense"}).encode()
+    good = {"Host": host, "Content-Type": "application/json", "X-Unified-Token": token}
+    before = rig.store.counts()
+    assert _raw(rig, "POST", "/api/result_call", {**good, "Host": "evil.example:80"}, body)[0] == 403            # DNS rebinding
+    assert _raw(rig, "GET", "/api/state", {"Host": "evil.example:80"})[0] == 403                                  # state is not readable either
+    assert _raw(rig, "POST", "/api/result_call", {**good, "Origin": "http://evil.example"}, body)[0] == 403        # cross-site
+    assert _raw(rig, "POST", "/api/result_call", {k: v for k, v in good.items() if k != "X-Unified-Token"}, body)[0] == 403  # no token
+    assert _raw(rig, "POST", "/api/result_call", {**good, "X-Unified-Token": "wrong"}, body)[0] == 403
+    assert _raw(rig, "POST", "/api/result_call", {**good, "Content-Type": "text/plain"}, body)[0] == 403         # what a cross-site <form> can send
+    assert rig.store.counts() == before                                                                            # nothing was written by any of them
+    assert _raw(rig, "POST", "/api/result_call", {**good, "Origin": f"http://{host}"}, body)[0] == 200            # the real page works
+    assert _raw(rig, "GET", "/api/state", {"Host": f"localhost:{rig.cl.port}"})[0] == 200
+
+
+def test_page_embeds_a_fresh_token_and_never_serves_it_to_a_foreign_host(rig):
+    html = rig.cl.page()
+    assert 'window.UNIFIED_TOKEN="' in html and rig.cl.token and len(rig.cl.token) >= 24
+    assert _raw(rig, "GET", "/", {"Host": "evil.example:80"})[0] == 403
+
+
+def test_markup_in_opponent_text_or_book_names_cannot_reach_the_page_as_html(rig):
+    from cfb_coach.madden.unified.inputs import InputError, parse_opponent_call
+    sub(rig, "1&10 my 25", "offense")
+    for evil in ("<img src=x onerror=alert(1)>", "cover 3 <script>alert(1)</script>", "x" * 200, "a\x00b"):
+        c, d = sub(rig, "2&5 my 30", "offense", "gain 3", evil, "used_recommended")
+        assert d["ok"] is False and rig.session.pending is not None
+    with pytest.raises(InputError):
+        parse_opponent_call("<b>x</b>", DEF)
+    # defence in depth: even if hostile text were already stored, the controller escapes every string it hands to innerHTML
+    sub(rig, "2&5 my 30", "offense", "gain 3", COVER3, "used_recommended")
+    snap = rig.session.snaps["h1-0001"]
+    from dataclasses import replace
+    from cfb_coach.madden.unified.types import OpponentAction
+    rig.session.snaps["h1-0001"] = replace(snap, opponent_action=OpponentAction(DEF, "<i>F</i>", "<img src=x onerror=1>", ("zone", "cover3", "x"), "typed_exact", 1.0))
+    rows = rig.cl.req("GET", "/api/state")[1]["log"]
+    blob = json.dumps(rows)
+    assert "<img" not in blob and "<i>" not in blob and "&lt;img" in blob
+    book = rig.cl.req("GET", "/api/state")[1]["book"]
+    assert all("<" not in k for k in book["formations"])

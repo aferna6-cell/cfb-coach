@@ -12,6 +12,7 @@ Guarantees:
 """
 from __future__ import annotations
 
+import html as _html
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,11 @@ from cfb_coach.madden.unified.session import SessionError, UnifiedSession
 from cfb_coach.madden.unified.types import DEF, OFF, EXEC_CONFIRMED
 
 LATENCY_NOTE = "decision latency is shown per snap; request latency is measured by `html-check`"
+
+
+def _e(v: Any) -> str:
+    """The established page writes log rows and book lines with innerHTML, so every string we hand it is HTML-escaped here."""
+    return _html.escape(str(v if v is not None else ""), quote=True)
 
 
 def _now() -> str:
@@ -88,7 +94,7 @@ class UnifiedLiveController:
         forms = {}
         for side, tag in ((OFF, "O"), (DEF, "D")):
             for f, ps in self.session.coord[side].inventory.items():
-                forms[f"{tag}: {f}"] = list(ps)
+                forms[_e(f"{tag}: {f}")] = [_e(x) for x in ps]
         return {"name": "owner-confirmed books (unified)", "callable_rev": 1, "confirmed": True, "formations": forms, "game_label": "Madden 27",
                 "context_label": "Franchise", "dynasty": "unified"}
 
@@ -119,7 +125,7 @@ class UnifiedLiveController:
             opp = o.opponent_action
             look = (f"{opp.formation} | {opp.play}" if opp and opp.formation else (opp.play if opp and opp.play else "")) if opp and opp.verification != "unverified" else ""
             rec = o.recommended.play
-            out.append({"formation": f"{side}{o.state.seq}: {rec.formation}", "play": rec.play, "result": f"{res} · {ran}", "look": look})
+            out.append({"formation": _e(f"{side}{o.state.seq}: {rec.formation}"), "play": _e(rec.play), "result": _e(f"{res} · {ran}"), "look": _e(look)})
         return out
 
     def _unified_panel(self) -> dict[str, Any]:

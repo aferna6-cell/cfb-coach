@@ -99,6 +99,8 @@ def parse_opponent_call(text: str, opp_side: str) -> OpponentAction:
     t = text.strip()
     if not t:
         raise InputError("empty opponent call")
+    if len(t) > 100 or re.search(r"[<>\x00-\x1f]", t):
+        raise InputError("opponent call must be plain text (no < > or control characters, at most 100 characters)")
     mk = K.defense_play if opp_side == DEF else K.offense_play
     if "|" in t:
         f, p = (x.strip() for x in t.split("|", 1))

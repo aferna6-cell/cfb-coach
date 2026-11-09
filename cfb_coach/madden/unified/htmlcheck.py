@@ -30,11 +30,26 @@ class Client:
     def __init__(self, url: str) -> None:
         host, port = url.split("//")[1].rstrip("/").split(":")
         self.host, self.port = host, int(port)
+        self.token: str | None = None
+
+    def page(self) -> str:
+        """GET the page the way a browser does and pick up the session token it embeds."""
+        import re
+        c = http.client.HTTPConnection(self.host, self.port, timeout=30)
+        c.request("GET", "/")
+        html = c.getresponse().read().decode()
+        c.close()
+        m = re.search(r'window\.UNIFIED_TOKEN="([^"]+)"', html)
+        self.token = m.group(1) if m else ""
+        return html
 
     def req(self, method: str, path: str, body: Mapping[str, Any] | None = None) -> tuple[int, Any, float]:
+        if method == "POST" and self.token is None:
+            self.page()
         c = http.client.HTTPConnection(self.host, self.port, timeout=30)
         t = time.perf_counter()
-        c.request(method, path, json.dumps(body) if body is not None else None, {"Content-Type": "application/json"})
+        hdr = {"Content-Type": "application/json", **({"X-Unified-Token": self.token} if self.token else {})}
+        c.request(method, path, json.dumps(body) if body is not None else None, hdr)
         r = c.getresponse()
         raw = r.read()
         ms = (time.perf_counter() - t) * 1e3
