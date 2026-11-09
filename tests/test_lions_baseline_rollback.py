@@ -9,6 +9,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+import zipfile
 
 from scripts import restore_lions_baseline as rb
 
@@ -113,6 +114,38 @@ def test_second_restoration_refuses_to_overwrite_game_progress(tmp_path):
         assert "Refusing to overwrite" in str(exc)
     else:
         assert False, "Must refuse clobbering existing game DB"
+
+
+
+def test_read_only_model_scan_finds_exact_json_and_zipped_artifact(tmp_path, capsys):
+    good = tmp_path / "archived-offense.json"
+    good.write_text(json.dumps({
+        "model_version": rb.EXPECTED_MODEL_VERSION,
+        "n_supervised": rb.EXPECTED_SUPERVISED,
+        "side": "offense", "kind": "hierarchical_shrinkage.v1",
+        "evidence_quality": "empirical",
+    }), encoding="utf-8")
+    bad = tmp_path / "current-offense.json"
+    bad.write_text(json.dumps({
+        "model_version": "madden-ml.experimental.offense.655.empirical",
+        "n_supervised": 655,
+        "side": "offense", "kind": "hierarchical_shrinkage.v1",
+        "evidence_quality": "empirical",
+    }), encoding="utf-8")
+    archive = tmp_path / "old-models.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.write(good, arcname="models/offense.json")
+    before = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+              for p in tmp_path.iterdir() if p.is_file()}
+    matches = rb.scan_model_backups([tmp_path])
+    assert len(matches) == 2
+    assert str(good) in matches
+    assert f"{archive} :: models/offense.json" in matches
+    assert not any(str(bad) == item for item in matches)
+    after = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+             for p in tmp_path.iterdir() if p.is_file()}
+    assert before == after
+    assert "EXACT 428-ROW MODEL" in capsys.readouterr().out
 
 
 def test_cpu_defense_is_opt_in_and_still_uses_old_defensive_caller():
