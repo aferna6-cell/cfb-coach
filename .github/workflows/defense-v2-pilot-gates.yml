@@ -25,10 +25,12 @@ jobs:
       - name: Test defensive V2 CPU verification and time fences
         run: |
           PYTHONPATH=. python -m pytest -q tests/madden_ml/test_defense_v2_pilot.py \
-            tests/madden_ml/test_defense_v2_live.py
+            tests/madden_ml/test_defense_v2_live.py \
+            tests/madden_ml/test_defense_v2_playbook.py
       - name: Compile defensive V2 model and CLI
         run: |
           python -m py_compile cfb_coach/madden/model/defense_v2_pilot.py
+          python -m py_compile cfb_coach/madden/model/defense_v2_playbook.py
           python -m py_compile cfb_coach/madden/model/defense_v2_live.py
           python -m py_compile cfb_coach/madden/model/defense_coordinator.py
           python -m py_compile cfb_coach/madden/playcaller.py
