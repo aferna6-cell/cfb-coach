@@ -728,6 +728,12 @@ def apply_experimental_offense(
                     "fell_back": True, "fallback_reason": status.value,
                     "fallback_source": "previous_experimental_model",
                     "fallback_detail": detail,
+                    "route_aware": ({
+                        "mode": "route_aware", "applied": False,
+                        "fallback_reason": detail or f"{type(status).__name__}: {status.value}",
+                        "n_scored": getattr(route_ctx, "n_scored", 0),
+                        "latency_ms": trace.get("latency_ms"),
+                    } if route_attempted else None),
                     "latency_ms": trace.get("latency_ms"),
                     "timed_out": trace.get("timed_out", False),
                     "slowest_stage": trace.get("slowest_stage"),
@@ -788,6 +794,12 @@ def apply_experimental_offense(
             "fallback_reason": status.value,
             "fallback_source": source,
             "fallback_detail": detail,
+            "route_aware": ({
+                "mode": "route_aware", "applied": False,
+                "fallback_reason": detail or f"{type(status).__name__}: {status.value}",
+                "n_scored": getattr(route_ctx, "n_scored", 0),
+                "latency_ms": trace.get("latency_ms"),
+            } if route_attempted else None),
             "prior_ml_failure": prior_fallback_error,
             "prior_ml_available": bool(previous_model_ranked),
             "route_attempted": route_attempted,
@@ -976,6 +988,26 @@ def apply_experimental_offense(
             strategy_previous=strategy_previous,
             prepared_macros=prepared_macros,
         )
+        # Individual Xbox hot routes are independent of saved macros.
+        # In a no-macro game the selected ML play may receive a bounded,
+        # model-scored, first-party-verified single receiver route change.
+        # This check is skipped without time budget or explicit Madden input
+        # confirmation; NO ADJUSTMENT remains the normal safe result.
+        if not allow_macros and route_ctx is not None:
+            remaining = budget - (time.perf_counter() - started) * 1000.0
+            if remaining >= 24.0:
+                try:
+                    from cfb_coach.madden.model.offense_live_single_route import (
+                        maybe_add_single_route,
+                    )
+                    joint = maybe_add_single_route(
+                        joint, route_ctx=route_ctx, sit=sit,
+                        opponent_id=opponent_id,
+                        remaining_budget_ms=remaining - 8.0,
+                        confirmations=_rr._confirmations(),
+                    )
+                except (ValueError, TypeError, KeyError) as exc:
+                    logger.warning("Single hot-route candidate rejected: %s", exc)
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
