@@ -1,0 +1,39 @@
+name: Defensive V2 live integration gates
+
+on:
+  push:
+    branches:
+      - madden-ml/defense-v2-live-test-franchise
+  pull_request:
+    branches:
+      - madden-ml/defense-v2-test-franchise-foundation
+  workflow_dispatch:
+
+jobs:
+  defensive-live-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Test defensive V2 training, live caller, and CLI integration
+        run: |
+          PYTHONPATH=. python -m pytest -q \
+            tests/madden_ml/test_defense_v2_pilot.py \
+            tests/madden_ml/test_defense_v2_live.py \
+            tests/madden_ml/test_defense_policy_scope.py \
+            tests/madden_ml/test_defense_v1_live.py
+      - name: Compile source and entrypoints
+        run: |
+          python -m py_compile \
+            cfb_coach/cli.py cfb_coach/madden/cli.py \
+            cfb_coach/madden/playcaller.py \
+            cfb_coach/madden/model/defense_v2_pilot.py \
+            cfb_coach/madden/model/defense_v2_live.py \
+            scripts/madden_ml/defense_v2_pilot.py
