@@ -934,7 +934,7 @@ def build_parser() -> argparse.ArgumentParser:
              "isolated testing-franchise artifact trained exclusively on verified executions. V2 requires "
               "CFB_COACH_DEFENSE_V2_TEST_FRANCHISE and CFB_COACH_DEFENSE_V2_ARTIFACT environment variables. "
               "It is experimental, does not change the offense, and fails closed to the established caller. "
-             "and is labeled HEURISTIC. Rollback: run play again without this flag.",
+             "Rollback: run play again without this flag.",
     )
     p_play.add_argument(
         "--cpu-defense",
