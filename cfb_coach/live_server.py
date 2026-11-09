@@ -1426,6 +1426,8 @@ def render_live_html(ctrl: LivePlayController) -> str:
   #unified-result-note.def {{ color: #d29922; }}
   #submit-status {{ margin-top:.3rem; font-size:.85rem; min-height:1.3rem; color: #3fb950; }}
   #submit-status.error {{ color: #ffa198; }}
+  .auto-next-status {{ color: #8b949e; font-size: .78rem; min-height: 1.1rem; padding: .08rem 0 .3rem; }}
+  .auto-next-status.warn {{ color: #d29922; }}
 </style>
 </head>
 <body>
@@ -1502,6 +1504,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
     </div>""" if compact_madden else ""}
 
     <h2 style="margin-top:1rem">Next situation</h2>
+    {'<div id="auto-next-status" class="auto-next-status" aria-live="polite"></div>' if getattr(ctrl, 'unified_ui', False) else ''}
     <div class="row">
       <label>quarter</label>
       <select id="quarter">
@@ -1605,6 +1608,11 @@ function submitStatus(msg, error=false) {{
   el.textContent = msg;
 }}
 let outcomeChoice = "";
+// The last displayed recommendation is the fixed base for projections.
+// We never advance from the previously auto-advanced values (no double counting).
+let nextBasis = null;
+let nextManualOverride = false;
+let nextPreview = null;
 let execVerifyTouched = false;
 // True once the clock box is typed in for this snap. Sent with the submit so the
 // server can tell a real repeated clock from a value that was never re-entered.
@@ -1842,6 +1850,13 @@ function renderState(st) {{
   $("btn-ran-recommended").hidden = !!st.standing_execution_attestation;
   // Never rewrite an explicit used_different selection on state refresh.
   syncExecDiffVisibility();
+  if (unifiedUI) {{
+    nextBasis = st.unified && st.unified.pending_state || null;
+    if (nextBasis && nextBasis.side) $("side").value = nextBasis.side;
+    nextManualOverride = false;
+    nextPreview = null;
+    refreshNextPreview();
+  }}
 }}
 
 function currentExecSelection() {{
@@ -2061,12 +2076,106 @@ function currentOutcome() {{
   return outcomeChoice || "";
 }}
 
+function parseNextOutcome(raw) {{
+  const txt = String(raw || "").trim().toLowerCase();
+  if (!txt) return {{automatic:false, reason:"Enter the previous result to fill the next situation."}};
+  if (/\\b(?:td|touchdown|interception|intercepted|int|fumble|turnover|safety|punt|stop|convert(?:ed)?|first\\s+down)\\b/.test(txt))
+    return {{automatic:false, reason:"Possession/spot may have changed — set the next side, down and yard line manually."}};
+  let m;
+  if ((m = txt.match(/^(?:gain|gained|pick\\s*up|pickup)\\s*(?:of\\s*)?[:+]?(-?\\d+)\\b/)))
+    return {{automatic:true, yards:Math.abs(Number(m[1]))}};
+  if ((m = txt.match(/^(?:loss|lost|lose)\\s*[:+]?(-?\\d+)\\b/)))
+    return {{automatic:true, yards:-Math.abs(Number(m[1]))}};
+  if ((m = txt.match(/^([+-]\\d+)\\b/))) return {{automatic:true, yards:Number(m[1])}};
+  if (/^(?:inc|incomp|incomplete)\\b/.test(txt)) return {{automatic:true, yards:0}};
+  if (/^sack(?:ed)?\\b/.test(txt)) {{
+    m = txt.match(/-?\\d+/);
+    return m ? {{automatic:true, yards:-Math.abs(Number(m[0]))}}
+             : {{automatic:false, reason:"Enter sack yardage, e.g. sack -6, or set the next spot manually."}};
+  }}
+  if ((m = txt.match(/^(\\d+)\\b/))) return {{automatic:true, yards:Number(m[1])}};
+  return {{automatic:false, reason:"Result cannot determine the next spot — enter it manually."}};
+}}
+
+function projectNextSituation(basis, raw) {{
+  if (!basis || !basis.side || !Number.isInteger(Number(basis.down))) return null;
+  const out = parseNextOutcome(raw);
+  if (!out.automatic) return out;
+  const pos = Number(basis.offense_yardline) + out.yards;
+  const dist = Number(basis.distance);
+  const down = Number(basis.down);
+  if (!Number.isInteger(pos) || !Number.isInteger(dist) || !Number.isInteger(down) || dist < 1 || down < 1 || down > 4)
+    return {{automatic:false, reason:"Current field position is incomplete — enter the next situation manually."}};
+  if (pos <= 0 || pos >= 100)
+    return {{automatic:false, reason:"Score/safety or goal line crossed — confirm the next possession manually."}};
+  if (down === 4 && out.yards < dist)
+    return {{automatic:false, reason:"Fourth-down failure — confirm the new possession and field position manually."}};
+  const newDown = out.yards >= dist ? 1 : down + 1;
+  const newDist = out.yards >= dist ? Math.min(10,100-pos) : Math.min(Math.max(1,dist-out.yards),100-pos);
+  const ourPos = basis.side === "offense" ? pos : 100-pos;
+  return {{
+    automatic:true, side:basis.side, down:newDown, distance:newDist,
+    ylSide:ourPos<=50?"my":"opp", yl:ourPos<=50?ourPos:100-ourPos,
+    yards:out.yards
+  }};
+}}
+
+function setNextStatus(message, warn=false) {{
+  const el = $("auto-next-status");
+  if (!el) return;
+  el.className = warn ? "auto-next-status warn" : "auto-next-status";
+  el.textContent = message || "";
+}}
+
+function fillNextSituation(pred) {{
+  $("side").value = pred.side;
+  $("down").value = String(pred.down);
+  $("distance").value = String(pred.distance);
+  $("yl-side").value = pred.ylSide;
+  $("yl").value = String(pred.yl);
+}}
+
+function refreshNextPreview() {{
+  if (!unifiedUI || !nextBasis) return;
+  const out = currentOutcome();
+  nextPreview = out ? projectNextSituation(nextBasis, out) : null;
+  if (nextManualOverride) {{
+    setNextStatus("Manual next situation — your edits will be used.");
+    return;
+  }}
+  if (!nextPreview) {{
+    setNextStatus("Enter the previous result to calculate the next down and spot.");
+    return;
+  }}
+  if (!nextPreview.automatic) {{
+    setNextStatus(nextPreview.reason + " Edit the next situation to continue.", true);
+    return;
+  }}
+  fillNextSituation(nextPreview);
+  setNextStatus("Auto: " + nextPreview.down + (nextPreview.down === 1 ? "st" : nextPreview.down === 2 ? "nd" : nextPreview.down === 3 ? "rd" : "th")
+    + " & " + nextPreview.distance + " at " + nextPreview.ylSide + " " + nextPreview.yl
+    + " · edit these fields to override.");
+}}
+
+// Any direct user edit to the next down/spot/side intentionally takes precedence.
+["side","down","distance","yl-side","yl"].forEach(id => {{
+  const el = $(id);
+  if (el) el.addEventListener("change", () => {{
+    if (unifiedUI && nextBasis) {{ nextManualOverride = true; refreshNextPreview(); }}
+  }});
+}});
+["gain-n","loss-n","outcome-text"].forEach(id => {{
+  const el = $(id);
+  if (el) el.addEventListener("input", refreshNextPreview);
+}});
+
 document.querySelectorAll("#outcome-btns button.outcome").forEach(btn => {{
   btn.addEventListener("click", () => {{
     outcomeChoice = btn.getAttribute("data-out");
     $("outcome-text").value = "";
     document.querySelectorAll("#outcome-btns button.outcome").forEach(b => b.style.outline = "");
     btn.style.outline = "2px solid #58a6ff";
+    refreshNextPreview();
   }});
 }});
 
@@ -2076,11 +2185,18 @@ $("btn-submit").addEventListener("click", async () => {{
   try {{
     const data = await withUiLock(async () => {{
       const out = currentOutcome();
+      if (unifiedUI && nextBasis && out && !nextManualOverride) {{
+        const predicted = projectNextSituation(nextBasis, out);
+        if (!predicted || !predicted.automatic)
+          throw new Error(predicted ? predicted.reason : "Enter the next situation manually.");
+        fillNextSituation(predicted);
+      }}
       const sit = buildSit();
       const checked = document.querySelector('input[name="exec"]:checked');
       const exec = execVerifyTouched && checked ? checked.value : "unknown";
       const body = {{
         outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value,
+        auto_advance: !!(unifiedUI && nextBasis && out && !nextManualOverride),
         their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value,
         executed_status: exec,
         verify_touched: execVerifyTouched,
@@ -2349,6 +2465,7 @@ def make_handler(ctrl: LivePlayController) -> type[BaseHTTPRequestHandler]:
                             game_clock=body.get("game_clock"),
                             game_clock_fresh=_fresh_flag(body.get("game_clock_fresh")),
                             verify_touched=body.get("verify_touched") is True,
+                            auto_advance=body.get("auto_advance") is True,
                         ),
                     )
                     return

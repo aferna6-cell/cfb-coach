@@ -51,7 +51,15 @@ const fs = require('fs');
   // 2. result of snap 1: standing attestation confirms recommended by default
   await page.click('button.outcome[data-out="gain"]'); await page.fill('#gain-n', '7');
   await page.fill('#their', '4-3 Over | Cover 3 Sky');
-  await setSit('offense', 2, 3, 'my', 32);
+  // The UI should project 1st&10 my25 +7 as 2nd&3 my32 without typing the next situation.
+  const auto1 = {
+    down: await page.locator('#down').inputValue(),
+    distance: await page.locator('#distance').inputValue(),
+    territory: await page.locator('#yl-side').inputValue(),
+    spot: await page.locator('#yl').inputValue()
+  };
+  if (auto1.down !== '2' || auto1.distance !== '3' || auto1.territory !== 'my' || auto1.spot !== '32')
+    out.errors.push('auto-next-preview mismatch: ' + JSON.stringify(auto1));
   r = await submit();
   await snapshot('offense-2', r);
 

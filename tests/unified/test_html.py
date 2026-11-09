@@ -71,6 +71,7 @@ def sub(rig, sit, side, outcome="", their="", executed=None, **kw):
 def test_page_is_the_established_page_with_the_unified_panel(rig):
     code, html, _ = rig.cl.req("GET", "/")
     assert code == 200 and "Submit → log + new PLAY" in html and 'id="unified-panel"' in html and "btn-ran-recommended" in html and "id=\"side\"" in html
+    assert 'id="auto-next-status"' in html and "projectNextSituation" in html and "auto_advance" in html
     code, st, _ = rig.cl.req("GET", "/api/state")
     u = st["unified"]
     assert u["decision_model"] == "unified_v1" and u["artifact"] == "test_artifact:abc" and "COLD-START" in u["model_mode"]
@@ -146,6 +147,46 @@ def test_standing_attestation_is_not_triggered_by_call_only(rig):
     sub(rig, "1&10 my 25", "offense")
     c, d = rig.post("/api/call", {"sit": "2&10 my 25", "side": "offense"})
     assert d["ok"] and rig.store.counts()["executions"] == 0
+
+
+def test_server_auto_advances_exact_play_result_even_when_next_form_is_stale(rig):
+    c, d = sub(rig, "1&10 my 41", "offense")
+    assert d["ok"]
+    c, d = rig.post("/api/result_call", {
+        "sit": "1&10 my 41", "side": "offense", "outcome": "gain 2",
+        "auto_advance": True, "verify_touched": False, "executed_status": "unknown"})
+    assert d["ok"], d
+    snap = rig.session.pending[0]
+    assert (snap.our_side, snap.down, snap.distance, snap.yardline) == (OFF, 2, 8, 43)
+    assert d["state"]["unified"]["pending_state"]["offense_yardline"] == 43
+    assert rig.store.counts()["executions"] == 1
+    record = {o.snap_id: o for o in rig.store.load_observations()}["h1-0001"]
+    assert record.executed_status == "confirmed"
+
+
+def test_server_auto_advances_defensive_spot_without_flipping_direction(rig):
+    c, d = sub(rig, "1&10 opp 41", "defense")
+    assert d["ok"]
+    c, d = rig.post("/api/result_call", {
+        "sit": "1&10 opp 41", "side": "defense", "outcome": "gain 2",
+        "auto_advance": True, "verify_touched": False, "executed_status": "unknown"})
+    assert d["ok"], d
+    snap = rig.session.pending[0]
+    assert (snap.our_side, snap.down, snap.distance, snap.yardline) == (DEF, 2, 8, 43)
+    assert d["state"]["ball"]["yardline"] == 57  # our coordinate; UI displays opp 43
+
+
+def test_touchdown_needs_manual_next_possession_before_any_write(rig):
+    sub(rig, "1&10 opp 5", "offense")
+    before = rig.store.counts().copy()
+    c, d = rig.post("/api/result_call", {"sit": "1&10 opp 5", "side": "offense",
+                                          "outcome": "td", "auto_advance": True})
+    assert d["ok"] is False and "Cannot automatically advance" in d["error"]
+    assert rig.store.counts() == before
+    c, d = rig.post("/api/result_call", {"sit": "1&10 opp 25", "side": "defense",
+                                          "outcome": "td", "auto_advance": False})
+    assert d["ok"], d
+    assert rig.session.pending[0].our_side == DEF
 
 
 def test_bad_input_changes_nothing_and_idempotent_retry_does_not_duplicate(rig):
