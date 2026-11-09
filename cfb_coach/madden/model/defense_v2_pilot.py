@@ -1,0 +1,303 @@
+"""Experimental defensive V2: verified CPU/human executions, time-correct beliefs, learned risk.
+
+Shadow-only. No live caller changes, DB mutations, or model promotion. Observational
+outcomes cannot establish the causal value of a defensive call.
+"""
+from __future__ import annotations
+
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+import json
+import math
+import random
+import sqlite3
+from typing import Any, Mapping, Sequence
+
+SCHEMA = "madden.defense.v2.shadow.v1"
+CONCEPTS = ("run", "rpo", "vert", "flood", "cross", "stack", "scram")
+MIN_GAMES = 8
+MIN_EVAL_SNAPS = 200
+
+
+@dataclass(frozen=True)
+class Snap:
+    session: str
+    opponent: str
+    started_ts: str
+    seq: int | None
+    formation: str
+    play: str
+    family: str
+    context: str
+    concept: str | None
+    offense_success: bool
+
+
+@dataclass(frozen=True)
+class Observation:
+    session: str
+    opponent: str
+    seq: int
+    concept: str
+
+
+def context_key(down: int | None, distance: int | None) -> str:
+    if down is None or distance is None:
+        return "unknown"
+    if distance <= 3:
+        return "short"
+    if down >= 3 and distance >= 7:
+        return "long"
+    if down >= 3:
+        return "medium"
+    return "early"
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    return {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
+
+
+def available_franchises(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    if "dynasty" not in _columns(conn, "game_sessions"):
+        raise ValueError("game_sessions.dynasty unavailable: cannot isolate franchise")
+    return [{"franchise": row[0], "games": row[1]} for row in
+            conn.execute("SELECT dynasty, COUNT(*) FROM game_sessions GROUP BY dynasty ORDER BY dynasty")]
+
+
+def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Snap], dict[str, int]]:
+    """Strict execution labels only, including CPU games; do not train on recommendations."""
+    if not franchise or not franchise.strip():
+        raise ValueError("explicit franchise identifier required")
+    required = {"session_id", "side", "result", "down", "distance", "executed_status",
+                "executed_verification", "executed_formation", "executed_play", "snap_seq"}
+    columns = _columns(conn, "snaps")
+    if not required <= columns:
+        raise ValueError("missing defensive verification columns: " + ", ".join(sorted(required - columns)))
+    if not {"session_id", "opponent_id", "dynasty", "started_ts"} <= _columns(conn, "game_sessions"):
+        raise ValueError("game session franchise/opponent identity unavailable")
+    concept_col = "COALESCE(NULLIF(s.concept_typed,''),s.concept_seen)" if "concept_typed" in columns else (
+        "s.concept_seen" if "concept_seen" in columns else "NULL")
+    sql = ("SELECT s.session_id,g.opponent_id,g.started_ts,s.snap_seq,s.executed_status,s.executed_verification,"
+           "s.executed_formation,s.executed_play,s.result,s.down,s.distance," + concept_col +
+           " FROM snaps s JOIN game_sessions g ON g.session_id=s.session_id"
+           " WHERE s.side='defense' AND g.dynasty=? ORDER BY g.started_ts,s.id")
+    from cfb_coach.madden.model.defense_v1 import offense_won
+    from cfb_coach.madden.defense_select import call_family
+    from cfb_coach.madden.situation import concept_family
+
+    stats: Counter[str] = Counter()
+    rows: list[Snap] = []
+    for (session, opponent, started, seq, status, verification, formation, play, result, down, dist, concept) in conn.execute(sql, (franchise,)):
+        stats["defensive_rows"] += 1
+        if status != "identified" or verification != "verified" or not (formation and play):
+            stats["unverified_execution"] += 1
+            continue
+        won = offense_won(result, down, dist)
+        if won is None:
+            stats["unlabeled_outcome"] += 1
+            continue
+        fam = call_family(str(play))
+        if not fam:
+            stats["unrecognized_defensive_family"] += 1
+            continue
+        normalized = concept_family(concept)
+        if normalized not in CONCEPTS:
+            normalized = None
+        rows.append(Snap(str(session), str(opponent or ""), str(started or ""),
+                         int(seq) if seq is not None else None, str(formation), str(play),
+                         fam, context_key(down, dist), normalized, bool(won)))
+        stats["admitted_verified"] += 1
+    stats["games"] = len({r.session for r in rows})
+    stats["seq_known"] = sum(r.seq is not None for r in rows)
+    stats["concept_known"] = sum(r.concept is not None for r in rows)
+    return rows, dict(stats)
+
+
+def earlier_opponent_observations(conn: sqlite3.Connection, *, franchise: str,
+                                   session: str, opponent: str, next_seq: int) -> list[Observation]:
+    """Read opponent observations independently of whether OUR execution was verified.
+
+    Exclude unknown sequence numbers, open snaps, current/future snaps, other
+    opponents, and other sessions/franchises.
+    """
+    if not all((franchise, session, opponent)) or next_seq <= 0:
+        raise ValueError("explicit franchise, session, opponent and positive next_seq required")
+    cols = _columns(conn, "snaps")
+    if not {"session_id", "side", "snap_seq", "result"} <= cols:
+        raise ValueError("snaps lacks chronological observation columns")
+    concept = "COALESCE(NULLIF(s.concept_typed,''),s.concept_seen)" if "concept_typed" in cols else (
+        "s.concept_seen" if "concept_seen" in cols else "NULL")
+    from cfb_coach.madden.situation import concept_family
+    sql = ("SELECT s.snap_seq," + concept + " FROM snaps s JOIN game_sessions g ON g.session_id=s.session_id"
+           " WHERE g.dynasty=? AND s.session_id=? AND g.opponent_id=? AND s.side='defense'"
+           " AND s.snap_seq > 0 AND s.snap_seq < ? AND s.result IS NOT NULL"
+           " ORDER BY s.snap_seq,s.id")
+    observations = []
+    seen: set[int] = set()
+    for seq, raw in conn.execute(sql, (franchise, session, opponent, next_seq)):
+        if int(seq) in seen:
+            continue
+        family = concept_family(raw)
+        if family in CONCEPTS:
+            observations.append(Observation(session, opponent, int(seq), family))
+            seen.add(int(seq))
+    return observations
+
+
+def _add(table: dict[str, list[int]], key: str, success: bool) -> None:
+    val = table.setdefault(key, [0, 0])
+    val[0] += int(success)
+    val[1] += 1
+
+
+def _key(*parts: str) -> str:
+    return json.dumps(parts, separators=(",", ":"))
+
+
+def fit(rows: Sequence[Snap]) -> dict[str, Any]:
+    """Learn hierarchical success probabilities, not prewritten football counters."""
+    glob: dict[str, list[int]] = {}
+    ctx: dict[str, list[int]] = {}
+    fam: dict[str, list[int]] = {}
+    matchup: dict[str, list[int]] = {}
+    play: dict[str, list[int]] = {}
+    concepts: Counter[str] = Counter()
+    for r in rows:
+        _add(glob, "all", r.offense_success)
+        _add(ctx, r.context, r.offense_success)
+        _add(fam, _key(r.context, r.family), r.offense_success)
+        _add(play, _key(r.context, r.formation, r.play), r.offense_success)
+        if r.concept is not None:
+            concepts[r.concept] += 1
+            _add(matchup, _key(r.context, r.family, r.concept), r.offense_success)
+    return {"schema": SCHEMA, "target": "offense_success", "policy": "shadow_only",
+            "n_verified": len(rows), "n_games": len({r.session for r in rows}),
+            "global": glob, "contexts": ctx, "families": fam, "matchups": matchup,
+            "plays": play, "concept_counts": dict(concepts),
+            "evidence": "verified execution only; observational, not causal"}
+
+
+def _posterior(count: Sequence[int] | None, prior: float, strength: float) -> tuple[float, int]:
+    success, n = (int(count[0]), int(count[1])) if count else (0, 0)
+    return (success + strength * prior) / (n + strength), n
+
+
+def baseline(model: Mapping[str, Any], context: str) -> float:
+    p, _ = _posterior(model["global"].get("all"), 0.5, 4.0)
+    return _posterior(model["contexts"].get(context), p, 16.0)[0]
+
+
+def offense_risk(model: Mapping[str, Any], context: str, formation: str,
+                 play: str, family: str, concept: str | None) -> tuple[float, dict[str, int]]:
+    base = baseline(model, context)
+    family_p, family_n = _posterior(model["families"].get(_key(context, family)), base, 16.0)
+    play_p, play_n = _posterior(model["plays"].get(_key(context, formation, play)), family_p, 24.0)
+    if concept is None:
+        return play_p, {"family": family_n, "play": play_n, "matchup": 0}
+    matchup_p, matchup_n = _posterior(model["matchups"].get(_key(context, family, concept)), family_p, 16.0)
+    return 0.7 * matchup_p + 0.3 * play_p, {
+        "family": family_n, "play": play_n, "matchup": matchup_n}
+
+
+def concept_belief(model: Mapping[str, Any], prior_snaps: Sequence[Snap | Observation], *,
+                   session: str, opponent: str, next_seq: int) -> dict[str, float]:
+    """Update concept distribution using strictly earlier same-game evidence."""
+    if next_seq <= 0:
+        raise ValueError("next_seq must be a positive pre-snap sequence")
+    counts = Counter({c: 1.0 + float(model["concept_counts"].get(c, 0)) for c in CONCEPTS})
+    prior_n = sum(counts.values())
+    counts = Counter({c: (n / prior_n) * 12.0 for c, n in counts.items()})
+    seen: set[int] = set()
+    for r in prior_snaps:
+        if (r.session == session and r.opponent == opponent and
+                r.seq is not None and 0 < r.seq < next_seq and r.seq not in seen and r.concept in CONCEPTS):
+            counts[r.concept] += 1.0
+            seen.add(r.seq)
+    total = sum(counts.values())
+    return {c: float(counts[c] / total) for c in CONCEPTS}
+
+
+def rank(model: Mapping[str, Any], *, context: str, calls: Sequence[Mapping[str, Any]],
+         belief: Mapping[str, float]) -> dict[str, Any]:
+    """Rank only explicitly installed/legal calls. Does not apply any call."""
+    if model.get("schema") != SCHEMA or model.get("policy") != "shadow_only":
+        raise ValueError("unsupported or non-shadow defensive model")
+    from cfb_coach.madden.defense_select import call_family
+    if any(float(v) < 0 or not math.isfinite(float(v)) for v in belief.values()):
+        raise ValueError("invalid offense concept probability")
+    total = sum(float(belief.get(c, 0)) for c in CONCEPTS)
+    if total <= 0 or abs(total - 1.0) > 1e-6:
+        raise ValueError("offense concept probabilities must sum to one")
+    scores = []
+    for cand in calls:
+        if cand.get("installed") is not True or cand.get("legal") is not True:
+            continue
+        form, play = str(cand.get("formation") or ""), str(cand.get("play") or "")
+        fam = call_family(play)
+        if not (form and play and fam):
+            continue
+        weighted = 0.0
+        for concept in CONCEPTS:
+            p, _n = offense_risk(model, context, form, play, fam, concept)
+            weighted += float(belief.get(concept, 0)) * p
+        _, support = offense_risk(model, context, form, play, fam, None)
+        scores.append({"formation": form, "play": play, "family": fam,
+                       "predicted_offense_success": round(weighted, 5), "support": support})
+    scores.sort(key=lambda x: (x["predicted_offense_success"], x["formation"], x["play"]))
+    return {"schema": SCHEMA, "applied": False, "ready_for_live": False,
+            "model_games": model["n_games"], "model_snaps": model["n_verified"],
+            "ranked": scores, "reason": "observational shadow predictions; no verified live gate"}
+
+
+def logloss(p: float, y: bool) -> float:
+    q = max(1e-5, min(1 - 1e-5, p))
+    return -math.log(q if y else 1 - q)
+
+
+def evaluate(rows: Sequence[Snap], *, bootstraps: int = 400, seed: int = 27) -> dict[str, Any]:
+    """Forward-only whole-game replay; no future game/current-snap leakage."""
+    grouped: dict[str, list[Snap]] = defaultdict(list)
+    for r in rows:
+        grouped[r.session].append(r)
+    per_game: list[tuple[str, float, float, int]] = []
+    for game, holdout in sorted(grouped.items(),
+                                key=lambda item: (min(r.started_ts for r in item[1]), item[0])):
+        started = min(r.started_ts for r in holdout)
+        other = [r for r in rows if r.started_ts < started]
+        if not other:
+            continue
+        model = fit(other)
+        baseline_loss = challenger_loss = 0.0
+        tested = 0
+        for r in sorted(holdout, key=lambda item: (item.seq is None, item.seq or 0)):
+            if r.seq is None or r.seq <= 0:
+                continue
+            distribution = concept_belief(model, holdout, session=r.session,
+                                          opponent=r.opponent, next_seq=r.seq)
+            prediction = sum(distribution[c] * offense_risk(model, r.context, r.formation,
+                              r.play, r.family, c)[0] for c in CONCEPTS)
+            challenger_loss += logloss(prediction, r.offense_success)
+            baseline_loss += logloss(baseline(model, r.context), r.offense_success)
+            tested += 1
+        if tested:
+            per_game.append((game, baseline_loss, challenger_loss, tested))
+    total = sum(item[3] for item in per_game)
+    gain = sum(item[1] - item[2] for item in per_game) / total if total else 0.0
+    interval = None
+    if len(per_game) >= 2:
+        rng = random.Random(seed)
+        values = []
+        for _ in range(bootstraps):
+            sample = [rng.choice(per_game) for __ in per_game]
+            n = sum(x[3] for x in sample)
+            values.append(sum(x[1] - x[2] for x in sample) / n)
+        values.sort()
+        interval = [values[int(0.025 * (bootstraps - 1))],
+                    values[int(0.975 * (bootstraps - 1))]]
+    passes = bool(total >= MIN_EVAL_SNAPS and len(per_game) >= MIN_GAMES and
+                  interval is not None and interval[0] > 0 and gain >= 0.02)
+    return {"heldout_games": len(per_game), "heldout_snaps": total,
+            "logloss_improvement_vs_context_baseline": round(gain, 6),
+            "game_cluster_bootstrap_95ci": interval,
+            "prediction_gate": "PASS" if passes else "NO_GO",
+            "live_activation": "NOT_ALLOWED", "observational_only": True}
