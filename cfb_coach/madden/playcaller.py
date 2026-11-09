@@ -80,6 +80,12 @@ class MaddenCall:
             line = format_offense(self.formation, self.play, self.adj_or_macro, self.read_or_user)
         else:
             line = format_defense(self.formation, self.play, self.adj_or_macro, self.read_or_user)
+            # Defensive V2 gets an actual prioritized USER read sequence
+            # analogous to offensive PRIMARY -> SECONDARY, not merely a static
+            # positional "user linebacker" hint. Existing callers unchanged.
+            guidance = getattr(self, "user_guidance", None)
+            if isinstance(guidance, dict) and guidance.get("first_read") and guidance.get("second_read"):
+                line += f"\n  USER READ: {guidance['first_read']} → {guidance['second_read']}"
         if self.suggest_macro:
             line += f"\n  SUGGEST macro: {self.suggest_macro}"
         if self.macro_line():
