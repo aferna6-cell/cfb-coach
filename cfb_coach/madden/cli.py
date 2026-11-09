@@ -702,7 +702,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     elif not cpu:
         print("HUMAN OFFENSE ML PILOT: OFF (heuristic offense; --heuristic-offense).")
     if defense_model in ("v1", "v2") and offense_only:
-        print("HUMAN DEFENSE V1: ignored (CPU games are offense-only; add --cpu-defense to opt in).")
+        print("DEFENSE MODEL: ignored (CPU games are offense-only; add --cpu-defense to opt in).")
     if cpu_defense:
         print("CPU DEFENSE: ON for this play session only (--cpu-defense).")
     if explicit_defense_v2:
