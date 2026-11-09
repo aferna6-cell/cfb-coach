@@ -22,14 +22,15 @@ Reading: with little data the learned model is no better than the prior (it corr
 | 0.4 | 550 | 1.331 | 1.499 | True |
 | 0.7 | 550 | 1.027 | 1.488 | True |
 
-## 3. Live latency (100 full cycles per side, in-process, repo snapshot books)
+## 3. Live latency through the REAL continuous loop (`cmd_game`, 100 snaps per side, persisted store, cold reload audit)
 
-| side | formations | candidates | p50 ms | p95 ms | max ms | timeouts >150ms | fallbacks | card/action mismatches |
-|---|---|---|---|---|---|---|---|---|
-| offense | 5 | 93 | 34.4 | 49.6 | 55.9 | 0 | 0 | 0 |
-| defense | 6 | 123 | 27.5 | 40.3 | 46.4 | 0 | 0 | 0 |
+Books = the PROPOSED 15-offense / 13-defense catalog books (324 / 297 plays); model = labelled cold-start prior. Latency = Enter on the situation -> card ready (parse + decision + persistence + render).
 
-This is NOT the owner's loaded UI/DB latency; re-run `preflight` on that machine.
+| run | snaps | p50 ms | p95 ms | max ms | timeouts >150ms | search-deadline fallbacks | audit |
+|---|---|---|---|---|---|---|---|
+| cold-start, proposed books | 200 | 24.2 | 40.8 | 55.8 | 0 | 0 | PASS |
+
+Worst case (exact-level evidence on EVERY offensive play, pure-noise effects so nothing can be pruned) measured separately: p50 ~60 ms, p95 ~109 ms, max ~133 ms, occasionally hitting the 85% search deadline (flagged as a fallback). Real histories are far sparser. This is NOT the owner's laptop: re-run `local-finish` there.
 
 ## 4. Comparisons NOT run (and why)
 

@@ -133,7 +133,7 @@ blocking: ['offense_installed_book_confirmed_by_owner', 'defense_installed_book_
   "evidence": {
    "snaps": 200,
    "rc": 0,
-   "wall_s": 9.64
+   "wall_s": 4.58
   }
  },
  {
@@ -142,13 +142,13 @@ blocking: ['offense_installed_book_confirmed_by_owner', 'defense_installed_book_
   "critical": false,
   "evidence": {
    "n": 200,
-   "p50": 38.278488500054664,
-   "p95": 59.5907869999337,
-   "max": 63.65091899988329,
+   "p50": 16.77068600019993,
+   "p95": 25.192191999849456,
+   "max": 32.936557000084576,
    "scope": "this machine, real cmd_game loop, persisted store; repo snapshot books",
    "finish_ms": {
-    "p50": 3.657694000025913,
-    "p95": 5.382475000033082
+    "p50": 3.329431500105784,
+    "p95": 4.459978999875602
    }
   },
   "how_to_run": "unified preflight ... on the owner's laptop"

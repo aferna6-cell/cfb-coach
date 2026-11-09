@@ -19,6 +19,7 @@ from cfb_coach.madden.unified import postgame as PG, preflight as PF, sim
 from cfb_coach.madden.unified.types import DEF, OFF
 from cfb_coach.madden.unified.world_model import WorldModel
 from tests.unified.helpers import coordinator
+from pathlib import Path
 
 
 def truth_rmse(rows, make):
@@ -59,14 +60,19 @@ def main() -> int:
     for habit in (0.0, 0.4, 0.7):
         r = PG.eval_opponent(sim.gen_games(12, 50, seed=5, habit=habit), DEF)
         L.append(f"| {habit} | {r['n']} | {r['belief_logloss']:.3f} | {r['frequency_logloss']:.3f} | {r['belief_better']} |")
-    L += ["", "## 3. Live latency (100 full cycles per side, in-process, repo snapshot books)", "",
-          "| side | formations | candidates | p50 ms | p95 ms | max ms | timeouts >150ms | fallbacks | card/action mismatches |", "|---|---|---|---|---|---|---|---|---|"]
-    for side in (OFF, DEF):
-        co = coordinator(side)
-        r = PF.run_cycle(co, game_id="val", n=100)
-        L.append(f"| {side} | {len(co.inventory)} | {len(co.legal_candidates())} | {r['latency_ms']['p50']:.1f} | {r['latency_ms']['p95']:.1f} | "
-                 f"{r['latency_ms']['max']:.1f} | {r['timeouts']} | {r['fallbacks']} | {r['card_action_mismatches']} |")
-    L += ["", "This is NOT the owner's loaded UI/DB latency; re-run `preflight` on that machine.", "",
+    import json as _json
+    import tempfile
+    from cfb_coach.madden.unified import livepath as LP
+    D = Path(__file__).resolve().parents[2] / "docs" / "madden_ml" / "unified_v1_first_cpu_game"
+    books = {s: {"inventory": (_p := _json.loads((D / f"proposal_{s}.json").read_text()))["inventory"], "fingerprint": _p["proposed_fingerprint"]} for s in (OFF, DEF)}
+    L += ["", "## 3. Live latency through the REAL continuous loop (`cmd_game`, 100 snaps per side, persisted store, cold reload audit)", "",
+          "Books = the PROPOSED 15-offense / 13-defense catalog books (324 / 297 plays); model = labelled cold-start prior. Latency = Enter on the situation -> card ready (parse + decision + persistence + render).", "",
+          "| run | snaps | p50 ms | p95 ms | max ms | timeouts >150ms | search-deadline fallbacks | audit |", "|---|---|---|---|---|---|---|---|"]
+    run = LP.run_live_benchmark(books, model_path=str(D / "cold_start_model.json"), store_path=Path(tempfile.mkdtemp()) / "s.db", n_per_side=100)
+    a_ = LP.audit_run(run, books)
+    L.append(f"| cold-start, proposed books | {a_['snaps']} | {a_['latency_start_ms']['p50']:.1f} | {a_['latency_start_ms']['p95']:.1f} | {a_['latency_start_ms']['max']:.1f} | "
+             f"{a_['timeouts_over_150ms']} | {a_['fallbacks']} | {'PASS' if a_['ok'] else 'FAIL'} |")
+    L += ["", "Worst case (exact-level evidence on EVERY offensive play, pure-noise effects so nothing can be pruned) measured separately: p50 ~60 ms, p95 ~109 ms, max ~133 ms, occasionally hitting the 85% search deadline (flagged as a fallback). Real histories are far sparser. This is NOT the owner's laptop: re-run `local-finish` there.", "",
           "## 4. Comparisons NOT run (and why)", "",
           "- **Regularised boosted-tree challenger:** not run. scikit-learn/xgboost are not installed in this environment and, more importantly, "
           "there is no real labelled game data on which a tree-vs-hierarchical comparison would mean anything. Spec: compare 'when the data supports evaluation'.",
