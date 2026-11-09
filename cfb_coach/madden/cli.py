@@ -665,6 +665,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     defense_franchise = getattr(args, "defense_franchise", None)
     defense_action_confirmations = getattr(args, "defense_action_confirmations", None)
     defense_installed_fingerprint = getattr(args, "defense_installed_fingerprint", None)
+    defense_verified_roles = getattr(args, "defense_verified_roles", None)
     explicit_defense_v1 = defense_model == "v1" and not offense_only
     explicit_defense_v2 = defense_model == "v2" and not offense_only
     if defense_model == "v2":
@@ -848,6 +849,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             defense_franchise=defense_franchise,
             defense_action_confirmations=defense_action_confirmations,
             defense_installed_fingerprint=defense_installed_fingerprint,
+            defense_verified_roles=defense_verified_roles,
             cpu_defense=cpu_defense,
         )
         _maybe_shadow(db, sit, call, oid)
@@ -879,6 +881,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             kwargs.setdefault("defense_franchise", defense_franchise)
             kwargs.setdefault("defense_action_confirmations", defense_action_confirmations)
             kwargs.setdefault("defense_installed_fingerprint", defense_installed_fingerprint)
+            kwargs.setdefault("defense_verified_roles", defense_verified_roles)
             kwargs.setdefault("cpu_defense", cpu_defense)
             return make_call(sit, oid, db, **kwargs)
 
@@ -1052,6 +1055,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                 defense_franchise=defense_franchise,
                 defense_action_confirmations=defense_action_confirmations,
                 defense_installed_fingerprint=defense_installed_fingerprint,
+                defense_verified_roles=defense_verified_roles,
                 cpu_defense=cpu_defense,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
