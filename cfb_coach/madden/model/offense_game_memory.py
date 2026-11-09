@@ -48,7 +48,7 @@ def _fenced_seq(value: Any, snap_id: Any, session_id: str) -> int | None:
                 return seq
     except (TypeError, ValueError):
         pass
-    match = re.fullmatch(re.escape(str(session_id)) + r"-(\\d+)", str(snap_id or ""))
+    match = re.fullmatch(re.escape(str(session_id)) + r"-(\d+)", str(snap_id or ""))
     return int(match.group(1)) if match and int(match.group(1)) > 0 else None
 
 
