@@ -141,6 +141,7 @@ def maybe_apply_v2(
         from cfb_coach.madden.model.schema import PropensityMethod
 
         resolution = defense_semantics.resolve(best["play"], best["formation"])
+        play_knowledge = defense_semantics.explain(best["play"], best["formation"])
         assignment = ("known catalog label, defender-level jobs NOT verified"
                       if resolution.key else "coverage and defender assignments UNKNOWN")
         detail = {
@@ -150,6 +151,12 @@ def maybe_apply_v2(
             "support": best["support"], "opponent_belief": belief,
             "earlier_opponent_concepts": len(history),
             "coverage_resolution": resolution.resolution,
+            "coverage_knowledge": {
+                "known": play_knowledge.get("known") or [],
+                "hypotheses": play_knowledge.get("hypotheses") or [],
+                "unknown": play_knowledge.get("unknown") or [],
+                "verification_level": play_knowledge.get("verification_level"),
+            },
             "defender_assignments": "UNKNOWN",
             "evidence": "verified observational defensive executions",
             "no_adjustment": not bool(plan["actions"]),
