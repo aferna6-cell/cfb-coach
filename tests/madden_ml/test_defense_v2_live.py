@@ -195,3 +195,33 @@ def test_v2_rejects_unconfirmed_or_changed_installed_book(tmp_path, monkeypatch)
         assert result.ml_defense_fallback["fell_back"]
     assert not db.logged
     db.conn.close()
+
+
+
+def test_actual_make_call_uses_v2_selected_defense_only_on_explicit_optin(tmp_path, monkeypatch):
+    from cfb_coach.madden import playcaller
+    from cfb_coach.madden.situation import parse_madden_situation
+    from cfb_coach.madden import human_opponents
+    db = FakeDb(tmp_path / "test.db")
+    db.get_opponent = lambda _id: None
+    monkeypatch.setattr(live, "load_model", lambda _: artifact())
+    monkeypatch.setattr(playcaller, "_pick_defense", lambda *a, **k: call())
+    monkeypatch.setattr(human_opponents, "is_cold_start_opponent", lambda *a, **k: False)
+    sit = parse_madden_situation("d 3&7", default_side="defense")
+    sit.extras.update({"session_id": "new-game", "snap_seq": 3})
+    selected = playcaller.make_call(
+        sit, "cpu-test", db,
+        playbook={"defense": {"Nickel Over": ["Cover 3 Sky"]}},
+        active_macros=["SAFE DEEP"], live_macros=False,
+        defense_model="v2", defense_model_path="unused",
+        defense_test_db=str(db.path), defense_franchise="test-franchise",
+        defense_installed_fingerprint=verified_book_hash(),
+        cpu_defense=True,
+    )
+    assert selected.side == "defense"
+    assert selected.play == "Cover 3 Sky"
+    assert selected.call_label == "EXPERIMENTAL"
+    assert selected._pending_ml_decision.policy_version == v2.SCHEMA
+    assert selected.defense_v2["applied"]
+    assert "PLAYER ASSIGNMENTS: UNKNOWN" in selected.format()
+    db.conn.close()
