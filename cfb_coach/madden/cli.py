@@ -639,9 +639,10 @@ def cmd_play(args: argparse.Namespace) -> int:
         explicit = getattr(args, "defense_test_db", None)
         path = getattr(args, "defense_model_path", None)
         franchise = getattr(args, "defense_franchise", None)
-        if not all((requested, explicit, path, franchise)):
+        inventory = getattr(args, "defense_installed_fingerprint", None)
+        if not all((requested, explicit, path, franchise, inventory)):
             print("REFUSING DEFENSIVE V2: requires --db, --defense-test-db, "
-                  "--defense-model-path and --defense-franchise", file=sys.stderr)
+                  "--defense-model-path, --defense-franchise and --defense-installed-fingerprint", file=sys.stderr)
             return 2
         actual, checked = Path(requested).expanduser().resolve(), Path(explicit).expanduser().resolve()
         live_data = (Path.home() / ".cfb-coach").resolve()
@@ -663,6 +664,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     defense_test_db = getattr(args, "defense_test_db", None)
     defense_franchise = getattr(args, "defense_franchise", None)
     defense_action_confirmations = getattr(args, "defense_action_confirmations", None)
+    defense_installed_fingerprint = getattr(args, "defense_installed_fingerprint", None)
     explicit_defense_v1 = defense_model == "v1" and not offense_only
     explicit_defense_v2 = defense_model == "v2" and not offense_only
     if defense_model == "v2":
@@ -845,6 +847,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             defense_test_db=defense_test_db,
             defense_franchise=defense_franchise,
             defense_action_confirmations=defense_action_confirmations,
+            defense_installed_fingerprint=defense_installed_fingerprint,
             cpu_defense=cpu_defense,
         )
         _maybe_shadow(db, sit, call, oid)
@@ -875,6 +878,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             kwargs.setdefault("defense_test_db", defense_test_db)
             kwargs.setdefault("defense_franchise", defense_franchise)
             kwargs.setdefault("defense_action_confirmations", defense_action_confirmations)
+            kwargs.setdefault("defense_installed_fingerprint", defense_installed_fingerprint)
             kwargs.setdefault("cpu_defense", cpu_defense)
             return make_call(sit, oid, db, **kwargs)
 
@@ -1047,6 +1051,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                 defense_test_db=defense_test_db,
                 defense_franchise=defense_franchise,
                 defense_action_confirmations=defense_action_confirmations,
+                defense_installed_fingerprint=defense_installed_fingerprint,
                 cpu_defense=cpu_defense,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
