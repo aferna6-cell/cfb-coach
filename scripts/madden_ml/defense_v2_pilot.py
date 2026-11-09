@@ -61,6 +61,8 @@ def main() -> int:
                 p.error("refusing to place a shadow artifact in the live data directory")
             model = v2.fit(rows)
             model["franchise"] = args.franchise
+            from cfb_coach.madden.model.defense_v2_actions import fit_verified_adjustment_effects
+            model["executed_adjustments"] = fit_verified_adjustment_effects(conn, franchise=args.franchise)
             model["trained_sessions"] = sorted({r.session for r in rows})
             model["trained_through_started_ts"] = max(r.started_ts for r in rows)
             out.parent.mkdir(parents=True, exist_ok=True)
