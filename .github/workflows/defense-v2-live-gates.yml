@@ -29,6 +29,7 @@ jobs:
             tests/madden_ml/test_defense_v2_live.py \
             tests/madden_ml/test_defense_v2_actions_and_pregame.py \
             tests/madden_ml/test_defense_v2_postgame.py \
+            tests/madden_ml/test_defense_v2_roles.py \
             tests/madden_ml/test_defense_policy_scope.py \
             tests/madden_ml/test_defense_v1_live.py
       - name: Run synthetic 15-formation scorer timing diagnostic
@@ -42,6 +43,7 @@ jobs:
             cfb_coach/madden/model/defense_v2_pilot.py \
             cfb_coach/madden/model/defense_v2_live.py \
             cfb_coach/madden/model/defense_v2_actions.py \
+            cfb_coach/madden/model/defense_v2_roles.py \
             cfb_coach/madden/model/playbook_architect.py \
             scripts/madden_ml/defense_v2_pregame.py \
             scripts/madden_ml/defense_v2_postgame.py \
