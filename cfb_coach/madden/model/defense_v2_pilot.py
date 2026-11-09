@@ -369,14 +369,44 @@ def _football_prior(play: str, formation: str, concept: str) -> float:
     return max(-0.045, min(0.045, 0.20 * edge))
 
 
+def _front_prior(formation: str, context: str, concept: str) -> float:
+    """Small low-data personnel/run-fit prior, not a verified play assignment.
+
+    This only differentiates obvious run-front vs pass-subpackage matchups
+    at cold start, and fades with verified defensive executions.
+    """
+    form = (formation or "").strip().lower()
+    run = concept in ("run", "rpo")
+    short = context == "short"
+    long = context == "long"
+    if form.startswith(("goal line", "5-2", "4-4", "46 ")):
+        return (-0.035 if short and run else
+                0.035 if not run else -0.010)
+    if form.startswith(("dime", "dollar", "prevent")):
+        return (0.04 if short and run else
+                -0.026 if long and not run else
+                0.015 if run else -0.008)
+    if form.startswith(("4-3", "3-4")):
+        return (-0.023 if short and run else
+                0.012 if long and not run else
+                -0.009 if run else 0.004)
+    if form.startswith(("nickel", "4-2-5", "3-3-5", "2-4-5")):
+        return (0.009 if short and run else
+                -0.012 if long and not run else
+                0.0)
+    return 0.0
+
+
 def _prior_adjustment(model: Mapping[str, Any], formation: str,
-                      play: str, concept: str | None) -> float:
+                      play: str, concept: str | None,
+                      context: str = "unknown") -> float:
     if not concept:
         return 0.0
     n = max(0, int(model.get("n_verified", 0)))
     # Priors fade smoothly as executed defensive evidence accumulates.
     shrink = max(0.0, 1.0 - min(1.0, n / 160.0))
-    return shrink * _football_prior(play, formation, concept)
+    return shrink * (_football_prior(play, formation, concept)
+                     + _front_prior(formation, context, concept))
 
 
 def _posterior(count: Sequence[int] | None, prior: float, strength: float) -> tuple[float, int]:
@@ -400,7 +430,7 @@ def offense_risk(model: Mapping[str, Any], context: str, formation: str,
             "family": family_n, "play": play_n, "matchup": 0}
     matchup_p, matchup_n = _posterior(model["matchups"].get(_key(context, family, concept)), family_p, 16.0)
     predicted = 0.7 * matchup_p + 0.3 * play_p + structural
-    predicted += _prior_adjustment(model, formation, play, concept)
+    predicted += _prior_adjustment(model, formation, play, concept, context)
     return max(0.001, min(0.999, predicted)), {
         "family": family_n, "play": play_n, "matchup": matchup_n}
 
