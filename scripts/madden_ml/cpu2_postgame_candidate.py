@@ -17,6 +17,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) in sys.path:
@@ -71,24 +72,28 @@ def main() -> int:
             "--bootstrap", str(args.bootstrap),
         ],
     ]
-    env = dict(os.environ, PYTHONPATH=str(ROOT), CFB_COACH_MADDEN_DB=str(copy),
-               CFB_COACH_DB=str(out / "scratch_app.db"))
     log = []
     failure = None
-    for cmd in commands:
-        result = subprocess.run(
-            cmd, cwd=ROOT, env=env, capture_output=True, text=True,
-            check=False,
-        )
-        entry = {
-            "command": cmd, "exit_code": result.returncode,
-            "stdout": result.stdout[-24000:],
-            "stderr": result.stderr[-12000:],
-        }
-        log.append(entry)
-        if result.returncode:
-            failure = cmd
-            break
+    # heldout-eval deliberately refuses output inside data_dir(). Put the
+    # isolated application data dir outside the output folder while pointing
+    # Madden DB explicitly at the consistent, never-live SQLite snapshot.
+    with tempfile.TemporaryDirectory(prefix="cfb_cpu2_train_") as scratch:
+        env = dict(os.environ, PYTHONPATH=str(ROOT), CFB_COACH_MADDEN_DB=str(copy),
+                   CFB_COACH_DB=str(Path(scratch) / "cfb.db"))
+        for cmd in commands:
+            result = subprocess.run(
+                cmd, cwd=ROOT, env=env, capture_output=True, text=True,
+                check=False,
+            )
+            entry = {
+                "command": cmd, "exit_code": result.returncode,
+                "stdout": result.stdout[-24000:],
+                "stderr": result.stderr[-12000:],
+            }
+            log.append(entry)
+            if result.returncode:
+                failure = cmd
+                break
     report = {
         "schema": "cfb.cpu2.postgame_candidate.v1",
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
