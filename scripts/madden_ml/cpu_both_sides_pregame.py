@@ -157,21 +157,38 @@ def main() -> int:
     p.add_argument("--db", type=Path, required=True)
     p.add_argument("--franchise", required=True)
     p.add_argument("--cpu-opponent", required=True)
-    p.add_argument("--offense-artifact", type=Path, required=True)
+    p.add_argument("--offense-artifact", type=Path,
+                   help="required for generating a new offense model proposal")
     p.add_argument("--defense-artifact", type=Path)
     p.add_argument("--allow-cold-start", action="store_true",
                    help="Explicitly permit untrained defensive prior in a NEW test franchise")
     p.add_argument("--out-dir", type=Path, required=True)
+    p.add_argument("--check-only", action="store_true",
+                   help="read existing proposals and compare against locked installed books")
     args = p.parse_args()
 
     from cfb_coach.db import CoachDB
     db = CoachDB(args.db, read_only=True)
     try:
-        result = generate(
-            db=db, franchise=args.franchise, opponent=args.cpu_opponent,
-            offense_artifact=args.offense_artifact, defense_artifact=args.defense_artifact,
-            allow_cold_start=args.allow_cold_start, outdir=args.out_dir,
-        )
+        if args.check_only:
+            offense = json.loads((args.out_dir / "offense_proposal.json").read_text(encoding="utf-8"))
+            defense = json.loads((args.out_dir / "defense_proposal.json").read_text(encoding="utf-8"))
+            matches = audit(db=db, offense=offense, defense=defense)
+            result = {"status": "LOCKED_INVENTORY_MATCH_AUDIT",
+                      "franchise": args.franchise, "stored_books": matches,
+                      "both_books_match_model_proposals": all(
+                          row["ready_for_first_live_test"] for row in matches.values()
+                      ),
+                      "physical_installation_not_independently_verifiable": True,
+                      "loaded_150ms_latency_not_yet_measured": True}
+        else:
+            if args.offense_artifact is None:
+                p.error("--offense-artifact required to produce model-generated offense book")
+            result = generate(
+                db=db, franchise=args.franchise, opponent=args.cpu_opponent,
+                offense_artifact=args.offense_artifact, defense_artifact=args.defense_artifact,
+                allow_cold_start=args.allow_cold_start, outdir=args.out_dir,
+            )
     finally:
         db.close()
     print(json.dumps(result, indent=2, sort_keys=True))
