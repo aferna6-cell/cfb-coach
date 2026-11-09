@@ -976,6 +976,26 @@ def apply_experimental_offense(
             strategy_previous=strategy_previous,
             prepared_macros=prepared_macros,
         )
+        # Individual Xbox hot routes are independent of saved macros.
+        # In a no-macro game the selected ML play may receive a bounded,
+        # model-scored, first-party-verified single receiver route change.
+        # This check is skipped without time budget or explicit Madden input
+        # confirmation; NO ADJUSTMENT remains the normal safe result.
+        if not allow_macros and route_ctx is not None:
+            remaining = budget - (time.perf_counter() - started) * 1000.0
+            if remaining >= 24.0:
+                try:
+                    from cfb_coach.madden.model.offense_live_single_route import (
+                        maybe_add_single_route,
+                    )
+                    joint = maybe_add_single_route(
+                        joint, route_ctx=route_ctx, sit=sit,
+                        opponent_id=opponent_id,
+                        remaining_budget_ms=remaining - 8.0,
+                        confirmations=_rr._confirmations(),
+                    )
+                except (ValueError, TypeError, KeyError) as exc:
+                    logger.warning("Single hot-route candidate rejected: %s", exc)
         latency = (time.perf_counter() - started) * 1000.0
         if latency > budget:
             return _fallback(MLStatus.TIMEOUT, latency)
