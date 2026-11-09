@@ -24,7 +24,8 @@ const fs = require('fs');
   };
   const snapshot = async (label, extra = {}) => {
     const s = {
-      label, call: await T('#call'), panel: (await page.locator('#unified-panel').textContent()).trim(), resultNote: await T('#unified-result-note'),
+      label, call: await T('#call'), panel: (await page.locator('#unified-panel').textContent()).trim(),
+      visiblePanel: await T('#unified-panel'), resultNote: await T('#unified-result-note'),
       qbReads: (await page.locator('#qb-reads-list li').allInnerTexts()), qbVisible: await page.locator('#qb-reads').isVisible(),
       user: (await page.locator('#unified-panel .u-user').count()) ? await T('#unified-panel .u-user') : null,
       log: await page.locator('#log div').allTextContents(), err: await T('#err'), ...extra,
