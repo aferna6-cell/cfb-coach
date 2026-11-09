@@ -222,8 +222,13 @@ def _eligible(form: str, situation: str) -> bool:
 
 
 def defense_candidates(db: Any, opponent_id: str, evidence: Mapping[str, Any],
-                       records: Sequence[Mapping[str, Any]] | None = None) -> list[dict[str, Any]]:
+                       records: Sequence[Mapping[str, Any]] | None = None,
+                       v2_model: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
     from cfb_coach.madden.defense_select import COUNTERS, MIX
+    if v2_model is not None:
+        from cfb_coach.madden.model import defense_v2_pilot as v2
+        if v2_model.get("schema") != v2.SCHEMA or v2_model.get("policy") != "shadow_only":
+            raise ValueError("invalid V2 shadow artifact for defensive pregame")
 
     profile = evidence.get("opponent_profile") or {}
     shrink = float(profile.get("shrink") or 0.0)
@@ -253,6 +258,30 @@ def defense_candidates(db: Any, opponent_id: str, evidence: Mapping[str, Any],
                         adj += 0.08 * shrink * float(share) * float(w) * min(1.0, fams.get(ours, 0) / 2.0)
             values[sit] = round(base + adj, 6)
             matchup_parts[sit] = round(adj, 5)
+        if v2_model is not None:
+            # Reuse the same learned defensive outcome estimates as the live
+            # coordinator, rather than making formation choices from COUNTERS.
+            from cfb_coach.madden.defense_select import call_family
+            counts = v2_model.get("concept_counts") or {}
+            normalizer = sum(float(counts.get(c) or 0) + 1 for c in v2.CONCEPTS)
+            belief = {c: (float(counts.get(c) or 0) + 1) / normalizer for c in v2.CONCEPTS}
+            for ctx in MIX:
+                probe = DEF_PROBES[ctx]
+                key = v2.context_key(probe.down, probe.distance)
+                possibilities = []
+                for play in plays:
+                    family = call_family(play)
+                    if family:
+                        success = sum(
+                            belief[c] * v2.offense_risk(v2_model, key, form, play, family, c)[0]
+                            for c in v2.CONCEPTS
+                        )
+                        possibilities.append(1 - success)
+                # Prior supplies a small personnel-fit term; the primary value
+                # comes from verified-execution outcome estimates.
+                values[ctx] = round(
+                    0.92 * max(possibilities) + 0.08 * PACKAGE_FIT[ctx].get(pkg, 0.4)
+                    if possibilities and _eligible(form, ctx) else 0.0, 6)
         ev = forms_ev.get(form) or {}
         shift = EVIDENCE_WEIGHT * float(ev.get("delta") or 0.0)
         out.append({
@@ -578,7 +607,8 @@ def design_side(side: str, *, opponent_id: str, db: Any, applied: Mapping[str, A
                 evidence: Mapping[str, Any], art: Any = None, max_formations: int = MAX_FORMATIONS,
                 evidence_quality: str = "prior_driven", records: Sequence[Mapping[str, Any]] | None = None,
                 opponent_type: str = "human", roster_input: Mapping[str, Any] | None = None,
-                remove_only_when_full: bool = True) -> dict[str, Any]:
+                remove_only_when_full: bool = True,
+                defense_v2_model: Mapping[str, Any] | None = None) -> dict[str, Any]:
     t0 = time.perf_counter()
     cap = max(1, min(int(max_formations), MAX_FORMATIONS))
     if side == "offense":
@@ -586,8 +616,9 @@ def design_side(side: str, *, opponent_id: str, db: Any, applied: Mapping[str, A
         build = lambda recs: offense_candidates(art, opponent_id, db, evidence, recs, roster_input)  # noqa: E731
         evidence_n = int(evidence.get("labeled_rows") or 0)
     else:
-        cands = defense_candidates(db, opponent_id, evidence, records)
-        build = lambda recs: defense_candidates(db, opponent_id, evidence, recs)  # noqa: E731
+        cands = defense_candidates(db, opponent_id, evidence, records, v2_model=defense_v2_model)
+        build = lambda recs: defense_candidates(db, opponent_id, evidence, recs,
+                                                v2_model=defense_v2_model)  # noqa: E731
         evidence_n = int(evidence.get("verified_executions") or 0)
     by_id = {c["id"]: c for c in cands}
     weights = situation_weights(side, evidence)
