@@ -24,7 +24,7 @@ def _print(data: dict | list) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("mode", choices=("inventory", "audit", "train", "evaluate", "preview", "design"))
+    p.add_argument("mode", choices=("inventory", "audit", "train", "evaluate", "preview", "design", "postgame"))
     p.add_argument("--db", type=Path, required=True, help="explicit path to an existing Madden DB")
     p.add_argument("--franchise", help="exact recorded game_sessions.dynasty, not a guess")
     p.add_argument("--out", type=Path, help="output SHADOW artifact, outside live game data")
@@ -50,6 +50,27 @@ def main() -> int:
         if args.mode == "evaluate":
             _print({"franchise": args.franchise, "training_audit": stats,
                     "validation": v2.evaluate(rows)})
+            return 0
+        if args.mode == "postgame":
+            if not args.model or not args.out:
+                p.error("postgame requires --model (saved champion) and --out (new candidate)")
+            champion = json.loads(args.model.read_text(encoding="utf-8"))
+            if champion.get("trained_franchise") != args.franchise:
+                p.error("saved champion franchise mismatch")
+            report = v2.compare_champion_challenger(rows, champion)
+            if not rows:
+                p.error("no verified defensive execution rows for postgame update")
+            challenger = v2.fit(rows)
+            challenger["trained_franchise"] = args.franchise
+            challenger["trained_sessions"] = sorted({r.session for r in rows})
+            challenger["trained_through_started_ts"] = max(r.started_ts for r in rows)
+            out = args.out.resolve()
+            if out == args.db.resolve() or out == args.model.resolve() or Path.home().joinpath(".cfb-coach") in out.parents:
+                p.error("candidate must not replace the DB, saved champion or any live artifact")
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(challenger, indent=2, sort_keys=True), encoding="utf-8")
+            _print({"status": "CANDIDATE_ONLY_NOT_PROMOTED", "candidate": str(out),
+                    "verified": len(rows), "comparison": report})
             return 0
         if args.mode == "design":
             if not args.model or not args.out:
