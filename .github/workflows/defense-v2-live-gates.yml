@@ -31,6 +31,9 @@ jobs:
             tests/madden_ml/test_defense_v2_postgame.py \
             tests/madden_ml/test_defense_policy_scope.py \
             tests/madden_ml/test_defense_v1_live.py
+      - name: Run synthetic 15-formation scorer timing diagnostic
+        run: |
+          PYTHONPATH=. python scripts/madden_ml/bench_defense_v2.py --runs 20 --max-formations 15
       - name: Compile source and entrypoints
         run: |
           python -m py_compile \
@@ -42,5 +45,6 @@ jobs:
             cfb_coach/madden/model/playbook_architect.py \
             scripts/madden_ml/defense_v2_pregame.py \
             scripts/madden_ml/defense_v2_postgame.py \
+            scripts/madden_ml/bench_defense_v2.py \
             cfb_coach/madden/model/defense_v2_postgame.py \
             scripts/madden_ml/defense_v2_pilot.py
