@@ -917,6 +917,11 @@ def build_parser() -> argparse.ArgumentParser:
              "Does not train. Rollback: `ml defense-experimental --disable --db <absolute>`.",
     )
     p_play.add_argument(
+        "--coach-cpu-defense",
+        action="store_true",
+        help="Lions rollback: let the established heuristic defense coach CPU snaps in the same HTML game (offense ML unchanged).",
+    )
+    p_play.add_argument(
         "--score",
         default=None,
         metavar="US-THEM",
