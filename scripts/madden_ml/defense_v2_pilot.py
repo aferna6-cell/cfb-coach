@@ -24,7 +24,7 @@ def _print(data: dict | list) -> None:
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("mode", choices=("inventory", "audit", "train", "evaluate", "preview"))
+    p.add_argument("mode", choices=("inventory", "audit", "train", "evaluate", "preview", "design"))
     p.add_argument("--db", type=Path, required=True, help="explicit path to an existing Madden DB")
     p.add_argument("--franchise", help="exact recorded game_sessions.dynasty, not a guess")
     p.add_argument("--out", type=Path, help="output SHADOW artifact, outside live game data")
@@ -50,6 +50,26 @@ def main() -> int:
         if args.mode == "evaluate":
             _print({"franchise": args.franchise, "training_audit": stats,
                     "validation": v2.evaluate(rows)})
+            return 0
+        if args.mode == "design":
+            if not args.model or not args.out:
+                p.error("design requires --model and --out")
+            from cfb_coach.madden.model import defense_v2_playbook
+            from cfb_coach.madden import catalog
+            art = json.loads(args.model.read_text(encoding="utf-8"))
+            if art.get("trained_franchise") != args.franchise:
+                p.error("model franchise must match requested test franchise")
+            sources = {name: catalog.book_formations("defense", name)
+                       for name in catalog.book_names("defense")}
+            proposed = defense_v2_playbook.propose(catalogue=sources, model=art)
+            out = args.out.resolve()
+            if out == args.db.resolve() or Path.home().joinpath(".cfb-coach") in out.parents:
+                p.error("refusing to write a proposal into the live game directory")
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(proposed, indent=2, sort_keys=True), encoding="utf-8")
+            _print({"status": "PROPOSAL_ONLY_NOT_INSTALLED", "path": str(out),
+                    "formations": proposed["n_formations"], "plays": proposed["n_plays"],
+                    "fingerprint": proposed["proposal_fingerprint"]})
             return 0
         if args.mode == "train":
             if args.out is None:
