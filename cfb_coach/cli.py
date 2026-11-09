@@ -931,7 +931,8 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("v1", "v2"),
         default=None,
         help="Madden only: v1 uses the unverified offline logistic artifact; v2 uses an "
-             "isolated testing-franchise artifact trained exclusively on verified executions. V2 requires "
+             "an isolated testing-franchise artifact. With no defensive executions a separately " 
+             "labeled untrained, football-prior-only cold start may be used. V2 requires "
               "CFB_COACH_DEFENSE_V2_TEST_FRANCHISE and CFB_COACH_DEFENSE_V2_ARTIFACT environment variables. "
               "It is experimental, does not change the offense, and fails closed to the established caller. "
              "Rollback: run play again without this flag.",
