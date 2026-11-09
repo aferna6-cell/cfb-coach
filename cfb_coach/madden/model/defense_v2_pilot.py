@@ -127,7 +127,9 @@ def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Sna
         rows.append(Snap(str(session), str(opponent or ""), str(started or ""),
                          int(seq) if seq is not None else None, str(formation), str(play),
                          fam, context_key(down, dist), normalized, bool(won),
-                         yards, parsed.kind == "td", parsed.is_turnover))
+                         yards,
+                         None if parsed.kind == "unknown" else parsed.kind == "td",
+                         None if parsed.kind == "unknown" else parsed.is_turnover))
         stats["admitted_verified"] += 1
     stats["games"] = len({r.session for r in rows})
     stats["seq_known"] = sum(r.seq is not None for r in rows)
