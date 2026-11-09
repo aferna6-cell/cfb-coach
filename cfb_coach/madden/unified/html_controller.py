@@ -146,6 +146,10 @@ class UnifiedLiveController:
             panel["pending"] = {k: c.get(k) for k in ("snap_id", "side", "formation", "play", "adjustments", "changed_routes", "user", "reads", "explanation",
                                                        "opponent_prediction_source", "football_evidence_confidence", "evidence_note", "latency_ms", "expected",
                                                        "alternatives", "policy_prob")}
+            # Expose the exact pending snap for a client-side NEXT-situation preview.
+            # yardline is always from the current offense's own goal.
+            panel["pending_state"] = {"side": st.our_side, "down": st.down, "distance": st.distance,
+                                      "offense_yardline": st.yardline, "snap_id": st.snap_id}
             panel["solver"] = c.get("model_version")
             panel["fallback"] = c.get("fallback") or panel["fallback"]
             panel["result_perspective"] = ("OPPONENT OFFENSE — enter the yards THEY gained on this snap" if st.our_side == DEF
@@ -249,7 +253,7 @@ class UnifiedLiveController:
                         score_them: Any = None, score_set: bool = False, executed_status: str = "unknown", executed_formation: str | None = None,
                         executed_play: str | None = None, executed_macro: str | None = None, applied_recommended_action: bool = False,
                         confirmed_no_adjustment: bool = False, verify_touched: bool = False,
-                        request_key: str | None = None, **_ignored: Any) -> dict[str, Any]:
+                        auto_advance: bool = False, request_key: str | None = None, **_ignored: Any) -> dict[str, Any]:
         """Log the previous snap (if any) AND produce the next recommendation — the established 'Submit' button."""
         with self.lock:
             cached = self._idem(request_key)
@@ -259,7 +263,13 @@ class UnifiedLiveController:
                 return self._fail("this game is closed")
             from cfb_coach.madden.unified.inputs import parse_snap_line
             try:
-                line = self._situation_line(sit_raw, side)
+                if auto_advance and self.session.pending is not None:
+                    from cfb_coach.madden.unified.advance import next_situation_line
+                    line, why = next_situation_line(self.session.pending[0], outcome)
+                    if line is None:
+                        raise InputError("Cannot automatically advance: " + why)
+                else:
+                    line = self._situation_line(sit_raw, side)
                 parse_snap_line(line, self.session.last_side)  # validate the NEXT situation before changing anything
                 # Owner explicitly authorized following every model call. Only the
                 # completed-snap Submit applies this standing attestation:
