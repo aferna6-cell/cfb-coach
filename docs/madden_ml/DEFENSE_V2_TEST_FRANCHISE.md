@@ -54,3 +54,36 @@ Developer-only preview requires a saved shadow artifact, exact test franchise/se
 ## Future work: shared offense/defense evidence
 
 Track separately (a) defenses *observed from opponents* against our offense, (b) defenses *we actually executed* against CPU/human offenses, and (c) opponent offensive tendencies. Attach game, side, opponent, CPU/human type, outcome, exact play, confirmation/evidence tier and training cutoff. These can eventually share scheme-vs-concept features with strong shrinkage and a controlled ablation. An opponent successfully using a defense does **not** prove that our team, play or adjustments would have the same effect. Do not copy observed success directly into our defensive policy.
+
+
+## V2 implementation update (Nov 9)
+
+Current development branch includes guarded live V2 selector, model-scored pregame stock-formation proposal, observed multi-outcome risk, confidence-gated learned defensive structural features, earlier-snap opponent beliefs and offline champion/challenger postgame evaluation. All experiments are opt-in; no main franchise changes or automatic model promotion.
+
+### Test franchise commands (read-only except writing temporary shadow artifacts)
+
+    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py inventory --db /PATH/TO/TEST/madden27.db
+    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py audit --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE"
+    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py train --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE" --out /tmp/test-defense-v2-shadow.json
+    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py evaluate --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE"
+    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py design --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE" --model /tmp/test-defense-v2-shadow.json --out /tmp/test-defense-v2-playbook-proposal.json
+
+For the explicitly isolated test franchise, after confirming a physical installed book matches the stored book and the shadow artifact was trained before the current game:
+
+    export CFB_COACH_DEFENSE_V2_TEST_FRANCHISE="EXACT_DYNASTY_VALUE"
+    export CFB_COACH_DEFENSE_V2_ARTIFACT=/tmp/test-defense-v2-shadow.json
+    python3 -m cfb_coach play --game madden27 --defense-model v2 --cpu-defense ...
+
+The final command is a developer-facing example; fill in the actual required opponent arguments using play --help. In terminal, choose defense side (d). Omit --defense-model v2 for instant rollback next session. V2 cannot run against the default primary Madden DB and rejects an unknown or mismatched game/franchise.
+
+Postgame challenge (never promotes weights):
+
+    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py postgame --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE" --model /tmp/test-defense-v2-shadow.json --out /tmp/test-defense-v2-next-candidate.json
+
+### What is and is not ready
+
+Implemented: actual optional V2 model selection path, verified-execution-only CPU and human rows, stock installed book restriction, a maximum of 15 formations, learned opponent concept probabilities, structured coverage semantics, outcome utility estimates and independent challenger training. All individual defender responsibilities that lack diagram verification are UNKNOWN. Model-scored pregame proposals do not automatically install or arm themselves; they still require the existing physical editor verification workflow.
+
+Not implemented or confirmed: individual defensive adjustment effect learning and safe adjusted-play scoring, physically verified controller actions, full eleven-defender role assignments for every play, and loaded local full-book 150 ms performance. Real-game execution capture and snap chronology need to be checked on the owner's machine. A good predictive metric does not prove the policy improves win rate. Main franchise is unchanged.
+
+**Current overall verdict: NO-GO for declaring the complete same-as-offense coordinator ready.** An experimental stock-play-only V2 test is possible only after the local setup and performance gates pass. With no verified defensive executions in the new test franchise, use the established caller and collect confirmations first.
