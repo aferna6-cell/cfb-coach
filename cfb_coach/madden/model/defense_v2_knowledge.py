@@ -192,7 +192,7 @@ def user_guidance(*, play: str, formation: str, family: str,
     elif scheme in ("cover2", "tampa2"):
         user_role = "User middle hook/seam defender IF shown by play art"
     else:
-        user_role = "User an underneath hook/curl defender IF available"
+        user_role = "User an underneath hook-curl defender IF available"
 
     # Format defender read for existing compact single-user-job Madden UI:
     # no arrows or slashes (format_defense strips these separators).
