@@ -714,7 +714,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             db.close()
             return 2
         print("DEFENSE V2: EXPERIMENTAL TEST FRANCHISE ONLY.")
-        print("  This is NOT a verified policy; missing/untrained artifacts fall back to the established caller.")
+        print("  A ZERO-EVIDENCE V2 COLD START is allowed when explicitly prepared; it is UNTRAINED.") 
+        print("  Invalid artifacts fall back to the established caller; gameplay benefit unproven.")
         print(f"  Required game franchise identity: {franchise}; artifact: {artifact}")
         print("  V2 may recommend EA-documented individual adjustments only when expected benefit clears its risk gate.")
         print("  No Xbox button sequences required; adjusted-play benefits are research estimates, not proven results.")
