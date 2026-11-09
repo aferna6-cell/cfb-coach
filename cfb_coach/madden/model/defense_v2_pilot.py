@@ -161,6 +161,18 @@ def _key(*parts: str) -> str:
     return json.dumps(parts, separators=(",", ":"))
 
 
+def semantic_tokens(formation: str, play: str) -> tuple[str, ...]:
+    """Evidence-eligible semantic features, not invented eleven-player duties."""
+    from cfb_coach.madden.model import defense_semantics as ds
+    features = ds.candidate_features(formation, play)
+    allowed = ("dk_shell_", "dk_type_", "dk_press_", "dk_var_")
+    return tuple(sorted(
+        k for k, value in features.items()
+        if k.startswith(allowed) and isinstance(value, (int, float)) and value > 0.5
+        and not k.endswith("_unk") and not k.endswith("_unspecified")
+    ))
+
+
 def fit(rows: Sequence[Snap]) -> dict[str, Any]:
     """Learn hierarchical success probabilities, not prewritten football counters."""
     glob: dict[str, list[int]] = {}
@@ -169,6 +181,7 @@ def fit(rows: Sequence[Snap]) -> dict[str, Any]:
     matchup: dict[str, list[int]] = {}
     play: dict[str, list[int]] = {}
     concepts: Counter[str] = Counter()
+    semantic: dict[str, list[int]] = {}
     for r in rows:
         _add(glob, "all", r.offense_success)
         _add(ctx, r.context, r.offense_success)
@@ -177,10 +190,13 @@ def fit(rows: Sequence[Snap]) -> dict[str, Any]:
         if r.concept is not None:
             concepts[r.concept] += 1
             _add(matchup, _key(r.context, r.family, r.concept), r.offense_success)
+            for token in semantic_tokens(r.formation, r.play):
+                _add(semantic, _key(r.context, r.concept, token), r.offense_success)
     return {"schema": SCHEMA, "target": "offense_success", "policy": "shadow_only",
             "n_verified": len(rows), "n_games": len({r.session for r in rows}),
             "global": glob, "contexts": ctx, "families": fam, "matchups": matchup,
             "plays": play, "concept_counts": dict(concepts),
+            "semantic_matchups": semantic, "semantics_policy": "catalog_feature_eligible_only",
             "evidence": "verified execution only; observational, not causal"}
 
 
@@ -202,7 +218,22 @@ def offense_risk(model: Mapping[str, Any], context: str, formation: str,
     if concept is None:
         return play_p, {"family": family_n, "play": play_n, "matchup": 0}
     matchup_p, matchup_n = _posterior(model["matchups"].get(_key(context, family, concept)), family_p, 16.0)
-    return 0.7 * matchup_p + 0.3 * play_p, {
+    core = 0.7 * matchup_p + 0.3 * play_p
+    # Learn structural commonalities across defensive play names, only when
+    # the catalog has an evidence-eligible axis and supervised matchup labels.
+    # With zero supervised support the original learned baseline is unchanged.
+    semantic_stats = model.get("semantic_matchups") or {}
+    structural_predictions = []
+    for token in semantic_tokens(formation, play):
+        p_token, n_token = _posterior(semantic_stats.get(_key(context, concept, token)), family_p, 24.0)
+        if n_token >= 8:
+            structural_predictions.append((p_token, n_token))
+    if structural_predictions:
+        structural_n = sum(n for _, n in structural_predictions)
+        structural_p = sum(p * n for p, n in structural_predictions) / structural_n
+        weight = 0.20 * structural_n / (structural_n + 32.0)
+        core = (1.0 - weight) * core + weight * structural_p
+    return core, {
         "family": family_n, "play": play_n, "matchup": matchup_n}
 
 
