@@ -630,6 +630,25 @@ def _confirm_heuristic_offense(args: argparse.Namespace, opponent_id: str) -> bo
 
 
 def cmd_play(args: argparse.Namespace) -> int:
+    # V2 is an opt-in TESTING-FRANCHISE coordinator. Validate paths BEFORE
+    # opening a DB: open_db() performs migrations and opponent registration,
+    # which must not touch main-franchise data on a rejected V2 invocation.
+    if getattr(args, "defense_model", None) == "v2":
+        from pathlib import Path
+        requested = getattr(args, "db", None)
+        explicit = getattr(args, "defense_test_db", None)
+        path = getattr(args, "defense_model_path", None)
+        franchise = getattr(args, "defense_franchise", None)
+        if not all((requested, explicit, path, franchise)):
+            print("REFUSING DEFENSIVE V2: requires --db, --defense-test-db, "
+                  "--defense-model-path and --defense-franchise", file=sys.stderr)
+            return 2
+        actual, checked = Path(requested).expanduser().resolve(), Path(explicit).expanduser().resolve()
+        live_data = (Path.home() / ".cfb-coach").resolve()
+        if actual != checked or live_data == actual or live_data in actual.parents or not actual.is_file():
+            print("REFUSING DEFENSIVE V2: database must exist, match the explicit test DB, "
+                  "and be outside ~/.cfb-coach", file=sys.stderr)
+            return 2
     oid, db = _open_opponent(args)
     pid = _profile_arg(args, db)
     active = _active_after_prep(db, oid, pid)
