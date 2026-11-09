@@ -1,89 +1,153 @@
-# Defensive Coordinator V2 — testing franchise foundation
+# Defensive Coordinator V2 — test franchise runbook
 
-**Status: shadow-only; NOT live-ready.** This branch implements a defensive risk learner and read-only pilot CLI. The main franchise, active model, installed books, and game database are not changed. This branch is stacked on the latest CPU2 development branch (PR #138), which also has outstanding validation requirements.
+## Current status
 
-## Objectives
+Draft PR #139 is a **testing-franchise-only experimental implementation**, not a
+verified production release. The default Madden database, main franchise and
+offensive coordinator have not been changed. The V2 artifact is never promoted
+by the tool. The decision pipeline is opt-in and fails back to the existing
+defensive call if its identity, artifact or installed-playbook gates fail.
 
-The secondary Madden franchise lets the user play every offensive and defensive snap. We will collect actual executed defensive calls, opponent offensive concepts and observed results, train a defensive policy, and test it without putting the main franchise at risk.
+The first version was shadow-only. That description is obsolete: this branch
+now includes an opt-in LIVE Madden 27 defensive selection route, an offline
+playbook proposal, individual adjustment search, USER defender reads and
+training/evaluation commands.
 
-## What the foundation includes
+## What the model now does
 
-- A verified-execution reader for **CPU and human** defensive snaps. The older defensive logistic reader excludes CPU opponents; this pilot does not.
-- Exact franchise isolation through game_sessions.dynasty; an absent or empty identity fails closed.
-- An empirical-Bayes outcome model with shrinkage at overall, context, coverage-family, concept-matchup and specific-play levels. The parameters are learned from real execution labels, not a hard-coded defensive counter table.
-- In-game opponent concept beliefs derived from the current session's **strictly earlier, closed, sequence-numbered** snaps. Opponent observations can inform tendencies even when our own defensive execution has not been verified.
-- A shadow-only ranking API that requires each candidate to be explicitly marked both installed and legal.
-- A chronological, whole-game evaluation against the context-only outcome baseline. Games with no earlier training history are omitted; missing sequence numbers are excluded from time-ordered evaluation.
-- A prediction-only holdout gate. This does **not** establish causal defensive policy improvement.
+- Uses only actually verified executed defensive plays for outcome training,
+  including CPU and human opponents, and separates them from displayed calls.
+- Estimates offensive success plus available yards, conversions, TDs,
+  explosives and turnover risks using a shrinkage learner.
+- Fits extra defensive candidate-structure features only after 200 verified
+  snaps in at least 8 games with sufficient catalog support.
+- Updates its opponent concept probability mixture from completed **earlier**
+  defensive snaps, not guessed live coverage or same-snap results.
+- Ranks only stock plays in the confirmed installed 15-or-fewer-formation
+  defensive book.
+- Compares unadjusted calls against up to two compatible individual
+  adjustments using source-documented Madden 27 options. The option must have
+  an expected advantage that clears a conservative threshold. A diffuse
+  opponent concept belief produces NO ADJUSTMENT.
+- **No Xbox buttons are required.** The user wants the recommendation, not a
+  controller tutorial. The catalog establishes that the named adjustment
+  actually exists in Madden 27. User-confirmed execution can teach the model
+  about the action's observed performance.
+- Gives a pre-snap user-controlled defender read, such as run fit first and
+  then carry a crosser in the assigned zone, or play the middle seam against
+  verticals. Guidance is conditional on the model's opponent concept beliefs.
+- Keeps football coverage scheme templates separate from exact Madden
+  11-player assignments. General Cover 1/2/3/4/6/9, Tampa 2, man, match and
+  pressure responsibilities are available. Unverified exact player roles
+  remain UNKNOWN; they are NOT fabricated from the stock play name.
+- Generates up to 15 model-selected complete stock defensive formations as
+  a proposal, with source playbooks and inventory fingerprint; the game editor
+  installation remains a separately confirmed action.
+- Saves postgame challengers outside the live game directory and compares
+  them to the saved champion on games beyond its training cutoff; no automatic
+  promotion.
 
-## Read-only developer commands
+### Named individual adjustments supported
 
-Use an entirely separate testing-franchise DB configuration and confirm the existing CFB_COACH_DB and CFB_COACH_MADDEN_DB values will not point to the primary franchise.
+The proposal search uses the project's permitted first-party EA Madden NFL 27
+action catalog: Global Coverage Press, Back Off, Inside/Outside Leverage, Pass
+Commit Inside/Outside, Smart Zone Aggressive/Conservative variants and related
+documented named choices. A specific Double Team option is generated only
+when an actual receiver target is supplied. A DEF Hot Route man-match can be
+represented when both defender and receiver targets are identified, but is not
+automatically selected until it has a defensible estimated effect.
 
-~~~bash
-# Run from repository root. Replace file paths and EXACT recorded identity.
-PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py inventory --db /PATH/TO/TEST/madden27.db
+These are in-game adjustment names, not saved macros and not Xbox instructions.
+A stock play can absolutely win NO ADJUSTMENT. Effect magnitudes are
+conservative football hypotheses at cold start, NOT empirically proven
+advantages. After enough *confirmed executed* adjustments and matched
+no-adjustment snaps, observational effects contribute to the model. This
+cannot remove selection bias without controlled tests.
 
-PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py audit \
-  --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE"
+When multiple changes are proposed, they must have distinct adjustment
+groups. The model is capped at two and requires an additional marginal benefit
+for the second; this cap prevents speculative adjustment spam.
 
-PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py evaluate \
-  --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE"
+## Source evidence
 
-PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py train \
-  --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE" \
-  --out /tmp/cfb-defense-v2-shadow.json
-~~~
+- EA Madden NFL 27 Gameplay Deep Dive, 2026-06-04:
+  https://www.ea.com/games/madden-nfl/madden-nfl-27/news/madden-27-gameplay
+- Existing defense knowledge catalog:
+  cfb_coach/madden/model/defense_semantics.py
+- Game action names and first-party provenance:
+  cfb_coach/data/madden27/executable_actions.json
 
-The CLI opens the source SQLite database read-only. Only train writes a new shadow artifact to an explicitly supplied, non-live directory. Training requires at least one fully verified defensive execution. No executed call is inferred from a recommendation. A row missing snap_seq can be used for verified outcome fitting, but never for next-snap beliefs or chronological replay.
+## Read-only development commands
 
-Developer-only preview requires a saved shadow artifact, exact test franchise/session/opponent/next sequence and a JSON list of candidate calls with explicit installed=true and legal=true. It rejects artifacts trained on the same game or on a game starting later. **It does not itself verify that caller-supplied installed flags are true; it must not operate live without the confirmed inventory lock.**
-
-## Remaining first-game gates
-
-1. Establish separate game database and clear franchise identity; confirm opponent and session IDs plus sequence numbers from actual post-play submissions.
-2. Make sure the existing UI saves **actual executed** defensive formation/play (including CPU games), rather than the displayed recommendation; show explicit unknown when not confirmed.
-3. Run targeted/full tests and the 150 ms loaded benchmark on the owner's laptop. The sandbox does not have the user's private DB or installed artifacts.
-4. Connect V2 to the existing defensive coordinator only behind a testing-franchise opt-in, with full installed inventory/legality checks and fallback attribution.
-5. Build model-selected pregame defensive formations (up to 15) and verify installation, plus legal individually confirmed defensive adjustments. Retain NO ADJUSTMENT.
-6. Introduce safe postgame challenger training/evaluation and rollback; do not promote on an unproven outcome.
-7. Evaluate real held-out games. Better outcome-prediction log loss alone is not evidence that following a different defensive policy will improve wins.
-
-**The defensive V2 model is NOT yet ready for live playcalling. The testing franchise can still begin collecting high-value verified snaps using the existing caller.**
-
-## Future work: shared offense/defense evidence
-
-Track separately (a) defenses *observed from opponents* against our offense, (b) defenses *we actually executed* against CPU/human offenses, and (c) opponent offensive tendencies. Attach game, side, opponent, CPU/human type, outcome, exact play, confirmation/evidence tier and training cutoff. These can eventually share scheme-vs-concept features with strong shrinkage and a controlled ablation. An opponent successfully using a defense does **not** prove that our team, play or adjustments would have the same effect. Do not copy observed success directly into our defensive policy.
-
-
-## V2 implementation update (Nov 9)
-
-Current development branch includes guarded live V2 selector, model-scored pregame stock-formation proposal, observed multi-outcome risk, confidence-gated learned defensive structural features, earlier-snap opponent beliefs and offline champion/challenger postgame evaluation. All experiments are opt-in; no main franchise changes or automatic model promotion.
-
-### Test franchise commands (read-only except writing temporary shadow artifacts)
+Always use a separate test franchise DB. Never make a live DB a model-training
+output. Fill in the actual path and dynasty identity recorded in the DB.
 
     PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py inventory --db /PATH/TO/TEST/madden27.db
-    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py audit --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE"
-    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py train --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE" --out /tmp/test-defense-v2-shadow.json
-    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py evaluate --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE"
-    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py design --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE" --model /tmp/test-defense-v2-shadow.json --out /tmp/test-defense-v2-playbook-proposal.json
 
-For the explicitly isolated test franchise, after confirming a physical installed book matches the stored book and the shadow artifact was trained before the current game:
+    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py audit \
+      --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE"
+
+    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py evaluate \
+      --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE"
+
+    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py train \
+      --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE" \
+      --out /tmp/test-defense-v2-shadow.json
+
+    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py design \
+      --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE" \
+      --model /tmp/test-defense-v2-shadow.json \
+      --out /tmp/test-defense-v2-playbook-proposal.json
+
+Design is a proposal, NOT a confirmed installed Madden game book.
+
+## Explicit, testing-franchise-only live opt-in
+
+Only after the artifact contains verified defensive training from earlier games
+and the installed defensive book is confirmed in Madden and CFB Coach:
 
     export CFB_COACH_DEFENSE_V2_TEST_FRANCHISE="EXACT_DYNASTY_VALUE"
     export CFB_COACH_DEFENSE_V2_ARTIFACT=/tmp/test-defense-v2-shadow.json
     python3 -m cfb_coach play --game madden27 --defense-model v2 --cpu-defense ...
 
-The final command is a developer-facing example; fill in the actual required opponent arguments using play --help. In terminal, choose defense side (d). Omit --defense-model v2 for instant rollback next session. V2 cannot run against the default primary Madden DB and rejects an unknown or mismatched game/franchise.
+Use the actual opponent and game arguments from play --help in place of the
+placeholder. Select side d in terminal for defense. No clocks, pre-snap
+showing prompts or punting decisions are added.
 
-Postgame challenge (never promotes weights):
+Rollback: omit --defense-model v2 in the next play session. The global caller
+mode is not modified by this flag.
 
-    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py postgame --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE" --model /tmp/test-defense-v2-shadow.json --out /tmp/test-defense-v2-next-candidate.json
+### After game
 
-### What is and is not ready
+    PYTHONPATH=. python3 scripts/madden_ml/defense_v2_pilot.py postgame \
+      --db /PATH/TO/TEST/madden27.db --franchise "EXACT_DYNASTY_VALUE" \
+      --model /tmp/test-defense-v2-shadow.json \
+      --out /tmp/test-defense-v2-candidate.json
 
-Implemented: actual optional V2 model selection path, verified-execution-only CPU and human rows, stock installed book restriction, a maximum of 15 formations, learned opponent concept probabilities, structured coverage semantics, outcome utility estimates and independent challenger training. All individual defender responsibilities that lack diagram verification are UNKNOWN. Model-scored pregame proposals do not automatically install or arm themselves; they still require the existing physical editor verification workflow.
+This writes a new candidate; no promotion occurs. Compare the saved champion
+and challenger on genuinely later games. A classification/forecast metric
+improvement does NOT establish that the new call selection policy wins more.
 
-Not implemented or confirmed: individual defensive adjustment effect learning and safe adjusted-play scoring, physically verified controller actions, full eleven-defender role assignments for every play, and loaded local full-book 150 ms performance. Real-game execution capture and snap chronology need to be checked on the owner's machine. A good predictive metric does not prove the policy improves win rate. Main franchise is unchanged.
+## Remaining game-readiness gates
 
-**Current overall verdict: NO-GO for declaring the complete same-as-offense coordinator ready.** An experimental stock-play-only V2 test is possible only after the local setup and performance gates pass. With no verified defensive executions in the new test franchise, use the established caller and collect confirmations first.
+1. Local owner WSL and actual test-franchise DB audit (real verified executed
+   snaps, exact dynasty, distinct DB path, opponent IDs and chronological
+   snap sequences). Without verified executions V2 must remain inactive.
+2. Confirm the physically installed defensive formation inventory matches the
+   locked CFB Coach book. The ML portfolio proposal does not install itself.
+3. Test a genuine play -> V2 adjustment or NO ADJUSTMENT -> user execution
+   confirmation -> next updated opponent belief -> next call loop.
+4. Run the real installed-book decision benchmark at or under 150 ms, including
+   the joint adjustment search and USER read generation.
+5. Review full Madden regression suite; previous CPU2 parent branches had known
+   broader-suite failures, independent of these targeted V2 tests.
+6. Expand individual slot-level assignments from first-party Madden diagrams
+   or user-captured verified play art. Current schematics do not identify the
+   exact eleven player assignments for every stock play.
+7. Demonstrate prospective policy value with controlled CPU games. Do not
+   promote an unproven challenger or assume opponent-success correlations are
+   causal adjustment effects.
+
+**Game-ready status remains NO-GO until owner laptop and real-game checks
+succeed.** The branch is a useful guarded experimental implementation,
+not an automatic green light to replace your trusted caller.
