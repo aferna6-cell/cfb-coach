@@ -17,7 +17,7 @@ from cfb_coach.madden.unified.opponent import Belief, OpponentModel
 from cfb_coach.madden.unified.personal import PersonalExecution
 from cfb_coach.madden.unified.reads import ReadPlan, UserAssignment, defense_user, offense_reads
 from cfb_coach.madden.unified.solver import Decision, Solver, SolverConfig
-from cfb_coach.madden.unified.store import UnifiedStore
+from cfb_coach.madden.unified.store import DuplicateSnapError, UnifiedStore
 from cfb_coach.madden.unified.types import (DEF, EXEC_CONFIRMED, EXEC_MODIFIED, EXEC_UNKNOWN, OFF, Adjustment, FootballAction,
                                             GameState, OpponentAction, Outcome, SnapObservation, other_side, stable_hash)
 from cfb_coach.madden.unified.world_model import WorldModel, records_from_observation
@@ -91,7 +91,8 @@ class UnifiedCoordinator:
                  opponent_model: OpponentModel | None = None, planner: AdjustmentPlanner | None = None,
                  personal: PersonalExecution | None = None, config: SolverConfig | None = None,
                  store: UnifiedStore | None = None, roles_file: str | None = None, artifact: str = "cold_start_prior_v1",
-                 fallback_fn: Callable[[GameState], Any] | None = None, latency_budget_ms: float = LATENCY_BUDGET_MS) -> None:
+                 fallback_fn: Callable[[GameState], Any] | None = None, latency_budget_ms: float = LATENCY_BUDGET_MS,
+                 snaps: dict[str, SnapObservation] | None = None, history: dict[str, list[str]] | None = None) -> None:
         if our_side not in (OFF, DEF):
             raise ValueError("our_side must be offense or defense")
         if len(inventory) > MAX_FORMATIONS:
@@ -108,8 +109,9 @@ class UnifiedCoordinator:
         self.solver = Solver(self.model, self.planner, self.personal, config)
         self.store, self.roles_file, self.artifact = store, roles_file, artifact
         self.fallback_fn, self.budget = fallback_fn, latency_budget_ms
-        self.snaps: dict[str, SnapObservation] = {}
-        self.history: dict[str, list[str]] = {}  # game_id -> ordered snap ids
+        # In a two-sided session both coordinators share these two dicts: one monotone snap history per game.
+        self.snaps: dict[str, SnapObservation] = snaps if snaps is not None else {}
+        self.history: dict[str, list[str]] = history if history is not None else {}  # game_id -> ordered snap ids
         self._cands: list[FootballAction] | None = None
         self.warmup()
 
@@ -128,15 +130,35 @@ class UnifiedCoordinator:
         st = GameState("__warmup__", 1, self.side, "__warmup__", 2, 7, 50)
         self.solver.decide(st, self.side, cands, self.opp.beliefs(st))
 
+    def stock_action(self, formation: str, play: str) -> FootballAction:
+        """NO-ADJUSTMENT action for an installed (formation, play); anything else is an error, never a guess."""
+        for a in self.legal_candidates():
+            if a.no_adjustment and a.play.formation == formation and a.play.play == play:
+                return a
+        raise KeyError(f"{formation} | {play} is not in the installed {self.side} book")
+
+    def last_same_side(self, game_id: str, before_seq: int | None = None) -> SnapObservation | None:
+        """Most recent earlier snap in this game where WE were on the same side of the ball (sequence/reaction context)."""
+        for sid in reversed(self.history.get(game_id, [])):
+            o = self.snaps[sid]
+            if o.state.our_side == self.side and (before_seq is None or o.state.seq < before_seq):
+                return o
+        return None
+
     # ---- decision -----------------------------------------------------------------
     def recommend(self, st: GameState) -> RecommendationCard:
         if st.our_side != self.side:
             raise ValueError(f"coordinator plays {self.side}; state says {st.our_side}")
         if st.playbook_fingerprint is not None and st.playbook_fingerprint != self.fingerprint:
             raise InstalledBookError("state playbook fingerprint does not match the confirmed installed book")
+        if st.snap_id in self.snaps:
+            raise DuplicateSnapError(f"snap {st.snap_id} was already decided")
+        ids = self.history.get(st.game_id, [])
+        if ids and self.snaps[ids[-1]].state.seq >= st.seq:
+            raise DuplicateSnapError(f"snap sequence must increase: last {self.snaps[ids[-1]].state.seq}, got {st.seq}")
         t0 = time.perf_counter()
-        prev_ids = self.history.get(st.game_id, [])
-        prev = self.snaps.get(prev_ids[-1]) if prev_ids else None
+        prev = self.last_same_side(st.game_id)
+        prev_ids = [i for i in ids if self.snaps[i].state.our_side == self.side]
         our_prev = None
         if prev is not None and prev.recommended is not None and prev.executed_status != "not_executed":
             ex = prev.executed or prev.recommended
@@ -185,48 +207,60 @@ class UnifiedCoordinator:
 
     # ---- lifecycle -----------------------------------------------------------------
     def record_execution(self, st: GameState, executed: FootballAction | None, status: str,
-                         actual_adjustments: tuple[Adjustment, ...] | None = None) -> SnapObservation:
+                         actual_adjustments: tuple[Adjustment, ...] | None = None, *, amend: bool = False) -> SnapObservation:
         """What WE actually ran. A recommendation is never auto-promoted to an execution."""
         o = self.snaps[st.snap_id].with_execution(executed, status, actual_adjustments)
+        if self.store:  # persist first: an AlreadyRecorded refusal must leave memory untouched
+            self.store.log_execution(st.snap_id, executed, status, actual_adjustments, now(), amend=amend)
         self.snaps[st.snap_id] = o
-        if self.store:
-            self.store.log_execution(st.snap_id, executed, status, actual_adjustments, now())
         return o
 
-    def record_opponent(self, st: GameState, oa: OpponentAction) -> SnapObservation:
+    def record_opponent(self, st: GameState, oa: OpponentAction, *, amend: bool = False) -> SnapObservation:
         """What the OTHER side was revealed to run. Never touches our executed action."""
         o = self.snaps[st.snap_id].with_opponent(oa)
-        self.snaps[st.snap_id] = o
         if self.store:
-            self.store.log_opponent(st.snap_id, oa, now())
+            self.store.log_opponent(st.snap_id, oa, now(), amend=amend)
+        self.snaps[st.snap_id] = o
         return o
 
     def close_snap(self, st: GameState, outcome: Outcome) -> SnapObservation:
         """Close the snap, update beliefs immediately (no retraining) and the shared world model."""
+        if self.snaps[st.snap_id].closed:
+            raise DuplicateSnapError(f"snap {st.snap_id} is already closed")
         o = replace(self.snaps[st.snap_id], outcome=outcome, closed=True, closed_ts=now(), cutoff_seq=st.seq)
-        self.snaps[st.snap_id] = o
-        ids = self.history[st.game_id]
-        i = ids.index(st.snap_id)
-        prev = self.snaps[ids[i - 1]] if i > 0 else None
-        self.opp.observe(o, prev_obs=prev)
-        for state, prof, d, oc, w, side in records_from_observation(o):
-            self.model.update(state, prof, d, oc, weight=w, our_side=side, opponent_class=state.opponent_class)
         if self.store:
             self.store.log_outcome(st.snap_id, outcome, now())
+        self.snaps[st.snap_id] = o
+        self.learn_from(o, self.last_same_side(st.game_id, st.seq))
         return o
 
+    def learn_from(self, o: SnapObservation, prev_same_side: SnapObservation | None) -> None:
+        """Opponent beliefs for OUR side's opponent + the shared world model (tagged by provenance)."""
+        if o.state.our_side == self.side:
+            self.opp.observe(o, prev_obs=prev_same_side)
+        for state, prof, d, oc, w, side in records_from_observation(o):
+            self.model.update(state, prof, d, oc, weight=w, our_side=side, opponent_class=state.opponent_class)
+            self.model.provenance[f"our_{side}_executed"] = self.model.provenance.get(f"our_{side}_executed", 0) + 1
+
     def ingest_history(self, games: Sequence[Sequence[SnapObservation]]) -> dict[str, int]:
-        """Replay finished games in chronological order (opponent beliefs + shared world model). Strictly causal."""
+        """Replay finished games chronologically.
+
+        Opponent beliefs: only observations from THIS coordinator's side (the other side's opponent model
+        is fed by the other coordinator). Shared world model: verified rows from BOTH sides, once each —
+        call this on exactly one coordinator per shared model (``UnifiedSession`` does the routing).
+        """
         used = 0
         for game in games:
-            prev = None
+            last_by_side: dict[str, SnapObservation] = {}
             for o in game:
-                if o.state.our_side == self.side and o.closed:
-                    self.opp.observe(o, prev_obs=prev)
+                if o.closed:
+                    if o.state.our_side == self.side:
+                        self.opp.observe(o, prev_obs=last_by_side.get(self.side))
                     for state, prof, d, oc, w, side in records_from_observation(o):
                         self.model.update(state, prof, d, oc, weight=w, our_side=side, opponent_class=state.opponent_class)
+                        self.model.provenance[f"our_{side}_executed"] = self.model.provenance.get(f"our_{side}_executed", 0) + 1
                         used += 1
-                prev = o
+                last_by_side[o.state.our_side] = o
             if game:
                 self.opp.close_game(game[0].state.game_id)
         return {"games": len(games), "world_model_rows": used, "opponent_records": len(self.opp.records)}

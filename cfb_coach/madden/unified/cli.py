@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from cfb_coach.madden.unified import guard, knowledge as K, postgame as PG, pregame as PRE, preflight as PF
+from cfb_coach.madden.unified.inputs import InputError
+from cfb_coach.madden.unified.session import SessionError, UnifiedSession
 from cfb_coach.madden.unified.coordinator import UnifiedCoordinator, inventory_fp
 from cfb_coach.madden.unified.store import UnifiedStore
 from cfb_coach.madden.unified.types import (DEF, EXEC_CONFIRMED, EXEC_MODIFIED, EXEC_NOT_RUN, EXEC_UNKNOWN, OFF, GameState,
@@ -63,7 +65,8 @@ def cmd_confirm(a: argparse.Namespace) -> int:
 
 
 def cmd_preflight(a: argparse.Namespace) -> int:
-    rep = PF.preflight(db=a.db, confirmed_books=a.confirmed_books, model=a.model, calls=a.calls, extra_protected=a.protect or [])
+    rep = PF.preflight(db=a.db, confirmed_books=a.confirmed_books, model=a.model, history_report=a.history_report, adjustment_confirmations=a.adjustment_confirmations,
+                       calls=a.calls, extra_protected=a.protect or [])
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(PF.render_report(rep))
@@ -80,6 +83,88 @@ def _ask(prompt: str, default: str = "") -> str:
     except EOFError:
         return "q"
     return v or default
+
+
+def _load_books(path: str) -> dict[str, Any]:
+    books = PF.load_confirmed_books(path)
+    return {s: {"inventory": b["inventory"], "fingerprint": b["fingerprint"]} for s, b in books.items()}
+
+
+def cmd_history(a: argparse.Namespace) -> int:
+    from cfb_coach.madden.unified import history as H
+
+    rep = H.train_from_history(a.db, a.out, include_macro_rows=a.include_macro_rows)
+    print(json.dumps({k: rep.get(k) for k in ("rows_seen", "usable_rows", "usable_games", "usable_by_side", "skipped", "training_rows",
+                                              "decision", "reason", "promotion")}, indent=1, default=str))
+    if rep.get("comparison"):
+        for k, v in rep["comparison"]["models"].items():
+            print(f"  {k:24s} MAE {v.get('mae_yards', float('nan')):.3f}  Brier(fd) {v.get('brier_first_down', float('nan')):.4f}")
+    return 0
+
+
+def cmd_game(a: argparse.Namespace, input_fn=input, out=print) -> int:
+    """ONE continuous game: offense and defense coordinators both active, side chosen by the possession you type."""
+    books = _load_books(a.confirmed_books)
+    missing = [s for s in (OFF, DEF) if s not in books]
+    if missing:
+        out(f"REFUSING: no owner-confirmed installed {' / '.join(missing)} book in {a.confirmed_books}. "
+            "Install the proposed books, verify them in Madden, then run confirm-install for each side.")
+        return 2
+    wm = WorldModel.from_dict(json.loads(Path(a.model).read_text())) if a.model else None
+    art = f"{Path(a.model).name}:{guard.sha256_file(Path(a.model))[:10]}" if a.model else "cold_start_prior_v1"
+    conf = json.loads(Path(a.adjustment_confirmations).read_text()) if getattr(a, "adjustment_confirmations", None) else {}
+    store = UnifiedStore(a.store)
+    try:
+        S = UnifiedSession(books=books, opponent_id=a.opponent, store=store, model=wm, artifact=art, game_id=a.game_id, resume=bool(getattr(a, "resume", False)),
+                           opponent_class=getattr(a, "opponent_class", None), roles_file=getattr(a, "verified_roles", None), adjustment_confirmations=conf)
+    except Exception as e:  # noqa: BLE001
+        out(f"REFUSING to start: {e}")
+        store.close()
+        return 2
+    out(f"UNIFIED GAME vs {a.opponent} | game {S.game_id} | artifact {art} | BOTH coordinators active")
+    out(f"history loaded: {S.history_report or 'none (first game in this store)'}")
+    out("sit> type who has the ball + situation, e.g.  'o 1&10 my 22'  or  'd 3&7 opp 40'   (end = finish game, quit = leave open, status)")
+    while True:
+        try:
+            line = input_fn("sit> ").strip()
+        except EOFError:
+            line = "quit"
+        if not line:
+            continue
+        low = line.lower()
+        if low in ("quit", "q", "exit"):
+            break
+        if low in ("end", "end game"):
+            S.end_game()
+            out("game closed. Now run: postgame (see docs).")
+            store.close()
+            return 0
+        if low == "status":
+            out(json.dumps(S.status(), indent=1))
+            continue
+        try:
+            card = S.start_snap(line)
+        except (InputError, SessionError) as e:
+            out(f"? {e}")
+            continue
+        except Exception as e:  # noqa: BLE001 - never silently swap in another caller
+            out(f"UNIFIED COORDINATOR ERROR (no fallback was used): {e!r}")
+            continue
+        out("\n" + card.render() + "\n")
+        ex, res, opp = "u", "", ""
+        while True:
+            ex = input_fn(f"ran it? y / y noadj / n / u / 'formation | play' [{ex}]: ").strip() or ex
+            res = input_fn("result of that snap (offense's result: +7 inc sack -6 int td; blank = later): ").strip() or res
+            opp = input_fn("opponent's call (formation | play, or a name; blank = unknown): ").strip() or opp
+            try:
+                r = S.finish_snap(executed=ex, result=res, opponent_call=opp)
+                out(f"logged {r['snap_id']}: executed={r['executed_status']} outcome={'yes' if r['outcome_recorded'] else 'no'} "
+                    f"opponent={'yes' if r['opponent_recorded'] else 'no'} learned={'yes' if r['world_model_row'] else 'no'}")
+                break
+            except InputError as e:
+                out(f"? {e}  (re-enter)")
+    store.close()
+    return 0
 
 
 def cmd_live(a: argparse.Namespace) -> int:
@@ -164,9 +249,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--max-formations", type=int, default=15); s.add_argument("--out", required=True); s.set_defaults(fn=cmd_game_prep)
     s = sub.add_parser("confirm-install"); s.add_argument("--proposal", required=True); s.add_argument("--attested-by", required=True)
     s.add_argument("--confirmed-books", required=True); s.set_defaults(fn=cmd_confirm)
-    s = sub.add_parser("preflight"); s.add_argument("--db"); s.add_argument("--confirmed-books"); s.add_argument("--model")
+    s = sub.add_parser("preflight"); s.add_argument("--db"); s.add_argument("--confirmed-books"); s.add_argument("--model"); s.add_argument("--history-report"); s.add_argument("--adjustment-confirmations")
     s.add_argument("--calls", type=int, default=100); s.add_argument("--out"); s.add_argument("--protect", nargs="*"); s.set_defaults(fn=cmd_preflight)
-    s = sub.add_parser("live"); s.add_argument("--side", choices=(OFF, DEF), required=True); s.add_argument("--opponent", required=True)
+    s = sub.add_parser("history", help="READ-ONLY import of verified historical executions + chronological evaluation")
+    s.add_argument("--db", required=True); s.add_argument("--out", required=True); s.add_argument("--include-macro-rows", action="store_true"); s.set_defaults(fn=cmd_history)
+    s = sub.add_parser("game", help="ONE continuous game, offense AND defense, no relaunch on possession change")
+    s.add_argument("--opponent", required=True); s.add_argument("--opponent-class"); s.add_argument("--confirmed-books", required=True)
+    s.add_argument("--store", required=True); s.add_argument("--model"); s.add_argument("--game-id"); s.add_argument("--resume", action="store_true")
+    s.add_argument("--verified-roles"); s.add_argument("--adjustment-confirmations"); s.set_defaults(fn=cmd_game)
+    s = sub.add_parser("live", help="(single side; superseded by `game`)"); s.add_argument("--side", choices=(OFF, DEF), required=True); s.add_argument("--opponent", required=True)
     s.add_argument("--opponent-class", default="cpu"); s.add_argument("--confirmed-books", required=True); s.add_argument("--store", required=True)
     s.add_argument("--model"); s.add_argument("--game-id"); s.add_argument("--verified-roles"); s.add_argument("--adjustment-confirmations"); s.set_defaults(fn=cmd_live)
     s = sub.add_parser("postgame"); s.add_argument("--store", required=True); s.add_argument("--out", required=True); s.add_argument("--champion"); s.set_defaults(fn=cmd_postgame)

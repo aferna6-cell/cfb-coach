@@ -169,14 +169,57 @@ def _db(tmp_path):
     return str(p)
 
 
+def _owner_kit(tmp_path):
+    """Everything the owner supplies for a GO: attested books, isolated DB, history evaluation + the model file it produced."""
+    from tests.unified.test_history import make_db
+    from cfb_coach.madden.unified import history as H
+    hist = make_db(tmp_path / "hist.db", n_games=6, per_game=10, extra=False)
+    rep = H.train_from_history(hist, tmp_path / "hist_out")
+    return {"books": _books(tmp_path), "db": hist, "model": str(tmp_path / "hist_out" / "cold_start_model.json"),
+            "history_report": str(tmp_path / "hist_out" / "history_report.json"), "rep": rep}
+
+
 def test_preflight_verdicts_are_honest(tmp_path):
     shadow = PF.preflight(calls=20)
     assert shadow["verdict"] == "SHADOW ONLY" and "offense_installed_book_confirmed_by_owner" in shadow["blocking"]
-    db = _db(tmp_path)
-    go = PF.preflight(calls=20, confirmed_books=_books(tmp_path), db=db)
+    kit = _owner_kit(tmp_path)
+    go = PF.preflight(calls=20, confirmed_books=kit["books"], db=kit["db"], model=kit["model"], history_report=kit["history_report"])
     assert go["verdict"] == "GO", go["blocking"]
-    nogo = PF.preflight(calls=20, confirmed_books=_books(tmp_path, tamper=True), db=db)
+    assert go["live"]["snaps"] == 40 and go["live"]["learning"]["matches"]
+    nogo = PF.preflight(calls=20, confirmed_books=_books(tmp_path, tamper=True), db=kit["db"], model=kit["model"], history_report=kit["history_report"])
     assert nogo["verdict"] == "NO-GO"
+
+
+@pytest.mark.parametrize("drop", ["confirmed_books", "db", "model", "history_report"])
+def test_go_is_impossible_without_each_owner_supplied_ingredient(tmp_path, drop):
+    kit = _owner_kit(tmp_path)
+    args = {"confirmed_books": kit["books"], "db": kit["db"], "model": kit["model"], "history_report": kit["history_report"]}
+    args.pop(drop)
+    rep = PF.preflight(calls=20, **args)
+    assert rep["verdict"] == "SHADOW ONLY" and rep["blocking"], rep["blocking"]  # a fast synthetic caller alone can never earn GO
+
+
+def test_a_model_file_that_the_history_run_did_not_produce_is_rejected(tmp_path):
+    kit = _owner_kit(tmp_path)
+    other = tmp_path / "other.json"
+    from cfb_coach.madden.unified.world_model import WorldModel
+    m = WorldModel(); m.provenance["x"] = 1
+    other.write_text(json.dumps(m.to_dict()))
+    rep = PF.preflight(calls=20, confirmed_books=kit["books"], db=kit["db"], model=str(other), history_report=kit["history_report"])
+    assert rep["verdict"] == "NO-GO" and "history_evaluation_consistent_with_model" in rep["blocking"]
+
+
+def test_live_audit_catches_a_corrupted_execution_log(tmp_path):
+    from cfb_coach.madden.unified import livepath as LP
+    bk = {s: {"inventory": inventory(s), "fingerprint": inventory_fp(s, inventory(s))} for s in (OFF, DEF)}
+    run = LP.run_live_benchmark(bk, model_path=None, store_path=tmp_path / "s.db", n_per_side=6)
+    assert LP.audit_run(run, bk)["ok"]
+    c = sqlite3.connect(tmp_path / "s.db")
+    c.execute("update executions set executed_status='confirmed', executed_json='null' where snap_id=(select snap_id from decisions order by seq limit 1 offset 3)")
+    c.execute("update executions set executed_status='unknown' where snap_id=(select snap_id from decisions order by seq limit 1)")
+    c.commit(); c.close()
+    bad = LP.audit_run(run, bk)
+    assert not bad["ok"] and bad["problems"]["exec_mismatch"]
 
 
 def test_cli_preflight_and_game_prep(tmp_path, monkeypatch, capsys):

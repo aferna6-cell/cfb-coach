@@ -940,12 +940,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--coordinator",
         choices=("unified_v1",),
         default=None,
-        help="Madden only, OPT-IN: run the unified football coordinator (one shared world model, Bayesian opponent "
-             "beliefs and joint play+adjustment solver) for ONE side per session (--unified-side). Needs "
+        help="Madden only, OPT-IN: run ONE continuous game with the unified football coordinator on BOTH sides (shared world model, "
+             "Bayesian opponent beliefs, joint play+adjustment solver); the side follows the possession you type. Needs "
              "--unified-confirmed-books and --unified-store (an isolated path). Rollback: omit this flag; the "
              "established caller is untouched.",
     )
-    p_play.add_argument("--unified-side", choices=("offense", "defense"), default="offense", help="Side for --coordinator unified_v1.")
+    p_play.add_argument("--unified-adjustment-confirmations", default=None, metavar="JSON", help="Owner-confirmed in-game adjustments (unified adjustments --template).")
     p_play.add_argument("--unified-confirmed-books", default=None, metavar="JSON", help="Owner-attested installed books file (unified confirm-install).")
     p_play.add_argument("--unified-store", default=None, metavar="DB", help="Isolated unified log DB (never under ~/.cfb-coach).")
     p_play.add_argument("--unified-model", default=None, metavar="JSON", help="Optional challenger/champion world-model artifact; default cold-start prior.")

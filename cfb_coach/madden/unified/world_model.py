@@ -243,6 +243,7 @@ class WorldModel:
         self.tau_y = list(TAU_YARDS)
         self.tau_r = [TAU_RATE] * 6
         self.tau_fitted = False
+        self.provenance: dict[str, int] = {}  # rows learned per source: our_offense_executed / our_defense_executed
         self.seen_off_play_ids: set[str] = set()
         self.seen_vkeys: set[str] = set()
 
@@ -405,7 +406,7 @@ class WorldModel:
                 "calibrated": self.objective.calibrated,
                 "levels": [[[list(k), a.n, a.s, a.y2] for k, a in lv.items()] for lv in self.levels],
                 "ctx": [[list(k), a.n, a.s, a.y2] for k, a in self.ctx_resid.items()],
-                "tau_y": self.tau_y, "tau_r": self.tau_r, "tau_fitted": self.tau_fitted}
+                "provenance": self.provenance, "tau_y": self.tau_y, "tau_r": self.tau_r, "tau_fitted": self.tau_fitted}
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> "WorldModel":
@@ -413,6 +414,7 @@ class WorldModel:
             raise ValueError("model version mismatch")
         m = cls()
         m.n_records = d["n_records"]
+        m.provenance = dict(d.get("provenance", {}))
         m.tau_y, m.tau_r, m.tau_fitted = list(d.get("tau_y", m.tau_y)), list(d.get("tau_r", m.tau_r)), d.get("tau_fitted", False)
         for i, lv in enumerate(d["levels"]):
             for k, n, s, y2 in lv:
