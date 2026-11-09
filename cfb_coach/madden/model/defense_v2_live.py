@@ -41,10 +41,12 @@ def _identity(conn: Any, session: str, opponent: str, franchise: str) -> str:
     return str(rows[0][1])
 
 
-def _model(path: str, game_started: str, session: str) -> dict[str, Any]:
+def _model(path: str, game_started: str, session: str, franchise: str) -> dict[str, Any]:
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     if raw.get("schema") != v2.SCHEMA or raw.get("policy") != "shadow_only":
         raise ValueError("V2 artifact is not a supported research artifact")
+    if raw.get("trained_franchise") != franchise:
+        raise ValueError("V2 trained artifact belongs to another franchise")
     if not raw.get("n_verified") or not raw.get("n_games"):
         raise ValueError("V2 artifact lacks verified defensive training evidence")
     if "trained_sessions" not in raw or "trained_through_started_ts" not in raw:
@@ -114,8 +116,13 @@ def try_live(call: Any, sit: Any, opponent: str, db: Any,
     seq = int(extras.get("snap_seq") or 0)
     if not session or seq <= 0:
         raise ValueError("V2 requires real session ID and positive next snap sequence")
+    # Default live Madden DB must never be used as a V2 experiment.
+    db_path = Path(getattr(db, "path", "")).expanduser().resolve()
+    default_main = Path.home().joinpath(".cfb-coach", "madden27.db").resolve()
+    if db_path == default_main:
+        raise ValueError("V2 refuses the default primary Madden database")
     game_started = _identity(db.conn, session, opponent, franchise)
-    model = _model(os.environ[ARTIFACT_ENV], game_started, session)
+    model = _model(os.environ[ARTIFACT_ENV], game_started, session, franchise)
     calls = _confirmed_book(db, book)
     history = v2.earlier_opponent_observations(
         db.conn, franchise=franchise, session=session, opponent=opponent, next_seq=seq)
