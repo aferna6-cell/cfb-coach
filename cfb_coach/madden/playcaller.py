@@ -1002,15 +1002,16 @@ def make_call(
 
         cold = is_cold_start_opponent(opponent_id, db)
         wants_v1 = defense_model == "v1"
+        wants_v2 = defense_model == "v2"
         if isinstance(sit.extras, dict):
             sit.extras["defense_armed_ids"] = list(sel.get("defense") or [])
             if allow_human_defense_ml:
                 sit.extras["require_trained_defense_artifact"] = True
-            if wants_v1:
-                sit.extras["defense_model"] = "v1"
+            if wants_v1 or wants_v2:
+                sit.extras["defense_model"] = defense_model
             if defense_model_path:
                 sit.extras["defense_model_path"] = defense_model_path
-        if (not cold and not cpu) or allow_human_defense_ml or wants_v1:
+        if (not cold and not cpu) or allow_human_defense_ml or wants_v1 or wants_v2:
             # Explicit, defense-only opt-in. Never auto-change offense or CPU mode.
             # This function fails closed to the established defensive caller.
             try:
