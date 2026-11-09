@@ -1,9 +1,6 @@
 name: Defensive V2 wider regression audit
 
 on:
-  push:
-    branches:
-      - madden-ml/defense-v2-live-test-franchise
   workflow_dispatch:
 
 jobs:
