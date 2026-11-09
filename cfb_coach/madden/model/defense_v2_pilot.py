@@ -316,6 +316,69 @@ def structural_delta(model: Mapping[str, Any], formation: str, play: str) -> flo
     return max(-cap, min(cap, delta))
 
 
+def cold_start(franchise: str) -> dict[str, Any]:
+    """Explicit untrained prior model, suitable ONLY for a separate test franchise.
+
+    Not a learned or validated policy. Uses general football scheme matchup
+    hypotheses with a weak capped weight until verified executions accumulate.
+    """
+    if not isinstance(franchise, str) or not franchise.strip():
+        raise ValueError("cold-start requires a concrete testing franchise identity")
+    model = fit([])
+    model.update({
+        "cold_start": True,
+        "cold_start_source": "football_priors.defense_call_edge; verified outcome count zero",
+        "trained_franchise": franchise.strip(),
+        "trained_sessions": [],
+        "trained_through_started_ts": "0000-01-01",
+        "policy": "shadow_only",
+    })
+    return model
+
+
+from functools import lru_cache
+
+
+@lru_cache(maxsize=8192)
+def _football_prior(play: str, formation: str, concept: str) -> float:
+    """Small documented scheme vs offensive concept prior, not measured game effect."""
+    mapping = {
+        "run": "inside_zone",
+        "rpo": "rpo",
+        "vert": "four_verts",
+        "flood": "flood_sail",
+        "cross": "mesh",
+        # stack and scram do not identify a specific route concept; abstain.
+    }
+    translated = mapping.get(concept)
+    if not translated:
+        return 0.0
+    from cfb_coach.madden.model import defense_semantics as semantics
+    from cfb_coach.madden.model import football_priors
+    res = semantics.resolve(play, formation)
+    if not res.key:
+        return 0.0
+    desc = football_priors.descriptor(res.key)
+    if not desc:
+        return 0.0
+    details = football_priors.defense_call_edge(desc, {translated: 1.0})
+    if not details.get("cells"):
+        return 0.0
+    # Convert conceptual logit-lift hypothesis to <~5pp bounded risk change.
+    edge = float(details["offense_edge_allowed"])
+    return max(-0.045, min(0.045, 0.20 * edge))
+
+
+def _prior_adjustment(model: Mapping[str, Any], formation: str,
+                      play: str, concept: str | None) -> float:
+    if not concept:
+        return 0.0
+    n = max(0, int(model.get("n_verified", 0)))
+    # Priors fade smoothly as executed defensive evidence accumulates.
+    shrink = max(0.0, 1.0 - min(1.0, n / 160.0))
+    return shrink * _football_prior(play, formation, concept)
+
+
 def _posterior(count: Sequence[int] | None, prior: float, strength: float) -> tuple[float, int]:
     success, n = (int(count[0]), int(count[1])) if count else (0, 0)
     return (success + strength * prior) / (n + strength), n
@@ -337,6 +400,7 @@ def offense_risk(model: Mapping[str, Any], context: str, formation: str,
             "family": family_n, "play": play_n, "matchup": 0}
     matchup_p, matchup_n = _posterior(model["matchups"].get(_key(context, family, concept)), family_p, 16.0)
     predicted = 0.7 * matchup_p + 0.3 * play_p + structural
+    predicted += _prior_adjustment(model, formation, play, concept)
     return max(0.001, min(0.999, predicted)), {
         "family": family_n, "play": play_n, "matchup": matchup_n}
 
