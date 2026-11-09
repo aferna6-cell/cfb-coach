@@ -212,6 +212,8 @@ class UnifiedLiveController:
             return "y" if (not card.get("adjustments") or applied_action) else "y noadj"
         if e == "not_executed":
             return "n"
+        if e == "used_recommended_no_adjustment":
+            return "y noadj"
         if e == "used_different":
             if not (executed_formation and executed_play):
                 raise InputError("'used different' needs both the formation and the play you actually ran")
