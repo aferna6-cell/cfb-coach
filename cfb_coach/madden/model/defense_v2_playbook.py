@@ -28,29 +28,81 @@ def _risk(model: Mapping[str, Any], context: str, form: str, play: str,
     )
 
 
+# Pregame scenario priors are deliberately weak and explicit. The opponent
+# distribution still enters each cell, and the utility/outcome model supplies
+# the candidate-play predictions. No mandatory formation-type quotas.
+SCENARIO_CONCEPTS = {
+    "early": {"run": 0.36, "rpo": 0.20, "cross": 0.14, "vert": 0.09,
+              "flood": 0.10, "stack": 0.06, "scram": 0.05},
+    "short": {"run": 0.57, "rpo": 0.16, "cross": 0.10, "vert": 0.04,
+              "flood": 0.06, "stack": 0.04, "scram": 0.03},
+    "medium": {"run": 0.20, "rpo": 0.13, "cross": 0.24, "vert": 0.15,
+               "flood": 0.15, "stack": 0.08, "scram": 0.05},
+    "long": {"run": 0.05, "rpo": 0.04, "cross": 0.26, "vert": 0.27,
+             "flood": 0.22, "stack": 0.11, "scram": 0.05},
+    "unknown": {c: 1 / len(v2.CONCEPTS) for c in v2.CONCEPTS},
+}
+
+
+def _scenario_probs(ctx: str, belief: Mapping[str, float]) -> dict[str, float]:
+    # 60% situation-specific prior, 40% actual opponent belief; both tracked.
+    base = SCENARIO_CONCEPTS[ctx]
+    total = {c: 0.6 * base[c] + 0.4 * float(belief.get(c, 0))
+             for c in v2.CONCEPTS}
+    z = sum(total.values())
+    return {c: value / z for c, value in total.items()}
+
+
+def _form_profile(item: Mapping[str, Any], *, model: Mapping[str, Any]) -> dict[tuple[str, str], float]:
+    from cfb_coach.madden.defense_select import call_family
+
+    profile: dict[tuple[str, str], float] = {}
+    for ctx in CONTEXT_WEIGHTS:
+        for concept in v2.CONCEPTS:
+            best: float | None = None
+            for play in item["plays"]:
+                family = call_family(play)
+                if not family:
+                    continue
+                success, _ = v2.offense_risk(model, ctx, item["formation"], play, family, concept)
+                risk = v2.defensive_utility_risk(success, v2.auxiliary_risk(model, ctx, family))
+                best = risk if best is None else min(best, risk)
+            if best is not None:
+                profile[(ctx, concept)] = best
+    return profile
+
+
 def _portfolio_score(chosen: Sequence[Mapping[str, Any]], *, model: Mapping[str, Any],
-                     belief: Mapping[str, float]) -> float:
+                     belief: Mapping[str, float],
+                     profiles: Mapping[tuple[str, str], dict[tuple[str, str], float]] | None = None,
+                     ) -> float:
+    """Expected best-of-book coverage across offensive concepts and situations.
+
+    A single do-everything formation only wins if it truly covers the range
+    as well as every other catalogued option under the learned model/priors.
+    """
     if not chosen:
         return -1.0
-    # Optimize the quality of the best legal coverage we can access under
-    # each context, not an arbitrary equal quota for coverage families.
     from cfb_coach.madden.defense_select import call_family
+
     score = 0.0
-    for ctx, weight in CONTEXT_WEIGHTS.items():
-        best = None
-        for form in chosen:
-            for play in form["plays"]:
-                fam = call_family(play)
-                if fam is None:
-                    continue
-                risk = _risk(model, ctx, form["formation"], play, fam, belief)
-                best = risk if best is None else min(best, risk)
-        if best is not None:
-            score += weight * (1.0 - best)
-    # Very modest action breadth preference (not a mandatory fixed ratio).
-    unique_families = {call_family(play) for form in chosen for play in form["plays"]}
+    for ctx, context_weight in CONTEXT_WEIGHTS.items():
+        probs = _scenario_probs(ctx, belief)
+        for concept, threat_weight in probs.items():
+            eligible = []
+            for form in chosen:
+                key = (form["source_book"], form["formation"])
+                profile = (profiles[key] if profiles is not None else
+                           _form_profile(form, model=model))
+                if (ctx, concept) in profile:
+                    eligible.append(profile[(ctx, concept)])
+            if eligible:
+                score += context_weight * threat_weight * (1.0 - min(eligible))
+    unique_families = {
+        call_family(play) for form in chosen for play in form["plays"]
+    }
     unique_families.discard(None)
-    score += 0.002 * len(unique_families)
+    score += 0.001 * len(unique_families)
     return score
 
 
@@ -80,16 +132,22 @@ def propose(*, catalogue: Mapping[str, Mapping[str, Sequence[str]]],
     if not universe:
         raise ValueError("no structurally named defensive formations in catalog")
 
+    # Offline precompute keeps the up-to-15 portfolio optimizer fast even
+    # when multiple sources have different play lists for the same formation.
+    profiles = {
+        (item["source_book"], item["formation"]): _form_profile(item, model=model)
+        for item in universe
+    }
     portfolio = []
     assigned = set()
-    current_score = _portfolio_score(portfolio, model=model, belief=prior)
+    current_score = _portfolio_score(portfolio, model=model, belief=prior, profiles=profiles)
     while len(portfolio) < max_formations:
         choices = [item for item in universe if item["formation"] not in assigned]
         if not choices:
             break
         proposals = []
         for item in choices:
-            new_score = _portfolio_score(portfolio + [item], model=model, belief=prior)
+            new_score = _portfolio_score(portfolio + [item], model=model, belief=prior, profiles=profiles)
             proposals.append((new_score - current_score, new_score, item))
         proposals.sort(key=lambda x: (-x[0], x[2]["formation"], x[2]["source_book"]))
         gain, score, best = proposals[0]
@@ -127,6 +185,8 @@ def propose(*, catalogue: Mapping[str, Mapping[str, Sequence[str]]],
             "Proposed only, not an installed or executable Madden custom book",
             "No fixed formation rotation; model evaluates full source formation play sets",
             "Stock play responsibilities remain unknown where source diagrams are unverified",
+            "Portfolio optimizes several offensive threat concepts per situation; no fixed formation quota",
+            "Low-evidence personnel and matchup priors are hypotheses, not demonstrated win-rate effects",
             "Candidate universe is the catalogued stock formations only; completeness not assumed",
         ],
     }
