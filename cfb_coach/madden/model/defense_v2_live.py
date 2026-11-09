@@ -196,8 +196,15 @@ def try_live(call: Any, sit: Any, opponent: str, db: Any,
         snap_id=extras.get("snap_id"), game_id=extras.get("game_id"),
     )
     from dataclasses import replace
-    decision = replace(decision, policy_version=v2.SCHEMA,
-                       ml_status_detail="V2 test franchise only; empirical observational success model")
+    decision = replace(
+        decision, policy_version=v2.SCHEMA,
+        ml_status_detail=(
+            "V2 TEST FRANCHISE - ZERO VERIFIED DEFENSE EXECUTIONS - "
+            "untrained, football-prior-only cold start"
+            if model.get("cold_start") and not model["n_verified"] else
+            "V2 TEST FRANCHISE - verified defensive execution model (observational)"
+        ),
+    )
     old._stamp_decision(result, decision, db, extras)
     result.ml_defense_v2 = {
         "applied": True, "experimental": True, "model_version": v2.SCHEMA,
