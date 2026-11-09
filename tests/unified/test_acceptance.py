@@ -128,15 +128,42 @@ def test_solver_changes_selection_when_beliefs_materially_change():
 
 
 # 7 -------------------------------------------------------------------------------------------
-def test_solver_has_no_fixed_repeat_or_switch_override():
+def test_coordinator_never_recommends_same_exact_play_on_consecutive_cpu_snaps():
     m, c1, _ = _trained_model()
     inv = {"Gun Trips X Nasty": ["Hi Lo Cross", "Verticals X Shallow"]}
     om = OpponentModel(DEF, prior={c1.signature: 1.0})
     co = UnifiedCoordinator(OFF, inv, confirmed_fingerprint=inventory_fp(OFF, inv), model=m, opponent_model=om)
     plays = [co.recommend(state(OFF, seq=i)).play for i in range(1, 8)]
-    assert set(plays) == {"Hi Lo Cross"}  # the best play repeats: no anti-repeat/whiplash override
+    assert set(plays) == {"Hi Lo Cross", "Verticals X Shallow"}
+    assert all(a != b for a, b in zip(plays, plays[1:]))
     src = (REPO / "cfb_coach/madden/unified/solver.py").read_text()
+    # This is a pre-solver legal-candidate constraint, not a random changeup,
+    # a synthetic score bonus, or an override after the model has chosen.
     assert "random.choice" not in src and "shuffle" not in src and "changeup" not in src.lower()
+
+
+def test_cpu_defense_never_calls_free_fire_twice_when_an_alternative_exists():
+    inv = {"4-3 Over": ["Free Fire", "Cover 3 Sky"]}
+    co = UnifiedCoordinator(DEF, inv, confirmed_fingerprint=inventory_fp(DEF, inv))
+    calls = [co.recommend(state(DEF, seq=i, down=3, dist=6)).play for i in range(1, 7)]
+    assert all(a != b for a, b in zip(calls, calls[1:]))
+
+
+def test_one_play_book_is_only_allowed_repeat_exception():
+    inv = {"4-3 Over": ["Free Fire"]}
+    co = UnifiedCoordinator(DEF, inv, confirmed_fingerprint=inventory_fp(DEF, inv))
+    calls = [co.recommend(state(DEF, seq=i)).play for i in range(1, 4)]
+    assert calls == ["Free Fire"] * 3
+
+
+def test_no_repeat_filter_is_per_game_not_previous_game():
+    inv = {"4-3 Over": ["Free Fire", "Cover 3 Sky"]}
+    co = UnifiedCoordinator(DEF, inv, confirmed_fingerprint=inventory_fp(DEF, inv))
+    first = co.recommend(state(DEF, seq=1, game="g1")).play
+    second = co.recommend(state(DEF, seq=1, game="g2")).play
+    # Initial state and opponent are unchanged; previous-game recommendations
+    # do not forbid the preferred opening play in a new game.
+    assert second == first
 
 
 # 8 -------------------------------------------------------------------------------------------

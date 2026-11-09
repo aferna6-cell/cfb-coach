@@ -138,6 +138,18 @@ def test_resume_continues_the_sequence(tmp_path):
     assert R.start_snap("o 1&10 my 30").snap_id == "g1-0003"
 
 
+def test_no_consecutive_exact_play_survives_defensive_possession_and_resume(tmp_path):
+    S = session(tmp_path)
+    first_off = S.start_snap("o 1&10 my 22")
+    S.finish_snap(executed="y", result="+2")
+    # Switching to defense must not forget the previous offensive call.
+    S.start_snap("d 1&10 opp 40")
+    S.finish_snap(executed="y", result="+3")
+    R = UnifiedSession(books=books(), opponent_id="cpu_x", store=S.store, game_id="g1", resume=True)
+    next_off = R.start_snap("o 2&8 my 24")
+    assert (first_off.formation, first_off.play) != (next_off.formation, next_off.play)
+
+
 def test_inputs_clock_and_presnap_showing_are_ignored_and_bad_input_changes_nothing(tmp_path):
     A, B = session(tmp_path / "a"), session(tmp_path / "b")
     c1 = A.start_snap("o 3&7 my 45")
