@@ -149,7 +149,8 @@ class UnifiedLiveController:
             # Expose the exact pending snap for a client-side NEXT-situation preview.
             # yardline is always from the current offense's own goal.
             panel["pending_state"] = {"side": st.our_side, "down": st.down, "distance": st.distance,
-                                      "offense_yardline": st.yardline, "snap_id": st.snap_id}
+                                      "offense_yardline": st.yardline, "snap_id": st.snap_id,
+                                      "score_us": st.score_us, "score_opp": st.score_opp}
             panel["solver"] = c.get("model_version")
             panel["fallback"] = c.get("fallback") or panel["fallback"]
             panel["result_perspective"] = ("OPPONENT OFFENSE — enter the yards THEY gained on this snap" if st.our_side == DEF

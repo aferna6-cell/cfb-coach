@@ -392,6 +392,9 @@ CONCEPTS: dict[str, dict[str, Any]] = {
 
 # Specific patterns before generic ones. A match is only a name hint.
 _NAME_HINTS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # Catalog/diagram-backed exception: the HB "sneak" is a receiving route,
+    # NOT a quarterback sneak. Do not infer QB run from this play's name.
+    (re.compile(r"^mtn\s+cross\s+hb\s+sneak$", re.I), "deep_cross"),
     (re.compile(r"\bmesh\b", re.I), "mesh"),
     (re.compile(r"shallow\s+cross", re.I), "mesh"),
     (re.compile(r"\bsail\b|\bflood\b", re.I), "flood_sail"),
