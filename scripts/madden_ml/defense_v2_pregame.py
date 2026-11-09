@@ -76,6 +76,7 @@ def main() -> int:
         "verified_training_games": model["n_games"],
         "policy": "proposed_only_not_installed",
         "physical_editor_installation_required": True,
+        "runtime_installed_fingerprint": defense_v2_live.installed_fingerprint(design["book"]["formations"]),
         "model_supported_matchup_effects": "observational estimates; no proven counterfactual",
         "installation_steps": [
             "Create or edit a SEPARATE defensive custom book in Madden NFL 27.",
@@ -95,6 +96,7 @@ def main() -> int:
     print(json.dumps({
         "status": "PROPOSAL_ONLY", "file": str(out),
         "fingerprint": design["fingerprint"],
+        "runtime_installed_fingerprint": result["runtime_installed_fingerprint"],
         "formations": design["limits"]["formations"],
         "stock_plays": design["limits"]["plays"],
         "not_installed": True,
