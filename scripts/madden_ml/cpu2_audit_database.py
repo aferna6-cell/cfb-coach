@@ -10,6 +10,8 @@ import argparse
 from collections import Counter
 from datetime import datetime, timezone
 import json
+import hashlib
+import os
 from pathlib import Path
 import sqlite3
 
@@ -23,6 +25,30 @@ def _json(value):
 
 def _columns(conn, table):
     return {r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')}
+
+
+def _artifact_fingerprint(value: str | None) -> dict:
+    if not value:
+        return {"path": None, "exists": False}
+    candidate = Path(value).expanduser()
+    result = {"path": str(candidate), "exists": candidate.is_file()}
+    if not candidate.is_file():
+        return result
+    digest = hashlib.sha256()
+    with candidate.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    result["sha256"] = digest.hexdigest()
+    try:
+        record = json.loads(candidate.read_text(encoding="utf-8"))
+        if isinstance(record, dict):
+            for field in ("model_version", "kind", "evidence_quality", "n_train",
+                          "n_supervised", "n_discounted_priors", "residual_active"):
+                if field in record:
+                    result[field] = record[field]
+    except (ValueError, UnicodeError, OSError):
+        result["artifact_json"] = "unreadable"
+    return result
 
 
 def audit(path: Path, *, game_id: str | None = None) -> dict:
@@ -83,9 +109,12 @@ def audit(path: Path, *, game_id: str | None = None) -> dict:
                 "ml_experimental_artifact", "ml_route_aware_artifact",
             )
         }
-        meta_artifact_files = {
-            k: bool(v and Path(v).expanduser().is_file())
+        fingerprints = {
+            k: _artifact_fingerprint(v)
             for k, v in artifact_paths.items()
+        }
+        meta_artifact_files = {
+            k: row["exists"] for k, row in fingerprints.items()
         }
         report = {
             "schema": "cfb.cpu2.database_audit.v1",
@@ -97,6 +126,16 @@ def audit(path: Path, *, game_id: str | None = None) -> dict:
             "configured_ranker": metas.get("ml_offense_ranker"),
             "artifact_paths": artifact_paths,
             "artifact_files_exist_on_this_machine": meta_artifact_files,
+            "artifact_fingerprints": fingerprints,
+            "football_priors": {
+                "stored": metas.get("ml_football_priors"),
+                "effective_in_this_process": (
+                    os.environ.get("CFB_COACH_FOOTBALL_PRIORS")
+                    if os.environ.get("CFB_COACH_FOOTBALL_PRIORS") is not None
+                    else metas.get("ml_football_priors")
+                ),
+            },
+            "runtime_model_override": os.environ.get("CFB_COACH_OFFENSE_RANKER"),
             "installed": {
                 "formation_count": len(formations),
                 "play_count": playcount,
