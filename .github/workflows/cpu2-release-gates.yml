@@ -23,6 +23,7 @@ jobs:
         run: |
           PYTHONPATH=. python -m pytest -q \
             tests/madden_ml/test_cpu2_chronological_learning.py \
+            tests/madden_ml/test_cpu2_individual_hot_route.py \
             tests/madden_ml/test_cpu2_contextual_qb_reads.py \
             tests/madden_ml/test_cpu2_provisional_read_cache.py \
             tests/madden_ml/test_cpu1_route_timeout_recovery.py \
