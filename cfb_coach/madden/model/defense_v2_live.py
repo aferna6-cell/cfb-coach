@@ -116,6 +116,10 @@ def try_live(call: Any, sit: Any, opponent: str, db: Any,
     seq = int(extras.get("snap_seq") or 0)
     if not session or seq <= 0:
         raise ValueError("V2 requires real session ID and positive next snap sequence")
+    # The UI's defense-only counter is not the global snap identity when the
+    # player controls BOTH sides. Prefer the authoritative logged next seq.
+    from cfb_coach.madden.model.identity import next_seq_from_db
+    seq = max(seq, next_seq_from_db(db, session))
     # Default live Madden DB must never be used as a V2 experiment.
     db_path = Path(getattr(db, "path", "")).expanduser().resolve()
     default_main = Path.home().joinpath(".cfb-coach", "madden27.db").resolve()
