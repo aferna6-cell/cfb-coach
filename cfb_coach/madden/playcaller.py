@@ -914,6 +914,7 @@ def make_call(
     live_macros: bool | None = None,
     allow_human_ml: bool = False,
     allow_human_defense_ml: bool = False,
+    coach_cpu_defense: bool = False,
 ) -> MaddenCall:
     """One call. `playbook` = {side: {formation: [plays]}} locked by prep; defaults to the
     DB's locked (applied) books. Raises NoActivePlaybook when the needed side has no
@@ -955,7 +956,7 @@ def make_call(
     note = ""
     if cpu:
         sel["defense"] = []
-        if sit.side == "defense":
+        if sit.side == "defense" and not coach_cpu_defense:
             sit.side = "offense"
             note = "CPU = offense-only (no D calls) — switched to O | "
 
