@@ -28,7 +28,8 @@ jobs:
             tests/madden_ml/test_defense_v2_live.py \
             tests/madden_ml/test_defense_v2_playbook.py \
             tests/madden_ml/test_defense_v2_structure.py \
-            tests/madden_ml/test_defense_v2_postgame.py
+            tests/madden_ml/test_defense_v2_postgame.py \
+            tests/madden_ml/test_defense_v2_outcomes.py
       - name: Compile defensive V2 model and CLI
         run: |
           python -m py_compile cfb_coach/madden/model/defense_v2_pilot.py
