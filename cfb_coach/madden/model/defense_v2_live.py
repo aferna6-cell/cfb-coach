@@ -76,6 +76,7 @@ def maybe_apply_v2(
     call: Any, sit: Any, opponent_id: str, db: Any,
     book: Mapping[str, Sequence[str]], *,
     model_path: str, test_db: str, franchise: str,
+    action_confirmations: str | None = None,
 ) -> Any:
     """Replace the real displayed defensive call with V2's chosen installed play.
 
@@ -122,6 +123,16 @@ def maybe_apply_v2(
         if not ranking["ranked"]:
             raise ValueError("no supported installed defensive calls")
         best = ranking["ranked"][0]
+        from cfb_coach.madden.model import defense_v2_actions as actions
+        # No physically verified controller options => NO ADJUSTMENT.
+        # Learned exact-combination outcomes are saved in the model only after
+        # confirmed execution, never taken from this current game.
+        confirmations = actions.read_confirmed_options(action_confirmations)
+        plan = actions.choose_adjustments(
+            model, context=context, formation=best["formation"], play=best["play"],
+            stock_offense_success=float(best["predicted_offense_success"]),
+            confirmed=confirmations,
+        )
         if (time.perf_counter() - start) * 1000 > LATENCY_BUDGET_MS:
             raise TimeoutError("150 ms model decision budget exceeded")
         from cfb_coach.madden.playcaller import MaddenCall
@@ -141,16 +152,31 @@ def maybe_apply_v2(
             "coverage_resolution": resolution.resolution,
             "defender_assignments": "UNKNOWN",
             "evidence": "verified observational defensive executions",
-            "no_adjustment": True,
+            "no_adjustment": not bool(plan["actions"]),
+            "adjustment_id": plan["id"],
+            "adjustment_evidence_snaps": plan["effect_support"],
             "latency_ms": round((time.perf_counter() - start) * 1000.0, 3),
         }
         out = MaddenCall(
-            "defense", best["formation"], best["play"], "No adj",
+            "defense", best["formation"], best["play"],
+            "No adj" if not plan["actions"] else "Individual adjustments",
             "Check in-game player assignments",
             (f"DEFENSE V2 experimental ML; estimated offense success "
              f"{best['predicted_offense_success']:.3f}; {assignment}; "
-             f"{len(history)} earlier offensive concepts; no adjustment"),
+             f"{len(history)} earlier offensive concepts; "
+             + ("NO ADJUSTMENT" if not plan["actions"] else
+                f"verified individual actions {plan['id']} (observational benefit)")),
         )
+        if plan["actions"]:
+            # The Xbox button sequences come only from an owner-confirmed file;
+            # never invent per-player sub-menu options or unverified combos.
+            out.adjustment = {
+                "id": plan["id"],
+                "label": " + ".join(a["label"] for a in plan["actions"]),
+                "buttons": " ; let players get set ; ".join(a["buttons"] for a in plan["actions"]),
+                "why": ("verified execution evidence; conservative learned estimate, "
+                        f"n={plan['effect_support']} (not causal)"),
+            }
         out.defense_v2 = detail
         # Reuse the existing decision logging schema and attribution path.
         from cfb_coach.madden.model.defense_coordinator import _stamp_decision
