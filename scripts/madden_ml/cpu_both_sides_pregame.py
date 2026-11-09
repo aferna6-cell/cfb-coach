@@ -165,12 +165,15 @@ def main() -> int:
     args = p.parse_args()
 
     from cfb_coach.db import CoachDB
-    with CoachDB(args.db, read_only=True) as db:
+    db = CoachDB(args.db, read_only=True)
+    try:
         result = generate(
             db=db, franchise=args.franchise, opponent=args.cpu_opponent,
             offense_artifact=args.offense_artifact, defense_artifact=args.defense_artifact,
             allow_cold_start=args.allow_cold_start, outdir=args.out_dir,
         )
+    finally:
+        db.close()
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
