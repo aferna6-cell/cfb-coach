@@ -134,6 +134,11 @@ def test_standing_attestation_only_on_completed_submit_and_can_be_overridden(rig
     assert third.executed_status == "not_executed"
 
 
+def test_explicit_no_adjustment_override_is_not_recorded_as_full_adjusted_call(rig):
+    assert rig.ctrl._executed_text("used_recommended_no_adjustment", None, None, False, {}) == "y noadj"
+    assert rig.ctrl._executed_text("not_executed", None, None, False, {}) == "n"
+
+
 def test_standing_attestation_is_not_triggered_by_call_only(rig):
     sub(rig, "1&10 my 25", "offense")
     c, d = rig.post("/api/call", {"sit": "2&10 my 25", "side": "offense"})
