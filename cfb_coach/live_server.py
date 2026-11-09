@@ -1412,14 +1412,20 @@ def render_live_html(ctrl: LivePlayController) -> str:
   .qbreads ol {{ margin: .25rem 0 0; padding-left: 0; list-style: none; font-size: 1.25rem; font-weight: 700; }}
   .qbreads li {{ margin: .15rem 0; }} .qbreads li b {{ display: inline-block; min-width: 3.2rem; }}
   .qbreads .qbn {{ font-size: .95rem; opacity: .85; }}
-  #unified-panel {{ margin: -.2rem 0 1rem; padding: .55rem .8rem; border-left: 4px solid #3fb950; background: rgba(63,185,80,.08); font-size: .9rem; }}
-  #unified-panel .u-line {{ margin: .12rem 0; }}
-  #unified-panel .u-k {{ color: var(--muted); font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; display: inline-block; min-width: 6.2rem; }}
-  #unified-panel .u-adj {{ font-size: 1.15rem; font-weight: 800; }}
-  #unified-panel .u-user {{ margin: .35rem 0; padding: .4rem .6rem; border: 1px solid #d29922; border-radius: 6px; background: #2a1f0a; font-size: 1.05rem; font-weight: 700; }}
+  #unified-panel {{ margin: -.15rem 0 .75rem; padding: .35rem .6rem; border-left: 2px solid #3fb950; background: rgba(63,185,80,.035); font-size: .94rem; }}
+  #unified-panel .u-user {{ padding: .3rem 0; font-size: 1.05rem; font-weight: 700; }}
+  #unified-panel .u-action {{ font-weight: 700; padding-bottom: .25rem; }}
+  #unified-panel .u-subtle {{ font-size: .79rem; color: var(--muted); font-weight: 400; margin-top:.12rem; }}
+  #unified-panel .u-predict {{ padding: .22rem 0; }}
+  #unified-panel .u-projection {{ font-size: .8rem; color: var(--muted); padding-bottom: .16rem; }}
+  #unified-panel .u-details {{ margin-top: .15rem; color: var(--muted); font-size: .76rem; }}
+  #unified-panel .u-details > summary {{ cursor: pointer; }}
+  #unified-panel .u-meta {{ margin-top:.3rem; line-height:1.5; overflow-wrap:anywhere; }}
   #unified-panel .u-warn {{ color: var(--danger); font-weight: 800; }}
-  #unified-result-note {{ margin: 0 0 .6rem; padding: .35rem .55rem; border-radius: 6px; background: #14301b; border: 1px solid #238636; font-weight: 700; font-size: .9rem; }}
-  #unified-result-note.def {{ background: #3a2a05; border-color: #d29922; }}
+  #unified-result-note {{ margin: 0 0 .55rem; font-size: .78rem; color: var(--muted); }}
+  #unified-result-note.def {{ color: #d29922; }}
+  #submit-status {{ margin-top:.3rem; font-size:.85rem; min-height:1.3rem; color: #3fb950; }}
+  #submit-status.error {{ color: #ffa198; }}
 </style>
 </head>
 <body>
@@ -1428,8 +1434,8 @@ def render_live_html(ctrl: LivePlayController) -> str:
   <div class="dyn" id="dyn"{' hidden' if compact_madden else ''}>{_dyn_line(ctrl)}</div>
   <div class="heard" id="heard"{' hidden' if compact_madden else ''}>vs {_esc(ctrl.opponent_id)}</div>
   <div class="call" id="call"{' aria-live="polite"' if compact_madden else ''}>{_esc(_call_main(ctrl))}</div>
-  {'<section id="unified-panel" hidden aria-live="polite"></section>' if getattr(ctrl, 'unified_ui', False) else ''}
   {'<section id="qb-reads" class="qbreads" aria-live="polite"><div id="qb-reads-label" class="qbl"></div><ol id="qb-reads-list"></ol><div id="qb-reads-note" class="qbn"></div></section>' if compact_madden else ''}
+  {'<section id="unified-panel" hidden aria-live="polite"></section>' if getattr(ctrl, 'unified_ui', False) else ''}
   {_macro_box_html(None if compact_madden else ctrl.macro_state())}
   {"""<div id="offense-action-now" class="action-now" hidden></div>
   <div id="conditional-action-now" class="action-now" hidden></div>
@@ -1470,10 +1476,11 @@ def render_live_html(ctrl: LivePlayController) -> str:
       <input class="wide" id="their" placeholder="cover 6 · A-gap blitz · cross wheels · mesh · fill it on TDs too"/>
     </div>
     <div id="exec-verify" hidden>
-      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(optional — leave this alone and the snap stays unknown)</span></h2>
+      <h2 style="margin-top:.85rem">What I ran <span style="font-weight:500;text-transform:none;letter-spacing:0">(only change when you did NOT run the recommended call)</span></h2>
       <div class="row" id="exec-radios" style="gap:.75rem;flex-wrap:wrap">
         <label style="font-weight:600"><input type="radio" name="exec" value="used_recommended"/> used recommended</label>
         <label><input type="radio" name="exec" value="used_different"/> used different</label>
+        <label><input type="radio" name="exec" value="not_executed"/> didn't run</label>
         <label><input type="radio" name="exec" value="unknown"/> unknown</label>
       </div>
       <div class="row" id="exec-diff" hidden>
@@ -1534,10 +1541,11 @@ def render_live_html(ctrl: LivePlayController) -> str:
     <div class="row">
       <button type="button" class="primary" id="btn-submit">Submit → log + new PLAY</button>
       <button type="button" id="btn-ran-recommended" title="Explicitly verify that you ran the shown formation and play">Ran call ✓</button>
-      <button type="button" id="btn-ran-different" title="Show the executed-play fields when you changed the call">Changed play</button>
+      <button type="button" id="btn-ran-different" title="Change only when you did not follow the recommended play">Changed / didn't run</button>
       <button type="button" id="btn-undo">Undo last snap</button>
       <button type="button" id="btn-call-only">Call only (no log)</button>
     </div>
+    {'<div id="submit-status" role="status" aria-live="polite"></div>' if getattr(ctrl, 'unified_ui', False) else ''}
   </section>
 
   {'<details id="live-admin"><summary>Game settings, log and finish game</summary>' if compact_madden else ''}
@@ -1587,6 +1595,14 @@ def render_live_html(ctrl: LivePlayController) -> str:
 <script>
 const $ = (id) => document.getElementById(id);
 const compactMadden = {str(compact_madden).lower()};
+const unifiedUI = {str(bool(getattr(ctrl, 'unified_ui', False))).lower()};
+if (unifiedUI) $("btn-submit").textContent = "Save result + NEXT PLAY";
+function submitStatus(msg, error=false) {{
+  const el = $("submit-status");
+  if (!el) return;
+  el.className = error ? "error" : "";
+  el.textContent = msg;
+}}
 let outcomeChoice = "";
 let execVerifyTouched = false;
 // True once the clock box is typed in for this snap. Sent with the submit so the
@@ -1623,38 +1639,58 @@ function renderUnified(st) {{
   if (!u) {{ box.hidden = true; if (note) note.hidden = true; return; }}
   box.hidden = false;
   box.textContent = "";
-  const line = (k, v, cls) => {{
-    const d = document.createElement("div"); d.className = "u-line";
-    const kk = document.createElement("span"); kk.className = "u-k"; kk.textContent = k;
-    const vv = document.createElement("span"); vv.textContent = " " + v; if (cls) vv.className = cls;
-    d.appendChild(kk); d.appendChild(vv); box.appendChild(d); return d;
+  const add = (parent, tag, cls, value) => {{
+    const el = document.createElement(tag);
+    if (cls) el.className = cls;
+    if (value != null) el.textContent = String(value);
+    parent.appendChild(el);
+    return el;
   }};
   const p = u.pending;
-  line("model", u.decision_model + (u.solver ? " · " + u.solver : "") + " · UNIFIED coordinator (offense + defense, one shared model)");
-  line("artifact", u.artifact + " · " + u.model_mode);
-  const prov = u.provenance || {{}};
-  line("learning", "world-model rows " + u.world_model_rows + " (our offense " + (prov.our_offense_executed || 0) + " / our defense " + (prov.our_defense_executed || 0)
-    + ")" + (p ? " · opponent model: " + p.opponent_prediction_source : "") + " · next snap " + u.next_snap);
-  const fb = u.fallback || {{}};
-  line("fallback", fb.occurred ? ("YES — " + fb.reason) : "none (no heuristic caller is wired into this window)", fb.occurred ? "u-warn" : "");
   if (p) {{
-    line("this snap", (p.side || "").toUpperCase() + " · " + p.snap_id + " · evidence confidence " + Number(p.football_evidence_confidence || 0).toFixed(2) + " · decided in " + p.latency_ms + " ms");
-    const adj = (p.adjustments && p.adjustments.length) ? p.adjustments.join("  +  ") : "NO ADJUSTMENT";
-    line("adjustment", adj + (p.changed_routes && Object.keys(p.changed_routes).length ? "   (route change: " + Object.entries(p.changed_routes).map(([k, v]) => k + " → " + v).join(", ") + ")" : ""), "u-adj");
+    const adjs = p.adjustments || [];
+    if (adjs.length) add(box, "div", "u-action", "ADJUST: " + adjs.join(" + "));
     if (p.user) {{
-      const d = document.createElement("div"); d.className = "u-user";
-      d.textContent = "USER: " + p.user.position + "  ·  PRIMARY: " + p.user.primary + "  ·  SECONDARY: " + p.user.secondary
-        + "   [" + (p.user.verified ? "VERIFIED" : "UNVERIFIED — advisory") + "]";
-      box.appendChild(d);
+      const user = add(box, "div", "u-user", "USER: " + p.user.position + " — " + p.user.primary);
+      add(user, "div", "u-subtle", "Then: " + p.user.secondary + (p.user.verified ? "" : " · assignment not verified"));
     }}
-    if (p.explanation) line("why", p.explanation);
+    const forecast = (p.explanation || "").split("; robust value")[0].trim();
+    if (forecast) add(box, "div", "u-predict", "EXPECT: " + forecast);
+    const pred = p.expected || {{}};
+    const bits = [];
+    if (Number.isFinite(Number(pred.e_yards))) bits.push(Number(pred.e_yards).toFixed(1) + " expected yards");
+    if (Number.isFinite(Number(pred.p_first_down))) bits.push(Math.round(Number(pred.p_first_down) * 100) + "% first down");
+    if (Number.isFinite(Number(pred.p_turnover))) bits.push(Math.round(Number(pred.p_turnover) * 100) + "% turnover");
+    if (bits.length) add(box, "div", "u-projection",
+      (p.side === "defense" ? "CPU offense: " : "Our offense: ") + bits.join(" · ") + " (model estimates)");
   }} else {{
-    line("this snap", "waiting — enter the situation and press Submit");
+    add(box, "div", "u-predict", "Enter the situation and press Save + next play.");
   }}
+  const details = add(box, "details", "u-details");
+  add(details, "summary", "", "Model details");
+  const meta = add(details, "div", "u-meta");
+  add(meta, "div", "", "Model: " + u.decision_model + (u.solver ? " · " + u.solver : ""));
+  add(meta, "div", "", "Artifact: " + u.artifact + " · " + u.model_mode);
+  const prov = u.provenance || {{}};
+  add(meta, "div", "", "Learning: " + u.world_model_rows + " rows (our offense "
+    + (prov.our_offense_executed || 0) + " / our defense "
+    + (prov.our_defense_executed || 0) + ")");
+  if (p) {{
+    add(meta, "div", "", "Opponent belief: " + p.opponent_prediction_source);
+    add(meta, "div", "", "Snap " + p.snap_id + " · evidence confidence "
+      + Number(p.football_evidence_confidence || 0).toFixed(2) + " · "
+      + p.latency_ms + " ms");
+    if (p.evidence_note) add(meta, "div", "", "Evidence: " + p.evidence_note);
+    if (p.explanation) add(meta, "div", "", "Reasoning: " + p.explanation);
+  }}
+  const fb = u.fallback || {{}};
+  add(meta, "div", fb.occurred ? "u-warn" : "", "Fallback: " + (fb.occurred ? fb.reason : "none"));
   if (note) {{
     note.hidden = false;
     note.className = (p && p.side === "defense") ? "def" : "";
-    note.textContent = "RESULT ENTRY → " + (u.result_perspective || u.result_note);
+    note.textContent = p && p.side === "defense"
+      ? "Previous play: enter the yards the CPU offense gained."
+      : "Previous play: enter the yards our offense gained.";
   }}
   $("btn-end").textContent = "Game over → close (evaluate with postgame)";
 }}
@@ -2034,6 +2070,7 @@ document.querySelectorAll("#outcome-btns button.outcome").forEach(btn => {{
 
 $("btn-submit").addEventListener("click", async () => {{
   setErr("");
+  submitStatus(unifiedUI ? "Saving previous result and getting next play…" : "");
   try {{
     const data = await withUiLock(async () => {{
       const out = currentOutcome();
@@ -2068,7 +2105,15 @@ $("btn-submit").addEventListener("click", async () => {{
     if ($("action-applied")) $("action-applied").checked = false;
     if ($("no-action-confirmed")) $("no-action-confirmed").checked = false;
     renderState(data.state);
-  }} catch (e) {{ setErr(String(e.message || e)); }}
+    if (unifiedUI) {{
+      submitStatus("Saved. New recommendation is ready above.");
+      window.scrollTo({{top:0, behavior:"smooth"}});
+    }}
+  }} catch (e) {{
+    setErr(String(e.message || e));
+    submitStatus("Could not advance: " + String(e.message || e), true);
+    if ($("submit-status")) $("submit-status").scrollIntoView({{behavior:"smooth", block:"center"}});
+  }}
 }});
 
 document.querySelectorAll('input[name="exec"]').forEach(r => {{
