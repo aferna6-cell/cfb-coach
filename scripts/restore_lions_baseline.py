@@ -15,8 +15,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
+import zipfile
 import sqlite3
 import statistics
 import sys
@@ -152,6 +154,107 @@ def find_model(source: sqlite3.Connection, override: Path | None
         except (ValueError, OSError, TypeError) as exc:
             findings.append(f"{path} (invalid: {exc})")
     return None, findings
+
+
+
+def _historic_artifact(raw: Any) -> bool:
+    """The Lions model's identity, not just 428 in a filename."""
+    if not isinstance(raw, dict):
+        return False
+    try:
+        return (
+            raw.get("model_version") == EXPECTED_MODEL_VERSION
+            and int(raw.get("n_supervised") or 0) == EXPECTED_SUPERVISED
+            and raw.get("side") == "offense"
+            and raw.get("kind") == "hierarchical_shrinkage.v1"
+            and raw.get("evidence_quality") == "empirical"
+        )
+    except (ValueError, TypeError):
+        return False
+
+
+def scan_model_backups(roots: list[Path] | None = None) -> list[str]:
+    """Read-only limited search for archival JSON or ZIP artifacts.
+
+    Archives are inspected without extracting or executing anything. A model
+    found *inside* a ZIP must be manually restored to a JSON file before the
+    normal --model switch will accept it.
+    """
+    home = Path.home()
+    if roots is None:
+        roots = [
+            home / ".cfb-coach",
+            home / "cfb-coach-backups",
+            home / "cfb-coach-game-audits",
+            home / "cfb-coach",
+            home / "cfb-coach-lions",
+            home / "unified_v1_cpu1",
+            home / "Downloads",
+            home / "Documents",
+            Path("/mnt/c/Users") / home.name / ".cfb-coach",
+            Path("/mnt/c/Users") / home.name / "Downloads",
+        ]
+    skip_dirs = {".git", "node_modules", ".venv", "venv", "__pycache__", "site-packages",
+                 "dist", "build", ".mypy_cache", ".pytest_cache"}
+    found: list[str] = []
+    inspected = 0
+    max_inspected = 25000
+    seen: set[Path] = set()
+
+    def inspect_json(blob: bytes, label: str) -> None:
+        try:
+            raw = json.loads(blob)
+        except (ValueError, UnicodeDecodeError):
+            return
+        if _historic_artifact(raw):
+            found.append(label)
+            print("  EXACT 428-ROW MODEL:", label)
+
+    for root in roots:
+        root = root.expanduser()
+        if not root.is_dir():
+            continue
+        for directory, subdirs, files in os.walk(root, followlinks=False):
+            subdirs[:] = [d for d in subdirs if d not in skip_dirs]
+            for name in files:
+                if inspected >= max_inspected:
+                    print("Scan file limit reached; check other backup folders manually.")
+                    break
+                p = Path(directory) / name
+                if p in seen:
+                    continue
+                seen.add(p)
+                suffix = p.suffix.lower()
+                if suffix not in (".json", ".zip"):
+                    continue
+                inspected += 1
+                try:
+                    size = p.stat().st_size
+                    if size > 24 * 1024 * 1024:
+                        continue
+                    if suffix == ".json":
+                        if size <= 8 * 1024 * 1024:
+                            inspect_json(p.read_bytes(), str(p))
+                    else:
+                        with zipfile.ZipFile(p) as archive:
+                            for member in archive.infolist():
+                                if (member.filename.lower().endswith(".json")
+                                        and member.file_size <= 8 * 1024 * 1024):
+                                    inspect_json(archive.read(member), f"{p} :: {member.filename}")
+                except (OSError, ValueError, zipfile.BadZipFile, RuntimeError, MemoryError):
+                    continue
+            if inspected >= max_inspected:
+                break
+        if inspected >= max_inspected:
+            break
+    print(f"Read-only search examined {inspected} JSON/ZIP files.")
+    if not found:
+        print("Exact 428-row artifact NOT FOUND in common local directories.")
+        print("No files were changed. Check other archived copies or external backups.")
+    else:
+        print("Use --model /absolute/path/to/428-row-offense.json for a direct JSON match.")
+        print("ZIP matches must first be extracted to a separate new file; never overwrite the current 655 model.")
+    return found
 
 
 def _read_only_source(path: Path) -> sqlite3.Connection:
@@ -366,12 +469,17 @@ def main() -> int:
     p.add_argument("--model", type=Path, default=None,
                    help="Exact 428-row empirical offense.json, only if not at its saved path.")
     mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--scan-models", action="store_true",
+                      help="Read-only search of common backup folders and ZIPs for the exact 428-row offense artifact.")
     mode.add_argument("--apply", action="store_true",
                       help="Clone the source DB using SQLite backup and modify only the copy.")
     mode.add_argument("--check", action="store_true",
                       help="Verify original ML vs legacy heuristic over representative game situations.")
     args = p.parse_args()
     try:
+        if args.scan_models:
+            scan_model_backups()
+            return 0
         if args.check:
             return check(args)
         return restore(args)
