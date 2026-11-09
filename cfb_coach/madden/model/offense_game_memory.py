@@ -148,14 +148,17 @@ def pre_snap_context(
     """Tendencies available before this snap. Later outcomes are invisible."""
     payload = _load(db, session_id) if db is not None else {"events": []}
     prior: list[dict[str, Any]] = []
+    # A correctly scoped snap_id is also a valid sequence fence when the
+    # caller passed snap_seq=None (as many legacy Game 1 paths did).
+    next_seq = _fenced_seq(snap_seq, snap_id, session_id)
     for row in payload.get("events") or []:
         if snap_id and row.get("snap_id") == snap_id:
             continue
         seq = _fenced_seq(row.get("snap_seq"), row.get("snap_id"), session_id)
-        if snap_seq is not None:
+        if next_seq is not None:
             # A missing sequence is NOT evidence this row predates the query.
             # Exclude it instead of leaking future outcomes in retro replays.
-            if seq is None or seq >= int(snap_seq):
+            if seq is None or seq >= next_seq:
                 continue
         prior.append(row)
     from cfb_coach.madden.playcaller import coverage_class
