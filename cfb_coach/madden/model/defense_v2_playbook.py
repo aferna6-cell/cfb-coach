@@ -19,9 +19,12 @@ MAX_FORMATIONS = 15
 
 def _risk(model: Mapping[str, Any], context: str, form: str, play: str,
           family: str, belief: Mapping[str, float]) -> float:
-    return sum(
+    success = sum(
         float(belief[c]) * v2.offense_risk(model, context, form, play, family, c)[0]
         for c in v2.CONCEPTS
+    )
+    return v2.defensive_utility_risk(
+        success, v2.auxiliary_risk(model, context, family)
     )
 
 
