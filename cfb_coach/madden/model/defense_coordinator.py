@@ -1408,6 +1408,23 @@ def maybe_apply_defense(
         game_id = extras.get("game_id")
     except Exception:
         return call
+    # Separate TESTING-FRANCHISE-only V2 path. An error must not promote an
+    # unverified candidate or silently relabel the established caller as V2.
+    if isinstance(extras, Mapping) and extras.get("defense_model") == "v2":
+        try:
+            from cfb_coach.madden.model import defense_v2_live
+            if defense_v2_live.requested(sit):
+                return defense_v2_live.try_live(call, sit, opponent_id, db, book)
+            setattr(call, "ml_defense_v2", {
+                "applied": False, "fallback_source": "established_caller",
+                "reason": "V2 requires explicit testing franchise and artifact environment",
+            })
+        except Exception as exc:  # V2 is strictly opt-in and fail-closed
+            setattr(call, "ml_defense_v2", {
+                "applied": False, "fallback_source": "established_caller",
+                "reason": type(exc).__name__ + ": " + str(exc)[:180],
+            })
+        return call
     if isinstance(extras, Mapping) and _defense_v1_requested(extras, db):
         return _apply_defense_v1(
             call, sit, db, book, extras, session, seq, snap_id, game_id,
