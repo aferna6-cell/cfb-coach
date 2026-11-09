@@ -1652,8 +1652,8 @@ function renderUnified(st) {{
     const adjs = p.adjustments || [];
     if (adjs.length) add(box, "div", "u-action", "ADJUST: " + adjs.join(" + "));
     if (p.user) {{
-      const user = add(box, "div", "u-user", "USER: " + p.user.position + " — " + p.user.primary);
-      add(user, "div", "u-subtle", "Then: " + p.user.secondary + (p.user.verified ? "" : " · assignment not verified"));
+      const user = add(box, "div", "u-user", "USER: " + p.user.position + " · PRIMARY: " + p.user.primary);
+      add(user, "div", "u-subtle", "SECONDARY: " + p.user.secondary + (p.user.verified ? "" : " · assignment not verified"));
     }}
     const forecast = (p.explanation || "").split("; robust value")[0].trim();
     if (forecast) add(box, "div", "u-predict", "EXPECT: " + forecast);
@@ -1677,6 +1677,7 @@ function renderUnified(st) {{
     + (prov.our_offense_executed || 0) + " / our defense "
     + (prov.our_defense_executed || 0) + ")");
   if (p) {{
+    add(meta, "div", "", "Adjustments: " + ((p.adjustments || []).length ? p.adjustments.join(" + ") : "NO ADJUSTMENT"));
     add(meta, "div", "", "Opponent belief: " + p.opponent_prediction_source);
     add(meta, "div", "", "Snap " + p.snap_id + " · evidence confidence "
       + Number(p.football_evidence_confidence || 0).toFixed(2) + " · "
@@ -1690,8 +1691,8 @@ function renderUnified(st) {{
     note.hidden = false;
     note.className = (p && p.side === "defense") ? "def" : "";
     note.textContent = p && p.side === "defense"
-      ? "Previous play: enter the yards the CPU offense gained."
-      : "Previous play: enter the yards our offense gained.";
+      ? "OPPONENT OFFENSE — enter the yards they gained on the previous play."
+      : "OUR OFFENSE — enter the yards we gained on the previous play.";
   }}
   $("btn-end").textContent = "Game over → close (evaluate with postgame)";
 }}
