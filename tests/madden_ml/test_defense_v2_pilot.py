@@ -97,3 +97,23 @@ def test_rank_fails_closed_when_calls_uninstalled_or_illegal():
     assert not ranks["ready_for_live"] and not ranks["applied"]
     with pytest.raises(ValueError):
         v2.rank(model, context="long", belief={"run": 1.2}, calls=[])
+
+
+def test_duplicate_verified_sequences_and_blank_open_result_are_excluded(monkeypatch):
+    from cfb_coach.madden.model import defense_v1
+    monkeypatch.setattr(defense_v1, "offense_won", lambda result, *_: {"W": True, "L": False}.get(result))
+    conn = db()
+    conn.execute(
+        "INSERT INTO snaps VALUES (6,'g1','defense',1,'identified','verified',"
+        "'Nickel Over','Cover 3 Sky','L',3,7,'Mesh',null)"
+    )
+    conn.execute(
+        "INSERT INTO snaps VALUES (7,'g1','defense',4,'unknown',null,"
+        "null,null,'',3,7,'Mesh',null)"
+    )
+    rows, stats = v2.verified_rows(conn, franchise="test-franchise")
+    assert len(rows) == 3
+    assert stats["duplicate_verified_sequence"] == 1
+    observations = v2.earlier_opponent_observations(
+        conn, franchise="test-franchise", session="g1", opponent="cpu-a", next_seq=5)
+    assert [r.seq for r in observations] == [1, 2, 3]
