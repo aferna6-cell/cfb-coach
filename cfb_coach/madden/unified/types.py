@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field, replace
+from functools import cached_property
 from typing import Any, Mapping
 
 SCHEMA_VERSION = "unified.v1"
@@ -145,7 +146,7 @@ class FootballPlay:
     provenance: tuple[str, ...] = ()
     unknown_fields: tuple[str, ...] = ()
 
-    @property
+    @cached_property
     def play_id(self) -> str:
         return f"{self.side[:3]}:{self.formation}|{self.play}"
 
@@ -187,7 +188,7 @@ class FootballAction:
     illegal_reason: str | None = None
     executable: bool = True
 
-    @property
+    @cached_property
     def key(self) -> str:
         adj = "+".join(a.key for a in self.adjustments) or "NO_ADJ"
         return f"{self.play.play_id}#{adj}"

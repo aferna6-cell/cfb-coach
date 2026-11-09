@@ -130,6 +130,9 @@ def preflight(*, db: str | None = None, confirmed_books: str | None = None, mode
     snap_inv = json.loads(SNAPSHOT.read_text())["sides"]
     confirmed = load_confirmed_books(confirmed_books)
     work = Path(workdir or tempfile.mkdtemp(prefix="unified_preflight_"))
+    work.mkdir(parents=True, exist_ok=True)
+    if (work / "live.db").exists():  # never reuse a previous benchmark store (it would be a duplicate game)
+        work = Path(tempfile.mkdtemp(prefix="run_", dir=str(work)))
     books = {}
     for side in (OFF, DEF):
         have = side in confirmed

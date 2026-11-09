@@ -43,6 +43,7 @@ def cmd_game_prep(a: argparse.Namespace) -> int:
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     wm = WorldModel.from_dict(json.loads(Path(a.model).read_text())) if a.model else None
+    props: dict[str, Any] = {}
     for s in sides:
         prop = PRE.build_proposal(s, opponent_id=a.opponent, opponent_class=a.opponent_class, model=wm, max_formations=a.max_formations)
         (out / f"proposal_{s}.json").write_text(json.dumps(prop, indent=2))
@@ -52,7 +53,9 @@ def cmd_game_prep(a: argparse.Namespace) -> int:
             lines += [f"## {f['formation']}  <- {f['source_playbook']} ({f['n_plays']} plays)", f"why: {f['why']}", f"install: {f['install']}",
                       "missing verification: " + "; ".join(f["verification_missing"]), ""]
         (out / f"install_{s}.md").write_text("\n".join(lines))
+        props[s] = prop
         print(f"{s}: {prop['n_formations']} formations -> {out / f'proposal_{s}.json'}  fingerprint {prop['proposed_fingerprint']}")
+    (out / "INSTALL_GUIDE.md").write_text(PRE.render_install_guide(props, a.opponent))
     print("After physically installing AND checking each formation in Madden, run `confirm-install`. Nothing is marked installed automatically.")
     return 0
 
@@ -88,6 +91,56 @@ def _ask(prompt: str, default: str = "") -> str:
 def _load_books(path: str) -> dict[str, Any]:
     books = PF.load_confirmed_books(path)
     return {s: {"inventory": b["inventory"], "fingerprint": b["fingerprint"]} for s, b in books.items()}
+
+
+def cmd_adjustments(a: argparse.Namespace) -> int:
+    from cfb_coach.madden.unified import adjustments as AD
+
+    if a.template:
+        Path(a.template).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.template).write_text(json.dumps(AD.confirmations_template(), indent=2))
+        print(f"wrote {a.template} (everything false). Flip a key to true only after you verified it in-game.")
+        return 0
+    conf = json.loads(Path(a.confirmations).read_text()) if a.confirmations else {}
+    rows = AD.status_table(conf)
+    lines = ["| side | adjustment | exists in Madden 27 | owner-verified | status | why |", "|---|---|---|---|---|---|"]
+    for r in rows:
+        lines.append(f"| {r['side']} | {r['name']} (`{r['id']}`) | {'yes - ' + r['existence_evidence'] if r['exists_in_madden'] else 'NO/undocumented'} | "
+                     f"{'yes' if r['owner_verified_entry'] else 'no'} | {r['status']} | {r['reason']} |")
+    txt = "\n".join(lines)
+    if a.out:
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.out).write_text(txt + "\n")
+        Path(a.out).with_suffix(".json").write_text(json.dumps(rows, indent=2))
+    print(txt)
+    return 0
+
+
+def cmd_discover(a: argparse.Namespace) -> int:
+    from cfb_coach.madden.unified import localrun as LR
+
+    print(json.dumps(LR.discover(), indent=2, default=str))
+    return 0
+
+
+def cmd_local_prep(a: argparse.Namespace) -> int:
+    from cfb_coach.madden.unified import localrun as LR
+
+    rep = LR.local_prep(a.source_db, a.workdir, opponent=a.opponent)
+    print(json.dumps(rep, indent=2, default=str))
+    return 0
+
+
+def cmd_local_finish(a: argparse.Namespace) -> int:
+    from cfb_coach.madden.unified import localrun as LR
+
+    rep = LR.local_finish(a.workdir, a.confirmed_books, calls=a.calls, adjustment_confirmations=a.adjustment_confirmations)
+    print(f"VERDICT: {rep['verdict']}  blocking: {rep['blocking'] or 'none'}")
+    for g in rep["gates"]:
+        print(f"  [{g['status']:7s}] {g['gate']}")
+    print("launch:   ", rep["launch"])
+    print("postgame: ", rep["postgame"])
+    return 0 if rep["verdict"] != "NO-GO" else 2
 
 
 def cmd_history(a: argparse.Namespace) -> int:
@@ -251,6 +304,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--confirmed-books", required=True); s.set_defaults(fn=cmd_confirm)
     s = sub.add_parser("preflight"); s.add_argument("--db"); s.add_argument("--confirmed-books"); s.add_argument("--model"); s.add_argument("--history-report"); s.add_argument("--adjustment-confirmations")
     s.add_argument("--calls", type=int, default=100); s.add_argument("--out"); s.add_argument("--protect", nargs="*"); s.set_defaults(fn=cmd_preflight)
+    s = sub.add_parser("adjustments", help="which individual adjustments exist, are owner-verified, and may be recommended live")
+    s.add_argument("--confirmations"); s.add_argument("--template"); s.add_argument("--out"); s.set_defaults(fn=cmd_adjustments)
+    s = sub.add_parser("discover", help="list candidate Madden databases/model artifacts (read-only)"); s.set_defaults(fn=cmd_discover)
+    s = sub.add_parser("local-prep", help="owner machine steps 1-5; stops before physical installation")
+    s.add_argument("--source-db", required=True); s.add_argument("--workdir", required=True); s.add_argument("--opponent", default="cpu"); s.set_defaults(fn=cmd_local_prep)
+    s = sub.add_parser("local-finish", help="owner machine steps 6-8 after the books are installed and confirmed")
+    s.add_argument("--workdir", required=True); s.add_argument("--confirmed-books", required=True); s.add_argument("--calls", type=int, default=100)
+    s.add_argument("--adjustment-confirmations"); s.set_defaults(fn=cmd_local_finish)
     s = sub.add_parser("history", help="READ-ONLY import of verified historical executions + chronological evaluation")
     s.add_argument("--db", required=True); s.add_argument("--out", required=True); s.add_argument("--include-macro-rows", action="store_true"); s.set_defaults(fn=cmd_history)
     s = sub.add_parser("game", help="ONE continuous game, offense AND defense, no relaunch on possession change")

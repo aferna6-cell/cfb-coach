@@ -27,7 +27,7 @@ from cfb_coach.madden.unified import knowledge as K
 from cfb_coach.madden.unified.adjustments import AdjustmentPlanner
 from cfb_coach.madden.unified.opponent import Belief
 from cfb_coach.madden.unified.types import DEF, OFF, FootballAction, GameState, stable_hash
-from cfb_coach.madden.unified.world_model import DefSig, OutcomePrediction, Profile, WorldModel
+from cfb_coach.madden.unified.world_model import DefSig, OutcomePrediction, Profile, WorldModel, cold_start_prior
 
 SOLVER_VERSION = "unified_solver.v1"
 
@@ -80,8 +80,15 @@ class Decision:
     stage_ms: dict[str, float] = field(default_factory=dict)
 
 
-def _top_signatures(dist: Mapping[tuple, float], n: int) -> list[tuple[tuple, float]]:
-    items = sorted(dist.items(), key=lambda kv: -kv[1])[:n]
+def _top_signatures(dist: Mapping[tuple, float], n: int, mass: float = 0.92, min_n: int = 4) -> list[tuple[tuple, float]]:
+    """Most likely signatures covering ``mass`` of the belief (at least ``min_n``, at most ``n``); renormalised."""
+    ranked = sorted(dist.items(), key=lambda kv: -kv[1])
+    items, acc = [], 0.0
+    for kv in ranked:
+        if len(items) >= n or (acc >= mass and len(items) >= min_n):
+            break
+        items.append(kv)
+        acc += kv[1]
     tot = sum(p for _, p in items) or 1.0
     return [(s, p / tot) for s, p in items]
 
@@ -110,15 +117,61 @@ class Solver:
                  config: SolverConfig | None = None) -> None:
         self.model, self.planner, self.personal = model, planner or AdjustmentPlanner(), personal
         self.cfg = config or SolverConfig()
+        self._info: dict[str, tuple] = {}
+        self._oprof: dict[tuple, Profile] = {}
+        self._dsigs: dict[tuple, DefSig] = {}
 
     # ---- helpers ---------------------------------------------------------------------
+    @staticmethod
+    def _fkey(features: Mapping[str, Any], *extra: Any) -> str:
+        import json
+        return json.dumps([sorted(features.items(), key=lambda kv: kv[0]), *extra], default=str)
+
+    def _action_info(self, a: FootballAction, side: str) -> tuple[Profile | None, DefSig | None, str]:
+        """Per-action profile and feature key, computed once for the life of the coordinator (candidates are cached)."""
+        info = self._info.get(a.key)
+        if info is None:
+            prof = Profile.off(a) if side == OFF else None
+            own = DefSig.from_signature(a.signature, a.play.play_id, {**a.play.features, **a.modified_features}) if side == DEF else None
+            fk = self._fkey(prof.features, prof.play_type, prof.concept) if prof else self._fkey(own.features, own.ctype, own.family, own.vkey)
+            info = self._info[a.key] = (prof, own, fk)
+        return info
+
+    def _dsig(self, sig: tuple) -> DefSig:
+        d = self._dsigs.get(sig)
+        if d is None:
+            d = self._dsigs[sig] = DefSig.from_signature(sig)
+        return d
+
+    def _opp_profile(self, sig: tuple) -> Profile:
+        pr = self._oprof.get(sig)
+        if pr is None:
+            pr = self._oprof[sig] = Profile(sig[0] if sig else "unknown", sig[1] if len(sig) > 1 else "unknown", None, K.offense_features_from_signature(sig))
+        return pr
+
     def _pred(self, st: GameState, side: str, a: FootballAction | Profile, own_def: DefSig | None,
-              sig: tuple, opp_ctx: str) -> OutcomePrediction:
+              sig: tuple, opp_ctx: str, memo: dict | None = None, ckey: str | None = None) -> OutcomePrediction:
+        """Predictions are shared by every candidate with identical matchup features. The exact-play levels (L4/L5) are the only
+        play-identity dependence, so a play WITH exact evidence is never memoised."""
+        exact = side == OFF and isinstance(a, Profile) and a.play_id in self.model.seen_off_play_ids
+        if memo is not None and ckey is not None and not exact:
+            k = (ckey, sig)
+            hit = memo.get(k)
+            if hit is not None:
+                return hit
         if side == OFF:  # our offense vs their defense signature
-            d = DefSig.from_signature(sig)
-            return self.model.predict(st, a, d, personal=self.personal, our_side=OFF, opponent_class=opp_ctx)
-        prof = Profile(sig[0] if sig else "unknown", sig[1] if len(sig) > 1 else "unknown", None, K.offense_features_from_signature(sig))
-        return self.model.predict(st, prof, own_def, personal=None, our_side=DEF, opponent_class=opp_ctx)
+            d = self._dsig(sig)
+            prior = None
+            if memo is not None and ckey is not None:  # the cold-start prior only depends on features, never play identity
+                prior = memo.get(("P", ckey, sig))
+                if prior is None:
+                    prior = memo[("P", ckey, sig)] = cold_start_prior(st, a.features, d.features)
+            pr = self.model.predict(st, a, d, personal=self.personal, our_side=OFF, opponent_class=opp_ctx, prior=prior)
+        else:
+            pr = self.model.predict(st, self._opp_profile(sig), own_def, personal=None, our_side=DEF, opponent_class=opp_ctx)
+        if memo is not None and ckey is not None and not exact:
+            memo[(ckey, sig)] = pr
+        return pr
 
     @staticmethod
     def _own_def(a: FootballAction) -> DefSig:
@@ -145,11 +198,15 @@ class Solver:
         w_eff = self._eff_weight()
         sign_adj = 1.0  # adjustment dy is "in our favour" -> utility +
 
-        def stat_for(a: FootballAction, own_def: DefSig | None, prof: Profile | None):
+        memo: dict = {}
+
+        def stat_for(a: FootballAction, own_def: DefSig | None, prof: Profile | None, ckey: str | None = None):
             us, vs, vsds, ey, fd, td, to, ex, sk = ([] for _ in range(9))
             sup, srcs = 0.0, []
+            if ckey is None:
+                ckey = self._action_info(a, side)[2]
             for sig, _p in sigs:
-                pr = self._pred(st, side, prof if side == OFF else a, own_def, sig, opp_ctx)
+                pr = self._pred(st, side, prof if side == OFF else a, own_def, sig, opp_ctx, memo, ckey)
                 us.append(sign * pr.value)
                 vsds.append(pr.value_sd)
                 ey.append(pr.e_yards); fd.append(pr.p_first_down); td.append(pr.p_td); to.append(pr.p_turnover)
@@ -170,7 +227,7 @@ class Solver:
             prof = Profile.off(rep) if side == OFF else None
             prof_coarse = Profile(prof.play_type, prof.concept, None, prof.features) if prof else None
             own_coarse = DefSig.from_signature(rep.signature, None, {**rep.play.features, **rep.modified_features}) if side == DEF else None
-            us, vsds, _, _, _ = stat_for(rep, own_coarse, prof_coarse)
+            us, vsds, _, _, _ = stat_for(rep, own_coarse, prof_coarse, "A:" + self._action_info(rep, side)[2])
             ev = sum(p * u for p, u in zip(ps, us))
             unc = sum(p * s for p, s in zip(ps, vsds))
             fam_bounds[fam] = (ev, ev - 1.5 * unc, ev + 1.5 * unc)
@@ -188,27 +245,66 @@ class Solver:
         rejected: list[tuple[str, str]] = []
         pending_adj: list[FootballAction] = []
         partial = False
-        for fam in sorted(keep, key=lambda f: -fam_bounds[f][0]):
-            for a in fams[fam]:
-                if deadline_ms is not None and (time.perf_counter() - t0) * 1e3 > deadline_ms * 0.8 and noadj_scores:
-                    partial = True
-                    break
-                if a.adjustments:
-                    pending_adj.append(a)
-                    continue
-                prof = Profile.off(a) if side == OFF else None
-                own = self._own_def(a) if side == DEF else None
-                us, vsds, mats, sup, srcs = stat_for(a, own, prof)
-                ev = sum(p * u for p, u in zip(ps, us))
-                rob = robust_value(us, ps, eps)
-                unc = sum(p * s for p, s in zip(ps, vsds))
-                pred_pen = self._predictability(a, st, recent_own_families)
-                sa = ScoredAction(a, ev, rob, unc, 0.0, pred_pen,
-                                  rob - cfg.lam_uncertainty * unc - pred_pen,
-                                  {k: sum(p * v for p, v in zip(ps, m)) for k, m in zip(("e_yards", "p_first_down", "p_td", "p_turnover", "p_explosive", "p_sack"), mats)},
-                                  sup, "learned" if all(s == "learned" for s in srcs) else "cold_start_prior" if all(s == "cold_start_prior" for s in srcs) else "mixed")
-                noadj_scores[a.play.play_id] = sa
-                scored.append(sa)
+
+        coarse_cache: dict[str, float] = {}
+        full_cache: dict[str, tuple] = {}
+
+        def core_for(a: FootballAction, prof: Profile | None, own: DefSig | None, fk: str) -> tuple:
+            us, vsds, mats, sup, srcs = stat_for(a, own, prof)
+            ev = sum(p * u for p, u in zip(ps, us))
+            rob = robust_value(us, ps, eps)
+            unc = sum(p * s for p, s in zip(ps, vsds))
+            expd = {k: sum(p * v for p, v in zip(ps, m)) for k, m in zip(("e_yards", "p_first_down", "p_td", "p_turnover", "p_explosive", "p_sack"), mats)}
+            src = "learned" if all(s == "learned" for s in srcs) else "cold_start_prior" if all(s == "cold_start_prior" for s in srcs) else "mixed"
+            return (ev, rob, unc, expd, sup, src)
+
+        def coarse_ev(a: FootballAction) -> float:
+            prof, own, fk = self._action_info(a, side)
+            if fk in coarse_cache:
+                return coarse_cache[fk]
+            if not (side == OFF and a.play.play_id in self.model.seen_off_play_ids):
+                # no exact-level evidence: the coarse and exact predictions are identical, so compute once and reuse in stage B
+                full_cache[fk] = core_for(a, prof, own, fk)
+                coarse_cache[fk] = full_cache[fk][0]
+                return coarse_cache[fk]
+            pc = Profile(prof.play_type, prof.concept, None, prof.features)
+            us, _v, _m, _s, _x = stat_for(a, None, pc, "A:" + fk)
+            coarse_cache[fk] = sum(p * u for p, u in zip(ps, us))
+            return coarse_cache[fk]
+
+        # Branch-and-bound for plays with exact-level evidence (the only expensive path): their exact-level correction is bounded
+        # by 3 sd of the model's own effect-size prior (tau at L4+L5). score <= expected utility <= coarse + swing.
+        o = self.model.objective
+        tau_y = self.model.tau_y[4] + self.model.tau_y[5]
+        tau_r = self.model.tau_r[4] + self.model.tau_r[5]
+        swing = 3.0 * (o.w_yards * tau_y + (o.w_first_down * 1.3 + o.w_td + o.w_turnover + o.turnover_field_factor * 20 + o.w_sack) * tau_r)
+        pruned = 0
+
+        order = [a for fam in keep for a in fams[fam]]
+        order.sort(key=lambda a: (a.adjustments != (), -coarse_ev(a) if not a.adjustments else 0.0))  # most promising first
+        for a in order:
+            if deadline_ms is not None and (time.perf_counter() - t0) * 1e3 > deadline_ms * 0.85 and noadj_scores:
+                partial = True
+                break
+            if a.adjustments:
+                pending_adj.append(a)
+                continue
+            if side == OFF and scored and a.play.play_id in self.model.seen_off_play_ids \
+                    and coarse_ev(a) + swing < max(x.score for x in scored):
+                pruned += 1  # provably cannot beat the best exact score already found
+                continue
+            prof, own, fk = self._action_info(a, side)
+            exact = side == OFF and a.play.play_id in self.model.seen_off_play_ids
+            core = None if exact else full_cache.get(fk)
+            if core is None:
+                core = core_for(a, prof, own, fk)
+                if not exact:
+                    full_cache[fk] = core
+            ev, rob, unc, expd, sup, src = core
+            pred_pen = self._predictability(a, st, recent_own_families)
+            sa = ScoredAction(a, ev, rob, unc, 0.0, pred_pen, rob - cfg.lam_uncertainty * unc - pred_pen, dict(expd), sup, src)
+            noadj_scores[a.play.play_id] = sa
+            scored.append(sa)
         for a in pending_adj:  # adjusted variants judged against their own stock play's NO ADJUSTMENT
             base = noadj_scores.get(a.play.play_id)
             if base is None:
@@ -257,7 +353,7 @@ class Solver:
                     break
         cset = stable_hash(sorted(a.key for a in legal))
         return Decision(chosen, scored[:cfg.report_top], cset, prob, seed, SOLVER_VERSION + "/" + self.model.objective.name,
-                        len(legal), len(scored) + len(rejected), len(keep), len(fams), rejected, belief.prediction_source,
+                        len(legal), len(scored) + len(rejected) + pruned, len(keep), len(fams), rejected, belief.prediction_source,
                         "deadline_partial_search" if partial else None,
                         {"stageA_ms": (t2 - t1) * 1e3, "stageB_ms": (t3 - t2) * 1e3, "total_ms": (t3 - t0) * 1e3})
 
