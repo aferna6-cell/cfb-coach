@@ -716,7 +716,9 @@ def cmd_play(args: argparse.Namespace) -> int:
         print("DEFENSE V2: EXPERIMENTAL TEST FRANCHISE ONLY.")
         print("  This is NOT a verified policy; missing/untrained artifacts fall back to the established caller.")
         print(f"  Required game franchise identity: {franchise}; artifact: {artifact}")
-        print("  NO ADJUSTMENT until defensive effects and controller inputs are verified.")
+        print("  V2 may recommend EA-documented individual adjustments only when expected benefit clears its risk gate.")
+        print("  No Xbox button sequences required; adjusted-play benefits are research estimates, not proven results.")
+        print("  Missing targets/unknown assignment effects remain NO ADJUSTMENT.")
         print("  Rollback: omit --defense-model v2 on the next session.")
     elif explicit_defense_v1:
         from cfb_coach.madden.model.defense_v1 import resolve_artifact_path
