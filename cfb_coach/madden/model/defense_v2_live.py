@@ -48,7 +48,11 @@ def _model(path: str, game_started: str, session: str, franchise: str) -> dict[s
     if raw.get("trained_franchise") != franchise:
         raise ValueError("V2 trained artifact belongs to another franchise")
     if not raw.get("n_verified") or not raw.get("n_games"):
-        raise ValueError("V2 artifact lacks verified defensive training evidence")
+        if not (raw.get("cold_start") is True
+                and raw.get("n_verified") == 0 and raw.get("n_games") == 0
+                and raw.get("cold_start_source")
+                == "football_priors.defense_call_edge; verified outcome count zero"):
+            raise ValueError("V2 artifact lacks verified defensive training evidence")
     if "trained_sessions" not in raw or "trained_through_started_ts" not in raw:
         raise ValueError("V2 artifact lacks a strict training cutoff")
     if session in raw["trained_sessions"] or game_started <= raw["trained_through_started_ts"]:
@@ -166,7 +170,7 @@ def try_live(call: Any, sit: Any, opponent: str, db: Any,
     unknown = "exact 11 defender assignments UNKNOWN" if detail["unknown"] else "catalog assignments available"
     summary = ", ".join(detail["known"][:2] or detail["hypotheses"][:2])
     note = (
-        f"DEFENSE V2 EXPERIMENTAL [{model['n_verified']} verified snaps] "
+        f"DEFENSE V2 EXPERIMENTAL {'COLD-START FOOTBALL PRIOR' if model.get('cold_start') and not model['n_verified'] else str(model['n_verified']) + ' verified defensive snaps'} "
         f"stock offense-success prediction {winner['predicted_offense_success']:.3f}; "
         f"predicted opponent concept {max(belief,key=belief.get)} "
         f"(historical probability, not live observation); "
@@ -197,6 +201,8 @@ def try_live(call: Any, sit: Any, opponent: str, db: Any,
         "applied": True, "experimental": True, "model_version": v2.SCHEMA,
         "franchise": franchise, "session_id": session, "snap_seq": seq,
         "n_training_games": model["n_games"], "n_verified": model["n_verified"],
+        "cold_start": bool(model.get("cold_start") and not model["n_verified"]),
+        "football_priors": "weak_then_fade_as_verified_executions_accumulate",
         "prediction": winner["predicted_offense_success"],
         "predicted_defensive_utility": selected["adjusted_risk"],
         "stock_utility": selected["stock_risk"],
