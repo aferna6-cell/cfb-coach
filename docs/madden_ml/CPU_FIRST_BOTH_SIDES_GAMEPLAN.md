@@ -65,3 +65,31 @@ This is an illustrative launch; check play --help for additional required argume
 V2 can rank individual coverage hub changes including press/back off, inside/outside leverage, Smart Zone settings and pass commit when evidence favors them, plus a receiver-specific double team if a target is available. It does NOT yet independently make every defender hot route, line shift, blitz assignment, QB contain, safety alignment or saved custom macro. NO ADJUSTMENT always competes. The on-screen USER defender read prioritizes run fit vs crossers, vertical seams, bunch, etc without claiming exact unseen 11-slot assignments.
 
 **Current gate: code prepared; owner-local model, editor, full-book latency and actual gameplay confirmation required.**
+
+
+## Public-source defensive starter preview (actual V2 coldstart CI execution)
+
+Before using private game data, the first-game zero-execution V2 portfolio selected **6 defensive formations and 81 stock plays**, not a fixed 15-form quota. The full named play inventory is saved at:
+
+    docs/madden_ml/CPU1_DEFENSE_V2_COLDSTART_PREVIEW.json
+
+| Formation | Stock book source | Catalogued plays |
+|---|---|---:|
+| Dime 2-3 Odd | Raiders | 24 |
+| 3-4 Cub | Lions | 6 |
+| Nickel 2-4 Dbl Mug | Vikings | 15 |
+| 2-4-5 Over Wide | Raiders | 18 |
+| 4-3 Even 6-1 | 49ers | 6 |
+| 3-3-5 3 High Penny | Vikings | 12 |
+
+This is a **provisional source-catalog preview** for a prior-only test franchise, not the final physically installed game book. Re-run the actual dual pregame script against the **correct latest offensive model artifact and actual test franchise database**; the resulting defense proposal is authoritative for that trial, and might differ as game evidence grows.
+
+After installation, run the **read-only V2 core 100-call benchmark** against the exact locked installed defensive inventory:
+
+    python3 scripts/madden_ml/bench_defense_v2_scoring.py \
+      --db "$CFB_COACH_MADDEN_DB" \
+      --model /tmp/cpu-first-both/defense_cold_start_model.json \
+      --runs 100 \
+      --out /tmp/cpu-first-both/defense_core_benchmark.json
+
+This measures stock ranking + individual adjustments + USER reads, including first-call latency. It excludes live session DB lookups, UI work and decision logging, so it **cannot** alone satisfy the full <=150ms end-to-end gate. Benchmark the offensive full installed-book live path separately and verify neither side silently falls back.
