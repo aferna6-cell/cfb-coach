@@ -24,7 +24,7 @@ const fs = require('fs');
   };
   const snapshot = async (label, extra = {}) => {
     const s = {
-      label, call: await T('#call'), panel: await T('#unified-panel'), resultNote: await T('#unified-result-note'),
+      label, call: await T('#call'), panel: (await page.locator('#unified-panel').textContent()).trim(), resultNote: await T('#unified-result-note'),
       qbReads: (await page.locator('#qb-reads-list li').allInnerTexts()), qbVisible: await page.locator('#qb-reads').isVisible(),
       user: (await page.locator('#unified-panel .u-user').count()) ? await T('#unified-panel .u-user') : null,
       log: await page.locator('#log div').allTextContents(), err: await T('#err'), ...extra,
@@ -47,30 +47,30 @@ const fs = require('fs');
   let r = await submit();
   await snapshot('offense-1', r);
 
-  // 2. result of snap 1 (owner explicitly confirms "ran call") + next offense snap
+  // 2. result of snap 1: standing attestation confirms recommended by default
   await page.click('button.outcome[data-out="gain"]'); await page.fill('#gain-n', '7');
   await page.fill('#their', '4-3 Over | Cover 3 Sky');
-  await page.click('#btn-ran-recommended');
   await setSit('offense', 2, 3, 'my', 32);
   r = await submit();
   await snapshot('offense-2', r);
 
-  // 3. possession change -> defense. Owner does NOT confirm execution this time (stays unknown).
+  // 3. possession change -> defense. Explicitly override standing attestation to UNKNOWN for snap 2.
   await page.click('button.outcome[data-out="gain"]'); await page.fill('#gain-n', '5');
+  await page.click('#btn-ran-different');
+  await page.check('input[name="exec"][value="unknown"]');
   await setSit('defense', 1, 10, 'my', 40);
   r = await submit();
   await snapshot('defense-3', r);
 
-  // 4. result of the defensive snap = OPPONENT offense's yards; confirm ran-call; back to offense
+  // 4. result of defensive snap = OPPONENT offense's yards; implicit recommended; back to offense
   await page.click('button.outcome[data-out="gain"]'); await page.fill('#gain-n', '12');
   await page.fill('#their', 'Gun Trips X Nasty | Hi Lo Cross');
-  await page.click('#btn-ran-recommended');
   await setSit('offense', 1, 10, 'my', 30);
   r = await submit();
   await snapshot('offense-4', r);
 
   // 5. refresh / reconnect: the waiting snap must still be there, no new snap created
-  const before = await T('#unified-panel');
+  const before = (await page.locator('#unified-panel').textContent()).trim();
   await page.reload();
   await page.waitForFunction(() => document.getElementById('call').textContent.indexOf('—') > 0);
   await snapshot('after-reload', { panelBefore: before });
