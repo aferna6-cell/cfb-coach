@@ -236,6 +236,8 @@ def test_real_browser_drives_the_established_page(tmp_path, no_legacy):
     o1, o2, d3, o4 = steps["offense-1"], steps["offense-2"], steps["defense-3"], steps["offense-4"]
     assert all(x["ok"] for x in (o1, o2, d3, o4)) and all(" — " in x["call"] for x in (o1, o2, d3, o4))
     assert "NO ADJUSTMENT" in o1["panel"] and "FALLBACK" in o1["panel"].upper() and "none" in o1["panel"].lower()
+    assert "EXPECT:" in o1["visiblePanel"] and "Model details" in o1["visiblePanel"]
+    assert "Artifact:" not in o1["visiblePanel"] and "Learning:" not in o1["visiblePanel"]
     assert o1["qbVisible"] and len(o1["qbReads"]) == 2
     assert "OPPONENT OFFENSE" in d3["resultNote"] and d3["user"] and "USER:" in d3["user"] and "PRIMARY:" in d3["user"] and "SECONDARY:" in d3["user"]
     assert "OUR OFFENSE" in o4["resultNote"] and d3["qbVisible"] is False and o4["qbVisible"] is True
