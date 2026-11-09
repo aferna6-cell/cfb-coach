@@ -72,6 +72,34 @@ def _form_profile(item: Mapping[str, Any], *, model: Mapping[str, Any]) -> dict[
     return profile
 
 
+def _front_group(name: str) -> str:
+    """Personnel families as source-name hypotheses; never a per-player assignment."""
+    n = str(name or "").strip().lower()
+    for prefix, group in (
+        ("goal line", "goal_line"), ("nickel", "nickel"),
+        ("4-2-5", "425"), ("2-4-5", "425"),
+        ("3-3-5", "335"), ("dime", "dime"),
+        ("dollar", "dollar"), ("prevent", "prevent"),
+        ("3-4", "34"), ("4-3", "43"),
+        ("46 ", "46"), ("4-4", "44"), ("5-2", "52"),
+    ):
+        if n.startswith(prefix):
+            return group
+    return "unknown"
+
+
+# An exploratory CPU *training* book benefits from observing several fronts.
+# These modest bonuses are uncertainty/learning-value priors, not evidence of
+# game-time play superiority. A growing complexity penalty prevents 15-by-rule.
+FRONT_EXPLORATION_VALUE = {
+    "nickel": 0.017, "425": 0.015, "335": 0.011,
+    "dime": 0.017, "dollar": 0.007,
+    "34": 0.015, "43": 0.015,
+    "goal_line": 0.013, "46": 0.010, "44": 0.008,
+    "52": 0.008, "prevent": 0.003, "unknown": 0.0,
+}
+
+
 def _portfolio_score(chosen: Sequence[Mapping[str, Any]], *, model: Mapping[str, Any],
                      belief: Mapping[str, float],
                      profiles: Mapping[tuple[str, str], dict[tuple[str, str], float]] | None = None,
@@ -103,6 +131,16 @@ def _portfolio_score(chosen: Sequence[Mapping[str, Any]], *, model: Mapping[str,
     }
     unique_families.discard(None)
     score += 0.001 * len(unique_families)
+    # Value of learning/exploring varied fronts in a CPU training franchise.
+    # As real executed evidence accumulates, selection is more outcome-driven.
+    front_groups = {_front_group(form["formation"]) for form in chosen}
+    evidence_count = max(0, int(model.get("n_verified", 0)))
+    explore_weight = max(0.15, 1.0 - min(1.0, evidence_count / 250.0))
+    score += explore_weight * sum(
+        FRONT_EXPLORATION_VALUE.get(group, 0.0) for group in front_groups
+    )
+    n_form = len(chosen)
+    score -= 0.005 * n_form + 0.00045 * (n_form ** 2)
     return score
 
 
@@ -186,6 +224,7 @@ def propose(*, catalogue: Mapping[str, Mapping[str, Sequence[str]]],
             "No fixed formation rotation; model evaluates full source formation play sets",
             "Stock play responsibilities remain unknown where source diagrams are unverified",
             "Portfolio optimizes several offensive threat concepts per situation; no fixed formation quota",
+            "CPU training franchise also prices diverse source-front exploration against edit complexity; the number is NOT a fixed quota",
             "Low-evidence personnel and matchup priors are hypotheses, not demonstrated win-rate effects",
             "Candidate universe is the catalogued stock formations only; completeness not assumed",
         ],
