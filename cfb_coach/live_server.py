@@ -1480,6 +1480,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
       <div class="row" id="exec-radios" style="gap:.75rem;flex-wrap:wrap">
         <label style="font-weight:600"><input type="radio" name="exec" value="used_recommended"/> used recommended</label>
         <label><input type="radio" name="exec" value="used_different"/> used different</label>
+        <label><input type="radio" name="exec" value="used_recommended_no_adjustment"/> same play, skipped adjustment</label>
         <label><input type="radio" name="exec" value="not_executed"/> didn't run</label>
         <label><input type="radio" name="exec" value="unknown"/> unknown</label>
       </div>
