@@ -7,6 +7,7 @@ it never treats an earlier coverage observation as the current coverage.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Mapping
 
 SCHEMA = "madden.offense.game_memory.v1"
@@ -33,6 +34,24 @@ def _save(db: Any, session_id: str, payload: Mapping[str, Any]) -> None:
     db.set_meta(_key(session_id), json.dumps(dict(payload), sort_keys=True))
 
 
+def _fenced_seq(value: Any, snap_id: Any, session_id: str) -> int | None:
+    """Only an explicit positive seq or exact SESSION-0001 snap ID is evidence.
+
+    Game 1 stored legacy events with null snap_seq but valid session-prefixed
+    IDs. Never substitute event insertion order; it could include later snaps
+    in a historical replay.
+    """
+    try:
+        if value is not None:
+            seq = int(value)
+            if seq > 0:
+                return seq
+    except (TypeError, ValueError):
+        pass
+    match = re.fullmatch(re.escape(str(session_id)) + r"-(\\d+)", str(snap_id or ""))
+    return int(match.group(1)) if match and int(match.group(1)) > 0 else None
+
+
 def remember_recommendation(
     db: Any,
     *,
@@ -49,7 +68,7 @@ def remember_recommendation(
     payload = _load(db, session_id)
     event = {
         "snap_id": snap_id,
-        "snap_seq": snap_seq,
+        "snap_seq": _fenced_seq(snap_seq, snap_id, session_id),
         "recommended_formation": formation,
         "recommended_play": play,
         "recommended_adjustment_kind": adjustment_kind or "none",
@@ -97,7 +116,7 @@ def record_closed_snap(
     if match is None:
         match = {
             "snap_id": snap_id,
-            "snap_seq": snap_seq,
+            "snap_seq": _fenced_seq(snap_seq, snap_id, session_id),
             "recommended_formation": None,
             "recommended_play": None,
             "recommended_adjustment_kind": None,
@@ -106,6 +125,8 @@ def record_closed_snap(
             "verification": "outcome_without_recommendation",
         }
         payload["events"].append(match)
+    if match.get("snap_seq") is None:
+        match["snap_seq"] = _fenced_seq(snap_seq, snap_id, session_id)
     match["executed_formation"] = executed_formation
     match["executed_play"] = executed_play
     match["adjustment_applied"] = adjustment_applied
@@ -130,9 +151,12 @@ def pre_snap_context(
     for row in payload.get("events") or []:
         if snap_id and row.get("snap_id") == snap_id:
             continue
-        seq = row.get("snap_seq")
-        if snap_seq is not None and seq is not None and int(seq) >= int(snap_seq):
-            continue
+        seq = _fenced_seq(row.get("snap_seq"), row.get("snap_id"), session_id)
+        if snap_seq is not None:
+            # A missing sequence is NOT evidence this row predates the query.
+            # Exclude it instead of leaking future outcomes in retro replays.
+            if seq is None or seq >= int(snap_seq):
+                continue
         prior.append(row)
     from cfb_coach.madden.playcaller import coverage_class
 
