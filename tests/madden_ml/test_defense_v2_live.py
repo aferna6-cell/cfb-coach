@@ -178,3 +178,20 @@ def test_verified_action_is_only_shown_with_real_execution_support(tmp_path, mon
     )
     assert stock.adjustment is None
     db.conn.close()
+
+
+
+def test_v2_rejects_unconfirmed_or_changed_installed_book(tmp_path, monkeypatch):
+    db = FakeDb(tmp_path / "test.db")
+    monkeypatch.setattr(live, "load_model", lambda _: artifact())
+    book = {"Nickel Over": ["Cover 3 Sky"]}
+    for given in (None, "DEF-INST-INVALID"):
+        result = live.maybe_apply_v2(
+            call(), situation(), "cpu-test", db, book,
+            model_path="unused", test_db=str(db.path), franchise="test-franchise",
+            confirmed_inventory_fingerprint=given,
+        )
+        assert result.defense_v2["applied"] is False
+        assert result.ml_defense_fallback["fell_back"]
+    assert not db.logged
+    db.conn.close()
