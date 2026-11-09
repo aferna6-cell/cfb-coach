@@ -591,6 +591,8 @@ def cmd_play(args: argparse.Namespace) -> int:
     pid = _profile_arg(args, db)
     active = _active_after_prep(db, oid, pid)
     cpu = is_cpu_opponent(oid)
+    cpu_defense_coaching = cpu and bool(getattr(args, "coach_cpu_defense", False))
+    offense_only = cpu and not cpu_defense_coaching
     human_ml_control = bool(getattr(args, "ml_human_control", False)) and not cpu
     human_defense_ml = bool(getattr(args, "ml_defense_control", False)) and not cpu
     if human_ml_control:
@@ -638,22 +640,25 @@ def cmd_play(args: argparse.Namespace) -> int:
     from cfb_coach.madden.playbook import NoActivePlaybook, active_books, load_pending
 
     try:
-        books = active_books(db, ("offense",) if cpu else ("offense", "defense"))
+        books = active_books(db, ("offense",) if offense_only else ("offense", "defense"))
     except NoActivePlaybook as exc:
         print(str(exc).replace("<opp>", oid), file=sys.stderr)
         db.close()
         return 2
     print(_active_line(active, cpu))
     print(f"Locked book: O = {books['offense']['name']} [{books['offense']['mode']}]"
-          + ("" if cpu else f" · D = {books['defense']['name']} [{books['defense']['mode']}]")
+          + ("" if offense_only else f" · D = {books['defense']['name']} [{books['defense']['mode']}]")
           + " — calls stay inside it (playbook --game madden27 to list)")
     for side, rec in load_pending(db).items():
-        if side == "offense" or not cpu:
+        if side == "offense" or not offense_only:
             print(f"  note: {side} custom book rev {rec.get('rev')} is PENDING — build it, then "
                   f"`prep --game madden27 -o {oid} --mark-applied` to switch live calls to it")
-    if cpu:
+    if offense_only:
         print("CPU opponent — OFFENSE-ONLY coaching (no defense calls / no D macros).")
         print("Commands: result <text> | why | quit  (side d disabled)")
+    elif cpu:
+        print("LIONS ROLLBACK: CPU OFFENSE = pinned experimental ML, DEFENSE = established heuristic caller.")
+        print("CPU game — O + D calls enabled. Prefix 'd ' for defense; no defensive ML or D macros.")
     else:
         print("User game — O + D. Prefix 'd ' for defense. Commands: side o|d | result <text> | why | quit")
     print("  Type D&D (+ yl) + previous play/coverage name, e.g. '2&7 my 35 stick wheel' | '1&10 cover 3 match'")
@@ -693,6 +698,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
             allow_human_ml=human_ml_control,
             allow_human_defense_ml=human_defense_ml,
+            coach_cpu_defense=cpu_defense_coaching,
         )
         _maybe_shadow(db, sit, call, oid)
         print(call.headline())
@@ -715,6 +721,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             kwargs.setdefault("active_macros", _active_now())
             kwargs.setdefault("allow_human_ml", human_ml_control)
             kwargs.setdefault("allow_human_defense_ml", human_defense_ml)
+            kwargs.setdefault("coach_cpu_defense", cpu_defense_coaching)
             return make_call(sit, oid, db, **kwargs)
 
         def _learn():
@@ -732,8 +739,8 @@ def cmd_play(args: argparse.Namespace) -> int:
             play_cmd="cfb-coach play --game madden27",
             dynasty=pid,
             dynasty_label=profile_config(pid)["label"],
-            cpu_only=cpu,
-            book_info=lambda: live_book_info(db, cpu=cpu, profile_label=profile_config(pid)["label"]),
+            cpu_only=offense_only,
+            book_info=lambda: live_book_info(db, cpu=offense_only, profile_label=profile_config(pid)["label"]),
             book_apply=lambda rev: live_apply(db, rev),
             live_score=live_ctx.score,
             quarter=live_ctx.quarter,
@@ -814,7 +821,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                 print("  side → offense")
                 continue
             if low in ("d", "side d", "defense"):
-                if cpu:
+                if offense_only:
                     print("  CPU = offense-only — defense calls disabled")
                 else:
                     side = "defense"
@@ -869,6 +876,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                 sit, oid, db, active_macros=_active_now(), live_macros=macros_on,
                 allow_human_ml=human_ml_control,
                 allow_human_defense_ml=human_defense_ml,
+                coach_cpu_defense=cpu_defense_coaching,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
             )
