@@ -91,6 +91,14 @@ const fs = require('fs');
   await page.waitForTimeout(150);
   await snapshot('bad-input', { ok: (await resp[0].json()).ok });
 
+  // 7. TD on offense is a manual possession change, NOT a blocked auto-next
+  // projection. The same HTTP endpoint must accept the next side and spot.
+  await page.click('button.outcome[data-out="td"]');
+  await setSit('defense', 1, 10, 'opp', 25);
+  const tdResult = await submit();
+  if (!tdResult.ok) out.errors.push('manual TD-to-kickoff transition was blocked');
+  await snapshot('touchdown-manual-possession', tdResult);
+
   await browser.close();
   process.stdout.write(JSON.stringify(out));
 })().catch(e => { console.error('BROWSER-DRIVE-FAILED', e); process.exit(1); });
