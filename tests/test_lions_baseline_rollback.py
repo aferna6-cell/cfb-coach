@@ -87,7 +87,9 @@ def test_default_is_read_only_and_does_not_write(tmp_path):
     assert hashlib.sha256(src.read_bytes()).hexdigest() == before
 
 
-def test_mismatched_artifact_refuses_to_retrain_or_create_clone(tmp_path):
+def test_mismatched_artifact_refuses_to_retrain_or_create_clone(tmp_path, monkeypatch):
+    # This test must not discover the owner's actual ~/.cfb-coach artifact.
+    monkeypatch.setenv("HOME", str(tmp_path))
     src, bad = make_db(tmp_path, valid_model=False)
     with sqlite3.connect(f"file:{src}?mode=ro", uri=True) as c:
         found, findings = rb.find_model(c, bad)
