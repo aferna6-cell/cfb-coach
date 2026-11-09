@@ -93,3 +93,18 @@ def test_defensive_adjustment_card_does_not_need_xbox_button_sequence():
     assert "ADJ: Back Off" in call.format()
     assert "press" not in call.adjustment_line()
     assert "watch crossers" in call.format()
+
+
+
+def test_v2_defensive_live_card_renders_first_and_second_user_reads():
+    guide = k.user_guidance(play="Cover 3 Sky", formation="Nickel Over",
+                            family="single_high", belief=belief("cross", 0.83),
+                            sit=sit(distance=2))
+    call = MaddenCall("defense", "Nickel Over", "Cover 3 Sky",
+                      "No adj", guide["compact"], "model")
+    call.user_guidance = guide
+    shown = call.format()
+    assert "USER READ:" in shown
+    assert guide["first_read"] in shown
+    assert guide["second_read"] in shown
+    assert "crosser" in shown.lower()
