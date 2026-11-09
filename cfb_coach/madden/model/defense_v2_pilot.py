@@ -177,11 +177,70 @@ def fit(rows: Sequence[Snap]) -> dict[str, Any]:
         if r.concept is not None:
             concepts[r.concept] += 1
             _add(matchup, _key(r.context, r.family, r.concept), r.offense_success)
-    return {"schema": SCHEMA, "target": "offense_success", "policy": "shadow_only",
-            "n_verified": len(rows), "n_games": len({r.session for r in rows}),
-            "global": glob, "contexts": ctx, "families": fam, "matchups": matchup,
-            "plays": play, "concept_counts": dict(concepts),
-            "evidence": "verified execution only; observational, not causal"}
+    model = {"schema": SCHEMA, "target": "offense_success", "policy": "shadow_only",
+             "n_verified": len(rows), "n_games": len({r.session for r in rows}),
+             "global": glob, "contexts": ctx, "families": fam, "matchups": matchup,
+             "plays": play, "concept_counts": dict(concepts),
+             "evidence": "verified execution only; observational, not causal"}
+    model["structural"] = _fit_structural(rows, model)
+    return model
+
+
+def _fit_structural(rows: Sequence[Snap], model: Mapping[str, Any]) -> dict[str, Any]:
+    """Ridge residual learner over documented defensive candidate feature axes.
+
+    A football label alone never supplies empirical effect. Only fit this term
+    with >=8 distinct verified games and >=200 verified snaps. No synthetic
+    prior coefficients are installed for cold-start games.
+    """
+    if len(rows) < 200 or len({r.session for r in rows}) < 8:
+        return {"active": False, "reason": "requires 200 verified snaps in 8 distinct games"}
+    import numpy as np
+    from cfb_coach.madden.model import defense_semantics as ds
+
+    names = list(ds.CANDIDATE_NAMES)
+    eligible = []
+    for row in rows:
+        feats = ds.candidate_features(row.formation, row.play)
+        if feats.get("dk_cand_in_catalog", 0.0) <= 0:
+            continue
+        eligible.append((row, [float(feats[n]) for n in names]))
+    if len(eligible) < 160:
+        return {"active": False, "reason": "insufficient catalog-backed verified assignments"}
+    X = np.asarray([vec for _, vec in eligible], dtype=float)
+    centers = X.mean(axis=0)
+    centered = X - centers
+    outcomes = np.asarray([float(row.offense_success) - baseline(model, row.context)
+                           for row, _ in eligible], dtype=float)
+    # Zero-baseline, strong shrinkage. Does not claim an intervention effect.
+    alpha = 60.0
+    matrix = centered.T @ centered + np.eye(X.shape[1]) * alpha
+    coefficients = np.linalg.solve(matrix, centered.T @ outcomes)
+    return {"active": True, "method": "ridge_centered_context_residual",
+            "n_train": len(eligible), "n_games": len({r.session for r, _ in eligible}),
+            "names": names, "centers": centers.tolist(),
+            "coefficients": coefficients.tolist(),
+            "max_delta": 0.07,
+            "note": "structural hypothesis trained from observational verified executions"}
+
+
+def structural_delta(model: Mapping[str, Any], formation: str, play: str) -> float:
+    art = model.get("structural") or {}
+    if not art.get("active"):
+        return 0.0
+    from cfb_coach.madden.model import defense_semantics as ds
+    feats = ds.candidate_features(formation, play)
+    if feats.get("dk_cand_in_catalog", 0.0) <= 0:
+        return 0.0
+    names, centers, coefs = art["names"], art["centers"], art["coefficients"]
+    if len(names) != len(centers) or len(names) != len(coefs):
+        raise ValueError("invalid structural model dimensions")
+    delta = sum((float(feats[name]) - float(center)) * float(coef)
+                for name, center, coef in zip(names, centers, coefs))
+    if not math.isfinite(delta):
+        raise ValueError("nonfinite structural score")
+    cap = min(0.07, max(0.0, float(art.get("max_delta", 0.0))))
+    return max(-cap, min(cap, delta))
 
 
 def _posterior(count: Sequence[int] | None, prior: float, strength: float) -> tuple[float, int]:
@@ -199,10 +258,13 @@ def offense_risk(model: Mapping[str, Any], context: str, formation: str,
     base = baseline(model, context)
     family_p, family_n = _posterior(model["families"].get(_key(context, family)), base, 16.0)
     play_p, play_n = _posterior(model["plays"].get(_key(context, formation, play)), family_p, 24.0)
+    structural = structural_delta(model, formation, play)
     if concept is None:
-        return play_p, {"family": family_n, "play": play_n, "matchup": 0}
+        return max(0.001, min(0.999, play_p + structural)), {
+            "family": family_n, "play": play_n, "matchup": 0}
     matchup_p, matchup_n = _posterior(model["matchups"].get(_key(context, family, concept)), family_p, 16.0)
-    return 0.7 * matchup_p + 0.3 * play_p, {
+    predicted = 0.7 * matchup_p + 0.3 * play_p + structural
+    return max(0.001, min(0.999, predicted)), {
         "family": family_n, "play": play_n, "matchup": matchup_n}
 
 
@@ -249,7 +311,9 @@ def rank(model: Mapping[str, Any], *, context: str, calls: Sequence[Mapping[str,
             weighted += float(belief.get(concept, 0)) * p
         _, support = offense_risk(model, context, form, play, fam, None)
         scores.append({"formation": form, "play": play, "family": fam,
-                       "predicted_offense_success": round(weighted, 5), "support": support})
+                       "predicted_offense_success": round(weighted, 5), "support": support,
+                       "structural_model_active": bool((model.get("structural") or {}).get("active")),
+                       "learned_structural_delta": round(structural_delta(model, form, play), 5)})
     scores.sort(key=lambda x: (x["predicted_offense_success"], x["formation"], x["play"]))
     return {"schema": SCHEMA, "applied": False, "ready_for_live": False,
             "model_games": model["n_games"], "model_snaps": model["n_verified"],
