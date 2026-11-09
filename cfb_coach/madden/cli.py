@@ -643,6 +643,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     defense_model_path = getattr(args, "defense_model_path", None)
     defense_test_db = getattr(args, "defense_test_db", None)
     defense_franchise = getattr(args, "defense_franchise", None)
+    defense_action_confirmations = getattr(args, "defense_action_confirmations", None)
     explicit_defense_v1 = defense_model == "v1" and not offense_only
     explicit_defense_v2 = defense_model == "v2" and not offense_only
     if defense_model == "v2":
@@ -824,6 +825,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             defense_model_path=defense_model_path,
             defense_test_db=defense_test_db,
             defense_franchise=defense_franchise,
+            defense_action_confirmations=defense_action_confirmations,
             cpu_defense=cpu_defense,
         )
         _maybe_shadow(db, sit, call, oid)
@@ -853,6 +855,7 @@ def cmd_play(args: argparse.Namespace) -> int:
             kwargs.setdefault("defense_model_path", defense_model_path)
             kwargs.setdefault("defense_test_db", defense_test_db)
             kwargs.setdefault("defense_franchise", defense_franchise)
+            kwargs.setdefault("defense_action_confirmations", defense_action_confirmations)
             kwargs.setdefault("cpu_defense", cpu_defense)
             return make_call(sit, oid, db, **kwargs)
 
@@ -1024,6 +1027,7 @@ def cmd_play(args: argparse.Namespace) -> int:
                 defense_model_path=defense_model_path,
                 defense_test_db=defense_test_db,
                 defense_franchise=defense_franchise,
+                defense_action_confirmations=defense_action_confirmations,
                 cpu_defense=cpu_defense,
                 last_coverage=last_cov if sit.side == "offense" else None,
                 last_concept=last_concept if sit.side == "defense" else None,
