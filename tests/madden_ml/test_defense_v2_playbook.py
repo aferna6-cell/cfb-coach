@@ -51,3 +51,22 @@ def test_unknown_calls_not_silently_treated_as_proven():
     with pytest.raises(ValueError):
         designer.propose(catalogue={"A": {"Mystery": ["Obscure New Call"]}},
                          model=model(), max_formations=15)
+
+
+
+def test_model_chooses_multiple_formations_when_distinct_threats_require_them(monkeypatch):
+    from cfb_coach.madden.model import defense_v2_pilot as v2
+
+    def outcome(model, context, formation, play, family, concept):
+        run_front = formation.startswith("Goal Line")
+        p = 0.15 if (run_front and concept == "run") or (not run_front and concept == "vert") else 0.8
+        return p, {}
+    monkeypatch.setattr(v2, "offense_risk", outcome)
+    cat = {
+        "Heavy": {"Goal Line 5-3": ["Cover 0"]},
+        "Pass": {"Dime Normal": ["Cover 2 Man"]},
+    }
+    book = designer.propose(catalogue=cat, model=model(), max_formations=15)
+    assert set(book["formations"]) == {"Goal Line 5-3", "Dime Normal"}
+    assert book["n_formations"] == 2
+    assert book["installed"] is False
