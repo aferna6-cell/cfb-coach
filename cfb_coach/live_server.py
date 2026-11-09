@@ -1613,6 +1613,7 @@ let outcomeChoice = "";
 let nextBasis = null;
 let nextManualOverride = false;
 let nextPreview = null;
+let scoreManualOverride = false;
 let execVerifyTouched = false;
 // True once the clock box is typed in for this snap. Sent with the submit so the
 // server can tell a real repeated clock from a value that was never re-entered.
@@ -1855,6 +1856,7 @@ function renderState(st) {{
     if (nextBasis && nextBasis.side) $("side").value = nextBasis.side;
     nextManualOverride = false;
     nextPreview = null;
+    scoreManualOverride = false;
     refreshNextPreview();
   }}
 }}
@@ -2139,8 +2141,19 @@ function refreshNextPreview() {{
   if (!unifiedUI || !nextBasis) return;
   const out = currentOutcome();
   nextPreview = out ? projectNextSituation(nextBasis, out) : null;
+
+  // Same as the established HTML tracker: TD awards six points. The owner
+  // can edit the score for the try, a defensive score, or a special play.
+  // Always calculate from the snap's *original* score, never accumulate
+  // six points again when the same result is edited or revisited.
+  if (!scoreManualOverride && nextBasis.score_us != null && nextBasis.score_opp != null) {{
+    const td = /^\s*(?:td|touchdown)\b/i.test(out);
+    $("score-us").value = Number(nextBasis.score_us) + (td && nextBasis.side === "offense" ? 6 : 0);
+    $("score-them").value = Number(nextBasis.score_opp) + (td && nextBasis.side === "defense" ? 6 : 0);
+  }}
+
   if (nextManualOverride) {{
-    setNextStatus("Manual next situation — your edits will be used.");
+    setNextStatus("Using your entered next down, distance, possession and field position.");
     return;
   }}
   if (!nextPreview) {{
@@ -2148,7 +2161,9 @@ function refreshNextPreview() {{
     return;
   }}
   if (!nextPreview.automatic) {{
-    setNextStatus(nextPreview.reason + " Edit the next situation to continue.", true);
+    // Legacy HTML has always accepted the typed next situation after a TD,
+    // turnover, punt or ambiguous result. Warn, but NEVER block the Submit.
+    setNextStatus(nextPreview.reason + " The situation fields below are editable; Submit will use them.", true);
     return;
   }}
   fillNextSituation(nextPreview);
@@ -2168,6 +2183,10 @@ function refreshNextPreview() {{
   const el = $(id);
   if (el) el.addEventListener("input", refreshNextPreview);
 }});
+["score-us","score-them"].forEach(id => {{
+  const el = $(id);
+  if (el) el.addEventListener("input", () => {{ scoreManualOverride = true; }});
+}});
 
 document.querySelectorAll("#outcome-btns button.outcome").forEach(btn => {{
   btn.addEventListener("click", () => {{
@@ -2185,18 +2204,19 @@ $("btn-submit").addEventListener("click", async () => {{
   try {{
     const data = await withUiLock(async () => {{
       const out = currentOutcome();
-      if (unifiedUI && nextBasis && out && !nextManualOverride) {{
-        const predicted = projectNextSituation(nextBasis, out);
-        if (!predicted || !predicted.automatic)
-          throw new Error(predicted ? predicted.reason : "Enter the next situation manually.");
-        fillNextSituation(predicted);
-      }}
+      const predicted = (unifiedUI && nextBasis && out && !nextManualOverride)
+        ? projectNextSituation(nextBasis, out) : null;
+      if (predicted && predicted.automatic) fillNextSituation(predicted);
+      // On a TD, turnover or unknown outcome use the human-entered next
+      // situation exactly as the original HTML page did. Do not let a
+      // failed auto-projection block a valid manual situation.
+      const useAutomaticSituation = !!(predicted && predicted.automatic);
       const sit = buildSit();
       const checked = document.querySelector('input[name="exec"]:checked');
       const exec = execVerifyTouched && checked ? checked.value : "unknown";
       const body = {{
         outcome: out, sit: sit, side: $("side").value, quarter: $("quarter").value,
-        auto_advance: !!(unifiedUI && nextBasis && out && !nextManualOverride),
+        auto_advance: useAutomaticSituation,
         their: ($("their").value || "").trim(), score_us: $("score-us").value, score_them: $("score-them").value,
         executed_status: exec,
         verify_touched: execVerifyTouched,
