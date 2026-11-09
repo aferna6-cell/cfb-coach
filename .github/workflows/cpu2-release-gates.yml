@@ -1,0 +1,35 @@
+name: CPU Game 2 targeted release gates
+
+on:
+  push:
+    branches:
+      - madden-ml/cpu2-verification-learning-release
+  workflow_dispatch:
+
+jobs:
+  model-read-learning-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Verify QB reads, route fallback, and chronological learning
+        run: |
+          PYTHONPATH=. python -m pytest -q \
+            tests/madden_ml/test_cpu2_chronological_learning.py \
+            tests/madden_ml/test_cpu2_contextual_qb_reads.py \
+            tests/madden_ml/test_cpu2_provisional_read_cache.py \
+            tests/madden_ml/test_cpu1_route_timeout_recovery.py \
+            tests/madden_ml/test_live_full_catalog_guard.py \
+            tests/madden_ml/test_joint_call_card.py
+      - name: Compile offline release tools
+        run: |
+          python -m py_compile \
+            scripts/madden_ml/cpu2_audit_database.py \
+            scripts/madden_ml/cpu2_postgame_candidate.py
