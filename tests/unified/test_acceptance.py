@@ -149,6 +149,27 @@ def test_cpu_defense_never_calls_free_fire_twice_when_an_alternative_exists():
     assert all(a != b for a, b in zip(calls, calls[1:]))
 
 
+def test_diverse_installed_book_never_alternates_only_two_plays():
+    inv = {"Gun Tight Doubles": [
+        "Bench", "Mesh Spot", "Mtn Cross HB Sneak", "HB Draw",
+        "Inside Zone", "PA WR Cross", "Tight Flood"
+    ]}
+    co = UnifiedCoordinator(OFF, inv, confirmed_fingerprint=inventory_fp(OFF, inv))
+    picks = [co.recommend(state(OFF, seq=i, down=2, dist=7)).play for i in range(1, 13)]
+    for j, play in enumerate(picks):
+        assert play not in picks[max(0, j - 4):j], picks
+    assert len(set(picks)) >= 5
+
+
+def test_mtn_cross_hb_sneak_is_a_pass_concept_not_qb_run():
+    from cfb_coach.madden.unified.knowledge import offense_play
+    from cfb_coach.madden.model.football_knowledge import profile_for_play
+    p = offense_play("Gun Tight Doubles", "Mtn Cross HB Sneak")
+    assert p.play_type == "pass"
+    assert p.concept == "deep_cross"
+    assert profile_for_play("Mtn Cross HB Sneak")["concept_id"] == "deep_cross"
+
+
 def test_one_play_book_is_only_allowed_repeat_exception():
     inv = {"4-3 Over": ["Free Fire"]}
     co = UnifiedCoordinator(DEF, inv, confirmed_fingerprint=inventory_fp(DEF, inv))
