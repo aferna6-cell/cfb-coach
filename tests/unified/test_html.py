@@ -189,6 +189,30 @@ def test_touchdown_needs_manual_next_possession_before_any_write(rig):
     assert rig.session.pending[0].our_side == DEF
 
 
+def test_manual_td_submission_follows_established_html_flow_without_blocking(rig):
+    c, d = sub(rig, "1&10 opp 44", "offense")
+    assert d["ok"], d
+    # After scoring, the next possession is entered by the owner (a kickoff
+    # return could change the spot), exactly as the established HTML did.
+    c, d = rig.post("/api/result_call", {
+        "outcome": "td", "sit": "1&10 opp 25", "side": "defense",
+        "auto_advance": False, "score_us": 6, "score_them": 0,
+        "verify_touched": False, "executed_status": "unknown"})
+    assert d["ok"], d
+    st = rig.session.pending[0]
+    assert (st.our_side, st.down, st.distance, st.yardline, st.score_us) == (DEF, 1, 10, 25, 6)
+    first = {o.snap_id: o for o in rig.store.load_observations()}["h1-0001"]
+    assert first.outcome.touchdown and first.executed_status == "confirmed"
+
+
+def test_manual_turnover_and_fourth_down_result_not_blocked_by_auto_projection(rig):
+    sub(rig, "3&7 my 35", "offense")
+    c, d = rig.post("/api/result_call", {
+        "outcome": "int", "sit": "1&10 my 30", "side": "defense", "auto_advance": False})
+    assert d["ok"], d
+    assert rig.session.pending[0].our_side == DEF
+
+
 def test_bad_input_changes_nothing_and_idempotent_retry_does_not_duplicate(rig):
     sub(rig, "1&10 my 25", "offense")
     before = rig.store.counts()
