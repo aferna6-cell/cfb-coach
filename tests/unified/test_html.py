@@ -61,8 +61,11 @@ def rig(tmp_path, no_legacy):
     r.stop()
 
 
-def sub(rig, sit, side, outcome="", their="", executed="unknown", **kw):
-    return rig.post("/api/result_call", {"sit": sit, "side": side, "outcome": outcome, "their": their, "executed_status": executed, "quarter": "1", **kw})
+def sub(rig, sit, side, outcome="", their="", executed=None, **kw):
+    # Omitted choice => standing owner attestation; explicit unknown overrides it.
+    return rig.post("/api/result_call", {"sit": sit, "side": side, "outcome": outcome, "their": their,
+                                         "executed_status": executed or "unknown", "verify_touched": executed is not None,
+                                         "quarter": "1", **kw})
 
 
 def test_page_is_the_established_page_with_the_unified_panel(rig):
@@ -71,7 +74,7 @@ def test_page_is_the_established_page_with_the_unified_panel(rig):
     code, st, _ = rig.cl.req("GET", "/api/state")
     u = st["unified"]
     assert u["decision_model"] == "unified_v1" and u["artifact"] == "test_artifact:abc" and "COLD-START" in u["model_mode"]
-    assert st["pending_recommendation"] is None and st["execution_verify"] is True and st["standing_execution_attestation"] is False
+    assert st["pending_recommendation"] is None and st["execution_verify"] is True and st["standing_execution_attestation"] is True
 
 
 def test_offense_defense_offense_through_http_persists_everything_correctly(rig):
@@ -90,7 +93,7 @@ def test_offense_defense_offense_through_http_persists_everything_correctly(rig)
     o1 = obs["h1-0001"]
     assert o1.executed_status == "confirmed" and (o1.executed.play.formation, o1.executed.play.play) == first and o1.outcome.yards == 7.0
     assert o1.opponent_action.verification == "typed_exact"
-    # possession change: defense. Result of snap 2 entered WITHOUT confirming execution -> unknown, never assumed
+    # Possession change: default standing attestation confirms snap 2 as the recommended play.
     c, d = sub(rig, "1&10 my 40", "defense", "gain 5")
     st = d["state"]
     assert st["pending_recommendation"]["side"] == "defense" and st["qb_reads"] is None
@@ -98,18 +101,43 @@ def test_offense_defense_offense_through_http_persists_everything_correctly(rig)
     assert u["position"] and u["primary"] and u["secondary"] and u["verified"] is False
     assert "OPPONENT OFFENSE" in st["unified"]["result_perspective"]
     o2 = {o.snap_id: o for o in rig.store.load_observations()}["h1-0002"]
-    assert o2.executed_status == "unknown" and o2.executed is None and o2.recommended is not None and o2.outcome.yards == 5.0
-    assert rig.session.model.provenance == {"our_offense_executed": 1}  # snap 2 (unconfirmed) did not train
+    assert o2.executed_status == "confirmed" and o2.executed.play.play_id == o2.recommended.play.play_id and o2.outcome.yards == 5.0
+    assert rig.session.model.provenance == {"our_offense_executed": 2}  # snap 2 auto-attested on Submit
     # result of the DEFENSIVE snap = opponent offense yards, executed confirmed; back to offense
     c, d = sub(rig, "1&10 my 30", "offense", "gain 12", "Gun Trips X Nasty | Hi Lo Cross", "used_recommended")
     assert d["ok"] and d["state"]["pending_recommendation"]["side"] == "offense" and d["state"]["pending_recommendation"]["snap_id"] == "h1-0004"
     o3 = {o.snap_id: o for o in rig.store.load_observations()}["h1-0003"]
     assert o3.state.our_side == DEF and o3.executed_status == "confirmed" and o3.outcome.yards == 12.0 and o3.opponent_action.side == OFF
-    assert rig.session.model.provenance == {"our_offense_executed": 1, "our_defense_executed": 1}
+    assert rig.session.model.provenance == {"our_offense_executed": 2, "our_defense_executed": 1}
     assert "UNDONE" not in json.dumps(d["state"]["log"]) and [r["formation"][:2] for r in d["state"]["log"]] == ["O1", "O2", "D3", "O4"]
     ids = [o.snap_id for o in rig.store.load_observations()]
     assert ids == [f"h1-000{i}" for i in range(1, 5)]
     assert rig.store.counts()["decisions"] == 4  # exactly one recommendation per snap
+
+
+def test_standing_attestation_only_on_completed_submit_and_can_be_overridden(rig):
+    c, d = sub(rig, "1&10 my 25", "offense")
+    assert d["ok"]
+    assert rig.store.counts()["executions"] == 0  # displaying the call is not an execution
+    c, d = sub(rig, "2&3 my 32", "offense", "gain 7", COVER3)
+    assert d["ok"]
+    first = {o.snap_id: o for o in rig.store.load_observations()}["h1-0001"]
+    assert first.executed_status == "confirmed"
+    assert first.executed.play.play_id == first.recommended.play.play_id
+    c, d = sub(rig, "3&2 my 39", "offense", "gain 2", COVER3, "unknown")
+    assert d["ok"]
+    second = {o.snap_id: o for o in rig.store.load_observations()}["h1-0002"]
+    assert second.executed_status == "unknown" and second.executed is None
+    c, d = sub(rig, "1&10 my 41", "offense", "gain 2", COVER3, "not_executed")
+    assert d["ok"]
+    third = {o.snap_id: o for o in rig.store.load_observations()}["h1-0003"]
+    assert third.executed_status == "not_executed"
+
+
+def test_standing_attestation_is_not_triggered_by_call_only(rig):
+    sub(rig, "1&10 my 25", "offense")
+    c, d = rig.post("/api/call", {"sit": "2&10 my 25", "side": "offense"})
+    assert d["ok"] and rig.store.counts()["executions"] == 0
 
 
 def test_bad_input_changes_nothing_and_idempotent_retry_does_not_duplicate(rig):
