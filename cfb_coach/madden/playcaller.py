@@ -58,7 +58,12 @@ class MaddenCall:
         a = self.adjustment
         if not a:
             return ""
-        return f"ADJ: {a['label']} — press {a['buttons']}" + (f"  · why: {a['why']}" if a.get("why") else "")
+        # A source-backed defensive adjustment may exist in Madden without
+        # needing the exact Xbox button path. Show the adjustment itself.
+        buttons = str(a.get("buttons") or "").strip()
+        how = " — press " + buttons if buttons else ""
+        why = f"  · why: {a['why']}" if a.get("why") else ""
+        return f"ADJ: {a['label']}" + how + why
 
     def headline(self) -> str:
         """'PLAY: Mesh Post (Gun 5WR Tight) + ADJ: Hot route WR1 → Slant' (offense) or
