@@ -956,6 +956,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Required for defensive V2: explicit isolated test-franchise DB file; must match --db.",
     )
     p_play.add_argument(
+        "--defense-action-confirmations", default=None, metavar="JSON",
+        help="Optional V2 owner-verified individual Xbox controls file. Without it, NO ADJUSTMENT.",
+    )
+    p_play.add_argument(
         "--defense-franchise", default=None, metavar="ID",
         help="Required for defensive V2: exact game_sessions.dynasty; not a name inferred from the opponent.",
     )
