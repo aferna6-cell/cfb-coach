@@ -36,6 +36,7 @@ class Snap:
     explosive: bool | None = None
     turnover: bool | None = None
     converted: bool | None = None
+    adjustment_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -82,8 +83,9 @@ def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Sna
         raise ValueError("game session franchise/opponent identity unavailable")
     concept_col = "COALESCE(NULLIF(s.concept_typed,''),s.concept_seen)" if "concept_typed" in columns else (
         "s.concept_seen" if "concept_seen" in columns else "NULL")
+    adjustment_col = "s.executed_adjustment_id" if "executed_adjustment_id" in columns else "NULL"
     sql = ("SELECT s.session_id,g.opponent_id,g.started_ts,s.snap_seq,s.executed_status,s.executed_verification,"
-           "s.executed_formation,s.executed_play,s.result,s.down,s.distance," + concept_col +
+           "s.executed_formation,s.executed_play,s.result,s.down,s.distance," + concept_col + "," + adjustment_col +
            " FROM snaps s JOIN game_sessions g ON g.session_id=s.session_id"
            " WHERE s.side='defense' AND g.dynasty=? ORDER BY g.started_ts,s.id")
     from cfb_coach.madden.model.defense_v1 import offense_won
@@ -94,7 +96,7 @@ def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Sna
     stats: Counter[str] = Counter()
     rows: list[Snap] = []
     seen_sequences: set[tuple[str, int]] = set()
-    for (session, opponent, started, seq, status, verification, formation, play, result, down, dist, concept) in conn.execute(sql, (franchise,)):
+    for (session, opponent, started, seq, status, verification, formation, play, result, down, dist, concept, executed_adjustment) in conn.execute(sql, (franchise,)):
         stats["defensive_rows"] += 1
         if status != "identified" or verification != "verified" or not (formation and play):
             stats["unverified_execution"] += 1
@@ -128,7 +130,10 @@ def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Sna
                          yards=parsed.yards, touchdown=(parsed.kind == "td") if known_result else None,
                          explosive=(parsed.yards >= 20) if parsed.yards is not None else None,
                          turnover=parsed.is_turnover if known_result else None,
-                         converted=conversion))
+                         converted=conversion,
+                         adjustment_id=str(executed_adjustment).strip() if executed_adjustment else None))
+        if executed_adjustment:
+            stats["confirmed_executed_adjustments"] += 1
         stats["admitted_verified"] += 1
     stats["games"] = len({r.session for r in rows})
     stats["seq_known"] = sum(r.seq is not None for r in rows)
@@ -211,7 +216,47 @@ def fit(rows: Sequence[Snap]) -> dict[str, Any]:
              "outcome_targets": outcomes,
              "evidence": "verified execution only; observational, not causal"}
     model["structural"] = _fit_structural(rows, model)
+    model["adjustment_effects"] = _fit_adjustment_effects(rows)
     return model
+
+
+def _fit_adjustment_effects(rows: Sequence[Snap]) -> dict[str, dict[str, Any]]:
+    """Conservative observational estimates for *confirmed executed* adjustments.
+
+    Compare actual outcomes within the SAME context and coverage family against
+    verified executions without any adjustment. Keep minimum game/count
+    requirements in the runtime policy; NEVER impute executed adjustments from
+    the shown/recommended action.
+    """
+    groups: dict[str, list[Snap]] = defaultdict(list)
+    controls: dict[str, list[Snap]] = defaultdict(list)
+    for row in rows:
+        base = _key(row.context, row.family)
+        if row.adjustment_id:
+            groups[_key(row.context, row.family, row.adjustment_id)].append(row)
+        else:
+            controls[base].append(row)
+    out: dict[str, dict[str, Any]] = {}
+    for token, adjusted in groups.items():
+        context, family, action_id = json.loads(token)
+        unadjusted = controls.get(_key(context, family)) or []
+        # A comparison against NO ADJUSTMENT needs actual comparison rows.
+        if len(unadjusted) < 12:
+            continue
+        base_success = sum(int(r.offense_success) for r in unadjusted)
+        adjusted_success = sum(int(r.offense_success) for r in adjusted)
+        # Shrink toward the matched no-adjustment estimate rather than
+        # claiming measured causal uplift.
+        control_prob = (base_success + 12 * 0.5) / (len(unadjusted) + 12)
+        adjusted_prob = (adjusted_success + 20 * control_prob) / (len(adjusted) + 20)
+        delta = max(-0.06, min(0.06, adjusted_prob - control_prob))
+        out[token] = {
+            "n": len(adjusted), "games": len({r.session for r in adjusted}),
+            "control_n": len(unadjusted),
+            "offense_risk_delta": round(delta, 6),
+            "basis": "verified_executed_adjustment_observational_not_causal",
+        }
+    return out
 
 
 def _fit_structural(rows: Sequence[Snap], model: Mapping[str, Any]) -> dict[str, Any]:
