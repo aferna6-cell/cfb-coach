@@ -629,7 +629,22 @@ def _confirm_heuristic_offense(args: argparse.Namespace, opponent_id: str) -> bo
     return True
 
 
+def _cmd_play_unified(args: argparse.Namespace) -> int:
+    """Opt-in unified_v1 dispatch. The established live caller below is not touched."""
+    from cfb_coach.madden.unified import cli as ucli
+
+    if not (getattr(args, "unified_confirmed_books", None) and getattr(args, "unified_store", None)):
+        print("--coordinator unified_v1 requires --unified-confirmed-books and --unified-store", file=sys.stderr)
+        return 2
+    ns = argparse.Namespace(side=args.unified_side, opponent=args.opponent, opponent_class="cpu" if args.opponent == "cpu" else "human",
+                            confirmed_books=args.unified_confirmed_books, store=args.unified_store, model=getattr(args, "unified_model", None),
+                            game_id=None, verified_roles=getattr(args, "defense_verified_roles", None), adjustment_confirmations=None)
+    return ucli.cmd_live(ns)
+
+
 def cmd_play(args: argparse.Namespace) -> int:
+    if getattr(args, "coordinator", None) == "unified_v1":
+        return _cmd_play_unified(args)
     # V2 is an opt-in TESTING-FRANCHISE coordinator. Validate paths BEFORE
     # opening a DB: open_db() performs migrations and opponent registration,
     # which must not touch main-franchise data on a rejected V2 invocation.
