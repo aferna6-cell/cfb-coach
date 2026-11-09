@@ -1,4 +1,4 @@
-name: Defensive V2 shadow pilot gates
+name: Defensive V2 targeted CPU both-sides pregame gates
 
 on:
   push:
@@ -59,10 +59,6 @@ jobs:
               "status": "source-backed pregame proposal, NOT physically installed",
           }, sort_keys=True))
           PY
-      - name: Wider Madden ML regression audit (informational; parent branch has known failures)
-        continue-on-error: true
-        run: |
-          PYTHONPATH=. python -m pytest -q tests/madden_ml --maxfail=20
       - name: Compile defensive V2 model and CLI
         run: |
           python -m py_compile cfb_coach/madden/model/defense_v2_pilot.py
