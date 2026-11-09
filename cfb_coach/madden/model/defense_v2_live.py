@@ -47,6 +47,8 @@ def _model(path: str, game_started: str, session: str, franchise: str) -> dict[s
         raise ValueError("V2 artifact is not a supported research artifact")
     if raw.get("trained_franchise") != franchise:
         raise ValueError("V2 trained artifact belongs to another franchise")
+    if raw.get("cold_start") is True and (raw.get("n_verified") != 0 or raw.get("n_games") != 0):
+        raise ValueError("inconsistent defensive cold-start evidence claims")
     if not raw.get("n_verified") or not raw.get("n_games"):
         if not (raw.get("cold_start") is True
                 and raw.get("n_verified") == 0 and raw.get("n_games") == 0
