@@ -87,6 +87,7 @@ def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Sna
 
     stats: Counter[str] = Counter()
     rows: list[Snap] = []
+    seen_sequences: set[tuple[str, int]] = set()
     for (session, opponent, started, seq, status, verification, formation, play, result, down, dist, concept) in conn.execute(sql, (franchise,)):
         stats["defensive_rows"] += 1
         if status != "identified" or verification != "verified" or not (formation and play):
@@ -100,6 +101,12 @@ def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Sna
         if not fam:
             stats["unrecognized_defensive_family"] += 1
             continue
+        if seq is not None:
+            identity = (str(session), int(seq))
+            if identity in seen_sequences:
+                stats["duplicate_verified_sequence"] += 1
+                continue
+            seen_sequences.add(identity)
         normalized = concept_family(concept)
         if normalized not in CONCEPTS:
             normalized = None
@@ -130,7 +137,7 @@ def earlier_opponent_observations(conn: sqlite3.Connection, *, franchise: str,
     from cfb_coach.madden.situation import concept_family
     sql = ("SELECT s.snap_seq," + concept + " FROM snaps s JOIN game_sessions g ON g.session_id=s.session_id"
            " WHERE g.dynasty=? AND s.session_id=? AND g.opponent_id=? AND s.side='defense'"
-           " AND s.snap_seq > 0 AND s.snap_seq < ? AND s.result IS NOT NULL"
+           " AND s.snap_seq > 0 AND s.snap_seq < ? AND NULLIF(TRIM(s.result), '') IS NOT NULL"
            " ORDER BY s.snap_seq,s.id")
     observations = []
     seen: set[int] = set()
