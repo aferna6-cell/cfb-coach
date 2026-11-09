@@ -2147,7 +2147,7 @@ function refreshNextPreview() {{
   // Always calculate from the snap's *original* score, never accumulate
   // six points again when the same result is edited or revisited.
   if (!scoreManualOverride && nextBasis.score_us != null && nextBasis.score_opp != null) {{
-    const td = /^\s*(?:td|touchdown)\b/i.test(out);
+    const td = /^\\s*(?:td|touchdown)\\b/i.test(out);
     $("score-us").value = Number(nextBasis.score_us) + (td && nextBasis.side === "offense" ? 6 : 0);
     $("score-them").value = Number(nextBasis.score_opp) + (td && nextBasis.side === "defense" ? 6 : 0);
   }}
