@@ -153,3 +153,60 @@ class AdjustmentPlanner:
             rec = self.learned.setdefault((adj.action_id, t), [0.0, 0.0])
             rec[0] += 1
             rec[1] += dy_vs_stock
+
+
+# ------------------------------------------------------------------------------------------------ status table
+_EXISTS = {"ea_documented": "documented by EA", "ea_entry_documented": "entry documented by EA (menu item unconfirmed)",
+           "ea_named_path_untested": "named in EA material, path untested"}
+
+
+def status_table(confirmations: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    """For each registry action: does it exist in Madden 27, has the OWNER verified it, may live advice recommend it."""
+    conf = dict(confirmations or {})
+    from cfb_coach.madden.unified import knowledge as K
+
+    off_with_routes = sum(1 for (f, p) in K.offense_assignment_index() if len(K.offense_play(f, p).assignments) >= 2)
+    out = []
+    for spec in X.registry().values():
+        if spec.kind == "stock":
+            continue
+        options = []
+        for meta in spec.params.values():
+            if isinstance(meta.get("options"), list):
+                options = list(meta["options"])
+        entry_ok = X.confirmed(conf, spec.id)
+        opt_ok = [o for o in options if X.confirmed(conf, spec.id, o)]
+        exists = spec.inputs_grade in _EXISTS
+        if not exists:
+            status, why = "UNAVAILABLE", spec.blocked_reason or f"no verified Madden 27 input ({spec.inputs_grade})"
+        elif spec.kind in ("preset", "saved_custom"):
+            status, why = "UNAVAILABLE", "saved Custom Adjustment slots are not recommended by this coordinator (no verified slot contents)"
+        elif spec.requires.get("target") == "defender":
+            status, why = "UNAVAILABLE", "needs verified defender identities for this play (none in the repo)"
+        elif spec.requires.get("target") == "eligible_receiver" and not off_with_routes and spec.side == OFF:
+            status, why = "UNAVAILABLE", "needs documented receiver slots; none available"
+        elif not entry_ok:
+            status, why = "NOT_OWNER_VERIFIED", "exists, but not confirmed by the owner in-game: never recommended live"
+        elif options and not opt_ok:
+            status, why = "NOT_OWNER_VERIFIED", "entry confirmed but no menu option confirmed"
+        else:
+            status, why = "LIVE_RECOMMENDABLE", "owner-verified; chosen only if its benefit survives uncertainty vs NO ADJUSTMENT"
+        needs = ("documented receiver slots: " + str(off_with_routes) + " catalog plays") if spec.requires.get("target") == "eligible_receiver" and spec.side == OFF else \
+                "an eligible receiver target (offense receivers are unknown on defense)" if spec.requires.get("target") == "eligible_receiver" else None
+        out.append({"id": spec.id, "name": spec.name, "side": spec.side, "category": spec.category, "exists_in_madden": exists,
+                    "existence_evidence": _EXISTS.get(spec.inputs_grade, spec.inputs_grade), "owner_verified_entry": entry_ok,
+                    "owner_verified_options": opt_ok, "options": options, "status": status, "reason": why, "needs": needs,
+                    "optimization_basis": "weak registry prior unless executed-adjustment data exists (then learned)"})
+    return out
+
+
+def confirmations_template() -> dict[str, Any]:
+    t: dict[str, Any] = {"_README": "Set a key to true ONLY after you have performed that exact adjustment on your Xbox in Madden 27 and it worked. "
+                                    "Anything left false is never recommended. Option keys look like 'action_id|Option'."}
+    for r in status_table():
+        if r["status"] == "UNAVAILABLE":
+            continue
+        t[r["id"]] = False
+        for o in r["options"]:
+            t[f"{r['id']}|{o}"] = False
+    return t

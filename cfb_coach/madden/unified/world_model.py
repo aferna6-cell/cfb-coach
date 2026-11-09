@@ -243,6 +243,7 @@ class WorldModel:
         self.tau_y = list(TAU_YARDS)
         self.tau_r = [TAU_RATE] * 6
         self.tau_fitted = False
+        self.provenance: dict[str, int] = {}  # rows learned per source: our_offense_executed / our_defense_executed
         self.seen_off_play_ids: set[str] = set()
         self.seen_vkeys: set[str] = set()
 
@@ -254,52 +255,78 @@ class WorldModel:
                 (p.play_id, d.vkey), (p.play_id, d.play_id)]
 
     # ---- inference --------------------------------------------------------------
-    def _posterior(self, st: GameState, p: Profile, d: DefSig, depth: int) -> tuple[list[float], float, float, int, float, float]:
+    def _posterior(self, st: GameState, p: Profile, d: DefSig, depth: int, prior_dict: Mapping[str, float] | None = None) -> tuple[list[float], float, float, int, float, float]:
         """Cold-start prior (state dependent) + hierarchically shrunk RESIDUAL learned at L0..L<depth>.
 
         Each level shrinks toward its parent with weight ``n / (n + k)``, ``k = noise / tau^2`` — the
         classic normal-normal rule — so noisy rare cells move little and well-observed cells move a lot.
         Returns (means[6], var_of_mean, outcome_sd, deepest_level, deepest_n, prior_sd).
         """
-        pr = cold_start_prior(st, p.features, d.features)
+        pr = prior_dict if prior_dict is not None else cold_start_prior(st, p.features, d.features)
         prior = [pr[k] for k in METRICS]
         sd = pr["sd"]
         var = pr["prior_sd"] ** 2
-        resid = [0.0] * 6
+        r0 = r1 = r2 = r3 = r4 = r5 = 0.0
         deepest, deepest_n = -1, 0.0
         keys = self._keys(st, p, d)
+        tau_y, tau_r, levels = self.tau_y, self.tau_r, self.levels
+        p1, p2, p3, p4, p5 = prior[1], prior[2], prior[3], prior[4], prior[5]
         for lvl in range(depth + 1):
-            if lvl >= 4 and keys[lvl][0] is None:
+            key = keys[lvl]
+            if (lvl >= 4 and key[0] is None) or (lvl == 5 and key[1] is None):
                 continue
-            if lvl == 5 and keys[lvl][1] is None:
-                continue
-            a = self.levels[lvl].get(keys[lvl])
+            a = levels[lvl].get(key)
             if a is None or a.n <= 0:
                 continue
-            raw = [x / a.n for x in a.s]
-            ydvar = max(MIN_NOISE, a.y2 / a.n - raw[0] ** 2)
-            ws = []
-            for i in range(6):
-                if i == 0:
-                    k = ydvar / self.tau_y[lvl] ** 2
-                else:
-                    pm = min(max(prior[i] + resid[i], 0.01), 0.99)
-                    k = max(pm * (1 - pm), 0.02) / self.tau_r[lvl] ** 2
-                w = a.n / (a.n + k)
-                ws.append(w)
-                resid[i] = w * raw[i] + (1 - w) * resid[i]
-            w0 = ws[0]
-            var = w0 * w0 * (ydvar / a.n) + (1 - w0) ** 2 * var
-            sd = math.sqrt(max(ydvar, 1.0) + 0.0) if a.n >= 10 else sd
-            deepest, deepest_n = lvl, a.n
+            n = a.n
+            inv = 1.0 / n
+            s_ = a.s
+            raw0 = s_[0] * inv
+            ydvar = a.y2 * inv - raw0 * raw0
+            if ydvar < MIN_NOISE:
+                ydvar = MIN_NOISE
+            tr2 = tau_r[lvl] * tau_r[lvl]
+            w0 = n / (n + ydvar / (tau_y[lvl] * tau_y[lvl]))
+            r0 = w0 * raw0 + (1 - w0) * r0
+            # rates: k = noise / tau^2 with noise = p(1-p) at the current (prior + residual) estimate, floored
+            pm = p1 + r1
+            pm = 0.01 if pm < 0.01 else 0.99 if pm > 0.99 else pm
+            v = pm * (1 - pm)
+            w = n / (n + (v if v > 0.02 else 0.02) / tr2)
+            r1 = w * s_[1] * inv + (1 - w) * r1
+            pm = p2 + r2
+            pm = 0.01 if pm < 0.01 else 0.99 if pm > 0.99 else pm
+            v = pm * (1 - pm)
+            w = n / (n + (v if v > 0.02 else 0.02) / tr2)
+            r2 = w * s_[2] * inv + (1 - w) * r2
+            pm = p3 + r3
+            pm = 0.01 if pm < 0.01 else 0.99 if pm > 0.99 else pm
+            v = pm * (1 - pm)
+            w = n / (n + (v if v > 0.02 else 0.02) / tr2)
+            r3 = w * s_[3] * inv + (1 - w) * r3
+            pm = p4 + r4
+            pm = 0.01 if pm < 0.01 else 0.99 if pm > 0.99 else pm
+            v = pm * (1 - pm)
+            w = n / (n + (v if v > 0.02 else 0.02) / tr2)
+            r4 = w * s_[4] * inv + (1 - w) * r4
+            pm = p5 + r5
+            pm = 0.01 if pm < 0.01 else 0.99 if pm > 0.99 else pm
+            v = pm * (1 - pm)
+            w = n / (n + (v if v > 0.02 else 0.02) / tr2)
+            r5 = w * s_[5] * inv + (1 - w) * r5
+            var = w0 * w0 * (ydvar * inv) + (1 - w0) ** 2 * var
+            if n >= 10:
+                sd = math.sqrt(ydvar if ydvar > 1.0 else 1.0)
+            deepest, deepest_n = lvl, n
+        resid = (r0, r1, r2, r3, r4, r5)
         m = [prior[0] + resid[0]] + [min(0.999, max(0.001, prior[i] + resid[i])) for i in range(1, 6)]
         return m, var, sd, deepest, deepest_n, pr["prior_sd"]
 
     def predict(self, st: GameState, off: FootballAction | Profile, dfn: DefSig, *, personal: Any = None,
-                our_side: str | None = None, opponent_class: str | None = None) -> OutcomePrediction:
+                our_side: str | None = None, opponent_class: str | None = None, prior: Mapping[str, float] | None = None) -> OutcomePrediction:
         p = off if isinstance(off, Profile) else Profile.off(off)
         depth = 5 if dfn.play_id and p.play_id else 4 if p.play_id else 3
-        m, var, sd, lvl, n, _ = self._posterior(st, p, dfn, depth)
+        m, var, sd, lvl, n, _ = self._posterior(st, p, dfn, depth, prior)
         ey = m[0]
         extra_var = 0.0
         if our_side is not None:
@@ -405,7 +432,7 @@ class WorldModel:
                 "calibrated": self.objective.calibrated,
                 "levels": [[[list(k), a.n, a.s, a.y2] for k, a in lv.items()] for lv in self.levels],
                 "ctx": [[list(k), a.n, a.s, a.y2] for k, a in self.ctx_resid.items()],
-                "tau_y": self.tau_y, "tau_r": self.tau_r, "tau_fitted": self.tau_fitted}
+                "provenance": self.provenance, "tau_y": self.tau_y, "tau_r": self.tau_r, "tau_fitted": self.tau_fitted}
 
     @classmethod
     def from_dict(cls, d: Mapping[str, Any]) -> "WorldModel":
@@ -413,6 +440,7 @@ class WorldModel:
             raise ValueError("model version mismatch")
         m = cls()
         m.n_records = d["n_records"]
+        m.provenance = dict(d.get("provenance", {}))
         m.tau_y, m.tau_r, m.tau_fitted = list(d.get("tau_y", m.tau_y)), list(d.get("tau_r", m.tau_r)), d.get("tau_fitted", False)
         for i, lv in enumerate(d["levels"]):
             for k, n, s, y2 in lv:

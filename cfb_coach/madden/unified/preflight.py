@@ -101,75 +101,131 @@ def run_cycle(co: UnifiedCoordinator, *, game_id: str, n: int, opponent_class: s
             "belief_evidence_monotone": all(b2 >= b1 - 1e-9 for b1, b2 in zip(chron, chron[1:]))}
 
 
-def preflight(*, db: str | None = None, confirmed_books: str | None = None, model: str | None = None, calls: int = 100,
-              extra_protected: Sequence[str] = (), workdir: str | None = None) -> dict[str, Any]:
-    gates: list[dict[str, Any]] = []
-    prot = guard.protected_paths(extra_protected, REPO)
-    before = guard.snapshot(prot)
-    snapshot_inv = json.loads(SNAPSHOT.read_text())["sides"]
-    confirmed = load_confirmed_books(confirmed_books)
-    artifact = "cold_start_prior_v1"
-    wm: WorldModel | None = None
-    if model:
-        wm = WorldModel.from_dict(json.loads(Path(model).read_text()))
-        artifact = f"{Path(model).name}:{guard.sha256_file(Path(model))[:10]}"
-        gates.append(_gate("model_artifact_loads", True, {"artifact": artifact, "records": wm.n_records, "calibrated": wm.objective.calibrated}))
-    else:
-        gates.append(_gate("model_artifact_loads", True, {"artifact": artifact, "note": "cold-start prior, no trained weights, NOT calibrated"}))
-    results: dict[str, Any] = {}
-    work = Path(workdir or tempfile.mkdtemp(prefix="unified_preflight_"))
-    for side in (OFF, DEF):
-        book_src = "owner_confirmed" if side in confirmed else "repo_snapshot_UNCONFIRMED_for_this_machine"
-        inv = confirmed[side]["inventory"] if side in confirmed else snapshot_inv[side]["formations"]
-        fp = inventory_fp(side, inv)
-        ok_fp = (side not in confirmed) or confirmed[side]["fingerprint"] == fp
-        gates.append(_gate(f"{side}_installed_book_confirmed_by_owner", True if side in confirmed else None,
-                           {"source": book_src, "fingerprint": fp, "formations": len(inv)},
-                           how_to_run=f"python -m cfb_coach.madden.unified confirm-install --proposal <proposal_{side}.json> --attested-by <you> --confirmed-books <file>"))
-        gates.append(_gate(f"{side}_book_fingerprint_matches", ok_fp, {"fingerprint": fp}))
-        gates.append(_gate(f"{side}_formation_limit", len(inv) <= MAX_FORMATIONS, {"formations": len(inv), "limit": MAX_FORMATIONS}))
+def _parser_gate() -> dict[str, Any]:
+    """The local game-state parser against the formats the owner actually types (side, ordinals, yardline phrases)."""
+    from cfb_coach.madden.unified.inputs import InputError, parse_snap_line
+    cases = [("o 1&10 my 22", OFF, 22), ("d 3&7 opp 40", DEF, 40), ("o 3rd and 7 on my 45", OFF, 45), ("d: 2&8 my 15", DEF, 85),
+             ("o 4th & 1 opp 38", OFF, 62), ("their ball 1&10 my 30", DEF, 70), ("o 2&5 my 35 showing cover 3 2 minute", OFF, 35)]
+    bad = []
+    for text, side, yl in cases:
         try:
-            store = UnifiedStore(work / f"{side}.db")
-            co = UnifiedCoordinator(side, inv, confirmed_fingerprint=fp, model=wm, store=store, artifact=artifact)
-            leg = legality_report(co)
-            gates.append(_gate(f"{side}_legal_candidates", not leg["candidates_outside_installed_book"] and not leg["plays_missing_no_adjustment"], leg))
-            cyc = run_cycle(co, game_id=f"pf-{side}", n=calls)
-            results[side] = cyc
-            gates.append(_gate(f"{side}_latency_p95_le_150ms_loaded", cyc["latency_ms"]["p95"] <= LATENCY_BUDGET_MS,
-                               {**cyc["latency_ms"], "calls": calls, "scope": "this machine, repo catalogs, in-process (NOT the owner's loaded UI/DB)"},
-                               critical=False, how_to_run="python -m cfb_coach.madden.unified preflight --confirmed-books <file> --calls 100  (run on the owner's machine)"))
-            gates.append(_gate(f"{side}_no_timeouts_or_fallbacks", cyc["timeouts"] == 0 and cyc["fallbacks"] == 0, {"timeouts": cyc["timeouts"], "fallbacks": cyc["fallbacks"]}, critical=False))
-            gates.append(_gate(f"{side}_card_matches_selected_action", cyc["card_action_mismatches"] == 0, {"mismatches": cyc["card_action_mismatches"]}))
-            gates.append(_gate(f"{side}_chronological_memory_updates", cyc["belief_evidence_monotone"], {"monotone_evidence": cyc["belief_evidence_monotone"]}))
-            counts = store.counts()
-            gates.append(_gate(f"{side}_execution_logging_distinct", counts["decisions"] == calls and counts["executions"] == calls and counts["opponent_obs"] == calls, counts))
-            replay = store.load_observations()
-            gates.append(_gate(f"{side}_store_roundtrip", len(replay) == calls and all(o.executed_status == EXEC_CONFIRMED for o in replay), {"observations": len(replay)}))
-            store.close()
-        except InstalledBookError as e:
-            gates.append(_gate(f"{side}_coordinator_builds", False, str(e)))
-    after = guard.snapshot(prot)
-    d = guard.diff(before, after)
-    gates.append(_gate("protected_assets_unchanged", not (d["changed"] or d["removed"] or d["added"]), {"protected_files_checksummed": len(prot), **d}))
+            r = parse_snap_line(text, None)
+            if (r.side, r.yardline) != (side, yl):
+                bad.append((text, r.side, r.yardline))
+        except InputError as e:
+            bad.append((text, str(e)))
+    return _gate("local_game_state_parser", not bad, {"cases": len(cases), "failures": bad})
+
+
+def preflight(*, db: str | None = None, confirmed_books: str | None = None, model: str | None = None, history_report: str | None = None,
+              adjustment_confirmations: str | None = None, calls: int = 100, extra_protected: Sequence[str] = (),
+              workdir: str | None = None) -> dict[str, Any]:
+    """GO needs: owner-attested BOTH books, an explicit model artifact consistent with the history evaluation, an audited
+    isolated database, AND a clean run of the real continuous live loop (>= ``calls`` snaps per side) on those exact inputs."""
+    from cfb_coach.madden.unified import livepath as LP
+
+    gates: list[dict[str, Any]] = []
+    prot = guard.protected_paths([*extra_protected, *[x for x in (db, confirmed_books, model, history_report) if x]], REPO)
+    before = guard.snapshot(prot)
+    snap_inv = json.loads(SNAPSHOT.read_text())["sides"]
+    confirmed = load_confirmed_books(confirmed_books)
+    work = Path(workdir or tempfile.mkdtemp(prefix="unified_preflight_"))
+    work.mkdir(parents=True, exist_ok=True)
+    if (work / "live.db").exists():  # never reuse a previous benchmark store (it would be a duplicate game)
+        work = Path(tempfile.mkdtemp(prefix="run_", dir=str(work)))
+    books = {}
+    for side in (OFF, DEF):
+        have = side in confirmed
+        inv = confirmed[side]["inventory"] if have else snap_inv[side]["formations"]
+        fp = inventory_fp(side, inv)
+        books[side] = {"inventory": inv, "fingerprint": fp}
+        gates.append(_gate(f"{side}_installed_book_confirmed_by_owner", True if have else None,
+                           {"source": "owner_attestation" if have else "repo snapshot (NOT this machine's installed book)", "fingerprint": fp, "formations": len(inv)},
+                           how_to_run=f"unified confirm-install --proposal <proposal_{side}.json> --attested-by <you> --confirmed-books <file>"))
+        gates.append(_gate(f"{side}_book_fingerprint_matches", (not have) or confirmed[side]["fingerprint"] == fp, {"fingerprint": fp}))
+        gates.append(_gate(f"{side}_formation_limit", len(inv) <= MAX_FORMATIONS, {"formations": len(inv), "limit": MAX_FORMATIONS}))
+    # ---- model artifact: must be a real file, and consistent with the historical evaluation if one was run
+    if model and Path(model).exists():
+        wm = WorldModel.from_dict(json.loads(Path(model).read_text()))
+        sha = guard.sha256_file(Path(model))
+        gates.append(_gate("model_artifact_file", True, {"path": model, "sha256": sha, "records": wm.n_records, "provenance": wm.provenance,
+                                                         "mode": "learned weights" if wm.n_records else "UNCALIBRATED COLD-START PRIOR (no trained weights)"}))
+    else:
+        wm = None
+        gates.append(_gate("model_artifact_file", None, {"note": "no --model file; the live benchmark ran the in-memory cold-start prior"},
+                           how_to_run="unified history --db <test db> --out <dir>   then pass <dir>/cold_start_model.json or candidate_model.json as --model"))
+    if history_report and Path(history_report).exists():
+        hr = json.loads(Path(history_report).read_text())
+        ok = True
+        why = {"decision": hr.get("decision"), "usable_rows": hr.get("usable_rows"), "usable_games": hr.get("usable_games")}
+        if model:
+            rdir = Path(history_report).parent
+            cold = rdir / "cold_start_model.json"
+            cand = Path(hr["candidate_artifact"]) if hr.get("candidate_artifact") else rdir / "candidate_model.json"
+            sha = guard.sha256_file(Path(model))
+            cold_sha = guard.sha256_file(cold) if cold.exists() else None
+            cand_sha = guard.sha256_file(cand) if cand.exists() else None
+            if sha == cand_sha:
+                if hr.get("decision") != "CANDIDATE_SUPPORTED":
+                    ok, why["error"] = False, "model is the learned candidate but the evaluation did NOT support it"
+                else:
+                    why["model"] = "learned candidate (evaluation supported it)"
+            elif sha == cold_sha:
+                why["model"] = "cold-start prior (explicitly labelled)"
+            else:
+                ok, why["error"] = False, "model file is not an artifact produced by that history run"
+        else:
+            ok, why["error"] = None, "no --model to compare with the history evaluation"
+        gates.append(_gate("history_evaluation_consistent_with_model", ok, why))
+    else:
+        gates.append(_gate("history_evaluation_consistent_with_model", None, {"note": "historical import/evaluation not run on the owner's database"},
+                           how_to_run="unified history --db <isolated test-franchise db> --out <dir>"))
     if db:
         a = audit_db(db)
         gates.append(_gate("owner_database_audit", bool(a.get("ok")) and not a.get("inside_primary_data_dir", False), a,
                            how_to_run="use an ISOLATED test-franchise database, never the primary one"))
     else:
-        gates.append(_gate("owner_database_audit", None, {"note": "no owner database was supplied"},
-                           how_to_run="python -m cfb_coach.madden.unified preflight --db <isolated test-franchise coach.db> ..."))
+        gates.append(_gate("owner_database_audit", None, {"note": "no owner database was supplied"}, how_to_run="unified preflight --db <isolated test-franchise coach.db> ..."))
+    gates.append(_parser_gate())
+    # ---- the real continuous live loop, on these exact books + model file, persisted and cold-reloaded
+    conf = json.loads(Path(adjustment_confirmations).read_text()) if adjustment_confirmations else {}
+    run = LP.run_live_benchmark(books, model_path=model if wm is not None else None, store_path=work / "live.db", n_per_side=calls, confirmations=conf)
+    aud = LP.audit_run(run, books, confirmations=conf)
+    P = aud["problems"]
+    lat = aud["latency_start_ms"]
+    scope = "this machine, real cmd_game loop, persisted store" + ("" if confirmed_books else "; repo snapshot books")
+    gates += [
+        _gate("live_loop_ran_clean", aud["rc"] == 0 and aud["snaps"] == 2 * calls, {"snaps": aud["snaps"], "rc": aud["rc"], "wall_s": round(run["wall_s"], 2)}),
+        _gate("live_latency_p95_le_150ms", lat["p95"] <= LATENCY_BUDGET_MS, {**lat, "scope": scope, "finish_ms": aud["latency_finish_ms"]}, critical=False,
+              how_to_run="unified preflight ... on the owner's laptop"),
+        _gate("live_no_timeouts", aud["timeouts_over_150ms"] == 0, {"timeouts": aud["timeouts_over_150ms"]}, critical=False),
+        _gate("live_no_fallback_or_heuristic_substitution", aud["fallbacks"] == 0 and not P["fallback"] and aud["decision_model_values"] == ["unified_v1"],
+              {"fallbacks": aud["fallbacks"], "decision_models": aud["decision_model_values"]}),
+        _gate("live_no_uninstalled_calls", not P["uninstalled"], {"problems": P["uninstalled"]}),
+        _gate("live_no_duplicate_snap_ids", not P["duplicate_ids"] and aud["unique_ids"] == aud["snaps"], {"unique": aud["unique_ids"], "snaps": aud["snaps"]}),
+        _gate("live_recommended_vs_executed_logged_exactly", not P["exec_mismatch"], {"mismatches": P["exec_mismatch"]}),
+        _gate("live_model_attribution_correct", not P["attribution"], {"artifact": aud["artifact_expected"], "bad": P["attribution"]}),
+        _gate("live_only_legal_adjustments", not P["illegal_adjustment"], {"bad": P["illegal_adjustment"]}),
+        _gate("live_side_follows_possession", not P["side"] and not P["seq"], {"bad": P["side"] + P["seq"]}),
+        _gate("live_previous_play_learning", aud["learning"]["matches"] and aud["previous_play_learning_visible"],
+              {**aud["learning"], "belief_sources_final": aud["belief_sources_final"]}),
+    ]
+    after = guard.snapshot(prot)
+    d = guard.diff(before, after)
+    gates.append(_gate("protected_assets_unchanged", not (d["changed"] or d["removed"] or d["added"]), {"protected_files_checksummed": len(prot), **d}))
     crit_fail = [g for g in gates if g["critical"] and g["status"] == "FAIL"]
     soft_fail = [g for g in gates if not g["critical"] and g["status"] == "FAIL"]
     not_run = [g for g in gates if g["status"] == "NOT_RUN"]
-    unconfirmed = [g for g in gates if g["gate"].endswith("installed_book_confirmed_by_owner") and g["status"] != "PASS"]
     if crit_fail:
         verdict, why = "NO-GO", [g["gate"] for g in crit_fail]
-    elif unconfirmed or soft_fail or not_run:
-        verdict, why = "SHADOW ONLY", list(dict.fromkeys(g["gate"] for g in unconfirmed + soft_fail + not_run))
+    elif soft_fail or not_run:
+        verdict, why = "SHADOW ONLY", list(dict.fromkeys(g["gate"] for g in soft_fail + not_run))
     else:
         verdict, why = "GO", []
-    return {"version": "unified_preflight.v1", "verdict": verdict, "blocking": why, "artifact": artifact, "gates": gates,
-            "cycles": results, "note": "GO would mean ready for an experimental CPU test, not proven strategic superiority."}
+    return {"version": "unified_preflight.v2", "verdict": verdict, "blocking": why, "artifact": aud["artifact_expected"], "gates": gates,
+            "live": {k: aud[k] for k in ("snaps", "latency_start_ms", "latency_finish_ms", "timeouts_over_150ms", "fallbacks", "learning")},
+            "note": "GO would mean ready for an experimental CPU test, not proven strategic superiority. Latency/legality are measured through the real "
+                    "continuous loop, never a bare in-process call."}
 
 
 def render_report(rep: Mapping[str, Any]) -> str:

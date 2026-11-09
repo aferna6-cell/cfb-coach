@@ -194,3 +194,23 @@ def offense_features_from_signature(sig: tuple[str, ...]) -> dict[str, Any]:
             "quick": pr.get("time_to_develop") == "quick" or pr.get("route_depth") in ("short", "shallow"),
             "deep": pr.get("route_depth") == "deep" or concept in ("four_verts", "wheel", "dagger"),
             "may_exploit": tuple(pr.get("may_exploit", ())), "reduced_by": tuple(pr.get("reduced_by", ()))}
+
+
+def _norm_name(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", s.lower())
+
+
+@lru_cache(maxsize=1)
+def _defense_name_index() -> dict[str, set[tuple[str, ...]]]:
+    idx: dict[str, set[tuple[str, ...]]] = {}
+    for id_ in defense_catalog():
+        if id_.startswith("inst:"):
+            f, p = id_[5:].split("|", 1)
+            idx.setdefault(_norm_name(p), set()).add(defense_play(f, p).signature)
+    return idx
+
+
+def defense_signature_by_name(name: str) -> tuple[str, ...] | None:
+    """Catalog signature for a coverage NAME when it maps to exactly one signature; otherwise None (never guessed)."""
+    sigs = _defense_name_index().get(_norm_name(name), set())
+    return next(iter(sigs)) if len(sigs) == 1 else None

@@ -134,6 +134,66 @@ def eval_world_model(rows: Sequence[dict[str, Any]], make_model: Callable[[Seque
     return out
 
 
+class _Pred:
+    __slots__ = ("e_yards", "p_first_down")
+
+    def __init__(self, e: float, fd: float) -> None:
+        self.e_yards, self.p_first_down = e, fd
+
+
+class GlobalBaseline:
+    """Predicts the training-set mean yards and first-down rate for everything."""
+
+    def __init__(self, rows: Sequence[dict[str, Any]]) -> None:
+        ys = [r["outcome"]["yards"] or 0.0 for r in rows] or [0.0]
+        fd = [1.0 if r["outcome"].get("first_down") else 0.0 for r in rows] or [0.0]
+        self.y, self.fd = sum(ys) / len(ys), min(0.99, max(0.01, sum(fd) / len(fd)))
+
+    def predict(self, st, p, d):
+        return _Pred(self.y, self.fd)
+
+
+class SituationalBaseline(GlobalBaseline):
+    """Mean yards / first-down rate by (our side, play type, down, distance bucket), shrunk to the global mean (k=10)."""
+
+    K = 10.0
+
+    def __init__(self, rows: Sequence[dict[str, Any]]) -> None:
+        super().__init__(rows)
+        self.t: dict[tuple, list[float]] = defaultdict(lambda: [0.0, 0.0, 0.0])
+        for r in rows:
+            st = GameState.from_dict(r["state"])
+            k = (r["our_side"], r["profile"][0], st.down, st.dist_bucket())
+            a = self.t[k]
+            a[0] += 1
+            a[1] += r["outcome"]["yards"] or 0.0
+            a[2] += 1.0 if r["outcome"].get("first_down") else 0.0
+
+    def predict(self, st, p, d):
+        a = self.t.get((st.our_side, p.play_type, st.down, st.dist_bucket()))
+        if not a:
+            return _Pred(self.y, self.fd)
+        w = a[0] / (a[0] + self.K)
+        return _Pred(w * a[1] / a[0] + (1 - w) * self.y, min(0.99, max(0.01, w * a[2] / a[0] + (1 - w) * self.fd)))
+
+
+def compare_models(rows: Sequence[dict[str, Any]], *, min_train_games: int = 2) -> dict[str, Any]:
+    """Whole-game expanding-window comparison of cold start, the learned challenger and simple baselines."""
+    makers = {"cold_start": lambda tr: WorldModel(), "learned_challenger": fit_on, "baseline_global_mean": GlobalBaseline,
+              "baseline_situational": SituationalBaseline}
+    res = {k: eval_world_model(rows, m, min_train_games=min_train_games) for k, m in makers.items()}
+    games = len({r["game_order"] for r in rows})
+    diffs = {k: bootstrap_diff(res["learned_challenger"]["_per_game_abs"], res[k]["_per_game_abs"]) for k in res if k != "learned_challenger"}
+    best_other = min((k for k in res if k != "learned_challenger" and res[k].get("mae_yards") is not None), key=lambda k: res[k]["mae_yards"], default=None)
+    improves = bool(best_other and res["learned_challenger"].get("mae_yards") is not None
+                    and diffs[best_other]["games"] >= 2 and diffs[best_other]["hi"] < 0
+                    and res["learned_challenger"]["brier_first_down"] <= res[best_other]["brier_first_down"])
+    return {"games": games, "test_games": res["cold_start"].get("test_games", 0),
+            "models": {k: {kk: vv for kk, vv in v.items() if kk != "_per_game_abs"} for k, v in res.items()},
+            "learned_vs": diffs, "best_competitor": best_other, "learned_improves_prediction": improves,
+            "min_games_for_claim": MIN_GAMES_FOR_GATE, "enough_games": games >= MIN_GAMES_FOR_GATE + 2}
+
+
 def fit_on(rows: Sequence[dict[str, Any]]) -> WorldModel:
     m = WorldModel()
     recs = []

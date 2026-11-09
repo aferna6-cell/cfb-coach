@@ -129,3 +129,37 @@ Protected assets: `sha256(cfb_coach/data/madden27/*.json)` is identical before a
 
 ## Cross-side learning (issue #140)
 Implemented as the issue's "required distinction": a revealed opponent defense updates only `OpponentModel` (semantic knowledge about what they run) and is never turned into *our* execution; our own executions update the shared `WorldModel` tables used by both sides. Weak, shrunk transfer of "this coverage did well against our offense" into our own defense choices is **not** wired (needs real data and the issue's holdout evaluation).
+
+---
+# Sprint 2 — first-CPU-game readiness (branch `architecture/unified-v1-live-session`)
+
+| Area | What changed | Proof |
+|---|---|---|
+| One continuous game | `unified game` = `UnifiedSession`: both coordinators on **shared** snap history, one game id, one monotone sequence, one world model, one personal-execution model, one adjustment planner; side taken from the possession you type (`o …` / `d …`). `play --coordinator unified_v1` now opens this session. | `tests/unified/test_session.py` (incl. a scripted full `cmd_game` run across possession changes and a second game that starts from the first's evidence) |
+| IDs / overwrites | Store is append-only: decision rows unique per snap id and per (game, seq); execution/opponent/outcome facts refuse a second write unless `amend=True`, which appends an audited revision; memory is only changed after the write succeeds. Game ids can't be reused without `resume`. | `test_duplicate_ids_and_overwritten_rows_are_refused` |
+| History across possession changes | "Previous snap" for sequence/reaction context is the last snap **on the same side**, so a defensive snap in between no longer corrupts offensive context. | `test_previous_snap_context_is_same_side…` |
+| Shared learning | Verified rows from BOTH sides update one world model (keyed by offense concept × defense coverage, so what our offense learns about Cover 1 is used when our defense considers Cover 1). Provenance is counted separately (`our_offense_executed`, `our_defense_executed`); a revealed opponent call updates only that side's opponent model and never counts as our execution; side-specific execution effects stay in `(side, opponent class)` offsets. `ingest_history` no longer drops the other side. | `test_shared_learning_crosses_sides_but_provenance_stays_separate`, `test_history_replay_feeds_both_sides…` |
+| Historical data | `unified history --db …`: READ-ONLY (`mode=ro`) import through the repo's own `dataset.build_rows` eligibility (recommendations are never executions), skips and **counts** unverified adjustments, uncatalogued plays, unclassifiable/absent opponent calls. Trains a candidate, evaluates by whole game against cold start, a global-mean baseline and a situational baseline, keeps the cold start unless the candidate wins with a game-clustered CI. Never promotes. | `tests/unified/test_history.py` |
+| Preflight can't be gamed | GO now requires: owner-attested BOTH books, a real model file consistent with the history evaluation (a file the history run did not produce → NO-GO), an audited isolated DB, the local parser gate, **and** a clean run of the real `cmd_game` loop (≥100 snaps/side) on those exact books+model with persistence and a cold-reload audit (no duplicates, no uninstalled calls, executed==what was typed, attribution, legal adjustments, no fallback — `playcaller.make_call` is booby-trapped during the run — and previous-play learning replayed from disk). | `test_go_is_impossible_without_each_owner_supplied_ingredient`, `test_live_audit_catches_a_corrupted_execution_log` |
+| Latency | Found and fixed: with the larger proposed books the first version ran p95 ≈125 ms with search-deadline fallbacks. Predictions are now memoised per feature class, exact-level plays use branch-and-bound pruning (3 sd of the model's own effect-size prior), stage B is ordered most-promising-first so a deadline can only drop the weakest plays. | see report §3 |
+| Playbooks | `game-prep` now emits an install guide with per-set source playbook, editor status (`PREVIOUSLY_INSTALLED_FROM_THIS_SOURCE` / `UNVERIFIED_IN_EDITOR`), editor-limit checks, proposed fingerprint, `confirmed: NOT CONFIRMED`, and a comparison with the previously installed book. | `docs/madden_ml/unified_v1_first_cpu_game/` |
+| Adjustments | `unified adjustments` lists every registry action: exists in Madden 27 (evidence), owner-verified?, and `LIVE_RECOMMENDABLE / NOT_OWNER_VERIFIED / UNAVAILABLE` with why. A confirmations template (all `false`) is generated for the owner. | `ADJUSTMENT_STATUS.md` |
+| Owner machine | `discover`, `local-prep`, `local-finish` implement the 8-step procedure (protected backup + checksums, SQLite-backup test copy, audit, history, game-prep, install stop, benchmark, preflight). | `tests/unified/test_localrun.py` |
+
+## Known behaviours to expect in the first game
+* **Cold start is repetitive.** With no learned evidence many calls tie; ties break deterministically (higher play-knowledge confidence, then name). Expect the same defensive call often until games accumulate evidence. There is deliberately no random change-up.
+* **Reads are concept-level** for almost every play (only 8 catalog plays have documented routes); USER advice is a labelled prior (0 verified defenders).
+* **Result convention:** the result you type is always the *offense's* result on that snap (on defense, what the other team's offense got).
+* **Search deadline:** if the decision would run past 85% of 150 ms it stops searching the weakest plays and flags `deadline_partial_search`; preflight treats any occurrence as a failure.
+
+## Pre-existing failures investigated (not caused by this work)
+12 distinct tests (15 counting parametrised/duplicate IDs) fail identically on the untouched base; none touch `cfb_coach/madden/unified/`. Gameplay relevance:
+| Tests | Cause (read from the failure) | Can it affect the unified game? |
+|---|---|---|
+| `test_oc_model_adjustments` ×5, `test_wildcard_john_games` | the legacy experimental offense path no longer attaches the catalog macro (`None != 'O-RUN'`) | Only the **legacy** `--ml-human-control` macro path. Unified never uses macros. |
+| `test_offense_intel_model` ×2, `test_football_priors` | the legacy offense card/QB-read ordering for documented plays changed (`WR1 drag…` vs expected `TE1…`; hot-route text) | Legacy card only. Unified reads come from `unified.reads`. |
+| `test_route_aware_live_integration` | legacy primary-mode fallback picks a play outside the expected set | Legacy fallback only. |
+| `test_data_layer_synthetic` | expects `OSError` from a permission-based failure; does not raise when running as root | Environment (root), not gameplay. |
+| `test_vod_eligibility` | needs a git commit that a shallow clone does not contain | Environment (shallow clone). |
+| `test_defense_typed_capture[Fire Zone 3-None]` | passes alone; failed once in one full-suite order | Order-dependent flake, legacy defense capture. |
+Recommendation: do not use the legacy macro path in the same session as the unified coordinator until those are fixed on the stack.
