@@ -86,6 +86,7 @@ def maybe_apply_v2(
     model_path: str, test_db: str, franchise: str,
     action_confirmations: str | None = None,
     confirmed_inventory_fingerprint: str | None = None,
+    verified_roles_path: str | None = None,
 ) -> Any:
     """Replace the real displayed defensive call with V2's chosen installed play.
 
@@ -154,6 +155,8 @@ def maybe_apply_v2(
 
         resolution = defense_semantics.resolve(best["play"], best["formation"])
         play_knowledge = defense_semantics.explain(best["play"], best["formation"])
+        from cfb_coach.madden.model.defense_v2_roles import verified_roles
+        role_ledger = verified_roles(verified_roles_path, best["formation"], best["play"])
         assignment = ("known catalog label, defender-level jobs NOT verified"
                       if resolution.key else "coverage and defender assignments UNKNOWN")
         detail = {
@@ -170,7 +173,9 @@ def maybe_apply_v2(
                 "unknown": play_knowledge.get("unknown") or [],
                 "verification_level": play_knowledge.get("verification_level"),
             },
-            "defender_assignments": "UNKNOWN",
+            "defender_assignments": role_ledger["verification"],
+            "verified_player_roles": role_ledger["verified_defenders"],
+            "defender_role_ledger": role_ledger["slots"],
             "evidence": "verified observational defensive executions",
             "no_adjustment": not bool(plan["actions"]),
             "adjustment_id": plan["id"],
@@ -197,6 +202,8 @@ def maybe_apply_v2(
                 "why": ("verified execution evidence; conservative learned estimate, "
                         f"n={plan['effect_support']} (not causal)"),
             }
+        if role_ledger["verified_defenders"]:
+            out.rationale += "; 11 Xbox-verified defender roles available in attached decision trace"
         out.defense_v2 = detail
         # Reuse the existing decision logging schema and attribution path.
         from cfb_coach.madden.model.defense_coordinator import _stamp_decision
