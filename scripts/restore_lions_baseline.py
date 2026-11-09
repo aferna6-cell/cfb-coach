@@ -172,11 +172,16 @@ def restore(args: argparse.Namespace) -> int:
     out_db = workdir / "madden27-lions.db"
     # Refuse even user-specified output paths inside protected primary or
     # Unified test directories. The copy should always be independent.
-    primary_root = src.parent
+    primary_root = (Path.home() / ".cfb-coach").resolve()
     unified_root = (Path.home() / "unified_v1_cpu1").resolve()
-    if (workdir == src or workdir == primary_root or
+    # Only real protected data locations are off limits, NOT arbitrary
+    # descendants of the selected source file's parent. In particular,
+    # a pytest fixture with src=/tmp/x/source.db and out=/tmp/x/lions/
+    # must be valid.
+    if (workdir == src or workdir == src.parent or
             workdir.is_relative_to(primary_root) or
-            workdir == unified_root or workdir.is_relative_to(unified_root)):
+            workdir.is_relative_to(unified_root) or
+            out_db == src):
         raise RestoreError("Refusing to write into the source/primary or Unified V1 data directory")
     manifest = load_manifest()
     with _read_only_source(src) as source:
