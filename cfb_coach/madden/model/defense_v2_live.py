@@ -7,6 +7,7 @@ session. If any identity or time gate fails, preserve the existing caller.
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 from functools import lru_cache
 import json
 from pathlib import Path
@@ -16,6 +17,13 @@ from typing import Any, Mapping, Sequence
 from cfb_coach.madden.model import defense_v2_pilot as v2
 
 LATENCY_BUDGET_MS = 150.0
+
+
+def installed_fingerprint(book: Mapping[str, Sequence[str]]) -> str:
+    """Source-independent hash of exact formation/play inventory, not console proof."""
+    body = [[f, sorted(set(str(p) for p in ps))] for f, ps in sorted(book.items())]
+    payload = json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return "DEF-INST-" + hashlib.sha256(payload).hexdigest()[:10].upper()
 
 
 def _test_identity(db: Any, *, test_db: str, franchise: str,
@@ -77,6 +85,7 @@ def maybe_apply_v2(
     book: Mapping[str, Sequence[str]], *,
     model_path: str, test_db: str, franchise: str,
     action_confirmations: str | None = None,
+    confirmed_inventory_fingerprint: str | None = None,
 ) -> Any:
     """Replace the real displayed defensive call with V2's chosen installed play.
 
@@ -108,6 +117,9 @@ def maybe_apply_v2(
         ]
         if not installed_calls or len(book) > 15:
             raise ValueError("empty book or more than 15 installed formations")
+        fingerprint = installed_fingerprint(book)
+        if not confirmed_inventory_fingerprint or fingerprint != confirmed_inventory_fingerprint:
+            raise ValueError("installed defensive book fingerprint was not explicitly confirmed")
         from cfb_coach.madden.defense_select import eligible_formations
         eligible = set(eligible_formations(sit, {f: list(p) for f, p in book.items()}))
         installed_calls = [r for r in installed_calls if r["formation"] in eligible]
@@ -150,6 +162,7 @@ def maybe_apply_v2(
             "predicted_offense_success": best["predicted_offense_success"],
             "support": best["support"], "opponent_belief": belief,
             "earlier_opponent_concepts": len(history),
+            "installed_book_fingerprint": fingerprint,
             "coverage_resolution": resolution.resolution,
             "coverage_knowledge": {
                 "known": play_knowledge.get("known") or [],
