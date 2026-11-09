@@ -57,3 +57,46 @@ Clock text, punts and pre-snap "showing" text are accepted and ignored. Nothing 
 python3 -m cfb_coach.madden.unified postgame --store $W/game/unified.db --out $W/postgame_001 --champion <the model you played>
 ```
 Writes an immutable snapshot, a challenger, a whole-game comparison and `report.json`. The champion file is read-only; promotion is a manual decision.
+
+---
+# Update — play in the FAMILIAR HTML window (PR stacked on #144)
+
+The same page you used in earlier Madden games now runs on Unified V1. Layout, buttons and flow are unchanged; one extra green panel shows the model, artifact,
+learning status, fallback, adjustment and (on defense) the USER job. The terminal loop remains as a rollback.
+
+## Open it (your configuration)
+```bash
+cd ~/cfb-coach && git fetch origin && git checkout architecture/unified-v1-html-interface && export PYTHONPATH=.
+W=/home/aidan/unified_v1_cpu1
+python3 -m cfb_coach play --game madden27 --opponent cpu --coordinator unified_v1 \
+  --unified-confirmed-books $W/books.json \
+  --unified-store $W/game/unified.db \
+  --unified-model $W/history/candidate_model.json
+```
+It opens your browser (`--html-port N` to pick a port, `--unified-no-open` to skip opening). Rollbacks: add `--terminal` for the terminal loop, or omit `--coordinator` for the established caller.
+Add `--unified-adjustment-confirmations $W/adjustments.json` only if you created that file.
+
+## Resume after a crash / closed tab
+Refreshing or reopening the tab just reloads the same game from the server. If the server itself stopped, it prints `NOTE: unfinished game(s) …`; continue with
+`--unified-game-id <id> --unified-resume`: earlier observations are replayed once, and a snap that was waiting for its result is restored (no new snap is created).
+
+## Using the window
+* **Side** selector O/D = who has the ball. Fill down / distance / yard line (my/opp) and press **Submit → log + new PLAY**.
+* The previous snap's fields are logged on that same Submit: outcome buttons or free text, **they ran** (their coverage, or their concept when you were on defense),
+  and **What I ran** (used recommended / used different + the formation and play / unknown). **Nothing is marked executed unless you tick it**; untouched = unknown.
+* **RESULT ENTRY banner**: on offense it is *your* yards; on defense it is **the opponent offense's yards**. Incomplete/INT/sack/TD buttons mean what the offense did.
+* **Changed play** / used different must be a play in your confirmed book, otherwise you get an error and nothing is written.
+* **Call only (no log)** produces a fresh recommendation for a corrected situation; the earlier waiting snap stays decided but unlearned (its id is not reused).
+* **Undo last snap** appends corrections that make the last snap train nothing and drops the waiting call; ids are never reused.
+* **Game over** closes the unified game; it does NOT run the legacy retrain (that would touch the primary database). Evaluate with the `postgame` command shown.
+* The yellow/green panel always says: model `unified_v1`, the artifact file (+hash), whether it is learned weights or the cold-start prior, how many rows were learned, the opponent-belief source,
+  and FALLBACK (there is no heuristic fallback in this window; an error is shown as an error).
+
+## Validate on YOUR laptop before kickoff (required for an HTML GO)
+```bash
+python3 -m cfb_coach.madden.unified html-check --confirmed-books $W/books.json --model $W/history/candidate_model.json --calls 100 --browser
+python3 -m cfb_coach.madden.unified preflight --html --confirmed-books $W/books.json --model $W/history/candidate_model.json \
+   --history-report $W/history/history_report.json --db $W/testing_franchise/madden27_test.db --calls 100
+```
+`html-check` must print `HTML CHECK: PASS` (the `--browser` part needs node + playwright; if missing it says NOT_RUN and the HTTP check still counts).
+`preflight --html` must show `HTML VERDICT: GO`. (`local-finish` now runs the same gates and prints both launch commands.)

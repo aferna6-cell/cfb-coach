@@ -947,6 +947,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_play.add_argument("--unified-adjustment-confirmations", default=None, metavar="JSON", help="Owner-confirmed in-game adjustments (unified adjustments --template).")
     p_play.add_argument("--unified-confirmed-books", default=None, metavar="JSON", help="Owner-attested installed books file (unified confirm-install).")
+    p_play.add_argument("--unified-game-id", default=None, metavar="ID", help="Unified game id (default: new). Use with --unified-resume to continue an interrupted game.")
+    p_play.add_argument("--unified-resume", action="store_true", help="Continue the --unified-game-id game: earlier observations are replayed once, a waiting snap is restored.")
+    p_play.add_argument("--unified-no-open", action="store_true", help="Start the unified HTML server without opening a browser.")
     p_play.add_argument("--unified-store", default=None, metavar="DB", help="Isolated unified log DB (never under ~/.cfb-coach).")
     p_play.add_argument("--unified-model", default=None, metavar="JSON", help="Optional challenger/champion world-model artifact; default cold-start prior.")
     p_play.add_argument(

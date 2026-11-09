@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS opponent_obs(snap_id TEXT NOT NULL, rev INTEGER NOT N
 CREATE TABLE IF NOT EXISTS outcomes(snap_id TEXT NOT NULL, rev INTEGER NOT NULL, outcome_json TEXT NOT NULL, closed_ts TEXT,
   PRIMARY KEY(snap_id, rev));
 CREATE TABLE IF NOT EXISTS games(game_id TEXT PRIMARY KEY, opponent_id TEXT, started_ts TEXT, closed_ts TEXT);
+CREATE TABLE IF NOT EXISTS voids(snap_id TEXT PRIMARY KEY, ts TEXT, reason TEXT);
+CREATE TABLE IF NOT EXISTS http_idem(request_key TEXT PRIMARY KEY, path TEXT, response_json TEXT, ts TEXT);
 """
 
 
@@ -68,7 +70,7 @@ class UnifiedStore:
     def __init__(self, path: str | Path, *, protected: Iterable[str | Path] = ()) -> None:
         self.path = assert_isolated(path, protected=protected)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(str(self.path))
+        self.db = sqlite3.connect(str(self.path), check_same_thread=False)  # HTTP worker threads; callers serialise with a lock
         ver = self.db.execute("PRAGMA user_version").fetchone()[0]
         has_old = self.db.execute("SELECT 1 FROM sqlite_master WHERE name='decisions'").fetchone()
         if ver not in (0, STORE_VERSION) or (ver == 0 and has_old):
@@ -131,6 +133,32 @@ class UnifiedStore:
         self.db.execute("INSERT OR IGNORE INTO games(game_id, opponent_id, started_ts) VALUES(?,?,?)", (game_id, opponent_id, ts))
         if closed:
             self.db.execute("UPDATE games SET closed_ts=? WHERE game_id=?", (ts, game_id))
+        self.db.commit()
+
+    def has_row(self, table: str, snap_id: str) -> bool:
+        assert table in ("executions", "opponent_obs", "outcomes", "decisions")
+        return self.db.execute(f"SELECT 1 FROM {table} WHERE snap_id=? LIMIT 1", (snap_id,)).fetchone() is not None
+
+    def card_json(self, snap_id: str) -> dict[str, Any] | None:
+        r = self.db.execute("SELECT card_json FROM decisions WHERE snap_id=?", (snap_id,)).fetchone()
+        return json.loads(r[0]) if r else None
+
+    def void(self, snap_id: str, ts: str, reason: str) -> None:
+        self.db.execute("INSERT OR REPLACE INTO voids VALUES(?,?,?)", (snap_id, ts, reason))
+        self.db.commit()
+
+    def voided(self) -> set[str]:
+        return {r[0] for r in self.db.execute("SELECT snap_id FROM voids")}
+
+    def unfinished_games(self) -> list[str]:
+        return [r[0] for r in self.db.execute("SELECT game_id FROM games WHERE closed_ts IS NULL ORDER BY started_ts")]
+
+    def idem_get(self, key: str) -> dict[str, Any] | None:
+        r = self.db.execute("SELECT response_json FROM http_idem WHERE request_key=?", (key,)).fetchone()
+        return json.loads(r[0]) if r else None
+
+    def idem_put(self, key: str, path: str, response: dict[str, Any], ts: str) -> None:
+        self.db.execute("INSERT OR REPLACE INTO http_idem VALUES(?,?,?,?)", (key, path, json.dumps(response, default=str), ts))
         self.db.commit()
 
     def closed_games(self) -> set[str]:

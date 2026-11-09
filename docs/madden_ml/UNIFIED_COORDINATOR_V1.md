@@ -163,3 +163,32 @@ Implemented as the issue's "required distinction": a revealed opponent defense u
 | `test_vod_eligibility` | needs a git commit that a shallow clone does not contain | Environment (shallow clone). |
 | `test_defense_typed_capture[Fire Zone 3-None]` | passes alone; failed once in one full-suite order | Order-dependent flake, legacy defense capture. |
 Recommendation: do not use the legacy macro path in the same session as the unified coordinator until those are fixed on the stack.
+
+---
+# Sprint 3 — the familiar HTML window on Unified V1 (branch `architecture/unified-v1-html-interface`)
+
+`play --game madden27 --coordinator unified_v1` now opens the ESTABLISHED live page (same layout, buttons and flow); `--terminal` keeps the terminal loop as a rollback.
+
+**How it is wired (nothing legacy is on the decision path):**
+```
+browser (live_server.render_live_html page)  ──HTTP──▶  live_server.make_handler  ──▶  UnifiedLiveController  ──▶  UnifiedSession ──▶ both coordinators
+                                                                                         │                          (shared world model, one game id, one seq)
+                                                                                         └─▶ isolated UnifiedStore (append-only; idempotency keys, voids, cards)
+```
+* `html_controller.UnifiedLiveController` implements only the surface the page/handler use (`state`, `result_and_call`, `call_only`, `undo_last`, `end_game`). It never imports `CoachDB` or the legacy playcaller, and `play` dispatches to it before any database is opened.
+* `live_server.py` got ONE additive change: when the controller says `unified_ui`, the page renders a status panel (model, artifact, learned-vs-cold-start, learning counters, opponent-belief source, fallback, adjustment, USER job) and a result-entry banner (offense → our yards; defense → OPPONENT OFFENSE's yards). Legacy pages are byte-identical in behaviour (28 legacy HTML tests unchanged).
+* Every request is validated before anything is written; each mutating request is idempotent via the browser's key, persisted in the store, so a retried/duplicated POST never creates a second snap.
+* Execution is recorded only from the page's explicit "What I ran" choice (`used recommended` → ran as called, or `y noadj` if the card had an adjustment and "applied" was not ticked; `used different` → a play from the confirmed book; untouched → **unknown**).
+* Resume: `--unified-game-id ID --unified-resume` replays the game from disk once and restores a snap that was still waiting for its result. Refresh/reconnect with the server alive just re-reads state.
+* Undo: append-only. The last snap with facts is "voided" (execution→unknown, outcome→no yardage, opponent call→unverified), the waiting call is dropped, the session is rebuilt from disk; ids are never reused and the voided snap trains nothing.
+
+**Validation added**
+| Check | Where |
+|---|---|
+| Real HTTP, offense → result → defense → result → offense; one recommendation per snap; card/reads/USER; persistence; belief + shared-model updates; provenance; contiguous ids; idempotent retry; bad input writes nothing; used-different legality; undo; restart + resume | `tests/unified/test_html.py` |
+| Real headless Chromium (Playwright) drives the actual page through the same sequence, reads the DOM (panel, QB reads, USER box, result banner, log), reloads, and submits bad input | `test_real_browser_drives_the_established_page`, `cfb_coach/madden/unified/browser_drive.js` |
+| Real `python -m cfb_coach play …` process with a sentinel "primary" home: directory byte-identical afterwards | `test_play_command_opens_the_html_window_and_never_touches_the_primary_home` |
+| 100 snaps per side over real HTTP with cold-reload audit + traps on `playcaller.make_call` and `CoachDB` | `htmlcheck.py`, `unified html-check` |
+| Preflight: `html_verdict` is `GO` only if the terminal gates are GO **and** the browser gates ran and passed; legacy hit → NO-GO; not run → SHADOW ONLY | `test_html_verdict_cannot_be_go_without_validated_browser_integration` |
+
+**Local-server hardening (from the automated security review of this PR):** the unified HTML server rejects any request whose `Host` is not `127.0.0.1:<port>`/`localhost:<port>` (DNS rebinding, including reads of `/api/state`), any POST with a foreign `Origin`, any POST that is not `application/json`, and any POST without the per-process secret token that is embedded in the page it serves (`X-Unified-Token`). Every string the controller hands to the page's `innerHTML` (log rows, book lines) is HTML-escaped, typed opponent text may not contain markup/control characters, and the unified panel is built with `textContent`. Tests: `test_localhost_api_rejects_rebinding_cross_origin_and_tokenless_posts`, `test_markup_in_opponent_text_or_book_names_cannot_reach_the_page_as_html`.

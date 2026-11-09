@@ -1412,6 +1412,14 @@ def render_live_html(ctrl: LivePlayController) -> str:
   .qbreads ol {{ margin: .25rem 0 0; padding-left: 0; list-style: none; font-size: 1.25rem; font-weight: 700; }}
   .qbreads li {{ margin: .15rem 0; }} .qbreads li b {{ display: inline-block; min-width: 3.2rem; }}
   .qbreads .qbn {{ font-size: .95rem; opacity: .85; }}
+  #unified-panel {{ margin: -.2rem 0 1rem; padding: .55rem .8rem; border-left: 4px solid #3fb950; background: rgba(63,185,80,.08); font-size: .9rem; }}
+  #unified-panel .u-line {{ margin: .12rem 0; }}
+  #unified-panel .u-k {{ color: var(--muted); font-size: .72rem; letter-spacing: .06em; text-transform: uppercase; display: inline-block; min-width: 6.2rem; }}
+  #unified-panel .u-adj {{ font-size: 1.15rem; font-weight: 800; }}
+  #unified-panel .u-user {{ margin: .35rem 0; padding: .4rem .6rem; border: 1px solid #d29922; border-radius: 6px; background: #2a1f0a; font-size: 1.05rem; font-weight: 700; }}
+  #unified-panel .u-warn {{ color: var(--danger); font-weight: 800; }}
+  #unified-result-note {{ margin: 0 0 .6rem; padding: .35rem .55rem; border-radius: 6px; background: #14301b; border: 1px solid #238636; font-weight: 700; font-size: .9rem; }}
+  #unified-result-note.def {{ background: #3a2a05; border-color: #d29922; }}
 </style>
 </head>
 <body>
@@ -1420,6 +1428,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
   <div class="dyn" id="dyn"{' hidden' if compact_madden else ''}>{_dyn_line(ctrl)}</div>
   <div class="heard" id="heard"{' hidden' if compact_madden else ''}>vs {_esc(ctrl.opponent_id)}</div>
   <div class="call" id="call"{' aria-live="polite"' if compact_madden else ''}>{_esc(_call_main(ctrl))}</div>
+  {'<section id="unified-panel" hidden aria-live="polite"></section>' if getattr(ctrl, 'unified_ui', False) else ''}
   {'<section id="qb-reads" class="qbreads" aria-live="polite"><div id="qb-reads-label" class="qbl"></div><ol id="qb-reads-list"></ol><div id="qb-reads-note" class="qbn"></div></section>' if compact_madden else ''}
   {_macro_box_html(None if compact_madden else ctrl.macro_state())}
   {"""<div id="offense-action-now" class="action-now" hidden></div>
@@ -1438,6 +1447,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
 
   <section id="snap-panel">
     <h2>Last snap outcome</h2>
+    {'<div id="unified-result-note" hidden></div>' if getattr(ctrl, 'unified_ui', False) else ''}
     <div class="row" id="outcome-btns">
       <button type="button" class="outcome" data-out="gain">gain</button>
       <input type="number" id="gain-n" value="5" title="yards gained"/>
@@ -1605,8 +1615,53 @@ function renderQbReads(q) {{
   }});
 }}
 
+function renderUnified(st) {{
+  const box = $("unified-panel");
+  if (!box) return;
+  const u = st.unified;
+  const note = $("unified-result-note");
+  if (!u) {{ box.hidden = true; if (note) note.hidden = true; return; }}
+  box.hidden = false;
+  box.textContent = "";
+  const line = (k, v, cls) => {{
+    const d = document.createElement("div"); d.className = "u-line";
+    const kk = document.createElement("span"); kk.className = "u-k"; kk.textContent = k;
+    const vv = document.createElement("span"); vv.textContent = " " + v; if (cls) vv.className = cls;
+    d.appendChild(kk); d.appendChild(vv); box.appendChild(d); return d;
+  }};
+  const p = u.pending;
+  line("model", u.decision_model + (u.solver ? " · " + u.solver : "") + " · UNIFIED coordinator (offense + defense, one shared model)");
+  line("artifact", u.artifact + " · " + u.model_mode);
+  const prov = u.provenance || {{}};
+  line("learning", "world-model rows " + u.world_model_rows + " (our offense " + (prov.our_offense_executed || 0) + " / our defense " + (prov.our_defense_executed || 0)
+    + ")" + (p ? " · opponent model: " + p.opponent_prediction_source : "") + " · next snap " + u.next_snap);
+  const fb = u.fallback || {{}};
+  line("fallback", fb.occurred ? ("YES — " + fb.reason) : "none (no heuristic caller is wired into this window)", fb.occurred ? "u-warn" : "");
+  if (p) {{
+    line("this snap", (p.side || "").toUpperCase() + " · " + p.snap_id + " · evidence confidence " + Number(p.football_evidence_confidence || 0).toFixed(2) + " · decided in " + p.latency_ms + " ms");
+    const adj = (p.adjustments && p.adjustments.length) ? p.adjustments.join("  +  ") : "NO ADJUSTMENT";
+    line("adjustment", adj + (p.changed_routes && Object.keys(p.changed_routes).length ? "   (route change: " + Object.entries(p.changed_routes).map(([k, v]) => k + " → " + v).join(", ") + ")" : ""), "u-adj");
+    if (p.user) {{
+      const d = document.createElement("div"); d.className = "u-user";
+      d.textContent = "USER: " + p.user.position + "  ·  PRIMARY: " + p.user.primary + "  ·  SECONDARY: " + p.user.secondary
+        + "   [" + (p.user.verified ? "VERIFIED" : "UNVERIFIED — advisory") + "]";
+      box.appendChild(d);
+    }}
+    if (p.explanation) line("why", p.explanation);
+  }} else {{
+    line("this snap", "waiting — enter the situation and press Submit");
+  }}
+  if (note) {{
+    note.hidden = false;
+    note.className = (p && p.side === "defense") ? "def" : "";
+    note.textContent = "RESULT ENTRY → " + (u.result_perspective || u.result_note);
+  }}
+  $("btn-end").textContent = "Game over → close (evaluate with postgame)";
+}}
+
 function renderState(st) {{
   if (!st) return;
+  try {{ renderUnified(st); }} catch (e) {{ /* the panel must never break the pad */ }}
   if (compactMadden) {{
     const rec = st.pending_recommendation;
     $("call").textContent = rec && rec.formation && rec.play
@@ -1899,7 +1954,7 @@ async function apiAction(path, body) {{
   try {{
     res = await fetch(path, {{
       method: "POST",
-      headers: {{"Content-Type": "application/json"}},
+      headers: Object.assign({{"Content-Type": "application/json"}}, window.UNIFIED_TOKEN ? {{"X-Unified-Token": window.UNIFIED_TOKEN}} : {{}}),
       body: JSON.stringify(payload),
     }});
   }} catch (netErr) {{
@@ -2072,7 +2127,7 @@ $("btn-call-only").addEventListener("click", async () => {{
 
 $("btn-end").addEventListener("click", async () => {{
   setErr("");
-  if (!confirm("End game and run retrain on this log?")) return;
+  if (!confirm($("unified-panel") ? "End this unified game? (no legacy retrain runs; evaluate it with the postgame command)" : "End game and run retrain on this log?")) return;
   try {{
     const data = await withUiLock(async () => apiAction("/api/end_game", {{
       result_wl: $("wl").value,
