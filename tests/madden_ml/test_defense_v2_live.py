@@ -120,3 +120,54 @@ def test_live_v2_book_cap_is_enforced(tmp_path, monkeypatch):
                               test_db=str(db.path), franchise="test-franchise")
     assert not res.defense_v2["applied"]
     db.conn.close()
+
+
+def test_v2_refuses_to_open_the_primary_database_on_invalid_cli(monkeypatch):
+    from cfb_coach.madden import cli as madden_cli
+    monkeypatch.setattr(madden_cli, "_open_opponent", lambda args: (_ for _ in ()).throw(
+        AssertionError("unsafe CLI invocation opened a database")))
+    args = SimpleNamespace(defense_model="v2", db=None,
+                           defense_test_db=None, defense_franchise=None,
+                           defense_model_path=None)
+    assert madden_cli.cmd_play(args) == 2
+
+
+def test_verified_action_is_only_shown_with_real_execution_support(tmp_path, monkeypatch):
+    import json
+    from cfb_coach.madden.model import defense_v2_actions as actions
+    from cfb_coach.madden.model.defense_v2_pilot import _key
+    db = FakeDb(tmp_path / "test.db")
+    model = artifact()
+    key = _key("long", "Nickel Over", "Cover 3 Sky", "physical-press")
+    model["executed_adjustments"] = {"schema": actions.SCHEMA,
+                                      "counts": {key: [0, 300]}, "n": 300}
+    monkeypatch.setattr(live, "load_model", lambda _: model)
+    confirmed = tmp_path / "actions.json"
+    confirmed.write_text(json.dumps({
+        "schema": actions.CONFIRM_SCHEMA,
+        "confirmed_actions": [{
+            "action_id": "def.coverage_hub", "instance_id": "physical-press",
+            "physically_verified": True, "console": "Xbox",
+            "verified_on": "2026-11-09",
+            "verified_buttons": "Hold LT and choose Press",
+            "label": "Press coverage", "params": {"option": "Press"},
+        }],
+    }))
+    result = live.maybe_apply_v2(
+        call(), situation(), "cpu-test", db,
+        {"Nickel Over": ["Cover 3 Sky"]},
+        model_path="unused", test_db=str(db.path), franchise="test-franchise",
+        action_confirmations=str(confirmed),
+    )
+    assert result.defense_v2["applied"] is True
+    assert result.adjustment is not None
+    assert result.adjustment["id"] == "physical-press"
+    assert result.adjustment["buttons"] == "Hold LT and choose Press"
+    # Missing verification file must not silently enable any adjustments.
+    stock = live.maybe_apply_v2(
+        call(), situation(), "cpu-test", db,
+        {"Nickel Over": ["Cover 3 Sky"]},
+        model_path="unused", test_db=str(db.path), franchise="test-franchise",
+    )
+    assert stock.adjustment is None
+    db.conn.close()
