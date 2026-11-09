@@ -24,4 +24,4 @@ where = ["."]
 include = ["cfb_coach*"]
 
 [tool.setuptools.package-data]
-cfb_coach = ["data/VALIDATION_NOTES.txt", "data/aidan_exact_macros.json", "data/macro_catalog.json", "data/meta_baseline.json", "data/seed.json", "data/cfb27_formations.json", "data/cfb27_offense_macros.json", "data/madden27/*.json", "data/madden27/VALIDATION_NOTES.txt"]
+cfb_coach = ["data/VALIDATION_NOTES.txt", "data/aidan_exact_macros.json", "data/macro_catalog.json", "data/meta_baseline.json", "data/seed.json", "data/cfb27_formations.json", "data/cfb27_offense_macros.json", "data/madden27/*.json", "data/madden27/VALIDATION_NOTES.txt", "madden/unified/*.js"]

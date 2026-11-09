@@ -131,11 +131,13 @@ def local_finish(workdir: str | Path, confirmed_books: str | Path, *, calls: int
     work = Path(workdir).expanduser().resolve()
     choice = json.loads((work / "MODEL_CHOICE.json").read_text())
     rep = PF.preflight(db=str(work / "testing_franchise" / "madden27_test.db"), confirmed_books=str(confirmed_books), model=choice["model"],
-                       history_report=str(work / "history" / "history_report.json"), adjustment_confirmations=adjustment_confirmations, calls=calls,
+                       history_report=str(work / "history" / "history_report.json"), adjustment_confirmations=adjustment_confirmations, calls=calls, html=True,
                        extra_protected=[str(work / "protected_backup" / p.name) for p in (work / "protected_backup").glob("*")], workdir=str(work / "preflight_run"))
     (work / "final_preflight.json").write_text(json.dumps(rep, indent=2, default=str))
     (work / "final_preflight.md").write_text(PF.render_report(rep))
     store = work / "game" / "unified.db"
+    rep["launch_html"] = (f"python -m cfb_coach play --game madden27 --opponent cpu --coordinator unified_v1 --unified-confirmed-books {confirmed_books} "
+                          f"--unified-store {store} --unified-model {choice['model']}" + (f" --unified-adjustment-confirmations {adjustment_confirmations}" if adjustment_confirmations else ""))
     rep["launch"] = (f"python -m cfb_coach.madden.unified game --opponent cpu --confirmed-books {confirmed_books} --store {store} --model {choice['model']}"
                      + (f" --adjustment-confirmations {adjustment_confirmations}" if adjustment_confirmations else ""))
     rep["postgame"] = f"python -m cfb_coach.madden.unified postgame --store {store} --out {work / 'postgame_001'} --champion {choice['model']}"

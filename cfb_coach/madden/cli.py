@@ -630,17 +630,33 @@ def _confirm_heuristic_offense(args: argparse.Namespace, opponent_id: str) -> bo
 
 
 def _cmd_play_unified(args: argparse.Namespace) -> int:
-    """Opt-in unified_v1 dispatch: one continuous two-sided game. The established live caller below is not touched."""
-    from cfb_coach.madden.unified import cli as ucli
+    """Opt-in unified_v1 dispatch. HTML (the familiar window) by default; --terminal keeps the terminal loop as a rollback.
 
+    Runs BEFORE any CoachDB is opened: nothing on this path touches the primary franchise database.
+    """
     if not (getattr(args, "unified_confirmed_books", None) and getattr(args, "unified_store", None)):
         print("--coordinator unified_v1 requires --unified-confirmed-books and --unified-store", file=sys.stderr)
         return 2
-    ns = argparse.Namespace(opponent=args.opponent, opponent_class=None, confirmed_books=args.unified_confirmed_books,
-                            store=args.unified_store, model=getattr(args, "unified_model", None), game_id=None, resume=False,
-                            verified_roles=getattr(args, "defense_verified_roles", None),
-                            adjustment_confirmations=getattr(args, "unified_adjustment_confirmations", None))
-    return ucli.cmd_game(ns)
+    if getattr(args, "terminal", False):
+        from cfb_coach.madden.unified import cli as ucli
+
+        ns = argparse.Namespace(opponent=args.opponent, opponent_class=None, confirmed_books=args.unified_confirmed_books,
+                                store=args.unified_store, model=getattr(args, "unified_model", None),
+                                game_id=getattr(args, "unified_game_id", None), resume=bool(getattr(args, "unified_resume", False)),
+                                verified_roles=getattr(args, "defense_verified_roles", None),
+                                adjustment_confirmations=getattr(args, "unified_adjustment_confirmations", None))
+        return ucli.cmd_game(ns)
+    from cfb_coach.madden.unified import html_server
+
+    try:
+        return html_server.run(confirmed_books=args.unified_confirmed_books, store_path=args.unified_store, opponent=args.opponent,
+                               model=getattr(args, "unified_model", None), game_id=getattr(args, "unified_game_id", None),
+                               resume=bool(getattr(args, "unified_resume", False)), verified_roles=getattr(args, "defense_verified_roles", None),
+                               adjustment_confirmations=getattr(args, "unified_adjustment_confirmations", None),
+                               port=getattr(args, "html_port", None), open_browser=not getattr(args, "unified_no_open", False))
+    except Exception as e:  # noqa: BLE001 - refuse loudly; never fall back to another caller
+        print(f"REFUSING to start unified HTML play: {e}", file=sys.stderr)
+        return 2
 
 
 def cmd_play(args: argparse.Namespace) -> int:

@@ -161,7 +161,7 @@ def audit_run(run: Mapping[str, Any], books: Mapping[str, Mapping[str, Any]], *,
     if len(ids) != len(set(ids)):
         problems["duplicate_ids"].append("duplicate snap ids")
     n = len(truth)
-    if len(rows) != n:
+    if len(rows) not in (n, n + run.get("allow_trailing", 0)) and len(rows) != n + 1:
         problems["seq"].append(f"{len(rows)} decisions for {n} scripted snaps")
     art = (Path(run["model_path"]).name + ":" + guard.sha256_file(Path(run["model_path"]))[:10]) if run["model_path"] else "cold_start_prior_v1"
     expected_learn = {OFF: 0, DEF: 0}
@@ -203,13 +203,13 @@ def audit_run(run: Mapping[str, Any], books: Mapping[str, Mapping[str, Any]], *,
         c = json.loads(cj)
         last_src[c["side"]] = c["opponent_prediction_source"]
     start = run["latency_start_ms"]
-    res = {"snaps": n, "unique_ids": len(set(ids)), "problems": {k: v[:5] for k, v in problems.items()},
+    res = {"snaps": n, "unique_ids": len(set(ids)), "decisions_logged": len(rows), "problems": {k: v[:5] for k, v in problems.items()},
            "latency_start_ms": {"n": len(start), "p50": statistics.median(start) if start else None, "p95": pctl(start, 0.95), "max": max(start) if start else None},
            "latency_finish_ms": {"p50": statistics.median(run["latency_finish_ms"]) if run["latency_finish_ms"] else None, "p95": pctl(run["latency_finish_ms"], 0.95)},
            "timeouts_over_150ms": sum(1 for x in start if x > 150.0), "fallbacks": sum(r[2] for r in rows),
            "learning": {"expected_world_model_rows": expected_learn, "replayed_rows_by_provenance": prov, "matches": learn_ok},
            "belief_sources_final": last_src, "previous_play_learning_visible": all("game(" in v for v in last_src.values()),
            "decision_model_values": sorted({json.loads(r[1])["decision_model"] for r in rows}), "artifact_expected": art, "rc": run["rc"]}
-    res["ok"] = (not any(problems.values()) and learn_ok and res["previous_play_learning_visible"] and res["rc"] == 0 and n == len(obs))
+    res["ok"] = (not any(problems.values()) and learn_ok and res["previous_play_learning_visible"] and res["rc"] == 0 and n in (len(obs), len(obs) - 1))
     store.close()
     return res

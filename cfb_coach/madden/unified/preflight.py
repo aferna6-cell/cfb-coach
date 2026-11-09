@@ -119,7 +119,7 @@ def _parser_gate() -> dict[str, Any]:
 
 def preflight(*, db: str | None = None, confirmed_books: str | None = None, model: str | None = None, history_report: str | None = None,
               adjustment_confirmations: str | None = None, calls: int = 100, extra_protected: Sequence[str] = (),
-              workdir: str | None = None) -> dict[str, Any]:
+              workdir: str | None = None, html: bool = False) -> dict[str, Any]:
     """GO needs: owner-attested BOTH books, an explicit model artifact consistent with the history evaluation, an audited
     isolated database, AND a clean run of the real continuous live loop (>= ``calls`` snaps per side) on those exact inputs."""
     from cfb_coach.madden.unified import livepath as LP
@@ -210,6 +210,26 @@ def preflight(*, db: str | None = None, confirmed_books: str | None = None, mode
         _gate("live_previous_play_learning", aud["learning"]["matches"] and aud["previous_play_learning_visible"],
               {**aud["learning"], "belief_sources_final": aud["belief_sources_final"]}),
     ]
+    html_gates: list[dict[str, Any]] = []
+    if html:
+        from cfb_coach.madden.unified import htmlcheck as HC
+        hrun = HC.run_http_workflow(books, model_path=model if wm is not None else None, store_path=work / "html.db", n_per_side=calls, confirmations=conf)
+        ha = HC.audit_http_run(hrun, books, confirmations=conf)
+        hp = ha["problems"]
+        html_gates += [
+            _gate("html_page_serves_established_interface", ha["page_ok"], {"page_ok": ha["page_ok"]}),
+            _gate("html_workflow_clean", ha["ok"] and not ha["errors"], {"snaps": ha["snaps"], "errors": ha["errors"], "problems": hp,
+                                                                         "trailing_unplayed_snaps": ha["extra_unplayed_snaps"]}),
+            _gate("html_no_legacy_caller_or_primary_db_access", not ha["legacy_hits"], {"hits": ha["legacy_hits"]}),
+            _gate("html_recommended_vs_executed_and_learning", not hp["exec_mismatch"] and ha["learning"]["matches"],
+                  {"exec_mismatch": hp["exec_mismatch"], **ha["learning"]}),
+            _gate("html_request_latency_p95_le_150ms", ha["request_ms"]["p95"] <= LATENCY_BUDGET_MS,
+                  {**ha["request_ms"], "scope": "this machine; client send -> full JSON response over real HTTP"}, critical=False,
+                  how_to_run="unified html-check ... on the owner's laptop"),
+        ]
+    else:
+        html_gates.append(_gate("html_interface_validated", None, {"note": "browser integration was not exercised in this preflight"},
+                                how_to_run="unified html-check --confirmed-books <file> --model <file>   (or preflight --html)"))
     after = guard.snapshot(prot)
     d = guard.diff(before, after)
     gates.append(_gate("protected_assets_unchanged", not (d["changed"] or d["removed"] or d["added"]), {"protected_files_checksummed": len(prot), **d}))
@@ -222,16 +242,25 @@ def preflight(*, db: str | None = None, confirmed_books: str | None = None, mode
         verdict, why = "SHADOW ONLY", list(dict.fromkeys(g["gate"] for g in soft_fail + not_run))
     else:
         verdict, why = "GO", []
-    return {"version": "unified_preflight.v2", "verdict": verdict, "blocking": why, "artifact": aud["artifact_expected"], "gates": gates,
+    h_fail = [g for g in html_gates if g["critical"] and g["status"] == "FAIL"]
+    h_soft = [g for g in html_gates if g["status"] in ("FAIL", "NOT_RUN") and g not in h_fail]
+    if h_fail or verdict == "NO-GO":
+        html_verdict, html_why = "NO-GO", [g["gate"] for g in h_fail] or why
+    elif verdict != "GO" or h_soft:
+        html_verdict, html_why = "SHADOW ONLY", list(dict.fromkeys(([] if verdict == "GO" else why) + [g["gate"] for g in h_soft]))
+    else:
+        html_verdict, html_why = "GO", []
+    return {"version": "unified_preflight.v3", "verdict": verdict, "html_verdict": html_verdict, "html_blocking": html_why, "html_gates": html_gates,
+            "verdict_note": "`verdict` = terminal loop; `html_verdict` = the familiar HTML window (needs the terminal gates AND the html gates)", "blocking": why, "artifact": aud["artifact_expected"], "gates": gates,
             "live": {k: aud[k] for k in ("snaps", "latency_start_ms", "latency_finish_ms", "timeouts_over_150ms", "fallbacks", "learning")},
             "note": "GO would mean ready for an experimental CPU test, not proven strategic superiority. Latency/legality are measured through the real "
                     "continuous loop, never a bare in-process call."}
 
 
 def render_report(rep: Mapping[str, Any]) -> str:
-    L = [f"# CPU preflight: {rep['verdict']}", "", f"artifact: `{rep['artifact']}`", f"blocking: {rep['blocking'] or 'none'}", "",
+    L = [f"# CPU preflight: terminal {rep['verdict']} · HTML {rep.get('html_verdict', 'n/a')}", "", f"artifact: `{rep['artifact']}`", f"blocking: {rep['blocking'] or 'none'}", "",
          "| gate | status | critical |", "|---|---|---|"]
-    for g in rep["gates"]:
+    for g in [*rep["gates"], *rep.get("html_gates", [])]:
         L.append(f"| {g['gate']} | {g['status']} | {g['critical']} |")
     L += ["", "## Evidence", "```json", json.dumps(rep["gates"], indent=1, default=str), "```", "", rep["note"]]
     return "\n".join(L)

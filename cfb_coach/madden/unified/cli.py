@@ -69,13 +69,14 @@ def cmd_confirm(a: argparse.Namespace) -> int:
 
 def cmd_preflight(a: argparse.Namespace) -> int:
     rep = PF.preflight(db=a.db, confirmed_books=a.confirmed_books, model=a.model, history_report=a.history_report, adjustment_confirmations=a.adjustment_confirmations,
-                       calls=a.calls, extra_protected=a.protect or [])
+                       calls=a.calls, extra_protected=a.protect or [], html=a.html)
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(PF.render_report(rep))
         Path(a.out).with_suffix(".json").write_text(json.dumps(rep, indent=2, default=str))
     print(f"VERDICT: {rep['verdict']}  blocking: {rep['blocking'] or 'none'}")
-    for g in rep["gates"]:
+    print(f"HTML VERDICT: {rep['html_verdict']}  blocking: {rep['html_blocking'] or 'none'}")
+    for g in [*rep["gates"], *rep["html_gates"]]:
         print(f"  [{g['status']:7s}] {g['gate']}")
     return 0 if rep["verdict"] != "NO-GO" else 2
 
@@ -138,9 +139,68 @@ def cmd_local_finish(a: argparse.Namespace) -> int:
     print(f"VERDICT: {rep['verdict']}  blocking: {rep['blocking'] or 'none'}")
     for g in rep["gates"]:
         print(f"  [{g['status']:7s}] {g['gate']}")
-    print("launch:   ", rep["launch"])
+    print(f"HTML VERDICT: {rep['html_verdict']}  blocking: {rep['html_blocking'] or 'none'}")
+    print("launch (familiar HTML window):", rep["launch_html"])
+    print("launch (terminal rollback):   ", rep["launch"])
     print("postgame: ", rep["postgame"])
     return 0 if rep["verdict"] != "NO-GO" else 2
+
+
+def cmd_html(a: argparse.Namespace) -> int:
+    from cfb_coach.madden.unified import html_server
+
+    try:
+        return html_server.run(confirmed_books=a.confirmed_books, store_path=a.store, opponent=a.opponent, model=a.model, game_id=a.game_id,
+                               resume=a.resume, verified_roles=a.verified_roles, adjustment_confirmations=a.adjustment_confirmations,
+                               port=a.port, open_browser=not a.no_open)
+    except Exception as e:  # noqa: BLE001
+        print(f"REFUSING to start unified HTML play: {e}", file=sys.stderr)
+        return 2
+
+
+def cmd_html_check(a: argparse.Namespace) -> int:
+    """Browser-integration validation on THIS machine: real HTTP server, real page, 100+ snaps per side, cold audit."""
+    import tempfile
+    from cfb_coach.madden.unified import htmlcheck as HC
+
+    raw = PF.load_confirmed_books(a.confirmed_books)
+    books = {s: {"inventory": b["inventory"], "fingerprint": b["fingerprint"]} for s, b in raw.items()}
+    if set(books) != {OFF, DEF}:
+        print("REFUSING: both owner-confirmed books are required", file=sys.stderr)
+        return 2
+    conf = json.loads(Path(a.adjustment_confirmations).read_text()) if a.adjustment_confirmations else {}
+    work = Path(a.workdir) if a.workdir else Path(tempfile.mkdtemp(prefix="html_check_"))
+    work.mkdir(parents=True, exist_ok=True)
+    store = work / f"html_{__import__('time').strftime('%H%M%S')}.db"
+    run = HC.run_http_workflow(books, model_path=a.model, store_path=store, n_per_side=a.calls, confirmations=conf)
+    r = HC.audit_http_run(run, books, confirmations=conf)
+    ok = r["ok"] and r["request_ms"]["p95"] <= 150.0
+    out = {"html_check": "PASS" if ok else "FAIL", "snaps": r["snaps"], "request_ms": r["request_ms"], "problems": r["problems"], "errors": r["errors"],
+           "legacy_hits": r["legacy_hits"], "learning": r["learning"], "page_ok": r["page_ok"], "fallbacks": r["fallbacks"]}
+    browser = None
+    if a.browser:
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if not node:
+            browser = {"status": "NOT_RUN", "why": "node not installed"}
+        else:
+            from cfb_coach.madden.unified.html_controller import UnifiedLiveController
+            from cfb_coach.madden.unified.html_server import build_session, start_server
+            s, _ = build_session(confirmed_books=a.confirmed_books, store_path=str(work / "browser.db"), opponent="cpu_browsercheck", model=a.model, game_id="browsercheck-1")
+            ctrl = UnifiedLiveController(s)
+            srv, th, url = start_server(ctrl)
+            try:
+                p = subprocess.run([node, str(Path(__file__).with_name("browser_drive.js")), url, str(work / "shots")], capture_output=True, text=True, timeout=240)
+                browser = {"status": "PASS" if p.returncode == 0 and not json.loads(p.stdout or "{}").get("errors") else "FAIL", "stderr": p.stderr[-300:]}
+            except Exception as e:  # noqa: BLE001
+                browser = {"status": "FAIL", "why": repr(e)}
+            finally:
+                srv.shutdown()
+    out["browser"] = browser or {"status": "NOT_RUN", "why": "pass --browser to also drive the page in a real browser (needs node + playwright)"}
+    print(json.dumps(out, indent=1, default=str))
+    print(f"HTML CHECK: {out['html_check']}   (this machine: {__import__('platform').node()})")
+    return 0 if ok else 2
 
 
 def cmd_history(a: argparse.Namespace) -> int:
@@ -302,8 +362,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--max-formations", type=int, default=15); s.add_argument("--out", required=True); s.set_defaults(fn=cmd_game_prep)
     s = sub.add_parser("confirm-install"); s.add_argument("--proposal", required=True); s.add_argument("--attested-by", required=True)
     s.add_argument("--confirmed-books", required=True); s.set_defaults(fn=cmd_confirm)
-    s = sub.add_parser("preflight"); s.add_argument("--db"); s.add_argument("--confirmed-books"); s.add_argument("--model"); s.add_argument("--history-report"); s.add_argument("--adjustment-confirmations")
+    s = sub.add_parser("preflight"); s.add_argument("--db"); s.add_argument("--confirmed-books"); s.add_argument("--model"); s.add_argument("--history-report"); s.add_argument("--adjustment-confirmations"); s.add_argument("--html", action="store_true")
     s.add_argument("--calls", type=int, default=100); s.add_argument("--out"); s.add_argument("--protect", nargs="*"); s.set_defaults(fn=cmd_preflight)
+    s = sub.add_parser("html", help="the familiar HTML window with Unified V1 behind it")
+    s.add_argument("--opponent", required=True); s.add_argument("--confirmed-books", required=True); s.add_argument("--store", required=True)
+    s.add_argument("--model"); s.add_argument("--game-id"); s.add_argument("--resume", action="store_true"); s.add_argument("--verified-roles")
+    s.add_argument("--adjustment-confirmations"); s.add_argument("--port", type=int); s.add_argument("--no-open", action="store_true"); s.set_defaults(fn=cmd_html)
+    s = sub.add_parser("html-check", help="validate the browser integration on THIS machine (real HTTP, 100+ snaps/side, audit)")
+    s.add_argument("--confirmed-books", required=True); s.add_argument("--model"); s.add_argument("--calls", type=int, default=100)
+    s.add_argument("--adjustment-confirmations"); s.add_argument("--workdir"); s.add_argument("--browser", action="store_true"); s.set_defaults(fn=cmd_html_check)
     s = sub.add_parser("adjustments", help="which individual adjustments exist, are owner-verified, and may be recommended live")
     s.add_argument("--confirmations"); s.add_argument("--template"); s.add_argument("--out"); s.set_defaults(fn=cmd_adjustments)
     s = sub.add_parser("discover", help="list candidate Madden databases/model artifacts (read-only)"); s.set_defaults(fn=cmd_discover)
