@@ -114,7 +114,8 @@ def run_http_workflow(books: Mapping[str, Mapping[str, Any]], *, model_path: str
         for step in plan:
             body: dict[str, Any] = {"sit": f"{step['down']}&{step['dist']} {step['yl_side']} {step['yl']}", "side": "offense" if step["side"] == OFF else "defense",
                                     "quarter": "1", "outcome": prev["result"] if prev else "", "their": prev["opp"] if prev else "",
-                                    "executed_status": MODE_TO_HTML[prev["mode"]] if prev else "unknown"}
+                                    "executed_status": MODE_TO_HTML[prev["mode"]] if prev else "unknown",
+                                    "verify_touched": bool(prev)}
             if prev and prev["mode"] == "other":
                 side = prev["side"]
                 f = sorted(inv[side])[0]
@@ -135,7 +136,7 @@ def run_http_workflow(books: Mapping[str, Mapping[str, Any]], *, model_path: str
         # the last pending snap gets its result through the end-of-game path so every scripted snap is logged
         if prev and not errors:
             code, data, ms = cl.req("POST", "/api/result_call", {"sit": "1&10 my 25", "side": "offense", "outcome": prev["result"], "their": prev["opp"],
-                                                                  "executed_status": MODE_TO_HTML[prev["mode"]],
+                                                                  "executed_status": MODE_TO_HTML[prev["mode"]], "verify_touched": True,
                                                                   "executed_formation": (sorted(inv[prev["side"]])[0] if prev["mode"] == "other" else None),
                                                                   "executed_play": (inv[prev["side"]][sorted(inv[prev["side"]])[0]][-1] if prev["mode"] == "other" else None),
                                                                   "applied_recommended_action": prev["mode"] == "y"})

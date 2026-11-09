@@ -41,6 +41,9 @@ class UnifiedLiveController:
     """Duck-typed stand-in for ``live_server.LivePlayController`` (unified_v1 only)."""
 
     unified_ui = True  # tells render_live_html to include the unified status panel
+    # Owner-authorized standing attestation: submitting a completed snap means
+    # the recommendation was executed unless the owner explicitly overrides it.
+    standing_execution_attestation = True
     book_info = None  # the page's legacy 'playbook of record' line stays hidden; books are shown from the confirmed file
 
     def __init__(self, session: UnifiedSession, *, model_path: str | None = None, play_cmd: str = "python -m cfb_coach.madden.unified html") -> None:
@@ -179,7 +182,7 @@ class UnifiedLiveController:
                 "cpu_only": False, "default_side": s.last_side or "offense", "has_pending_call": pend is not None and not self.ended, "ended": self.ended,
                 "result_wl": None, "score": None, "live_score": None if self._score == (None, None) else {"us": self._score[0], "them": self._score[1], "label": f"{self._score[0]}-{self._score[1]}"},
                 "retrain_summary": getattr(self, "retrain_summary", ""), "log": self._rows(), "book": self.book_state(), "macro": None, "quarter": self.quarter,
-                "benched": {}, "ball": ball, "execution_verify": True, "standing_execution_attestation": False, "pending_recommendation": rec,
+                "benched": {}, "ball": ball, "execution_verify": True, "standing_execution_attestation": True, "pending_recommendation": rec,
                 "pending_offense_action": act, "conditional_action": None,
                 "ml_experimental": {"football_reason": (pend and self._pending_card().get("explanation")) or None},
                 "qb_reads": reads, "unified": panel,
@@ -207,6 +210,10 @@ class UnifiedLiveController:
         e = (executed_status or "unknown").lower()
         if e == "used_recommended":
             return "y" if (not card.get("adjustments") or applied_action) else "y noadj"
+        if e == "not_executed":
+            return "n"
+        if e == "used_recommended_no_adjustment":
+            return "y noadj"
         if e == "used_different":
             if not (executed_formation and executed_play):
                 raise InputError("'used different' needs both the formation and the play you actually ran")
@@ -241,7 +248,8 @@ class UnifiedLiveController:
     def result_and_call(self, *, outcome: str, sit_raw: str, side: str | None = None, quarter: Any = None, their: str = "", score_us: Any = None,
                         score_them: Any = None, score_set: bool = False, executed_status: str = "unknown", executed_formation: str | None = None,
                         executed_play: str | None = None, executed_macro: str | None = None, applied_recommended_action: bool = False,
-                        confirmed_no_adjustment: bool = False, request_key: str | None = None, **_ignored: Any) -> dict[str, Any]:
+                        confirmed_no_adjustment: bool = False, verify_touched: bool = False,
+                        request_key: str | None = None, **_ignored: Any) -> dict[str, Any]:
         """Log the previous snap (if any) AND produce the next recommendation — the established 'Submit' button."""
         with self.lock:
             cached = self._idem(request_key)
@@ -253,11 +261,21 @@ class UnifiedLiveController:
             try:
                 line = self._situation_line(sit_raw, side)
                 parse_snap_line(line, self.session.last_side)  # validate the NEXT situation before changing anything
+                # Owner explicitly authorized following every model call. Only the
+                # completed-snap Submit applies this standing attestation:
+                # call-only, undo, resume, and page rendering do not.
+                status = executed_status
+                if self.session.pending is not None and not verify_touched and status in ("", "unknown"):
+                    status = "used_recommended"
+                # 'used recommended' includes its adjustments unless the owner
+                # specifically marked that they skipped the adjustment.
+                applied = (applied_recommended_action or
+                           (status == "used_recommended" and not confirmed_no_adjustment))
                 if self.session.pending is not None:  # validate the previous snap's entries without writing
-                    self._dry_validate(outcome, their, executed_status, executed_formation, executed_play, applied_recommended_action)
+                    self._dry_validate(outcome, their, status, executed_formation, executed_play, applied)
                 self._remember_form(quarter, score_us, score_them, score_set)
-                logged = self._finish_pending(outcome=outcome, their=their, executed_status=executed_status, executed_formation=executed_formation,
-                                              executed_play=executed_play, applied_recommended_action=applied_recommended_action)
+                logged = self._finish_pending(outcome=outcome, their=their, executed_status=status, executed_formation=executed_formation,
+                                              executed_play=executed_play, applied_recommended_action=applied)
                 self.session.start_snap(line, quarter=self.quarter, score_us=self._score[0], score_opp=self._score[1])
             except (InputError, SessionError) as e:
                 return self._fail(str(e))

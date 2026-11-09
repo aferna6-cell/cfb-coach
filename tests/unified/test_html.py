@@ -61,8 +61,11 @@ def rig(tmp_path, no_legacy):
     r.stop()
 
 
-def sub(rig, sit, side, outcome="", their="", executed="unknown", **kw):
-    return rig.post("/api/result_call", {"sit": sit, "side": side, "outcome": outcome, "their": their, "executed_status": executed, "quarter": "1", **kw})
+def sub(rig, sit, side, outcome="", their="", executed=None, **kw):
+    # Omitted choice => standing owner attestation; explicit unknown overrides it.
+    return rig.post("/api/result_call", {"sit": sit, "side": side, "outcome": outcome, "their": their,
+                                         "executed_status": executed or "unknown", "verify_touched": executed is not None,
+                                         "quarter": "1", **kw})
 
 
 def test_page_is_the_established_page_with_the_unified_panel(rig):
@@ -71,7 +74,7 @@ def test_page_is_the_established_page_with_the_unified_panel(rig):
     code, st, _ = rig.cl.req("GET", "/api/state")
     u = st["unified"]
     assert u["decision_model"] == "unified_v1" and u["artifact"] == "test_artifact:abc" and "COLD-START" in u["model_mode"]
-    assert st["pending_recommendation"] is None and st["execution_verify"] is True and st["standing_execution_attestation"] is False
+    assert st["pending_recommendation"] is None and st["execution_verify"] is True and st["standing_execution_attestation"] is True
 
 
 def test_offense_defense_offense_through_http_persists_everything_correctly(rig):
@@ -90,7 +93,7 @@ def test_offense_defense_offense_through_http_persists_everything_correctly(rig)
     o1 = obs["h1-0001"]
     assert o1.executed_status == "confirmed" and (o1.executed.play.formation, o1.executed.play.play) == first and o1.outcome.yards == 7.0
     assert o1.opponent_action.verification == "typed_exact"
-    # possession change: defense. Result of snap 2 entered WITHOUT confirming execution -> unknown, never assumed
+    # Possession change: default standing attestation confirms snap 2 as the recommended play.
     c, d = sub(rig, "1&10 my 40", "defense", "gain 5")
     st = d["state"]
     assert st["pending_recommendation"]["side"] == "defense" and st["qb_reads"] is None
@@ -98,8 +101,11 @@ def test_offense_defense_offense_through_http_persists_everything_correctly(rig)
     assert u["position"] and u["primary"] and u["secondary"] and u["verified"] is False
     assert "OPPONENT OFFENSE" in st["unified"]["result_perspective"]
     o2 = {o.snap_id: o for o in rig.store.load_observations()}["h1-0002"]
-    assert o2.executed_status == "unknown" and o2.executed is None and o2.recommended is not None and o2.outcome.yards == 5.0
-    assert rig.session.model.provenance == {"our_offense_executed": 1}  # snap 2 (unconfirmed) did not train
+    assert o2.executed_status == "confirmed" and o2.executed.play.play_id == o2.recommended.play.play_id and o2.outcome.yards == 5.0
+    # An owner-confirmed execution is stored, but world-model training also requires
+    # a revealed opponent call. No opponent call was supplied for snap 2.
+    assert o2.opponent_action is None
+    assert rig.session.model.provenance == {"our_offense_executed": 1}
     # result of the DEFENSIVE snap = opponent offense yards, executed confirmed; back to offense
     c, d = sub(rig, "1&10 my 30", "offense", "gain 12", "Gun Trips X Nasty | Hi Lo Cross", "used_recommended")
     assert d["ok"] and d["state"]["pending_recommendation"]["side"] == "offense" and d["state"]["pending_recommendation"]["snap_id"] == "h1-0004"
@@ -110,6 +116,36 @@ def test_offense_defense_offense_through_http_persists_everything_correctly(rig)
     ids = [o.snap_id for o in rig.store.load_observations()]
     assert ids == [f"h1-000{i}" for i in range(1, 5)]
     assert rig.store.counts()["decisions"] == 4  # exactly one recommendation per snap
+
+
+def test_standing_attestation_only_on_completed_submit_and_can_be_overridden(rig):
+    c, d = sub(rig, "1&10 my 25", "offense")
+    assert d["ok"]
+    assert rig.store.counts()["executions"] == 0  # displaying the call is not an execution
+    c, d = sub(rig, "2&3 my 32", "offense", "gain 7", COVER3)
+    assert d["ok"]
+    first = {o.snap_id: o for o in rig.store.load_observations()}["h1-0001"]
+    assert first.executed_status == "confirmed"
+    assert first.executed.play.play_id == first.recommended.play.play_id
+    c, d = sub(rig, "3&2 my 39", "offense", "gain 2", COVER3, "unknown")
+    assert d["ok"]
+    second = {o.snap_id: o for o in rig.store.load_observations()}["h1-0002"]
+    assert second.executed_status == "unknown" and second.executed is None
+    c, d = sub(rig, "1&10 my 41", "offense", "gain 2", COVER3, "not_executed")
+    assert d["ok"]
+    third = {o.snap_id: o for o in rig.store.load_observations()}["h1-0003"]
+    assert third.executed_status == "not_executed"
+
+
+def test_explicit_no_adjustment_override_is_not_recorded_as_full_adjusted_call(rig):
+    assert rig.ctrl._executed_text("used_recommended_no_adjustment", None, None, False, {}) == "y noadj"
+    assert rig.ctrl._executed_text("not_executed", None, None, False, {}) == "n"
+
+
+def test_standing_attestation_is_not_triggered_by_call_only(rig):
+    sub(rig, "1&10 my 25", "offense")
+    c, d = rig.post("/api/call", {"sit": "2&10 my 25", "side": "offense"})
+    assert d["ok"] and rig.store.counts()["executions"] == 0
 
 
 def test_bad_input_changes_nothing_and_idempotent_retry_does_not_duplicate(rig):
@@ -208,6 +244,8 @@ def test_real_browser_drives_the_established_page(tmp_path, no_legacy):
     o1, o2, d3, o4 = steps["offense-1"], steps["offense-2"], steps["defense-3"], steps["offense-4"]
     assert all(x["ok"] for x in (o1, o2, d3, o4)) and all(" — " in x["call"] for x in (o1, o2, d3, o4))
     assert "NO ADJUSTMENT" in o1["panel"] and "FALLBACK" in o1["panel"].upper() and "none" in o1["panel"].lower()
+    assert "EXPECT:" in o1["visiblePanel"] and "Model details" in o1["visiblePanel"]
+    assert "Artifact:" not in o1["visiblePanel"] and "Learning:" not in o1["visiblePanel"]
     assert o1["qbVisible"] and len(o1["qbReads"]) == 2
     assert "OPPONENT OFFENSE" in d3["resultNote"] and d3["user"] and "USER:" in d3["user"] and "PRIMARY:" in d3["user"] and "SECONDARY:" in d3["user"]
     assert "OUR OFFENSE" in o4["resultNote"] and d3["qbVisible"] is False and o4["qbVisible"] is True
