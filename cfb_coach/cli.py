@@ -928,7 +928,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_play.add_argument(
         "--defense-model",
-        choices=("v1",),
+        choices=("v1", "v2"),
         default=None,
         help="Madden only: this human-opponent session calls defense from the offline defense v1 "
              "logistic artifact (policy logged_unverified_v1). Does not require verified snaps or "
@@ -947,9 +947,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--defense-model-path",
         default=None,
         metavar="PATH",
-        help="JSON path for --defense-model v1 or for the empty-prior substitute used by "
+        help="JSON path for --defense-model v1/v2, or the empty-prior substitute used by "
              "--ml-defense-control. Default: ~/.cfb-coach/models/defense_v1.json "
              "(or CFB_COACH_DEFENSE_V1).",
+    )
+    p_play.add_argument(
+        "--defense-test-db", default=None, metavar="PATH",
+        help="Required for defensive V2: explicit isolated test-franchise DB file; must match --db.",
+    )
+    p_play.add_argument(
+        "--defense-installed-fingerprint", default=None, metavar="HASH",
+        help="Required for V2: fingerprint of exact confirmed installed defensive plays (after physical Madden verification).",
+    )
+    p_play.add_argument(
+        "--defense-action-confirmations", default=None, metavar="JSON",
+        help="Optional V2 owner-verified individual Xbox controls file. Without it, NO ADJUSTMENT.",
+    )
+    p_play.add_argument(
+        "--defense-franchise", default=None, metavar="ID",
+        help="Required for defensive V2: exact game_sessions.dynasty; not a name inferred from the opponent.",
     )
     p_play.add_argument(
         "--score",

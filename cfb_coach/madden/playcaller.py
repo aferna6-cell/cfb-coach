@@ -931,6 +931,10 @@ def make_call(
     allow_human_defense_ml: bool = False,
     defense_model: str | None = None,
     defense_model_path: str | None = None,
+    defense_test_db: str | None = None,
+    defense_franchise: str | None = None,
+    defense_action_confirmations: str | None = None,
+    defense_installed_fingerprint: str | None = None,
     cpu_defense: bool = False,
 ) -> MaddenCall:
     """One call. `playbook` = {side: {formation: [plays]}} locked by prep; defaults to the
@@ -1002,6 +1006,7 @@ def make_call(
 
         cold = is_cold_start_opponent(opponent_id, db)
         wants_v1 = defense_model == "v1"
+        wants_v2 = defense_model == "v2"
         if isinstance(sit.extras, dict):
             sit.extras["defense_armed_ids"] = list(sel.get("defense") or [])
             if allow_human_defense_ml:
@@ -1010,7 +1015,17 @@ def make_call(
                 sit.extras["defense_model"] = "v1"
             if defense_model_path:
                 sit.extras["defense_model_path"] = defense_model_path
-        if (not cold and not cpu) or allow_human_defense_ml or wants_v1:
+        if wants_v2:
+            from cfb_coach.madden.model.defense_v2_live import maybe_apply_v2
+            call = maybe_apply_v2(
+                call, sit, opponent_id, db, books["defense"],
+                model_path=str(defense_model_path or ""),
+                test_db=str(defense_test_db or ""),
+                franchise=str(defense_franchise or ""),
+                action_confirmations=defense_action_confirmations,
+                confirmed_inventory_fingerprint=defense_installed_fingerprint,
+            )
+        elif (not cold and not cpu) or allow_human_defense_ml or wants_v1:
             # Explicit, defense-only opt-in. Never auto-change offense or CPU mode.
             # This function fails closed to the established defensive caller.
             try:

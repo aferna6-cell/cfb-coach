@@ -1,0 +1,50 @@
+name: Defensive V2 live integration gates
+
+on:
+  push:
+    branches:
+      - madden-ml/defense-v2-live-test-franchise
+  pull_request:
+    branches:
+      - madden-ml/defense-v2-test-franchise-foundation
+  workflow_dispatch:
+
+jobs:
+  defensive-live-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Test defensive V2 training, live caller, and CLI integration
+        run: |
+          PYTHONPATH=. python -m pytest -q \
+            tests/madden_ml/test_defense_v2_pilot.py \
+            tests/madden_ml/test_defense_v2_live.py \
+            tests/madden_ml/test_defense_v2_actions_and_pregame.py \
+            tests/madden_ml/test_defense_v2_postgame.py \
+            tests/madden_ml/test_defense_policy_scope.py \
+            tests/madden_ml/test_defense_v1_live.py
+      - name: Run synthetic 15-formation scorer timing diagnostic
+        run: |
+          PYTHONPATH=. python scripts/madden_ml/bench_defense_v2.py --runs 20 --max-formations 15
+      - name: Compile source and entrypoints
+        run: |
+          python -m py_compile \
+            cfb_coach/cli.py cfb_coach/madden/cli.py \
+            cfb_coach/madden/playcaller.py \
+            cfb_coach/madden/model/defense_v2_pilot.py \
+            cfb_coach/madden/model/defense_v2_live.py \
+            cfb_coach/madden/model/defense_v2_actions.py \
+            cfb_coach/madden/model/playbook_architect.py \
+            scripts/madden_ml/defense_v2_pregame.py \
+            scripts/madden_ml/defense_v2_postgame.py \
+            scripts/madden_ml/bench_defense_v2.py \
+            cfb_coach/madden/model/defense_v2_postgame.py \
+            scripts/madden_ml/defense_v2_pilot.py

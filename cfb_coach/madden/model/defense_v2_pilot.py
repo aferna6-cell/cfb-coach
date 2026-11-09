@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from functools import lru_cache
 import json
 import math
 import random
@@ -31,6 +32,9 @@ class Snap:
     context: str
     concept: str | None
     offense_success: bool
+    yards: float | None = None
+    touchdown: bool | None = None
+    turnover: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -77,8 +81,9 @@ def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Sna
         raise ValueError("game session franchise/opponent identity unavailable")
     concept_col = "COALESCE(NULLIF(s.concept_typed,''),s.concept_seen)" if "concept_typed" in columns else (
         "s.concept_seen" if "concept_seen" in columns else "NULL")
+    yards_col = "s.yards" if "yards" in columns else "NULL"
     sql = ("SELECT s.session_id,g.opponent_id,g.started_ts,s.snap_seq,s.executed_status,s.executed_verification,"
-           "s.executed_formation,s.executed_play,s.result,s.down,s.distance," + concept_col +
+           "s.executed_formation,s.executed_play,s.result,s.down,s.distance," + concept_col + "," + yards_col +
            " FROM snaps s JOIN game_sessions g ON g.session_id=s.session_id"
            " WHERE s.side='defense' AND g.dynasty=? ORDER BY g.started_ts,s.id")
     from cfb_coach.madden.model.defense_v1 import offense_won
@@ -88,7 +93,8 @@ def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Sna
     stats: Counter[str] = Counter()
     rows: list[Snap] = []
     seen_sequences: set[tuple[str, int]] = set()
-    for (session, opponent, started, seq, status, verification, formation, play, result, down, dist, concept) in conn.execute(sql, (franchise,)):
+    from cfb_coach.outcome import parse_outcome
+    for (session, opponent, started, seq, status, verification, formation, play, result, down, dist, concept, recorded_yards) in conn.execute(sql, (franchise,)):
         stats["defensive_rows"] += 1
         if status != "identified" or verification != "verified" or not (formation and play):
             stats["unverified_execution"] += 1
@@ -107,12 +113,23 @@ def verified_rows(conn: sqlite3.Connection, *, franchise: str) -> tuple[list[Sna
                 stats["duplicate_verified_sequence"] += 1
                 continue
             seen_sequences.add(identity)
+        parsed = parse_outcome(result)
+        try:
+            yards = float(recorded_yards) if recorded_yards is not None else (
+                float(parsed.yards) if parsed.yards is not None else None)
+            if yards is not None and (not math.isfinite(yards) or abs(yards) > 100):
+                yards = None
+        except (TypeError, ValueError):
+            yards = None
         normalized = concept_family(concept)
         if normalized not in CONCEPTS:
             normalized = None
         rows.append(Snap(str(session), str(opponent or ""), str(started or ""),
                          int(seq) if seq is not None else None, str(formation), str(play),
-                         fam, context_key(down, dist), normalized, bool(won)))
+                         fam, context_key(down, dist), normalized, bool(won),
+                         yards,
+                         None if parsed.kind == "unknown" else parsed.kind == "td",
+                         None if parsed.kind == "unknown" else parsed.is_turnover))
         stats["admitted_verified"] += 1
     stats["games"] = len({r.session for r in rows})
     stats["seq_known"] = sum(r.seq is not None for r in rows)
@@ -161,6 +178,19 @@ def _key(*parts: str) -> str:
     return json.dumps(parts, separators=(",", ":"))
 
 
+@lru_cache(maxsize=4096)
+def semantic_tokens(formation: str, play: str) -> tuple[str, ...]:
+    """Evidence-eligible semantic features, not invented eleven-player duties."""
+    from cfb_coach.madden.model import defense_semantics as ds
+    features = ds.candidate_features(formation, play)
+    allowed = ("dk_shell_", "dk_type_", "dk_press_", "dk_var_")
+    return tuple(sorted(
+        k for k, value in features.items()
+        if k.startswith(allowed) and isinstance(value, (int, float)) and value > 0.5
+        and not k.endswith("_unk") and not k.endswith("_unspecified")
+    ))
+
+
 def fit(rows: Sequence[Snap]) -> dict[str, Any]:
     """Learn hierarchical success probabilities, not prewritten football counters."""
     glob: dict[str, list[int]] = {}
@@ -169,18 +199,37 @@ def fit(rows: Sequence[Snap]) -> dict[str, Any]:
     matchup: dict[str, list[int]] = {}
     play: dict[str, list[int]] = {}
     concepts: Counter[str] = Counter()
+    semantic: dict[str, list[int]] = {}
+    auxiliary: dict[str, dict[str, list[float]]] = {
+        "touchdown": {}, "turnover": {}, "explosive": {}, "yards": {},
+    }
     for r in rows:
         _add(glob, "all", r.offense_success)
         _add(ctx, r.context, r.offense_success)
         _add(fam, _key(r.context, r.family), r.offense_success)
         _add(play, _key(r.context, r.formation, r.play), r.offense_success)
+        for metric, val in (("touchdown", r.touchdown), ("turnover", r.turnover),
+                            ("explosive", None if r.yards is None else r.yards >= 15),
+                            ("yards", r.yards)):
+            if val is None:
+                continue
+            for target in (_key("global"), _key("ctx", r.context),
+                           _key("family", r.context, r.family),
+                           _key("play", r.context, r.formation, r.play)):
+                counts = auxiliary[metric].setdefault(target, [0.0, 0.0])
+                counts[0] += float(val)
+                counts[1] += 1.0
         if r.concept is not None:
             concepts[r.concept] += 1
             _add(matchup, _key(r.context, r.family, r.concept), r.offense_success)
+            for token in semantic_tokens(r.formation, r.play):
+                _add(semantic, _key(r.context, r.concept, token), r.offense_success)
     return {"schema": SCHEMA, "target": "offense_success", "policy": "shadow_only",
             "n_verified": len(rows), "n_games": len({r.session for r in rows}),
             "global": glob, "contexts": ctx, "families": fam, "matchups": matchup,
             "plays": play, "concept_counts": dict(concepts),
+            "semantic_matchups": semantic, "semantics_policy": "catalog_feature_eligible_only",
+            "auxiliary_outcomes": auxiliary,
             "evidence": "verified execution only; observational, not causal"}
 
 
@@ -202,8 +251,51 @@ def offense_risk(model: Mapping[str, Any], context: str, formation: str,
     if concept is None:
         return play_p, {"family": family_n, "play": play_n, "matchup": 0}
     matchup_p, matchup_n = _posterior(model["matchups"].get(_key(context, family, concept)), family_p, 16.0)
-    return 0.7 * matchup_p + 0.3 * play_p, {
+    core = 0.7 * matchup_p + 0.3 * play_p
+    # Learn structural commonalities across defensive play names, only when
+    # the catalog has an evidence-eligible axis and supervised matchup labels.
+    # With zero supervised support the original learned baseline is unchanged.
+    semantic_stats = model.get("semantic_matchups") or {}
+    structural_predictions = []
+    for token in semantic_tokens(formation, play):
+        p_token, n_token = _posterior(semantic_stats.get(_key(context, concept, token)), family_p, 24.0)
+        if n_token >= 8:
+            structural_predictions.append((p_token, n_token))
+    if structural_predictions:
+        structural_n = sum(n for _, n in structural_predictions)
+        structural_p = sum(p * n for p, n in structural_predictions) / structural_n
+        weight = 0.20 * structural_n / (structural_n + 32.0)
+        core = (1.0 - weight) * core + weight * structural_p
+    return core, {
         "family": family_n, "play": play_n, "matchup": matchup_n}
+
+
+def auxiliary_risks(model: Mapping[str, Any], *, context: str,
+                    formation: str, play: str, family: str) -> dict[str, float | None]:
+    """Hierarchical shrinkage for independently observed defensive outcomes."""
+    data = model.get("auxiliary_outcomes") or {}
+    out: dict[str, float | None] = {}
+    for metric in ("touchdown", "turnover", "explosive", "yards"):
+        tables = data.get(metric) or {}
+        global_stats = tables.get(_key("global"))
+        if not global_stats or not global_stats[1]:
+            out[metric] = None
+            continue
+        if metric == "yards":
+            prior = float(global_stats[0]) / float(global_stats[1])
+            prior = max(-15.0, min(30.0, prior))
+        else:
+            prior = (float(global_stats[0]) + 1.0) / (float(global_stats[1]) + 2.0)
+        for key, strength in (
+            (_key("ctx", context), 24.0),
+            (_key("family", context, family), 32.0),
+            (_key("play", context, formation, play), 40.0),
+        ):
+            stats = tables.get(key)
+            if stats and stats[1]:
+                prior = (float(stats[0]) + strength * prior) / (float(stats[1]) + strength)
+        out[metric] = round(prior, 6)
+    return out
 
 
 def concept_belief(model: Mapping[str, Any], prior_snaps: Sequence[Snap | Observation], *,
@@ -248,9 +340,22 @@ def rank(model: Mapping[str, Any], *, context: str, calls: Sequence[Mapping[str,
             p, _n = offense_risk(model, context, form, play, fam, concept)
             weighted += float(belief.get(concept, 0)) * p
         _, support = offense_risk(model, context, form, play, fam, None)
+        other = auxiliary_risks(model, context=context, formation=form, play=play, family=fam)
+        # Utility is transparent and bounded; never invent a missing outcome.
+        loss = weighted
+        if other["touchdown"] is not None:
+            loss += 0.15 * other["touchdown"]
+        if other["explosive"] is not None:
+            loss += 0.10 * other["explosive"]
+        if other["yards"] is not None:
+            loss += 0.004 * max(0, other["yards"])
+        if other["turnover"] is not None:
+            loss -= 0.05 * other["turnover"]
         scores.append({"formation": form, "play": play, "family": fam,
-                       "predicted_offense_success": round(weighted, 5), "support": support})
-    scores.sort(key=lambda x: (x["predicted_offense_success"], x["formation"], x["play"]))
+                       "predicted_offense_success": round(weighted, 5),
+                       "defensive_loss": round(loss, 5),
+                       "auxiliary": other, "support": support})
+    scores.sort(key=lambda x: (x["defensive_loss"], x["formation"], x["play"]))
     return {"schema": SCHEMA, "applied": False, "ready_for_live": False,
             "model_games": model["n_games"], "model_snaps": model["n_verified"],
             "ranked": scores, "reason": "observational shadow predictions; no verified live gate"}
