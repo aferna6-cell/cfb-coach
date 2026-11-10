@@ -379,6 +379,7 @@
     }
   ],
   "notices": [
+    "SUPERSEDED FOR THE FINAL TWO-FORMATION USER SCHEME: use lions_ravens_two_formation_defense_v1.json instead of these earlier Dime 2-3 match examples.",
     "Guide USER evidence is valid only for exact formation + play + opponent alignment + configured check.",
     "Nickel recipe screenshots require manual changes beyond 24 Base; all are deliberately blocked from stock-first minimal UI until exact setup is implemented/confirmed.",
     "No raw Civil videos, images or proprietary play art are included.",
@@ -400,5 +401,7 @@
     },
     "switching_policy": "Never assume formation swaps switch coaching adjustments; no automatic in-game setting mutation.",
     "safe_combo_policy": "Only allow a stock candidate if every relevant global coaching adjustment is compatible with active profile; UNKNOWN means block until verified."
-  }
+  },
+  "superseded_for_final_lions_two_formation_scheme": true,
+  "final_lions_scheme_dataset": "datasets/madden27/lions_ravens_two_formation_defense_v1.json"
 }
