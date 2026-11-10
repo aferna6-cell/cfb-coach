@@ -79,10 +79,13 @@ def yards_of(row: Mapping[str, Any]) -> float | None:
 # ------------------------------------------------------------------ existing model offsets (prequential)
 
 def existing_offsets(rows: Sequence[Mapping[str, Any]], game_order: Mapping[str, int],
-                     keep: Callable[[Mapping[str, Any]], bool] = he.is_verified_offense) -> dict[int, float]:
+                     keep: Callable[[Mapping[str, Any]], bool] = he.is_verified_offense,
+                     shared: Callable[[Mapping[str, Any]], bool] | None = None) -> dict[int, float]:
     """row index -> existing-model P(success) trained ONLY on games strictly earlier than the row's game.
 
-    The same value is the existing model's held-out prediction (``ExperimentalSuccess`` in heldout_eval)."""
+    The same value is the existing model's held-out prediction (``ExperimentalSuccess`` in heldout_eval).
+    ``shared``: rows allowed to train the SHARED base-play model. civil_scheme_only passes "not a civil variant
+    snap", so a variant's outcomes feed only its own per-variant residual, never its sibling variants (t338u)."""
     by_game: dict[str, list[int]] = {}
     for i, r in enumerate(rows):
         by_game.setdefault(str(r.get("game_id") or ""), []).append(i)
@@ -92,7 +95,7 @@ def existing_offsets(rows: Sequence[Mapping[str, Any]], game_order: Mapping[str,
         targets = [i for i in by_game[g] if keep(rows[i])]
         if not targets:
             continue
-        train = [dict(rows[i]) for h in games[:gi] for i in by_game[h]]
+        train = [dict(rows[i]) for h in games[:gi] for i in by_game[h] if shared is None or shared(rows[i])]
         art = em.train_experimental(train, side="offense")
         for i in targets:
             r = rows[i]

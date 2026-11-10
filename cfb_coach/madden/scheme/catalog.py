@@ -19,9 +19,23 @@ from typing import Any, Mapping
 DATASET_RELPATH = Path("datasets") / "madden27" / "lions_offensive_scheme_catalog.json"
 REDZONE_RELPATH = Path("datasets") / "madden27" / "civil_redzone_owner_t335u.json"
 EXPECTED_VARIANTS = 26          # core variants (any field position)
-EXPECTED_REDZONE_VARIANTS = 5   # red-zone package plays (inside the opponent 10 only), t335u
-INSIDE_10 = "inside_10"
-EXPECTED_REDZONE_FORMATIONS = {"Pistol Bunch TE": 3, "Gun Empty Quads": 2}
+EXPECTED_REDZONE_VARIANTS = 7   # red-zone plays: 5 catalog package plays (t335u) + 2 Close Flex plays (t338u)
+INSIDE_10 = "inside_10"         # red-zone play callable only inside the opponent 10
+RED_ZONE = "red_zone"           # red-zone play callable inside the 20 (inside the 10 and 10-20)
+EXPECTED_REDZONE_FORMATIONS = {"Pistol Bunch TE": 3, "Gun Empty Quads": 2, "I Form Close Flex": 2}
+
+
+def field_band(yardline: Any) -> str | None:
+    """inside_10 (>= 90) | ten_to_twenty (80-89) | outside (< 80) | None when unknown."""
+    try:
+        y = int(yardline)
+    except (TypeError, ValueError):
+        return None
+    if y >= 90:
+        return "inside_10"
+    if y >= 80:
+        return "ten_to_twenty"
+    return "outside"
 EXPECTED_PAIRS = 12
 EXPECTED_FORMATIONS = {
     "Gun Doubles Clamp Stack": 6,
@@ -41,10 +55,14 @@ class Adjustment:
     action: str
     macro_marked: bool
     index: int
+    guide_text: str = ""     # the guide's own wording when it is not "<target>: <action>" (e.g. "Crosser Slot WR")
 
     def as_dict(self) -> dict[str, Any]:
         return {"index": self.index, "target": self.target, "action": self.action,
-                "macro_marked": self.macro_marked}
+                "macro_marked": self.macro_marked, **({"guide_text": self.guide_text} if self.guide_text else {})}
+
+    def line(self) -> str:
+        return f"{self.target}: {self.action}" + (f' (guide: "{self.guide_text}")' if self.guide_text else "")
 
 
 @dataclass(frozen=True)
@@ -67,18 +85,21 @@ class SchemeVariant:
     unadjusted_allowed: bool
     verification_notes: str = ""
     raw: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
-    field_zone: str = "any"        # "any" | "inside_10" (red-zone package plays, owner instruction t335u)
+    field_zone: str = "any"        # "any" | "inside_10" | "red_zone"  (owner instructions t335u, t338u)
     package_id: str = ""
 
     def allowed_at(self, yardline: Any) -> bool:
-        """Field-position gate. Red-zone package plays only when yards to the goal line <= 10."""
+        """Field-position gate (owner t338u):
+        inside the opponent 10 -> red-zone plays only; 10-20 -> red_zone-tagged plays + regular variants;
+        outside the 20 -> regular variants only. Unknown spot -> regular variants only."""
+        band = field_band(yardline)
         if self.field_zone == "any":
-            return True
-        try:
-            y = int(yardline)
-        except (TypeError, ValueError):
-            return False
-        return self.field_zone == INSIDE_10 and 90 <= y <= 100
+            return band != "inside_10"
+        if self.field_zone == INSIDE_10:
+            return band == "inside_10"
+        if self.field_zone == RED_ZONE:
+            return band in ("inside_10", "ten_to_twenty")
+        return False
 
     @property
     def pair(self) -> tuple[str, str]:
@@ -257,13 +278,23 @@ def with_redzone(cat: SchemeCatalog, raw: Mapping[str, Any], owner: Mapping[str,
     extra: list[SchemeVariant] = []
     used: set[str] = set()
     for m in owner.get("variants") or ():
-        pk = packages.get(str(m.get("package_id")))
-        if pk is None:
-            raise CatalogError(f"{m.get('variant_id')}: unknown package {m.get('package_id')}")
-        if m.get("package_base_play_label") not in (pk.get("base_plays") or ()):
-            raise CatalogError(f"{m.get('variant_id')}: '{m.get('package_base_play_label')}' is not listed in {pk['package_id']}")
-        adj = pk.get("adjustments") or [] if m.get("adjustments_from_package") else []
-        adjustments = tuple(Adjustment(str(a["target"]).strip(), str(a["action"]).strip(), bool(a.get("macro_marked")), i)
+        zone = str(m.get("field_zone") or INSIDE_10)
+        if zone not in (INSIDE_10, RED_ZONE):
+            raise CatalogError(f"{m.get('variant_id')}: bad field_zone {zone}")
+        if m.get("package_id") is None:
+            # owner-supplied play (t338u screenshots): adjustments are the guide's setup, given verbatim in the file
+            pk = {"package_id": "", "role": "expert_red_zone_play", "expert_coverage_tags": [],
+                  "expert_situation_tags": m.get("expert_situation_tags") or []}
+            adj = list(m.get("adjustments") or [])
+        else:
+            pk = packages.get(str(m.get("package_id")))
+            if pk is None:
+                raise CatalogError(f"{m.get('variant_id')}: unknown package {m.get('package_id')}")
+            if m.get("package_base_play_label") not in (pk.get("base_plays") or ()):
+                raise CatalogError(f"{m.get('variant_id')}: '{m.get('package_base_play_label')}' is not listed in {pk['package_id']}")
+            adj = pk.get("adjustments") or [] if m.get("adjustments_from_package") else []
+        adjustments = tuple(Adjustment(str(a["target"]).strip(), str(a["action"]).strip(), bool(a.get("macro_marked")), i,
+                                       str(a.get("guide_text") or ""))
                             for i, a in enumerate(adj))
         cov = tuple(str(t) for t in (pk.get("expert_coverage_tags") or ()))
         extra.append(SchemeVariant(
@@ -274,9 +305,10 @@ def with_redzone(cat: SchemeCatalog, raw: Mapping[str, Any], owner: Mapping[str,
             expert_coverage_tags=cov, coverage_tags_known=bool(cov), name_verified=False,
             present_in_book_as_shown=True, verified_in_user_game=False, adjustments_verified_in_user_game=False,
             unadjusted_allowed=not adjustments,      # stock play: the package lists nothing to adjust
-            verification_notes=str(m.get("note") or ""), raw=m, field_zone=INSIDE_10,
+            verification_notes=str(m.get("note") or ""), raw=m, field_zone=zone,
             package_id=str(pk["package_id"])))
-        used.add(str(pk["package_id"]))
+        if pk["package_id"]:
+            used.add(str(pk["package_id"]))
     ids = [v.variant_id for v in cat.variants] + [v.variant_id for v in extra]
     if len(set(ids)) != len(ids):
         raise CatalogError("duplicate variant_id in the red-zone mapping")
@@ -305,8 +337,8 @@ def contract_errors(cat: SchemeCatalog) -> list[str]:
         rc: dict[str, int] = {}
         for v in rz:
             rc[v.formation] = rc.get(v.formation, 0) + 1
-            if v.field_zone != INSIDE_10:
-                errs.append(f"{v.variant_id}: red-zone play without the inside-10 gate")
+            if v.field_zone not in (INSIDE_10, RED_ZONE):
+                errs.append(f"{v.variant_id}: red-zone play without a red-zone gate")
         if len(rz) != EXPECTED_REDZONE_VARIANTS or rc != EXPECTED_REDZONE_FORMATIONS:
             errs.append(f"red-zone plays {rc} != {EXPECTED_REDZONE_FORMATIONS}")
     counts: dict[str, int] = {}

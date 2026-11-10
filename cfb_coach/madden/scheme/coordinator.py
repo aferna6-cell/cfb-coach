@@ -30,8 +30,18 @@ from cfb_coach.madden.scheme import mode as md
 from cfb_coach.madden.scheme import model as sm
 from cfb_coach.madden.scheme import priors as pr
 
-REPEAT_W = 0.25            # logit penalty per recent same-game call of the same variant
-REPEAT_DECAY = 0.6         # per later call
+# Variety (owner t338u): penalties are per variant_id ONLY. Calling one variant never changes another variant's
+# score, including other variants of the same base play (e.g. Texas Y Stutter Wheel 1 vs 2).
+REPEAT_W = 0.45            # logit penalty for the most recent call of the same variant in this game
+REPEAT_DECAY = 0.7         # x0.7 per older call, over the last REPEAT_WINDOW calls
+REPEAT_WINDOW = 8
+GAME_W = 0.10              # extra logit penalty per earlier call of the same variant this game
+GAME_CAP = 1.0
+# Mixing: sample among the near-best candidates instead of always taking the argmax.
+MIX_MARGIN = 0.08          # candidates within this utility of the best are eligible
+MIX_TAU = 0.025            # Boltzmann temperature on utility (smaller = greedier)
+# 10-20 band: red_zone-tagged plays get a lift so they actually appear in the mix (owner t338u).
+RZ_MIX_BONUS = 0.35
 RESIDUAL_K = 10.0
 RESIDUAL_CAP = 0.6
 LATENCY_TARGET_MS = 150.0
@@ -76,10 +86,15 @@ class Scorer:
 
     def score(self, variants: Sequence[sc.SchemeVariant], *, down, distance, yardline, opponent_id: str,
               opponent_type: str, belief: bl.Belief, recent_calls: Sequence[str] = (),
+              game_calls: Sequence[str] | None = None,
               variant_stats: Mapping[str, tuple[float, float]] | None = None,
               offset_override: Mapping[str, float] | None = None, stock_only: bool = False) -> list[Scored]:
         """``stock_only`` scores every variant as its unadjusted base play (evaluation diagnostics only)."""
         variant_stats = variant_stats or {}
+        game_count: dict[str, int] = {}
+        for rid in (game_calls if game_calls is not None else recent_calls):
+            game_count[rid] = game_count.get(rid, 0) + 1
+        band = sc.field_band(yardline)
         counts = {k: n for k, (_s, n) in variant_stats.items()}
         expert = pr.bonuses(variants, down=down, distance=distance, yardline=yardline, mix=belief.mix,
                             families=belief.families, info=belief.gate_confidence, verified_counts=counts)
@@ -116,8 +131,9 @@ class Scorer:
                 sd = math.sqrt(sd_s ** 2 + (sm.VARIANT_TRANSFER * delta) ** 2 + extra_var + 0.02 * len(oos))
                 zs[t] = (z, sd)
             e = expert[v.variant_id]
-            reps = sum(REPEAT_DECAY ** i for i, rid in enumerate(recent_calls) if rid == v.variant_id)
-            z_succ = zs["success"][0] + e["bonus"] + e["beater"] - REPEAT_W * reps
+            pen = repeat_penalty(v.variant_id, recent_calls, game_count)
+            rz_mix = RZ_MIX_BONUS if (band == "ten_to_twenty" and v.field_zone == sc.RED_ZONE) else 0.0
+            z_succ = zs["success"][0] + e["bonus"] + e["beater"] - pen + rz_mix
             # per-play learning: verified outcomes of THIS variant pull its estimate (shrunk toward the model)
             k, n = variant_stats.get(v.variant_id, (0.0, 0.0))
             resid = 0.0
@@ -136,13 +152,39 @@ class Scorer:
                 "adjustment_logit_delta": round(sm.VARIANT_TRANSFER * (pa["success"][0] - ps["success"][0]), 4),
                 "expert_prior": round(e["bonus"], 4), "beater": round(e["beater"], 4),
                 "beats": e["beats"], "gate_top": e["gate_top"], "tagged_beater_for_top": e["tagged_beater_for_top"],
-                "coverage_tags_known": e["coverage_tags_known"], "repeat_penalty": round(REPEAT_W * reps, 4),
+                "coverage_tags_known": e["coverage_tags_known"], "repeat_penalty": round(pen, 4),
+                "red_zone_mix_bonus": rz_mix,
                 "verified_variant_outcomes": n, "variant_residual": round(resid, 4),
                 "geometry": d.geometry_status, "unrepresented_adjustments": [i + 1 for i in d.unrepresented],
                 "stems": [[i + 1, sh, m] for i, sh, m in d.stems],
                 "out_of_support": oos[:6]}))
         out.sort(key=lambda s: (-s.utility, s.variant.variant_id))
         return out
+
+
+def repeat_penalty(variant_id: str, recent: Sequence[str], game_count: Mapping[str, int]) -> float:
+    """Logit penalty from THIS variant_id's own earlier calls only (newest first in ``recent``)."""
+    reps = sum(REPEAT_DECAY ** i for i, rid in enumerate(list(recent)[:REPEAT_WINDOW]) if rid == variant_id)
+    return REPEAT_W * reps + min(GAME_CAP, GAME_W * game_count.get(variant_id, 0))
+
+
+def pick(ranked: Sequence[Scored], seed: str) -> tuple[Scored, dict[str, Any]]:
+    """Seeded Boltzmann draw among candidates within MIX_MARGIN utility of the best (reproducible per seed)."""
+    import random
+    best = ranked[0].utility
+    pool = [s for s in ranked if best - s.utility <= MIX_MARGIN]
+    w = [math.exp((s.utility - best) / MIX_TAU) for s in pool]
+    rng = random.Random(seed)
+    r, acc, chosen = rng.random() * sum(w), 0.0, pool[-1]
+    for s, wi in zip(pool, w):
+        acc += wi
+        if r <= acc:
+            chosen = s
+            break
+    tot = sum(w)
+    return chosen, {"rule": f"seeded sample among {len(pool)} within {MIX_MARGIN} utility (tau {MIX_TAU})",
+                    "rank": ranked.index(chosen) + 1, "pool": [[s.variant.variant_id, round(wi / tot, 3)]
+                                                                for s, wi in zip(pool, w)]}
 
 
 _SCORER: dict[tuple[str, str], Scorer] = {}
@@ -199,12 +241,16 @@ def variant_stats(conn: Any, cat: sc.SchemeCatalog) -> dict[str, tuple[float, fl
     return {k: (v[0], v[1]) for k, v in out.items()}
 
 
-def recent_calls(conn: Any, session_id: str | None, limit: int = 6) -> list[str]:
-    if not session_id or not ev._has_table(conn, "civil_scheme_decisions"):
+def recent_calls(conn: Any, session_id: str | None, limit: int | None = None) -> list[str]:
+    """Variant ids called on this game's closed snaps, newest first (re-calls and previews of the same snap are not
+    counted). Each variant is its own id: variants of one base play do not share history."""
+    if not session_id or not ev._has_table(conn, "snaps"):
         return []
-    return [r[0] for r in conn.execute(
-        "SELECT variant_id FROM civil_scheme_decisions WHERE session_id = ? AND status = 'CALL' ORDER BY id DESC LIMIT ?",
-        (session_id, limit)).fetchall()]
+    rows = conn.execute(
+        "SELECT recommended_adjustment_id FROM snaps WHERE session_id = ? AND recommended_adjustment_id LIKE ?"
+        " ORDER BY id DESC" + (" LIMIT ?" if limit else ""),
+        (session_id, ev.ADJ_PREFIX + "%", *((limit,) if limit else ()))).fetchall()
+    return [str(r[0])[len(ev.ADJ_PREFIX):] for r in rows]
 
 
 def _belief_for(conn, sit, opponent_id: str, opponent_type: str) -> bl.Belief:
@@ -269,7 +315,7 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
     formation, play = (f or v.formation), (q or alias or v.base_play)
     from cfb_coach.madden.scheme import adjustments as adjm
     specs = {sp.index: sp for sp in adjm.parse_variant(v)}
-    adjs = [f"{a.index + 1}) {a.target}: {a.action}"
+    adjs = [f"{a.index + 1}) {a.line()}"
             + (f" [{adjm.stem_label(specs[a.index].stem_shift)}]" if adjm.stem_label(specs[a.index].stem_shift) else "")
             for a in v.adjustments]
     warnings = []
@@ -283,9 +329,13 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
     if lg.owner_confirmation_applies(sc.load_cached()):
         warnings.append("adjustments owner-confirmed executable (2026-11-10, t333u); no recorded outcome for this "
                         "variant yet")
-    if v.field_zone != "any":
-        warnings.append("RED-ZONE package play (owner instruction 2026-11-10, t335u): inside the opponent 10 only; "
+    if v.field_zone == sc.INSIDE_10:
+        warnings.append("RED-ZONE play (owner 2026-11-10, t335u/t338u): inside the opponent 10 only; "
                         "formation mapped from the sheet name + stock book")
+    elif v.field_zone == sc.RED_ZONE:
+        warnings.append("RED-ZONE play (owner 2026-11-10, t338u, 5WR Tight sheet): inside the 20 only "
+                        "(Inside 10 and 10-20); no coverage tags on the sheet")
+    if v.field_zone != "any":
         if not v.adjustments:
             warnings.append("the catalog lists NO adjustments for this package play: run it as the stock play")
         if v.verification_notes:
@@ -302,7 +352,7 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
         warnings.append("adjustments not represented on provisional geometry: "
                         + ", ".join(f"#{i}" for i in top.parts["unrepresented_adjustments"]))
     warnings.append("route geometry is a provisional AceMadden-derived prior, not a verified assignment")
-    why = explain(top, belief, ranked[1] if len(ranked) > 1 else None)
+    why = explain(top, belief, next((s for s in ranked if s is not top), None))
     call = MaddenCall(side="offense", formation=formation, play=play,
                       adj_or_macro=variation_text(v.variant_name, v.variant_id, adjs),
                       read_or_user="Read: none provided (no verified read progression)",
@@ -333,10 +383,14 @@ def select(scorer: Scorer, cat: sc.SchemeCatalog, conn: Any, *, db: Any, sit: An
     opp_type = "cpu" if is_cpu_opponent(opponent_id) else "human"
     belief = belief or _belief_for(conn, sit, opponent_id, opp_type)
     session_id = (sit.extras or {}).get("session_id") if isinstance(getattr(sit, "extras", None), dict) else None
+    game = recent_calls(conn, session_id)
     ranked = scorer.score(legal, down=sit.down, distance=sit.distance, yardline=sit.yardline,
                           opponent_id=opponent_id, opponent_type=opp_type, belief=belief,
-                          recent_calls=recent_calls(conn, session_id), variant_stats=variant_stats(conn, cat))
-    call = build_call(ranked[0], ranked, belief, book=book, shadow=shadow, ledger=lg.load_verified(db))
+                          recent_calls=game[:REPEAT_WINDOW], game_calls=game, variant_stats=variant_stats(conn, cat))
+    seed = f"{session_id}|{len(game)}|{sit.down}|{sit.distance}|{sit.yardline}"
+    top, mix = pick(ranked, seed)
+    call = build_call(top, ranked, belief, book=book, shadow=shadow, ledger=lg.load_verified(db))
+    call.scheme_variant["mix"] = mix
     call.scheme_variant["yardline"] = sit.yardline     # re-validation applies the same field-position gate
     call.scheme_variant["candidates"] = [v.variant_id for v in legal]   # the legal set that was scored
     return call, ranked

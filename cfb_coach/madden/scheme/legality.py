@@ -3,8 +3,10 @@
 A variant is LIVE-legal only if every check passes, in this order:
   1. catalog      it is one of the catalog's callable IDs: the 26 variants, plus the 5 red-zone package plays
                   (owner instruction 2026-11-10, t335u). The unnamed 5WR setup never is.
-  1b. field       red-zone package plays only when yards to the goal line <= 10 (yardline >= 90); live calls
-                  always pass the snap's yardline, and re-validation uses the yardline recorded on the call
+  1b. field       (owner t338u) inside the opponent 10 (yardline >= 90): red-zone plays ONLY; 10-20 (80-89): the
+                  red_zone-tagged plays (I Form Close Flex) plus the regular variants; outside the 20 (or unknown
+                  spot): regular variants only. Live calls always pass the snap's yardline, and re-validation uses
+                  the yardline recorded on the call
   2. stock        its formation and base play exist, by exact normalized name, in the in-repo Buccaneers stock book
   3. book         the formation and base play are in the APPLIED (installed) offense book of record
      2+3 are satisfied by the owner's confirmation (2026-11-10, t337u, ``adjustments.OWNER_CONFIRMED_BOOK``) that
@@ -130,11 +132,14 @@ def check(v: SchemeVariant | None, cat: SchemeCatalog, *, db: Any = None, book: 
         out.reasons.append("variant content differs from the catalog entry (no edited / substituted variants)")
         out.checks["catalog"] = False
         return out
-    if v.field_zone != "any" and yardline is not ANY_FIELD:
+    if yardline is not ANY_FIELD:
         ok = v.allowed_at(yardline)
         out.checks["field_zone"] = ok
         if not ok:
-            out.reasons.append(f"red-zone package play: callable only inside the opponent 10 (yardline {yardline!r})")
+            why = {"any": "regular scheme play: not callable inside the opponent 10 (red-zone plays only there, t338u)",
+                   "inside_10": "red-zone play: callable only inside the opponent 10",
+                   "red_zone": "red-zone play: callable only inside the opponent 20"}.get(v.field_zone, "field zone")
+            out.reasons.append(f"{why} (yardline {yardline!r})")
             out.legal = False
             return out
     led = verified if verified is not None else (load_verified(db) if (require_verified or alias is None) else {})

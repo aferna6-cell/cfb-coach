@@ -82,9 +82,12 @@ def cmd_status(args) -> int:
         except Exception as exc:  # noqa: BLE001
             print(f"  loads: NO — {exc}")
     legal, verdicts = lg.legal_set(cat, db=db, require_verified=True, yardline=lg.ANY_FIELD)
-    n_rz = sum(1 for v in legal if v.field_zone != "any")
-    print(f"live-legal variants: {len(legal)} / {len(cat.variants)}  ({len(legal) - n_rz} anywhere, "
-          f"{n_rz} red-zone package plays inside the opponent 10 only)")
+    n10 = sum(1 for v in legal if v.field_zone == sc.INSIDE_10)
+    n20 = sum(1 for v in legal if v.field_zone == sc.RED_ZONE)
+    print(f"live-legal variants: {len(legal)} / {len(cat.variants)}  ({len(legal) - n10 - n20} regular: outside the "
+          f"opponent 10; {n10} red-zone plays inside the 10 only; {n20} red-zone plays inside the 20 (10 and 10-20))")
+    print("  field bands (t338u): inside the 10 = red-zone plays ONLY; 10-20 = Close Flex red-zone plays + regular; "
+          "outside the 20 = regular only")
     if db is not None:
         db.close()
     return 0
@@ -99,8 +102,10 @@ def cmd_checklist(args) -> int:
     _legal, verdicts = lg.legal_set(cat, db=db, require_verified=True, yardline=lg.ANY_FIELD)
     led = lg.load_verified(db)
     print("PREGAME CHECKLIST — civil_scheme_only (no controller buttons are given; set each adjustment by hand)")
-    print("The 26 core variants (all passes) can be called anywhere. The 5 red-zone package plays (owner instruction")
-    print("  2026-11-10, t335u) can be called ONLY inside the opponent 10, and are model-scored there, not forced.")
+    print("Field bands (owner instruction 2026-11-10, t338u):")
+    print("  inside the opponent 10: ONLY the 7 red-zone plays (5 package plays + 2 I Form Close Flex plays)")
+    print("  10-20: the 2 I Form Close Flex red-zone plays + the 26 regular variants (red-zone plays get a mix lift)")
+    print("  outside the 20: the 26 regular variants only. Every call is model-scored and mixed, never forced.")
     by_form: dict[str, list] = {}
     for v in cat.variants:
         by_form.setdefault(v.formation, []).append(v)
@@ -108,7 +113,9 @@ def cmd_checklist(args) -> int:
         print(f"\n== {f} ==")
         for v in vs:
             vd = verdicts[v.variant_id]
-            where = " — INSIDE THE OPPONENT 10 ONLY (t335u)" if v.field_zone != "any" else ""
+            where = {sc.INSIDE_10: " — INSIDE THE OPPONENT 10 ONLY (t335u/t338u)",
+                     sc.RED_ZONE: " — INSIDE THE OPPONENT 20 ONLY: inside the 10 and 10-20 (t338u)"}.get(
+                v.field_zone, " — outside the opponent 10 (t338u)")
             status = (f"LIVE-LEGAL (installed: owner-confirmed 2026-11-10 t337u; adjustments: t333u){where}" if vd.legal else
                       "BLOCKED: " + "; ".join(vd.reasons) + where)
             print(f"[ ] {v.variant_name}  [{v.variant_id}]  — {status}")
@@ -389,7 +396,7 @@ def register(ml_sub: Any) -> None:
     q.add_argument("--book-play", default=None,
                    help="owner confirmation that the guide's base play is named differently in the in-game book "
                         "(e.g. Z Spot -> 'L Spot'); never inferred")
-    q = add("shadow", cmd_shadow, "offline ranking for a situation (labeled SHADOW; red-zone package plays only inside the opponent 10)")
+    q = add("shadow", cmd_shadow, "offline ranking for a situation (labeled SHADOW; same field bands as live)")
     q.add_argument("--opponent", "-o", default="cpu")
     q.add_argument("--down", type=int, required=True)
     q.add_argument("--distance", type=int, required=True)

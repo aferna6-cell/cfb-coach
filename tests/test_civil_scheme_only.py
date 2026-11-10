@@ -22,11 +22,14 @@ from cfb_coach.situation import Situation
 
 CAT = sc.load()
 FORMS = ["Gun Doubles Clamp Stack", "Gun Bunch TE", "Gun Tight Doubles", "Gun 5WR Tight"]
-RZ_FORMS = ["Pistol Bunch TE", "Gun Empty Quads"]
+RZ_FORMS = ["Pistol Bunch TE", "Gun Empty Quads", "I Form Close Flex"]
 FORMS_ALL = FORMS + RZ_FORMS
 Z_SPOT = {"civil_5wr_z_spot_1", "civil_5wr_z_spot_shake_1"}
 CORE = {v.variant_id for v in CAT.core_variants}
 RZ = {v.variant_id for v in CAT.redzone_variants}
+RZ10 = {v.variant_id for v in CAT.redzone_variants if v.field_zone == sc.INSIDE_10}    # inside the 10 only
+RZ20 = {v.variant_id for v in CAT.redzone_variants if v.field_zone == sc.RED_ZONE}     # inside the 10 AND 10-20
+CLOSE_FLEX = {"civil_rz_i_form_close_flex_stretch", "civil_rz_i_form_close_flex_mesh"}
 
 
 def _db(tmp_path, *, formations=FORMS_ALL):
@@ -71,7 +74,8 @@ def _sit(down=1, distance=10, yardline=35, session="g1", look=None):
 
 # 1 -------------------------------------------------------------- catalog contract
 def test_01_catalog_has_exactly_26_variants_and_blocked_entries_are_never_candidates():
-    assert len(CAT.core_variants) == 26 and len(CAT.redzone_variants) == 5 and len(set(CAT.ids)) == 31
+    assert len(CAT.core_variants) == 26 and len(CAT.redzone_variants) == 7 and len(set(CAT.ids)) == 33
+    assert RZ20 == CLOSE_FLEX and len(RZ10) == 5
     assert sc.contract_errors(CAT) == []
     blocked = CAT.blocked_ids
     # t335u: the red-zone packages are now mapped to callable plays; the unnamed 5WR setup stays blocked
@@ -87,7 +91,7 @@ def test_02_stock_book_membership_exact_names_no_alias():
     for f in FORMS:
         assert lg.stock_has(f, "x")[0], f
     ok = {v.variant_id for v in CAT.variants if all(lg.stock_has(v.formation, v.base_play))}
-    assert len(ok) == 29 and not (ok & Z_SPOT) and RZ <= ok
+    assert len(ok) == 31 and not (ok & Z_SPOT) and RZ <= ok
 
 
 # 3 -------------------------------------------------------------- live legality
@@ -97,9 +101,10 @@ def test_03_owner_confirmed_book_makes_every_dataset_play_live_legal_without_the
     for db in (_db(tmp_path / "none", formations=["Gun Doubles"]), _db(tmp_path / "all")):
         mid = {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=50)[0]}
         assert mid == CORE                                                   # all 26 incl. Z Spot, Bunch TE
+        assert {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=85)[0]} == CORE | RZ20   # 10-20
         rz = {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=95)[0]}
-        assert rz == CORE | RZ                                               # all 31 inside the 10
-        _l, verdicts = lg.legal_set(CAT, db=db, yardline=95)
+        assert rz == RZ                                                      # inside the 10: red-zone plays only
+        _l, verdicts = lg.legal_set(CAT, db=db, yardline=lg.ANY_FIELD)
         assert all(vd.checks["owner_confirmed_installed"] and vd.checks["owner_confirmed_adjustments"]
                    for vd in verdicts.values())
         assert not lg.check(None, CAT, db=db, variant_id=next(iter(CAT.blocked_ids)), yardline=95).legal
@@ -137,8 +142,10 @@ def test_05_civil_mode_only_returns_exact_catalog_variants(tmp_path, civil_env, 
     boom = lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run"))  # noqa: E731
     monkeypatch.setattr(playcaller, "_pick_offense", boom)
     monkeypatch.setattr(experimental_live, "maybe_apply_experimental", boom)
+    first = None
     for dd in ((1, 10, 25), (3, 2, 60), (2, 7, 85), (4, 1, 99)):
         call = playcaller.make_call(_sit(*dd), "cpu", db)
+        first = first or call
         sv = call.scheme_variant
         v = CAT.get(sv["variant_id"])
         assert v is not None
@@ -152,6 +159,7 @@ def test_05_civil_mode_only_returns_exact_catalog_variants(tmp_path, civil_env, 
         from cfb_coach.madden.model.offense_adjustment_designer import validate_live_call
         validate_live_call(db, call, opponent_id="cpu")
     # a tampered call is rejected before display
+    call = first
     call.scheme_variant["adjustments"] = call.scheme_variant["adjustments"][:-1]
     with pytest.raises(ValueError):
         lg.revalidate_call(db, call, CAT)
@@ -421,7 +429,7 @@ def test_15_only_the_listed_catalog_variants_can_be_output(tmp_path, civil_env, 
     from cfb_coach.madden import playcaller
     db = _db(tmp_path)
     allowed = set(CAT.ids)
-    assert len(allowed) == 31 and allowed == CORE | RZ
+    assert len(allowed) == 33 and allowed == CORE | RZ
     rng = random.Random(3)
     seen = set()
     labels = ["cover_3_sky", "cover_1_unspecified", "cover_2_man", "cover_4_quarters", "tampa_2", "cover_6"]
@@ -432,8 +440,8 @@ def test_15_only_the_listed_catalog_variants_can_be_output(tmp_path, civil_env, 
                                          session=f"g{i % 5}", look=look), "cpu", db)
         sv = call.scheme_variant
         assert sv["status"] == "CALL" and sv["variant_id"] in allowed
-        if call_yard(call) < 90:
-            assert sv["variant_id"] in CORE
+        y = call_yard(call)
+        assert sv["variant_id"] in (RZ if y >= 90 else CORE | RZ20 if y >= 80 else CORE), (y, sv["variant_id"])
         seen.add(sv["variant_id"])
     assert seen <= allowed
     # no other path: anything that is not an exact catalog variant is rejected before display
@@ -445,7 +453,8 @@ def test_15_only_the_listed_catalog_variants_can_be_output(tmp_path, civil_env, 
 
         def bad(self, variants, **kw):
             out = orig(self, variants, **kw)
-            out[0].variant = fake
+            for o in out:          # whichever candidate the mixer picks
+                o.variant = fake
             return out
         monkeypatch.setattr(co.Scorer, "score", bad)
         call = playcaller.make_call(_sit(), "cpu", db)
@@ -505,76 +514,131 @@ def call_yard(call):
     return int(call.scheme_variant["yardline"])
 
 
-# owner instruction t335u/t336u: red-zone package plays ONLY inside the opponent 10 -------------------------
-def test_18_red_zone_plays_only_inside_the_10_before_scoring_and_before_display(tmp_path, civil_env, monkeypatch):
+# owner instruction t338u: field bands, enforced before scoring and before display ----------------------------
+def test_18_field_bands_inside_10_red_zone_only_10_20_mix_outside_never(tmp_path, civil_env, monkeypatch):
     from cfb_coach.madden import playcaller
     from cfb_coach.madden.model.offense_adjustment_designer import validate_live_call
     db = _db(tmp_path)
     # the one legal filter, before scoring
     for y in range(0, 101):
         ids = {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=y)[0]}
-        assert (ids & RZ) == (RZ if y >= 90 else set()), y
-    assert not ({v.variant_id for v in lg.legal_set(CAT, db=db, yardline=None)[0]} & RZ)   # unknown spot: out
+        want = RZ if y >= 90 else (CORE | RZ20) if y >= 80 else CORE
+        assert ids == want, y
+    assert {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=None)[0]} == CORE   # unknown spot: regular only
     # live calls across the field
-    rz_seen_in_ranking = False
-    for y in list(range(1, 90, 4)) + list(range(90, 100)):
+    for y in list(range(1, 100, 3)):
         for d, dist in ((1, 10), (3, 2), (4, 1)):
             call = playcaller.make_call(_sit(d, min(dist, 100 - y), y, session=f"s{y}"), "cpu", db)
-            vid = call.scheme_variant["variant_id"]
-            if y < 90:
-                assert vid in CORE, (y, vid)
-                assert not (set(call.scheme_variant["candidates"]) & RZ)
+            sv = call.scheme_variant
+            cands = set(sv["candidates"])
+            if y >= 90:
+                assert sv["variant_id"] in RZ and cands == RZ, (y, sv["variant_id"])
+            elif y >= 80:
+                assert cands == CORE | RZ20 and sv["variant_id"] in cands
             else:
-                assert RZ <= set(call.scheme_variant["candidates"])
-                rz_seen_in_ranking = True
-    assert rz_seen_in_ranking                       # inside the 10 they are real candidates
-    # model-scored, not forced: inside the 10 a core play still wins when it scores higher
-    s = co.Scorer(sm.load(_artifact(tmp_path)), CAT, dz.GeometrySource(enabled=False))
-    legal = lg.legal_set(CAT, db=db, yardline=95)[0]
-    bel = bl.combine({}, 0.1, 0, "none", [])
-    over = {v.variant_id: (0.3 if v.variant_id in RZ else 0.6) for v in legal}
-    assert s.score(legal, down=1, distance=5, yardline=95, opponent_id="cpu", opponent_type="cpu", belief=bel,
-                   offset_override=over)[0].variant.variant_id in CORE
-    over = {v.variant_id: (0.8 if v.variant_id == "civil_rz_gun_empty_quads_qb_blast" else 0.4) for v in legal}
-    assert s.score(legal, down=1, distance=5, yardline=95, opponent_id="cpu", opponent_type="cpu", belief=bel,
-                   offset_override=over)[0].variant.variant_id == "civil_rz_gun_empty_quads_qb_blast"
-    # before display: a red-zone play injected outside the 10 is rejected (fail closed, no fallback)
-    rzv = CAT.get("civil_rz_pistol_bunch_te_hb_zone")
+                assert sv["variant_id"] in CORE and not (cands & RZ), (y, sv["variant_id"])
+    # before display: a play injected outside its band is rejected (fail closed, no fallback)
     orig = co.Scorer.score
+    for bad, y in (("civil_rz_pistol_bunch_te_hb_zone", 50), ("civil_rz_pistol_bunch_te_hb_zone", 85),
+                   ("civil_rz_i_form_close_flex_mesh", 70), ("civil_bucs_mesh_post_1", 95)):
+        rzv = CAT.get(bad)
 
-    def inject(self, variants, **kw):
-        out = orig(self, variants, **kw)
-        out[0].variant = rzv
-        return out
-    monkeypatch.setattr(co.Scorer, "score", inject)
-    assert playcaller.make_call(_sit(1, 10, 50), "cpu", db).play == lg.NO_LEGAL
+        def inject(self, variants, _v=rzv, **kw):
+            out = orig(self, variants, **kw)
+            for o in out:
+                o.variant = _v
+            return out
+        monkeypatch.setattr(co.Scorer, "score", inject)
+        assert playcaller.make_call(_sit(1, min(10, 100 - y), y), "cpu", db).play == lg.NO_LEGAL, (bad, y)
     monkeypatch.setattr(co.Scorer, "score", orig)
-    # display gate: a red-zone call scored at the 5 cannot be shown for a snap at midfield
-    call = None
-    for i in range(40):
-        c = playcaller.make_call(_sit(1, 5, 95, session=f"z{i}", look=["cover 2", "cover 3", "man"][i % 3]), "cpu", db)
-        if c.scheme_variant["variant_id"] in RZ:
-            call = c
-            break
-    if call is None:   # force one through the scorer for the display-gate check
-        over = {v.variant_id: (0.9 if v.variant_id == rzv.variant_id else 0.1) for v in legal}
-        top = s.score([rzv], down=1, distance=5, yardline=95, opponent_id="cpu", opponent_type="cpu", belief=bel,
-                      offset_override=over)
-        call = co.build_call(top[0], top, bel, book=None, shadow=False)
-        call.scheme_variant["yardline"] = 95
+    # display gate: the call's own yardline must match the snap's
+    call = playcaller.make_call(_sit(1, 5, 95, session="zz"), "cpu", db)
+    assert call.scheme_variant["variant_id"] in RZ
     validate_live_call(db, call, opponent_id="cpu", yardline=95)
     with pytest.raises(ValueError):
         validate_live_call(db, call, opponent_id="cpu", yardline=50)
-    tampered = call
-    tampered.scheme_variant["yardline"] = 50
+    call.scheme_variant["yardline"] = 50
     with pytest.raises(ValueError):
-        lg.revalidate_call(db, tampered, CAT)
-    tampered.scheme_variant.pop("yardline")
+        lg.revalidate_call(db, call, CAT)
+    call.scheme_variant.pop("yardline")
     with pytest.raises(ValueError):
-        lg.revalidate_call(db, tampered, CAT)
-    # the unnamed 5WR setup stays blocked everywhere, including inside the 10
+        lg.revalidate_call(db, call, CAT)
+    # the unnamed 5WR setup stays blocked everywhere
     for b in CAT.blocked_ids:
-        assert not lg.check(None, CAT, db=db, variant_id=b, yardline=95).legal
+        for y in (50, 85, 95):
+            assert not lg.check(None, CAT, db=db, variant_id=b, yardline=y).legal
+
+
+def test_18b_ten_to_twenty_red_zone_plays_actually_appear_in_the_mix(tmp_path, civil_env):
+    """A game's worth of 10-20 snaps: the Close Flex red-zone plays show up, and so do regular plays."""
+    from cfb_coach.madden import playcaller
+    from cfb_coach.madden.scheme import evidence as evm
+    db = _db(tmp_path)
+    picks = []
+    for i in range(30):
+        y = 80 + (i * 7) % 10
+        call = playcaller.make_call(_sit(1 + i % 3, 10, y, session="band"), "cpu", db)
+        vid = call.scheme_variant["variant_id"]
+        picks.append(vid)
+        _close_snap(db, "band", vid, y)
+    rz = sum(1 for p in picks if p in RZ20)
+    assert rz >= 4, picks                    # red-zone plays are not buried
+    assert len(picks) - rz >= 8, picks       # still a mix with the regular scheme plays
+    assert len(set(picks)) >= 8, picks
+
+
+def _close_snap(db, session, vid, yardline):
+    """Stand-in for a closed, logged snap of this call (what recent_calls reads)."""
+    db.conn.execute("INSERT INTO snaps (ts, opponent_id, side, session_id, recommended_adjustment_id, yardline, result)"
+                    " VALUES ('2026-11-10T00:00:00', 'cpu', 'offense', ?, ?, ?, ?)",
+                    (session, f"scheme:{vid}", yardline, "+3"))
+    db.conn.commit()
+
+
+def test_18c_inside_10_uses_only_red_zone_plays_and_mixes_them(tmp_path, civil_env):
+    from cfb_coach.madden import playcaller
+    db = _db(tmp_path)
+    picks = []
+    for i in range(14):
+        y = 90 + i % 9
+        call = playcaller.make_call(_sit(1 + i % 4, min(100 - y, 5), y, session="goal"), "cpu", db)
+        vid = call.scheme_variant["variant_id"]
+        assert vid in RZ, vid
+        picks.append(vid)
+        _close_snap(db, "goal", vid, y)
+    assert len(set(picks)) >= 4, picks
+
+
+# owner instruction t338u: variants are separate calls; repetition is per variant_id only -------------------
+def test_18d_variant_repetition_is_independent_of_sibling_variants(tmp_path, civil_env):
+    s = co.Scorer(sm.load(_artifact(tmp_path)), CAT, dz.GeometrySource(enabled=False))
+    bel = bl.combine({}, 0.1, 0, "none", [])
+    sibs = [CAT.get("civil_bucs_texas_y_stutter_wheel_1"), CAT.get("civil_bucs_texas_y_stutter_wheel_2")]
+    kw = dict(down=1, distance=10, yardline=40, opponent_id="cpu", opponent_type="cpu", belief=bel,
+              offset_override={v.variant_id: 0.5 for v in sibs})
+    fresh = {r.variant.variant_id: r for r in s.score(sibs, **kw)}
+    hist = ["civil_bucs_texas_y_stutter_wheel_1"] * 5
+    after = {r.variant.variant_id: r for r in s.score(sibs, recent_calls=hist, game_calls=hist, **kw)}
+    v1, v2 = "civil_bucs_texas_y_stutter_wheel_1", "civil_bucs_texas_y_stutter_wheel_2"
+    assert after[v2].utility == fresh[v2].utility and after[v2].parts["repeat_penalty"] == 0
+    assert after[v1].utility < fresh[v1].utility and after[v1].parts["repeat_penalty"] > 0
+    assert co.repeat_penalty(v2, hist, {v1: 5}) == 0.0
+    # stronger than before: one recent call of the same variant costs more than the t337u 0.25
+    assert co.repeat_penalty(v1, [v1], {v1: 1}) > 0.5
+
+
+def test_18e_mixing_is_seeded_and_only_among_near_best(tmp_path, civil_env):
+    s = co.Scorer(sm.load(_artifact(tmp_path)), CAT, dz.GeometrySource(enabled=False))
+    bel = bl.combine({}, 0.1, 0, "none", [])
+    ranked = s.score(CAT.core_variants, down=1, distance=10, yardline=40, opponent_id="cpu", opponent_type="cpu",
+                     belief=bel)
+    a, mix = co.pick(ranked, "seed-1")
+    assert co.pick(ranked, "seed-1")[0] is a                  # reproducible
+    assert ranked[0].utility - a.utility <= co.MIX_MARGIN
+    chosen = {co.pick(ranked, f"seed-{i}")[0].variant.variant_id for i in range(200)}
+    assert all(ranked[0].utility - next(r for r in ranked if r.variant.variant_id == c).utility <= co.MIX_MARGIN
+               for c in chosen)
+    assert len(chosen) >= 2 or len(mix["pool"]) == 1
 
 
 # owner instruction t336u: every displayed/logged call names the exact variation and all its adjustments -------
@@ -611,3 +675,35 @@ def test_19_every_call_shows_and_logs_its_variation_and_all_adjustments(tmp_path
     assert pred["variation"].startswith(f"VARIATION: {v.variant_name} [{v.variant_id}]")
     assert all(f"{a.target}: {a.action}" in pred["variation"] for a in v.adjustments)
     assert _json.loads(row[2]) == [[a.target, a.action] for a in v.adjustments]
+
+
+# owner instruction t338u: the html-live page shows the variation next to the play call name ---------------
+def test_21_html_live_shows_variation_next_to_play_name(tmp_path, civil_env):
+    from cfb_coach.live_server import LivePlayController, LogRow, _call_main, render_live_html
+    from cfb_coach.live_server import _variation_from_call_text
+    from cfb_coach.madden import playcaller
+    from cfb_coach.madden.situation import parse_madden_situation
+    import html as _html
+    db = _db(tmp_path)
+    ctrl = LivePlayController(db=db, opponent_id="cpu", make_call=playcaller.make_call,
+                              parse_situation=parse_madden_situation, learn_summary=lambda: "ok",
+                              brand="Madden 27 Franchise", cpu_only=True, enable_execution_verify=True)
+    for y in (40, 85, 95):
+        call = playcaller.make_call(_sit(1, min(10, 100 - y), y, session="h"), "cpu", db)
+        sv = call.scheme_variant
+        ctrl.last_call, ctrl.call_text = call, call.format()
+        label = f"{sv['variant_name']} [{sv['variant_id']}]"
+        main = _call_main(ctrl)
+        assert main == f"{call.formation} — {call.play} · {label}", main
+        page = render_live_html(ctrl)
+        assert f'id="call" aria-live="polite">{_html.escape(main)}</div>' in page
+        assert f"VARIATION: {_html.escape(label)}" in page        # #call-variation block, with every adjustment
+        for a in sv["adjustment_lines"]:
+            assert _html.escape(a) in page, a
+        rec = ctrl.state()["pending_recommendation"]
+        assert rec["variation"] == label and all(a in rec["variation_block"] for a in sv["adjustment_lines"])
+        assert 'rec.variation ? " · " + rec.variation' in page    # the JS refresh keeps it next to the play
+        assert 'r.variation ? " · " + r.variation' in page        # and the snap history rows
+        row = LogRow(call.formation, call.play, "+4", call_text=call.format())
+        assert row.to_dict()["variation"] == label and label in row.to_dict()["label"]
+        assert _variation_from_call_text(call.format()) == label

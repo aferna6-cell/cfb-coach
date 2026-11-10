@@ -78,11 +78,15 @@ def prepare(db_path: str | Path, geo: dz.GeometrySource, cat: sc.SchemeCatalog) 
         k = str(r.get("snap_id"))
         return k not in excluded or k in by_key
 
-    offsets = sm.existing_offsets(rows, order, keep)
+    def shared(r: Mapping[str, Any]) -> bool:
+        # civil variant snaps never train the shared base-play offset: variants stay independent (owner t338u)
+        return str(r.get("snap_id")) not in excluded
+
+    offsets = sm.existing_offsets(rows, order, keep, shared)
     beliefs = bl.annotate_rows(rows, order)
     examples = sm.build_examples(rows, order, geo, offsets=offsets, beliefs=beliefs, keep=keep, designs=designs)
     return {"data": data, "rows": rows, "order": order, "examples": examples, "beliefs": beliefs, "keep": keep,
-            "variant_evidence": vev, "excluded": excluded, "book": book}
+            "variant_evidence": vev, "excluded": excluded, "book": book, "shared": shared}
 
 
 def _ref_p(model_name: str, e: sm.Example, t: str, base: Mapping[str, float]) -> float:
@@ -144,21 +148,26 @@ def run(db_path: str | Path, *, geo: dz.GeometrySource | None = None, cat: sc.Sc
                 continue
             m = sm.fit(train, chosen, n_members=n_members, with_yards=False)
             tg = set(fold.train_games)
-            em_art = em.train_experimental([dict(r) for r in rows if r.get("game_id") in tg], side="offense")
+            em_art = em.train_experimental([dict(r) for r in rows if r.get("game_id") in tg and P["shared"](r)],
+                                           side="offense")
             m.existing = em_art
             scorer = co.Scorer(m, cat, geo)
-            recent: list[str] = []                       # this game's earlier picks (repetition penalty)
+            recent: list[str] = []                       # this game's earlier picks, newest first (per variant_id)
+            last_game = None
             for e in test:
                 r = e.row
                 b = beliefs[e.idx]
                 opp_t = r.get("opponent_type") or "human"
                 kw = dict(down=r.get("down"), distance=r.get("distance"), yardline=he._int(r.get("yardline")),
                           opponent_id=str(r.get("opponent_id") or ""), opponent_type=opp_t, belief=b)
-                here = [v for v in sim_variants if v.allowed_at(kw["yardline"])]   # red-zone plays inside the 10 only
-                ranked = scorer.score(here, recent_calls=list(recent), **kw)
-                stock_rank = scorer.score(here, recent_calls=list(recent), stock_only=True, **kw)
-                recent.insert(0, ranked[0].variant.variant_id)
-                top = ranked[0]
+                if e.game != last_game:
+                    recent, last_game = [], e.game
+                here = [v for v in sim_variants if v.allowed_at(kw["yardline"])]   # same field bands as live
+                ranked = scorer.score(here, recent_calls=recent[:co.REPEAT_WINDOW], game_calls=recent, **kw)
+                stock_rank = scorer.score(here, recent_calls=recent[:co.REPEAT_WINDOW], game_calls=recent,
+                                          stock_only=True, **kw)
+                top, _mix = co.pick(ranked, f"sim|{e.game}|{len(recent)}|{kw['down']}|{kw['distance']}|{kw['yardline']}")
+                recent.insert(0, top.variant.variant_id)
                 ex_best = None
                 if book_pairs:
                     sc_ = [(em.predict_success(em_art, formation=f, play=p, down=r.get("down"), distance=r.get("distance"),
@@ -350,8 +359,30 @@ def simulate_summary(sims: Sequence[Mapping[str, Any]], cat: sc.SchemeCatalog) -
         "beater_gate_high_pick_tagged_share": round(sum(1 for s in gate_hi if s["pick_tagged_for_top"]) / len(gate_hi), 3) if gate_hi else None,
         "beater_gate_low_n": len(gate_lo),
         "beater_gate_low_pick_tagged_share": round(sum(1 for s in gate_lo if s["pick_tagged_for_top"]) / len(gate_lo), 3) if gate_lo else None,
+        "variety": _variety(sims, cat),
         "label": "PREDICTED counterfactuals on held-out situations; not observed outcomes",
     }
+
+
+def _variety(sims: Sequence[Mapping[str, Any]], cat: sc.SchemeCatalog) -> dict[str, Any]:
+    """Back-to-back repeats, longest same-variant streak, and red-zone band mix of the simulated picks."""
+    b2b, longest, run, prev = 0, 0, 0, None
+    for s in sims:
+        key = (s["game"], s["pick"])
+        if prev == key:
+            b2b, run = b2b + 1, run + 1
+        else:
+            run = 1
+        longest, prev = max(longest, run), key
+    zone = {v.variant_id: v.field_zone for v in cat.variants}
+    bands: dict[str, dict[str, int]] = {}
+    for s in sims:
+        band = sc.field_band(s.get("yardline")) or "unknown"
+        z = zone.get(s["pick"], "any")
+        d = bands.setdefault(band, {"n": 0, "red_zone_plays": 0, "regular_plays": 0})
+        d["n"] += 1
+        d["red_zone_plays" if z != "any" else "regular_plays"] += 1
+    return {"back_to_back_same_variant": b2b, "longest_same_variant_streak": longest, "by_field_band": bands}
 
 
 def train_final(db_path: str | Path, arch: Mapping[str, str], *, geo: dz.GeometrySource | None = None,
@@ -361,7 +392,7 @@ def train_final(db_path: str | Path, arch: Mapping[str, str], *, geo: dz.Geometr
     sha_before = file_sha256(db_path)
     P = prepare(db_path, geo, cat)
     model = sm.fit(P["examples"], arch, n_members=n_members)
-    model.existing = em.train_experimental([dict(r) for r in P["rows"]], side="offense")
+    model.existing = em.train_experimental([dict(r) for r in P["rows"] if P["shared"](r)], side="offense")
     ex = P["examples"]
     dates = sorted(str(r.get("game_id")) for r in P["rows"])
     sha_after = file_sha256(db_path)

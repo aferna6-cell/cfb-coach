@@ -52,6 +52,8 @@ OWNER_CONFIRMED_BOOK = {
     "statement": "we can assume all formations in the dataset are in my book because they are so all plays are "
                  "legal to call",
     "scope": "every catalog variant and red-zone package play: formation and play installed under the dataset's name",
+    # t338u: the owner sent the two I Form Close Flex red-zone plays (5WR Tight sheet) as plays from his book.
+    "t338u_addition": "I Form Close Flex: Stretch, Mesh (owner screenshots 2026-11-10; in the Buccaneers stock data)",
     "catalog_id": "lions_civil_bucs_5wr_v4",
     "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
 }
@@ -191,6 +193,9 @@ def checklist_lines(v: SchemeVariant) -> list[str]:
     lines = []
     for s in parse_variant(v):
         line = f"{s.index + 1}. {s.target}: {s.action}"
+        guide = v.adjustments[s.index].guide_text if s.index < len(v.adjustments) else ""
+        if guide:
+            line += f'  (guide wording: "{guide}")'
         tag = stem_label(s.stem_shift)
         if tag:
             line += f"   [{tag}]"
