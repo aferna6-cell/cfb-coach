@@ -7,7 +7,8 @@ Architecture (chosen by chronological held-out evaluation, see ``evaluate.py``):
 * ``offset`` for success is the EXISTING coordinator's model (``experimental_model`` hierarchical
   shrinkage, trained exactly as production trains it). Existing knowledge is kept: the new head only
   learns what the existing model misses, and an all-zero head reproduces the existing model.
-* ``head`` is one of ``existing`` (no head), ``logistic`` (L2 offset logistic) or ``gbt`` (offset
+* ``head`` is one of ``existing`` (no head), ``logistic`` / ``logistic_strong`` (L2 offset logistic,
+  lambda 25 / 400) or ``gbt`` (offset
   gradient-boosted trees, game-bootstrap ensemble), picked per target on the EARLY held-out games with a
   do-no-harm margin, then confirmed on the LATE held-out games.
 * Training rows are verified offensive snaps only. Their designs are the STOCK geometry of the play that
@@ -144,10 +145,11 @@ def build_examples(rows: Sequence[Mapping[str, Any]], game_order: Mapping[str, i
 
 # ------------------------------------------------------------------ model
 
-HEAD_KINDS = ("existing", "logistic", "gbt")
+HEAD_KINDS = ("existing", "logistic", "logistic_strong", "gbt")
 GBT_PARAMS = {"n_trees": 120, "learning_rate": 0.05, "max_depth": 2, "min_leaf": 25, "l2": 5.0,
               "subsample": 0.8, "colsample": 0.7}
 LOGISTIC_L2 = 25.0
+LOGISTIC_STRONG_L2 = 400.0
 
 
 def _aux_x(x: Sequence[float], offset_p: float) -> list[float]:
@@ -201,6 +203,8 @@ def fit_head(examples: Sequence[Example], target: str, kind: str, *, n_members: 
     off = [h.offset(e.offset_p) for e in ex]
     if kind == "logistic":
         h.model = ln.OffsetLogistic(l2=LOGISTIC_L2).fit(X, ys, off)
+    elif kind == "logistic_strong":
+        h.model = ln.OffsetLogistic(l2=LOGISTIC_STRONG_L2).fit(X, ys, off)
     elif kind == "gbt":
         h.model = ln.GBTEnsemble.fit(X, ys, off, [e.game for e in ex], n_members=n_members, **GBT_PARAMS)
     else:

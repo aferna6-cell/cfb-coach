@@ -31,7 +31,7 @@ from cfb_coach.madden.scheme import model as sm
 from cfb_coach.madden.scheme import priors as pr
 
 DO_NO_HARM = 0.002          # a head must beat the reference log loss by this much on the selection games
-ARCHS = ("logistic", "gbt")
+ARCHS = ("logistic", "logistic_strong", "gbt")
 
 
 def file_sha256(path: str | Path) -> str:
@@ -147,13 +147,16 @@ def run(db_path: str | Path, *, geo: dz.GeometrySource | None = None, cat: sc.Sc
             em_art = em.train_experimental([dict(r) for r in rows if r.get("game_id") in tg], side="offense")
             m.existing = em_art
             scorer = co.Scorer(m, cat, geo)
+            recent: list[str] = []                       # this game's earlier picks (repetition penalty)
             for e in test:
                 r = e.row
                 b = beliefs[e.idx]
                 opp_t = r.get("opponent_type") or "human"
-                ranked = scorer.score(sim_variants, down=r.get("down"), distance=r.get("distance"),
-                                      yardline=he._int(r.get("yardline")), opponent_id=str(r.get("opponent_id") or ""),
-                                      opponent_type=opp_t, belief=b)
+                kw = dict(down=r.get("down"), distance=r.get("distance"), yardline=he._int(r.get("yardline")),
+                          opponent_id=str(r.get("opponent_id") or ""), opponent_type=opp_t, belief=b)
+                ranked = scorer.score(sim_variants, recent_calls=list(recent), **kw)
+                stock_rank = scorer.score(sim_variants, recent_calls=list(recent), stock_only=True, **kw)
+                recent.insert(0, ranked[0].variant.variant_id)
                 top = ranked[0]
                 ex_best = None
                 if book_pairs:
@@ -161,9 +164,6 @@ def run(db_path: str | Path, *, geo: dz.GeometrySource | None = None, cat: sc.Sc
                                                yardline=he._int(r.get("yardline")), opponent_id=r.get("opponent_id"),
                                                opponent_type=opp_t)["probability"], f, p) for f, p in book_pairs]
                     ex_best = max(sc_)
-                # stock-only ranking (no adjustments) to measure how much adjustments change the order
-                stock_rank = sorted(ranked, key=lambda s: -(s.utility - sm.UTILITY["success"] * (
-                    s.p_success - ln.sigmoid(ln.logit(s.p_success) - s.parts["adjustment_logit_delta"]))))
                 gates = pr.gates(b.mix, b.families, b.gate_confidence)
                 gtop = max(gates.items(), key=lambda kv: kv[1])
                 sims.append({

@@ -322,7 +322,7 @@ def test_beater_a_repeated_cover3_shifts_to_cover3_beaters(tmp_path):
     assert _tagged(c3[0].variant.variant_id, "Cover 3")
     top5 = lambda r, t: sum(_tagged(x.variant.variant_id, t) for x in r[:5])  # noqa: E731
     assert top5(c3, "Cover 3") == 5
-    assert c3[0].parts["beater"] > 0.5
+    assert c3[0].parts["beater"] > 0.5 and c3[0].parts["tagged_beater_for_top"]
     assert max(x.parts["beater"] for x in neutral) < 0.05
     # variety: after the same beater was called 3 times in a row, another tagged beater leads
     again = _rank(s, bl.combine({}, 0.1, 0, "none", [("cover_3_sky", "cover 3 sky")] * 8),

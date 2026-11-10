@@ -77,7 +77,8 @@ class Scorer:
     def score(self, variants: Sequence[sc.SchemeVariant], *, down, distance, yardline, opponent_id: str,
               opponent_type: str, belief: bl.Belief, recent_calls: Sequence[str] = (),
               variant_stats: Mapping[str, tuple[float, float]] | None = None,
-              offset_override: Mapping[str, float] | None = None) -> list[Scored]:
+              offset_override: Mapping[str, float] | None = None, stock_only: bool = False) -> list[Scored]:
+        """``stock_only`` scores every variant as its unadjusted base play (evaluation diagnostics only)."""
         variant_stats = variant_stats or {}
         counts = {k: n for k, (_s, n) in variant_stats.items()}
         expert = pr.bonuses(variants, down=down, distance=distance, yardline=yardline, mix=belief.mix,
@@ -97,6 +98,8 @@ class Scorer:
             xa, _ = ft.vector(down=down, distance=distance, yardline=yardline, belief=belief,
                               design=self.adjusted[v.variant_id], opponent_type=opponent_type,
                               route_f=self.rf_adj[v.variant_id])
+            if stock_only:
+                xa = xs
             ps, pa = self.model.predict(xs, op), self.model.predict(xa, op)
             d = self.adjusted[v.variant_id]
             extra_var = (len(d.unrepresented) * sm.UNREPRESENTED_SD) ** 2

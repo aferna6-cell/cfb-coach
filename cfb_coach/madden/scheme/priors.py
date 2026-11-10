@@ -2,7 +2,7 @@
 
 Coverage beater (Aidan, 2026-11-10: "if we are seeing a certain type of coverage over and over the model
 should go to its beater"): each variant's "beats Cover X / Man" tags (catalog + Civil.GG sheet) add
-    beater = BEATER_MAX * sum_T gate_T * tagged_T,   gate_T = info * clip((share_T - GATE_LO) / (GATE_HI - GATE_LO), 0, 1)
+    beater = BEATER_MAX * min(1, sum_T gate_T * tagged_T) / sqrt(number of tags)   (specificity),   gate_T = info * clip((share_T - GATE_LO) / (GATE_HI - GATE_LO), 0, 1)
 to the success logit, where share_T is the pre-snap belief that the next coverage is in tag group T and
 info is ``Belief.gate_confidence`` (0 at one observation, 1 at four or more effective observations:
 same-game repetitions + recency-weighted history). One coverage seen
@@ -32,7 +32,7 @@ from cfb_coach.madden.model import experimental_model as em
 from cfb_coach.madden.scheme.catalog import SchemeVariant, repo_root
 
 SIT_W, COV_W, CORE_W, CAP, K = 0.04, 0.06, 0.03, 0.12, 10.0
-BEATER_MAX = 0.9          # logit; P(success) ~0.45 -> ~0.67 at full gate
+BEATER_MAX = 1.2          # logit at full gate for a single-coverage beater (/sqrt(#tags) for multi-tag variants)
 GATE_LO, GATE_HI = 0.35, 0.75
 BEATER_K = 40.0           # beater term fades only slowly as verified variant evidence accumulates
 TAG_GROUPS = ("Cover 0", "Cover 1", "Cover 2", "Cover 3", "Cover 4", "Man Coverage")
@@ -115,7 +115,9 @@ def bonuses(variants: Sequence[SchemeVariant], *, down: Any, distance: Any, yard
     raw_beat = {}
     for v in variants:
         tags = coverage_tags(v)
-        raw_beat[v.variant_id] = (BEATER_MAX * min(1.0, sum(g.get(t, 0.0) for t in tags))) if tags else None
+        # specificity: a variant tagged for every coverage is not a specific beater of any one of them
+        raw_beat[v.variant_id] = (BEATER_MAX * min(1.0, sum(g.get(t, 0.0) for t in tags)) / len(tags) ** 0.5
+                                  if tags else None)
     kb = [b for b in raw_beat.values() if b is not None]
     beat_impute = sum(kb) / len(kb) if kb else 0.0
     out = {}
