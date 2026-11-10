@@ -11,7 +11,7 @@
     "call_stock_first": true,
     "never_infer_user": true,
     "macro_default": null,
-    "zone_it": "Optional legal matched-to-spot-zone fallback only after supported risk comparison and a verified user assignment",
+    "zone_it": "Requires verified match-check/adjustment mapping: never assume it is literally identical to selecting a stock Cover 4 Zone play",
     "stock_zone_fallback": {
       "formation": "Nickel 2-4 Wide",
       "play": "Cover 4 Zone",
@@ -40,7 +40,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/nickel-2-4-wide-defense?sid=89",
       "user_evidence": "not_stated",
       "stock_first_eligible": false,
-      "notes": "Screenshot does not say USER; do not guess."
+      "notes": "Screenshot does not say USER; do not guess.",
+      "required_coaching_profile": "nickel"
     },
     {
       "id": "nw_base_c2match",
@@ -57,7 +58,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/nickel-2-4-wide-defense?sid=89",
       "user_evidence": "explicit_user",
       "stock_first_eligible": false,
-      "notes": "Guide also describes switching between deep halves; do not assume stock."
+      "notes": "Guide also describes switching between deep halves; do not assume stock.",
+      "required_coaching_profile": "nickel"
     },
     {
       "id": "nw_stack_c2match",
@@ -75,7 +77,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/nickel-2-4-wide-defense?sid=89",
       "user_evidence": "explicit_user",
       "stock_first_eligible": false,
-      "notes": ""
+      "notes": "",
+      "required_coaching_profile": "nickel"
     },
     {
       "id": "nw_5wr_c2match",
@@ -93,7 +96,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/nickel-2-4-wide-defense?sid=89",
       "user_evidence": "explicit_user",
       "stock_first_eligible": false,
-      "notes": ""
+      "notes": "",
+      "required_coaching_profile": "nickel"
     },
     {
       "id": "nw_bunch_c3cloud",
@@ -111,7 +115,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/nickel-2-4-wide-defense?sid=89",
       "user_evidence": "explicit_user",
       "stock_first_eligible": false,
-      "notes": ""
+      "notes": "",
+      "required_coaching_profile": "nickel"
     },
     {
       "id": "nw_blitz_dbfire2",
@@ -129,7 +134,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/nickel-2-4-wide-defense?sid=89",
       "user_evidence": "not_stated",
       "stock_first_eligible": false,
-      "notes": "No explicit USER instruction."
+      "notes": "No explicit USER instruction.",
+      "required_coaching_profile": "nickel"
     },
     {
       "id": "nw_rz_tampa2",
@@ -147,7 +153,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/nickel-2-4-wide-defense?sid=89",
       "user_evidence": "not_stated",
       "stock_first_eligible": false,
-      "notes": "Video needed for switch-stick; no explicit USER role."
+      "notes": "Video needed for switch-stick; no explicit USER role.",
+      "required_coaching_profile": "nickel"
     },
     {
       "id": "nw_stack_c9",
@@ -164,7 +171,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/nickel-2-4-wide-defense?sid=89",
       "user_evidence": "not_stated",
       "stock_first_eligible": false,
-      "notes": "Video needed to identify USER position."
+      "notes": "Video needed to identify USER position.",
+      "required_coaching_profile": "nickel"
     },
     {
       "id": "nw_5wr_tampa2",
@@ -184,7 +192,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/nickel-2-4-wide-defense?sid=89",
       "user_evidence": "not_stated",
       "stock_first_eligible": false,
-      "notes": ""
+      "notes": "",
+      "required_coaching_profile": "nickel"
     },
     {
       "id": "nw_trips_c9",
@@ -205,7 +214,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/nickel-2-4-wide-defense?sid=89",
       "user_evidence": "not_stated",
       "stock_first_eligible": false,
-      "notes": ""
+      "notes": "",
+      "required_coaching_profile": "nickel"
     },
     {
       "id": "m_c3_skinny_trips",
@@ -220,7 +230,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/complete-match-coverage-guide?sid=91",
       "user_evidence": "explicit_user",
       "stock_first_eligible": true,
-      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed."
+      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed.",
+      "required_coaching_profile": "match"
     },
     {
       "id": "m_c3_skinny_bunch",
@@ -235,7 +246,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/complete-match-coverage-guide?sid=91",
       "user_evidence": "explicit_user",
       "stock_first_eligible": true,
-      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed."
+      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed.",
+      "required_coaching_profile": "match"
     },
     {
       "id": "m_c3_default_stacks",
@@ -250,7 +262,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/complete-match-coverage-guide?sid=91",
       "user_evidence": "explicit_user",
       "stock_first_eligible": true,
-      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed."
+      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed.",
+      "required_coaching_profile": "match"
     },
     {
       "id": "m_c2_default_2x2",
@@ -265,7 +278,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/complete-match-coverage-guide?sid=91",
       "user_evidence": "explicit_user",
       "stock_first_eligible": true,
-      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed."
+      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed.",
+      "required_coaching_profile": "match"
     },
     {
       "id": "m_c2_default_stacks",
@@ -280,7 +294,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/complete-match-coverage-guide?sid=91",
       "user_evidence": "explicit_user",
       "stock_first_eligible": true,
-      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed."
+      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed.",
+      "required_coaching_profile": "match"
     },
     {
       "id": "m_c2_default_5wr",
@@ -295,7 +310,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/complete-match-coverage-guide?sid=91",
       "user_evidence": "explicit_user",
       "stock_first_eligible": true,
-      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed."
+      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed.",
+      "required_coaching_profile": "match"
     },
     {
       "id": "m_c2_default_bunch",
@@ -310,7 +326,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/complete-match-coverage-guide?sid=91",
       "user_evidence": "explicit_user",
       "stock_first_eligible": true,
-      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed."
+      "notes": "Match check is owner-configured, but game-specific formation/check still must be confirmed.",
+      "required_coaching_profile": "match"
     },
     {
       "id": "m_c6_stubbie_trips",
@@ -325,7 +342,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/complete-match-coverage-guide?sid=91",
       "user_evidence": "explicit_user",
       "stock_first_eligible": false,
-      "notes": "Ravens Dime 2-3 lists Cover 6 Willie/Show 2; not automatically identical to the guide's Cover 6."
+      "notes": "Ravens Dime 2-3 lists Cover 6 Willie/Show 2; not automatically identical to the guide's Cover 6.",
+      "required_coaching_profile": "match"
     },
     {
       "id": "m_c6_box_bunch",
@@ -340,7 +358,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/complete-match-coverage-guide?sid=91",
       "user_evidence": "explicit_user",
       "stock_first_eligible": false,
-      "notes": "Ravens Dime 2-3 lists Cover 6 Willie/Show 2; not automatically identical to the guide's Cover 6."
+      "notes": "Ravens Dime 2-3 lists Cover 6 Willie/Show 2; not automatically identical to the guide's Cover 6.",
+      "required_coaching_profile": "match"
     },
     {
       "id": "m_quarters_box_bunch",
@@ -355,7 +374,8 @@
       "source": "https://www.civil.gg/members/schemes/madden/complete-match-coverage-guide?sid=91",
       "user_evidence": "interpretation_from_tip",
       "stock_first_eligible": false,
-      "notes": "Guide tip describes Mike/Nickel handling #3, not an explicit USER selection."
+      "notes": "Guide tip describes Mike/Nickel handling #3, not an explicit USER selection.",
+      "required_coaching_profile": "match"
     }
   ],
   "notices": [
@@ -364,5 +384,21 @@
     "No raw Civil videos, images or proprietary play art are included.",
     "This is source-based metadata, not verified Xbox 11-defender assignments or a trained predictive artifact.",
     "Uncaptured lessons remain UNKNOWN. Never substitute a plausible user from another coverage."
-  ]
+  ],
+  "coaching_adjustment_profiles": {
+    "active_profile_required": true,
+    "source_of_truth": "user-confirmed actual Madden 27 coaching adjustments",
+    "match": {
+      "id": "match",
+      "values": "owner configured but not transcribed; exact values unknown",
+      "compatibility": "pending exact option-by-option audit"
+    },
+    "nickel": {
+      "id": "nickel",
+      "values": "not transcribed from user; exact values unknown",
+      "compatibility": "pending exact option-by-option audit"
+    },
+    "switching_policy": "Never assume formation swaps switch coaching adjustments; no automatic in-game setting mutation.",
+    "safe_combo_policy": "Only allow a stock candidate if every relevant global coaching adjustment is compatible with active profile; UNKNOWN means block until verified."
+  }
 }
