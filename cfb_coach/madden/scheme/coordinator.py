@@ -239,15 +239,18 @@ def explain(top: Scored, belief: bl.Belief, runner_up: Scored | None) -> str:
 
 
 def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book: Mapping[str, Any] | None,
-               shadow: bool):
+               shadow: bool, ledger: Mapping[str, Any] | None = None):
     from cfb_coach.madden.playcaller import MaddenCall
     v = top.variant
-    f, q = lg.book_names(book, v.formation, v.base_play)
-    formation, play = (f or v.formation), (q or v.base_play)
+    alias = ((ledger or {}).get(v.variant_id) or {}).get("book_play")
+    f, q = lg.book_names(book, v.formation, alias or v.base_play)
+    formation, play = (f or v.formation), (q or alias or v.base_play)
     adjs = [f"{a.index + 1}) {a.target}: {a.action}" for a in v.adjustments]
     warnings = []
     if not v.name_verified:
         warnings.append("variant NAME unverified in the source guide")
+    if alias:
+        warnings.append(f"guide base play '{v.base_play}' is called '{alias}' in your book (owner-confirmed name)")
     if not v.verified_in_user_game:
         warnings.append("catalog: not verified in your game" + (" — owner-verified locally" if not shadow else ""))
     if shadow:
@@ -267,7 +270,8 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
                        "buttons": "no button map — set by hand: " + "; ".join(adjs), "why": why}
     call.scheme_variant = {
         "status": "CALL", "variant_id": v.variant_id, "variant_name": v.variant_name, "formation": v.formation,
-        "base_play": v.base_play, "adjustments": [[a.target, a.action] for a in v.adjustments],
+        "base_play": v.base_play, "book_play": alias or None,
+        "adjustments": [[a.target, a.action] for a in v.adjustments],
         "p_success": round(top.p_success, 4), "uncertainty_logit_sd": round(top.sd, 4),
         "p_first_down": round(top.p_first_down, 4), "p_explosive": round(top.p_explosive, 4),
         "p_negative": round(top.p_negative, 4), "exp_yards": top.exp_yards, "utility": round(top.utility, 4),
@@ -291,7 +295,7 @@ def select(scorer: Scorer, cat: sc.SchemeCatalog, conn: Any, *, db: Any, sit: An
     ranked = scorer.score(legal, down=sit.down, distance=sit.distance, yardline=sit.yardline,
                           opponent_id=opponent_id, opponent_type=opp_type, belief=belief,
                           recent_calls=recent_calls(conn, session_id), variant_stats=variant_stats(conn, cat))
-    call = build_call(ranked[0], ranked, belief, book=book, shadow=shadow)
+    call = build_call(ranked[0], ranked, belief, book=book, shadow=shadow, ledger=lg.load_verified(db))
     return call, ranked
 
 

@@ -430,6 +430,9 @@ def test_existing_files_are_only_modified_where_the_integration_needs_it():
         "tests/madden_ml/test_sprint41_blockers.py", "tests/madden_ml/test_sprint42_execution_recovery.py",
         "tests/madden_ml/test_sprint4_experimental.py", "tests/madden_ml/test_sprint6_model_primary_actions.py",
         "tests/madden_ml/test_wildcard_john_games.py", "tests/test_wildcard_john.py", "tests/madden_ml/test_wildcard_dual_ml.py",
+        # civil_scheme_only (26-variant Lions scheme mode): the offense-branch mode switch in make_call + call display,
+        # and the play --civil-scheme-only / --unrestricted-offense session flags. Defense branch untouched.
+        "cfb_coach/madden/playcaller.py", "cfb_coach/cli.py",
     }
     assert touched <= allowed, f"unexpected modifications: {sorted(touched - allowed)}"
 

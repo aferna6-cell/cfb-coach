@@ -269,7 +269,8 @@ def cmd_verify(args) -> int:
     backup(path, "pre-verify")
     db = _open_rw(path)
     try:
-        lg.record_verified(db, cat, args.variant, note=args.note or "", revoke=args.revoke)
+        lg.record_verified(db, cat, args.variant, note=args.note or "", revoke=args.revoke,
+                           book_play=args.book_play)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -376,6 +377,9 @@ def register(ml_sub: Any) -> None:
     q.add_argument("--variant", required=True)
     q.add_argument("--note", default="")
     q.add_argument("--revoke", action="store_true")
+    q.add_argument("--book-play", default=None,
+                   help="owner confirmation that the guide's base play is named differently in the in-game book "
+                        "(e.g. Z Spot -> 'L Spot'); never inferred")
     q = add("shadow", cmd_shadow, "offline ranking for a situation (unverified variants allowed, labeled SHADOW)")
     q.add_argument("--opponent", "-o", default="cpu")
     q.add_argument("--down", type=int, required=True)

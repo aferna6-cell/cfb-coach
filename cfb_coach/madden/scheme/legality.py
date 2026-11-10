@@ -74,8 +74,13 @@ def load_verified(db: Any) -> dict[str, dict[str, Any]]:
         return {}
 
 
-def record_verified(db: Any, cat: SchemeCatalog, variant_id: str, *, note: str = "", revoke: bool = False) -> dict[str, Any]:
-    """Owner-only (CLI). Marks one exact variant executable; requires it to pass checks 1-3 first."""
+def record_verified(db: Any, cat: SchemeCatalog, variant_id: str, *, note: str = "", revoke: bool = False,
+                    book_play: str | None = None) -> dict[str, Any]:
+    """Owner-only (CLI). Marks one exact variant executable; requires it to pass checks 1-3 first.
+
+    ``book_play``: the owner's confirmation that the guide's base-play name appears in the in-game Buccaneers
+    book under a DIFFERENT name (e.g. guide "Z Spot" = book "L Spot"). Only an owner confirmation can create
+    such an alias; it is stored with the verification and shown on every call."""
     v = cat.get(variant_id)
     if v is None:
         raise ValueError(f"{variant_id} is not one of the {len(cat.variants)} catalog variants")
@@ -83,10 +88,10 @@ def record_verified(db: Any, cat: SchemeCatalog, variant_id: str, *, note: str =
     if revoke:
         led.pop(variant_id, None)
     else:
-        verdict = check(v, cat, db=db, book=None, require_verified=False)
+        verdict = check(v, cat, db=db, book=None, require_verified=False, alias=book_play)
         if not verdict.legal:
             raise ValueError(f"cannot verify {variant_id}: " + "; ".join(verdict.reasons))
-        led[variant_id] = {"verified_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "by": "owner_cli",
+        led[variant_id] = {"book_play": book_play or None,"verified_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "by": "owner_cli",
                            "catalog_version": cat.version(), "note": note,
                            "formation": v.formation, "base_play": v.base_play,
                            "adjustments": [a.as_dict() for a in v.adjustments]}
@@ -103,7 +108,7 @@ def _applied_offense_book(db: Any) -> dict[str, Any] | None:
 
 def check(v: SchemeVariant | None, cat: SchemeCatalog, *, db: Any = None, book: Mapping[str, Any] | None = None,
           require_verified: bool = True, verified: Mapping[str, Any] | None = None,
-          variant_id: str | None = None) -> Verdict:
+          variant_id: str | None = None, alias: str | None = None) -> Verdict:
     vid = v.variant_id if v is not None else str(variant_id or "")
     out = Verdict(vid, False)
     if v is None or cat.get(vid) is None or vid in cat.blocked_ids:
@@ -116,28 +121,32 @@ def check(v: SchemeVariant | None, cat: SchemeCatalog, *, db: Any = None, book: 
         out.reasons.append("variant content differs from the catalog entry (no edited / substituted variants)")
         out.checks["catalog"] = False
         return out
-    f_ok, p_ok = stock_has(v.formation, v.base_play)
+    led = verified if verified is not None else (load_verified(db) if (require_verified or alias is None) else {})
+    alias = alias or (led.get(vid) or {}).get("book_play")
+    play = alias or v.base_play
+    if alias:
+        out.checks["owner_confirmed_name_alias"] = True
+    f_ok, p_ok = stock_has(v.formation, play)
     out.checks["stock_formation"], out.checks["stock_play"] = f_ok, p_ok
     if not f_ok:
         out.reasons.append(f"formation '{v.formation}' is not in the in-repo {STOCK_BOOK} stock book")
     elif not p_ok:
-        out.reasons.append(f"base play '{v.base_play}' is not in {STOCK_BOOK} '{v.formation}' in the repo's stock data "
-                           "(exact name; no alias accepted) — needs data/owner confirmation")
+        out.reasons.append(f"base play '{play}' is not in {STOCK_BOOK} '{v.formation}' in the repo's stock data "
+                           "(exact name; only an owner-confirmed book name via `verify --book-play` is accepted)")
     if book is None:
         book = _applied_offense_book(db)
     if book is None:
         out.checks["book"] = False
         out.reasons.append("no applied offense book of record (run prep / prepare-book, install it, then prep --mark-applied)")
     else:
-        bf, bp = _book_has(book, v.formation, v.base_play)
+        bf, bp = _book_has(book, v.formation, play)
         out.checks["book_formation"], out.checks["book_play"] = bf, bp
         out.checks["book"] = bf and bp
         if not bf:
             out.reasons.append(f"formation '{v.formation}' is not in the applied offense book")
         elif not bp:
-            out.reasons.append(f"'{v.base_play}' is not in the applied book's '{v.formation}'")
+            out.reasons.append(f"'{play}' is not in the applied book's '{v.formation}'")
     if require_verified:
-        led = verified if verified is not None else load_verified(db)
         rec = led.get(vid)
         ok = bool(rec) and rec.get("catalog_version") == cat.version()
         out.checks["owner_verified"] = ok
@@ -175,7 +184,10 @@ def revalidate_call(db: Any, call: Any, cat: SchemeCatalog) -> None:
         raise ValueError("civil_scheme_only call failed re-validation: " + "; ".join(verdict.reasons))
     assert v is not None
     n = madden_catalog.norm
-    if (n(call.formation), n(call.play)) != (n(v.formation), n(v.base_play)):
+    want_play = sv.get("book_play") or v.base_play
+    if sv.get("book_play") and (load_verified(db).get(vid) or {}).get("book_play") != sv.get("book_play"):
+        raise ValueError("book-name alias is not the owner-confirmed one")
+    if (n(call.formation), n(call.play)) != (n(v.formation), n(want_play)):
         raise ValueError("displayed formation/play differs from the variant's")
     shown = [tuple(a) for a in sv.get("adjustments") or []]
     want = [(a.target, a.action) for a in v.adjustments]

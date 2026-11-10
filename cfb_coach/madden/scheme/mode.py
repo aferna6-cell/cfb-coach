@@ -54,7 +54,8 @@ def artifact_dir(db: Any) -> Path | None:
     st = load_state(db)
     if st.get("artifact"):
         return Path(st["artifact"])
-    cur = models_root() / "current"
+    # Without `enable`, a session flag (--civil-scheme-only) uses the newest trained artifact.
+    cur = models_root() / "latest"
     if cur.is_file():
         return Path(cur.read_text().strip())
     return None

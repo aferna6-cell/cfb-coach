@@ -386,3 +386,13 @@ def test_13_enable_disable_revert_round_trip(tmp_path, monkeypatch, capsys):
     (art / "model.json").write_text(json.dumps(body))
     with pytest.raises(ValueError):
         sm.load(art)
+
+
+def test_14_z_spot_only_with_an_owner_confirmed_book_name(tmp_path):
+    db = _db(tmp_path)
+    v = CAT.get("civil_5wr_z_spot_1")
+    assert not lg.check(v, CAT, db=db, require_verified=False).legal          # no alias is inferred
+    with pytest.raises(ValueError):
+        lg.record_verified(db, CAT, v.variant_id, book_play="Not A Play")
+    lg.record_verified(db, CAT, v.variant_id, book_play="L Spot")              # owner confirms the book name
+    assert lg.check(v, CAT, db=db).legal
