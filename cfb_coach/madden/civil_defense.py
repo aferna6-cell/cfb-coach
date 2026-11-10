@@ -38,6 +38,7 @@ def resolve_user(
     installed_book: Mapping[str, Sequence[str]],
     *,
     owner_match_checks_configured: bool = False,
+    active_coaching_profile: str | None = None,
     confirmed_macros: Sequence[str] = (),
     catalog: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -58,7 +59,9 @@ def resolve_user(
     eligible = []
     blockers = set()
     for e in matched:
-        if e.get("user_evidence") != "explicit_user" or not e.get("user"):
+        if e.get("required_coaching_profile") != active_coaching_profile:
+            blockers.add("COACHING_ADJUSTMENT_PROFILE_UNCONFIRMED_OR_INCOMPATIBLE")
+        elif e.get("user_evidence") != "explicit_user" or not e.get("user"):
             blockers.add("USER_NOT_EXPLICIT_IN_GUIDE")
         elif not e.get("stock_first_eligible") or e.get("additional_setup"):
             blockers.add("REQUIRES_UNDISPLAYED_MANUAL_SETUP")
