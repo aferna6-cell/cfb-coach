@@ -103,6 +103,7 @@ class Scorer:
             ps, pa = self.model.predict(xs, op), self.model.predict(xa, op)
             d = self.adjusted[v.variant_id]
             extra_var = (len(d.unrepresented) * sm.UNREPRESENTED_SD) ** 2
+            extra_var += sum(1 for _i, _sh, m in d.stems if m == "directional") * sm.DIRECTIONAL_STEM_SD ** 2
             if d.geometry_status in ("name_only", "unknown"):
                 extra_var += sm.NAME_ONLY_SD ** 2
             oos = self.model.out_of_support(xa)
@@ -138,6 +139,7 @@ class Scorer:
                 "coverage_tags_known": e["coverage_tags_known"], "repeat_penalty": round(REPEAT_W * reps, 4),
                 "verified_variant_outcomes": n, "variant_residual": round(resid, 4),
                 "geometry": d.geometry_status, "unrepresented_adjustments": [i + 1 for i in d.unrepresented],
+                "stems": [[i + 1, sh, m] for i, sh, m in d.stems],
                 "out_of_support": oos[:6]}))
         out.sort(key=lambda s: (-s.utility, s.variant.variant_id))
         return out
@@ -162,6 +164,19 @@ def load_scorer(art_dir: str | Path, cat: sc.SchemeCatalog | None = None) -> Sco
     _SCORER.clear()
     _SCORER[key] = s
     return s
+
+
+def warm_up(db: Any) -> float:
+    """Load the catalog, model and geometry before the first snap so the first live call meets the latency target.
+    Read-only; returns the load time in ms (0 when no artifact is configured)."""
+    t0 = time.perf_counter()
+    art = md.artifact_dir(db)
+    if art is None or not (Path(art) / "model.json").is_file():
+        return 0.0
+    scorer = load_scorer(art, sc.load_cached())
+    for v in scorer.cat.variants:
+        dz.adjusted_design(v, scorer.geo)
+    return (time.perf_counter() - t0) * 1000.0
 
 
 def variant_stats(conn: Any, cat: sc.SchemeCatalog) -> dict[str, tuple[float, float]]:
@@ -245,18 +260,27 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
     alias = ((ledger or {}).get(v.variant_id) or {}).get("book_play")
     f, q = lg.book_names(book, v.formation, alias or v.base_play)
     formation, play = (f or v.formation), (q or alias or v.base_play)
-    adjs = [f"{a.index + 1}) {a.target}: {a.action}" for a in v.adjustments]
+    from cfb_coach.madden.scheme import adjustments as adjm
+    specs = {sp.index: sp for sp in adjm.parse_variant(v)}
+    adjs = [f"{a.index + 1}) {a.target}: {a.action}"
+            + (f" [{adjm.stem_label(specs[a.index].stem_shift)}]" if adjm.stem_label(specs[a.index].stem_shift) else "")
+            for a in v.adjustments]
     warnings = []
     if not v.name_verified:
         warnings.append("variant NAME unverified in the source guide")
     if alias:
         warnings.append(f"guide base play '{v.base_play}' is called '{alias}' in your book (owner-confirmed name)")
-    if not v.verified_in_user_game:
-        warnings.append("catalog: not verified in your game" + (" — owner-verified locally" if not shadow else ""))
+    if lg.owner_confirmation_applies(sc.load_cached()):
+        warnings.append("adjustments owner-confirmed executable (2026-11-10, t333u); no recorded outcome for this "
+                        "variant yet")
     if shadow:
         warnings.append("SHADOW: owner verification skipped; do not treat as a live call")
     if not v.coverage_tags_known:
         warnings.append("no coverage tags for this formation (unknown, not negative)")
+    directional = [st for st in top.parts.get("stems") or [] if st[2] == "directional"]
+    if directional:
+        warnings.append("stem(s) " + ", ".join(f"#{st[0]}" for st in directional) + " applied directionally on "
+                        "provisional geometry (exact depth unknown; included in the uncertainty)")
     if top.parts.get("unrepresented_adjustments"):
         warnings.append("adjustments not represented on provisional geometry: "
                         + ", ".join(f"#{i}" for i in top.parts["unrepresented_adjustments"]))
@@ -270,7 +294,7 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
                        "buttons": "no button map — set by hand: " + "; ".join(adjs), "why": why}
     call.scheme_variant = {
         "status": "CALL", "variant_id": v.variant_id, "variant_name": v.variant_name, "formation": v.formation,
-        "base_play": v.base_play, "book_play": alias or None,
+        "base_play": v.base_play, "book_play": alias or None, "adjustment_lines": adjs,
         "adjustments": [[a.target, a.action] for a in v.adjustments],
         "p_success": round(top.p_success, 4), "uncertainty_logit_sd": round(top.sd, 4),
         "p_first_down": round(top.p_first_down, 4), "p_explosive": round(top.p_explosive, 4),
@@ -352,7 +376,8 @@ def format_lines(call: Any) -> list[str]:
         return [f"{lg.NO_LEGAL}", f"  why: {sv.get('explanation')}"]
     lines = [f"FORMATION: {sv['formation']}", f"BASE PLAY: {sv['base_play']}",
              f"VARIATION: {sv['variant_name']}  [{sv['variant_id']}]", "ADJUSTMENTS (all, in order):"]
-    lines += [f"  {i + 1}) {t}: {a}" for i, (t, a) in enumerate(sv["adjustments"])]
+    lines += [f"  {line}" for line in sv.get("adjustment_lines") or
+              [f"{i + 1}) {t}: {a}" for i, (t, a) in enumerate(sv["adjustments"])]]
     lines.append(f"P(success) {sv['p_success']:.0%}  uncertainty ±{sv['uncertainty_logit_sd']:.2f} logit  "
                  f"1st down {sv['p_first_down']:.0%}  explosive {sv['p_explosive']:.0%}  sack/TO/loss {sv['p_negative']:.0%}"
                  + (f"  exp yards {sv['exp_yards']:.1f}" if sv.get("exp_yards") is not None else ""))

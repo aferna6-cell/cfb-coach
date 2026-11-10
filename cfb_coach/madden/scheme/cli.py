@@ -106,18 +106,16 @@ def cmd_checklist(args) -> int:
         print(f"\n== {f} ==")
         for v in vs:
             vd = verdicts[v.variant_id]
-            cat_ok = vd.checks.get("stock_play", False)
-            status = ("EXECUTABLE (owner verified)" if vd.legal else
-                      "CATALOG-APPROVED, NOT VERIFIED EXECUTABLE" if cat_ok else "BLOCKED")
+            status = ("LIVE-LEGAL (adjustments owner-confirmed 2026-11-10, t333u)" if vd.legal else
+                      "BLOCKED: " + "; ".join(vd.reasons))
             print(f"[ ] {v.variant_name}  [{v.variant_id}]  — {status}")
             print(f"      base play: {v.base_play}")
             for line in adj.checklist_lines(v):
                 print(f"      {line}")
-            for r in vd.reasons:
-                print(f"      ! {r}")
             if v.variant_id in led:
                 print(f"      verified_at {led[v.variant_id].get('verified_at')}")
-    print("\nAfter confirming one variant in Practice: python3 -m cfb_coach ml civil-scheme verify --variant <id>")
+    print("\nAll catalog adjustments are owner-confirmed executable (2026-11-10, t333u). Formations must be in the")
+    print("applied book: ml civil-scheme prepare-book --stage, install, then prep --mark-applied.")
     if db is not None:
         db.close()
     return 0

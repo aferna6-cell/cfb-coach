@@ -91,7 +91,7 @@ class MaddenCall:
             line += (f"\n  IF {hint['condition']}: {hint['name']} — {hint['buttons']}"
                      " | OTHERWISE use the play unchanged (optional; not logged as executed)")
         label = getattr(self, "call_label", None)
-        if label in ("EXPERIMENTAL", "HEURISTIC"):
+        if label in ("EXPERIMENTAL", "HEURISTIC", "CIVIL_SCHEME_ONLY"):
             line += f"\n  LABEL: {label}"
         log = getattr(self, "defense_v1_log", None)
         if isinstance(log, dict) and log.get("policy"):
@@ -1109,4 +1109,6 @@ def make_call(
         stamp_displayed_label(call)
     except Exception:  # noqa: BLE001 — the label must not change the play
         pass
+    if isinstance(getattr(call, "scheme_variant", None), dict):
+        call.call_label = "CIVIL_SCHEME_ONLY"   # never shown as HEURISTIC: the heuristic picker did not run
     return call

@@ -39,6 +39,7 @@ TARGETS = ("success", "first_down", "explosive", "negative")
 UTILITY = {"success": 1.0, "explosive": 0.10, "negative": -0.20}   # fixed weights; no situation rules
 VARIANT_TRANSFER = 0.5
 UNREPRESENTED_SD = 0.15        # added logit sd per adjustment that could not be represented on geometry
+DIRECTIONAL_STEM_SD = 0.10     # added logit sd per stock-route stem applied directionally (exact depth unknown)
 NAME_ONLY_SD = 0.25            # added logit sd when the base play has no geometry at all
 AUX_NAMES = ft.NAMES + ("k_existing_logit",)
 NEGATIVE_KINDS = frozenset({"int", "fumble", "sack"})

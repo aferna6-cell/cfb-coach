@@ -4,8 +4,10 @@ A variant is LIVE-legal only if every check passes, in this order:
   1. catalog      it is one of the 26 catalog variant IDs (red-zone packages / the unnamed 5WR setup never are)
   2. stock        its formation and base play exist, by exact normalized name, in the in-repo Buccaneers stock book
   3. book         the formation and base play are in the APPLIED (installed) offense book of record
-  4. verified     the owner confirmed in Madden 27 that the exact variant (formation, base play, every
-                  adjustment, and its name) is executable: ``ml civil-scheme verify``
+  4. executable   the owner confirmed the variant's adjustments are executable. Aidan confirmed ALL catalog
+                  adjustments for this catalog version on 2026-11-10 (t333u), recorded in
+                  ``adjustments.OWNER_CONFIRMED_ADJUSTMENTS``; a different catalog version needs a new
+                  confirmation (per variant: ``ml civil-scheme verify``).
 Shadow evaluation (offline only) may skip 4 and is always labeled SHADOW.
 Nothing here substitutes a different play, drops an adjustment, or offers an unadjusted version
 (``unadjusted_allowed`` is False for all 26).
@@ -148,14 +150,19 @@ def check(v: SchemeVariant | None, cat: SchemeCatalog, *, db: Any = None, book: 
             out.reasons.append(f"'{play}' is not in the applied book's '{v.formation}'")
     if require_verified:
         rec = led.get(vid)
-        ok = bool(rec) and rec.get("catalog_version") == cat.version()
-        out.checks["owner_verified"] = ok
-        if not rec:
-            out.reasons.append("not yet confirmed executable in Madden 27 (ml civil-scheme verify --variant ...)")
-        elif not ok:
-            out.reasons.append("verified against a different catalog version: re-verify")
+        per_variant = bool(rec) and rec.get("catalog_version") == cat.version()
+        blanket = owner_confirmation_applies(cat)
+        out.checks["owner_verified"] = per_variant or blanket
+        out.checks["owner_confirmed_adjustments"] = blanket
+        if not (per_variant or blanket):
+            out.reasons.append("adjustments not owner-confirmed for this catalog version (ml civil-scheme verify --variant ...)")
     out.legal = not out.reasons
     return out
+
+
+def owner_confirmation_applies(cat: SchemeCatalog) -> bool:
+    from cfb_coach.madden.scheme.adjustments import OWNER_CONFIRMED_ADJUSTMENTS as oc
+    return cat.catalog_id == oc["catalog_id"] and cat.version() == oc["catalog_version"]
 
 
 def legal_set(cat: SchemeCatalog, *, db: Any = None, book: Mapping[str, Any] | None = None,

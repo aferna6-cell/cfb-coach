@@ -87,30 +87,32 @@ def test_02_stock_book_membership_exact_names_no_alias():
 
 
 # 3 -------------------------------------------------------------- live legality
-def test_03_unverified_variants_blocked_live_verified_in_book_legal(tmp_path):
+def test_03_owner_confirmed_adjustments_make_in_book_variants_legal_book_still_required(tmp_path):
     db = _db(tmp_path, formations=FORMS[:3])
     legal, verdicts = lg.legal_set(CAT, db=db)
-    assert legal == []
-    assert all(not vd.legal for vd in verdicts.values())
-    _verify_all(db, {"civil_bucs_mesh_3"})
-    legal, _ = lg.legal_set(CAT, db=db)
-    assert [v.variant_id for v in legal] == ["civil_bucs_mesh_3"]
-    # 5WR is not in this applied book -> cannot be verified
-    with pytest.raises(ValueError):
-        lg.record_verified(db, CAT, "civil_5wr_clear_deep_1")
-    with pytest.raises(ValueError):
-        lg.record_verified(db, CAT, "civil_5wr_z_spot_1")
+    ids = {v.variant_id for v in legal}
+    assert ids == {v.variant_id for v in CAT.variants if v.formation in FORMS[:3]}      # 17, no per-variant verify
+    assert all(verdicts[i].checks["owner_confirmed_adjustments"] for i in ids)
+    for v in CAT.variants:
+        if v.formation == "Gun 5WR Tight":
+            assert not verdicts[v.variant_id].legal                                     # formation not installed
+    # the blanket owner confirmation is pinned to this catalog version
+    import dataclasses
+    other = dataclasses.replace(CAT, digest="0" * 64)
+    assert not lg.owner_confirmation_applies(other)
+    assert lg.legal_set(other, db=db)[0] == []
 
 
 # 4 -------------------------------------------------------------- NO_LEGAL, no fallback
 def test_04_no_legal_scheme_play_without_fallback(tmp_path, civil_env, monkeypatch):
-    from cfb_coach.madden import playcaller
-    db = _db(tmp_path)
+    from cfb_coach.madden import catalog as mc, playcaller
+    other = next(f for f in mc.book_formations("offense", "Buccaneers") if f not in FORMS)
+    db = _db(tmp_path, formations=[other])
     monkeypatch.setattr(playcaller, "_pick_offense", lambda *a, **k: (_ for _ in ()).throw(AssertionError("heuristic")))
     call = playcaller.make_call(_sit(), "cpu", db)
     assert call.play == lg.NO_LEGAL and call.formation == ""
     assert call.scheme_variant["status"] == lg.NO_LEGAL
-    assert "not yet confirmed executable" in call.scheme_variant["explanation"]
+    assert "not in the applied offense book" in call.scheme_variant["explanation"]
     from cfb_coach.madden.model.offense_adjustment_designer import validate_live_call
     validate_live_call(db, call, opponent_id="cpu")
 
@@ -396,3 +398,88 @@ def test_14_z_spot_only_with_an_owner_confirmed_book_name(tmp_path):
         lg.record_verified(db, CAT, v.variant_id, book_play="Not A Play")
     lg.record_verified(db, CAT, v.variant_id, book_play="L Spot")              # owner confirms the book name
     assert lg.check(v, CAT, db=db).legal
+
+
+# owner instruction t333u (1): only the 26 listed variant IDs can ever be output -----------------
+def test_15_only_the_26_catalog_variants_can_be_output(tmp_path, civil_env, monkeypatch):
+    import dataclasses
+    import random
+    from cfb_coach.madden import playcaller
+    db = _db(tmp_path)
+    allowed = set(CAT.ids)
+    assert len(allowed) == 26
+    rng = random.Random(3)
+    seen = set()
+    labels = ["cover_3_sky", "cover_1_unspecified", "cover_2_man", "cover_4_quarters", "tampa_2", "cover_6"]
+    for i in range(60):
+        lab = rng.choice(labels)
+        look = lab.replace("_", " ") if i % 2 else None
+        call = playcaller.make_call(_sit(rng.randint(1, 4), rng.randint(1, 20), rng.randint(1, 99),
+                                         session=f"g{i % 5}", look=look), "cpu", db)
+        sv = call.scheme_variant
+        assert sv["status"] == "CALL" and sv["variant_id"] in allowed
+        seen.add(sv["variant_id"])
+    assert seen <= allowed
+    # no other path: anything that is not an exact catalog variant is rejected before display
+    real = CAT.get("civil_bucs_mesh_3")
+    for fake in (dataclasses.replace(real, variant_id="invented_play"),
+                 dataclasses.replace(real, adjustments=real.adjustments[:-1]),          # dropped adjustment
+                 dataclasses.replace(real, base_play="Mesh Post")):                     # substituted play
+        orig = co.Scorer.score
+
+        def bad(self, variants, **kw):
+            out = orig(self, variants, **kw)
+            out[0].variant = fake
+            return out
+        monkeypatch.setattr(co.Scorer, "score", bad)
+        call = playcaller.make_call(_sit(), "cpu", db)
+        assert call.play == lg.NO_LEGAL, fake
+        monkeypatch.setattr(co.Scorer, "score", orig)
+    # blocked entries are never candidates even if injected into the legal list
+    for b in CAT.blocked_ids:
+        assert not lg.check(None, CAT, db=db, variant_id=b).legal
+
+
+# owner instruction t333u (2): every recommendation lists ALL adjustments verbatim, in order, stems explicit ------
+def test_16_every_variant_lists_all_adjustments_and_stems_are_applied(tmp_path):
+    from cfb_coach.madden.scheme import adjustments as adjm
+    geo = dz.GeometrySource(enabled=False)
+    s = co.Scorer(sm.load(_artifact(tmp_path)), CAT, geo)
+    bel = bl.combine({}, 0.1, 0, "none", [])
+    n_stems = 0
+    for v in CAT.variants:
+        top = s.score([v], down=1, distance=10, yardline=40, opponent_id="cpu", opponent_type="cpu", belief=bel,
+                      offset_override={v.variant_id: 0.5})
+        call = co.build_call(top[0], top, bel, book=None, shadow=False)
+        text = call.format()
+        pos = -1
+        for a in v.adjustments:
+            line = f"{a.index + 1}) {a.target}: {a.action}"
+            at = text.find(line)
+            assert at > pos, (v.variant_id, line)          # present and in order
+            pos = at
+        assert call.scheme_variant["adjustments"] == [[a.target, a.action] for a in v.adjustments]
+        assert all(f"{a.target}: {a.action}" in call.adjustment["buttons"] for a in v.adjustments)
+        specs = adjm.parse_variant(v)
+        assert all(sp.representable for sp in specs)
+        d = dz.adjusted_design(v, geo)
+        stem_idx = [sp.index for sp in specs if sp.stem_shift]
+        assert sorted(i for i, _sh, _m in d.stems) == sorted(stem_idx), v.variant_id   # no stem dropped
+        for sp in specs:
+            if sp.stem_shift:
+                n_stems += 1
+                tag = "STEM UP" if sp.stem_shift > 0 else "STEM DOWN"
+                assert f"{sp.index + 1}) {sp.target}: {sp.action} [{tag}" in text
+                without = dz.adjusted_design(v, geo, applied=[i for i in range(len(v.adjustments)) if i != sp.index])
+                assert dz.route_features(without) != dz.route_features(d), (v.variant_id, sp.index)
+        assert "verify in game" not in text and "hot-route vocabulary" not in text
+    assert n_stems == 11
+
+
+def test_17_civil_call_is_labeled_civil_not_heuristic(tmp_path, civil_env):
+    from cfb_coach.madden import playcaller
+    db = _db(tmp_path)
+    call = playcaller.make_call(_sit(), "cpu", db)
+    assert call.call_label == "CIVIL_SCHEME_ONLY"
+    text = call.format()
+    assert "LABEL: CIVIL_SCHEME_ONLY" in text and "LABEL: HEURISTIC" not in text

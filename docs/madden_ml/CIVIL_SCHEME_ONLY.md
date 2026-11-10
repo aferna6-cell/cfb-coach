@@ -1,7 +1,7 @@
 # civil_scheme_only — the 26-variant Lions offensive scheme mode
 
 Status: **draft, off by default, not live-ready.** Nothing in this mode has been run in a Madden 27 game yet.
-All 26 variants are catalog-approved, and **none is verified executable**. Live calls stay blocked until you verify them one by one in Practice (see the checklist below).
+**Owner confirmation (2026-11-10, t333u):** Aidan confirmed that every catalog adjustment (wheel, short cross, stems up/down, motion, D-pad text and the rest) exists in game and that he knows how to do them. That is recorded in `adjustments.OWNER_CONFIRMED_ADJUSTMENTS`, pinned to catalog `lions_civil_bucs_5wr_v4@15c120decc4b`. Live calls are no longer blocked for unverified adjustments. A variant is live-legal when its formation and base play are in the applied book. On the 11-07 snapshot that is **13 of 26**: 6 Clamp Stack and 7 Gun 5WR Tight variants. Bunch TE and Tight Doubles must be installed first, and Z Spot ×2 need the in-game name.
 
 ## What it does
 
@@ -16,8 +16,8 @@ The mode is selected per session or per DB, and the existing coordinator stays s
 In civil_scheme_only, every offensive call is exactly one of the 26 catalog variant IDs. The call shows:
 
 - the formation, base play, variation name and ID;
-- **every** adjustment, in order and verbatim;
-- verification warnings, an explanation, and P(success), first down, explosive and sack/turnover/loss chances, plus uncertainty.
+- **every** adjustment, in order and verbatim, numbered as in the catalog. Stems are tagged `[STEM UP]`, `[STEM DOWN]` or `[STEM DOWN (all the way)]` and are never dropped or hidden;
+- warnings, an explanation, and P(success), first down, explosive and sack/turnover/loss chances, plus uncertainty.
 
 Reads are shown only when a verified read progression exists, and none does today.
 
@@ -31,7 +31,9 @@ If nothing is legal, the answer is `NO_LEGAL_SCHEME_PLAY` with the reasons. Ther
    - it is a catalog variant ID;
    - its formation and base play are in the in-repo Buccaneers stock data, matched by exact normalized name;
    - both are in the applied (installed) offense book;
-   - you have verified it executable with `ml civil-scheme verify`.
+   - its adjustments are owner-confirmed executable. The blanket confirmation from 2026-11-10 (t333u) covers this catalog version. A new catalog version needs a new confirmation; `ml civil-scheme verify` still records per-variant confirmations and the `--book-play` name alias.
+
+   **Only the 26 IDs can be output.** `test_15` runs 60 random situations and coverage looks and asserts every call is one of the 26. It injects an invented ID, a variant with one adjustment dropped, and a substituted base play into the scorer; all three are rejected before display (`NO_LEGAL_SCHEME_PLAY`). Blocked catalog entries never pass `check`.
 2. **Opponent belief** (`beliefs.py`). Fine coverage labels come from the existing normalizer, and pressure is estimated separately. The belief is a hierarchy: opponent → CPU/human → everyone, built from earlier games only. Earlier games are recency weighted ×0.9 per game. This game's closed snaps are weighted ×0.85 per snap, so the last play counts most. A live pre-snap look (`showing cover 3`) counts once. Coverages that were unreported or unrecognized add nothing: unknown stays unknown.
 3. **Score** (`coordinator.py`, `model.py`):
    - The **existing coordinator's model** (`experimental_model` shrinkage) is the base logit for the base play.
@@ -70,6 +72,18 @@ Tests `test_beater_a/b/c` show the following:
 - Mixed or low evidence keeps every beater term below 0.2 logit.
 - After 3 repeats of the same variant, a different tagged beater takes the top spot.
 
+### Stems and other adjustments in the derived design
+
+All catalog adjustment kinds are representable: route changes, wheel, short cross, motion, D-pad text, stems on commanded routes, and stems on stock routes. `test_16` covers all 26 variants and checks:
+
+- the adjustments appear verbatim and in order in the call text, `scheme_variant["adjustments"]` and the adjustment buttons;
+- each of the 11 stems is tagged;
+- each stem changes the derived design's route features.
+
+**How stems are applied.** A stem on a commanded route shifts that route's depth band. A stem on a stock route (for example "Existing corner route: Stem down all the way" or "TE post: Custom stem up one D-pad click") shifts the band of the matching route family when the provisional geometry identifies exactly one such route. Of the 11 stems, 8 are resolved this way.
+
+If no single route matches, the stem is applied **directionally**: the mean route depth moves about one band per step (−2 bands for "all the way down"), and stem-up/down counts become features. That applies to the "Outside doubles WR: Custom stem up one press on D-pad" stems on the 3 Mtn Cross variants. Each directional stem adds 0.10 logit sd to the uncertainty, and the call shows a warning.
+
 ## Data and training
 
 - **Training data:** verified offensive snaps only. Those are the eligibility `verified_execution`-class rows from `dataset.build_rows`, read from a backup copy opened read-only. A simulated snap is never verified history.
@@ -89,11 +103,13 @@ Tests `test_beater_a/b/c` show the following:
 | Situation | down, distance (linear, log, short/medium/long), field position, red zone, inside 10, goal-to-go, backed up, late down, CPU vs human |
 | Opponent belief | P(man), P(spot zone), P(match), one-high, two-high, zero, pressure, information, entropy |
 | Formation and play | formation-name tokens; play type from the name (all 26 are passes) |
-| Adjusted design | route families, depth bands and weights after adjustments: vertical, breaking, underneath, crossing, curl/sit, mean depth, depth spread, levels, side balance, man-beater and zone-beater shares, quick, deep, deep middle, flat, horizontal, motion, number of commanded or unrepresented adjustments, geometry status |
+| Adjusted design | stem-up / stem-down / directional-stem counts, route families, depth bands and weights after adjustments: vertical, breaking, underneath, crossing, curl/sit, mean depth, depth spread, levels, side balance, man-beater and zone-beater shares, quick, deep, deep middle, flat, horizontal, motion, number of commanded or unrepresented adjustments, geometry status |
 | Interactions (learned) | man × man-beater routes, zone × curl, match × crossers, pressure × quick or deep, two-high × deep middle, one-high × verticals, short yardage × quick, goal-to-go × quick, and others |
 | Existing knowledge | `football_priors` concept-versus-coverage matchup edge; the existing model's logit (offset) |
 
 ## Evaluation (chronological, game-grouped, no leakage)
+
+The model was retrained after the stem features were added (artifact `v20261110-153235`, model sha256 `8fe4858b2c2965b9…`, report `civil_scheme_eval_20261110-153232.json`). The chosen heads are the same, and every head's held-out log loss is unchanged to 3 decimals, except GBT (first down 0.669 → 0.666 and explosive 0.454 → 0.452 on the confirmation folds; not chosen).
 
 The evaluation is rolling-origin by whole game: 13 test games, each trained only on earlier games. The existing-model offset and the beliefs for each row also use only earlier data. Heads were chosen on the first 6 test games and then reported on the last 7.
 
@@ -114,7 +130,7 @@ Held-out log loss on all 13 test games (lower is better). Δ is the game-bootstr
 Coordinator simulation on the 599 held-out situations, playing within each game. These are **predictions, not observed outcomes**:
 
 - 17 distinct variants were picked (entropy 2.32 out of a possible 3.26 nats). The top pick was Texas Y Stutter Wheel 1 at 24%.
-- Adjustments changed the top pick in 13.7% of situations compared with ranking the unadjusted base plays. Variants of the same base play take turns at the top: Mesh is split 199/164/120/115 across 4 variants, and Texas Y-Stutter Wheel 375/154/70.
+- Adjustments changed the top pick in 13.9% of situations compared with ranking the unadjusted base plays. Variants of the same base play take turns at the top: Mesh is split 199/164/120/115 across 4 variants, and Texas Y-Stutter Wheel 375/154/70.
 - When the beater gate was high (41 situations), the pick was a tagged beater for the dominant coverage 93% of the time. With a low gate (175 situations) it was 34%.
 - The existing model's own P(success) for the restricted pick's base play averaged 0.604. Its best play from the whole installed book averaged 0.626, so **the restriction costs about 0.02 predicted P(success)** by the existing model's estimate. The restricted mode's own 0.658 includes the expert and beater terms, which are unvalidated, and is **not** proof of a gain.
 - **Short yardage (distance ≤ 2), 65 snaps:** historically 40% were runs. Runs succeeded 18/26 and passes 26/39.
@@ -125,7 +141,7 @@ Coordinator simulation on the 599 held-out situations, playing within each game.
 
 - All 4 formations exist in the in-repo Buccaneers stock data.
 - 10 of 12 base plays match by exact name. **`Z Spot` and `Z Spot Shake` do not**: the repo's stock data has `L Spot` and `Zl Spot Shake`. PR #115 approved those names as *art aliases* only, so `civil_5wr_z_spot_1` and `civil_5wr_z_spot_shake_1` stay blocked until you confirm the in-game name with `ml civil-scheme verify --variant civil_5wr_z_spot_1 --book-play "L Spot"`.
-- Catalog-valid: **24 of 26** (all except the 2 Z Spot variants). Verified executable: **0 of 26**.
+- Catalog-valid: **24 of 26** (all except the 2 Z Spot variants). Adjustments executable: **26 of 26**, by owner confirmation 2026-11-10 (t333u). Live-legal on the 11-07 book: **13 of 26**. Once Bunch TE and Tight Doubles are installed it becomes **24**, and **26** after the Z Spot names are confirmed with `verify --variant ... --book-play "<name in game>"`.
 - On the 2026-11-07 snapshot, the installed offense book (`ML Designed Offense`, 5 formations) **lacks Gun Bunch TE and Gun Tight Doubles**. `ml civil-scheme prepare-book --stage` stages a pending merged book.
 - Civil.GG sheet cross-check: all 17 non-5WR variants match by name or probable name.
   - `Mtn Shuffle Verts Smash 2` is probably the catalog's "Return Motion (name unverified)".
@@ -152,7 +168,8 @@ Coordinator simulation on the 599 held-out situations, playing within each game.
 - **Defense unchanged:** `git diff --stat 5bd8dce -- $(git ls-files | grep -i defense)` is empty. The only `make_call` change is a new branch in the offense path, and `test_11` proves a defense call never enters the civil coordinator.
 - **No live DB mutation:** training and evaluation open a backup copy with `mode=ro`, and the sha256 is the same before and after (in the report and in `test_10`). Only enable, disable, verify, prepare-book `--stage` and report-adjustments write, and each backs up the DB first.
 - **Unrestricted coordinator preserved** (`test_06`). Old heuristic callers are not activated, because civil mode bypasses them.
-- **Latency:** 29 ms median, 44 ms max for 30 shadow calls against the 655-snap DB on the build box. The target is 150 ms.
+- **Latency:** `play` loads the model and geometry before the first snap (`warm_up`, about 0.6 s, once). Then, on 40 live calls against a copy of the 655-snap DB on the build box: first call 79 ms, median 35 ms, max 79 ms. The target is 150 ms. Without the warm-up, the first call took 0.73 s.
+- **Label:** civil calls show `LABEL: CIVIL_SCHEME_ONLY`, and the `play` banner shows `OFFENSE CONTROLLER: CIVIL_SCHEME_ONLY`. Before this fix they showed `HEURISTIC` even though the heuristic picker never ran (`test_17`).
 
 ## Commands (from `~/cfb-coach` in WSL)
 
@@ -167,10 +184,11 @@ PYTHONPATH=. python3 -m cfb_coach prep --game madden27 -o cpu --text
 PYTHONPATH=. python3 -m cfb_coach prep --game madden27 -o cpu --mark-applied
 # 2. train + evaluate (backs up the DB, trains on the read-only copy, writes ~/.cfb-coach/models/civil_scheme/<version>)
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme train
-# 3. pregame checklist, then verify each variant you executed exactly in Practice
+# 3. pregame checklist (every adjustment listed, stems tagged; status LIVE-LEGAL or BLOCKED with the reason)
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme checklist
-PYTHONPATH=. python3 -m cfb_coach ml civil-scheme verify --variant civil_bucs_texas_y_stutter_wheel_1
-# 4. shadow test (read-only, nothing logged; unverified variants allowed and labeled SHADOW)
+#    optional, only for the Z Spot names: confirm the in-game play name
+PYTHONPATH=. python3 -m cfb_coach ml civil-scheme verify --variant civil_5wr_z_spot_1 --book-play "<exact name in game>"
+# 4. shadow test (read-only, nothing logged; --live-legal-only applies the live filter)
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme shadow -o cpu --down 3 --distance 6 --yardline 45
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme shadow -o cpu --down 1 --distance 10 --yardline 25 --look "cover 3"
 # 5. enable + prove the live path loads the expected model
@@ -191,11 +209,11 @@ Backups go to `~/.cfb-coach/backups/civil_scheme/` and models to `~/.cfb-coach/m
 
 ## Limitations before Madden testing
 
-1. 0 of 26 variants are verified executable, so live calls return `NO_LEGAL_SCHEME_PLAY` until you run `verify`.
+1. No variant has been run in a game yet, and the adjustments are owner-confirmed, not observed. Live calls are allowed for the 13 in-book variants.
 2. Gun Bunch TE and Gun Tight Doubles are not in the installed book on the 11-07 snapshot.
 3. Z Spot and Z Spot Shake need your confirmation of the in-game name.
 4. No verified variant outcomes exist. Every adjustment effect is a transferred, uncertain estimate, and the success head is the existing model.
-5. Four adjustment kinds are not in the repo's hot-route vocabulary: wheel, short cross, D-pad text, and stems on stock routes. They are flagged and need in-game checking.
+5. Stem depths are not measured. 8 of 11 stems shift a specific route band on provisional geometry; 3 are applied directionally with extra uncertainty.
 6. Pass-only: no runs, sneaks or red-zone packages in this mode.
 7. The provisional geometry export may not be on the laptop. Without it every design is `name_only`.
 8. The live DB was not reachable from the build machine. The model was trained on the 11-07 snapshot, and games after 2026-11-05 are not included.

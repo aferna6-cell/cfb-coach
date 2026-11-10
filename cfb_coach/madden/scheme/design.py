@@ -86,6 +86,7 @@ class Design:
     ownership_unresolved: bool
     hint: Mapping[str, Any] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
+    stems: tuple[tuple[int, int, str], ...] = ()   # (adjustment index, shift, "resolved" | "directional")
 
     def concept_trust(self) -> dict[str, float]:
         """concept -> trust: detected on the routes with weight > 0, trusted by their weakest weight; name hint at NAME_TRUST."""
@@ -200,6 +201,8 @@ def adjusted_design(v: SchemeVariant, geo: GeometrySource, applied: Sequence[int
     roles: list[str] = []
     unrep: list[int] = []
     warnings: list[str] = []
+    stems: list[tuple[int, int, str]] = []
+    stock_stems: list[adj.AdjustmentSpec] = []
     motion = bool(oa.name_hint(v.base_play).get("motion"))
     for s in specs:
         warnings.extend(f"#{s.index + 1} {w}" for w in s.warnings)
@@ -212,28 +215,49 @@ def adjusted_design(v: SchemeVariant, geo: GeometrySource, applied: Sequence[int
                 if r.owner and norm(r.owner) == norm(s.role):
                     del commanded[i]
             commanded[s.index] = DesignRoute(s.route_family, band, "unknown", TRUST["commanded"], "commanded", s.role)
+            if s.stem_shift:
+                stems.append((s.index, s.stem_shift, "resolved"))
             if s.role not in roles:
                 roles.append(s.role)
         elif isinstance(s.refers_to, int) and s.refers_to in commanded and s.stem_shift:
             r = commanded[s.refers_to]
             commanded[s.refers_to] = DesignRoute(r.family, adj.shift_band(r.band, s.stem_shift), r.side, r.weight,
                                                  r.source, r.owner)
-        else:
+            stems.append((s.index, s.stem_shift, "resolved"))
+        elif s.refers_to == "base_route" and s.stem_shift:
+            stock_stems.append(s)
+        elif not s.representable:
             unrep.append(s.index)
     k = len(roles)
     n_base = len(base)
     keep = max(0.0, 1.0 - k / max(n_base, NOMINAL_ELIGIBLE)) if n_base else 0.0
-    scaled = tuple(DesignRoute(r.family, r.band, r.side, r.weight * keep, r.source, None) for r in base)
+    scaled_l = [DesignRoute(r.family, r.band, r.side, r.weight * keep, r.source, None) for r in base]
+    # Stems on STOCK routes (owner-confirmed executable). When the catalog names the route family and the
+    # provisional geometry has exactly that family, its depth band is shifted; otherwise the stem is applied
+    # directionally (route_features moves the mean depth) and carries extra uncertainty. Never dropped.
+    for s in stock_stems:
+        fam = adj._split_role(s.target)[1]
+        hits = [i for i, r in enumerate(scaled_l) if fam and r.family == fam]
+        if len(hits) == 1:
+            r = scaled_l[hits[0]]
+            scaled_l[hits[0]] = DesignRoute(r.family, adj.shift_band(r.band, s.stem_shift), r.side, r.weight,
+                                            r.source, s.role)
+            stems.append((s.index, s.stem_shift, "resolved"))
+        else:
+            stems.append((s.index, s.stem_shift, "directional"))
+            warnings.append(f"#{s.index + 1} stem on a stock route applied directionally (exact route/depth not "
+                            "identifiable on provisional geometry; uncertainty added)")
+    scaled = tuple(scaled_l)
     if n_base and k:
         warnings.append("stock route ownership is unresolved on provisional geometry: stock routes are down-weighted "
-                        f"by {keep:.2f} instead of replaced; verify the adjusted routes in game")
+                        f"by {keep:.2f} instead of replaced (geometry representation only)")
     if not n_base:
         warnings.append(f"base play geometry {status.upper()}: only the commanded routes are represented")
     return Design(formation=v.formation, play=v.base_play, variant_id=v.variant_id,
                   routes=scaled + tuple(commanded[i] for i in sorted(commanded)), geometry_status=status,
                   base_route_count=n_base, adjusted_roles=tuple(roles), motion=motion, unrepresented=tuple(unrep),
                   ownership_unresolved=bool(n_base and k), hint=oa.name_hint(v.base_play),
-                  warnings=tuple(dict.fromkeys(warnings)))
+                  warnings=tuple(dict.fromkeys(warnings)), stems=tuple(stems))
 
 
 # ------------------------------------------------------------------ route features (identical for stock and adjusted designs)
@@ -242,8 +266,10 @@ ROUTE_FEATURES = (
     "g_known", "g_commanded", "g_adjusted_frac", "g_unrepresented", "g_motion", "g_status_provisional",
     "r_vertical", "r_breaking", "r_underneath", "r_crossing", "r_curl_sit", "r_mean_depth", "r_depth_spread",
     "r_levels", "r_side_imbalance", "r_man_beater", "r_zone_beater", "r_quick", "r_deep", "r_inside_break",
-    "r_outside_break", "r_deep_middle", "r_flat_short", "r_horizontal",
+    "r_outside_break", "r_deep_middle", "r_flat_short", "r_horizontal", "g_stem_up", "g_stem_down",
+    "g_stem_directional",
 )
+DIRECTIONAL_BAND_YARDS = 6.0     # one stem step ~ one depth band; spread over the nominal eligible receivers
 
 
 def route_features(d: Design) -> dict[str, float]:
@@ -256,6 +282,10 @@ def route_features(d: Design) -> dict[str, float]:
     f["g_unrepresented"] = len(d.unrepresented) / NOMINAL_ELIGIBLE
     f["g_motion"] = 1.0 if d.motion else 0.0
     f["g_status_provisional"] = 1.0 if d.geometry_status in ("high_confidence_extracted", "partial") else 0.0
+    f["g_stem_up"] = sum(1 for _i, sh, _m in d.stems if sh > 0) / NOMINAL_ELIGIBLE
+    f["g_stem_down"] = sum(1 for _i, sh, _m in d.stems if sh < 0) / NOMINAL_ELIGIBLE
+    directional = [sh for _i, sh, m in d.stems if m == "directional"]
+    f["g_stem_directional"] = len(directional) / NOMINAL_ELIGIBLE
     if W <= 0:
         return f
 
@@ -266,6 +296,8 @@ def route_features(d: Design) -> dict[str, float]:
         f["r_" + c] = share(lambda r, c=c: r.meta.category == c)
     ys = [tx.BAND_YARDS.get(r.band, 10.0) for r in rs]
     f["r_mean_depth"] = sum(y * r.weight for y, r in zip(ys, rs)) / W / 20.0
+    for sh in directional:   # directional stock-route stems: -9 "all the way down" ~ two bands
+        f["r_mean_depth"] += max(-2, min(1, sh)) * DIRECTIONAL_BAND_YARDS / NOMINAL_ELIGIBLE / 20.0
     f["r_depth_spread"] = (max(ys) - min(ys)) / 20.0
     f["r_levels"] = len({r.band for r in rs if r.weight >= 0.15}) / 4.0
     sided = [r for r in rs if r.side in ("left", "right")]

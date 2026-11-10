@@ -7,9 +7,12 @@ This module only adds a machine-readable interpretation used to build the adjust
 * stem changes (deeper / shallower / all the way down) and motion,
 * which earlier instruction a modifier refers to ("HB corner route -> Stem down").
 
-Nothing is invented: an action outside the small vocabulary below is ``unknown`` and the
-variant carries a verification warning. Controller inputs are never generated; when the
-source text itself mentions one (e.g. "one press on D-pad") it is shown verbatim only.
+Owner confirmation (Aidan, 2026-11-10, t333u): "all these adjustments exist in game and i am aware of
+how to do them". Every catalog adjustment kind (hot routes incl. wheel and short cross, stems up/down incl.
+"all the way", stems on stock routes, motion / return motion, D-pad stem text) is therefore treated as
+executable; nothing here blocks a call. ``notes`` only describe how the adjustment is represented on the
+provisional geometry (e.g. a stock-route stem applied directionally because the exact depth is unknown).
+Controller inputs are never generated; when the source text mentions one it is shown verbatim.
 """
 from __future__ import annotations
 
@@ -27,8 +30,19 @@ ROUTE_WORDS: tuple[tuple[str, str], ...] = (
     ("flat route", "flat"), ("corner route", "corner"), ("wheel route", "wheel"), ("out route", "out"),
     ("slant route", "slant"), ("slant", "slant"),
 )
-# Hot-route options present in the repo's Madden vocabulary (offense_taxonomy.HOT_ROUTE_OPTIONS).
+# Hot-route options present in the repo's Madden vocabulary (offense_taxonomy.HOT_ROUTE_OPTIONS) ...
 REPO_HOT_ROUTE_FAMILIES = frozenset(tx.HOT_ROUTE_TO_FAMILY.values())
+# ... plus the catalog adjustment kinds the owner confirmed exist in game and are executable.
+OWNER_CONFIRMED_ADJUSTMENTS = {
+    "owner_confirmed_adjustments": "2026-11-10",
+    "source": "t333u",
+    "statement": "all these adjustments exist in game and i am aware of how to do them",
+    "kinds": ["hot_route", "wheel", "short_cross", "stem_up", "stem_down", "stem_all_the_way_down",
+              "stem_on_stock_route", "motion", "return_motion", "d_pad_stem_text"],
+    "catalog_id": "lions_civil_bucs_5wr_v4",
+    "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
+}
+CIVIL_ROUTE_FAMILIES = REPO_HOT_ROUTE_FAMILIES | frozenset({"wheel", "shallow_cross"})
 BAND_ORDER = ("shallow", "short", "intermediate", "deep")
 
 
@@ -43,7 +57,7 @@ class AdjustmentSpec:
     motion: str | None             # verbatim motion instruction, if any
     refers_to: int | str | None    # index of the earlier instruction it modifies, "base_route" (unknown owner) or None
     kind: str                      # hot_route | stem | route_with_stem | route_with_motion | unknown
-    representable: bool            # can the adjusted design represent this instruction exactly?
+    representable: bool            # True for every catalog kind (stock-route stems are applied directionally if needed)
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
     def as_dict(self) -> dict[str, Any]:
@@ -107,58 +121,45 @@ def parse_variant(v: SchemeVariant) -> tuple[AdjustmentSpec, ...]:
 
 
 def _parse_one(a: Adjustment, earlier: Sequence[AdjustmentSpec]) -> AdjustmentSpec:
-    warnings: list[str] = []
+    notes: list[str] = []
     role, target_route = _split_role(a.target)
     route = _route_in(a.action)
     stem = _stem(a.action)
     motion = _motion(a.action)
-    refers: int | str | None = None
-    if "d pad" in _norm(a.action) or "d-pad" in a.action.lower():
-        warnings.append("source text names a controller input; shown verbatim, not generated")
     if role.lower().startswith("existing"):
-        warnings.append("modifies an existing stock route whose owner is not verified; recorded, not applied to geometry")
+        # "Existing corner route: Stem down all the way" -> the stock route of that family.
         return AdjustmentSpec(a.index, a.target, a.action, a.target, None, stem, motion, "base_route",
-                              "stem" if stem else "unknown", False, tuple(warnings))
+                              "stem_on_stock_route" if stem else "stock_route_modifier", True, tuple(notes))
     if route is None and stem != 0 and target_route is None:
         # A stem on this player's route: the route commanded earlier in this variant, else the stock route.
         prior = next((e for e in reversed(earlier) if _norm(e.role) == _norm(role) and e.route_family), None)
         if prior is not None:
             return AdjustmentSpec(a.index, a.target, a.action, role, None, stem, motion, prior.index, "stem", True,
-                                  tuple(warnings))
-        warnings.append(f"stem on {role}'s stock route; stock route ownership is not verified, so the change is "
-                        "recorded but not applied to geometry")
-        return AdjustmentSpec(a.index, a.target, a.action, role, None, stem, motion, "base_route", "stem", False,
-                              tuple(warnings))
+                                  tuple(notes))
+        return AdjustmentSpec(a.index, a.target, a.action, role, None, stem, motion, "base_route",
+                              "stem_on_stock_route", True, tuple(notes))
     if target_route is not None and route is None:
         # A modifier on an existing route: "HB corner route" -> "Stem down".
         prior = next((e for e in reversed(earlier) if _norm(e.role) == _norm(role) and e.route_family == target_route), None)
-        if prior is not None:
-            refers = prior.index
-        else:
-            refers = "base_route"
-            warnings.append(f"modifies the stock {target_route} route of {role or 'an unnamed player'}; "
-                            "stock route ownership is not verified, so the change is recorded but not applied to geometry")
-        kind = "stem" if stem else "unknown"
-        representable = refers != "base_route" and stem != 0
-        if not stem:
-            warnings.append("modifier action not recognized; verify in game")
-        return AdjustmentSpec(a.index, a.target, a.action, role, None, stem, motion, refers, kind,
-                              representable, tuple(warnings))
-    if role.lower().startswith("existing") or (target_route is not None and _norm(role) == "existing"):
-        refers = "base_route"
-        warnings.append("modifies an existing stock route whose owner is not verified; recorded, not applied to geometry")
-        return AdjustmentSpec(a.index, a.target, a.action, role, None, stem, motion, refers,
-                              "stem" if stem else "unknown", False, tuple(warnings))
+        refers: int | str = prior.index if prior is not None else "base_route"
+        kind = ("stem" if refers != "base_route" else "stem_on_stock_route") if stem else "route_modifier"
+        return AdjustmentSpec(a.index, a.target, a.action, role, None, stem, motion, refers, kind, True, tuple(notes))
     if route is None:
-        warnings.append("action not recognized as a route, stem or motion; verify in game")
-        return AdjustmentSpec(a.index, a.target, a.action, role, None, stem, motion, None, "unknown", False,
-                              tuple(warnings))
-    if route not in REPO_HOT_ROUTE_FAMILIES:
-        warnings.append(f"'{route}' is not in the repo's hot-route vocabulary; confirm it is a selectable option for {role}")
-    if motion:
-        warnings.append("motion/return timing is not modeled beyond a motion flag; verify execution in game")
+        notes.append("action has no route/stem/motion keyword the model reads; shown verbatim, not modeled")
+        return AdjustmentSpec(a.index, a.target, a.action, role, None, stem, motion, None, "unmodeled", False,
+                              tuple(notes))
     kind = "route_with_motion" if motion else ("route_with_stem" if stem else "hot_route")
-    return AdjustmentSpec(a.index, a.target, a.action, role, route, stem, motion, None, kind, True, tuple(warnings))
+    return AdjustmentSpec(a.index, a.target, a.action, role, route, stem, motion, None, kind, True, tuple(notes))
+
+
+def stem_label(shift: int) -> str | None:
+    if shift <= -9:
+        return "STEM DOWN (all the way)"
+    if shift < 0:
+        return "STEM DOWN"
+    if shift > 0:
+        return "STEM UP"
+    return None
 
 
 def shift_band(band: str, shift: int) -> str:
@@ -175,7 +176,8 @@ def checklist_lines(v: SchemeVariant) -> list[str]:
     lines = []
     for s in parse_variant(v):
         line = f"{s.index + 1}. {s.target}: {s.action}"
-        if s.warnings:
-            line += "  [verify: " + "; ".join(s.warnings) + "]"
+        tag = stem_label(s.stem_shift)
+        if tag:
+            line += f"   [{tag}]"
         lines.append(line)
     return lines
