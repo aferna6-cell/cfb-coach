@@ -423,7 +423,24 @@ def cmd_call(args: argparse.Namespace) -> int:
     return 0
 
 
+def _apply_offense_mode_flags(args: argparse.Namespace) -> None:
+    """Per-process offense mode override (civil_scheme_only vs the existing unrestricted coordinator)."""
+    civil = bool(getattr(args, "civil_scheme_only", False))
+    unrestricted = bool(getattr(args, "unrestricted_offense", False))
+    if civil and unrestricted:
+        raise SystemExit("choose one of --civil-scheme-only / --unrestricted-offense")
+    from cfb_coach.madden.scheme.mode import CIVIL, ENV_MODE, UNRESTRICTED
+
+    if civil:
+        os.environ[ENV_MODE] = CIVIL
+        print("OFFENSE MODE: civil_scheme_only (26 catalog variants only; NO_LEGAL_SCHEME_PLAY when none is legal)")
+    elif unrestricted:
+        os.environ[ENV_MODE] = UNRESTRICTED
+        print("OFFENSE MODE: unrestricted (existing coordinator)")
+
+
 def cmd_play(args: argparse.Namespace) -> int:
+    _apply_offense_mode_flags(args)
     handler = _madden_handler(args, "cmd_play")
     if handler:
         return handler(args)
@@ -908,6 +925,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Madden only: allow EXPERIMENTAL offensive ML calls during this human-opponent play session. "
              "Off by default; requires `ml experimental`; heuristic rollback: `ml heuristic`.",
+    )
+    p_play.add_argument(
+        "--civil-scheme-only",
+        action="store_true",
+        help="Madden only: this session's offense calls come ONLY from the 26 catalog scheme variants "
+             "(owner-verified, in the applied book), or NO_LEGAL_SCHEME_PLAY. Needs `ml civil-scheme train`. "
+             "Off by default. Rollback: omit the flag (and `ml civil-scheme disable` if enabled).",
+    )
+    p_play.add_argument(
+        "--unrestricted-offense",
+        action="store_true",
+        help="Madden only: force the existing unrestricted offense coordinator for this session even when "
+             "civil_scheme_only is enabled in the DB.",
     )
     p_play.add_argument(
         "--heuristic-offense",

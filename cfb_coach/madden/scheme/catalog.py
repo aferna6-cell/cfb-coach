@@ -1,0 +1,236 @@
+"""Load and validate the user-curated 26-variant Lions offensive scheme catalog.
+
+The dataset (``datasets/madden27/lions_offensive_scheme_catalog.json``, draft PR #152) is
+expert guidance: names, setups and situation/coverage *tags*. It contains no measured
+outcomes. Only ``plays[].variant_id`` entries are callable; the red-zone packages and the
+pending unnamed 5WR setup are loaded only so they can be reported as blocked.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Mapping
+
+DATASET_RELPATH = Path("datasets") / "madden27" / "lions_offensive_scheme_catalog.json"
+EXPECTED_VARIANTS = 26
+EXPECTED_PAIRS = 12
+EXPECTED_FORMATIONS = {
+    "Gun Doubles Clamp Stack": 6,
+    "Gun Bunch TE": 7,
+    "Gun Tight Doubles": 4,
+    "Gun 5WR Tight": 9,
+}
+
+
+class CatalogError(ValueError):
+    """The scheme catalog is missing, malformed or does not match its contract."""
+
+
+@dataclass(frozen=True)
+class Adjustment:
+    target: str
+    action: str
+    macro_marked: bool
+    index: int
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"index": self.index, "target": self.target, "action": self.action,
+                "macro_marked": self.macro_marked}
+
+
+@dataclass(frozen=True)
+class SchemeVariant:
+    variant_id: str
+    variant_name: str
+    playbook: str
+    formation: str
+    base_play: str
+    role: str
+    scheme_category: str
+    adjustments: tuple[Adjustment, ...]
+    expert_situation_tags: tuple[str, ...]
+    expert_coverage_tags: tuple[str, ...]
+    coverage_tags_known: bool
+    name_verified: bool
+    present_in_book_as_shown: bool
+    verified_in_user_game: bool
+    adjustments_verified_in_user_game: bool
+    unadjusted_allowed: bool
+    verification_notes: str = ""
+    raw: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
+
+    @property
+    def pair(self) -> tuple[str, str]:
+        return (self.formation, self.base_play)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "variant_id": self.variant_id, "variant_name": self.variant_name, "playbook": self.playbook,
+            "formation": self.formation, "base_play": self.base_play, "role": self.role,
+            "scheme_category": self.scheme_category,
+            "adjustments": [a.as_dict() for a in self.adjustments],
+            "expert_situation_tags": list(self.expert_situation_tags),
+            "expert_coverage_tags": list(self.expert_coverage_tags),
+            "coverage_tags_known": self.coverage_tags_known, "name_verified": self.name_verified,
+            "verified_in_user_game": self.verified_in_user_game,
+            "adjustments_verified_in_user_game": self.adjustments_verified_in_user_game,
+            "unadjusted_allowed": self.unadjusted_allowed,
+        }
+
+
+@dataclass(frozen=True)
+class BlockedEntry:
+    entry_id: str
+    kind: str          # red_zone_package | pending_5wr_setup
+    reason: str
+    formation: str | None
+    base_plays: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SchemeCatalog:
+    catalog_id: str
+    schema_version: str
+    playbook: str
+    digest: str                 # sha256 of the dataset bytes = dataset version
+    path: str
+    variants: tuple[SchemeVariant, ...]
+    blocked: tuple[BlockedEntry, ...]
+    data_quality_flags: tuple[str, ...]
+
+    @property
+    def ids(self) -> tuple[str, ...]:
+        return tuple(v.variant_id for v in self.variants)
+
+    def get(self, variant_id: str) -> SchemeVariant | None:
+        return next((v for v in self.variants if v.variant_id == variant_id), None)
+
+    @property
+    def pairs(self) -> tuple[tuple[str, str], ...]:
+        seen: list[tuple[str, str]] = []
+        for v in self.variants:
+            if v.pair not in seen:
+                seen.append(v.pair)
+        return tuple(seen)
+
+    @property
+    def blocked_ids(self) -> frozenset[str]:
+        return frozenset(b.entry_id for b in self.blocked)
+
+    def version(self) -> str:
+        return f"{self.catalog_id}@{self.digest[:12]}"
+
+
+def repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def default_path() -> Path:
+    return repo_root() / DATASET_RELPATH
+
+
+def _name_verified(p: Mapping[str, Any]) -> bool:
+    name = str(p.get("variant_name") or "")
+    if "unverified" in name.lower() or "provisional" in str(p.get("variant_id") or ""):
+        return False
+    if p.get("variant_name_verified_in_screenshot") is False:
+        return False
+    return True
+
+
+def parse(raw: Mapping[str, Any], *, digest: str, path: str = "") -> SchemeCatalog:
+    plays = raw.get("plays")
+    if not isinstance(plays, list) or not plays:
+        raise CatalogError("catalog has no plays[]")
+    variants: list[SchemeVariant] = []
+    for p in plays:
+        vid = str(p.get("variant_id") or "").strip()
+        if not vid:
+            raise CatalogError("a play has no variant_id")
+        for key in ("formation", "base_play", "variant_name"):
+            if not str(p.get(key) or "").strip():
+                raise CatalogError(f"{vid}: missing {key}")
+        adj = p.get("adjustments")
+        if not isinstance(adj, list):
+            raise CatalogError(f"{vid}: adjustments must be a list")
+        adjustments = []
+        for i, a in enumerate(adj):
+            if not str(a.get("target") or "").strip() or not str(a.get("action") or "").strip():
+                raise CatalogError(f"{vid}: adjustment {i} missing target/action")
+            adjustments.append(Adjustment(str(a["target"]).strip(), str(a["action"]).strip(),
+                                          bool(a.get("macro_marked")), i))
+        avail = p.get("availability") or {}
+        cov = tuple(str(t) for t in (p.get("expert_coverage_tags") or ()))
+        cov_known = bool(cov) and p.get("coverage_guidance_status") != "not_provided_in_screenshots"
+        variants.append(SchemeVariant(
+            variant_id=vid, variant_name=str(p["variant_name"]), playbook=str(p.get("playbook") or ""),
+            formation=str(p["formation"]), base_play=str(p["base_play"]), role=str(p.get("role") or ""),
+            scheme_category=str(p.get("scheme_category") or ""), adjustments=tuple(adjustments),
+            expert_situation_tags=tuple(str(t) for t in (p.get("expert_situation_tags") or ())),
+            expert_coverage_tags=cov, coverage_tags_known=cov_known, name_verified=_name_verified(p),
+            present_in_book_as_shown=bool(avail.get("present_in_buccaneers_playbook_as_shown")),
+            verified_in_user_game=bool(avail.get("verified_in_user_game")),
+            adjustments_verified_in_user_game=bool(avail.get("adjustments_verified_in_user_game")),
+            # The dataset never marks an unadjusted base play as an approved variant.
+            unadjusted_allowed=bool(p.get("unadjusted_allowed", False)),
+            verification_notes=str(p.get("verification_notes") or ""), raw=p))
+    ids = [v.variant_id for v in variants]
+    if len(set(ids)) != len(ids):
+        raise CatalogError("duplicate variant_id")
+    blocked: list[BlockedEntry] = []
+    for pk in raw.get("red_zone_packages") or ():
+        blocked.append(BlockedEntry(str(pk.get("package_id")), "red_zone_package",
+                                    "unverified red-zone package (lesson heading/formation unconfirmed); never callable",
+                                    pk.get("formation"), tuple(pk.get("base_plays") or ())))
+    for pk in raw.get("pending_5wr_variants") or ():
+        blocked.append(BlockedEntry(str(pk.get("pending_id")), "pending_5wr_setup",
+                                    str(pk.get("reason_not_callable") or "unnamed pending setup; never callable"),
+                                    pk.get("formation"), tuple(x for x in [pk.get("base_play")] if x)))
+    if set(ids) & {b.entry_id for b in blocked}:
+        raise CatalogError("a blocked entry shares an id with a callable variant")
+    return SchemeCatalog(
+        catalog_id=str(raw.get("catalog_id") or ""), schema_version=str(raw.get("schema_version") or ""),
+        playbook=str(raw.get("installed_offensive_playbook") or ""), digest=digest, path=path,
+        variants=tuple(variants), blocked=tuple(blocked),
+        data_quality_flags=tuple(str(x) for x in (raw.get("data_quality_flags") or ())))
+
+
+def load(path: str | Path | None = None) -> SchemeCatalog:
+    p = Path(path) if path else default_path()
+    try:
+        data = p.read_bytes()
+    except OSError as exc:
+        raise CatalogError(f"scheme catalog not found at {p}: {exc}") from exc
+    try:
+        raw = json.loads(data.decode("utf-8"))
+    except ValueError as exc:
+        raise CatalogError(f"scheme catalog is not valid JSON: {exc}") from exc
+    return parse(raw, digest=hashlib.sha256(data).hexdigest(), path=str(p))
+
+
+@lru_cache(maxsize=4)
+def load_cached(path: str | None = None) -> SchemeCatalog:
+    return load(path)
+
+
+def contract_errors(cat: SchemeCatalog) -> list[str]:
+    """Every way the loaded catalog differs from the approved 26 / 12 / 4 contract."""
+    errs: list[str] = []
+    if len(cat.variants) != EXPECTED_VARIANTS:
+        errs.append(f"expected {EXPECTED_VARIANTS} variants, found {len(cat.variants)}")
+    if len(cat.pairs) != EXPECTED_PAIRS:
+        errs.append(f"expected {EXPECTED_PAIRS} formation/base-play pairs, found {len(cat.pairs)}")
+    counts: dict[str, int] = {}
+    for v in cat.variants:
+        counts[v.formation] = counts.get(v.formation, 0) + 1
+    if counts != EXPECTED_FORMATIONS:
+        errs.append(f"formation counts {counts} != {EXPECTED_FORMATIONS}")
+    for v in cat.variants:
+        if not v.adjustments and not v.unadjusted_allowed:
+            errs.append(f"{v.variant_id}: no adjustments and unadjusted version not allowed")
+        if v.playbook and v.playbook != cat.playbook:
+            errs.append(f"{v.variant_id}: playbook {v.playbook!r} != catalog playbook {cat.playbook!r}")
+    return errs

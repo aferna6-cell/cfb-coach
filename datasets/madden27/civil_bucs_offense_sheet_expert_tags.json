@@ -1,0 +1,52 @@
+{
+  "schema_version": "civil_sheet_transcription.v1",
+  "label": "expert_tag, unverified",
+  "use": "Cross-check of catalog names/IDs and WEAK expert priors only. Never outcomes, never forced selections, never coverage evidence.",
+  "source": {
+    "title": "Civil.GG 'Bucs Offense' playcall sheet",
+    "url": "civil.gg/members/schemes/madden/bucs-offense?sid=80",
+    "provided_by": "Aidan Fernandes, 6 screenshots, 2026-11-10",
+    "transcription": "Transcribed by the parent assistant from the screenshots and relayed to the builder. The builder could not open the screenshot files (not present on the build machine), so this text is NOT independently re-read. The screenshots themselves are not committed.",
+    "completeness": "Lower parts of some sheet columns are cut off in the screenshots: bucket membership may be incomplete. Only counts and the memberships named below were transcribed."
+  },
+  "situation_buckets": {
+    "Coach's Favorites": {"count": 5, "members_transcribed": null},
+    "1st & 10": {"count": 16, "members_transcribed": null},
+    "Long Yardage": {"count": 9, "members_transcribed": null},
+    "Medium Yardage": {"count": 16, "members_transcribed": null},
+    "Short Yardage": {"count": 16, "members_transcribed": null},
+    "Inside Own 10": {"count": 12, "members_transcribed": null},
+    "Redzone Inside 10": {"count": 2, "members_transcribed": ["Redzone - Pistol Bunch TE", "Redzone - Gun Empty Quads"],
+                          "note": "These are the pending red-zone packages; they remain NOT eligible for live calls."},
+    "Redzone 10-20": {"count": 1, "members_transcribed": ["Mesh 1"]},
+    "Bomb Plays": {"count": 1, "members_transcribed": ["Mtn Shuffle Verts Smash 2"]}
+  },
+  "also_beats": [
+    {"formation": "Gun Doubles Clamp Stack", "sheet_name": "Texas Y Stutter Wheel 1", "also_beats": ["Cover 2", "Cover 3"], "catalog_variant_id": "civil_bucs_texas_y_stutter_wheel_1", "match": "exact_name"},
+    {"formation": "Gun Doubles Clamp Stack", "sheet_name": "Texas Y Stutter Wheel 2", "also_beats": ["Man Coverage"], "catalog_variant_id": "civil_bucs_texas_y_stutter_wheel_2", "match": "exact_name"},
+    {"formation": "Gun Doubles Clamp Stack", "sheet_name": "Texas Y Stutter Wheel 3", "also_beats": ["Man Coverage"], "catalog_variant_id": "civil_bucs_texas_y_stutter_wheel_3", "match": "exact_name"},
+    {"formation": "Gun Doubles Clamp Stack", "sheet_name": "Mtn Flood HB Sneak 1", "also_beats": ["Cover 4"], "catalog_variant_id": "civil_bucs_mtn_flood_hb_sneak_1", "match": "exact_name"},
+    {"formation": "Gun Doubles Clamp Stack", "sheet_name": "Mtn Shuffle Verts Smash 1", "also_beats": ["Cover 2", "Cover 3"], "catalog_variant_id": "civil_bucs_mtn_shuffle_verts_smash_1", "match": "exact_name"},
+    {"formation": "Gun Doubles Clamp Stack", "sheet_name": "Mtn Shuffle Verts Smash 2", "also_beats": ["Cover 4"], "catalog_variant_id": "civil_bucs_mtn_shuffle_verts_smash_return_motion_unverified", "match": "probable_by_bucket_and_tags",
+     "flag": "Catalog name is 'Return Motion (name unverified)'. Sheet puts 'Mtn Shuffle Verts Smash 2' alone in Bomb Plays with Cover 4, matching this variant's tags. Likely its official name; ID not changed; owner confirmation still required."},
+    {"formation": "Gun Bunch TE", "sheet_name": "Mesh 1", "also_beats": ["Cover 2", "Cover 3"], "catalog_variant_id": "civil_bucs_bunch_te_mesh_post_outside_bunch_wr", "match": "probable_by_bucket",
+     "flag": "Catalog name is 'Mesh - Outside Bunch WR Post'. Sheet's only Redzone 10-20 play is 'Mesh 1', and this is the only catalog Mesh variant tagged Redzone 10 20."},
+    {"formation": "Gun Bunch TE", "sheet_name": "Mesh 2", "also_beats": ["Cover 2", "Cover 3"], "catalog_variant_id": "civil_bucs_mesh_2_provisional", "match": "name_confirms_provisional",
+     "flag": "Sheet shows a play named 'Mesh 2'; the catalog marks this name provisional. Adjustments were not on the sheet, so the setup mapping still needs owner confirmation."},
+    {"formation": "Gun Bunch TE", "sheet_name": "Mesh 3", "also_beats": ["Cover 3", "Cover 4"], "catalog_variant_id": "civil_bucs_mesh_3", "match": "exact_name"},
+    {"formation": "Gun Bunch TE", "sheet_name": "Mesh 4", "also_beats": ["Cover 2", "Cover 3"], "catalog_variant_id": "civil_bucs_mesh_4_provisional", "match": "name_confirms_provisional",
+     "flag": "Sheet shows 'Mesh 4'; catalog name provisional. Setup mapping still needs owner confirmation."},
+    {"formation": "Gun Bunch TE", "sheet_name": "Mesh 5", "also_beats": ["Cover 4"], "catalog_variant_id": "civil_bucs_mesh_5", "match": "exact_name"},
+    {"formation": "Gun Bunch TE", "sheet_name": "Cheat TE Hitch HB Seam 1", "also_beats": ["Cover 2", "Cover 3"], "catalog_variant_id": "civil_bucs_cheat_te_hitch_hb_seam_1", "match": "exact_name"},
+    {"formation": "Gun Bunch TE", "sheet_name": "Cheat TE Hitch N Go 1", "also_beats": ["Cover 2", "Cover 3"], "catalog_variant_id": "civil_bucs_cheat_te_hitch_n_go_1", "match": "exact_name",
+     "flag": "Sheet lists it under Gun Bunch TE, consistent with the catalog's inferred formation (catalog flag asked to confirm it)."},
+    {"formation": "Gun Tight Doubles", "sheet_name": "MTN Cross HB Sneak 1", "also_beats": ["Cover 2", "Cover 3"], "catalog_variant_id": "civil_bucs_mtn_cross_hb_sneak_1", "match": "exact_name"},
+    {"formation": "Gun Tight Doubles", "sheet_name": "MTN Cross HB Sneak 2", "also_beats": ["Cover 4", "Man Coverage"], "catalog_variant_id": "civil_bucs_mtn_cross_hb_sneak_2", "match": "exact_name"},
+    {"formation": "Gun Tight Doubles", "sheet_name": "MTN Cross HB Sneak 3", "also_beats": ["Cover 3", "Cover 2"], "catalog_variant_id": "civil_bucs_mtn_cross_hb_sneak_corner_flat_unverified", "match": "probable_by_tags",
+     "flag": "Catalog name is 'Corner/Flat (name unverified)', tagged Cover 3/Cover 2/Cover 4. 'MTN Cross HB Sneak 3' is the only unmatched Tight Doubles sheet entry. Likely its name; owner confirmation required."},
+    {"formation": "Gun Tight Doubles", "sheet_name": "Cross Wheels 1", "also_beats": ["Cover 2", "Cover 3"], "catalog_variant_id": "civil_bucs_cross_wheels_1", "match": "exact_name"}
+  ],
+  "absent_from_sheet": {
+    "Gun 5WR Tight": "No Gun 5WR Tight plays appear on this sheet. Treated as UNKNOWN (not on this sheet), never as negative evidence."
+  }
+}

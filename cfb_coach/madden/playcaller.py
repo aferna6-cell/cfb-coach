@@ -81,6 +81,11 @@ class MaddenCall:
             line += f"\n  {self.macro_line()}"
         if self.adjustment_line():
             line += f"\n  {self.adjustment_line()}"
+        sv = getattr(self, "scheme_variant", None)
+        if isinstance(sv, dict):
+            from cfb_coach.madden.scheme.coordinator import format_lines
+
+            line += "\n  " + "\n  ".join(format_lines(self))
         if self.conditional_action:
             hint = self.conditional_action
             line += (f"\n  IF {hint['condition']}: {hint['name']} — {hint['buttons']}"
@@ -914,6 +919,13 @@ def _sit_stamp(sit: Situation) -> str:
     return "sit " + " ".join(bits) if bits else ""
 
 
+def _civil_scheme_only(db: Any) -> bool:
+    """Offense mode switch (default: the existing unrestricted coordinator)."""
+    from cfb_coach.madden.scheme.mode import CIVIL, offense_mode
+
+    return offense_mode(db) == CIVIL
+
+
 def make_call(
     sit: Situation,
     opponent_id: str,
@@ -978,6 +990,7 @@ def make_call(
             note = "CPU = offense-only (no D calls) — switched to O | "
 
     audibles: dict[str, list[str]] | None = None
+    raw: dict[str, Any] | None = None
     if playbook is None:
         raw = active_books(db, (sit.side,))
         books = eligible(raw)
@@ -1025,6 +1038,13 @@ def make_call(
                     }
                 except Exception:  # noqa: BLE001
                     pass
+    elif _civil_scheme_only(db):
+        # civil_scheme_only: the 26 catalog variants only. Never the heuristic or experimental pickers,
+        # never a fallback play: an empty legal set returns NO_LEGAL_SCHEME_PLAY.
+        from cfb_coach.madden.scheme.coordinator import call_civil
+
+        call = call_civil(sit, opponent_id, db, (raw or {}).get("offense") if playbook is None else
+                          {"formations": books.get("offense") or {}})
     else:
         call = _pick_offense(sit, opp, bl, db, rng, sel["offense"], books["offense"], audibles=audibles)
         # Opt-in experimental ML: sealed rebuild of reads/macros when ML selects.
@@ -1059,7 +1079,7 @@ def make_call(
                 pass
     # Optional look-specific instructions require no live coverage input. They
     # do not change the selected play, selected action, or execution log.
-    if not cpu and sit.side == "offense":
+    if not cpu and sit.side == "offense" and not getattr(call, "scheme_variant", None):
         try:
             from cfb_coach.madden.model.conditional_look_actions import suggest_conditional_action
 
