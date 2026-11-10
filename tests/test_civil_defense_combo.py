@@ -18,24 +18,26 @@ def test_stock_match_user_exact():
     c = d.load_catalog()
     book = {"Dime 2-3": ["Cover 3 Match", "Cover 2 Match", "Cover 4 Quarters"]}
     r = d.resolve_user("Dime 2-3", "Cover 3 Match", "trips", book,
-                       owner_match_checks_configured=True, catalog=c)
+                       owner_match_checks_configured=True, active_coaching_profile="match", catalog=c)
     assert r["ok"] and r["user"] == "Hook-Curl Defender"
     assert d.compact_card(r) == "PLAY: Cover 3 Match (Dime 2-3)\nUSER: Hook-Curl Defender"
     r = d.resolve_user("Dime 2-3", "Cover 2 Match", "5wr_tight", book,
-                       owner_match_checks_configured=True, catalog=c)
+                       owner_match_checks_configured=True, active_coaching_profile="match", catalog=c)
     assert r["ok"] and r["user"] == "Short-side Deep Half Safety"
 
 
 def test_unconfirmed_check_and_unknown_roles_block():
     c = d.load_catalog()
     book = {"Dime 2-3": ["Cover 3 Match", "Cover 2 Match", "Cover 4 Quarters"]}
-    assert not d.resolve_user("Dime 2-3", "Cover 3 Match", "trips", book, catalog=c)["ok"]
+    assert d.resolve_user("Dime 2-3", "Cover 3 Match", "trips", book, owner_match_checks_configured=True, catalog=c)["reason"] == "COACHING_ADJUSTMENT_PROFILE_UNCONFIRMED_OR_INCOMPATIBLE"
+    assert not d.resolve_user("Dime 2-3", "Cover 3 Match", "trips", book,
+                              active_coaching_profile="match", catalog=c)["ok"]
     assert not d.resolve_user("Dime 2-3", "Cover 4 Quarters", "bunch", book,
-                              owner_match_checks_configured=True, catalog=c)["ok"]
+                              owner_match_checks_configured=True, active_coaching_profile="match", catalog=c)["ok"]
     assert not d.resolve_user("Dime 2-3", "Cover 2 Match", "trips", book,
-                              owner_match_checks_configured=True, catalog=c)["ok"]
+                              owner_match_checks_configured=True, active_coaching_profile="match", catalog=c)["ok"]
     assert d.resolve_user("Dime 2-3", "Cover 6", "trips", book,
-                          owner_match_checks_configured=True, catalog=c)["reason"] == "NOT_INSTALLED"
+                          owner_match_checks_configured=True, active_coaching_profile="match", catalog=c)["reason"] == "NOT_INSTALLED"
 
 
 def test_nickel_packages_blocked_even_if_macros_confirmed():
@@ -44,7 +46,7 @@ def test_nickel_packages_blocked_even_if_macros_confirmed():
             "Dime 2-3 Odd": ["DB Fire 2"]}
     for e in (e for e in c["entries"] if e["kind"] == "nickel_recipe"):
         r = d.resolve_user(e["formation"], e["play"], e["offense_shape"], book,
-                           owner_match_checks_configured=True,
+                           owner_match_checks_configured=True, active_coaching_profile="nickel",
                            confirmed_macros=("24 Base", "DB Fire"), catalog=c)
         assert not r["ok"], (e["id"], r)
 
