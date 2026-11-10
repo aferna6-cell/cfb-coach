@@ -1,7 +1,10 @@
 """The ONE legal-candidate filter for civil_scheme_only. Runs before scoring and again before display.
 
 A variant is LIVE-legal only if every check passes, in this order:
-  1. catalog      it is one of the 26 catalog variant IDs (red-zone packages / the unnamed 5WR setup never are)
+  1. catalog      it is one of the catalog's callable IDs: the 26 variants, plus the 5 red-zone package plays
+                  (owner instruction 2026-11-10, t335u). The unnamed 5WR setup never is.
+  1b. field       red-zone package plays only when yards to the goal line <= 10 (yardline >= 90); live calls
+                  always pass the snap's yardline, and re-validation uses the yardline recorded on the call
   2. stock        its formation and base play exist, by exact normalized name, in the in-repo Buccaneers stock book
   3. book         the formation and base play are in the APPLIED (installed) offense book of record
   4. executable   the owner confirmed the variant's adjustments are executable. Aidan confirmed ALL catalog
@@ -25,6 +28,7 @@ from cfb_coach.madden.scheme.catalog import SchemeCatalog, SchemeVariant
 VERIFIED_META_KEY = "civil_scheme_verified_json"
 STOCK_BOOK = "Buccaneers"
 NO_LEGAL = "NO_LEGAL_SCHEME_PLAY"
+ANY_FIELD = object()   # reporting only (checklist/status): skip the field-position gate, never used live
 
 
 @dataclass
@@ -90,7 +94,7 @@ def record_verified(db: Any, cat: SchemeCatalog, variant_id: str, *, note: str =
     if revoke:
         led.pop(variant_id, None)
     else:
-        verdict = check(v, cat, db=db, book=None, require_verified=False, alias=book_play)
+        verdict = check(v, cat, db=db, book=None, require_verified=False, alias=book_play, yardline=ANY_FIELD)
         if not verdict.legal:
             raise ValueError(f"cannot verify {variant_id}: " + "; ".join(verdict.reasons))
         led[variant_id] = {"book_play": book_play or None,"verified_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "by": "owner_cli",
@@ -110,19 +114,26 @@ def _applied_offense_book(db: Any) -> dict[str, Any] | None:
 
 def check(v: SchemeVariant | None, cat: SchemeCatalog, *, db: Any = None, book: Mapping[str, Any] | None = None,
           require_verified: bool = True, verified: Mapping[str, Any] | None = None,
-          variant_id: str | None = None, alias: str | None = None) -> Verdict:
+          variant_id: str | None = None, alias: str | None = None, yardline: Any = None) -> Verdict:
     vid = v.variant_id if v is not None else str(variant_id or "")
     out = Verdict(vid, False)
     if v is None or cat.get(vid) is None or vid in cat.blocked_ids:
         out.checks["catalog"] = False
-        out.reasons.append(f"{vid or '?'} is not one of the catalog's scheme variants (red-zone packages and the "
-                           "unnamed 5WR setup are never callable)")
+        out.reasons.append(f"{vid or '?'} is not one of the catalog's callable scheme variants (the unnamed 5WR "
+                           "setup is never callable)")
         return out
     out.checks["catalog"] = True
     if v != cat.get(vid):
         out.reasons.append("variant content differs from the catalog entry (no edited / substituted variants)")
         out.checks["catalog"] = False
         return out
+    if v.field_zone != "any" and yardline is not ANY_FIELD:
+        ok = v.allowed_at(yardline)
+        out.checks["field_zone"] = ok
+        if not ok:
+            out.reasons.append(f"red-zone package play: callable only inside the opponent 10 (yardline {yardline!r})")
+            out.legal = False
+            return out
     led = verified if verified is not None else (load_verified(db) if (require_verified or alias is None) else {})
     alias = alias or (led.get(vid) or {}).get("book_play")
     play = alias or v.base_play
@@ -166,17 +177,24 @@ def owner_confirmation_applies(cat: SchemeCatalog) -> bool:
 
 
 def legal_set(cat: SchemeCatalog, *, db: Any = None, book: Mapping[str, Any] | None = None,
-              require_verified: bool = True) -> tuple[list[SchemeVariant], dict[str, Verdict]]:
+              require_verified: bool = True, yardline: Any = None) -> tuple[list[SchemeVariant], dict[str, Verdict]]:
+    """``yardline``: the snap's field position (0-100 from our goal line). None means unknown, which keeps the
+    red-zone package plays out. Pass ``ANY_FIELD`` only for reporting."""
     verified = load_verified(db) if require_verified else {}
     if book is None:
         book = _applied_offense_book(db)
-    verdicts = {v.variant_id: check(v, cat, db=db, book=book, require_verified=require_verified, verified=verified)
+    verdicts = {v.variant_id: check(v, cat, db=db, book=book, require_verified=require_verified, verified=verified,
+                                    yardline=yardline)
                 for v in cat.variants}
     return [v for v in cat.variants if verdicts[v.variant_id].legal], verdicts
 
 
-def revalidate_call(db: Any, call: Any, cat: SchemeCatalog) -> None:
-    """Called by the live display gate. Raises ValueError when a displayed civil call is not exactly legal."""
+def revalidate_call(db: Any, call: Any, cat: SchemeCatalog, *, yardline: Any = None) -> None:
+    """Called by the live display gate. Raises ValueError when a displayed civil call is not exactly legal.
+
+    ``yardline``: the live snap's field position when the caller knows it. The field-position gate then uses
+    it (and it must match the yardline the call was scored at); otherwise the recorded yardline is used, and a
+    red-zone package play with no recorded yardline fails."""
     sv = getattr(call, "scheme_variant", None)
     if not isinstance(sv, Mapping):
         raise ValueError("civil_scheme_only call has no scheme variant record")
@@ -186,7 +204,10 @@ def revalidate_call(db: Any, call: Any, cat: SchemeCatalog) -> None:
         return
     vid = str(sv.get("variant_id") or "")
     v = cat.get(vid)
-    verdict = check(v, cat, db=db, require_verified=not sv.get("shadow"), variant_id=vid)
+    y = sv.get("yardline") if yardline is None else yardline
+    if yardline is not None and sv.get("yardline") is not None and str(sv.get("yardline")) != str(yardline):
+        raise ValueError("call was scored at a different field position than the snap being displayed")
+    verdict = check(v, cat, db=db, require_verified=not sv.get("shadow"), variant_id=vid, yardline=y)
     if not verdict.legal:
         raise ValueError("civil_scheme_only call failed re-validation: " + "; ".join(verdict.reasons))
     assert v is not None

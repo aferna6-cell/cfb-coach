@@ -153,7 +153,8 @@ def variant_evidence(conn: Any, cat: SchemeCatalog) -> list[VariantEvidence]:
 
 
 def excluded_snap_keys(conn: Any) -> set[str]:
-    """Civil recommendations whose adjustments were not confirmed or reported: what ran is unknown -> excluded."""
+    """Every civil recommendation's snap key. Callers keep only the ones that have usable variant evidence
+    (adjustment confirmed or owner-reported); the rest are excluded because what ran is unknown."""
     keys: set[str] = set()
     for sid, ml, rec, exe in conn.execute(
             "SELECT id, ml_snap_id, recommended_adjustment_id, executed_adjustment_id FROM snaps"

@@ -81,8 +81,10 @@ def cmd_status(args) -> int:
                   f"games {m.meta.get('games')}  trained {m.meta.get('trained_at')}")
         except Exception as exc:  # noqa: BLE001
             print(f"  loads: NO — {exc}")
-    legal, verdicts = lg.legal_set(cat, db=db, require_verified=True)
-    print(f"live-legal variants: {len(legal)} / {len(cat.variants)}")
+    legal, verdicts = lg.legal_set(cat, db=db, require_verified=True, yardline=lg.ANY_FIELD)
+    n_rz = sum(1 for v in legal if v.field_zone != "any")
+    print(f"live-legal variants: {len(legal)} / {len(cat.variants)}  ({len(legal) - n_rz} anywhere, "
+          f"{n_rz} red-zone package plays inside the opponent 10 only)")
     if db is not None:
         db.close()
     return 0
@@ -94,11 +96,11 @@ def cmd_checklist(args) -> int:
     path = _db_path(args)
     db = _open_ro(path) if path.is_file() else None
     cat = sc.load()
-    _legal, verdicts = lg.legal_set(cat, db=db, require_verified=True)
+    _legal, verdicts = lg.legal_set(cat, db=db, require_verified=True, yardline=lg.ANY_FIELD)
     led = lg.load_verified(db)
     print("PREGAME CHECKLIST — civil_scheme_only (no controller buttons are given; set each adjustment by hand)")
-    print("Restriction: the 26 variants are ALL PASSES. No run, QB sneak or red-zone package can be called in this mode;")
-    print("  short yardage and goal line are covered only by these passes (see the evaluation report).")
+    print("The 26 core variants (all passes) can be called anywhere. The 5 red-zone package plays (owner instruction")
+    print("  2026-11-10, t335u) can be called ONLY inside the opponent 10, and are model-scored there, not forced.")
     by_form: dict[str, list] = {}
     for v in cat.variants:
         by_form.setdefault(v.formation, []).append(v)
@@ -106,10 +108,13 @@ def cmd_checklist(args) -> int:
         print(f"\n== {f} ==")
         for v in vs:
             vd = verdicts[v.variant_id]
-            status = ("LIVE-LEGAL (adjustments owner-confirmed 2026-11-10, t333u)" if vd.legal else
-                      "BLOCKED: " + "; ".join(vd.reasons))
+            where = " — INSIDE THE OPPONENT 10 ONLY (t335u)" if v.field_zone != "any" else ""
+            status = (f"LIVE-LEGAL (adjustments owner-confirmed 2026-11-10, t333u){where}" if vd.legal else
+                      "BLOCKED: " + "; ".join(vd.reasons) + where)
             print(f"[ ] {v.variant_name}  [{v.variant_id}]  — {status}")
             print(f"      base play: {v.base_play}")
+            if v.field_zone != "any" and v.verification_notes:
+                print(f"      note: {v.verification_notes}")
             for line in adj.checklist_lines(v):
                 print(f"      {line}")
             if v.variant_id in led:
@@ -144,7 +149,7 @@ def cmd_prepare_book(args) -> int:
         plays = sorted({v.base_play for v in cat.variants if v.formation == f})
         print(f"  {f}: {'installed' if f in have else 'MISSING from applied book'}; base plays: {', '.join(plays)}")
     if not missing:
-        print("All 4 scheme formations are in the applied book.")
+        print(f"All {len(need)} scheme formations (incl. the red-zone package formations) are in the applied book.")
         return 0
     if not args.stage:
         print("Dry run. Re-run with --stage to stage a pending merged book (current applied + missing formations).")
@@ -163,6 +168,8 @@ def cmd_prepare_book(args) -> int:
         rec["rev"] = int(rec.get("rev") or 1) + 1
         rec["reason"] = "civil_scheme_only: add scheme formations"
         rec["core"] = list(rec["formations"])
+        if "formation_list" in rec:
+            rec["formation_list"] = list(rec["formations"])
         state["pending"]["offense"] = rec
         playbook._save_state(db, state)
     finally:
@@ -378,7 +385,7 @@ def register(ml_sub: Any) -> None:
     q.add_argument("--book-play", default=None,
                    help="owner confirmation that the guide's base play is named differently in the in-game book "
                         "(e.g. Z Spot -> 'L Spot'); never inferred")
-    q = add("shadow", cmd_shadow, "offline ranking for a situation (unverified variants allowed, labeled SHADOW)")
+    q = add("shadow", cmd_shadow, "offline ranking for a situation (labeled SHADOW; red-zone package plays only inside the opponent 10)")
     q.add_argument("--opponent", "-o", default="cpu")
     q.add_argument("--down", type=int, required=True)
     q.add_argument("--distance", type=int, required=True)

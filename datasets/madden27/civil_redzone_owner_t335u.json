@@ -1,0 +1,49 @@
+{
+  "schema_version": "civil_redzone_owner_mapping.v1",
+  "owner_instruction": {
+    "date": "2026-11-10",
+    "source": "t335u",
+    "by": "Aidan (owner)",
+    "statement": "game is done lets take a look overall cannot complain on suggestion is that I want the model to call the redzone offense that is in the book",
+    "effect": "The two catalog red-zone packages (Civil.GG sheet bucket 'Redzone (Inside 10)': 'Redzone - Pistol Bunch TE', 'Redzone - Gun Empty Quads') become model-scored candidates inside the opponent 10 only. The unnamed pending 5WR setup stays ineligible."
+  },
+  "catalog_id": "lions_civil_bucs_5wr_v4",
+  "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
+  "field_zone": {
+    "id": "inside_10",
+    "rule": "yards to the opponent goal line <= 10 (yardline >= 90 on the 0-100 own-goal scale)",
+    "why_not_10_20": "Both packages are tagged only 'Redzone Inside 10' in the catalog, and the sheet's separate 'Redzone 10-20' bucket lists only Mesh 1 (already a regular variant). Nothing in the catalog or sheet puts these packages at the 10-20."
+  },
+  "formation_mapping_evidence": {
+    "civil_bucs_redzone_spot_y_options_unverified": "Catalog formation is null. In the in-repo Buccaneers stock book, HB Zone + Speed Option + Spot Y Option co-occur only in 'Pistol Bunch TE' (Speed Option and Spot Y Option exist nowhere else), matching the sheet name 'Redzone - Pistol Bunch TE' and the bunch/TE adjustment targets.",
+    "civil_bucs_redzone_qb_runs_unverified": "Catalog formation is null. QB Blast and RPO Alert QB Draw exist only in 'Gun Empty Quads' in the in-repo Buccaneers stock book, matching the sheet name 'Redzone - Gun Empty Quads'."
+  },
+  "variants": [
+    {"variant_id": "civil_rz_pistol_bunch_te_spot_y_option_1", "package_id": "civil_bucs_redzone_spot_y_options_unverified",
+     "variant_name": "Redzone - Pistol Bunch TE: Spot Y Option 1", "formation": "Pistol Bunch TE", "base_play": "Spot Y Option",
+     "package_base_play_label": "Spot Y Option 1", "adjustments_from_package": true,
+     "note": "Uses the package's passing setup, which the catalog says applies to Spot Y Option 1."},
+    {"variant_id": "civil_rz_pistol_bunch_te_hb_zone", "package_id": "civil_bucs_redzone_spot_y_options_unverified",
+     "variant_name": "Redzone - Pistol Bunch TE: HB Zone", "formation": "Pistol Bunch TE", "base_play": "HB Zone",
+     "package_base_play_label": "HB Zone", "adjustments_from_package": false,
+     "note": "Run as listed in the package. The catalog gives no adjustments for it; called as the stock play."},
+    {"variant_id": "civil_rz_pistol_bunch_te_speed_option", "package_id": "civil_bucs_redzone_spot_y_options_unverified",
+     "variant_name": "Redzone - Pistol Bunch TE: Speed Option", "formation": "Pistol Bunch TE", "base_play": "Speed Option",
+     "package_base_play_label": "Speed Option", "adjustments_from_package": false,
+     "note": "Option run as listed in the package. The catalog gives no adjustments for it; called as the stock play."},
+    {"variant_id": "civil_rz_gun_empty_quads_qb_blast", "package_id": "civil_bucs_redzone_qb_runs_unverified",
+     "variant_name": "Redzone - Gun Empty Quads: QB Blast", "formation": "Gun Empty Quads", "base_play": "QB Blast",
+     "package_base_play_label": "QB Blast", "adjustments_from_package": false,
+     "note": "The lesson's blocking setup was not captured in the catalog ('watch lesson for blocking'); called as the stock play."},
+    {"variant_id": "civil_rz_gun_empty_quads_rpo_alert_qb_draw", "package_id": "civil_bucs_redzone_qb_runs_unverified",
+     "variant_name": "Redzone - Gun Empty Quads: RPO Alert QB Draw", "formation": "Gun Empty Quads", "base_play": "RPO Alert QB Draw",
+     "package_base_play_label": "RPO Alert QB Draw", "adjustments_from_package": false,
+     "note": "The lesson's blocking setup was not captured in the catalog ('watch lesson for blocking'); called as the stock play."}
+  ],
+  "missing_from_catalog": [
+    "Neither package has a formation in the catalog; the formations come from the sheet names and the stock-book co-occurrence above.",
+    "The QB-run package lists no adjustments; the lesson says to watch it for blocking, and that blocking setup was never transcribed.",
+    "HB Zone and Speed Option have no adjustments in the catalog. Only Spot Y Option 1 has the 4-step passing setup.",
+    "The catalog does not say whether the package plays are alternatives or a sequence; each is scored as its own candidate."
+  ]
+}

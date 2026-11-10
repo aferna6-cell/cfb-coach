@@ -908,7 +908,8 @@ class LivePlayController:
             from cfb_coach.madden.model.offense_adjustment_designer import validate_live_call
             validate_live_call(self.db, call, opponent_id=self.opponent_id,
                                confirmations=self.madden_adjustment_confirmations,
-                               loadout=self.madden_adjustment_loadout)
+                               loadout=self.madden_adjustment_loadout,
+                               yardline=getattr(sit, "yardline", None))
         return call
 
     def call_only(

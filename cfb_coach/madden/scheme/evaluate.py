@@ -154,8 +154,9 @@ def run(db_path: str | Path, *, geo: dz.GeometrySource | None = None, cat: sc.Sc
                 opp_t = r.get("opponent_type") or "human"
                 kw = dict(down=r.get("down"), distance=r.get("distance"), yardline=he._int(r.get("yardline")),
                           opponent_id=str(r.get("opponent_id") or ""), opponent_type=opp_t, belief=b)
-                ranked = scorer.score(sim_variants, recent_calls=list(recent), **kw)
-                stock_rank = scorer.score(sim_variants, recent_calls=list(recent), stock_only=True, **kw)
+                here = [v for v in sim_variants if v.allowed_at(kw["yardline"])]   # red-zone plays inside the 10 only
+                ranked = scorer.score(here, recent_calls=list(recent), **kw)
+                stock_rank = scorer.score(here, recent_calls=list(recent), stock_only=True, **kw)
                 recent.insert(0, ranked[0].variant.variant_id)
                 top = ranked[0]
                 ex_best = None
@@ -281,7 +282,7 @@ def summarize(preds, sims, folds, P, cat) -> dict[str, Any]:
         "by_basis": dict(Counter(he.verification_basis(e.row) for e in ex)),
         "geometry_status": dict(Counter(e.geometry_status for e in ex)),
         "verified_variant_outcomes": len(P["variant_evidence"]),
-        "civil_recommendations_excluded_unconfirmed": len(P["excluded"]),
+        "civil_recommendations_excluded_unconfirmed": len(set(P["excluded"]) - {e.snap_key for e in P["variant_evidence"]}),
     }
     nn_ok, nn_why = ln.neural_challenger_justified(len(ex), out["data"]["games"])
     out["neural_challenger"] = {"trained": nn_ok, "reason": nn_why}

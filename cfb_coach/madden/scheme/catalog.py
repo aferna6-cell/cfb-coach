@@ -2,8 +2,10 @@
 
 The dataset (``datasets/madden27/lions_offensive_scheme_catalog.json``, draft PR #152) is
 expert guidance: names, setups and situation/coverage *tags*. It contains no measured
-outcomes. Only ``plays[].variant_id`` entries are callable; the red-zone packages and the
-pending unnamed 5WR setup are loaded only so they can be reported as blocked.
+outcomes. Callable: the 26 ``plays[].variant_id`` entries everywhere, plus (owner instruction
+2026-11-10, t335u, ``datasets/madden27/civil_redzone_owner_t335u.json``) the plays of the two
+catalog red-zone packages, mapped to their stock formations, only inside the opponent 10
+(``field_zone == "inside_10"``). The pending unnamed 5WR setup stays blocked.
 """
 from __future__ import annotations
 
@@ -15,7 +17,11 @@ from pathlib import Path
 from typing import Any, Mapping
 
 DATASET_RELPATH = Path("datasets") / "madden27" / "lions_offensive_scheme_catalog.json"
-EXPECTED_VARIANTS = 26
+REDZONE_RELPATH = Path("datasets") / "madden27" / "civil_redzone_owner_t335u.json"
+EXPECTED_VARIANTS = 26          # core variants (any field position)
+EXPECTED_REDZONE_VARIANTS = 5   # red-zone package plays (inside the opponent 10 only), t335u
+INSIDE_10 = "inside_10"
+EXPECTED_REDZONE_FORMATIONS = {"Pistol Bunch TE": 3, "Gun Empty Quads": 2}
 EXPECTED_PAIRS = 12
 EXPECTED_FORMATIONS = {
     "Gun Doubles Clamp Stack": 6,
@@ -61,6 +67,18 @@ class SchemeVariant:
     unadjusted_allowed: bool
     verification_notes: str = ""
     raw: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
+    field_zone: str = "any"        # "any" | "inside_10" (red-zone package plays, owner instruction t335u)
+    package_id: str = ""
+
+    def allowed_at(self, yardline: Any) -> bool:
+        """Field-position gate. Red-zone package plays only when yards to the goal line <= 10."""
+        if self.field_zone == "any":
+            return True
+        try:
+            y = int(yardline)
+        except (TypeError, ValueError):
+            return False
+        return self.field_zone == INSIDE_10 and 90 <= y <= 100
 
     @property
     def pair(self) -> tuple[str, str]:
@@ -77,7 +95,8 @@ class SchemeVariant:
             "coverage_tags_known": self.coverage_tags_known, "name_verified": self.name_verified,
             "verified_in_user_game": self.verified_in_user_game,
             "adjustments_verified_in_user_game": self.adjustments_verified_in_user_game,
-            "unadjusted_allowed": self.unadjusted_allowed,
+            "unadjusted_allowed": self.unadjusted_allowed, "field_zone": self.field_zone,
+            "package_id": self.package_id or None,
         }
 
 
@@ -100,6 +119,16 @@ class SchemeCatalog:
     variants: tuple[SchemeVariant, ...]
     blocked: tuple[BlockedEntry, ...]
     data_quality_flags: tuple[str, ...]
+    redzone_digest: str = ""
+    redzone_owner: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
+
+    @property
+    def core_variants(self) -> tuple[SchemeVariant, ...]:
+        return tuple(v for v in self.variants if v.field_zone == "any")
+
+    @property
+    def redzone_variants(self) -> tuple[SchemeVariant, ...]:
+        return tuple(v for v in self.variants if v.field_zone != "any")
 
     @property
     def ids(self) -> tuple[str, ...]:
@@ -208,7 +237,53 @@ def load(path: str | Path | None = None) -> SchemeCatalog:
         raw = json.loads(data.decode("utf-8"))
     except ValueError as exc:
         raise CatalogError(f"scheme catalog is not valid JSON: {exc}") from exc
-    return parse(raw, digest=hashlib.sha256(data).hexdigest(), path=str(p))
+    cat = parse(raw, digest=hashlib.sha256(data).hexdigest(), path=str(p))
+    rz = p.parent / REDZONE_RELPATH.name
+    if rz.is_file():
+        rb = rz.read_bytes()
+        cat = with_redzone(cat, raw, json.loads(rb.decode("utf-8")), digest=hashlib.sha256(rb).hexdigest())
+    return cat
+
+
+def with_redzone(cat: SchemeCatalog, raw: Mapping[str, Any], owner: Mapping[str, Any], *, digest: str) -> SchemeCatalog:
+    """Owner instruction t335u: the two catalog red-zone packages become inside-10 candidates.
+
+    Every field comes from the catalog package (base-play list, adjustments verbatim, tags) except the
+    formation, which the owner file maps from the sheet name + the stock-book co-occurrence. Nothing is
+    invented: a play not listed in its package, or adjustments that differ from the package, is an error."""
+    if owner.get("catalog_version") != cat.version():
+        raise CatalogError(f"red-zone owner mapping is for {owner.get('catalog_version')}, catalog is {cat.version()}")
+    packages = {str(pk.get("package_id")): pk for pk in raw.get("red_zone_packages") or ()}
+    extra: list[SchemeVariant] = []
+    used: set[str] = set()
+    for m in owner.get("variants") or ():
+        pk = packages.get(str(m.get("package_id")))
+        if pk is None:
+            raise CatalogError(f"{m.get('variant_id')}: unknown package {m.get('package_id')}")
+        if m.get("package_base_play_label") not in (pk.get("base_plays") or ()):
+            raise CatalogError(f"{m.get('variant_id')}: '{m.get('package_base_play_label')}' is not listed in {pk['package_id']}")
+        adj = pk.get("adjustments") or [] if m.get("adjustments_from_package") else []
+        adjustments = tuple(Adjustment(str(a["target"]).strip(), str(a["action"]).strip(), bool(a.get("macro_marked")), i)
+                            for i, a in enumerate(adj))
+        cov = tuple(str(t) for t in (pk.get("expert_coverage_tags") or ()))
+        extra.append(SchemeVariant(
+            variant_id=str(m["variant_id"]), variant_name=str(m["variant_name"]), playbook=cat.playbook,
+            formation=str(m["formation"]), base_play=str(m["base_play"]), role=str(pk.get("role") or ""),
+            scheme_category="Red Zone", adjustments=adjustments,
+            expert_situation_tags=tuple(str(t) for t in (pk.get("expert_situation_tags") or ())),
+            expert_coverage_tags=cov, coverage_tags_known=bool(cov), name_verified=False,
+            present_in_book_as_shown=True, verified_in_user_game=False, adjustments_verified_in_user_game=False,
+            unadjusted_allowed=not adjustments,      # stock play: the package lists nothing to adjust
+            verification_notes=str(m.get("note") or ""), raw=m, field_zone=INSIDE_10,
+            package_id=str(pk["package_id"])))
+        used.add(str(pk["package_id"]))
+    ids = [v.variant_id for v in cat.variants] + [v.variant_id for v in extra]
+    if len(set(ids)) != len(ids):
+        raise CatalogError("duplicate variant_id in the red-zone mapping")
+    blocked = tuple(b for b in cat.blocked if b.entry_id not in used)
+    from dataclasses import replace
+    return replace(cat, variants=cat.variants + tuple(extra), blocked=blocked, redzone_digest=digest,
+                   redzone_owner=dict(owner.get("owner_instruction") or {}))
 
 
 @lru_cache(maxsize=4)
@@ -219,12 +294,23 @@ def load_cached(path: str | None = None) -> SchemeCatalog:
 def contract_errors(cat: SchemeCatalog) -> list[str]:
     """Every way the loaded catalog differs from the approved 26 / 12 / 4 contract."""
     errs: list[str] = []
-    if len(cat.variants) != EXPECTED_VARIANTS:
-        errs.append(f"expected {EXPECTED_VARIANTS} variants, found {len(cat.variants)}")
-    if len(cat.pairs) != EXPECTED_PAIRS:
-        errs.append(f"expected {EXPECTED_PAIRS} formation/base-play pairs, found {len(cat.pairs)}")
+    core = cat.core_variants
+    if len(core) != EXPECTED_VARIANTS:
+        errs.append(f"expected {EXPECTED_VARIANTS} variants, found {len(core)}")
+    pairs = {v.pair for v in core}
+    if len(pairs) != EXPECTED_PAIRS:
+        errs.append(f"expected {EXPECTED_PAIRS} formation/base-play pairs, found {len(pairs)}")
+    rz = cat.redzone_variants
+    if rz:
+        rc: dict[str, int] = {}
+        for v in rz:
+            rc[v.formation] = rc.get(v.formation, 0) + 1
+            if v.field_zone != INSIDE_10:
+                errs.append(f"{v.variant_id}: red-zone play without the inside-10 gate")
+        if len(rz) != EXPECTED_REDZONE_VARIANTS or rc != EXPECTED_REDZONE_FORMATIONS:
+            errs.append(f"red-zone plays {rc} != {EXPECTED_REDZONE_FORMATIONS}")
     counts: dict[str, int] = {}
-    for v in cat.variants:
+    for v in core:
         counts[v.formation] = counts.get(v.formation, 0) + 1
     if counts != EXPECTED_FORMATIONS:
         errs.append(f"formation counts {counts} != {EXPECTED_FORMATIONS}")

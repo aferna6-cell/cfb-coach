@@ -1,4 +1,4 @@
-# civil_scheme_only — the 26-variant Lions offensive scheme mode
+# civil_scheme_only — the 26-variant Lions offensive scheme mode (+ 5 red-zone package plays inside the 10)
 
 Status: **draft, off by default, not live-ready.** Nothing in this mode has been run in a Madden 27 game yet.
 **Owner confirmation (2026-11-10, t333u):** Aidan confirmed that every catalog adjustment (wheel, short cross, stems up/down, motion, D-pad text and the rest) exists in game and that he knows how to do them. That is recorded in `adjustments.OWNER_CONFIRMED_ADJUSTMENTS`, pinned to catalog `lions_civil_bucs_5wr_v4@15c120decc4b`. Live calls are no longer blocked for unverified adjustments. A variant is live-legal when its formation and base play are in the applied book. On the 11-07 snapshot that is **13 of 26**: 6 Clamp Stack and 7 Gun 5WR Tight variants. Bunch TE and Tight Doubles must be installed first, and Z Spot ×2 need the in-game name.
@@ -13,9 +13,9 @@ The mode is selected per session or per DB, and the existing coordinator stays s
 | `ml civil-scheme enable` (DB meta) or `play ... --civil-scheme-only` (this session) | **civil_scheme_only** |
 | `play ... --unrestricted-offense` (this session) or `ml civil-scheme disable` | the existing unrestricted coordinator |
 
-In civil_scheme_only, every offensive call is exactly one of the 26 catalog variant IDs. The call shows:
+In civil_scheme_only, every offensive call is exactly one of the 26 catalog variant IDs. Inside the opponent 10 only, it can also be one of the 5 red-zone package plays (see "Red zone" below). The call shows:
 
-- the formation, base play, variation name and ID;
+- the formation, base play, and **the exact variation: its name and ID, with every adjustment** (owner instruction t336u). This appears on the call's first line, which the snap log stores as `our_call`, and in the headline, the live card and the decision log (`prediction_json.variation`). A red-zone stock play reads "ADJUSTMENTS: none (catalog lists no adjustments: stock play)";
 - **every** adjustment, in order and verbatim, numbered as in the catalog. Stems are tagged `[STEM UP]`, `[STEM DOWN]` or `[STEM DOWN (all the way)]` and are never dropped or hidden;
 - warnings, an explanation, and P(success), first down, explosive and sack/turnover/loss chances, plus uncertainty.
 
@@ -23,12 +23,40 @@ Reads are shown only when a verified read progression exists, and none does toda
 
 The mode never calls the heuristic `_pick_offense` or the experimental offense path. It never substitutes another play, never offers an unadjusted version (`unadjusted_allowed` is false for all 26), and never uses the 2 red-zone packages or the unnamed 5WR setup.
 
+## Red zone (owner instruction 2026-11-10, t335u)
+
+Aidan: "I want the model to call the redzone offense that is in the book." The catalog's two red-zone packages appear on the Civil.GG sheet as "Redzone - Pistol Bunch TE" and "Redzone - Gun Empty Quads" (bucket "Redzone (Inside 10)"). They are now candidates, defined in `datasets/madden27/civil_redzone_owner_t335u.json`. The unnamed 5WR setup stays blocked.
+
+| ID | Formation | Play | Adjustments (verbatim from the catalog) |
+|---|---|---|---|
+| `civil_rz_pistol_bunch_te_spot_y_option_1` | Pistol Bunch TE | Spot Y Option ("Spot Y Option 1") | 1) Inside bunch WR: Drag; 2) TE: Drag; 3) HB: Swing toward TE; 4) Outside bunch WR: Crosser |
+| `civil_rz_pistol_bunch_te_hb_zone` | Pistol Bunch TE | HB Zone | none in the catalog (stock play) |
+| `civil_rz_pistol_bunch_te_speed_option` | Pistol Bunch TE | Speed Option | none in the catalog (stock play) |
+| `civil_rz_gun_empty_quads_qb_blast` | Gun Empty Quads | QB Blast | none in the catalog (stock play) |
+| `civil_rz_gun_empty_quads_rpo_alert_qb_draw` | Gun Empty Quads | RPO Alert QB Draw | none in the catalog (stock play) |
+
+- **Where:** only inside the opponent 10, meaning 10 or fewer yards to the goal line (`yardline >= 90`). If the spot is unknown, they are not eligible.
+  - The 10–20 does not count. The catalog tags both packages only "Redzone Inside 10", and the sheet's separate "Redzone 10-20" bucket holds only Mesh 1, which is already a regular variant.
+  - The gate is in the one legal filter. It runs before scoring (`legal_set(..., yardline=sit.yardline)`) and again before display: `revalidate_call` checks the live snap's yardline, which `live_server` passes through `validate_live_call`, and it must equal the yardline the call was scored at.
+  - The evaluation simulation applies the same gate.
+- **Model-scored, not forced.** Inside the 10 they join the legal set and compete on the same score. A core variant still wins when it scores higher (`test_18`).
+- **Where the formations come from.** The catalog has `formation: null` for both packages. The formations come from the sheet names plus the in-repo Buccaneers stock book:
+  - HB Zone, Speed Option and Spot Y Option appear together only in Pistol Bunch TE.
+  - QB Blast and RPO Alert QB Draw appear only in Gun Empty Quads.
+- **What the catalog does not have.** Nothing was invented to fill these gaps:
+  1. a formation for either package;
+  2. any adjustments for the QB-run package (the lesson says to watch it for the blocking setup, which was never transcribed);
+  3. any adjustments for HB Zone or Speed Option (the 4-step setup applies to Spot Y Option 1);
+  4. whether the package plays are alternatives or a sequence (each is scored as its own candidate).
+- **Book:** on the 11-10 postgame snapshot, the applied book has neither Pistol Bunch TE nor Gun Empty Quads, and it also lacks Gun Bunch TE. `ml civil-scheme prepare-book --stage` now stages all missing scheme formations, including these two.
+- **Adjustment vocabulary:** swing and crosser were added. t333u covers every catalog adjustment, and these are catalog adjustments.
+
 If nothing is legal, the answer is `NO_LEGAL_SCHEME_PLAY` with the reasons. There is no hidden fallback. An internal error also returns `NO_LEGAL_SCHEME_PLAY`.
 
 ## Pipeline per snap (`cfb_coach/madden/scheme/`)
 
 1. **Legal filter** (`legality.py`). This one filter runs before scoring and again before display (`validate_live_call` → `revalidate_call`). A variant passes only if:
-   - it is a catalog variant ID;
+   - it is a catalog variant ID (26), or a red-zone package play (5) **and** the snap is inside the opponent 10;
    - its formation and base play are in the in-repo Buccaneers stock data, matched by exact normalized name;
    - both are in the applied (installed) offense book;
    - its adjustments are owner-confirmed executable. The blanket confirmation from 2026-11-10 (t333u) covers this catalog version. A new catalog version needs a new confirmation; `ml civil-scheme verify` still records per-variant confirmations and the `--book-play` name alias.
@@ -107,7 +135,36 @@ If no single route matches, the stem is applied **directionally**: the mean rout
 | Interactions (learned) | man × man-beater routes, zone × curl, match × crossers, pressure × quick or deep, two-high × deep middle, one-high × verticals, short yardage × quick, goal-to-go × quick, and others |
 | Existing knowledge | `football_priors` concept-versus-coverage matchup edge; the existing model's logit (offset) |
 
+## Controlled CPU game, 2026-11-10 (session `703697284cd445de`)
+
+The data comes from a read-only copy of the laptop DB taken after the game (sha `8c47e6d6…`). The game ran in civil_scheme_only:
+
+- DB meta `civil_scheme_mode_json` was enabled at 3:51 PM ET with Aidan's artifact `v20261110-154950`;
+- all 70 logged decisions say `civil_scheme_only` / `CALL`;
+- all 53 offensive snaps carry `scheme:<variant>`.
+
+| Item | Result |
+|---|---|
+| Opponent and result | CPU, **won 42–21**. The snap log has 41–21, a 1-point reconcile gap. |
+| Offensive snaps | 53. All are identified, verified and accepted. The executed play, formation and variant equal the recommendation on every snap. No adjustment reports were filed. |
+| Passing | 32 of 53 complete, 294 yards, 22 first downs or TDs, 6 TDs, 2 INTs |
+| Variants used | 15 distinct (the applied book had Clamp Stack, Tight Doubles and 5WR, but no Bunch TE). Mesh Post 1 was called 15 times, Texas Y Stutter Wheel 3 11 times, Mtn Cross HB Sneak 2 5 times. |
+| Red zone, inside the 20 | 5 trips, 4 TDs. The stalled drive was 1&6 at the 6: Mesh Post 1, Mtn Shuffle Verts Smash 1, then Mesh Post 1, all incomplete. |
+| Errors | No `NO_LEGAL_SCHEME_PLAY` and no errors. Latency was not logged in this version; it is logged from this PR on. |
+
 ## Evaluation (chronological, game-grouped, no leakage)
+
+**Retrain on the 11-10 postgame snapshot** (artifact `v20261110-165046`, model sha `232a153a7e0d8355…`): 760 verified offensive snaps from 18 games. That adds the 11-08 game and today's game. 53 of the snaps are verified variant outcomes.
+
+- The success head is still the existing model: log loss 0.679 vs 0.681 for strong-L2 logistic.
+- First down: strong-L2 logistic is better by 0.021 (95% CI 0.011 to 0.031).
+- Explosive: strong-L2 logistic is better by 0.012 (95% CI 0.001 to 0.022).
+- Sack/turnover/loss: now kept on the existing model. The difference is −0.006 (−0.012 to +0.001), not significant, and it failed the selection margin.
+- Simulation: 20 distinct picks. A tagged beater was picked when the gate was high 90% of the time (n=48).
+- Red-zone package plays were picked 3 times in the simulation: RPO Alert QB Draw twice, HB Zone once.
+- One game is a small sample. The per-variant corrections move by up to ±0.25 logit, and single snaps move a variant by about 0.2.
+
+The numbers below are from the earlier 11-07 snapshot (artifact `v20261110-153235`).
 
 The model was retrained after the stem features were added (artifact `v20261110-153235`, model sha256 `8fe4858b2c2965b9…`, report `civil_scheme_eval_20261110-153232.json`). The chosen heads are the same, and every head's held-out log loss is unchanged to 3 decimals, except GBT (first down 0.669 → 0.666 and explosive 0.454 → 0.452 on the confirmation folds; not chosen).
 
@@ -186,6 +243,7 @@ PYTHONPATH=. python3 -m cfb_coach prep --game madden27 -o cpu --mark-applied
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme train
 # 3. pregame checklist (every adjustment listed, stems tagged; status LIVE-LEGAL or BLOCKED with the reason)
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme checklist
+#    red-zone package plays show "INSIDE THE OPPONENT 10 ONLY"; their formations need prepare-book --stage + install
 #    optional, only for the Z Spot names: confirm the in-game play name
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme verify --variant civil_5wr_z_spot_1 --book-play "<exact name in game>"
 # 4. shadow test (read-only, nothing logged; --live-legal-only applies the live filter)
@@ -214,7 +272,7 @@ Backups go to `~/.cfb-coach/backups/civil_scheme/` and models to `~/.cfb-coach/m
 3. Z Spot and Z Spot Shake need your confirmation of the in-game name.
 4. No verified variant outcomes exist. Every adjustment effect is a transferred, uncertain estimate, and the success head is the existing model.
 5. Stem depths are not measured. 8 of 11 stems shift a specific route band on provisional geometry; 3 are applied directionally with extra uncertainty.
-6. Pass-only: no runs, sneaks or red-zone packages in this mode.
+6. Outside the opponent 10, the mode is still pass-only: no runs or sneaks. Inside the 10 the red-zone package adds HB Zone, Speed Option, QB Blast and RPO Alert QB Draw. None has a verified outcome in this mode yet.
 7. The provisional geometry export may not be on the laptop. Without it every design is `name_only`.
 8. The live DB was not reachable from the build machine. The model was trained on the 11-07 snapshot, and games after 2026-11-05 are not included.
 9. The coverage-beater weights (1.2 logit and the gate) are set by hand to follow your rule. They are not fitted, because no variant outcomes exist yet.

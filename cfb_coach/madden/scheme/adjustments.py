@@ -29,6 +29,8 @@ ROUTE_WORDS: tuple[tuple[str, str], ...] = (
     ("streak", "streak"), ("post route", "post"), ("post", "post"), ("in route", "in"),
     ("flat route", "flat"), ("corner route", "corner"), ("wheel route", "wheel"), ("out route", "out"),
     ("slant route", "slant"), ("slant", "slant"),
+    # red-zone package setup (Spot Y Option 1), owner instruction t335u
+    ("swing", "swing"), ("crosser", "cross"),
 )
 # Hot-route options present in the repo's Madden vocabulary (offense_taxonomy.HOT_ROUTE_OPTIONS) ...
 REPO_HOT_ROUTE_FAMILIES = frozenset(tx.HOT_ROUTE_TO_FAMILY.values())
@@ -42,7 +44,9 @@ OWNER_CONFIRMED_ADJUSTMENTS = {
     "catalog_id": "lions_civil_bucs_5wr_v4",
     "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
 }
-CIVIL_ROUTE_FAMILIES = REPO_HOT_ROUTE_FAMILIES | frozenset({"wheel", "shallow_cross"})
+# t333u covers every adjustment in the catalog, including the red-zone package setup (drag, swing, crosser)
+# that t335u made callable.
+CIVIL_ROUTE_FAMILIES = REPO_HOT_ROUTE_FAMILIES | frozenset({"wheel", "shallow_cross", "swing", "cross"})
 BAND_ORDER = ("shallow", "short", "intermediate", "deep")
 
 
@@ -180,4 +184,6 @@ def checklist_lines(v: SchemeVariant) -> list[str]:
         if tag:
             line += f"   [{tag}]"
         lines.append(line)
+    if not lines:
+        lines.append("(no adjustments listed in the catalog for this play: stock play)")
     return lines

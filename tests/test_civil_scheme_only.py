@@ -22,10 +22,14 @@ from cfb_coach.situation import Situation
 
 CAT = sc.load()
 FORMS = ["Gun Doubles Clamp Stack", "Gun Bunch TE", "Gun Tight Doubles", "Gun 5WR Tight"]
+RZ_FORMS = ["Pistol Bunch TE", "Gun Empty Quads"]
+FORMS_ALL = FORMS + RZ_FORMS
 Z_SPOT = {"civil_5wr_z_spot_1", "civil_5wr_z_spot_shake_1"}
+CORE = {v.variant_id for v in CAT.core_variants}
+RZ = {v.variant_id for v in CAT.redzone_variants}
 
 
-def _db(tmp_path, *, formations=FORMS):
+def _db(tmp_path, *, formations=FORMS_ALL):
     from cfb_coach.madden import playbook
     from cfb_coach.madden.model.cli import open_explicit_madden_db
     db = open_explicit_madden_db(tmp_path / "madden27.db", read_only=False)
@@ -67,15 +71,15 @@ def _sit(down=1, distance=10, yardline=35, session="g1", look=None):
 
 # 1 -------------------------------------------------------------- catalog contract
 def test_01_catalog_has_exactly_26_variants_and_blocked_entries_are_never_candidates():
-    assert len(CAT.variants) == 26 and len(set(CAT.ids)) == 26
+    assert len(CAT.core_variants) == 26 and len(CAT.redzone_variants) == 5 and len(set(CAT.ids)) == 31
     assert sc.contract_errors(CAT) == []
     blocked = CAT.blocked_ids
-    assert {"civil_bucs_redzone_spot_y_options_unverified", "civil_bucs_redzone_qb_runs_unverified",
-            "civil_5wr_unidentified_setup_between_z_spot_shake_1_and_z_spot_1"} <= set(blocked)
+    # t335u: the red-zone packages are now mapped to callable plays; the unnamed 5WR setup stays blocked
+    assert set(blocked) == {"civil_5wr_unidentified_setup_between_z_spot_shake_1_and_z_spot_1"}
     assert not (set(blocked) & set(CAT.ids))
     for b in blocked:
-        assert not lg.check(None, CAT, variant_id=b, book={"formations": {}}).legal
-    assert all(not v.unadjusted_allowed and v.adjustments for v in CAT.variants)
+        assert not lg.check(None, CAT, variant_id=b, book={"formations": {}}, yardline=95).legal
+    assert all(not v.unadjusted_allowed and v.adjustments for v in CAT.core_variants)
 
 
 # 2 -------------------------------------------------------------- playbook verification
@@ -83,7 +87,7 @@ def test_02_stock_book_membership_exact_names_no_alias():
     for f in FORMS:
         assert lg.stock_has(f, "x")[0], f
     ok = {v.variant_id for v in CAT.variants if all(lg.stock_has(v.formation, v.base_play))}
-    assert len(ok) == 24 and not (ok & Z_SPOT)
+    assert len(ok) == 29 and not (ok & Z_SPOT) and RZ <= ok
 
 
 # 3 -------------------------------------------------------------- live legality
@@ -106,7 +110,7 @@ def test_03_owner_confirmed_adjustments_make_in_book_variants_legal_book_still_r
 # 4 -------------------------------------------------------------- NO_LEGAL, no fallback
 def test_04_no_legal_scheme_play_without_fallback(tmp_path, civil_env, monkeypatch):
     from cfb_coach.madden import catalog as mc, playcaller
-    other = next(f for f in mc.book_formations("offense", "Buccaneers") if f not in FORMS)
+    other = next(f for f in mc.book_formations("offense", "Buccaneers") if f not in FORMS_ALL)
     db = _db(tmp_path, formations=[other])
     monkeypatch.setattr(playcaller, "_pick_offense", lambda *a, **k: (_ for _ in ()).throw(AssertionError("heuristic")))
     call = playcaller.make_call(_sit(), "cpu", db)
@@ -401,13 +405,13 @@ def test_14_z_spot_only_with_an_owner_confirmed_book_name(tmp_path):
 
 
 # owner instruction t333u (1): only the 26 listed variant IDs can ever be output -----------------
-def test_15_only_the_26_catalog_variants_can_be_output(tmp_path, civil_env, monkeypatch):
+def test_15_only_the_listed_catalog_variants_can_be_output(tmp_path, civil_env, monkeypatch):
     import dataclasses
     import random
     from cfb_coach.madden import playcaller
     db = _db(tmp_path)
     allowed = set(CAT.ids)
-    assert len(allowed) == 26
+    assert len(allowed) == 31 and allowed == CORE | RZ
     rng = random.Random(3)
     seen = set()
     labels = ["cover_3_sky", "cover_1_unspecified", "cover_2_man", "cover_4_quarters", "tampa_2", "cover_6"]
@@ -418,6 +422,8 @@ def test_15_only_the_26_catalog_variants_can_be_output(tmp_path, civil_env, monk
                                          session=f"g{i % 5}", look=look), "cpu", db)
         sv = call.scheme_variant
         assert sv["status"] == "CALL" and sv["variant_id"] in allowed
+        if call_yard(call) < 90:
+            assert sv["variant_id"] in CORE
         seen.add(sv["variant_id"])
     assert seen <= allowed
     # no other path: anything that is not an exact catalog variant is rejected before display
@@ -483,3 +489,115 @@ def test_17_civil_call_is_labeled_civil_not_heuristic(tmp_path, civil_env):
     assert call.call_label == "CIVIL_SCHEME_ONLY"
     text = call.format()
     assert "LABEL: CIVIL_SCHEME_ONLY" in text and "LABEL: HEURISTIC" not in text
+
+
+def call_yard(call):
+    return int(call.scheme_variant["yardline"])
+
+
+# owner instruction t335u/t336u: red-zone package plays ONLY inside the opponent 10 -------------------------
+def test_18_red_zone_plays_only_inside_the_10_before_scoring_and_before_display(tmp_path, civil_env, monkeypatch):
+    from cfb_coach.madden import playcaller
+    from cfb_coach.madden.model.offense_adjustment_designer import validate_live_call
+    db = _db(tmp_path)
+    # the one legal filter, before scoring
+    for y in range(0, 101):
+        ids = {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=y)[0]}
+        assert (ids & RZ) == (RZ if y >= 90 else set()), y
+    assert not ({v.variant_id for v in lg.legal_set(CAT, db=db, yardline=None)[0]} & RZ)   # unknown spot: out
+    # live calls across the field
+    rz_seen_in_ranking = False
+    for y in list(range(1, 90, 4)) + list(range(90, 100)):
+        for d, dist in ((1, 10), (3, 2), (4, 1)):
+            call = playcaller.make_call(_sit(d, min(dist, 100 - y), y, session=f"s{y}"), "cpu", db)
+            vid = call.scheme_variant["variant_id"]
+            if y < 90:
+                assert vid in CORE, (y, vid)
+                assert not (set(call.scheme_variant["candidates"]) & RZ)
+            else:
+                assert RZ <= set(call.scheme_variant["candidates"])
+                rz_seen_in_ranking = True
+    assert rz_seen_in_ranking                       # inside the 10 they are real candidates
+    # model-scored, not forced: inside the 10 a core play still wins when it scores higher
+    s = co.Scorer(sm.load(_artifact(tmp_path)), CAT, dz.GeometrySource(enabled=False))
+    legal = lg.legal_set(CAT, db=db, yardline=95)[0]
+    bel = bl.combine({}, 0.1, 0, "none", [])
+    over = {v.variant_id: (0.3 if v.variant_id in RZ else 0.6) for v in legal}
+    assert s.score(legal, down=1, distance=5, yardline=95, opponent_id="cpu", opponent_type="cpu", belief=bel,
+                   offset_override=over)[0].variant.variant_id in CORE
+    over = {v.variant_id: (0.8 if v.variant_id == "civil_rz_gun_empty_quads_qb_blast" else 0.4) for v in legal}
+    assert s.score(legal, down=1, distance=5, yardline=95, opponent_id="cpu", opponent_type="cpu", belief=bel,
+                   offset_override=over)[0].variant.variant_id == "civil_rz_gun_empty_quads_qb_blast"
+    # before display: a red-zone play injected outside the 10 is rejected (fail closed, no fallback)
+    rzv = CAT.get("civil_rz_pistol_bunch_te_hb_zone")
+    orig = co.Scorer.score
+
+    def inject(self, variants, **kw):
+        out = orig(self, variants, **kw)
+        out[0].variant = rzv
+        return out
+    monkeypatch.setattr(co.Scorer, "score", inject)
+    assert playcaller.make_call(_sit(1, 10, 50), "cpu", db).play == lg.NO_LEGAL
+    monkeypatch.setattr(co.Scorer, "score", orig)
+    # display gate: a red-zone call scored at the 5 cannot be shown for a snap at midfield
+    call = None
+    for i in range(40):
+        c = playcaller.make_call(_sit(1, 5, 95, session=f"z{i}", look=["cover 2", "cover 3", "man"][i % 3]), "cpu", db)
+        if c.scheme_variant["variant_id"] in RZ:
+            call = c
+            break
+    if call is None:   # force one through the scorer for the display-gate check
+        over = {v.variant_id: (0.9 if v.variant_id == rzv.variant_id else 0.1) for v in legal}
+        top = s.score([rzv], down=1, distance=5, yardline=95, opponent_id="cpu", opponent_type="cpu", belief=bel,
+                      offset_override=over)
+        call = co.build_call(top[0], top, bel, book=None, shadow=False)
+        call.scheme_variant["yardline"] = 95
+    validate_live_call(db, call, opponent_id="cpu", yardline=95)
+    with pytest.raises(ValueError):
+        validate_live_call(db, call, opponent_id="cpu", yardline=50)
+    tampered = call
+    tampered.scheme_variant["yardline"] = 50
+    with pytest.raises(ValueError):
+        lg.revalidate_call(db, tampered, CAT)
+    tampered.scheme_variant.pop("yardline")
+    with pytest.raises(ValueError):
+        lg.revalidate_call(db, tampered, CAT)
+    # the unnamed 5WR setup stays blocked everywhere, including inside the 10
+    for b in CAT.blocked_ids:
+        assert not lg.check(None, CAT, db=db, variant_id=b, yardline=95).legal
+
+
+# owner instruction t336u: every displayed/logged call names the exact variation and all its adjustments -------
+def test_19_every_call_shows_and_logs_its_variation_and_all_adjustments(tmp_path, civil_env):
+    import json as _json
+    from cfb_coach.madden import playcaller
+    geo = dz.GeometrySource(enabled=False)
+    s = co.Scorer(sm.load(_artifact(tmp_path)), CAT, geo)
+    bel = bl.combine({}, 0.1, 0, "none", [])
+    for v in CAT.variants:
+        y = 95 if v.field_zone != "any" else 40
+        top = s.score([v], down=1, distance=5, yardline=y, opponent_id="cpu", opponent_type="cpu", belief=bel,
+                      offset_override={v.variant_id: 0.5})
+        call = co.build_call(top[0], top, bel, book=None, shadow=False)
+        first = call.format().splitlines()[0]        # what the snap log stores as our_call
+        head = call.headline()
+        for text in (first, head):
+            assert f"VARIATION: {v.variant_name} [{v.variant_id}]" in text, (v.variant_id, text)
+            pos = -1
+            for a in v.adjustments:
+                at = text.find(f"{a.index + 1}) {a.target}: {a.action}")
+                assert at > pos, (v.variant_id, a)
+                pos = at
+            if not v.adjustments:
+                assert "none (catalog lists no adjustments: stock play)" in text
+        assert f"VARIATION: {v.variant_name}  [{v.variant_id}]" in call.format()
+    # the decision log carries the same variation text
+    db = _db(tmp_path)
+    call = playcaller.make_call(_sit(1, 10, 40), "cpu", db)
+    row = db.conn.execute("SELECT variant_id, prediction_json, adjustments_json FROM civil_scheme_decisions "
+                          "ORDER BY id DESC LIMIT 1").fetchone()
+    pred = _json.loads(row[1])
+    v = CAT.get(row[0])
+    assert pred["variation"].startswith(f"VARIATION: {v.variant_name} [{v.variant_id}]")
+    assert all(f"{a.target}: {a.action}" in pred["variation"] for a in v.adjustments)
+    assert _json.loads(row[2]) == [[a.target, a.action] for a in v.adjustments]

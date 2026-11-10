@@ -253,6 +253,13 @@ def explain(top: Scored, belief: bl.Belief, runner_up: Scored | None) -> str:
     return "; ".join(bits)
 
 
+def variation_text(name: str, vid: str, adj_lines: Sequence[str]) -> str:
+    """Owner instruction t336u: every displayed/logged call names the exact variation AND all its adjustments.
+    This text is the call's first line, which is also what the snap log stores as ``our_call``."""
+    adjs = "; ".join(adj_lines) if adj_lines else "none (catalog lists no adjustments: stock play)"
+    return f"VARIATION: {name} [{vid}] — ADJUSTMENTS: {adjs}"
+
+
 def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book: Mapping[str, Any] | None,
                shadow: bool, ledger: Mapping[str, Any] | None = None):
     from cfb_coach.madden.playcaller import MaddenCall
@@ -266,13 +273,20 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
             + (f" [{adjm.stem_label(specs[a.index].stem_shift)}]" if adjm.stem_label(specs[a.index].stem_shift) else "")
             for a in v.adjustments]
     warnings = []
-    if not v.name_verified:
+    if not v.name_verified and v.field_zone == "any":
         warnings.append("variant NAME unverified in the source guide")
     if alias:
         warnings.append(f"guide base play '{v.base_play}' is called '{alias}' in your book (owner-confirmed name)")
     if lg.owner_confirmation_applies(sc.load_cached()):
         warnings.append("adjustments owner-confirmed executable (2026-11-10, t333u); no recorded outcome for this "
                         "variant yet")
+    if v.field_zone != "any":
+        warnings.append("RED-ZONE package play (owner instruction 2026-11-10, t335u): inside the opponent 10 only; "
+                        "formation mapped from the sheet name + stock book")
+        if not v.adjustments:
+            warnings.append("the catalog lists NO adjustments for this package play: run it as the stock play")
+        if v.verification_notes:
+            warnings.append(v.verification_notes)
     if shadow:
         warnings.append("SHADOW: owner verification skipped; do not treat as a live call")
     if not v.coverage_tags_known:
@@ -287,14 +301,14 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
     warnings.append("route geometry is a provisional AceMadden-derived prior, not a verified assignment")
     why = explain(top, belief, ranked[1] if len(ranked) > 1 else None)
     call = MaddenCall(side="offense", formation=formation, play=play,
-                      adj_or_macro=f"{v.variant_name} [{v.variant_id}]",
+                      adj_or_macro=variation_text(v.variant_name, v.variant_id, adjs),
                       read_or_user="Read: none provided (no verified read progression)",
                       rationale=f"CIVIL SCHEME ONLY — {why}")
     call.adjustment = {"id": f"{ev.ADJ_PREFIX}{v.variant_id}", "label": f"{v.variant_name} [{v.variant_id}]",
                        "buttons": "no button map — set by hand: " + "; ".join(adjs), "why": why}
     call.scheme_variant = {
         "status": "CALL", "variant_id": v.variant_id, "variant_name": v.variant_name, "formation": v.formation,
-        "base_play": v.base_play, "book_play": alias or None, "adjustment_lines": adjs,
+        "base_play": v.base_play, "book_play": alias or None, "adjustment_lines": adjs, "field_zone": v.field_zone,
         "adjustments": [[a.target, a.action] for a in v.adjustments],
         "p_success": round(top.p_success, 4), "uncertainty_logit_sd": round(top.sd, 4),
         "p_first_down": round(top.p_first_down, 4), "p_explosive": round(top.p_explosive, 4),
@@ -309,7 +323,7 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
 def select(scorer: Scorer, cat: sc.SchemeCatalog, conn: Any, *, db: Any, sit: Any, opponent_id: str,
            book: Mapping[str, Any] | None, shadow: bool = False, belief: bl.Belief | None = None):
     from cfb_coach.opponents import is_cpu_opponent
-    legal, verdicts = lg.legal_set(cat, db=db, book=book, require_verified=not shadow)
+    legal, verdicts = lg.legal_set(cat, db=db, book=book, require_verified=not shadow, yardline=sit.yardline)
     if not legal:
         return no_legal_call(_summarize_block(verdicts), verdicts=verdicts, shadow=shadow,
                              explanation="no catalog variant passes the legal filter: " + " | ".join(_summarize_block(verdicts))), None
@@ -320,6 +334,8 @@ def select(scorer: Scorer, cat: sc.SchemeCatalog, conn: Any, *, db: Any, sit: An
                           opponent_id=opponent_id, opponent_type=opp_type, belief=belief,
                           recent_calls=recent_calls(conn, session_id), variant_stats=variant_stats(conn, cat))
     call = build_call(ranked[0], ranked, belief, book=book, shadow=shadow, ledger=lg.load_verified(db))
+    call.scheme_variant["yardline"] = sit.yardline     # re-validation applies the same field-position gate
+    call.scheme_variant["candidates"] = [v.variant_id for v in legal]   # the legal set that was scored
     return call, ranked
 
 
@@ -343,7 +359,7 @@ def call_civil(sit: Any, opponent_id: str, db: Any, book: Mapping[str, Any] | No
             from cfb_coach.madden import playbook
             applied = playbook.load_books(db).get("offense")
         call, ranked = select(scorer, cat, db.conn, db=db, sit=sit, opponent_id=opponent_id, book=applied, shadow=shadow)
-        lg.revalidate_call(db, call, cat)
+        lg.revalidate_call(db, call, cat, yardline=sit.yardline)
     except Exception as exc:  # noqa: BLE001 — fail closed with the reason, never a hidden fallback
         call, ranked = no_legal_call([f"error: {exc.__class__.__name__}"], explanation=f"civil coordinator error: {exc}",
                                      shadow=shadow), None
@@ -360,7 +376,10 @@ def call_civil(sit: Any, opponent_id: str, db: Any, book: Mapping[str, Any] | No
                 "adjustments": sv.get("adjustments"), "down": sit.down, "distance": sit.distance, "yardline": sit.yardline,
                 "situation_raw": getattr(sit, "raw", None), "belief": sv.get("belief"),
                 "prediction": {k: sv.get(k) for k in ("p_success", "uncertainty_logit_sd", "p_first_down", "p_explosive",
-                                                       "p_negative", "exp_yards", "utility")},
+                                                       "p_negative", "exp_yards", "utility", "latency_ms")}
+                | ({"variation": variation_text(sv["variant_name"], sv["variant_id"], sv.get("adjustment_lines") or []),
+                    "variant_name": sv["variant_name"], "field_zone": sv.get("field_zone")}
+                   if sv.get("status") == "CALL" else {}),
                 "ranking": [[r["variant_id"], r["utility"]] for r in sv.get("ranking") or []],
                 "model_version": (md.load_state(db) or {}).get("model_sha256"), "catalog_version": sc.load_cached().version(),
                 "explanation": sv.get("explanation"),
@@ -377,7 +396,8 @@ def format_lines(call: Any) -> list[str]:
     lines = [f"FORMATION: {sv['formation']}", f"BASE PLAY: {sv['base_play']}",
              f"VARIATION: {sv['variant_name']}  [{sv['variant_id']}]", "ADJUSTMENTS (all, in order):"]
     lines += [f"  {line}" for line in sv.get("adjustment_lines") or
-              [f"{i + 1}) {t}: {a}" for i, (t, a) in enumerate(sv["adjustments"])]]
+              [f"{i + 1}) {t}: {a}" for i, (t, a) in enumerate(sv["adjustments"])]
+              or ["none: the catalog lists no adjustments for this play (stock play)"]]
     lines.append(f"P(success) {sv['p_success']:.0%}  uncertainty ±{sv['uncertainty_logit_sd']:.2f} logit  "
                  f"1st down {sv['p_first_down']:.0%}  explosive {sv['p_explosive']:.0%}  sack/TO/loss {sv['p_negative']:.0%}"
                  + (f"  exp yards {sv['exp_yards']:.1f}" if sv.get("exp_yards") is not None else ""))

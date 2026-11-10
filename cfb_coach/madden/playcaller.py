@@ -64,6 +64,11 @@ class MaddenCall:
         """'PLAY: Mesh Post (Gun 5WR Tight) + ADJ: Hot route WR1 → Slant' (offense) or
         'PLAY: Tampa 2 (Nickel Over) + MACRO: TAMPA MABLE' (defense)."""
         head = f"PLAY: {self.play} ({self.formation})"
+        sv = getattr(self, "scheme_variant", None)
+        if isinstance(sv, dict) and sv.get("status") == "CALL":
+            from cfb_coach.madden.scheme.coordinator import variation_text
+
+            return head + " + " + variation_text(sv["variant_name"], sv["variant_id"], sv.get("adjustment_lines") or [])
         if self.macro:
             head += f" + MACRO: {(self.macro_info or {}).get('name') or self.macro}"
         elif self.adjustment:
