@@ -277,6 +277,9 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
         warnings.append("variant NAME unverified in the source guide")
     if alias:
         warnings.append(f"guide base play '{v.base_play}' is called '{alias}' in your book (owner-confirmed name)")
+    elif not lg.stock_has(v.formation, v.base_play)[1] and lg.owner_book_confirmation_applies(sc.load_cached()):
+        warnings.append(f"'{v.base_play}' is called by the dataset name: the repo's stock data spells it differently, "
+                        "but you confirmed every dataset play is in your book (t337u)")
     if lg.owner_confirmation_applies(sc.load_cached()):
         warnings.append("adjustments owner-confirmed executable (2026-11-10, t333u); no recorded outcome for this "
                         "variant yet")

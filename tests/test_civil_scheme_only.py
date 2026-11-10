@@ -91,20 +91,24 @@ def test_02_stock_book_membership_exact_names_no_alias():
 
 
 # 3 -------------------------------------------------------------- live legality
-def test_03_owner_confirmed_adjustments_make_in_book_variants_legal_book_still_required(tmp_path):
-    db = _db(tmp_path, formations=FORMS[:3])
-    legal, verdicts = lg.legal_set(CAT, db=db)
-    ids = {v.variant_id for v in legal}
-    assert ids == {v.variant_id for v in CAT.variants if v.formation in FORMS[:3]}      # 17, no per-variant verify
-    assert all(verdicts[i].checks["owner_confirmed_adjustments"] for i in ids)
-    for v in CAT.variants:
-        if v.formation == "Gun 5WR Tight":
-            assert not verdicts[v.variant_id].legal                                     # formation not installed
-    # the blanket owner confirmation is pinned to this catalog version
+def test_03_owner_confirmed_book_makes_every_dataset_play_live_legal_without_the_applied_book(tmp_path):
+    """t337u: every formation/play in the scheme dataset is in Aidan's book -> all live-legal (field gate kept)."""
     import dataclasses
+    for db in (_db(tmp_path / "none", formations=["Gun Doubles"]), _db(tmp_path / "all")):
+        mid = {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=50)[0]}
+        assert mid == CORE                                                   # all 26 incl. Z Spot, Bunch TE
+        rz = {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=95)[0]}
+        assert rz == CORE | RZ                                               # all 31 inside the 10
+        _l, verdicts = lg.legal_set(CAT, db=db, yardline=95)
+        assert all(vd.checks["owner_confirmed_installed"] and vd.checks["owner_confirmed_adjustments"]
+                   for vd in verdicts.values())
+        assert not lg.check(None, CAT, db=db, variant_id=next(iter(CAT.blocked_ids)), yardline=95).legal
+    # with no DB / no applied book record at all
+    assert {v.variant_id for v in lg.legal_set(CAT, db=None, yardline=50)[0]} == CORE
+    # the confirmation is pinned to this catalog version: a different catalog falls back to the book check
     other = dataclasses.replace(CAT, digest="0" * 64)
-    assert not lg.owner_confirmation_applies(other)
-    assert lg.legal_set(other, db=db)[0] == []
+    assert not lg.owner_book_confirmation_applies(other)
+    assert lg.legal_set(other, db=_db(tmp_path / "x", formations=["Gun Doubles"]), yardline=50)[0] == []
 
 
 # 4 -------------------------------------------------------------- NO_LEGAL, no fallback
@@ -112,6 +116,9 @@ def test_04_no_legal_scheme_play_without_fallback(tmp_path, civil_env, monkeypat
     from cfb_coach.madden import catalog as mc, playcaller
     other = next(f for f in mc.book_formations("offense", "Buccaneers") if f not in FORMS_ALL)
     db = _db(tmp_path, formations=[other])
+    # without the owner confirmations nothing passes (book + adjustments) -> NO_LEGAL, never a fallback play
+    monkeypatch.setattr(lg, "owner_book_confirmation_applies", lambda cat: False)
+    monkeypatch.setattr(lg, "owner_confirmation_applies", lambda cat: False)
     monkeypatch.setattr(playcaller, "_pick_offense", lambda *a, **k: (_ for _ in ()).throw(AssertionError("heuristic")))
     call = playcaller.make_call(_sit(), "cpu", db)
     assert call.play == lg.NO_LEGAL and call.formation == ""
@@ -134,7 +141,7 @@ def test_05_civil_mode_only_returns_exact_catalog_variants(tmp_path, civil_env, 
         call = playcaller.make_call(_sit(*dd), "cpu", db)
         sv = call.scheme_variant
         v = CAT.get(sv["variant_id"])
-        assert v is not None and sv["variant_id"] not in Z_SPOT
+        assert v is not None
         from cfb_coach.madden.catalog import norm
         assert (norm(call.formation), norm(call.play)) == (norm(v.formation), norm(v.base_play))  # book spelling
         assert (sv["formation"], sv["base_play"]) == (v.formation, v.base_play)
@@ -394,13 +401,16 @@ def test_13_enable_disable_revert_round_trip(tmp_path, monkeypatch, capsys):
         sm.load(art)
 
 
-def test_14_z_spot_only_with_an_owner_confirmed_book_name(tmp_path):
+def test_14_z_spot_is_a_name_mismatch_in_repo_stock_data_not_book_membership(tmp_path):
     db = _db(tmp_path)
     v = CAT.get("civil_5wr_z_spot_1")
-    assert not lg.check(v, CAT, db=db, require_verified=False).legal          # no alias is inferred
-    with pytest.raises(ValueError):
+    vd = lg.check(v, CAT, db=db, require_verified=False)
+    assert vd.checks["stock_formation"] and not vd.checks["stock_play"]       # repo spells it 'L Spot'
+    assert vd.legal and vd.checks["owner_confirmed_installed"]               # t337u: installed under 'Z Spot'
+    from cfb_coach.madden.scheme.coordinator import build_call  # noqa: F401  (display keeps the dataset name)
+    with pytest.raises(ValueError):                                         # a bogus alias is still rejected
         lg.record_verified(db, CAT, v.variant_id, book_play="Not A Play")
-    lg.record_verified(db, CAT, v.variant_id, book_play="L Spot")              # owner confirms the book name
+    lg.record_verified(db, CAT, v.variant_id, book_play="L Spot")              # optional owner alias still works
     assert lg.check(v, CAT, db=db).legal
 
 

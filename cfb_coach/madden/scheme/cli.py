@@ -109,7 +109,7 @@ def cmd_checklist(args) -> int:
         for v in vs:
             vd = verdicts[v.variant_id]
             where = " — INSIDE THE OPPONENT 10 ONLY (t335u)" if v.field_zone != "any" else ""
-            status = (f"LIVE-LEGAL (adjustments owner-confirmed 2026-11-10, t333u){where}" if vd.legal else
+            status = (f"LIVE-LEGAL (installed: owner-confirmed 2026-11-10 t337u; adjustments: t333u){where}" if vd.legal else
                       "BLOCKED: " + "; ".join(vd.reasons) + where)
             print(f"[ ] {v.variant_name}  [{v.variant_id}]  — {status}")
             print(f"      base play: {v.base_play}")
@@ -119,8 +119,8 @@ def cmd_checklist(args) -> int:
                 print(f"      {line}")
             if v.variant_id in led:
                 print(f"      verified_at {led[v.variant_id].get('verified_at')}")
-    print("\nAll catalog adjustments are owner-confirmed executable (2026-11-10, t333u). Formations must be in the")
-    print("applied book: ml civil-scheme prepare-book --stage, install, then prep --mark-applied.")
+    print("\nAll catalog adjustments are owner-confirmed executable (2026-11-10, t333u), and every formation/play in the")
+    print("scheme dataset is owner-confirmed installed in your book (2026-11-10, t337u). prepare-book is optional.")
     if db is not None:
         db.close()
     return 0
@@ -144,15 +144,19 @@ def cmd_prepare_book(args) -> int:
             need.append(v.formation)
     have = dict((applied or {}).get("formations") or {})
     missing = [f for f in need if f not in have]
-    print(f"applied offense book: {(applied or {}).get('name', 'none')} ({len(have)} formations)")
+    from cfb_coach.madden.scheme import legality as lg
+    if lg.owner_book_confirmation_applies(cat):
+        print("INFORMATIONAL: you confirmed every scheme formation is in your Madden book (2026-11-10, t337u), so live")
+        print("legality does not depend on this. It only compares the app's book RECORD; --stage just syncs that record.")
+    print(f"applied offense book record: {(applied or {}).get('name', 'none')} ({len(have)} formations)")
     for f in need:
         plays = sorted({v.base_play for v in cat.variants if v.formation == f})
-        print(f"  {f}: {'installed' if f in have else 'MISSING from applied book'}; base plays: {', '.join(plays)}")
+        print(f"  {f}: {'in the record' if f in have else 'not in the app record'}; base plays: {', '.join(plays)}")
     if not missing:
         print(f"All {len(need)} scheme formations (incl. the red-zone package formations) are in the applied book.")
         return 0
     if not args.stage:
-        print("Dry run. Re-run with --stage to stage a pending merged book (current applied + missing formations).")
+        print("Dry run. Optional: --stage stages a pending merged book record (current applied + missing formations).")
         return 0
     if not applied:
         print("error: no applied offense book to merge into; run prep first", file=sys.stderr)

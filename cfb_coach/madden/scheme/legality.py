@@ -7,6 +7,9 @@ A variant is LIVE-legal only if every check passes, in this order:
                   always pass the snap's yardline, and re-validation uses the yardline recorded on the call
   2. stock        its formation and base play exist, by exact normalized name, in the in-repo Buccaneers stock book
   3. book         the formation and base play are in the APPLIED (installed) offense book of record
+     2+3 are satisfied by the owner's confirmation (2026-11-10, t337u, ``adjustments.OWNER_CONFIRMED_BOOK``) that
+     every formation and play in the scheme dataset is in his installed book, for this catalog version. The
+     checks still run and are recorded (``stock_*`` / ``book_*``) for information; they no longer block.
   4. executable   the owner confirmed the variant's adjustments are executable. Aidan confirmed ALL catalog
                   adjustments for this catalog version on 2026-11-10 (t333u), recorded in
                   ``adjustments.OWNER_CONFIRMED_ADJUSTMENTS``; a different catalog version needs a new
@@ -141,14 +144,25 @@ def check(v: SchemeVariant | None, cat: SchemeCatalog, *, db: Any = None, book: 
         out.checks["owner_confirmed_name_alias"] = True
     f_ok, p_ok = stock_has(v.formation, play)
     out.checks["stock_formation"], out.checks["stock_play"] = f_ok, p_ok
-    if not f_ok:
+    if owner_book_confirmation_applies(cat):
+        # t337u: the dataset's formations/plays are installed in the owner's book under the dataset's names.
+        out.checks["owner_confirmed_installed"] = True
+        out.checks["book"] = True
+        bk = book if book is not None else _applied_offense_book(db)
+        bf, bp = _book_has(bk, v.formation, play)
+        out.checks["applied_book_record_has_formation"], out.checks["applied_book_record_has_play"] = bf, bp
+        if alias and not p_ok:
+            out.reasons.append(f"book-name alias '{alias}' is not a play in {STOCK_BOOK} '{v.formation}'")
+    elif not f_ok:
         out.reasons.append(f"formation '{v.formation}' is not in the in-repo {STOCK_BOOK} stock book")
     elif not p_ok:
         out.reasons.append(f"base play '{play}' is not in {STOCK_BOOK} '{v.formation}' in the repo's stock data "
                            "(exact name; only an owner-confirmed book name via `verify --book-play` is accepted)")
-    if book is None:
+    if book is None and not out.checks.get("owner_confirmed_installed"):
         book = _applied_offense_book(db)
-    if book is None:
+    if out.checks.get("owner_confirmed_installed"):
+        pass
+    elif book is None:
         out.checks["book"] = False
         out.reasons.append("no applied offense book of record (run prep / prepare-book, install it, then prep --mark-applied)")
     else:
@@ -169,6 +183,11 @@ def check(v: SchemeVariant | None, cat: SchemeCatalog, *, db: Any = None, book: 
             out.reasons.append("adjustments not owner-confirmed for this catalog version (ml civil-scheme verify --variant ...)")
     out.legal = not out.reasons
     return out
+
+
+def owner_book_confirmation_applies(cat: SchemeCatalog) -> bool:
+    from cfb_coach.madden.scheme.adjustments import OWNER_CONFIRMED_BOOK as ob
+    return cat.catalog_id == ob["catalog_id"] and cat.version() == ob["catalog_version"]
 
 
 def owner_confirmation_applies(cat: SchemeCatalog) -> bool:

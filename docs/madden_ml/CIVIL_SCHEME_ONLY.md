@@ -1,7 +1,7 @@
 # civil_scheme_only — the 26-variant Lions offensive scheme mode (+ 5 red-zone package plays inside the 10)
 
 Status: **draft, off by default, not live-ready.** Nothing in this mode has been run in a Madden 27 game yet.
-**Owner confirmation (2026-11-10, t333u):** Aidan confirmed that every catalog adjustment (wheel, short cross, stems up/down, motion, D-pad text and the rest) exists in game and that he knows how to do them. That is recorded in `adjustments.OWNER_CONFIRMED_ADJUSTMENTS`, pinned to catalog `lions_civil_bucs_5wr_v4@15c120decc4b`. Live calls are no longer blocked for unverified adjustments. A variant is live-legal when its formation and base play are in the applied book. On the 11-07 snapshot that is **13 of 26**: 6 Clamp Stack and 7 Gun 5WR Tight variants. Bunch TE and Tight Doubles must be installed first, and Z Spot ×2 need the in-game name.
+**Owner confirmation (2026-11-10, t333u):** Aidan confirmed that every catalog adjustment (wheel, short cross, stems up/down, motion, D-pad text and the rest) exists in game and that he knows how to do them. That is recorded in `adjustments.OWNER_CONFIRMED_ADJUSTMENTS`, pinned to catalog `lions_civil_bucs_5wr_v4@15c120decc4b`. Live calls are no longer blocked for unverified adjustments. Since t337u (below), every dataset formation counts as installed, so **all 26 variants are live-legal anywhere and all 5 red-zone package plays are live-legal inside the opponent 10.**
 
 ## What it does
 
@@ -22,6 +22,23 @@ In civil_scheme_only, every offensive call is exactly one of the 26 catalog vari
 Reads are shown only when a verified read progression exists, and none does today.
 
 The mode never calls the heuristic `_pick_offense` or the experimental offense path. It never substitutes another play, never offers an unadjusted version (`unadjusted_allowed` is false for all 26), and never uses the 2 red-zone packages or the unnamed 5WR setup.
+
+## Every dataset play is installed (owner instruction 2026-11-10, t337u)
+
+Aidan: "we can assume all formations in the dataset are in my book because they are so all plays are legal to call." This is recorded in `adjustments.OWNER_CONFIRMED_BOOK` and pinned to catalog `lions_civil_bucs_5wr_v4@15c120decc4b`.
+
+- The stock-name check and the applied-book check no longer block any variant. They still run and are recorded in the verdict (`stock_play`, `applied_book_record_has_*`) for information.
+- **All 31 plays are live-legal:** the 26 core variants anywhere, and the 5 red-zone package plays inside the opponent 10 only. This includes Gun Bunch TE, Gun Tight Doubles, both Z Spot variants and the red-zone formations.
+- `prepare-book` is now optional and informational. `--stage` only syncs the app's book record.
+- **Z Spot was a naming mismatch, not a book problem.** The repo's in-house Buccaneers stock data spells those plays `L Spot` / `Zl Spot Shake`, so an exact-name check failed. The Z Spot calls now use the dataset name and carry a warning saying so. `verify --book-play` remains as an optional alias.
+- Unchanged:
+  - the red-zone field gate;
+  - the blocked unnamed 5WR setup;
+  - the one legal filter, which runs before scoring and again before display;
+  - only the listed IDs can be called;
+  - every call shows its variation with all of its adjustments;
+  - the mode is off by default.
+- A different catalog version falls back to the book check, which needs a new confirmation (`test_03`).
 
 ## Red zone (owner instruction 2026-11-10, t335u)
 
@@ -48,7 +65,7 @@ Aidan: "I want the model to call the redzone offense that is in the book." The c
   2. any adjustments for the QB-run package (the lesson says to watch it for the blocking setup, which was never transcribed);
   3. any adjustments for HB Zone or Speed Option (the 4-step setup applies to Spot Y Option 1);
   4. whether the package plays are alternatives or a sequence (each is scored as its own candidate).
-- **Book:** on the 11-10 postgame snapshot, the applied book has neither Pistol Bunch TE nor Gun Empty Quads, and it also lacks Gun Bunch TE. `ml civil-scheme prepare-book --stage` now stages all missing scheme formations, including these two.
+- **Book:** on the 11-10 postgame snapshot, the applied book has neither Pistol Bunch TE nor Gun Empty Quads, and it also lacks Gun Bunch TE. Since t337u that record no longer gates anything. `prepare-book --stage` optionally syncs it.
 - **Adjustment vocabulary:** swing and crosser were added. t333u covers every catalog adjustment, and these are catalog adjustments.
 
 If nothing is legal, the answer is `NO_LEGAL_SCHEME_PLAY` with the reasons. There is no hidden fallback. An internal error also returns `NO_LEGAL_SCHEME_PLAY`.
@@ -197,9 +214,9 @@ Coordinator simulation on the 599 held-out situations, playing within each game.
 ## Playbook status
 
 - All 4 formations exist in the in-repo Buccaneers stock data.
-- 10 of 12 base plays match by exact name. **`Z Spot` and `Z Spot Shake` do not**: the repo's stock data has `L Spot` and `Zl Spot Shake`. PR #115 approved those names as *art aliases* only, so `civil_5wr_z_spot_1` and `civil_5wr_z_spot_shake_1` stay blocked until you confirm the in-game name with `ml civil-scheme verify --variant civil_5wr_z_spot_1 --book-play "L Spot"`.
-- Catalog-valid: **24 of 26** (all except the 2 Z Spot variants). Adjustments executable: **26 of 26**, by owner confirmation 2026-11-10 (t333u). Live-legal on the 11-07 book: **13 of 26**. Once Bunch TE and Tight Doubles are installed it becomes **24**, and **26** after the Z Spot names are confirmed with `verify --variant ... --book-play "<name in game>"`.
-- On the 2026-11-07 snapshot, the installed offense book (`ML Designed Offense`, 5 formations) **lacks Gun Bunch TE and Gun Tight Doubles**. `ml civil-scheme prepare-book --stage` stages a pending merged book.
+- 10 of 12 base plays match by exact name. **`Z Spot` and `Z Spot Shake` do not**: the repo's stock data has `L Spot` and `Zl Spot Shake`. PR #115 approved those names as *art aliases* only, This was a naming mismatch, not book membership. Since t337u the Z Spot variants are live-legal under the dataset name, and `verify --book-play` is an optional alias.
+- Exact name match in repo stock data: **24 of 26** (the 2 Z Spot names differ). Adjustments executable: **26 of 26** (t333u). Installed: **all** (t337u). **Live-legal: 26 of 26 anywhere, plus 5 of 5 red-zone package plays inside the opponent 10.**
+- On the 2026-11-07 snapshot, the installed offense book (`ML Designed Offense`, 5 formations) **lacks Gun Bunch TE and Gun Tight Doubles**. Since t337u this no longer gates live calls.
 - Civil.GG sheet cross-check: all 17 non-5WR variants match by name or probable name.
   - `Mtn Shuffle Verts Smash 2` is probably the catalog's "Return Motion (name unverified)".
   - `Mesh 1` is probably "Mesh - Outside Bunch WR Post".
@@ -234,18 +251,12 @@ Coordinator simulation on the 599 held-out situations, playing within each game.
 git fetch origin && git switch ml/lions-civil-scheme-only
 # 0. optional: local provisional geometry (never commit it)
 #    export CFB_COACH_PROVISIONAL_EXPORT=~/.cfb-coach/catalog/provisional_catalog_offense.v1.jsonl
-# 1. prepare the book (dry run, then stage; install in Madden; then mark applied)
+# 1. (optional since t337u) compare the app's book record with the scheme formations
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme prepare-book
-PYTHONPATH=. python3 -m cfb_coach ml civil-scheme prepare-book --stage
-PYTHONPATH=. python3 -m cfb_coach prep --game madden27 -o cpu --text
-PYTHONPATH=. python3 -m cfb_coach prep --game madden27 -o cpu --mark-applied
 # 2. train + evaluate (backs up the DB, trains on the read-only copy, writes ~/.cfb-coach/models/civil_scheme/<version>)
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme train
-# 3. pregame checklist (every adjustment listed, stems tagged; status LIVE-LEGAL or BLOCKED with the reason)
+# 3. pregame checklist (every adjustment listed, stems tagged; all LIVE-LEGAL; red-zone plays "INSIDE THE OPPONENT 10 ONLY")
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme checklist
-#    red-zone package plays show "INSIDE THE OPPONENT 10 ONLY"; their formations need prepare-book --stage + install
-#    optional, only for the Z Spot names: confirm the in-game play name
-PYTHONPATH=. python3 -m cfb_coach ml civil-scheme verify --variant civil_5wr_z_spot_1 --book-play "<exact name in game>"
 # 4. shadow test (read-only, nothing logged; --live-legal-only applies the live filter)
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme shadow -o cpu --down 3 --distance 6 --yardline 45
 PYTHONPATH=. python3 -m cfb_coach ml civil-scheme shadow -o cpu --down 1 --distance 10 --yardline 25 --look "cover 3"
@@ -267,10 +278,10 @@ Backups go to `~/.cfb-coach/backups/civil_scheme/` and models to `~/.cfb-coach/m
 
 ## Limitations before Madden testing
 
-1. No variant has been run in a game yet, and the adjustments are owner-confirmed, not observed. Live calls are allowed for the 13 in-book variants.
-2. Gun Bunch TE and Gun Tight Doubles are not in the installed book on the 11-07 snapshot.
-3. Z Spot and Z Spot Shake need your confirmation of the in-game name.
-4. No verified variant outcomes exist. Every adjustment effect is a transferred, uncertain estimate, and the success head is the existing model.
+1. One controlled game has been played (53 verified variant outcomes for 15 variants). Bunch TE, Z Spot and the red-zone plays have no outcomes yet.
+2. Installation is owner-confirmed (t337u), not read from the game.
+3. The Z Spot names differ from the repo's stock data (`L Spot` / `Zl Spot Shake`). They are called by the dataset name.
+4. Variant outcomes are still few. Every adjustment effect is a transferred, uncertain estimate, and the success head is the existing model.
 5. Stem depths are not measured. 8 of 11 stems shift a specific route band on provisional geometry; 3 are applied directionally with extra uncertainty.
 6. Outside the opponent 10, the mode is still pass-only: no runs or sneaks. Inside the 10 the red-zone package adds HB Zone, Speed Option, QB Blast and RPO Alert QB Draw. None has a verified outcome in this mode yet.
 7. The provisional geometry export may not be on the laptop. Without it every design is `name_only`.

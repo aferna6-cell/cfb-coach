@@ -44,6 +44,17 @@ OWNER_CONFIRMED_ADJUSTMENTS = {
     "catalog_id": "lions_civil_bucs_5wr_v4",
     "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
 }
+# Owner instruction t337u: every formation and play in the scheme dataset (26 variants + red-zone package plays)
+# is in Aidan's installed Madden book, so no applied-book or stock-name check gates them.
+OWNER_CONFIRMED_BOOK = {
+    "owner_confirmed_installed": "2026-11-10",
+    "source": "t337u",
+    "statement": "we can assume all formations in the dataset are in my book because they are so all plays are "
+                 "legal to call",
+    "scope": "every catalog variant and red-zone package play: formation and play installed under the dataset's name",
+    "catalog_id": "lions_civil_bucs_5wr_v4",
+    "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
+}
 # t333u covers every adjustment in the catalog, including the red-zone package setup (drag, swing, crosser)
 # that t335u made callable.
 CIVIL_ROUTE_FAMILIES = REPO_HOT_ROUTE_FAMILIES | frozenset({"wheel", "shallow_cross", "swing", "cross"})
