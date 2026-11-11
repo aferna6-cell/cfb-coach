@@ -807,13 +807,15 @@ def cmd_play(args: argparse.Namespace) -> int:
             cpu_defense=cpu_defense,
         )
         _maybe_shadow(db, sit, call, oid)
-        print(call.headline())
+        if not getattr(call, "ravens_defense", None):  # ravens card already starts with PLAY
+            print(call.headline())
         print(call.format())
         if _route_aware_text(call):
             print(_route_aware_text(call))
         if args.why:
             print(f"  ({call.rationale})")
-        _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
+        _write_overlay(overlay, call.format() if getattr(call, "ravens_defense", None)
+                       else call.headline() + "\n" + call.format(), heard)
         if overlay is not None:
             print(f"  overlay → {overlay}")
         db.close()
@@ -1006,11 +1008,13 @@ def cmd_play(args: argparse.Namespace) -> int:
             )
             snap_book.assign_drive(sit)
             _maybe_shadow(db, sit, call, oid, session_id=term_sess.session_id)
-            print(call.headline())
+            if not getattr(call, "ravens_defense", None):  # ravens card already starts with PLAY
+                print(call.headline())
             print(call.format())
             if _route_aware_text(call):
                 print(_route_aware_text(call))
-            _write_overlay(overlay, call.headline() + "\n" + call.format(), heard)
+            _write_overlay(overlay, call.format() if getattr(call, "ravens_defense", None)
+                       else call.headline() + "\n" + call.format(), heard)
             last_call, last_sit = call, sit
             snap_book.remember_call(call, sit, opp_look=logged_look)
             if str(getattr(sit, "side", "") or "").startswith("d"):
