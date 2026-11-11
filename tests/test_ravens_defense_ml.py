@@ -275,12 +275,13 @@ def test_12_decision_latency_under_150ms():
 
 
 # 13 ------------------------------------------------------------- offense unchanged, modes independent
+# Pinned to the #153 offense (designed runs + online logging, 447b5e3); the defense port must not touch them.
 OFFENSE_PINS = {
-    "cfb_coach/madden/scheme/coordinator.py": "69fe732747277e438e48d1e671884f39417ffaba9f678098de54e0595eb3b4f6",
-    "cfb_coach/madden/scheme/legality.py": "5a6b5cea84200751e95be722489ed89d50f5961cbd32e8b57fbadb31264a2c1f",
+    "cfb_coach/madden/scheme/coordinator.py": "91facbe3c932e852e1ebe609169be3b0b0f0069320d184aed7bf51cc58e20224",
+    "cfb_coach/madden/scheme/legality.py": "e6c959dd4912a7f036c9c831ac31e1c6193c9c587e1fc10ac1167731d2393d36",
     "cfb_coach/madden/scheme/mode.py": "ef99c16e697b1fe25ab5f1709cf3d7ee307762856f370ffab2b48deb844fb031",
-    "cfb_coach/madden/scheme/model.py": "d2b4f6c1aa538487a808187607260b624544196b714763868929b9fa9de0ff19",
-    "cfb_coach/madden/scheme/catalog.py": "03dc6c1a208f729e3893b55e536a0b452d08ad6360ea3715a1a5c8ade40f4062",
+    "cfb_coach/madden/scheme/model.py": "af793fd4dfbe03c234ccf11cd0d6afeec8a555507ea041604222e637aab778a7",
+    "cfb_coach/madden/scheme/catalog.py": "53e0244f72222785549c47df932e4d06d77c1d8c882db635ff3a482824b5bcaf",
     "datasets/madden27/lions_offensive_scheme_catalog.json": "15c120decc4bba0ae3dc23f1c5a4c33f183f42a1dd8bd44a4a823526692a77ee",
 }
 
