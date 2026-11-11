@@ -82,21 +82,42 @@ The family is drawn with the snap's seed, so a re-call of the same snap gives th
 - `test_24` (test artifact): 60 first-and-10 snaps between the 20s give a run share between 25% and 75%, at least 6 distinct runs and at least 8 distinct pass variants. 3rd & 12 runs at least 15 points less often.
 - `test_24b` checks that the learned gap, the situation and the tendency each move P(run), and that the gate is off inside the 10. `test_24d` checks the 10–20 band, and `test_25` checks that a run call shows its variation in html-live.
 
-## Online league as the Chiefs — 31-team logging (owner instruction 2026-11-11, t348u/t350u)
+## Online league as the Chiefs — 31-team logging, civil offense + civil defense (owner 2026-11-11, t348u/t350u/t351u/t352u)
 
 The online Madden league is its own profile, `--franchise online`. It is separate from the Detroit Lions Franchise (`primary`), which is unchanged: `primary_team` stays Detroit Lions, and `online` is never saved as the sticky DB profile, so a later `play` without `--franchise` is still a Lions game.
 
-- **Your team:** config `online_team`, default **Kansas City Chiefs** (no setup needed). `config --game madden27 --online-team KC` sets it without touching `--primary-team`.
-- **Every online game needs `--opponent-team`.** It accepts full names, nicknames, or abbreviations (`"Buffalo Bills"`, `Bills`, `BUF`, `niners`, `WSH`) and stores the canonical name. The Chiefs (`KC`, `Chiefs`, …) are refused because that's your team, and no opponent data is collected on it. Missing or unknown teams are refused before any snap is logged.
-- **`--opponent` is still the person** (gamertag). In the online profile, an unknown gamertag is registered as a neutral cold-start human with no borrowed priors. One person can use different teams across games, so data is keyed by the session's team, not locked to the person.
-- **What gets stored.** `game_sessions` gets `league='online'`, `user_team`, `opponent_team`, `opponent_type` (`human`/`cpu`), and `scout_json`, alongside the existing `opponent_id` and `dynasty='online'`. Every snap logged in that session (terminal or HTML live, same logger as CPU games) is stamped with `league`, `user_team`, and `opponent_team`. The migration is additive: old Lions/CPU rows keep NULL and load unchanged.
-- **Scout at kickoff** (printed in the banner and saved in `scout_json`):
-  - A **stock-book scout** of that team's Huddle defense and offense books (`playbooks_full.json`): formation families, coverage-named plays, and man- or pressure-named counts. This is the stock book, **not** learned user tendencies.
-  - **Logged games against that team** in this league once there are any: games, snaps, users, coverages seen, their plays seen, and success rates.
-- **Coverage across the 31 teams:** `league --game madden27` lists every non-Chiefs team with games, snaps, last played (local time), and users. Teams with no data show "none yet". The Chiefs never appear as a row.
-- Offense is still civil_scheme_only (`--civil-scheme-only`). The standing human-session gate still requires one offense flag, so pass `--heuristic-offense`. With civil mode on, offense calls come from the civil coordinator; the flag only satisfies the gate and does not enable experimental ML. Defense is the established heuristic caller unless you opt in as before.
+Aidan (t351u): "no need for gamertag just make sure we are logging each seperate team, and make sure we are running our civil offense and defense". (t352u): "make sure the civil defensive scheme is ready to go as well."
 
-Commands (from `~/cfb-coach-lions`):
+- **Your team:** config `online_team`, default **Kansas City Chiefs** (no setup needed). `config --game madden27 --online-team KC` sets it without touching `--primary-team`.
+- **Every online game needs `--opponent-team`, and nothing else.** It accepts full names, nicknames, or abbreviations (`"Buffalo Bills"`, `Bills`, `BUF`, `niners`, `WSH`) and stores the canonical name. The Chiefs (`KC`, `Chiefs`, …) are refused because that's your team, and no opponent data is collected on it. Missing or unknown teams are refused before any snap is logged.
+- **No gamertag.** The game's `opponent_id` is a stable id derived from the team (`online_buffalo_bills`, `online_san_francisco_49ers`, …), registered once as a neutral cold-start human with no borrowed priors. Every game against one team lands in one bucket, and two teams never share one. `--opponent` is optional; if you pass a name it is only a display label in the session's `scout_json`. It never keys data, so one person on two teams is still two teams. No letter-starting token is needed, because the team id is built for you.
+- **What gets stored.** `game_sessions` gets `league='online'`, `user_team`, `opponent_team`, `opponent_type`, and `scout_json`, alongside `opponent_id` (the team id) and `dynasty='online'`. Every snap logged in that session (terminal or HTML live) is stamped with `league`, `user_team`, and `opponent_team`. Every civil-defense decision is also written to `ravens_defense_decisions` with `league` and `opponent_team`, which are added to older tables automatically. The migration is additive: old Lions/CPU rows keep NULL and load unchanged.
+- **Scout at kickoff** (printed in the banner and saved in `scout_json`):
+  - A **stock-book scout** of that team's Huddle defense and offense books (`playbooks_full.json`). This is the stock book, **not** learned user tendencies.
+  - **Logged games against that team** in this league once there are any: games, snaps, coverages seen, their plays seen, and success rates.
+- **Coverage across the 31 teams:** `league --game madden27` lists every non-Chiefs team with games, snaps, and last played (local time). Teams with no data show "none yet". The Chiefs never appear as a row.
+
+### How the calls are picked in an online session
+
+`--franchise online` sets both callers for that one process only. It uses environment overrides, so it never writes DB meta, never runs `ml civil-scheme enable` or `ml ravens-defense enable`, and leaves the Lions profile alone.
+
+| Side | Caller | Legal book | When it can't call |
+|---|---|---|---|
+| Offense | `civil_scheme_only`: 26 pass variants, 12 designed runs, and the red-zone package, with the t338u field bands and mixing | The scheme dataset (t337u: the scheme plays are the book). No applied offense book is required. | `NO_LEGAL_SCHEME_PLAY`, with no fallback |
+| Defense | Ravens two-formation civil defense: Nickel 2-4 Wide (match + Civil Nickel stock with **24 Base**) and Dime 2-3 Odd **DB Fire 2** with **DB Fire**, plus **Zone It** only on Cover 4 Quarters / Cover 4 Palms | The two-formation dataset `datasets/madden27/lions_ravens_two_formation_defense_v1.json`. The old Lions `installed_playbook` is not consulted (that is why verify-book was 0/14). | `NO_LEGAL_RAVENS_CALL`, with the reason shown and no fallback to the old 49ers/heuristic defensive caller |
+
+- There is **no human-offense gate** for this profile. You don't need `--heuristic-offense`, `--ml-human-control`, `--civil-scheme-only`, or `--ravens-defense`. The banner reads `OFFENSE CONTROLLER: CIVIL_SCHEME_ONLY` and `DEFENSE CONTROLLER: RAVENS_TWO_FORMATION_CIVIL (…UNTRAINED_PRIOR_ONLY…)`. The old "HUMAN OFFENSE ML PILOT: OFF (heuristic offense)" line no longer prints when the civil coordinator is calling.
+- **Online human games always get defense calls.** Type the defensive snap with a `d ` prefix (terminal), or pick Defense in the HTML window.
+- **The defense card** shows `PLAY: <formation> — <play>`, then `USER: UNVERIFIED` until you verify a USER in-game in the owner confirmations file, then `MACRO: 24 Base`, `MACRO: DB Fire`, or `MACRO: Zone It` when the call has one, then `LABEL: RAVENS_DEFENSE_ML (UNTRAINED_PRIOR_ONLY · scheme book)`. A required macro is part of the candidate itself, so it is never dropped. A call that needs one always shows it.
+- **Legality in the online profile.** Only the 14 dataset candidates can be called. The Cover 9 Show 2 *match* call stays blocked by the dataset (alias unproven), which leaves 13 callable. Macros and the coaching-adjustment profile are recorded as "not yet confirmed in game". They block a call only when your owner-confirmations file says a macro doesn't exist or doesn't execute, or marks a call INCOMPATIBLE. No play, macro, or USER assignment is invented.
+- **Model status: untrained, prior-only.** There are 0 verified Ravens defensive executions. With no `ml ravens-defense train` artifact, an in-memory prior-only model is used, and nothing is written. The prior can't separate the 13 candidates (expected losses fall within about 0.01). So in this profile the pick is drawn among the candidates within 0.015 of the best, weighted toward the best, and never the same call twice in a row. The other choice is calling Cover 3 Match on every snap. This is practice and data collection, not a game-ready or trained defense.
+- **Executions.** In the HTML window, the standing execution commitment ("completed, reported snaps follow the final recommended formation/play and any displayed action") also covers a displayed civil-defense CALL. A completed defensive snap logs `executed_formation`, `executed_play`, and the shown macro as verified, unless you touch the per-snap verify control to report something different. It never applies to `NO_LEGAL_RAVENS_CALL`. Together with the team tags, this gives later retrains team-separated defensive data.
+- **Opting out for one session:** `--unrestricted-offense` (old offense coordinator; the human gate then applies again) and `--previous-defense` (old defensive caller). `--ml-defense-control` and `--defense-model` are refused unless you also pass `--previous-defense`.
+- **Install in this league:** the Ravens defensive book (Nickel 2-4 Wide and Dime 2-3 Odd) and the **24 Base** and **DB Fire** macros (Zone It if you use it), the same civil package you ran with the Lions. The offense is the same Bucs civil scheme.
+- **One-time on a machine that never trained the offense:** `PYTHONPATH=. python3 -m cfb_coach ml civil-scheme train` (it trains an artifact and does not enable anything). Without it, offense snaps show `NO_LEGAL_SCHEME_PLAY (no trained model artifact)`.
+- **Still missing:** the HTML window has no team picker, so the team goes on the command. USERs show UNVERIFIED until verified in-game. The defensive outcome model has no learned terms until verified executions exist.
+
+Commands (from `~/cfb-coach-lions`; leave `~/cfb-coach` alone):
 
 ```bash
 cd ~/cfb-coach-lions
@@ -105,14 +126,18 @@ git fetch origin && git pull --ff-only origin ml/lions-civil-scheme-only
 PYTHONPATH=. python3 -m cfb_coach league --game madden27
 # optional pregame look at one team (stock book + anything logged)
 PYTHONPATH=. python3 -m cfb_coach league scout --game madden27 --opponent-team BUF
-# start an online game: you = Chiefs, opponent gamertag + the team they picked this game
+# start an online game: you = Chiefs; civil offense + Ravens civil defense are implied
 PYTHONPATH=. python3 -m cfb_coach play --game madden27 --franchise online \
-  --opponent <gamertag> --opponent-team "Buffalo Bills" --civil-scheme-only --heuristic-offense
+  --opponent-team "Buffalo Bills"
 # confirm the Lions Franchise config is untouched (primary team: Detroit Lions; online team: Kansas City Chiefs)
 PYTHONPATH=. python3 -m cfb_coach config --game madden27
 ```
 
-Tests: `python3 -m pytest -q tests/madden_ml/test_online_league.py`.
+Tests: `python3 -m pytest -q tests/madden_ml/test_online_league.py tests/madden_ml/test_online_civil_profile.py tests/test_ravens_defense_ml.py`.
+
+### How the defense was brought onto this branch
+
+The Ravens defense commits from draft PRs #154 (`c5033df`, dataset and docs) and #155 (`ead5ad4`, coordinator) were cherry-picked onto this branch in order. They are defense-only and touch no offense, catalog, run, or online-logging file. Only `cfb_coach/cli.py`, `cfb_coach/madden/cli.py`, and `cfb_coach/madden/playcaller.py` were touched by both sides, and they applied without conflicts. #155's offense-pin test was re-pinned to this branch's offense files (designed runs plus online logging), not #155's older offense.
 
 ## Field bands, play mixing and variant independence (owner instruction 2026-11-10, t338u)
 

@@ -267,10 +267,10 @@ class CliEndToEnd(unittest.TestCase):
         return _cli(self.tmp, "play", "--game", "madden27", "--terminal", "--no-overlay", *extra, stdin=stdin)
 
     def test_online_requires_team_and_refuses_chiefs(self) -> None:
-        r = self._play("--franchise", "online", "-o", "gamer_a", "--heuristic-offense")
+        r = self._play("--franchise", "online")
         self.assertEqual(r.returncode, 2, r.stderr)
         self.assertIn("--opponent-team is required", r.stderr)
-        r = self._play("--franchise", "online", "-o", "gamer_a", "--opponent-team", "KC", "--heuristic-offense")
+        r = self._play("--franchise", "online", "--opponent-team", "KC")
         self.assertEqual(r.returncode, 2)
         self.assertIn("your team", r.stderr)
 
@@ -281,8 +281,8 @@ class CliEndToEnd(unittest.TestCase):
 
     def test_online_game_logs_tags_and_leaves_lions_alone(self) -> None:
         stdin = "1&10 my 25\n+6 cover 3\n2&4 my 31\n+5\nq\n"
-        r = self._play("--franchise", "online", "-o", "gamer_b", "--opponent-team", "BUF",
-                       "--heuristic-offense", stdin=stdin)
+        # owner t351u: no gamertag needed; a name given is a display label only, data is keyed by team
+        r = self._play("--franchise", "online", "-o", "gamer_b", "--opponent-team", "BUF", stdin=stdin)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("ONLINE LEAGUE: Kansas City Chiefs vs Buffalo Bills", r.stdout)
         self.assertIn("stock-book scout", r.stdout)
@@ -293,7 +293,7 @@ class CliEndToEnd(unittest.TestCase):
             self.assertEqual(sess, [("online", "online", KC, "Buffalo Bills", "human")])
             snaps = con.execute("SELECT league, user_team, opponent_team, opponent_id FROM snaps").fetchall()
             self.assertGreaterEqual(len(snaps), 2)
-            self.assertTrue(all(s == ("online", KC, "Buffalo Bills", "gamer_b") for s in snaps))
+            self.assertTrue(all(s == ("online", KC, "Buffalo Bills", "online_buffalo_bills") for s in snaps))
             sticky = con.execute("SELECT value FROM meta WHERE key = 'franchise_profile'").fetchall()
             self.assertNotIn(("online",), sticky)
         finally:
@@ -307,7 +307,7 @@ class CliEndToEnd(unittest.TestCase):
         self.assertNotIn("Kansas City Chiefs        ", inv.stdout)
         bills = [ln for ln in inv.stdout.splitlines() if ln.startswith("Buffalo Bills")]
         self.assertEqual(len(bills), 1)
-        self.assertIn("gamer_b", bills[0])
+        self.assertNotIn("gamer_b", bills[0])   # never keyed or reported by person
 
 
 if __name__ == "__main__":

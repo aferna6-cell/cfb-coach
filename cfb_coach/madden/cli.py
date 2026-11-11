@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -164,13 +165,37 @@ def _require_opponent(raw: str, db: Any = None) -> str:
 def _open_opponent(args: argparse.Namespace) -> tuple[str, CoachDB]:
     """Resolve the opponent, open the DB, and register a missing cold start.
 
-    Online league (``--franchise online``): an unknown gamertag is registered as
-    a neutral Madden cold-start human (no borrowed priors) instead of refused.
+    Online league (``--franchise online``, owner t351u): no gamertag. The opponent
+    is the NFL team: ``opponent_id`` = ``online_<team>`` (e.g. ``online_buffalo_bills``),
+    registered once as a neutral cold-start human, so every game vs one team is one
+    bucket and two teams never share one. An ``--opponent`` name, if given, is a display
+    label only (``args.opponent_label``); it never keys data.
     """
     db = open_db(getattr(args, "db", None))
     try:
-        if (getattr(args, "franchise", None) == "online"
-                and not resolve_madden_opponent(args.opponent, db)):
+        if getattr(args, "franchise", None) == "online" and (
+                getattr(args, "opponent_team", None) or not getattr(args, "opponent", None)):
+            from cfb_coach.madden.human_opponents import register_cold_start
+            from cfb_coach.madden.online_league import resolve_opponent_team, team_opponent_id
+
+            try:
+                team = resolve_opponent_team(getattr(args, "opponent_team", None))
+            except ValueError as exc:
+                print(f"Refusing to start: {exc}", file=sys.stderr)
+                raise SystemExit(2) from None
+            label = getattr(args, "opponent", None)
+            args.opponent_label = str(label).strip() if label and str(label).strip() else None
+            args.opponent_team = team
+            args.opponent = team_opponent_id(team)
+            if not resolve_madden_opponent(args.opponent, db):
+                try:
+                    prof = register_cold_start(db, args.opponent, display_name=team)
+                except ValueError as exc:
+                    print(f"Cannot register online opponent team {team!r}: {exc}", file=sys.stderr)
+                    raise SystemExit(2) from None
+                print(f"New online-league opponent team registered: {prof['id']} ({team})")
+        elif getattr(args, "franchise", None) == "online" and not resolve_madden_opponent(args.opponent, db):
+            # legacy (447b5e3) gamertag-only call, e.g. postgame for an older session
             from cfb_coach.madden.human_opponents import register_cold_start
 
             try:
@@ -179,6 +204,10 @@ def _open_opponent(args: argparse.Namespace) -> tuple[str, CoachDB]:
                 print(f"Cannot register online opponent {args.opponent!r}: {exc}", file=sys.stderr)
                 raise SystemExit(2) from None
             print(f"New online-league opponent registered as cold start: {prof['id']}")
+        elif not getattr(args, "opponent", None):
+            print("--opponent / -o is required (only --franchise online games are keyed by "
+                  "--opponent-team alone).", file=sys.stderr)
+            raise SystemExit(2)
         oid = _require_opponent(args.opponent, db)
     except SystemExit:
         db.close()
@@ -667,7 +696,7 @@ def _online_league_context(
     from cfb_coach.madden.online_league import league_context
 
     try:
-        return league_context(db, oid, raw, cpu=cpu)
+        return league_context(db, oid, raw, cpu=cpu, opponent_label=getattr(args, "opponent_label", None))
     except ValueError as exc:
         print(f"Refusing to start: {exc}", file=sys.stderr)
         return False
@@ -697,6 +726,56 @@ def cmd_league(args: argparse.Namespace) -> int:
         db.close()
 
 
+RAVENS_CIVIL_DEFENSE_BANNER = (
+    "RAVENS_TWO_FORMATION_CIVIL (Nickel 2-4 Wide + Dime 2-3 Odd only; required 24 Base / DB Fire shown; "
+    "scheme dataset = legal book; outcome model UNTRAINED_PRIOR_ONLY; NO_LEGAL_RAVENS_CALL on failure, "
+    "no fallback to the old defensive caller)"
+)
+
+
+def _apply_online_civil_modes(args: argparse.Namespace) -> dict[str, bool]:
+    """--franchise online: civil offense + Ravens two-formation civil defense for THIS process.
+
+    Env-only (never a DB write, never `ml ... enable`). ``--unrestricted-offense`` /
+    ``--previous-defense`` opt the session out of either side.
+    """
+    from cfb_coach.madden.online_league import ENV_CIVIL_PROFILE
+    from cfb_coach.madden.ravens_defense import mode as rmode
+    from cfb_coach.madden.scheme import mode as smode
+
+    os.environ[ENV_CIVIL_PROFILE] = "1"
+    offense = not bool(getattr(args, "unrestricted_offense", False))
+    defense = not bool(getattr(args, "previous_defense", False))
+    if offense:
+        os.environ[smode.ENV_MODE] = smode.CIVIL
+    if defense:
+        os.environ[rmode.ENV_MODE] = rmode.RAVENS
+    return {"offense": offense, "defense": defense}
+
+
+def _ravens_scheme_book_record() -> dict[str, Any]:
+    from cfb_coach.madden.ravens_defense import catalog as rc
+
+    cat = rc.load()
+    return {"name": f"Ravens two-formation civil defense ({rc.DATASET.name})", "mode": "scheme dataset",
+            "rev": cat.version(), "formations": rc.scheme_book(cat)}
+
+
+def _online_book_info(info: dict[str, Any], books: dict[str, Any] | None) -> dict[str, Any]:
+    """HTML book panel for the online civil profile: show the scheme book actually used."""
+    if not books:
+        return info
+    forms = {f: ps for f, ps in (info.get("formations") or {}).items() if not str(f).startswith("D · ")}
+    if (books.get("offense") or {}).get("mode") == "scheme dataset" and not forms:
+        info["confirmed"] = True
+    d = books.get("defense")
+    if d:
+        forms.update({f"D · {f}": ps for f, ps in (d.get("formations") or {}).items()})
+    names = [f"O {(books.get('offense') or {}).get('name')}"] + ([f"D {d['name']}"] if d else [])
+    info.update({"formations": forms, "name": " · ".join(names)})
+    return info
+
+
 def cmd_play(args: argparse.Namespace) -> int:
     oid, db = _open_opponent(args)
     pid = _profile_arg(args, db)
@@ -705,9 +784,17 @@ def cmd_play(args: argparse.Namespace) -> int:
     if league_ctx is False:
         db.close()
         return 2
+    online_civil = _apply_online_civil_modes(args) if league_ctx else {"offense": False, "defense": False}
+    if online_civil["defense"] and (getattr(args, "ml_defense_control", False)
+                                    or getattr(args, "defense_model", None)):
+        print("Refusing to start: online sessions call the Ravens civil defense. Add --previous-defense "
+              "to use --ml-defense-control / --defense-model instead.", file=sys.stderr)
+        db.close()
+        return 2
     active = _active_after_prep(db, oid, pid)
     # CPU games stay offense-only unless this session explicitly opts in.
-    cpu_defense = bool(getattr(args, "cpu_defense", False)) and cpu
+    # Online league games always get defense calls (owner t351u: civil offense AND defense).
+    cpu_defense = (bool(getattr(args, "cpu_defense", False)) or bool(league_ctx)) and cpu
     offense_only = cpu and not cpu_defense
     human_ml_control = bool(getattr(args, "ml_human_control", False)) and not cpu
     explicit_heuristic = bool(getattr(args, "heuristic_offense", False)) and not cpu
@@ -724,7 +811,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         )
         db.close()
         return 2
-    if not cpu and not human_ml_control and not explicit_heuristic:
+    if not cpu and not human_ml_control and not explicit_heuristic and not online_civil["offense"]:
         if not _confirm_heuristic_offense(args, oid):
             db.close()
             return 2
@@ -768,8 +855,14 @@ def cmd_play(args: argparse.Namespace) -> int:
             warm_up(db)   # model + geometry load before the first snap (latency target 150 ms)
     except Exception:  # noqa: BLE001 — banner only
         pass
+    from cfb_coach.madden.playcaller import _ravens_defense_ml
+
+    ravens_on = _ravens_defense_ml(db)
+    civil_on = offense_controller.startswith("CIVIL_SCHEME_ONLY")
     if offense_only:
         defense_controller = "OFF"
+    elif ravens_on:
+        defense_controller = RAVENS_CIVIL_DEFENSE_BANNER
     elif human_defense_ml:
         defense_controller = "EXPERIMENTAL"
     else:
@@ -780,7 +873,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         print("HUMAN OFFENSE ML PILOT: ON for this play session only (opt-in).")
         print("  A human must confirm each call: accepted stays unknown until verify is touched.")
         print("  Instant rollback for next call: python -m cfb_coach ml heuristic")
-    elif not cpu:
+    elif not cpu and not civil_on:
         print("HUMAN OFFENSE ML PILOT: OFF (heuristic offense; --heuristic-offense).")
     if defense_model == "v1" and offense_only:
         print("HUMAN DEFENSE V1: ignored (CPU games are offense-only; add --cpu-defense to opt in).")
@@ -802,30 +895,62 @@ def cmd_play(args: argparse.Namespace) -> int:
         print("  An empty prior uses the defense v1 file when it is present; otherwise the call is HEURISTIC.")
         print("  Instant rollback for the next defensive call: "
               "python -m cfb_coach ml defense-experimental --disable --db \"$CFB_COACH_MADDEN_DB\"")
-    elif not offense_only:
+    elif not offense_only and not ravens_on:
         print("HUMAN DEFENSE PILOT: OFF (established defensive caller; use --ml-defense-control to opt in).")
+    if ravens_on and not offense_only:
+        print("  Civil defense is an untrained prior-only caller (0 verified Ravens executions). It picks by scheme")
+        print("  legality + priors and logs every call so a later retrain learns per opponent team.")
+        print("  USER shows UNVERIFIED until you verify it in-game. Needs the Ravens defensive book (Nickel 2-4 Wide,")
+        print("  Dime 2-3 Odd) and the 24 Base + DB Fire macros installed in this league.")
     print(_profile_header(pid))
     if league_ctx:
         from cfb_coach.madden.online_league import format_scout
 
+        label = f", name {league_ctx['opponent_label']!r}" if league_ctx.get("opponent_label") else ""
         print(f"ONLINE LEAGUE: {league_ctx['user_team']} vs {league_ctx['opponent_team']} "
-              f"(opponent {oid}, {league_ctx['opponent_type']}) — every snap is tagged with this team.")
+              f"(logged as {oid}{label}, {league_ctx['opponent_type']}) — every game and snap is keyed by "
+              "this team, never by a gamertag.")
         print(format_scout(league_ctx["_report"]))
     print(doctrine_line(profile_config(pid)["team"]))
     from cfb_coach.madden.playbook import NoActivePlaybook, active_books, load_pending
 
+    need = ("offense",) if offense_only else ("offense", "defense")
+    # Online civil profile: the scheme datasets are the legal book (t337u offense, t351u defense),
+    # so a missing / old Lions installed_playbook snapshot never blocks the session.
+    scheme_sides = {s for s in need if league_ctx and ((s == "offense" and civil_on) or
+                                                        (s == "defense" and ravens_on))}
     try:
-        books = active_books(db, ("offense",) if offense_only else ("offense", "defense"))
+        from cfb_coach.madden.playbook import load_books
+
+        if scheme_sides:
+            have = load_books(db)
+            hard = tuple(s for s in need if s not in scheme_sides)
+            books = active_books(db, hard) if hard else {}
+            for s in need:
+                if s in have and s not in books and s != "defense":
+                    books[s] = have[s]
+            if "defense" in scheme_sides:
+                books["defense"] = _ravens_scheme_book_record()
+            if "offense" in scheme_sides and "offense" not in books:
+                books["offense"] = {"name": "civil scheme catalog (t337u: scheme plays are the book)",
+                                    "mode": "scheme dataset", "formations": {}}
+        else:
+            books = active_books(db, need)
     except NoActivePlaybook as exc:
         print(str(exc).replace("<opp>", oid), file=sys.stderr)
         db.close()
         return 2
-    print(_active_line(active, offense_only))
+    if ravens_on and not offense_only:
+        o = ", ".join(active.get("offense") or []) or "none"
+        print(f"Active macros (from last prep): O {len(active.get('offense') or [])}: {o} | "
+              "D: Ravens civil only — each call shows its own 24 Base / DB Fire (and Zone It when chosen)")
+    else:
+        print(_active_line(active, offense_only))
     print(f"Locked book: O = {books['offense']['name']} [{books['offense']['mode']}]"
           + ("" if offense_only else f" · D = {books['defense']['name']} [{books['defense']['mode']}]")
           + " — calls stay inside it (playbook --game madden27 to list)")
     effective_offense = offense_controller
-    if cpu:
+    if cpu and not civil_on:
         from cfb_coach.madden.model import inference as _inference
         from cfb_coach.madden.model.schema import CoachingMode as _Mode
 
@@ -934,7 +1059,9 @@ def cmd_play(args: argparse.Namespace) -> int:
             ),
             league_context=league_ctx or None,
             cpu_only=offense_only,
-            book_info=lambda: live_book_info(db, cpu=offense_only, profile_label=profile_config(pid)["label"]),
+            book_info=lambda: _online_book_info(
+                live_book_info(db, cpu=offense_only, profile_label=profile_config(pid)["label"]),
+                books if scheme_sides else None),
             book_apply=lambda rev: live_apply(db, rev),
             live_score=live_ctx.score,
             quarter=live_ctx.quarter,
@@ -944,6 +1071,9 @@ def cmd_play(args: argparse.Namespace) -> int:
             # the final recommended formation/play and any displayed action.
             # An explicit per-snap deviation always overrides this assumption.
             standing_execution_attestation=True,
+            # Online civil defense: the same standing commitment covers the displayed Ravens call
+            # (formation, play and its required / optional macro) on a completed, reported snap.
+            standing_defense_attestation=bool(league_ctx and ravens_on),
         )
         print("HTML live input ON (default). Use --terminal / --no-html for classic sit> loop.")
         try:

@@ -481,6 +481,8 @@ def cmd_play(args: argparse.Namespace) -> int:
     handler = _madden_handler(args, "cmd_play")
     if handler:
         return handler(args)
+    if not getattr(args, "opponent", None):
+        raise SystemExit("play: --opponent / -o is required")
     oid = _require_opponent(args.opponent)
     db = _call_db(getattr(args, "db", None))
     _ensure_rules(db)
@@ -848,7 +850,8 @@ def _add_game_args(p: argparse.ArgumentParser, *, franchise: bool = True) -> Non
             choices=("primary", "lab", "online"),
             default=None,
             help="Madden only: primary (serious Franchise, Lions) | lab (experimental; promotes to primary) | "
-                 "online (online league as config online_team, default Chiefs; needs --opponent-team)",
+                 "online (online league as config online_team, default Chiefs; needs --opponent-team; no gamertag; "
+                 "civil offense + Ravens civil defense by default)",
         )
 
 
@@ -952,14 +955,20 @@ def build_parser() -> argparse.ArgumentParser:
         "play",
         help="Live play: HTML input window (default) or --terminal sit> loop (CPU = offense-only)",
     )
-    p_play.add_argument("--opponent", "-o", required=True)
+    p_play.add_argument(
+        "--opponent", "-o", default=None,
+        help="Opponent id (required except for --franchise online, where the game is keyed by "
+             "--opponent-team alone; a name given there is a display label only).",
+    )
     p_play.add_argument(
         "--opponent-team",
         dest="opponent_team",
         default=None,
         metavar="NFL_TEAM",
         help='Madden --franchise online only (required there): the NFL team the opponent uses THIS game, '
-             'e.g. "Buffalo Bills" or BUF. Your own online team (Chiefs) is refused.',
+             'e.g. "Buffalo Bills" or BUF. Your own online team (Chiefs) is refused. No gamertag needed: '
+             "the game is logged under this team. Online sessions default to civil offense + Ravens "
+             "two-formation civil defense.",
     )
     p_play.add_argument(
         "--once",
@@ -984,21 +993,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--unrestricted-offense",
         action="store_true",
         help="Madden only: force the existing unrestricted offense coordinator for this session even when "
-             "civil_scheme_only is enabled in the DB.",
+             "civil_scheme_only is enabled in the DB (also opts a --franchise online session out of the "
+             "civil offense).",
     )
     p_play.add_argument(
         "--ravens-defense",
         action="store_true",
         help="Madden only: this session's defensive calls come ONLY from the Ravens Nickel 2-4 Wide / Dime 2-3 "
              "Odd ML coordinator (validated against the installed book), or NO_LEGAL_RAVENS_CALL. Needs "
-             "`ml ravens-defense train`. Off by default. Offense mode is independent. CPU games also need "
-             "--cpu-defense.",
+             "`ml ravens-defense train`. Off by default except --franchise online (on by default there, "
+             "scheme dataset = legal book, untrained prior-only). Offense mode is independent. CPU games "
+             "also need --cpu-defense.",
     )
     p_play.add_argument(
         "--previous-defense",
         action="store_true",
         help="Madden only: force the existing defensive caller for this session even when ravens_defense_ml "
-             "is enabled in the DB.",
+             "is enabled in the DB (also opts a --franchise online session out of the civil defense).",
     )
     p_play.add_argument(
         "--heuristic-offense",

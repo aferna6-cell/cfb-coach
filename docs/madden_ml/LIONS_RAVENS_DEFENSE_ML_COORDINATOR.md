@@ -86,3 +86,15 @@ The file lives at `~/.cfb-coach/ravens_defense/owner_confirmations.json`, or at 
 - `user_verifications[]`: `{call_id, zone_it, offense_shape, formation, user, check, verified_on, source: "owner_in_game"}`.
 
 A malformed file confirms nothing.
+
+## Online league profile (Chiefs, owner t351u/t352u)
+
+On `ml/lions-civil-scheme-only` (PR #153), `play --franchise online --opponent-team <team>` runs this coordinator as the session's defensive caller by default. It does that with no `ml ravens-defense enable` and no DB write:
+
+- **Scheme book.** The two-formation dataset is the legal book (`legality.check(..., scheme_book=True)`). The installed-book and fingerprint items are satisfied by the dataset itself. A macro or coaching-profile item blocks a call only when the owner-confirmations file explicitly reports it missing or INCOMPATIBLE. Dataset blocks (the Cover 9 Show 2 match alias) still apply, leaving 13 of the 14 candidates callable.
+- **Model.** A trained artifact is used when one exists. Otherwise an in-memory `UNTRAINED_PRIOR_ONLY` model is used, and nothing is written. The card's label says so.
+- **Mixer.** This applies only with the online scheme book: the pick is drawn among candidates within `MIX_BAND` (0.015) of the best expected loss, with weight `exp(-Δ/0.006)`, and never repeats the previous call of the session. The Lions path stays a pure argmin.
+- **Fail closed.** Any error gives `NO_LEGAL_RAVENS_CALL` with its reason, and the previous defensive caller never runs.
+- **Logging.** `ravens_defense_decisions` gains `league` and `opponent_team`. HTML snaps carry the standing execution attestation for a displayed CALL, covering formation, play, and the shown macro.
+
+See `docs/madden_ml/CIVIL_SCHEME_ONLY.md` § Online league.

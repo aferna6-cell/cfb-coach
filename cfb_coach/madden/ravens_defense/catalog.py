@@ -196,6 +196,17 @@ def installed_two_formation_book(defense_book: Mapping[str, Any] | None) -> dict
     return {f: sorted(str(p) for p in forms[f]) for f in FORMATIONS if f in forms}
 
 
+def scheme_book(cat: RavensCatalog | None = None) -> dict[str, list[str]]:
+    """The two-formation dataset itself as a book ({formation: [base plays]}), only plays the 14
+    candidates use. The online civil profile (t351u) treats this as the legal book: Aidan installs the
+    same civil package in the Chiefs league. Never adds a play that is not a dataset candidate."""
+    cat = cat or load()
+    out: dict[str, set[str]] = {}
+    for c in cat.candidates:
+        out.setdefault(c.formation, set()).add(c.base_play)
+    return {f: sorted(out[f]) for f in FORMATIONS if f in out}
+
+
 def installed_fingerprint(two_formation_book: Mapping[str, Sequence[str]]) -> str | None:
     """Hash of the exact installed Nickel 2-4 Wide + Dime 2-3 Odd inventory (None when neither exists)."""
     if not two_formation_book:

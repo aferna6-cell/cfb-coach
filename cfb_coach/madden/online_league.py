@@ -6,9 +6,15 @@ It is separate from the Detroit Lions Franchise (``primary``) and never writes
 
 Every online game must name the opponent's NFL team (``--opponent-team``). The
 team is stored on the session row and copied onto every snap, together with
-``league = "online"`` and ``user_team``. ``--opponent`` stays the person
-(gamertag / cold-start human); one person may play different teams in
-different games, so learning by team reads the session tags, not the person.
+``league = "online"`` and ``user_team``. No gamertag is needed (owner t351u):
+the session's ``opponent_id`` is a stable id derived from the team
+(``online_buffalo_bills``), so every game against one team is one bucket and two
+teams are never merged. An optional ``--opponent`` name is kept only as a
+display label on the session's scout record; it never keys data.
+
+Online sessions run the civil offense (``civil_scheme_only``) and the Ravens
+two-formation civil defense by default (``ENV_CIVIL_PROFILE``); the scheme
+datasets are the legal book for this profile.
 
 The scout is a STOCK-BOOK prior from Huddle's team playbooks
 (``playbooks_full.json``). It is not learned user tendency. Once games exist
@@ -32,6 +38,27 @@ from cfb_coach.madden.franchise import (
 )
 
 LEAGUE_ID = ONLINE
+ONLINE_ID_PREFIX = "online_"
+# Set for one process by `play --franchise online`: the civil scheme datasets are the legal book
+# (offense: the t337u catalog; defense: the Ravens two-formation dataset), so a missing or Lions
+# installed_playbook snapshot never blocks an online session. Never written to a DB.
+ENV_CIVIL_PROFILE = "CFB_COACH_ONLINE_CIVIL_PROFILE"
+
+
+def civil_profile_active() -> bool:
+    import os
+
+    return (os.environ.get(ENV_CIVIL_PROFILE) or "").strip() == "1"
+
+
+def team_opponent_id(team: str) -> str:
+    """Stable synthetic opponent id for an NFL team (``Buffalo Bills`` -> ``online_buffalo_bills``)."""
+    slug = re.sub(r"[^a-z0-9]+", "_", str(team).strip().lower()).strip("_")
+    return (ONLINE_ID_PREFIX + slug)[:32]
+
+
+def is_team_opponent_id(oid: str | None) -> bool:
+    return bool(oid) and str(oid).startswith(ONLINE_ID_PREFIX)
 STOCK_SCOUT_LABEL = "stock-book scout (Huddle team playbook; NOT learned user tendencies)"
 LOGGED_LABEL = "logged online-league games vs this team (actual users)"
 
@@ -184,7 +211,7 @@ def logged_summary(db: Any, team: str) -> dict[str, Any]:
     ).fetchall()
     out["games"] = len(sess)
     out["last_played"] = sess[-1][2] if sess else None
-    out["opponents"] = sorted({str(r[1]) for r in sess})
+    out["opponents"] = sorted({str(r[1]) for r in sess if not is_team_opponent_id(r[1])})
     rows = db.conn.execute(
         "SELECT * FROM snaps WHERE league = ? AND opponent_team = ?",
         (LEAGUE_ID, team),
@@ -294,7 +321,8 @@ def format_scout(report: dict[str, Any]) -> str:
         lines.append("    none yet — this game will be the first logged sample.")
     else:
         lines.append(f"    games {lg['games']}, snaps {lg['snaps']} (O {lg['offense_snaps']} / D {lg['defense_snaps']}), "
-                     f"last {_local(lg['last_played'])}, users: {', '.join(lg['opponents'])}")
+                     f"last {_local(lg['last_played'])}"
+                     + (f", names given: {', '.join(lg['opponents'])}" if lg["opponents"] else ""))
         if lg["coverage_seen"]:
             lines.append("    coverage seen: " + ", ".join(f"{k} {v}" for k, v in lg["coverage_seen"].items()))
         if lg["their_plays_seen"]:
@@ -306,17 +334,21 @@ def format_scout(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def league_context(db: Any, opponent_id: str, opponent_team: str, *, cpu: bool) -> dict[str, Any]:
-    """Tags stored on the session row (and copied onto each snap)."""
+def league_context(db: Any, opponent_id: str, opponent_team: str, *, cpu: bool,
+                   opponent_label: str | None = None) -> dict[str, Any]:
+    """Tags stored on the session row (and copied onto each snap). Keyed by team, never by person."""
     me = user_team()
     team = resolve_opponent_team(opponent_team, me)
     report = scout_report(db, team, me)
+    if opponent_label:
+        report["opponent_label"] = str(opponent_label)
     return {
         "league": LEAGUE_ID,
         "user_team": me,
         "opponent_team": team,
         "opponent_type": "cpu" if cpu else "human",
         "opponent_id": opponent_id,
+        "opponent_label": opponent_label,
         "scout_json": json.dumps(report, default=str),
         "_report": report,
     }

@@ -173,6 +173,9 @@ class LivePlayController:
     # self-attested as following the final recommendation unless overridden.
     # This is user-reported evidence, NOT independently observed controller input.
     standing_execution_attestation: bool = False
+    # Online civil profile only: the standing commitment also covers a displayed Ravens civil-defense
+    # CALL (formation, play, required / optional macro). Never applies to NO_LEGAL_RAVENS_CALL.
+    standing_defense_attestation: bool = False
     # Explicit user-confirmed Madden action inventory; never generated from a proposal.
     madden_adjustment_loadout: Any | None = None
     madden_adjustment_confirmations: dict[str, Any] | None = None
@@ -741,11 +744,23 @@ class LivePlayController:
             and str(executed_status or "unknown").strip().lower() == "unknown"
             and str(getattr(self.last_call, "side", "")).startswith("o")
         )
+        rd = getattr(self.last_call, "ravens_defense", None)
+        ravens_attested = bool(
+            self.standing_defense_attestation
+            and not verify_touched
+            and str(executed_status or "unknown").strip().lower() == "unknown"
+            and str(getattr(self.last_call, "side", "")).startswith("d")
+            and isinstance(rd, dict) and rd.get("status") == "CALL"
+        )
         if standing_attested:
             executed_status = "used_recommended"
             verify_touched = True
             applied_recommended_action = self._pending_offense_action() is not None
             confirmed_no_adjustment = not applied_recommended_action
+        if ravens_attested:
+            executed_status = "used_recommended"
+            verify_touched = True
+            standing_attested = True
 
         # Only an action actually offered with the final call can be
         # explicitly confirmed. A stale hidden checkbox must not fabricate it.
@@ -776,6 +791,7 @@ class LivePlayController:
             executed_play=executed_play,
             executed_macro=executed_macro,
             applied_recommended_macro=(
+                True if ravens_attested else
                 applied_recommended_action
                 if str(self.brand).lower().startswith("madden") else None
             ),

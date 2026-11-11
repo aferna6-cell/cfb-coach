@@ -82,7 +82,9 @@ class MaddenCall:
         rd = getattr(self, "ravens_defense", None)
         if isinstance(rd, dict) and rd.get("card"):
             # ravens_defense_ml live card: PLAY / USER / MACRO only (full trace stays on call.ravens_defense)
-            return "\n".join(rd["card"]) + "\n  LABEL: RAVENS_DEFENSE_ML"
+            status = rd.get("outcome_model_status")
+            tag = " (" + " · ".join(x for x in (status, "scheme book" if rd.get("scheme_book") else None) if x) + ")"
+            return "\n".join(rd["card"]) + "\n  LABEL: RAVENS_DEFENSE_ML" + (tag if tag != " ()" else "")
         if self.side == "offense":
             line = format_offense(self.formation, self.play, self.adj_or_macro, self.read_or_user)
         else:
@@ -945,6 +947,20 @@ def _ravens_defense_ml(db: Any) -> bool:
     return defense_mode(db) == RAVENS
 
 
+def _online_scheme_side(side: str, db: Any) -> bool:
+    """True when this side's legal book is its civil scheme dataset (``play --franchise online`` only)."""
+    try:
+        from cfb_coach.madden.online_league import civil_profile_active
+
+        if not civil_profile_active():
+            return False
+        if side == "defense":
+            return _ravens_defense_ml(db)
+        return side == "offense" and _civil_scheme_only(db)
+    except Exception:  # noqa: BLE001 — unknown = the normal book rules
+        return False
+
+
 def make_call(
     sit: Situation,
     opponent_id: str,
@@ -1010,8 +1026,17 @@ def make_call(
 
     audibles: dict[str, list[str]] | None = None
     raw: dict[str, Any] | None = None
+    scheme_side = _online_scheme_side(sit.side, db)
     if playbook is None:
-        raw = active_books(db, (sit.side,))
+        if scheme_side:
+            # Online civil profile (t351u): the scheme dataset is the legal book for this side, so a
+            # missing / old Lions installed_playbook never blocks the call. Legality is the scheme's own.
+            from cfb_coach.madden.playbook import load_books
+
+            raw = {k: v for k, v in load_books(db).items() if k == sit.side and k != "defense"}
+            raw.setdefault(sit.side, {"formations": {}})
+        else:
+            raw = active_books(db, (sit.side,))
         books = eligible(raw)
         audibles = (raw.get("offense") or {}).get("audibles")
     else:
@@ -1032,7 +1057,7 @@ def make_call(
         from cfb_coach.madden.ravens_defense.coordinator import call_ravens
 
         call = call_ravens(sit, opponent_id, db, (raw or {}).get("defense") if playbook is None else
-                           {"formations": books.get("defense") or {}})
+                           {"formations": books.get("defense") or {}}, scheme_book=scheme_side)
     elif sit.side == "defense":
         call = _pick_defense(sit, opp, bl, db, rng, sel["defense"], books["defense"])
         # A cold-start human (John) keeps the established caller unless this
