@@ -15,7 +15,7 @@ This supersedes the earlier *three-formation* draft example in `civil_match_nick
 | **Nickel 2-4 Wide** | Stock spot-drop fallback | Cover 4 Zone | None |
 | **Dime 2-3 Odd** | **Blitz only** | DB Fire 2 | **DB Fire — always required** |
 
-*The Guide says generic `Cover 9`, not necessarily `Cover 9 Show 2`; confirm its actual matching/check behavior before using the transferred match-guide USER assignment.*
+*Owner t358u allowed Match-package Cover 9 Show 2 into the live book. The Guide still says generic `Cover 9`; confirm its actual matching/check behavior in game before treating a transferred match-guide USER assignment as verified.*
 
 Names are grounded in public Ravens Madden 27 playbook listings, but are **not** a hash of the user's installed Xbox playbook. No other Dime formation or Nickel subformation may enter this restricted scheme.
 

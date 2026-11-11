@@ -83,8 +83,9 @@
       "optional_macros": [],
       "manual_setup_changes_allowed": false,
       "applied_book_verified_in_xbox": false,
-      "coverage_alias_status": "guide_cover9_to_show2_unverified",
-      "live_eligible": false
+      "coverage_alias_status": "owner_allowed_t358u",
+      "live_eligible": true,
+      "owner_note": "Owner t358u allowed Cover 9 Show 2 into the live playbook. The Match-package call is now live-eligible. USER assignments stay UNVERIFIED until confirmed in game; this does not invent a verified USER."
     },
     {
       "call_id": "match_cover3",
@@ -571,7 +572,7 @@
     "red_zone_policy": "Model may favor Tampa 2 Contain from nickel_stock with 24 Base when red-zone context supports it, but not forced; no extra red-zone formation.",
     "guide_role_policy": "Match guide user role keyed by EXACT candidate + offensive alignment + configured check; do not transfer to modified Nickel stock variant or Zone It without validation.",
     "unknown_user": "Explicitly mark USER UNVERIFIED / do not claim a verified player, not eligible for unattended live recommendation until owner validates.",
-    "match_cover9_note": "Guide uses generic Cover 9; Ravens Nickel 2-4 Wide offers Cover 9 Show 2; do not assume identical match rule and user without practice confirmation.",
+    "match_cover9_note": "Owner t358u allowed the Match-package Cover 9 Show 2 call into the live book (live_eligible true). The Civil match guide still names generic Cover 9; USER transfer from that guide stays UNVERIFIED until confirmed in game.",
     "playbook_policy": "exact names only; do not add Dime 2-3, Nickel 2-4 (not Wide), Nickel Mug or other formations",
     "no_outcome_claims": "These are expert source tags, NOT learned performance, verified outcomes, or evidence of game-winning rates.",
     "adaptation": "rank legal candidates using historical opponent information and earlier closed same-game snaps only; record executed call_id and macro separately for next-game training"

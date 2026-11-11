@@ -8,14 +8,14 @@ A candidate is live-legal only if every item holds; otherwise it is rejected wit
   * the installed two-formation fingerprint matches Aidan's confirmation;
   * the required macro (24 Base / DB Fire) and any optional macro (Zone It) are owner-confirmed;
   * the call is COMPATIBLE under the one persistent coaching-adjustment profile;
-  * dataset blocks (Cover 9 Show 2 Match alias) are cleared by owner confirmation.
+  * dataset blocks (a call with live_eligible false) are cleared only by owner confirmation.
 ``assume_setup`` (shadow / offline evaluation ONLY) skips the install/macro/coaching items and is recorded;
-dataset blocks still apply.
+dataset blocks still apply unless the owner has cleared them.
 ``scheme_book`` (``play --franchise online`` only, owner t351u) treats the two-formation dataset as the
 installed book: the install / fingerprint items are satisfied by the dataset, and macros / coaching profile
 are blocking only when the owner's confirmations file explicitly says a macro does not exist / execute or a
 call is INCOMPATIBLE. Unconfirmed items are recorded as notes (never silently dropped from the call: the
-required macro is always part of the candidate and always displayed). Dataset blocks still apply.
+required macro is always part of the candidate and always displayed). Dataset blocks still apply unless cleared (owner t358u allowed Match Cover 9 Show 2).
 """
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ def check(cat: rc.RavensCatalog, cand: rc.Candidate, *, installed: Mapping[str, 
         status = conf.coaching_status(cand.call_id)
         if status != "COMPATIBLE":
             reasons.append(f"COACHING_PROFILE:{status}")
-    # dataset blocks hold even in shadow: the Guide's "Cover 9" is not proven to be Ravens "Cover 9 Show 2"
+    # dataset blocks hold even in shadow, unless the owner has cleared them (t358u: Match Cover 9 Show 2)
     if cand.raw.get("live_eligible") is False and not (
             cand.call_id == "match_cover9_show2" and conf.cover9_show2_alias_confirmed):
         reasons.append("DATASET_BLOCK:" + str(cand.raw.get("coverage_alias_status") or "not_live_eligible"))

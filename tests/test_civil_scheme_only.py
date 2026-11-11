@@ -897,3 +897,45 @@ def test_25_run_call_shows_its_variation_in_html_live(tmp_path, civil_env):
     page = render_live_html(ctrl)
     assert f"VARIATION: {_html.escape(label)}" in page
     assert "none (catalog lists no adjustments: stock play)" in call.format().splitlines()[0]
+
+
+
+VERIFIED_NAMES_T358U = {
+    "civil_bucs_mtn_shuffle_verts_smash_return_motion_unverified": "MTN Shuffle Verts Smash — Return Motion",
+    "civil_bucs_mesh_2_provisional": "Mesh 2",
+    "civil_bucs_mesh_4_provisional": "Mesh 4",
+    "civil_bucs_mtn_cross_hb_sneak_corner_flat_unverified": "Mtn Cross HB Sneak — Corner/Flat",
+}
+
+
+def test_26_owner_verified_variation_names_t358u():
+    """t358u: the four names are owner-verified; catalog bytes and variant_ids stay pinned."""
+    assert CAT.version() == "lions_civil_bucs_5wr_v4@15c120decc4b"
+    assert CAT.names_owner.get("source") == "t358u"
+    for vid, name in VERIFIED_NAMES_T358U.items():
+        v = CAT.get(vid)
+        assert v is not None, vid
+        assert v.variant_id == vid                         # IDs never renamed
+        assert v.variant_name == name
+        assert v.name_verified is True
+        assert "(name unverified)" not in v.variant_name
+    # the 26-play catalog file itself was not edited
+    raw = json.loads((sc.repo_root() / sc.DATASET_RELPATH).read_text())
+    by = {p["variant_id"]: p for p in raw["plays"]}
+    assert "(name unverified)" in by["civil_bucs_mesh_2_provisional"]["variant_name"]
+    # live cards must show the verified name, not the old unverified label
+    v = CAT.get("civil_bucs_mesh_2_provisional")
+    from cfb_coach.madden.scheme.coordinator import variation_text
+    text = variation_text(v.variant_name, v.variant_id, [a.line() for a in v.adjustments])
+    assert "Mesh 2" in text and "(name unverified)" not in text
+
+
+def test_26b_name_verification_loader_fails_closed_on_a_bad_owner_file():
+    owner = json.loads((sc.repo_root() / sc.NAMES_RELPATH).read_text())
+    bad = dict(owner, catalog_version="lions_civil_bucs_5wr_v4@deadbeef")
+    with pytest.raises(sc.CatalogError, match="name-verification owner file is for"):
+        sc.with_owner_verified_names(CAT, bad, digest="x")
+    missing = dict(owner, variants=[{"variant_id": "not_a_real_variant", "variant_name": "Nope"}])
+    missing["catalog_version"] = CAT.version()
+    with pytest.raises(sc.CatalogError, match="unknown variant_id"):
+        sc.with_owner_verified_names(CAT, missing, digest="x")

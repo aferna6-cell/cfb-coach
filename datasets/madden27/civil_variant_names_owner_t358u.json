@@ -1,0 +1,38 @@
+{
+  "schema_version": "civil_variant_names_owner_mapping.v1",
+  "owner_instruction": {
+    "date": "2026-11-11",
+    "source": "t358u",
+    "by": "Aidan (owner)",
+    "statement": "also all the unverified names you listed in offense are correct I verified them",
+    "effect": "The four previously unverified offensive variation names are owner-confirmed correct. Display names drop '(name unverified)'. variant_id strings stay unchanged so the 26-variant catalog bytes, catalog_version lions_civil_bucs_5wr_v4@15c120decc4b, and the trained artifact remain valid with no retrain. The unnamed 5WR Tight setup stays ineligible."
+  },
+  "catalog_id": "lions_civil_bucs_5wr_v4",
+  "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
+  "variants": [
+    {
+      "variant_id": "civil_bucs_mtn_shuffle_verts_smash_return_motion_unverified",
+      "variant_name": "MTN Shuffle Verts Smash — Return Motion",
+      "formation": "Gun Doubles Clamp Stack",
+      "note": "Owner t358u verified this name is correct. variant_id kept unchanged so the trained model still loads."
+    },
+    {
+      "variant_id": "civil_bucs_mesh_2_provisional",
+      "variant_name": "Mesh 2",
+      "formation": "Gun Bunch TE",
+      "note": "Owner t358u verified this name is correct. variant_id kept unchanged so the trained model still loads."
+    },
+    {
+      "variant_id": "civil_bucs_mesh_4_provisional",
+      "variant_name": "Mesh 4",
+      "formation": "Gun Bunch TE",
+      "note": "Owner t358u verified this name is correct. variant_id kept unchanged so the trained model still loads."
+    },
+    {
+      "variant_id": "civil_bucs_mtn_cross_hb_sneak_corner_flat_unverified",
+      "variant_name": "Mtn Cross HB Sneak — Corner/Flat",
+      "formation": "Gun Tight Doubles",
+      "note": "Owner t358u verified this name is correct. variant_id kept unchanged so the trained model still loads."
+    }
+  ]
+}

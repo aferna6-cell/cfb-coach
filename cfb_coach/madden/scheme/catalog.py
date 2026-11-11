@@ -12,6 +12,11 @@ runs already in the Buccaneers book in the four scheme formations (12 stock play
 regular candidates (``field_zone == "any"``: outside the opponent 10), each its own ``variant_id``, called as the
 stock play. They live in a separate owner file so the 26-variant catalog bytes, and every confirmation and
 trained artifact pinned to its version, stay unchanged.
+
+Owner instruction 2026-11-11 (t358u, ``datasets/madden27/civil_variant_names_owner_t358u.json``): four
+previously unverified variation names are owner-confirmed correct. Display names are overlaid from that
+file; ``variant_id`` strings and the 26-variant catalog bytes stay unchanged, so no retrain is required.
+The unnamed 5WR Tight setup stays ineligible.
 """
 from __future__ import annotations
 
@@ -25,6 +30,7 @@ from typing import Any, Mapping
 DATASET_RELPATH = Path("datasets") / "madden27" / "lions_offensive_scheme_catalog.json"
 REDZONE_RELPATH = Path("datasets") / "madden27" / "civil_redzone_owner_t335u.json"
 RUNS_RELPATH = Path("datasets") / "madden27" / "civil_designed_runs_owner_t349u.json"
+NAMES_RELPATH = Path("datasets") / "madden27" / "civil_variant_names_owner_t358u.json"
 STOCK_PLAYBOOKS_RELPATH = Path("cfb_coach") / "data" / "madden27" / "playbooks_full.json"
 STOCK_BOOK = "Buccaneers"
 EXPECTED_VARIANTS = 26          # core variants (any field position)
@@ -165,6 +171,8 @@ class SchemeCatalog:
     redzone_owner: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
     runs_digest: str = ""
     runs_owner: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
+    names_digest: str = ""
+    names_owner: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def core_variants(self) -> tuple[SchemeVariant, ...]:
@@ -301,6 +309,10 @@ def load(path: str | Path | None = None) -> SchemeCatalog:
     if runs.is_file():
         rb = runs.read_bytes()
         cat = with_designed_runs(cat, json.loads(rb.decode("utf-8")), digest=hashlib.sha256(rb).hexdigest())
+    names = p.parent / NAMES_RELPATH.name
+    if names.is_file():
+        nb = names.read_bytes()
+        cat = with_owner_verified_names(cat, json.loads(nb.decode("utf-8")), digest=hashlib.sha256(nb).hexdigest())
     return cat
 
 
@@ -310,6 +322,43 @@ def stock_offense_plays(book: str = STOCK_BOOK) -> dict[str, tuple[str, ...]]:
     data = json.loads((repo_root() / STOCK_PLAYBOOKS_RELPATH).read_text())
     forms = data["books"]["offense"][book]["formations"]
     return {f: tuple(str(x) for x in (d.get("plays") or ())) for f, d in forms.items()}
+
+
+def with_owner_verified_names(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: str) -> SchemeCatalog:
+    """Owner instruction t358u: four previously unverified variation names are confirmed correct.
+
+    The 26-variant catalog bytes stay unchanged (variant_ids and catalog_version stay pinned) so the
+    trained artifact still loads. This file only overrides display names and marks them name_verified.
+    """
+    if owner.get("catalog_version") != cat.version():
+        raise CatalogError(
+            f"name-verification owner file is for {owner.get('catalog_version')}, catalog is {cat.version()}"
+        )
+    from dataclasses import replace
+    rows = list(owner.get("variants") or ())
+    by_id = {str(m.get("variant_id") or ""): m for m in rows}
+    if not rows or len(by_id) != len(rows) or "" in by_id:
+        raise CatalogError("name-verification owner file must list unique, non-empty variant_ids")
+    missing = [vid for vid in by_id if cat.get(vid) is None]
+    if missing:
+        raise CatalogError(f"name-verification owner file refers to unknown variant_id: {missing}")
+    new = []
+    for v in cat.variants:
+        m = by_id.get(v.variant_id)
+        if m is None:
+            new.append(v)
+            continue
+        name = str(m.get("variant_name") or "").strip()
+        if not name:
+            raise CatalogError(f"{v.variant_id}: missing verified variant_name")
+        if "unverified" in name.lower() or "provisional" in name.lower():
+            raise CatalogError(f"{v.variant_id}: verified name still looks unverified: {name}")
+        new.append(replace(
+            v, variant_name=name, name_verified=True,
+            verification_notes=str(m.get("note") or v.verification_notes),
+        ))
+    return replace(cat, variants=tuple(new), names_digest=digest,
+                   names_owner=dict(owner.get("owner_instruction") or {}))
 
 
 def with_designed_runs(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: str) -> SchemeCatalog:

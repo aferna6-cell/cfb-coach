@@ -168,11 +168,15 @@ def test_defense_calls_need_no_installed_book_and_show_required_macros(tmp_db, o
             assert "Zone It" in text and cand.base_play in ("Cover 4 Quarters", "Cover 4 Palms")
         if not cand.macros:
             assert "MACRO:" not in text
-        assert cand.candidate_id != "match_cover9_show2"        # dataset block still applies
+        # t358u: Match Cover 9 Show 2 is live-eligible; USER still prints UNVERIFIED
         assert cand.candidate_id != prev                        # no back-to-back repeat
         prev = cand.candidate_id
         assert c.call_label == "RAVENS_DEFENSE_ML"
     assert "dime_dbfire2" in seen and {"nickel_cloud", "nickel_tampa2"} & seen and len(seen) >= 8
+    from cfb_coach.madden.ravens_defense import legality as rlg
+    from cfb_coach.madden.ravens_defense.confirmations import Confirmations
+    legal, _ = rlg.legal_set(cat, installed=None, conf=Confirmations(), scheme_book=True)
+    assert "match_cover9_show2" in {c.candidate_id for c in legal} and len(legal) == 14
 
 
 def test_no_silent_fallback_to_previous_defense(tmp_db, online_env, monkeypatch):

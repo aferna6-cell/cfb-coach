@@ -26,7 +26,7 @@ verified defensive executions. The installed defensive book has neither formatio
    - two-formation fingerprint matches the owner-confirmed one;
    - each macro owner-confirmed;
    - coaching profile `COMPATIBLE`;
-   - no dataset block (the Cover 9 Show 2 alias is unverified).
+   - no dataset block (Match Cover 9 Show 2 is live-eligible since owner t358u; USER stays UNVERIFIED until confirmed in game).
 
    If no candidate is legal, the result is `NO_LEGAL_RAVENS_CALL`. There is never a fallback to another caller or formation.
 2. **Opponent belief.** P(concept class) over 8 classes, using only strictly earlier snaps in this game plus finished earlier games. The live model is chosen by forward whole-game evaluation. A challenger replaces the Defensive V2 Dirichlet belief only if its game-clustered 95% CI of log-loss gain is entirely above 0.
@@ -91,7 +91,7 @@ A malformed file confirms nothing.
 
 On `ml/lions-civil-scheme-only` (PR #153), `play --franchise online --opponent-team <team>` runs this coordinator as the session's defensive caller by default. It does that with no `ml ravens-defense enable` and no DB write:
 
-- **Scheme book.** The two-formation dataset is the legal book (`legality.check(..., scheme_book=True)`). The installed-book and fingerprint items are satisfied by the dataset itself. A macro or coaching-profile item blocks a call only when the owner-confirmations file explicitly reports it missing or INCOMPATIBLE. Dataset blocks (the Cover 9 Show 2 match alias) still apply, leaving 13 of the 14 candidates callable.
+- **Scheme book.** The two-formation dataset is the legal book (`legality.check(..., scheme_book=True)`). The installed-book and fingerprint items are satisfied by the dataset itself. A macro or coaching-profile item blocks a call only when the owner-confirmations file explicitly reports it missing or INCOMPATIBLE. Since owner t358u, Match Cover 9 Show 2 is live-eligible, so all 14 candidates are callable. USER for that call stays UNVERIFIED until confirmed in game.
 - **Model.** A trained artifact is used when one exists. Otherwise an in-memory `UNTRAINED_PRIOR_ONLY` model is used, and nothing is written. The card's label says so.
 - **Mixer.** This applies only with the online scheme book: the pick is drawn among candidates within `MIX_BAND` (0.015) of the best expected loss, with weight `exp(-Δ/0.006)`, and never repeats the previous call of the session. The Lions path stays a pure argmin.
 - **Fail closed.** Any error gives `NO_LEGAL_RAVENS_CALL` with its reason, and the previous defensive caller never runs.

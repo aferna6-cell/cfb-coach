@@ -95,10 +95,12 @@ def test_zone_it_optional_and_stock_fallback_distinct():
     assert all(x["manual_setup_changes_allowed"] is False for x in calls.values())
 
 
-def test_cover9_match_guide_alias_does_not_pretend_verification():
+def test_cover9_match_is_live_eligible_without_claiming_verified_user():
     d = catalog()
     calls = _by_id()
-    assert calls["match_cover9_show2"]["coverage_alias_status"] == "guide_cover9_to_show2_unverified"
-    assert calls["match_cover9_show2"]["live_eligible"] is False
+    assert calls["match_cover9_show2"]["coverage_alias_status"] == "owner_allowed_t358u"
+    assert calls["match_cover9_show2"]["live_eligible"] is True
     assert all(x["intended_guide_play"] == "Cover 9"
                for x in d["user_assignment_rules"] if x["call_id"] == "match_cover9_show2")
+    # allowing the call does not invent a verified USER
+    assert d["selection_contract"]["unknown_user"].startswith("Explicitly mark USER UNVERIFIED")

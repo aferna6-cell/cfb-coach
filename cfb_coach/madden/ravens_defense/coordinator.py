@@ -25,7 +25,7 @@ from cfb_coach.madden.ravens_defense.confirmations import Confirmations
 
 LABEL = "RAVENS_DEFENSE_ML"
 LATENCY_TARGET_MS = 150.0
-# Online civil profile mixer (t351u): an UNTRAINED prior cannot separate the 13 legal candidates (their
+# Online civil profile mixer (t351u): an UNTRAINED prior cannot separate the legal candidates (their
 # expected losses sit within ~0.01), so a pure argmin would call the same coverage every snap against a
 # human. In scheme-book mode the pick is drawn among candidates within MIX_BAND of the best, weighted by
 # exp(-(loss - best) / MIX_TEMPERATURE), never the same candidate twice in a row when another is in band.
