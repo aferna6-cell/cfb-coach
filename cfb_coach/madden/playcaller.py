@@ -63,6 +63,9 @@ class MaddenCall:
     def headline(self) -> str:
         """'PLAY: Mesh Post (Gun 5WR Tight) + ADJ: Hot route WR1 → Slant' (offense) or
         'PLAY: Tampa 2 (Nickel Over) + MACRO: TAMPA MABLE' (defense)."""
+        rd = getattr(self, "ravens_defense", None)
+        if isinstance(rd, dict) and rd.get("card"):
+            return rd["card"][0]
         head = f"PLAY: {self.play} ({self.formation})"
         sv = getattr(self, "scheme_variant", None)
         if isinstance(sv, dict) and sv.get("status") == "CALL":
@@ -76,6 +79,10 @@ class MaddenCall:
         return head
 
     def format(self) -> str:
+        rd = getattr(self, "ravens_defense", None)
+        if isinstance(rd, dict) and rd.get("card"):
+            # ravens_defense_ml live card: PLAY / USER / MACRO only (full trace stays on call.ravens_defense)
+            return "\n".join(rd["card"]) + "\n  LABEL: RAVENS_DEFENSE_ML"
         if self.side == "offense":
             line = format_offense(self.formation, self.play, self.adj_or_macro, self.read_or_user)
         else:
@@ -931,6 +938,13 @@ def _civil_scheme_only(db: Any) -> bool:
     return offense_mode(db) == CIVIL
 
 
+def _ravens_defense_ml(db: Any) -> bool:
+    """Defense mode switch (default: the existing defensive caller). Independent of the offense mode."""
+    from cfb_coach.madden.ravens_defense.mode import RAVENS, defense_mode
+
+    return defense_mode(db) == RAVENS
+
+
 def make_call(
     sit: Situation,
     opponent_id: str,
@@ -1012,7 +1026,14 @@ def make_call(
 
         offense_book = books.get("offense") or {}
         sel["offense"] = [mid for mid in sel["offense"] if pairs_in_book(mid, offense_book, cap=1)]
-    if sit.side == "defense":
+    if sit.side == "defense" and _ravens_defense_ml(db):
+        # ravens_defense_ml: Nickel 2-4 Wide / Dime 2-3 Odd candidates only. Never the existing defensive
+        # pickers, never a fallback play: an empty legal set returns NO_LEGAL_RAVENS_CALL.
+        from cfb_coach.madden.ravens_defense.coordinator import call_ravens
+
+        call = call_ravens(sit, opponent_id, db, (raw or {}).get("defense") if playbook is None else
+                           {"formations": books.get("defense") or {}})
+    elif sit.side == "defense":
         call = _pick_defense(sit, opp, bl, db, rng, sel["defense"], books["defense"])
         # A cold-start human (John) keeps the established caller unless this
         # session opted into defense ML. Offense mode is not consulted.
@@ -1114,6 +1135,8 @@ def make_call(
         stamp_displayed_label(call)
     except Exception:  # noqa: BLE001 — the label must not change the play
         pass
+    if isinstance(getattr(call, "ravens_defense", None), dict):
+        call.call_label = "RAVENS_DEFENSE_ML"   # the existing defensive pickers did not run
     if isinstance(getattr(call, "scheme_variant", None), dict):
         call.call_label = "CIVIL_SCHEME_ONLY"   # never shown as HEURISTIC: the heuristic picker did not run
     return call

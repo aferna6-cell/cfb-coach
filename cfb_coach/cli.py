@@ -449,8 +449,35 @@ def _apply_offense_mode_flags(args: argparse.Namespace) -> None:
         print("OFFENSE MODE: unrestricted (existing coordinator)")
 
 
+def _apply_defense_mode_flags(args: argparse.Namespace) -> None:
+    """Per-process defense mode override (ravens_defense_ml vs the existing defensive caller)."""
+    ravens = bool(getattr(args, "ravens_defense", False))
+    previous = bool(getattr(args, "previous_defense", False))
+    if ravens and previous:
+        raise SystemExit("choose one of --ravens-defense / --previous-defense")
+    from cfb_coach.madden.ravens_defense.mode import ENV_MODE, PREVIOUS, RAVENS
+
+    if ravens:
+        os.environ[ENV_MODE] = RAVENS
+        print("DEFENSE MODE: ravens_defense_ml (Nickel 2-4 Wide / Dime 2-3 Odd candidates only; "
+              "NO_LEGAL_RAVENS_CALL when none is legal; card = PLAY / USER / MACRO)")
+        try:  # warm the artifact + catalog so the first snap stays under the 150 ms target
+            from cfb_coach.madden.ravens_defense import catalog as rc, model as rm
+            from cfb_coach.madden.ravens_defense.mode import artifact_dir
+            rc.load()
+            art = artifact_dir(None)
+            if art and (art / "model.json").is_file():
+                rm.load(art)
+        except Exception as exc:  # noqa: BLE001 — the live call fails closed on its own
+            print(f"  warm-up: {type(exc).__name__}: {exc}")
+    elif previous:
+        os.environ[ENV_MODE] = PREVIOUS
+        print("DEFENSE MODE: previous (existing defensive caller)")
+
+
 def cmd_play(args: argparse.Namespace) -> int:
     _apply_offense_mode_flags(args)
+    _apply_defense_mode_flags(args)
     handler = _madden_handler(args, "cmd_play")
     if handler:
         return handler(args)
@@ -958,6 +985,20 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Madden only: force the existing unrestricted offense coordinator for this session even when "
              "civil_scheme_only is enabled in the DB.",
+    )
+    p_play.add_argument(
+        "--ravens-defense",
+        action="store_true",
+        help="Madden only: this session's defensive calls come ONLY from the Ravens Nickel 2-4 Wide / Dime 2-3 "
+             "Odd ML coordinator (validated against the installed book), or NO_LEGAL_RAVENS_CALL. Needs "
+             "`ml ravens-defense train`. Off by default. Offense mode is independent. CPU games also need "
+             "--cpu-defense.",
+    )
+    p_play.add_argument(
+        "--previous-defense",
+        action="store_true",
+        help="Madden only: force the existing defensive caller for this session even when ravens_defense_ml "
+             "is enabled in the DB.",
     )
     p_play.add_argument(
         "--heuristic-offense",
