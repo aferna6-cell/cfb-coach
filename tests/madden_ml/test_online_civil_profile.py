@@ -121,6 +121,31 @@ def test_lions_primary_unchanged(tmp_db):
     assert r.returncode == 2 and "--opponent" in (r.stderr + r.stdout)
 
 
+
+def test_lions_ravens_defense_flag_calls_scheme_book(tmp_db):
+    """t366u: Lions ``--ravens-defense`` must call the civil book, not NO_LEGAL_RAVENS_CALL."""
+    _apply_books(tmp_db / "madden27.db")
+    r = _play(tmp_db, "-o", "jaxon", "--civil-scheme-only", "--ravens-defense",
+              "--heuristic-offense", stdin="d 3&7 opp 40 trips\n+4 mesh\nq\n")
+    assert r.returncode == 0, r.stderr
+    out = r.stdout
+    assert "OFFENSE CONTROLLER: CIVIL_SCHEME_ONLY" in out
+    assert "DEFENSE CONTROLLER: RAVENS_TWO_FORMATION_CIVIL" in out
+    assert "UNTRAINED_PRIOR_ONLY" in out
+    assert "ONLINE LEAGUE" not in out
+    assert "team: Detroit Lions" in out
+    assert "PLAY: Nickel 2-4 Wide — " in out or "PLAY: Dime 2-3 Odd — DB Fire 2" in out
+    assert "LABEL: RAVENS_DEFENSE_ML (UNTRAINED_PRIOR_ONLY · scheme book)" in out
+    con = sqlite3.connect(tmp_db / "madden27.db")
+    try:
+        sess = con.execute("SELECT opponent_id, league, user_team FROM game_sessions").fetchall()
+        assert sess and sess[0][0] == "jaxon" and sess[0][1] != "online"
+        dec = con.execute("SELECT status, formation FROM ravens_defense_decisions").fetchall()
+        assert dec and all(d[0] == "CALL" and d[1] in rc.FORMATIONS for d in dec)
+    finally:
+        con.close()
+
+
 def test_previous_defense_and_unrestricted_offense_opt_out(tmp_db):
     _apply_books(tmp_db / "madden27.db")
     r = _play(tmp_db, "--franchise", "online", "--opponent-team", "BUF", "--previous-defense",

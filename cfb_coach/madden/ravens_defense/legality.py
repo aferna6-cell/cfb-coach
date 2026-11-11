@@ -11,7 +11,7 @@ A candidate is live-legal only if every item holds; otherwise it is rejected wit
   * dataset blocks (a call with live_eligible false) are cleared only by owner confirmation.
 ``assume_setup`` (shadow / offline evaluation ONLY) skips the install/macro/coaching items and is recorded;
 dataset blocks still apply unless the owner has cleared them.
-``scheme_book`` (``play --franchise online`` only, owner t351u) treats the two-formation dataset as the
+``scheme_book`` (``play --franchise online``, or any ``--ravens-defense`` session, owner t351u/t366u) treats the two-formation dataset as the
 installed book: the install / fingerprint items are satisfied by the dataset, and macros / coaching profile
 are blocking only when the owner's confirmations file explicitly says a macro does not exist / execute or a
 call is INCOMPATIBLE. Unconfirmed items are recorded as notes (never silently dropped from the call: the

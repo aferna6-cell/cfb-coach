@@ -182,7 +182,8 @@ _PRIOR_MODEL: dict[str, Any] = {}
 
 def prior_only_model(cat: rc.RavensCatalog | None = None) -> Any:
     """In-memory UNTRAINED_PRIOR_ONLY coordinator (no snaps, no artifact written). Used by the online civil
-    profile when no `ml ravens-defense train` artifact exists. Scores are scheme priors, not learned."""
+    profile and by ``--ravens-defense`` sessions (t366u) when no `ml ravens-defense train` artifact exists.
+    Scores are scheme priors, not learned."""
     from cfb_coach.madden.ravens_defense import model as rm
     cat = cat or rc.load()
     key = cat.sha256

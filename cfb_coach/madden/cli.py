@@ -915,10 +915,11 @@ def cmd_play(args: argparse.Namespace) -> int:
     from cfb_coach.madden.playbook import NoActivePlaybook, active_books, load_pending
 
     need = ("offense",) if offense_only else ("offense", "defense")
-    # Online civil profile: the scheme datasets are the legal book (t337u offense, t351u defense),
-    # so a missing / old Lions installed_playbook snapshot never blocks the session.
-    scheme_sides = {s for s in need if league_ctx and ((s == "offense" and civil_on) or
-                                                        (s == "defense" and ravens_on))}
+    # Scheme datasets are the legal book for online civil offense (t337u/t351u) and for any
+    # ravens_defense_ml session, including Lions ``--ravens-defense`` (t366u). A missing or
+    # non-Ravens locked Lions defensive book must not block the session or every D call.
+    scheme_sides = {s for s in need if (s == "defense" and ravens_on) or
+                    (league_ctx and s == "offense" and civil_on)}
     try:
         from cfb_coach.madden.playbook import load_books
 

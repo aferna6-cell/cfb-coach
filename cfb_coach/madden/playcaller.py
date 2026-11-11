@@ -947,16 +947,21 @@ def _ravens_defense_ml(db: Any) -> bool:
     return defense_mode(db) == RAVENS
 
 
-def _online_scheme_side(side: str, db: Any) -> bool:
-    """True when this side's legal book is its civil scheme dataset (``play --franchise online`` only)."""
-    try:
-        from cfb_coach.madden.online_league import civil_profile_active
+def _scheme_side(side: str, db: Any) -> bool:
+    """True when this side's legal book is its civil scheme dataset.
 
-        if not civil_profile_active():
-            return False
+    Defense: any ``ravens_defense_ml`` session (``--ravens-defense`` or the online default).
+    That lets a Lions human game actually call the Ravens book (owner t366u) using the same
+    untrained prior + scheme-book legality as ``--franchise online``, instead of
+    NO_LEGAL_RAVENS_CALL against a non-Ravens locked Lions book.
+    Offense: the online civil profile only (t351u). A Lions ``--civil-scheme-only``
+    session still validates against the applied offensive book.
+    """
+    try:
         if side == "defense":
             return _ravens_defense_ml(db)
-        return side == "offense" and _civil_scheme_only(db)
+        from cfb_coach.madden.online_league import civil_profile_active
+        return civil_profile_active() and _civil_scheme_only(db)
     except Exception:  # noqa: BLE001 — unknown = the normal book rules
         return False
 
@@ -1026,7 +1031,7 @@ def make_call(
 
     audibles: dict[str, list[str]] | None = None
     raw: dict[str, Any] | None = None
-    scheme_side = _online_scheme_side(sit.side, db)
+    scheme_side = _scheme_side(sit.side, db)
     if playbook is None:
         if scheme_side:
             # Online civil profile (t351u): the scheme dataset is the legal book for this side, so a
