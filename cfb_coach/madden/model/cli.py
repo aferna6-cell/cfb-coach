@@ -2234,6 +2234,10 @@ def build_ml_subparser(sub: Any) -> None:
 
     register_civil_scheme(ml_sub)
 
+    from cfb_coach.madden.ravens_defense.cli import register as register_ravens_defense
+
+    register_ravens_defense(ml_sub)
+
     p_he = ml_sub.add_parser("heuristic", help="Return to heuristic mode")
     p_he.set_defaults(func=cmd_ml_heuristic)
 
