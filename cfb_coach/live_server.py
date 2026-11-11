@@ -143,6 +143,8 @@ class LivePlayController:
     dynasty: str = "alabama"
     dynasty_label: str = ""  # e.g. "Ohio State (experimental)"
     dynasty_source: str = ""  # where the dynasty came from (--dynasty / latest prep / default)
+    # Madden online league tags for this game (league / user_team / opponent_team / ...); None elsewhere.
+    league_context: dict[str, Any] | None = None
     cpu_only: bool = False
     default_side: str = "offense"
     session_id: str = ""
@@ -203,7 +205,8 @@ class LivePlayController:
         except Exception:  # noqa: BLE001 — a failed recovery must not block the new game
             pass
         sess = start_session(
-            self.opponent_id, dynasty=self.dynasty, db=self.db, notes="html-live"
+            self.opponent_id, dynasty=self.dynasty, db=self.db, notes="html-live",
+            league=self.league_context,
         )
         self.session_id = sess.session_id
         try:
@@ -227,6 +230,9 @@ class LivePlayController:
             "dynasty": self.dynasty,
             "dynasty_label": self.dynasty_label or self.dynasty,
             "dynasty_source": self.dynasty_source,
+            "opponent_team": (self.league_context or {}).get("opponent_team"),
+            "user_team": (self.league_context or {}).get("user_team"),
+            "league": (self.league_context or {}).get("league"),
             "call_text": self.call_text,
             "heard": self.heard,
             "cpu_only": self.cpu_only,

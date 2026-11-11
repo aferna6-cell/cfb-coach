@@ -162,9 +162,23 @@ def _require_opponent(raw: str, db: Any = None) -> str:
 
 
 def _open_opponent(args: argparse.Namespace) -> tuple[str, CoachDB]:
-    """Resolve the opponent, open the DB, and register a missing cold start."""
+    """Resolve the opponent, open the DB, and register a missing cold start.
+
+    Online league (``--franchise online``): an unknown gamertag is registered as
+    a neutral Madden cold-start human (no borrowed priors) instead of refused.
+    """
     db = open_db(getattr(args, "db", None))
     try:
+        if (getattr(args, "franchise", None) == "online"
+                and not resolve_madden_opponent(args.opponent, db)):
+            from cfb_coach.madden.human_opponents import register_cold_start
+
+            try:
+                prof = register_cold_start(db, args.opponent, display_name=str(args.opponent).strip())
+            except ValueError as exc:
+                print(f"Cannot register online opponent {args.opponent!r}: {exc}", file=sys.stderr)
+                raise SystemExit(2) from None
+            print(f"New online-league opponent registered as cold start: {prof['id']}")
         oid = _require_opponent(args.opponent, db)
     except SystemExit:
         db.close()
@@ -309,7 +323,7 @@ def cmd_config(args: argparse.Namespace) -> int:
         vod_freeze = False
     changing = any(
         getattr(args, k, None)
-        for k in ("primary_team", "lab_team", "clear_primary", "clear_lab", "o_book", "d_book",
+        for k in ("primary_team", "lab_team", "online_team", "clear_primary", "clear_lab", "o_book", "d_book",
                   "swap_macro", "unswap_macro", "vod_models")
     ) or live_macros is not None or experimental is not None or vod_prior is not None or vod_freeze is not None
     if changing:
@@ -317,6 +331,7 @@ def cmd_config(args: argparse.Namespace) -> int:
             _, warnings = save_config(
                 primary_team=args.primary_team,
                 lab_team=args.lab_team,
+                online_team=getattr(args, "online_team", None),
                 clear_primary=bool(args.clear_primary),
                 clear_lab=bool(args.clear_lab),
                 offense_book=getattr(args, "o_book", None),
@@ -339,6 +354,10 @@ def cmd_config(args: argparse.Namespace) -> int:
     print(f"Madden 27 Franchise config → {config_path()}")
     print(f"  primary team (franchise_primary): {team_label(cfg.get('primary_team'))}")
     print(f"  lab team     (franchise_lab):     {team_label(cfg.get('lab_team'))}")
+    from cfb_coach.madden.franchise import DEFAULT_ONLINE_TEAM
+
+    print(f"  online team  (online league):     {cfg.get('online_team') or DEFAULT_ONLINE_TEAM}"
+          " — play --franchise online --opponent-team <NFL team>")
     from cfb_coach.madden.franchise import DEFAULT_START_BOOK
 
     for side, key in (("offense", "offense_book"), ("defense", "defense_book")):
@@ -629,11 +648,64 @@ def _confirm_heuristic_offense(args: argparse.Namespace, opponent_id: str) -> bo
     return True
 
 
+def _online_league_context(
+    args: argparse.Namespace, db: CoachDB, oid: str, pid: str, cpu: bool
+) -> dict[str, Any] | None | bool:
+    """Online league: require + resolve --opponent-team. False = refuse to start."""
+    from cfb_coach.madden.franchise import ONLINE
+
+    raw = getattr(args, "opponent_team", None)
+    if pid != ONLINE:
+        if raw:
+            print(
+                "--opponent-team is only for the online league: add --franchise online "
+                "(Franchise primary/lab games are not tagged by NFL team).",
+                file=sys.stderr,
+            )
+            return False
+        return None
+    from cfb_coach.madden.online_league import league_context
+
+    try:
+        return league_context(db, oid, raw, cpu=cpu)
+    except ValueError as exc:
+        print(f"Refusing to start: {exc}", file=sys.stderr)
+        return False
+
+
+def cmd_league(args: argparse.Namespace) -> int:
+    """Online league data: `league teams` inventory, `league scout --opponent-team X`."""
+    from cfb_coach.madden import online_league as ol
+
+    action = getattr(args, "league_action", None) or "teams"
+    db = open_db(getattr(args, "db", None))
+    try:
+        if action == "teams":
+            print(ol.format_inventory(db))
+            return 0
+        if action == "scout":
+            try:
+                team = ol.resolve_opponent_team(getattr(args, "opponent_team", None))
+            except ValueError as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
+            print(ol.format_scout(ol.scout_report(db, team)))
+            return 0
+        print(f"unknown league action {action!r} (teams | scout)", file=sys.stderr)
+        return 2
+    finally:
+        db.close()
+
+
 def cmd_play(args: argparse.Namespace) -> int:
     oid, db = _open_opponent(args)
     pid = _profile_arg(args, db)
-    active = _active_after_prep(db, oid, pid)
     cpu = is_cpu_opponent(oid)
+    league_ctx = _online_league_context(args, db, oid, pid, cpu)
+    if league_ctx is False:
+        db.close()
+        return 2
+    active = _active_after_prep(db, oid, pid)
     # CPU games stay offense-only unless this session explicitly opts in.
     cpu_defense = bool(getattr(args, "cpu_defense", False)) and cpu
     offense_only = cpu and not cpu_defense
@@ -733,6 +805,12 @@ def cmd_play(args: argparse.Namespace) -> int:
     elif not offense_only:
         print("HUMAN DEFENSE PILOT: OFF (established defensive caller; use --ml-defense-control to opt in).")
     print(_profile_header(pid))
+    if league_ctx:
+        from cfb_coach.madden.online_league import format_scout
+
+        print(f"ONLINE LEAGUE: {league_ctx['user_team']} vs {league_ctx['opponent_team']} "
+              f"(opponent {oid}, {league_ctx['opponent_type']}) — every snap is tagged with this team.")
+        print(format_scout(league_ctx["_report"]))
     print(doctrine_line(profile_config(pid)["team"]))
     from cfb_coach.madden.playbook import NoActivePlaybook, active_books, load_pending
 
@@ -848,7 +926,11 @@ def cmd_play(args: argparse.Namespace) -> int:
             brand="Madden 27 Franchise",
             play_cmd="cfb-coach play --game madden27",
             dynasty=pid,
-            dynasty_label=profile_config(pid)["label"],
+            dynasty_label=(
+                f"{profile_config(pid)['label']} — {league_ctx['user_team']} vs {league_ctx['opponent_team']}"
+                if league_ctx else profile_config(pid)["label"]
+            ),
+            league_context=league_ctx or None,
             cpu_only=offense_only,
             book_info=lambda: live_book_info(db, cpu=offense_only, profile_label=profile_config(pid)["label"]),
             book_apply=lambda rev: live_apply(db, rev),
@@ -898,7 +980,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         recover_unclosed_sessions(db)
     except Exception:  # noqa: BLE001 — a failed recovery must not block the new game
         pass
-    term_sess = start_session(oid, dynasty=pid, db=db, notes="terminal-live")
+    term_sess = start_session(oid, dynasty=pid, db=db, notes="terminal-live", league=league_ctx or None)
     try:
         arm_session_exit(db, term_sess.session_id)
     except Exception:  # noqa: BLE001 — the typed loop still runs if the handler cannot arm

@@ -433,6 +433,9 @@ def test_existing_files_are_only_modified_where_the_integration_needs_it():
         # civil_scheme_only (26-variant Lions scheme mode): the offense-branch mode switch in make_call + call display,
         # and the play --civil-scheme-only / --unrestricted-offense session flags. Defense branch untouched.
         "cfb_coach/madden/playcaller.py", "cfb_coach/cli.py",
+        # Online league as the Chiefs (t348u/t350u): --franchise online profile (Lions primary unchanged) and
+        # additive league/user_team/opponent_team session tags on GameSession.
+        "cfb_coach/madden/franchise.py", "cfb_coach/session.py",
     }
     assert touched <= allowed, f"unexpected modifications: {sorted(touched - allowed)}"
 

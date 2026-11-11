@@ -82,6 +82,38 @@ The family is drawn with the snap's seed, so a re-call of the same snap gives th
 - `test_24` (test artifact): 60 first-and-10 snaps between the 20s give a run share between 25% and 75%, at least 6 distinct runs and at least 8 distinct pass variants. 3rd & 12 runs at least 15 points less often.
 - `test_24b` checks that the learned gap, the situation and the tendency each move P(run), and that the gate is off inside the 10. `test_24d` checks the 10–20 band, and `test_25` checks that a run call shows its variation in html-live.
 
+## Online league as the Chiefs — 31-team logging (owner instruction 2026-11-11, t348u/t350u)
+
+The online Madden league is its own profile, `--franchise online`. It is separate from the Detroit Lions Franchise (`primary`), which is unchanged: `primary_team` stays Detroit Lions, and `online` is never saved as the sticky DB profile, so a later `play` without `--franchise` is still a Lions game.
+
+- **Your team:** config `online_team`, default **Kansas City Chiefs** (no setup needed). `config --game madden27 --online-team KC` sets it without touching `--primary-team`.
+- **Every online game needs `--opponent-team`.** It accepts full names, nicknames, or abbreviations (`"Buffalo Bills"`, `Bills`, `BUF`, `niners`, `WSH`) and stores the canonical name. The Chiefs (`KC`, `Chiefs`, …) are refused because that's your team, and no opponent data is collected on it. Missing or unknown teams are refused before any snap is logged.
+- **`--opponent` is still the person** (gamertag). In the online profile, an unknown gamertag is registered as a neutral cold-start human with no borrowed priors. One person can use different teams across games, so data is keyed by the session's team, not locked to the person.
+- **What gets stored.** `game_sessions` gets `league='online'`, `user_team`, `opponent_team`, `opponent_type` (`human`/`cpu`), and `scout_json`, alongside the existing `opponent_id` and `dynasty='online'`. Every snap logged in that session (terminal or HTML live, same logger as CPU games) is stamped with `league`, `user_team`, and `opponent_team`. The migration is additive: old Lions/CPU rows keep NULL and load unchanged.
+- **Scout at kickoff** (printed in the banner and saved in `scout_json`):
+  - A **stock-book scout** of that team's Huddle defense and offense books (`playbooks_full.json`): formation families, coverage-named plays, and man- or pressure-named counts. This is the stock book, **not** learned user tendencies.
+  - **Logged games against that team** in this league once there are any: games, snaps, users, coverages seen, their plays seen, and success rates.
+- **Coverage across the 31 teams:** `league --game madden27` lists every non-Chiefs team with games, snaps, last played (local time), and users. Teams with no data show "none yet". The Chiefs never appear as a row.
+- Offense is still civil_scheme_only (`--civil-scheme-only`). The standing human-session gate still requires one offense flag, so pass `--heuristic-offense`. With civil mode on, offense calls come from the civil coordinator; the flag only satisfies the gate and does not enable experimental ML. Defense is the established heuristic caller unless you opt in as before.
+
+Commands (from `~/cfb-coach-lions`):
+
+```bash
+cd ~/cfb-coach-lions
+git fetch origin && git pull --ff-only origin ml/lions-civil-scheme-only
+# what we have on each of the 31 opponent teams (none yet on a fresh league)
+PYTHONPATH=. python3 -m cfb_coach league --game madden27
+# optional pregame look at one team (stock book + anything logged)
+PYTHONPATH=. python3 -m cfb_coach league scout --game madden27 --opponent-team BUF
+# start an online game: you = Chiefs, opponent gamertag + the team they picked this game
+PYTHONPATH=. python3 -m cfb_coach play --game madden27 --franchise online \
+  --opponent <gamertag> --opponent-team "Buffalo Bills" --civil-scheme-only --heuristic-offense
+# confirm the Lions Franchise config is untouched (primary team: Detroit Lions; online team: Kansas City Chiefs)
+PYTHONPATH=. python3 -m cfb_coach config --game madden27
+```
+
+Tests: `python3 -m pytest -q tests/madden_ml/test_online_league.py`.
+
 ## Field bands, play mixing and variant independence (owner instruction 2026-11-10, t338u)
 
 Aidan, after game 2: "when we are in goal to go sitations for example inside the 10 I want the model to only call the redzone plays from our book and the other redzone plays I sent from the previous book. These plays are to be called in the redzone only so inside the 10 and 10-20 you can call these and a mix of some other stuff. Also there has to be more variability in the plays … The variants should count as seperate play calls too … and I also still did not see variants next to the play call name in the html browser".

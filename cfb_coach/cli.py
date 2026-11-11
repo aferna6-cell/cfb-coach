@@ -83,7 +83,7 @@ def _madden_handler(args: argparse.Namespace, name: str):
 
     madden = is_madden(getattr(args, "game", None))
     if madden and getattr(args, "dynasty", None):
-        raise SystemExit("--dynasty is CFB-only; Madden 27 uses --franchise primary|lab")
+        raise SystemExit("--dynasty is CFB-only; Madden 27 uses --franchise primary|lab|online")
     if not madden and getattr(args, "franchise", None):
         raise SystemExit("--franchise is Madden-only; add --game madden27")
     if not madden and (getattr(args, "o_book", None) or getattr(args, "d_book", None)):
@@ -209,6 +209,16 @@ def cmd_config(args: argparse.Namespace) -> int:
     from cfb_coach.madden import cli as madden_cli
 
     return madden_cli.cmd_config(args)
+
+
+def cmd_league(args: argparse.Namespace) -> int:
+    from cfb_coach.games import is_madden
+
+    if not is_madden(args.game):
+        raise SystemExit("league applies to --game madden27 (online league)")
+    from cfb_coach.madden import cli as madden_cli
+
+    return madden_cli.cmd_league(args)
 
 
 def cmd_macro_settings(args: argparse.Namespace) -> int:
@@ -808,9 +818,10 @@ def _add_game_args(p: argparse.ArgumentParser, *, franchise: bool = True) -> Non
     if franchise:
         p.add_argument(
             "--franchise",
-            choices=("primary", "lab"),
+            choices=("primary", "lab", "online"),
             default=None,
-            help="Madden only: primary (serious Franchise, team TBD) | lab (experimental; promotes to primary)",
+            help="Madden only: primary (serious Franchise, Lions) | lab (experimental; promotes to primary) | "
+                 "online (online league as config online_team, default Chiefs; needs --opponent-team)",
         )
 
 
@@ -915,6 +926,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Live play: HTML input window (default) or --terminal sit> loop (CPU = offense-only)",
     )
     p_play.add_argument("--opponent", "-o", required=True)
+    p_play.add_argument(
+        "--opponent-team",
+        dest="opponent_team",
+        default=None,
+        metavar="NFL_TEAM",
+        help='Madden --franchise online only (required there): the NFL team the opponent uses THIS game, '
+             'e.g. "Buffalo Bills" or BUF. Your own online team (Chiefs) is refused.',
+    )
     p_play.add_argument(
         "--once",
         help="Non-interactive: one situation string, print one call, exit",
@@ -1193,6 +1212,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_cfg.set_defaults(game="madden27")
     p_cfg.add_argument("--primary-team", default=None, help='Primary Franchise NFL team, e.g. "Buccaneers" or TB')
     p_cfg.add_argument("--lab-team", default=None, help="Optional lab Franchise team")
+    p_cfg.add_argument("--online-team", dest="online_team", default=None,
+                       help="Online league user team (default Kansas City Chiefs); never changes --primary-team")
     p_cfg.add_argument("--clear-primary", action="store_true", help="Reset primary team to TBD")
     p_cfg.add_argument("--clear-lab", action="store_true", help="Reset lab team to TBD")
     p_cfg.add_argument("--o-book", dest="o_book", default=None, metavar="auto|custom|stock:NAME",
@@ -1222,6 +1243,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_cfg.add_argument("--vod-models", dest="vod_models", default=None, metavar="DIR",
                        help="Directory of LAST_TRAINED.json and vX.Y/ (else CFB_COACH_VOD_MODELS)")
     p_cfg.set_defaults(func=cmd_config)
+
+    p_league = sub.add_parser(
+        "league",
+        help="Madden online league: `league teams` = data per opponent NFL team (31, never yours); "
+             "`league scout --opponent-team BUF` = stock-book + logged scout",
+    )
+    _add_game_args(p_league, franchise=False)
+    p_league.set_defaults(game="madden27")
+    p_league.add_argument("league_action", nargs="?", default="teams", choices=("teams", "scout"))
+    p_league.add_argument("--opponent-team", dest="opponent_team", default=None, metavar="NFL_TEAM")
+    p_league.add_argument("--db", default=None, help="Madden DB path (default madden27.db)")
+    p_league.set_defaults(func=cmd_league)
 
     p_ms = sub.add_parser(
         "macro-settings",
