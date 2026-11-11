@@ -166,7 +166,9 @@ def run(db_path: str | Path, *, geo: dz.GeometrySource | None = None, cat: sc.Sc
                 ranked = scorer.score(here, recent_calls=recent[:co.REPEAT_WINDOW], game_calls=recent, **kw)
                 stock_rank = scorer.score(here, recent_calls=recent[:co.REPEAT_WINDOW], game_calls=recent,
                                           stock_only=True, **kw)
-                top, _mix = co.pick(ranked, f"sim|{e.game}|{len(recent)}|{kw['down']}|{kw['distance']}|{kw['yardline']}")
+                top, _mix = co.pick_mixed(ranked, f"sim|{e.game}|{len(recent)}|{kw['down']}|{kw['distance']}|{kw['yardline']}",
+                                          down=kw["down"], distance=kw["distance"], yardline=kw["yardline"],
+                                          recent_families=co.families_of(recent, cat))   # same pick as live
                 recent.insert(0, top.variant.variant_id)
                 ex_best = None
                 if book_pairs:
@@ -188,6 +190,7 @@ def run(db_path: str | Path, *, geo: dz.GeometrySource | None = None, cat: sc.Sc
                     "ranking": [s.variant.variant_id for s in ranked],
                     "gate_top": [gtop[0], gtop[1]], "pick_tagged_for_top": top.parts["tagged_beater_for_top"],
                     "observed_run": he.run_or_pass(r.get("action_play")) == "run",
+                    "pick_run": top.variant.is_run, "pick_p_run": _mix.get("p_run"),
                     "observed_success": e.y["success"],
                 })
             log(f"simulated fold {k + 1}/{len(folds)}")
@@ -340,7 +343,8 @@ def simulate_summary(sims: Sequence[Mapping[str, Any]], cat: sc.SchemeCatalog) -
                 "observed_run_success": he.wilson(sum(rs), len(rs)), "observed_pass_success": he.wilson(sum(ps), len(ps)),
                 "pred_restricted_pick_p_success": round(sum(s["pick_p_success_pred"] for s in sub) / len(sub), 3),
                 "pred_unrestricted_best_existing_model_p": round(sum(ub) / len(ub), 3) if ub else None,
-                "note": "predicted, not observed; the restricted set has no run plays"}
+                "pick_run_share": round(sum(1 for s in sub if s.get("pick_run")) / len(sub), 3),
+                "note": "predicted, not observed"}
 
     gate_hi = [s for s in sims if s["gate_top"][1] >= 0.5]
     gate_lo = [s for s in sims if s["gate_top"][1] < 0.1]
@@ -360,8 +364,26 @@ def simulate_summary(sims: Sequence[Mapping[str, Any]], cat: sc.SchemeCatalog) -
         "beater_gate_low_n": len(gate_lo),
         "beater_gate_low_pick_tagged_share": round(sum(1 for s in gate_lo if s["pick_tagged_for_top"]) / len(gate_lo), 3) if gate_lo else None,
         "variety": _variety(sims, cat),
+        "run_pass_mix": _run_mix(sims),
         "label": "PREDICTED counterfactuals on held-out situations; not observed outcomes",
     }
+
+
+def _run_mix(sims: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Share of simulated picks that are runs, by down and distance bucket (outside the opponent 10)."""
+    out: dict[str, dict[str, Any]] = {}
+    for s in sims:
+        if sc.field_band(s.get("yardline")) == "inside_10":
+            continue
+        k = f"down{s.get('down')}_{co._dist_bucket(s.get('distance')) or 'unknown'}"
+        d = out.setdefault(k, {"n": 0, "pick_runs": 0, "historical_runs": 0})
+        d["n"] += 1
+        d["pick_runs"] += bool(s.get("pick_run"))
+        d["historical_runs"] += bool(s.get("observed_run"))
+    for d in out.values():
+        d["pick_run_share"] = round(d["pick_runs"] / d["n"], 3)
+        d["historical_run_share"] = round(d["historical_runs"] / d["n"], 3)
+    return dict(sorted(out.items()))
 
 
 def _variety(sims: Sequence[Mapping[str, Any]], cat: sc.SchemeCatalog) -> dict[str, Any]:

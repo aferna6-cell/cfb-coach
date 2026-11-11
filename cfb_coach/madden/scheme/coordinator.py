@@ -1,11 +1,15 @@
-"""civil_scheme_only offensive coordinator: picks ONLY from the 26 catalog variants, every time.
+"""civil_scheme_only offensive coordinator: picks ONLY from the scheme's listed plays, every time
+(26 catalog pass variants + 12 owner-confirmed designed runs (t349u) + the 7 red-zone plays, by field band).
 
 Order per snap (never calls the heuristic ``_pick_offense`` or the experimental offense path):
   1. legal filter    ``legality.legal_set``: catalog + Bucs stock + applied book + owner-verified
   2. belief          opponent coverage / pressure belief (earlier games + this game's closed snaps, recency weighted)
   3. score           existing-model offset + learned head + regularized adjustment transfer + expert/beater terms
                      + per-variant learned residual from verified variant outcomes - repetition penalty
-  4. pick            highest utility; re-validated by ``legality.revalidate_call`` before display
+  4. pick            ``pick_mixed``: outside the opponent 10, a situation-gated run-pass draw (owner t348u/t349u:
+                     "a good balance of running"), then the seeded near-best draw inside the drawn family;
+                     inside the 10 the plain near-best draw (red-zone selection unchanged). Re-validated by
+                     ``legality.revalidate_call`` before display
   5. nothing legal   NO_LEGAL_SCHEME_PLAY with the reasons; no fallback to any other play
 """
 from __future__ import annotations
@@ -42,6 +46,24 @@ MIX_MARGIN = 0.08          # candidates within this utility of the best are elig
 MIX_TAU = 0.025            # Boltzmann temperature on utility (smaller = greedier)
 # 10-20 band: red_zone-tagged plays get a lift so they actually appear in the mix (owner t338u).
 RZ_MIX_BONUS = 0.35
+# Run-pass mix (owner t348u/t349u). Outside the opponent 10, when both families are legal:
+#   logit P(run) = RUN_PRIOR_LOGIT[down][distance bucket]                (soft situation prior, hand-set)
+#                + RUN_LEARN_W * (best run utility - best pass utility)  (learned: model, residuals, beater, repeats)
+#                + RUN_TEND_W * (passes - runs) / RUN_TEND_WINDOW        (this game's recent calls: stay unpredictable)
+# clipped to [RUN_P_MIN, RUN_P_MAX]; then the family is drawn (seeded) and ``pick`` runs inside that family.
+# Without the gate the untrained stock runs never enter the 0.08 near-best pool next to 26 pass variants that carry
+# expert/beater terms (that already happened to the Close Flex Stretch in the 10-20 band).
+RUN_DIST_BUCKETS = ((2, "short"), (4, "short_med"), (7, "medium"), (10, "long"), (999, "very_long"))
+RUN_PRIOR_LOGIT = {
+    1: {"short": 0.6, "short_med": 0.4, "medium": 0.1, "long": -0.2, "very_long": -0.8},
+    2: {"short": 0.6, "short_med": 0.3, "medium": -0.2, "long": -0.6, "very_long": -1.3},
+    3: {"short": 0.3, "short_med": -0.4, "medium": -1.4, "long": -2.0, "very_long": -2.6},
+    4: {"short": 0.3, "short_med": -0.4, "medium": -1.4, "long": -2.0, "very_long": -2.6},
+}
+RUN_LEARN_W = 10.0          # logit per unit of utility gap (0.05 better -> +0.5 logit)
+RUN_TEND_W = 0.6
+RUN_TEND_WINDOW = 6
+RUN_P_MIN, RUN_P_MAX = 0.03, 0.85
 RESIDUAL_K = 10.0
 RESIDUAL_CAP = 0.6
 LATENCY_TARGET_MS = 150.0
@@ -187,6 +209,63 @@ def pick(ranked: Sequence[Scored], seed: str) -> tuple[Scored, dict[str, Any]]:
                                                                 for s, wi in zip(pool, w)]}
 
 
+def _dist_bucket(distance: Any) -> str | None:
+    try:
+        d = int(distance)
+    except (TypeError, ValueError):
+        return None
+    return next(b for hi, b in RUN_DIST_BUCKETS if d <= hi)
+
+
+def run_prior_logit(down: Any, distance: Any) -> float:
+    """Soft situation prior for calling a run (0 when down/distance is unknown)."""
+    try:
+        dn = int(down)
+    except (TypeError, ValueError):
+        return 0.0
+    b = _dist_bucket(distance)
+    return RUN_PRIOR_LOGIT.get(dn, {}).get(b, 0.0) if b else 0.0
+
+
+def run_probability(ranked: Sequence[Scored], *, down: Any, distance: Any, recent_families: Sequence[str] = ()
+                    ) -> tuple[float | None, dict[str, Any]]:
+    """P(call a run) for this snap, or None when only one family is legal. Pure function of the scored
+    candidates (learned) + the situation prior + this game's recent family calls."""
+    runs = [s for s in ranked if s.variant.is_run]
+    passes = [s for s in ranked if not s.variant.is_run]
+    if not runs or not passes:
+        return None, {}
+    gap = max(s.utility for s in runs) - max(s.utility for s in passes)
+    prior = run_prior_logit(down, distance)
+    rec = list(recent_families)[:RUN_TEND_WINDOW]
+    tend = RUN_TEND_W * (sum(1 for f in rec if f != sc.RUN) - sum(1 for f in rec if f == sc.RUN)) / RUN_TEND_WINDOW
+    z = prior + RUN_LEARN_W * gap + tend
+    p = min(RUN_P_MAX, max(RUN_P_MIN, ln.sigmoid(z)))
+    return p, {"p_run": round(p, 4), "prior_logit": prior, "learned_gap": round(gap, 4),
+               "learned_logit": round(RUN_LEARN_W * gap, 4), "tendency_logit": round(tend, 4),
+               "recent_families": rec}
+
+
+def pick_mixed(ranked: Sequence[Scored], seed: str, *, down: Any, distance: Any, yardline: Any,
+               recent_families: Sequence[str] = ()) -> tuple[Scored, dict[str, Any]]:
+    """Run-pass mix (owner t348u/t349u) then the near-best draw inside the drawn family.
+
+    Inside the opponent 10 the gate is off: the red-zone plays are mixed exactly as before (``pick``)."""
+    import random
+    if sc.field_band(yardline) == "inside_10":
+        top, mix = pick(ranked, seed)
+        return top, mix | {"family_gate": "off (inside the opponent 10: red-zone selection unchanged)"}
+    p_run, info = run_probability(ranked, down=down, distance=distance, recent_families=recent_families)
+    if p_run is None:
+        top, mix = pick(ranked, seed)
+        return top, mix | {"family_gate": "off (only one family legal)"}
+    fam = sc.RUN if random.Random(seed + "|family").random() < p_run else sc.PASS
+    pool = [s for s in ranked if (s.variant.is_run) == (fam == sc.RUN)]
+    top, mix = pick(pool, seed)
+    mix["rank"] = list(ranked).index(top) + 1
+    return top, mix | {"family_gate": "on", "family": fam, **info}
+
+
 _SCORER: dict[tuple[str, str], Scorer] = {}
 
 
@@ -251,6 +330,16 @@ def recent_calls(conn: Any, session_id: str | None, limit: int | None = None) ->
         " ORDER BY id DESC" + (" LIMIT ?" if limit else ""),
         (session_id, ev.ADJ_PREFIX + "%", *((limit,) if limit else ()))).fetchall()
     return [str(r[0])[len(ev.ADJ_PREFIX):] for r in rows]
+
+
+def families_of(calls: Sequence[str], cat: sc.SchemeCatalog) -> list[str]:
+    """run/pass family of each earlier call (newest first); unknown ids are skipped."""
+    out = []
+    for vid in calls:
+        v = cat.get(vid)
+        if v is not None:
+            out.append(v.play_family)
+    return out
 
 
 def _belief_for(conn, sit, opponent_id: str, opponent_type: str) -> bl.Belief:
@@ -326,7 +415,10 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
     elif not lg.stock_has(v.formation, v.base_play)[1] and lg.owner_book_confirmation_applies(sc.load_cached()):
         warnings.append(f"'{v.base_play}' is called by the dataset name: the repo's stock data spells it differently, "
                         "but you confirmed every dataset play is in your book (t337u)")
-    if lg.owner_confirmation_applies(sc.load_cached()):
+    if v.group == sc.DESIGNED_RUN:
+        warnings.append("DESIGNED RUN (owner 2026-11-11, t349u): stock play from your Buccaneers book, no adjustments; "
+                        "not callable inside the opponent 10")
+    elif lg.owner_confirmation_applies(sc.load_cached()):
         warnings.append("adjustments owner-confirmed executable (2026-11-10, t333u); no recorded outcome for this "
                         "variant yet")
     if v.field_zone == sc.INSIDE_10:
@@ -342,7 +434,9 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
             warnings.append(v.verification_notes)
     if shadow:
         warnings.append("SHADOW: owner verification skipped; do not treat as a live call")
-    if not v.coverage_tags_known:
+    if v.group == sc.DESIGNED_RUN:
+        warnings.append("run: no coverage tags (unknown, not negative)")
+    elif not v.coverage_tags_known:
         warnings.append("no coverage tags for this formation (unknown, not negative)")
     directional = [st for st in top.parts.get("stems") or [] if st[2] == "directional"]
     if directional:
@@ -351,7 +445,8 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
     if top.parts.get("unrepresented_adjustments"):
         warnings.append("adjustments not represented on provisional geometry: "
                         + ", ".join(f"#{i}" for i in top.parts["unrepresented_adjustments"]))
-    warnings.append("route geometry is a provisional AceMadden-derived prior, not a verified assignment")
+    if not v.is_run:
+        warnings.append("route geometry is a provisional AceMadden-derived prior, not a verified assignment")
     why = explain(top, belief, next((s for s in ranked if s is not top), None))
     call = MaddenCall(side="offense", formation=formation, play=play,
                       adj_or_macro=variation_text(v.variant_name, v.variant_id, adjs),
@@ -362,6 +457,7 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
     call.scheme_variant = {
         "status": "CALL", "variant_id": v.variant_id, "variant_name": v.variant_name, "formation": v.formation,
         "base_play": v.base_play, "book_play": alias or None, "adjustment_lines": adjs, "field_zone": v.field_zone,
+        "play_family": v.play_family, "group": v.group,
         "adjustments": [[a.target, a.action] for a in v.adjustments],
         "p_success": round(top.p_success, 4), "uncertainty_logit_sd": round(top.sd, 4),
         "p_first_down": round(top.p_first_down, 4), "p_explosive": round(top.p_explosive, 4),
@@ -388,7 +484,8 @@ def select(scorer: Scorer, cat: sc.SchemeCatalog, conn: Any, *, db: Any, sit: An
                           opponent_id=opponent_id, opponent_type=opp_type, belief=belief,
                           recent_calls=game[:REPEAT_WINDOW], game_calls=game, variant_stats=variant_stats(conn, cat))
     seed = f"{session_id}|{len(game)}|{sit.down}|{sit.distance}|{sit.yardline}"
-    top, mix = pick(ranked, seed)
+    top, mix = pick_mixed(ranked, seed, down=sit.down, distance=sit.distance, yardline=sit.yardline,
+                          recent_families=families_of(game, cat))
     call = build_call(top, ranked, belief, book=book, shadow=shadow, ledger=lg.load_verified(db))
     call.scheme_variant["mix"] = mix
     call.scheme_variant["yardline"] = sit.yardline     # re-validation applies the same field-position gate

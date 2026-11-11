@@ -1,8 +1,9 @@
 """The ONE legal-candidate filter for civil_scheme_only. Runs before scoring and again before display.
 
 A variant is LIVE-legal only if every check passes, in this order:
-  1. catalog      it is one of the catalog's callable IDs: the 26 variants, plus the 5 red-zone package plays
-                  (owner instruction 2026-11-10, t335u). The unnamed 5WR setup never is.
+  1. catalog      it is one of the catalog's callable IDs: the 26 variants, the 12 designed runs (owner
+                  t349u: stock plays, regular field zone), plus the red-zone plays (owner t335u/t338u).
+                  The unnamed 5WR setup never is.
   1b. field       (owner t338u) inside the opponent 10 (yardline >= 90): red-zone plays ONLY; 10-20 (80-89): the
                   red_zone-tagged plays (I Form Close Flex) plus the regular variants; outside the 20 (or unknown
                   spot): regular variants only. Live calls always pass the snap's yardline, and re-validation uses
@@ -18,7 +19,8 @@ A variant is LIVE-legal only if every check passes, in this order:
                   confirmation (per variant: ``ml civil-scheme verify``).
 Shadow evaluation (offline only) may skip 4 and is always labeled SHADOW.
 Nothing here substitutes a different play, drops an adjustment, or offers an unadjusted version
-(``unadjusted_allowed`` is False for all 26).
+(``unadjusted_allowed`` is False for all 26; only stock red-zone plays and the stock designed runs, which have no
+adjustments to drop, are called unadjusted).
 """
 from __future__ import annotations
 

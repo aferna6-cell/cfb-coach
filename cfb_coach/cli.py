@@ -433,7 +433,7 @@ def _apply_offense_mode_flags(args: argparse.Namespace) -> None:
 
     if civil:
         os.environ[ENV_MODE] = CIVIL
-        print("OFFENSE MODE: civil_scheme_only (26 catalog variants only; NO_LEGAL_SCHEME_PLAY when none is legal)")
+        print("OFFENSE MODE: civil_scheme_only (26 pass variants + 12 designed runs + red-zone plays only; NO_LEGAL_SCHEME_PLAY when none is legal)")
     elif unrestricted:
         os.environ[ENV_MODE] = UNRESTRICTED
         print("OFFENSE MODE: unrestricted (existing coordinator)")
@@ -929,7 +929,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_play.add_argument(
         "--civil-scheme-only",
         action="store_true",
-        help="Madden only: this session's offense calls come ONLY from the 26 catalog scheme variants "
+        help="Madden only: this session's offense calls come ONLY from the 26 catalog scheme variants, the 12 "
+             "designed runs and the red-zone plays "
              "(owner-verified, in the applied book), or NO_LEGAL_SCHEME_PLAY. Needs `ml civil-scheme train`. "
              "Off by default. Rollback: omit the flag (and `ml civil-scheme disable` if enabled).",
     )

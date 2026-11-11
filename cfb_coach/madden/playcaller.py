@@ -1044,7 +1044,7 @@ def make_call(
                 except Exception:  # noqa: BLE001
                     pass
     elif _civil_scheme_only(db):
-        # civil_scheme_only: the 26 catalog variants only. Never the heuristic or experimental pickers,
+        # civil_scheme_only: the 26 catalog variants + 12 designed runs + red-zone plays only. Never the heuristic or experimental pickers,
         # never a fallback play: an empty legal set returns NO_LEGAL_SCHEME_PLAY.
         from cfb_coach.madden.scheme.coordinator import call_civil
 

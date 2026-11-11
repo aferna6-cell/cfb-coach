@@ -1,0 +1,134 @@
+{
+  "schema_version": "civil_designed_runs_owner_mapping.v1",
+  "owner_instruction": {
+    "date": "2026-11-11",
+    "source": "t349u",
+    "by": "Aidan (owner)",
+    "context_t348u": "I also want the model to be able to call run plays out of the formations we use, we shouldn't be strictly pass pass pass there should be a good balance of running as well",
+    "statement": "The design runs, no need for screens and rpos besides the goal to go one",
+    "effect": "The designed runs already in the Buccaneers book in the four scheme formations become regular scheme candidates (outside the opponent 10: the 10-20 band and outside the 20), each its own variant_id, called as the stock play. No screens (HB Slip Screen) and no new RPOs (Return RPO Zone Alert, RPO Alert Out). The goal-to-go RPO Alert QB Draw stays in the Gun Empty Quads red-zone package, inside the 10 only."
+  },
+  "catalog_id": "lions_civil_bucs_5wr_v4",
+  "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
+  "stock_source": "cfb_coach/data/madden27/playbooks_full.json -> books.offense.Buccaneers.formations (every name checked by the loader, exact match)",
+  "field_zone": "any (regular scheme play: legal in the 10-20 band and outside the 20; never inside the opponent 10)",
+  "excluded_by_owner": {
+    "screens": [
+      "HB Slip Screen (Gun Doubles Clamp Stack, Gun Bunch TE, Gun Tight Doubles)"
+    ],
+    "rpos": [
+      "Return RPO Zone Alert (Gun Doubles Clamp Stack)",
+      "RPO Alert Out (Gun Doubles Clamp Stack)"
+    ]
+  },
+  "variants": [
+    {
+      "variant_id": "civil_run_gun_doubles_clamp_stack_inside_zone",
+      "variant_name": "Inside Zone",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Inside Zone",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'Inside Zone' in 'Gun Doubles Clamp Stack' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_gun_doubles_clamp_stack_counter_y",
+      "variant_name": "Counter Y",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Counter Y",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'Counter Y' in 'Gun Doubles Clamp Stack' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_gun_doubles_clamp_stack_hb_mid_zone",
+      "variant_name": "HB Mid Zone",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "HB Mid Zone",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'HB Mid Zone' in 'Gun Doubles Clamp Stack' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_gun_doubles_clamp_stack_same_side_zone",
+      "variant_name": "Same Side Zone",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Same Side Zone",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'Same Side Zone' in 'Gun Doubles Clamp Stack' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_gun_bunch_te_inside_zone",
+      "variant_name": "Inside Zone",
+      "formation": "Gun Bunch TE",
+      "base_play": "Inside Zone",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'Inside Zone' in 'Gun Bunch TE' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_gun_bunch_te_read_option",
+      "variant_name": "Read Option",
+      "formation": "Gun Bunch TE",
+      "base_play": "Read Option",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'Read Option' in 'Gun Bunch TE' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_gun_bunch_te_hb_off_tackle",
+      "variant_name": "HB Off Tackle",
+      "formation": "Gun Bunch TE",
+      "base_play": "HB Off Tackle",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'HB Off Tackle' in 'Gun Bunch TE' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_gun_bunch_te_boomerang_hb_off_tackle",
+      "variant_name": "Boomerang HB Off Tackle",
+      "formation": "Gun Bunch TE",
+      "base_play": "Boomerang HB Off Tackle",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'Boomerang HB Off Tackle' in 'Gun Bunch TE' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_gun_bunch_te_same_side_zone",
+      "variant_name": "Same Side Zone",
+      "formation": "Gun Bunch TE",
+      "base_play": "Same Side Zone",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'Same Side Zone' in 'Gun Bunch TE' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_gun_tight_doubles_inside_zone",
+      "variant_name": "Inside Zone",
+      "formation": "Gun Tight Doubles",
+      "base_play": "Inside Zone",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'Inside Zone' in 'Gun Tight Doubles' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_gun_tight_doubles_hb_draw",
+      "variant_name": "HB Draw",
+      "formation": "Gun Tight Doubles",
+      "base_play": "HB Draw",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'HB Draw' in 'Gun Tight Doubles' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_gun_5wr_tight_qb_draw",
+      "variant_name": "QB Draw",
+      "formation": "Gun 5WR Tight",
+      "base_play": "QB Draw",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'QB Draw' in 'Gun 5WR Tight' (exact stock name). Call it as the stock play; no adjustments."
+    }
+  ]
+}

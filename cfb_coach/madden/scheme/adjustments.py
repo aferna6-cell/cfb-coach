@@ -57,6 +57,8 @@ OWNER_CONFIRMED_BOOK = {
     "catalog_id": "lions_civil_bucs_5wr_v4",
     "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
 }
+# t349u (2026-11-11): the 12 designed runs (datasets/madden27/civil_designed_runs_owner_t349u.json) are stock plays
+# from the same Buccaneers book in the scheme formations, with no adjustments; the loader checks each exact name.
 # t333u covers every adjustment in the catalog, including the red-zone package setup (drag, swing, crosser)
 # that t335u made callable.
 CIVIL_ROUTE_FAMILIES = REPO_HOT_ROUTE_FAMILIES | frozenset({"wheel", "shallow_cross", "swing", "cross"})

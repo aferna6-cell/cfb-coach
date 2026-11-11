@@ -30,6 +30,8 @@ RZ = {v.variant_id for v in CAT.redzone_variants}
 RZ10 = {v.variant_id for v in CAT.redzone_variants if v.field_zone == sc.INSIDE_10}    # inside the 10 only
 RZ20 = {v.variant_id for v in CAT.redzone_variants if v.field_zone == sc.RED_ZONE}     # inside the 10 AND 10-20
 CLOSE_FLEX = {"civil_rz_i_form_close_flex_stretch", "civil_rz_i_form_close_flex_mesh"}
+RUNS = {v.variant_id for v in CAT.run_variants}                                       # owner t349u designed runs
+REG = CORE | RUNS                                                                      # regular: outside the 10
 
 
 def _db(tmp_path, *, formations=FORMS_ALL):
@@ -74,7 +76,8 @@ def _sit(down=1, distance=10, yardline=35, session="g1", look=None):
 
 # 1 -------------------------------------------------------------- catalog contract
 def test_01_catalog_has_exactly_26_variants_and_blocked_entries_are_never_candidates():
-    assert len(CAT.core_variants) == 26 and len(CAT.redzone_variants) == 7 and len(set(CAT.ids)) == 33
+    assert len(CAT.core_variants) == 26 and len(CAT.redzone_variants) == 7 and len(set(CAT.ids)) == 45
+    assert len(RUNS) == 12 and not (RUNS & CORE) and not (RUNS & RZ)
     assert RZ20 == CLOSE_FLEX and len(RZ10) == 5
     assert sc.contract_errors(CAT) == []
     blocked = CAT.blocked_ids
@@ -91,7 +94,7 @@ def test_02_stock_book_membership_exact_names_no_alias():
     for f in FORMS:
         assert lg.stock_has(f, "x")[0], f
     ok = {v.variant_id for v in CAT.variants if all(lg.stock_has(v.formation, v.base_play))}
-    assert len(ok) == 31 and not (ok & Z_SPOT) and RZ <= ok
+    assert len(ok) == 43 and not (ok & Z_SPOT) and RZ <= ok and RUNS <= ok
 
 
 # 3 -------------------------------------------------------------- live legality
@@ -100,8 +103,8 @@ def test_03_owner_confirmed_book_makes_every_dataset_play_live_legal_without_the
     import dataclasses
     for db in (_db(tmp_path / "none", formations=["Gun Doubles"]), _db(tmp_path / "all")):
         mid = {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=50)[0]}
-        assert mid == CORE                                                   # all 26 incl. Z Spot, Bunch TE
-        assert {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=85)[0]} == CORE | RZ20   # 10-20
+        assert mid == REG                                                    # all 26 incl. Z Spot, Bunch TE + 12 runs
+        assert {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=85)[0]} == REG | RZ20    # 10-20
         rz = {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=95)[0]}
         assert rz == RZ                                                      # inside the 10: red-zone plays only
         _l, verdicts = lg.legal_set(CAT, db=db, yardline=lg.ANY_FIELD)
@@ -109,7 +112,7 @@ def test_03_owner_confirmed_book_makes_every_dataset_play_live_legal_without_the
                    for vd in verdicts.values())
         assert not lg.check(None, CAT, db=db, variant_id=next(iter(CAT.blocked_ids)), yardline=95).legal
     # with no DB / no applied book record at all
-    assert {v.variant_id for v in lg.legal_set(CAT, db=None, yardline=50)[0]} == CORE
+    assert {v.variant_id for v in lg.legal_set(CAT, db=None, yardline=50)[0]} == REG
     # the confirmation is pinned to this catalog version: a different catalog falls back to the book check
     other = dataclasses.replace(CAT, digest="0" * 64)
     assert not lg.owner_book_confirmation_applies(other)
@@ -429,7 +432,7 @@ def test_15_only_the_listed_catalog_variants_can_be_output(tmp_path, civil_env, 
     from cfb_coach.madden import playcaller
     db = _db(tmp_path)
     allowed = set(CAT.ids)
-    assert len(allowed) == 33 and allowed == CORE | RZ
+    assert len(allowed) == 45 and allowed == CORE | RZ | RUNS
     rng = random.Random(3)
     seen = set()
     labels = ["cover_3_sky", "cover_1_unspecified", "cover_2_man", "cover_4_quarters", "tampa_2", "cover_6"]
@@ -441,7 +444,7 @@ def test_15_only_the_listed_catalog_variants_can_be_output(tmp_path, civil_env, 
         sv = call.scheme_variant
         assert sv["status"] == "CALL" and sv["variant_id"] in allowed
         y = call_yard(call)
-        assert sv["variant_id"] in (RZ if y >= 90 else CORE | RZ20 if y >= 80 else CORE), (y, sv["variant_id"])
+        assert sv["variant_id"] in (RZ if y >= 90 else REG | RZ20 if y >= 80 else REG), (y, sv["variant_id"])
         seen.add(sv["variant_id"])
     assert seen <= allowed
     # no other path: anything that is not an exact catalog variant is rejected before display
@@ -522,9 +525,9 @@ def test_18_field_bands_inside_10_red_zone_only_10_20_mix_outside_never(tmp_path
     # the one legal filter, before scoring
     for y in range(0, 101):
         ids = {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=y)[0]}
-        want = RZ if y >= 90 else (CORE | RZ20) if y >= 80 else CORE
+        want = RZ if y >= 90 else (REG | RZ20) if y >= 80 else REG
         assert ids == want, y
-    assert {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=None)[0]} == CORE   # unknown spot: regular only
+    assert {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=None)[0]} == REG    # unknown spot: regular only
     # live calls across the field
     for y in list(range(1, 100, 3)):
         for d, dist in ((1, 10), (3, 2), (4, 1)):
@@ -534,9 +537,9 @@ def test_18_field_bands_inside_10_red_zone_only_10_20_mix_outside_never(tmp_path
             if y >= 90:
                 assert sv["variant_id"] in RZ and cands == RZ, (y, sv["variant_id"])
             elif y >= 80:
-                assert cands == CORE | RZ20 and sv["variant_id"] in cands
+                assert cands == REG | RZ20 and sv["variant_id"] in cands
             else:
-                assert sv["variant_id"] in CORE and not (cands & RZ), (y, sv["variant_id"])
+                assert sv["variant_id"] in REG and not (cands & RZ), (y, sv["variant_id"])
     # before display: a play injected outside its band is rejected (fail closed, no fallback)
     orig = co.Scorer.score
     for bad, y in (("civil_rz_pistol_bunch_te_hb_zone", 50), ("civil_rz_pistol_bunch_te_hb_zone", 85),
@@ -707,3 +710,190 @@ def test_21_html_live_shows_variation_next_to_play_name(tmp_path, civil_env):
         row = LogRow(call.formation, call.play, "+4", call_text=call.format())
         assert row.to_dict()["variation"] == label and label in row.to_dict()["label"]
         assert _variation_from_call_text(call.format()) == label
+
+
+# owner instruction t349u: designed runs from the Buccaneers book, and a real run-pass mix ---------------------
+OWNER_RUNS = {
+    "Gun Doubles Clamp Stack": ["Inside Zone", "Counter Y", "HB Mid Zone", "Same Side Zone"],
+    "Gun Bunch TE": ["Inside Zone", "Read Option", "HB Off Tackle", "Boomerang HB Off Tackle", "Same Side Zone"],
+    "Gun Tight Doubles": ["Inside Zone", "HB Draw"],
+    "Gun 5WR Tight": ["QB Draw"],
+}
+
+
+def _runs_owner():
+    return json.loads((sc.repo_root() / sc.RUNS_RELPATH).read_text())
+
+
+def test_22_designed_runs_are_exactly_the_owner_list_of_stock_plays():
+    stock = json.loads((sc.repo_root() / sc.STOCK_PLAYBOOKS_RELPATH).read_text())["books"]["offense"]["Buccaneers"]["formations"]
+    got = {}
+    for v in CAT.run_variants:
+        got.setdefault(v.formation, []).append(v.base_play)
+        assert v.base_play in stock[v.formation]["plays"], v.variant_id          # exact stock name
+        assert v.variant_name == v.base_play and not v.adjustments and v.unadjusted_allowed   # variation = stock play
+        assert v.is_run and v.field_zone == "any" and v.group == sc.DESIGNED_RUN
+        assert "screen" not in v.base_play.lower() and "rpo" not in v.base_play.lower()
+    assert got == OWNER_RUNS
+    assert len({v.pair for v in CAT.run_variants}) == 12                        # each formation+play its own id
+    assert {v.play_family for v in CAT.core_variants} == {sc.PASS}             # the 26 stay passes
+    # the goal-to-go RPO Alert QB Draw stays a red-zone (inside the 10) play; no other RPO or screen anywhere
+    rpo = [v for v in CAT.variants if "rpo" in v.base_play.lower()]
+    assert [(v.variant_id, v.field_zone) for v in rpo] == [("civil_rz_gun_empty_quads_rpo_alert_qb_draw", sc.INSIDE_10)]
+    assert not [v for v in CAT.variants if "screen" in v.base_play.lower()]
+    # the 26-variant catalog bytes (and every confirmation / artifact pinned to them) are unchanged
+    assert CAT.version() == "lions_civil_bucs_5wr_v4@15c120decc4b" and lg.owner_confirmation_applies(CAT)
+
+
+@pytest.mark.parametrize("edit", ["invented_name", "screen", "rpo", "adjustment", "wrong_formation", "not_run",
+                                  "renamed_variation"])
+def test_22b_designed_run_loader_fails_closed_on_anything_not_in_the_book(edit):
+    base = sc.parse(json.loads((sc.repo_root() / sc.DATASET_RELPATH).read_bytes()), digest=CAT.digest)
+    owner = _runs_owner()
+    m = owner["variants"][0]
+    if edit == "invented_name":
+        m["base_play"] = m["variant_name"] = "Inside Zone Weak"
+    elif edit == "screen":
+        m["base_play"] = m["variant_name"] = "HB Slip Screen"
+    elif edit == "rpo":
+        m["base_play"] = m["variant_name"] = "Return RPO Zone Alert"
+    elif edit == "adjustment":
+        m["adjustments"] = [{"target": "HB", "action": "Wheel"}]
+    elif edit == "wrong_formation":
+        m["formation"] = "Pistol Bunch TE"
+    elif edit == "not_run":
+        m["play_family"] = "pass"
+    elif edit == "renamed_variation":
+        m["variant_name"] = "Inside Zone 1"
+    with pytest.raises(sc.CatalogError):
+        sc.with_designed_runs(base, owner, digest="x")
+
+
+def test_23_designed_runs_follow_the_field_bands(tmp_path):
+    db = _db(tmp_path)
+    for y, want in ((95, False), (90, False), (89, True), (80, True), (50, True), (5, True), (None, True)):
+        ids = {v.variant_id for v in lg.legal_set(CAT, db=db, yardline=y)[0]}
+        assert (RUNS <= ids) is want and (not (RUNS & ids)) is (not want), y
+    # injected inside the 10 -> rejected before display
+    v = CAT.get("civil_run_gun_bunch_te_inside_zone")
+    assert not lg.check(v, CAT, db=db, yardline=95).legal and lg.check(v, CAT, db=db, yardline=85).legal
+
+
+def _first_and_ten_run_share(db, session, n=60):
+    from cfb_coach.madden import playcaller
+    picks = []
+    for i in range(n):
+        y = 20 + (i * 7) % 55                               # between the 20s
+        call = playcaller.make_call(_sit(1, 10, y, session=session), "cpu", db)
+        sv = call.scheme_variant
+        assert sv["status"] == "CALL" and sv["variant_id"] in REG, sv
+        picks.append(sv["variant_id"])
+        _close_snap(db, session, sv["variant_id"], y)
+    return picks
+
+
+def test_24_first_and_ten_between_the_20s_calls_a_real_share_of_designed_runs(tmp_path, civil_env):
+    db = _db(tmp_path)
+    picks = _first_and_ten_run_share(db, "mix")
+    runs = [p for p in picks if p in RUNS]
+    share = len(runs) / len(picks)
+    assert 0.25 <= share <= 0.75, (share, picks)            # not pass-pass-pass, not run-run-run
+    assert len(set(runs)) >= 6, runs                        # mixed among the runs themselves
+    assert len(set(p for p in picks if p in CORE)) >= 8     # and among the pass variants
+    # situation matters: 3rd and long passes much more than 1st and 10
+    from cfb_coach.madden import playcaller
+    long_runs = 0
+    for i in range(40):
+        y = 25 + i
+        vid = playcaller.make_call(_sit(3, 12, y, session="long"), "cpu", db).scheme_variant["variant_id"]
+        long_runs += vid in RUNS
+        _close_snap(db, "long", vid, y)
+    assert long_runs / 40 < share - 0.15, (long_runs, share)
+    # the mix record says why
+    call = playcaller.make_call(_sit(1, 10, 40, session="why"), "cpu", db)
+    mix = call.scheme_variant["mix"]
+    assert mix["family_gate"] == "on" and mix["family"] in ("run", "pass") and 0 < mix["p_run"] < 1
+    assert {"prior_logit", "learned_gap", "tendency_logit"} <= set(mix)
+
+
+def _fake(vid, util):
+    return co.Scored(CAT.get(vid), 0.5, 0.3, 0.5, 0.1, 0.1, None, util, {})
+
+
+def test_24b_run_probability_is_learned_and_situational_not_a_quota():
+    passes = [_fake("civil_bucs_mesh_3", 0.50), _fake("civil_bucs_texas_y_stutter_wheel_1", 0.49)]
+    runs_bad = [_fake("civil_run_gun_bunch_te_inside_zone", 0.30)]
+    runs_good = [_fake("civil_run_gun_bunch_te_inside_zone", 0.60)]
+    p_even = co.run_probability(passes + [_fake("civil_run_gun_bunch_te_inside_zone", 0.50)], down=1, distance=10)[0]
+    p_bad = co.run_probability(passes + runs_bad, down=1, distance=10)[0]
+    p_good = co.run_probability(passes + runs_good, down=1, distance=10)[0]
+    assert p_bad < p_even < p_good                           # learned outcomes move the family odds
+    assert p_bad >= co.RUN_P_MIN and p_good <= co.RUN_P_MAX
+    even = passes + [_fake("civil_run_gun_bunch_te_inside_zone", 0.50)]
+    assert co.run_probability(even, down=3, distance=12)[0] < p_even < co.run_probability(even, down=2, distance=2)[0]
+    # tendency: after 6 straight passes the run odds go up, after 6 straight runs they go down
+    up = co.run_probability(even, down=1, distance=10, recent_families=["pass"] * 6)[0]
+    down = co.run_probability(even, down=1, distance=10, recent_families=["run"] * 6)[0]
+    assert down < p_even < up
+    assert co.run_probability(passes, down=1, distance=10)[0] is None    # one family only: no gate
+    # inside the 10 the gate is off: red-zone selection unchanged
+    rz = [_fake("civil_rz_pistol_bunch_te_hb_zone", 0.5), _fake("civil_rz_pistol_bunch_te_spot_y_option_1", 0.4)]
+    top, mix = co.pick_mixed(rz, "s", down=1, distance=5, yardline=95)
+    assert mix["family_gate"].startswith("off") and top.variant.variant_id == "civil_rz_pistol_bunch_te_hb_zone"
+
+
+def test_24c_same_run_from_another_formation_is_a_separate_call(tmp_path):
+    s = co.Scorer(sm.load(_artifact(tmp_path)), CAT, dz.GeometrySource(enabled=False))
+    bel = bl.combine({}, 0.1, 0, "none", [])
+    a, b = "civil_run_gun_bunch_te_inside_zone", "civil_run_gun_doubles_clamp_stack_inside_zone"
+    vs = [CAT.get(a), CAT.get(b)]
+    kw = dict(down=1, distance=10, yardline=40, opponent_id="cpu", opponent_type="cpu", belief=bel,
+              offset_override={a: 0.5, b: 0.5})
+    fresh = {r.variant.variant_id: r for r in s.score(vs, **kw)}
+    hist = [a] * 4
+    after = {r.variant.variant_id: r for r in s.score(vs, recent_calls=hist, game_calls=hist, **kw)}
+    assert after[b].utility == fresh[b].utility and after[b].parts["repeat_penalty"] == 0
+    assert after[a].utility < fresh[a].utility
+
+
+def test_24d_ten_to_twenty_mixes_designed_runs_and_stretch_with_passes(tmp_path, civil_env):
+    from cfb_coach.madden import playcaller
+    db = _db(tmp_path)
+    picks = []
+    for i in range(40):
+        y = 80 + i % 10
+        vid = playcaller.make_call(_sit(1 + i % 2, 10, y, session="b1020"), "cpu", db).scheme_variant["variant_id"]
+        assert vid in REG | RZ20, vid
+        picks.append(vid)
+        _close_snap(db, "b1020", vid, y)
+    run_ids = RUNS | {"civil_rz_i_form_close_flex_stretch"}
+    assert sum(p in run_ids for p in picks) >= 8 and sum(p in CORE for p in picks) >= 10, picks
+
+
+def test_25_run_call_shows_its_variation_in_html_live(tmp_path, civil_env):
+    from cfb_coach.live_server import LivePlayController, _call_main, render_live_html
+    from cfb_coach.madden import playcaller
+    from cfb_coach.madden.situation import parse_madden_situation
+    from cfb_coach.madden.model.offense_adjustment_designer import validate_live_call
+    import html as _html
+    db = _db(tmp_path)
+    ctrl = LivePlayController(db=db, opponent_id="cpu", make_call=playcaller.make_call,
+                              parse_situation=parse_madden_situation, learn_summary=lambda: "ok",
+                              brand="Madden 27 Franchise", cpu_only=True, enable_execution_verify=True)
+    call = None
+    for i in range(40):
+        c = playcaller.make_call(_sit(1, 10, 40, session=f"r{i}"), "cpu", db)
+        if c.scheme_variant["variant_id"] in RUNS:
+            call = c
+            break
+    assert call is not None
+    validate_live_call(db, call, opponent_id="cpu", yardline=40)
+    sv = call.scheme_variant
+    v = CAT.get(sv["variant_id"])
+    assert (call.formation, call.play) == (v.formation, v.base_play) and sv["play_family"] == "run"
+    label = f"{v.base_play} [{v.variant_id}]"                # variation = the stock play name
+    ctrl.last_call, ctrl.call_text = call, call.format()
+    assert _call_main(ctrl) == f"{call.formation} — {call.play} · {label}"
+    page = render_live_html(ctrl)
+    assert f"VARIATION: {_html.escape(label)}" in page
+    assert "none (catalog lists no adjustments: stock play)" in call.format().splitlines()[0]

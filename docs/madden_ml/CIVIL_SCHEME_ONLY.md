@@ -1,7 +1,7 @@
-# civil_scheme_only — the 26-variant Lions offensive scheme mode (+ 7 red-zone plays, field bands per t338u)
+# civil_scheme_only — the 26-variant Lions offensive scheme mode (+ 12 designed runs per t349u, + 7 red-zone plays, field bands per t338u)
 
 Status: **draft, off by default, not live-ready.** Nothing in this mode has been run in a Madden 27 game yet.
-**Owner confirmation (2026-11-10, t333u):** Aidan confirmed that every catalog adjustment (wheel, short cross, stems up/down, motion, D-pad text and the rest) exists in game and that he knows how to do them. That is recorded in `adjustments.OWNER_CONFIRMED_ADJUSTMENTS`, pinned to catalog `lions_civil_bucs_5wr_v4@15c120decc4b`. Live calls are no longer blocked for unverified adjustments. Since t337u (below), every dataset formation counts as installed, so every play is live-legal in its field band (t338u): **inside the opponent 10, only the 7 red-zone plays; from the 10 to the 20, the 2 I Form Close Flex red-zone plays plus the 26 variants; outside the 20, the 26 variants.**
+**Owner confirmation (2026-11-10, t333u):** Aidan confirmed that every catalog adjustment (wheel, short cross, stems up/down, motion, D-pad text and the rest) exists in game and that he knows how to do them. That is recorded in `adjustments.OWNER_CONFIRMED_ADJUSTMENTS`, pinned to catalog `lions_civil_bucs_5wr_v4@15c120decc4b`. Live calls are no longer blocked for unverified adjustments. Since t337u (below), every dataset formation counts as installed, so every play is live-legal in its field band (t338u): **inside the opponent 10, only the 7 red-zone plays; from the 10 to the 20, the 2 I Form Close Flex red-zone plays plus the 26 pass variants and the 12 designed runs; outside the 20, the 26 pass variants and the 12 designed runs.**
 
 ## What it does
 
@@ -13,7 +13,7 @@ The mode is selected per session or per DB, and the existing coordinator stays s
 | `ml civil-scheme enable` (DB meta) or `play ... --civil-scheme-only` (this session) | **civil_scheme_only** |
 | `play ... --unrestricted-offense` (this session) or `ml civil-scheme disable` | the existing unrestricted coordinator |
 
-In civil_scheme_only, every offensive call is exactly one of the 26 catalog variant IDs or one of the 7 red-zone plays, within its field band (see "Field bands" below). The call shows:
+In civil_scheme_only, every offensive call is exactly one of the 26 catalog variant IDs, one of the 12 designed runs (t349u) or one of the 7 red-zone plays, within its field band (see "Field bands" below). The call shows:
 
 - the formation, base play, and **the exact variation: its name and ID, with every adjustment** (owner instruction t336u). This appears on the call's first line, which the snap log stores as `our_call`, and in the headline, the live card and the decision log (`prediction_json.variation`). A red-zone stock play reads "ADJUSTMENTS: none (catalog lists no adjustments: stock play)";
 - **every** adjustment, in order and verbatim, numbered as in the catalog. Stems are tagged `[STEM UP]`, `[STEM DOWN]` or `[STEM DOWN (all the way)]` and are never dropped or hidden;
@@ -21,7 +21,66 @@ In civil_scheme_only, every offensive call is exactly one of the 26 catalog vari
 
 Reads are shown only when a verified read progression exists, and none does today.
 
-The mode never calls the heuristic `_pick_offense` or the experimental offense path. It never substitutes another play, never offers an unadjusted version (`unadjusted_allowed` is false for all 26), and never uses the unnamed 5WR setup.
+The mode never calls the heuristic `_pick_offense` or the experimental offense path. It never substitutes another play, never offers an unadjusted version (`unadjusted_allowed` is false for all 26; the stock designed runs and stock red-zone plays have no adjustments to drop), and never uses the unnamed 5WR setup.
+
+## Designed runs and the run-pass mix (owner instruction 2026-11-11, t348u/t349u)
+
+Aidan (t348u): "I also want the model to be able to call run plays out of the formations we use, we shouldn't be strictly pass pass pass there should be a good balance of running as well." (t349u): "The design runs, no need for screens and rpos besides the goal to go one."
+
+**The 12 designed runs** are in `datasets/madden27/civil_designed_runs_owner_t349u.json`. Each is the exact stock play in `cfb_coach/data/madden27/playbooks_full.json` → `books.offense.Buccaneers.formations`, called as the stock play. Each has no adjustments, and its variation is the stock play name itself, so the call reads e.g. `Gun Bunch TE — Inside Zone · Inside Zone [civil_run_gun_bunch_te_inside_zone]` with "ADJUSTMENTS: none (catalog lists no adjustments: stock play)".
+
+| Formation | Designed runs (variant_id `civil_run_<formation>_<play>`) |
+|---|---|
+| Gun Doubles Clamp Stack | Inside Zone, Counter Y, HB Mid Zone, Same Side Zone |
+| Gun Bunch TE | Inside Zone, Read Option, HB Off Tackle, Boomerang HB Off Tackle, Same Side Zone |
+| Gun Tight Doubles | Inside Zone, HB Draw |
+| Gun 5WR Tight | QB Draw |
+
+- **Not added (owner):** HB Slip Screen (all three formations), Return RPO Zone Alert, RPO Alert Out. The only RPO is still RPO Alert QB Draw in the Gun Empty Quads red-zone package, inside the opponent 10 only.
+- **Loader fails closed** (`catalog.with_designed_runs`). It raises `CatalogError` for any of these: a name that is not an exact stock play in that formation; a formation outside the scheme's 4; a screen or an RPO; any adjustment; a `play_family` other than `run`; or a variation name that differs from the play name (`test_22b`).
+- **The 26-variant catalog file is not edited.** The runs live in their own owner file, like the red-zone file. So the catalog version `lions_civil_bucs_5wr_v4@15c120decc4b` is unchanged, and the t333u/t337u confirmations and the trained artifacts pinned to it keep working without a retrain.
+- **Field bands:** the runs are regular plays (`field_zone: any`). They are legal from the 10 to the 20 and outside the 20, and **never inside the opponent 10** (`test_23`, `test_18`).
+- **Separate calls:** each formation + play is its own `variant_id`. Calling Inside Zone from Bunch TE adds a repetition penalty to that id only; Inside Zone from Doubles Clamp Stack is unchanged (`test_24c`). The existing-model offset is looked up per formation + play.
+- `play_family` (`run` / `pass`) is explicit in the data. The 26 are passes, even the ones with "HB Sneak" in the name. In the red-zone file, HB Zone, Speed Option, QB Blast, RPO Alert QB Draw and Stretch are runs; Spot Y Option 1 and Mesh are passes.
+
+**Why a gate was needed.** The untrained stock runs carry no expert situation or coverage tags. With only the 0.08 near-best mixer, they would sit behind 26 pass variants that get expert and beater terms, and could lose on every snap. That already happened to the I Form Close Flex Stretch in the 10–20 band.
+
+**The mix** (`coordinator.pick_mixed`, used live and in the evaluation simulation). Outside the opponent 10, when both a run and a pass are legal:
+
+```
+logit P(run) = RUN_PRIOR_LOGIT[down][distance bucket]              soft situation prior
+             + 10 x (best run utility - best pass utility)          learned: model heads, per-variant residuals,
+                                                                    coverage-beater pull, repetition penalties
+             + 0.6 x (passes - runs among this game's last 6 calls) tendency: stay unpredictable
+P(run) clipped to [0.03, 0.85]
+```
+
+The family is drawn with the snap's seed, so a re-call of the same snap gives the same play. The usual seeded near-best draw (0.08, τ 0.025) then picks among that family's candidates, so runs are also mixed among themselves.
+
+- The prior is soft. With equal utilities it gives 1st & 10 about 45% run, 2nd & 1–2 about 65%, and 3rd & 8–10 about 12%. The learned gap and the tendency term move it.
+- If the runs keep failing, their residuals and the existing model pull the gap down and the run share falls toward 3%. If the opponent keeps showing one coverage, the pass beaters widen the gap and the mode passes more.
+- Inside the opponent 10 the gate is off, and red-zone selection is exactly as before.
+- In 10–20, Stretch competes in the run pool with the designed runs. The +0.35 red-zone lift still applies.
+- The decision log stores `mix.family_gate`, `family`, `p_run`, `prior_logit`, `learned_gap` and `tendency_logit`.
+- This is not a quota. Nothing forces a run on any down. A clearly worse family is still drawn rarely, by design, for unpredictability. The chance is at least 3% outside the 10 when both families are legal.
+
+**Measured (box, predictions, not game outcomes).** The real artifact `v20261110-184648` was run on a scratch copy of the game-2 snapshot DB. There were 6 simulated games of 60 snaps each, with random spots from the own 15 to the opponent 12 and each call closed as a snap.
+
+| Situation | Run share |
+|---|---|
+| 1st & 10 | 39/110 = 35% |
+| 1st & 5 | 50% |
+| 2nd & 3 | 67% |
+| 2nd & 7 | 39% |
+| 2nd & 12 | 21% |
+| 3rd & 2 | 49% |
+| 3rd & 6 | 18% |
+| 3rd & 10 | 7% |
+
+- All 12 designed runs and Stretch were called.
+- Latency after the first call: median 66 ms, p95 73 ms, against the 150 ms target. The first, cold call took 0.68 s; `play` warms up before the first snap.
+- `test_24` (test artifact): 60 first-and-10 snaps between the 20s give a run share between 25% and 75%, at least 6 distinct runs and at least 8 distinct pass variants. 3rd & 12 runs at least 15 points less often.
+- `test_24b` checks that the learned gap, the situation and the tendency each move P(run), and that the gate is off inside the 10. `test_24d` checks the 10–20 band, and `test_25` checks that a run call shows its variation in html-live.
 
 ## Field bands, play mixing and variant independence (owner instruction 2026-11-10, t338u)
 
@@ -32,8 +91,8 @@ Aidan, after game 2: "when we are in goal to go sitations for example inside the
 | Band | Yardline | Legal plays |
 |---|---|---|
 | Inside the opponent 10 | ≥ 90 | **Red-zone plays only (7):** the 5 package plays plus the 2 I Form Close Flex plays. No regular variant. |
-| 10–20 | 80–89 | The 2 I Form Close Flex plays (tagged 10-20 on the sheet) **plus** the 26 regular variants. The red-zone plays get a +0.35 logit mix lift (`RZ_MIX_BONUS`), so they actually show up. |
-| Outside the 20 | < 80, or spot unknown | The 26 regular variants only. A red-zone play is never legal here. |
+| 10–20 | 80–89 | The 2 I Form Close Flex plays (tagged 10-20 on the sheet) **plus** the 26 pass variants and the 12 designed runs. The red-zone plays get a +0.35 logit mix lift (`RZ_MIX_BONUS`), so they actually show up. |
+| Outside the 20 | < 80, or spot unknown | The 26 pass variants and the 12 designed runs. A red-zone play is never legal here. |
 
 **Red-zone plays added from the 5WR Tight sheet (t338u screenshots, not committed).** The sheet lists "Redzone HB Stretch / Close Flex" and "Redzone Mesh / Close Flex" under both "Redzone (Inside 10)" and "Redzone (10-20)". Both formation and plays are in the Buccaneers stock data (`I Form Close Flex`: `Mesh`, `Stretch`).
 
@@ -272,7 +331,7 @@ Coordinator simulation on the 599 held-out situations, playing within each game.
 - The existing model's own P(success) for the restricted pick's base play averaged 0.604. Its best play from the whole installed book averaged 0.626, so **the restriction costs about 0.02 predicted P(success)** by the existing model's estimate. The restricted mode's own 0.658 includes the expert and beater terms, which are unvalidated, and is **not** proof of a gain.
 - **Short yardage (distance ≤ 2), 65 snaps:** historically 40% were runs. Runs succeeded 18/26 and passes 26/39.
 - **Goal-to-go, 75 snaps:** 49% were runs. Runs succeeded 13/37 and passes 20/38.
-- The restricted mode cannot run, QB-sneak or use the red-zone packages. That loss of options is real and has not been measured in a game.
+- (Before t349u) The restricted mode could not run outside the red zone. Since t349u it calls the 12 designed runs; the simulation summary now reports `run_pass_mix` and `pick_run_share`. The numbers in this section predate it.
 
 ## Playbook status
 
@@ -346,7 +405,7 @@ Backups go to `~/.cfb-coach/backups/civil_scheme/` and models to `~/.cfb-coach/m
 3. The Z Spot names differ from the repo's stock data (`L Spot` / `Zl Spot Shake`). They are called by the dataset name.
 4. Variant outcomes are still few. Every adjustment effect is a transferred, uncertain estimate, and the success head is the existing model.
 5. Stem depths are not measured. 8 of 11 stems shift a specific route band on provisional geometry; 3 are applied directionally with extra uncertainty.
-6. Outside the 20 the mode is still pass-only: no runs or sneaks. Inside the 20 the red-zone plays add HB Stretch (10–20 too), and inside the 10 HB Zone, Speed Option, QB Blast and RPO Alert QB Draw. Only RPO Alert QB Draw has a verified outcome (1 snap, −2).
+6. Since t349u the 12 designed runs are called outside the 10, but none has a verified outcome yet: their scores are the existing model's estimate for the stock play plus the shared heads. The run-pass prior and weights (`RUN_PRIOR_LOGIT`, `RUN_LEARN_W` 10, `RUN_TEND_W` 0.6, clip 0.03–0.85) are set by hand, not fitted. Inside the 20 the red-zone plays add HB Stretch (10–20 too), and inside the 10 HB Zone, Speed Option, QB Blast and RPO Alert QB Draw. Only RPO Alert QB Draw has a verified outcome (1 snap, −2).
 10. The mixing constants (0.45/0.7/0.10, margin 0.08, τ 0.025, 10–20 lift 0.35) are set by hand to follow your variety rule. They are not fitted.
 7. The provisional geometry export may not be on the laptop. Without it every design is `name_only`.
 8. The live DB was not reachable from the build machine. The model was trained on the 11-07 snapshot, and games after 2026-11-05 are not included.

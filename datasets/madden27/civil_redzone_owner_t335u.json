@@ -32,7 +32,8 @@
       "package_base_play_label": "Spot Y Option 1",
       "adjustments_from_package": true,
       "note": "Uses the package's passing setup, which the catalog says applies to Spot Y Option 1.",
-      "field_zone": "inside_10"
+      "field_zone": "inside_10",
+      "play_family": "pass"
     },
     {
       "variant_id": "civil_rz_pistol_bunch_te_hb_zone",
@@ -43,7 +44,8 @@
       "package_base_play_label": "HB Zone",
       "adjustments_from_package": false,
       "note": "Run as listed in the package. The catalog gives no adjustments for it; called as the stock play.",
-      "field_zone": "inside_10"
+      "field_zone": "inside_10",
+      "play_family": "run"
     },
     {
       "variant_id": "civil_rz_pistol_bunch_te_speed_option",
@@ -54,7 +56,8 @@
       "package_base_play_label": "Speed Option",
       "adjustments_from_package": false,
       "note": "Option run as listed in the package. The catalog gives no adjustments for it; called as the stock play.",
-      "field_zone": "inside_10"
+      "field_zone": "inside_10",
+      "play_family": "run"
     },
     {
       "variant_id": "civil_rz_gun_empty_quads_qb_blast",
@@ -65,7 +68,8 @@
       "package_base_play_label": "QB Blast",
       "adjustments_from_package": false,
       "note": "The lesson's blocking setup was not captured in the catalog ('watch lesson for blocking'); called as the stock play.",
-      "field_zone": "inside_10"
+      "field_zone": "inside_10",
+      "play_family": "run"
     },
     {
       "variant_id": "civil_rz_gun_empty_quads_rpo_alert_qb_draw",
@@ -76,7 +80,8 @@
       "package_base_play_label": "RPO Alert QB Draw",
       "adjustments_from_package": false,
       "note": "The lesson's blocking setup was not captured in the catalog ('watch lesson for blocking'); called as the stock play.",
-      "field_zone": "inside_10"
+      "field_zone": "inside_10",
+      "play_family": "run"
     },
     {
       "variant_id": "civil_rz_i_form_close_flex_stretch",
@@ -94,7 +99,8 @@
         "Redzone Inside 10",
         "Redzone 10-20"
       ],
-      "note": "Lesson setup is '1. Hike' only: stock play, no adjustments. Stock book name 'Stretch' in Buccaneers 'I Form Close Flex'."
+      "note": "Lesson setup is '1. Hike' only: stock play, no adjustments. Stock book name 'Stretch' in Buccaneers 'I Form Close Flex'.",
+      "play_family": "run"
     },
     {
       "variant_id": "civil_rz_i_form_close_flex_mesh",
@@ -118,7 +124,8 @@
         "Redzone Inside 10",
         "Redzone 10-20"
       ],
-      "note": "Lesson setup is '1. Crosser Slot WR'. Stock book name 'Mesh' in Buccaneers 'I Form Close Flex'."
+      "note": "Lesson setup is '1. Crosser Slot WR'. Stock book name 'Mesh' in Buccaneers 'I Form Close Flex'.",
+      "play_family": "pass"
     }
   ],
   "missing_from_catalog": [
@@ -134,5 +141,6 @@
     "by": "Aidan (owner)",
     "statement": "when we are in goal to go sitations for example inside the 10 I want the model to only call the redzone plays from our book and the other redzone plays I sent from the previous book. These plays are to be called in the redzone only so inside the 10 and 10-20 you can call these and a mix of some other stuff.",
     "effect": "Inside the opponent 10: red-zone plays only. From the 10 to the 20: red-zone plays tagged 10-20 plus other scheme plays. Red-zone plays never outside the 20. Adds the two Close Flex plays from the 5WR Tight sheet (tagged Inside 10 and 10-20)."
-  }
+  },
+  "play_family_note": "play_family (added 2026-11-11 for the t349u run-pass mix): 'run' for the designed runs (HB Zone, Speed Option, QB Blast, RPO Alert QB Draw, Stretch), 'pass' for Spot Y Option 1 and Mesh. Inside the opponent 10 the mix gate is not applied (red-zone selection unchanged); in the 10-20 band Stretch competes in the run pool."
 }

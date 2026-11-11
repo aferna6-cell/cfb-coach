@@ -690,7 +690,7 @@ def cmd_play(args: argparse.Namespace) -> int:
         from cfb_coach.madden.playcaller import _civil_scheme_only
 
         if _civil_scheme_only(db):
-            offense_controller = "CIVIL_SCHEME_ONLY (26 catalog variants only; no fallback)"
+            offense_controller = "CIVIL_SCHEME_ONLY (26 pass variants + 12 designed runs + red-zone plays only; no fallback)"
             from cfb_coach.madden.scheme.coordinator import warm_up
 
             warm_up(db)   # model + geometry load before the first snap (latency target 150 ms)
