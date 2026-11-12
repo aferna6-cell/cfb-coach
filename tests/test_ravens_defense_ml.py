@@ -278,7 +278,7 @@ def test_12_decision_latency_under_150ms():
 # The 26-play catalog JSON stays pinned so trained artifacts still load. catalog.py may gain owner overlays
 # (t358u verified names) without changing that JSON hash. Other scheme files stay pinned.
 OFFENSE_PINS = {
-    "cfb_coach/madden/scheme/coordinator.py": "91facbe3c932e852e1ebe609169be3b0b0f0069320d184aed7bf51cc58e20224",
+    "cfb_coach/madden/scheme/coordinator.py": "b8551f47d03b8ef599c01544a53b0b6f4f07b3d1487ce42f6b4564549af3dd57",
     "cfb_coach/madden/scheme/legality.py": "e6c959dd4912a7f036c9c831ac31e1c6193c9c587e1fc10ac1167731d2393d36",
     "cfb_coach/madden/scheme/mode.py": "ef99c16e697b1fe25ab5f1709cf3d7ee307762856f370ffab2b48deb844fb031",
     "cfb_coach/madden/scheme/model.py": "af793fd4dfbe03c234ccf11cd0d6afeec8a555507ea041604222e637aab778a7",

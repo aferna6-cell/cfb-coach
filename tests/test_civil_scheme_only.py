@@ -637,10 +637,14 @@ def test_18e_mixing_is_seeded_and_only_among_near_best(tmp_path, civil_env):
                      belief=bel)
     a, mix = co.pick(ranked, "seed-1")
     assert co.pick(ranked, "seed-1")[0] is a                  # reproducible
-    assert ranked[0].utility - a.utility <= co.MIX_MARGIN
+    # the PLAY is drawn among the near-best; the variation may be a near-best sibling of it (owner t370u)
+    def near(vid):
+        r = next(r for r in ranked if r.variant.variant_id == vid)
+        g = max(x.utility for x in ranked if x.variant.pair == r.variant.pair)
+        return ranked[0].utility - g <= co.MIX_MARGIN and g - r.utility <= co.SIBLING_MARGIN
+    assert near(a.variant.variant_id)
     chosen = {co.pick(ranked, f"seed-{i}")[0].variant.variant_id for i in range(200)}
-    assert all(ranked[0].utility - next(r for r in ranked if r.variant.variant_id == c).utility <= co.MIX_MARGIN
-               for c in chosen)
+    assert all(near(c) for c in chosen)
     assert len(chosen) >= 2 or len(mix["pool"]) == 1
 
 
@@ -939,3 +943,142 @@ def test_26b_name_verification_loader_fails_closed_on_a_bad_owner_file():
     missing["catalog_version"] = CAT.version()
     with pytest.raises(sc.CatalogError, match="unknown variant_id"):
         sc.with_owner_verified_names(CAT, missing, digest="x")
+
+
+
+# owner instruction t370u (Michael 59-42 audit): mix sibling variants, get aggressive when trailing late ----------
+MESH_OUT, MESH_2, MESH_5 = ("civil_bucs_bunch_te_mesh_post_outside_bunch_wr", "civil_bucs_mesh_2_provisional",
+                            "civil_bucs_mesh_5")
+ZSS = "civil_5wr_z_spot_shake_1"
+BOOMERANG, SAME_SIDE = "civil_run_gun_bunch_te_boomerang_hb_off_tackle", "civil_run_gun_doubles_clamp_stack_same_side_zone"
+RZ_PASSES = {"civil_rz_pistol_bunch_te_spot_y_option_1", "civil_rz_i_form_close_flex_mesh"}
+
+
+def _sit_score(down, distance, yardline, us, them, quarter, session="g1"):
+    s = _sit(down, distance, yardline, session=session)
+    s.score_us, s.score_them = us, them
+    s.extras["quarter"] = quarter
+    return s
+
+
+def _mesh_scorer(tmp_path):
+    s = co.Scorer(sm.load(_artifact(tmp_path)), CAT, dz.GeometrySource(enabled=False))
+    vs = [CAT.get(v) for v in (MESH_OUT, MESH_2, MESH_5, ZSS)]
+    kw = dict(down=1, distance=10, yardline=40, opponent_id="michael", opponent_type="human",
+              belief=bl.combine({}, 0.1, 0, "none", []), offset_override={v.variant_id: 0.5 for v in vs})
+    return s, vs, kw
+
+
+def test_27a_history_cannot_freeze_out_unused_siblings(tmp_path):
+    """Michael game: Mesh Outside (heavy verified history) ran 6x, Mesh 2-5 never; history lift was up to +0.60."""
+    s, vs, kw = _mesh_scorer(tmp_path)
+    stats = {MESH_OUT: (20.0, 20.0), ZSS: (20.0, 20.0)}            # strong verified history; Mesh 2/5 unused
+    r = {x.variant.variant_id: x for x in s.score(vs, variant_stats=stats, **kw)}
+    assert r[MESH_OUT].parts["variant_residual"] <= co.RESIDUAL_POS_CAP < 0.6
+    assert r[MESH_OUT].parts["variant_residual_uncapped"] > co.RESIDUAL_POS_CAP     # the cap is what bit
+    assert r[MESH_5].parts["novelty_bonus"] > r[MESH_OUT].parts["novelty_bonus"] > 0
+    best = max(x.utility for x in r.values())
+    for vid in (MESH_2, MESH_5):                                     # unused variants are in contention
+        assert best - r[vid].utility <= co.MIX_MARGIN, (vid, best, r[vid].utility)
+    # bad history still pulls a variant down by the full cap (only the LIFT is capped)
+    bad = {x.variant.variant_id: x for x in s.score(vs, variant_stats={MESH_OUT: (0.0, 40.0)}, **kw)}
+    assert bad[MESH_OUT].parts["variant_residual"] < -co.RESIDUAL_POS_CAP
+    # runs and one-variant plays get no novelty lift (it only rotates sibling variations)
+    run = s.score([CAT.get(BOOMERANG)], **{**kw, "offset_override": {BOOMERANG: 0.5}})[0]
+    assert run.parts["novelty_bonus"] == 0.0
+
+
+def test_27b_mesh_outside_does_not_loop_and_siblings_stay_independent(tmp_path):
+    s, vs, kw = _mesh_scorer(tmp_path)
+    stats = {MESH_OUT: (20.0, 20.0), ZSS: (20.0, 20.0)}
+    hist = [MESH_OUT, ZSS, MESH_OUT]                                 # Mesh Outside called several times already
+    ranked = s.score(vs, recent_calls=hist, game_calls=hist, variant_stats=stats, **kw)
+    picks = [co.pick(ranked, f"m{i}")[0].variant.variant_id for i in range(200)]
+    assert {MESH_2, MESH_5} & set(picks), picks
+    assert picks.count(MESH_OUT) < len(picks)
+    # t338u: calling variant 1 (and its verified outcomes) never changes variant 2's score
+    fresh = {x.variant.variant_id: x for x in s.score(vs, **kw)}
+    after = {x.variant.variant_id: x for x in s.score(vs, recent_calls=[MESH_OUT] * 5, game_calls=[MESH_OUT] * 5,
+                                                       variant_stats={MESH_OUT: (20.0, 20.0)}, **kw)}
+    for vid in (MESH_2, MESH_5):
+        assert after[vid].utility == fresh[vid].utility and after[vid].parts["repeat_penalty"] == 0
+        assert after[vid].parts["novelty_bonus"] == fresh[vid].parts["novelty_bonus"]
+    # ...and does not reduce variant 2's chance of being the call
+    p2 = lambda rk: sum(co.pick(rk, f"i{i}")[0].variant.variant_id == MESH_2 for i in range(300))
+    assert p2(s.score(vs, recent_calls=[MESH_OUT] * 5, game_calls=[MESH_OUT] * 5, **kw)) >= p2(s.score(vs, **kw))
+
+
+def test_27c_near_best_siblings_are_mixed_and_logged():
+    ranked = [_fake(MESH_OUT, 0.60), _fake(ZSS, 0.55), _fake(MESH_5, 0.50), _fake(MESH_2, 0.49),
+              _fake("civil_bucs_mesh_3", 0.30)]                       # Mesh 3 is not near-best: never mixed in
+    picks = {}
+    for i in range(300):
+        top, mix = co.pick(ranked, f"s{i}")
+        picks[top.variant.variant_id] = picks.get(top.variant.variant_id, 0) + 1
+    assert picks.get(MESH_5, 0) > 0 and picks.get(MESH_2, 0) > 0 and "civil_bucs_mesh_3" not in picks, picks
+    assert picks[MESH_OUT] > picks[MESH_5]                           # still ML-ordered, not uniform
+    mixes = [co.pick(ranked, f"s{i}")[1] for i in range(50)]
+    mesh = [m for m in mixes if m["sibling_mix"]["play_drawn"] != ZSS]
+    assert mesh and all({v for v, _ in m["sibling_mix"]["pool"]} == {MESH_OUT, MESH_5, MESH_2} for m in mesh)
+    assert "sibling mix" in co.mix_explanation(mesh[0])               # logged for audits
+
+
+def test_27d_trailing_late_long_yardage_passes_not_a_designed_run():
+    """Down 17 in Q4: Boomerang on 2&20 and Same Side Zone on 2&10 at the opp 40 were picked over higher-ranked passes."""
+    trail = co.trailing_late(_sit_score(2, 20, 32, 21, 38, 4))
+    assert trail and trail["margin"] == -17 and trail["strength"] == 1.0
+    for sit_args, flip in (((2, 20, 32), BOOMERANG), ((2, 10, 60), SAME_SIDE)):
+        ranked = [_fake("civil_bucs_mesh_3", 0.50), _fake("civil_bucs_texas_y_stutter_wheel_1", 0.49),
+                  _fake(flip, 0.45), _fake("civil_run_gun_bunch_te_inside_zone", 0.44)]
+        dn, dist, y = sit_args
+        p, info = co.run_probability(ranked, down=dn, distance=dist, trail=trail)
+        assert p == 0.0 and info["trailing_late"]["rule"]
+        for i in range(100):
+            top, mix = co.pick_mixed(ranked, f"t{i}", down=dn, distance=dist, yardline=y, trail=trail)
+            assert not top.variant.is_run, (sit_args, top.variant.variant_id)
+        assert "trailing late 21-38" in co.mix_explanation(mix)
+        # same snap tied in the 2nd quarter, or ahead late: the normal run mix still applies
+        for other in (co.trailing_late(_sit_score(dn, dist, y, 21, 21, 2)), co.trailing_late(_sit_score(dn, dist, y, 38, 21, 4)),
+                      co.trailing_late(_sit_score(dn, dist, y, 21, 38, 2))):
+            assert other is None
+    # a run that out-ranks every pass on short yardage can still be called late, but rarely (capped)
+    short = [_fake("civil_bucs_mesh_3", 0.45), _fake("civil_run_gun_bunch_te_inside_zone", 0.60)]
+    assert 0 < co.run_probability(short, down=3, distance=1, trail=trail)[0] <= co.TRAIL_RUN_P_MAX
+    assert co.run_probability(short, down=3, distance=1)[0] > co.TRAIL_RUN_P_MAX
+
+
+def test_27e_trailing_late_live_calls_pass_and_early_keeps_runs(tmp_path, civil_env):
+    from cfb_coach.madden import playcaller
+    db = _db(tmp_path)
+    late = []
+    for i in range(30):
+        call = playcaller.make_call(_sit_score(2, 20, 32 + i, 21, 38, 4, session=f"late{i}"), "michael", db)
+        sv = call.scheme_variant
+        assert sv["status"] == "CALL" and sv["variant_id"] in REG
+        late.append(sv["variant_id"])
+        assert sv["mix"]["trailing_late"]["margin"] == -17 and "trailing late 21-38" in sv["explanation"]
+    assert not set(late) & RUNS, late
+    row = db.conn.execute("SELECT prediction_json, explanation FROM civil_scheme_decisions ORDER BY id DESC LIMIT 1").fetchone()
+    assert json.loads(row[0])["mix"]["trailing_late"]["margin"] == -17 and "trailing late" in row[1]
+    early = [playcaller.make_call(_sit_score(1, 10, 40, 14, 14, 2, session=f"e{i}"), "michael", db)
+             .scheme_variant["variant_id"] for i in range(40)]
+    assert set(early) & RUNS, early                                  # tied / early: designed runs still called
+
+
+def test_27f_trailing_late_inside_the_10_mixes_in_red_zone_passes(tmp_path, civil_env):
+    rz = [_fake("civil_rz_gun_empty_quads_qb_blast", 0.55), _fake("civil_rz_pistol_bunch_te_hb_zone", 0.54),
+          _fake("civil_rz_pistol_bunch_te_spot_y_option_1", 0.45), _fake("civil_rz_i_form_close_flex_mesh", 0.44)]
+    trail = co.trailing_late(_sit_score(1, 5, 95, 21, 38, 4))
+    tl = [co.pick_mixed(rz, f"z{i}", down=1, distance=5, yardline=95, trail=trail)[0].variant.variant_id
+          for i in range(200)]
+    assert sum(v in RZ_PASSES for v in tl) >= 80 and sum(v not in RZ_PASSES for v in tl) >= 10
+    plain = {co.pick_mixed(rz, f"z{i}", down=1, distance=5, yardline=95)[0].variant.variant_id for i in range(200)}
+    assert not plain & RZ_PASSES                                     # not trailing late: unchanged
+    from cfb_coach.madden import playcaller
+    db = _db(tmp_path)
+    got = []
+    for i in range(20):
+        sv = playcaller.make_call(_sit_score(1 + i % 3, 5, 95, 21, 38, 4, session=f"rz{i}"), "michael", db).scheme_variant
+        assert sv["variant_id"] in RZ10 | RZ20
+        got.append(sv["variant_id"])
+    assert set(got) & RZ_PASSES, got

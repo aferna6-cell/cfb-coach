@@ -8,7 +8,9 @@ Order per snap (never calls the heuristic ``_pick_offense`` or the experimental 
                      + per-variant learned residual from verified variant outcomes - repetition penalty
   4. pick            ``pick_mixed``: outside the opponent 10, a situation-gated run-pass draw (owner t348u/t349u:
                      "a good balance of running"), then the seeded near-best draw inside the drawn family;
-                     inside the 10 the plain near-best draw (red-zone selection unchanged). Re-validated by
+                     inside the 10 the plain near-best draw (red-zone selection unchanged). Then the sibling mix
+                     (owner t370u): a near-best legal variation of the drawn play. Trailing late (t370u): pass-first
+                     outside the 10, red-zone passes mixed in inside the 10. Re-validated by
                      ``legality.revalidate_call`` before display
   5. nothing legal   NO_LEGAL_SCHEME_PLAY with the reasons; no fallback to any other play
 """
@@ -65,7 +67,38 @@ RUN_TEND_W = 0.6
 RUN_TEND_WINDOW = 6
 RUN_P_MIN, RUN_P_MAX = 0.03, 0.85
 RESIDUAL_K = 10.0
-RESIDUAL_CAP = 0.6
+RESIDUAL_CAP = 0.6          # floor: bad verified outcomes of a variant can still pull it down by up to 0.6 logit
+# Sibling variety (owner t370u, Michael 59-42 audit). Variants stay independent for repetition (t338u): there is NO
+# family-level repeat penalty. Instead:
+#  1. the verified-outcome residual may lift a variant by at most RESIDUAL_POS_CAP (was +0.6), so history alone
+#     (+0.06 utility at p~0.5, under MIX_MARGIN) cannot freeze high-history variants into the top 8;
+#  2. a per-variant novelty lift for catalog pass variants that have siblings (same formation + base play), from
+#     THAT variant's own verified-outcome count only: NOVELTY_W * NOVELTY_K / (NOVELTY_K + n). Unused -> +0.25 logit,
+#     4 outcomes -> +0.125, 20 -> +0.04. Another variant's calls/outcomes never change it;
+#  3. ``pick`` draws the play as before, then mixes among that play's legal siblings within SIBLING_MARGIN utility
+#     of the best sibling (flatter SIBLING_TAU), so near-best variations of the same play are actually rotated.
+RESIDUAL_POS_CAP = 0.20
+NOVELTY_W = 0.25
+NOVELTY_K = 4.0
+SIBLING_MARGIN = 0.15
+SIBLING_TAU = 0.05
+# Trailing late (owner t370u: "when we are down ... in the 4th we have to get aggressive"). Uses the live score +
+# quarter / two-minute flag (``game_score.classify``: phase "trail" and late = Q4+/OT or two-minute).
+#  outside the 10: run logit -= TRAIL_RUN_LOGIT * strength (strength 0.55 down 1-2, 0.75 down 3-7, 1.0 down 8+),
+#                  P(run) capped at TRAIL_RUN_P_MAX, and P(run) = 0 when a pass is ranked above the best designed run
+#                  or the distance is >= TRAIL_LONG (2nd-and-20, 2nd-and-10, 3rd-and-7 ...): pass family only;
+#  inside the 10:  a family draw is turned on: P(pass) = TRAIL_RZ_PASS_BASE + TRAIL_RZ_PASS_STRENGTH * strength
+#                  (+TRAIL_RZ_LONG_BONUS at distance >= 4), at least TRAIL_RZ_PASS_TOP when a red-zone pass is
+#                  ranked above the best run, capped at TRAIL_RZ_PASS_MAX. Runs (incl. RPO Alert QB Draw) stay
+#                  callable. Not trailing late: everything above is off (normal run-pass mix, red-zone unchanged).
+TRAIL_RUN_LOGIT = 2.5
+TRAIL_RUN_P_MAX = 0.20
+TRAIL_LONG = 7
+TRAIL_RZ_PASS_BASE = 0.40
+TRAIL_RZ_PASS_STRENGTH = 0.30
+TRAIL_RZ_LONG_BONUS = 0.15
+TRAIL_RZ_PASS_TOP = 0.75
+TRAIL_RZ_PASS_MAX = 0.85
 LATENCY_TARGET_MS = 150.0
 
 
@@ -98,6 +131,11 @@ class Scorer:
         self.stock = {v.pair: dz.stock_design(v.formation, v.base_play, geo) for v in cat.variants}
         self.rf_adj = {k: dz.route_features(d) for k, d in self.adjusted.items()}
         self.rf_stock = {k: dz.route_features(d) for k, d in self.stock.items()}
+        pairs: dict[tuple[str, str], int] = {}
+        for v in cat.variants:
+            pairs[v.pair] = pairs.get(v.pair, 0) + 1
+        # pass variants that share formation + base play with another catalog variant (t370u novelty lift)
+        self.has_siblings = {v.variant_id: (not v.is_run and pairs[v.pair] > 1) for v in cat.variants}
 
     def offset_p(self, v: sc.SchemeVariant, *, down, distance, yardline, opponent_id, opponent_type) -> float:
         if self.model.existing is None:
@@ -159,10 +197,14 @@ class Scorer:
             # per-play learning: verified outcomes of THIS variant pull its estimate (shrunk toward the model)
             k, n = variant_stats.get(v.variant_id, (0.0, 0.0))
             resid = 0.0
+            resid_raw = 0.0
             if n > 0:
                 p0 = ln.sigmoid(z_succ)
-                resid = max(-RESIDUAL_CAP, min(RESIDUAL_CAP, (k - n * p0) / (n + RESIDUAL_K) / max(0.1, p0 * (1 - p0))))
-            z_succ += resid
+                resid_raw = (k - n * p0) / (n + RESIDUAL_K) / max(0.1, p0 * (1 - p0))
+                resid = max(-RESIDUAL_CAP, min(RESIDUAL_POS_CAP, resid_raw))
+            # t370u: underused siblings get a lift from their OWN verified count only (independent per variant_id)
+            novelty = NOVELTY_W * NOVELTY_K / (NOVELTY_K + n) if self.has_siblings.get(v.variant_id) else 0.0
+            z_succ += resid + novelty
             p_s = ln.sigmoid(z_succ)
             p_fd = ln.sigmoid(zs["first_down"][0])
             p_ex = ln.sigmoid(zs["explosive"][0])
@@ -177,6 +219,7 @@ class Scorer:
                 "coverage_tags_known": e["coverage_tags_known"], "repeat_penalty": round(pen, 4),
                 "red_zone_mix_bonus": rz_mix,
                 "verified_variant_outcomes": n, "variant_residual": round(resid, 4),
+                "variant_residual_uncapped": round(resid_raw, 4), "novelty_bonus": round(novelty, 4),
                 "geometry": d.geometry_status, "unrepresented_adjustments": [i + 1 for i in d.unrepresented],
                 "stems": [[i + 1, sh, m] for i, sh, m in d.stems],
                 "out_of_support": oos[:6]}))
@@ -190,23 +233,47 @@ def repeat_penalty(variant_id: str, recent: Sequence[str], game_count: Mapping[s
     return REPEAT_W * reps + min(GAME_CAP, GAME_W * game_count.get(variant_id, 0))
 
 
-def pick(ranked: Sequence[Scored], seed: str) -> tuple[Scored, dict[str, Any]]:
-    """Seeded Boltzmann draw among candidates within MIX_MARGIN utility of the best (reproducible per seed)."""
-    import random
-    best = ranked[0].utility
-    pool = [s for s in ranked if best - s.utility <= MIX_MARGIN]
-    w = [math.exp((s.utility - best) / MIX_TAU) for s in pool]
-    rng = random.Random(seed)
-    r, acc, chosen = rng.random() * sum(w), 0.0, pool[-1]
-    for s, wi in zip(pool, w):
+def _draw(items: Sequence[Scored], best: float, tau: float, rng: Any) -> tuple[Scored, list[float]]:
+    w = [math.exp((s.utility - best) / tau) for s in items]
+    r, acc, chosen = rng.random() * sum(w), 0.0, items[-1]
+    for s, wi in zip(items, w):
         acc += wi
         if r <= acc:
             chosen = s
             break
+    return chosen, w
+
+
+def pick(ranked: Sequence[Scored], seed: str) -> tuple[Scored, dict[str, Any]]:
+    """Seeded Boltzmann draw among candidates within MIX_MARGIN utility of the best (reproducible per seed), then the
+    sibling mix (owner t370u): among the drawn play's legal variants (same formation + base play) within
+    SIBLING_MARGIN of the best of them, a flatter seeded draw picks the variation. The play's own probability is
+    unchanged; only which of its near-best variations is called."""
+    import random
+    ranked = list(ranked)
+    best = ranked[0].utility
+    pool = [s for s in ranked if best - s.utility <= MIX_MARGIN]
+    play, w = _draw(pool, best, MIX_TAU, random.Random(seed))
     tot = sum(w)
-    return chosen, {"rule": f"seeded sample among {len(pool)} within {MIX_MARGIN} utility (tau {MIX_TAU})",
-                    "rank": ranked.index(chosen) + 1, "pool": [[s.variant.variant_id, round(wi / tot, 3)]
-                                                                for s, wi in zip(pool, w)]}
+    mix: dict[str, Any] = {"rule": f"seeded sample among {len(pool)} within {MIX_MARGIN} utility (tau {MIX_TAU})",
+                           "pool": [[s.variant.variant_id, round(wi / tot, 3)] for s, wi in zip(pool, w)]}
+    group = [s for s in ranked if s.variant.pair == play.variant.pair]
+    g_best = max(s.utility for s in group)
+    sibs = [s for s in group if g_best - s.utility <= SIBLING_MARGIN]
+    chosen = play
+    if len(sibs) > 1:
+        chosen, sw = _draw(sibs, g_best, SIBLING_TAU, random.Random(seed + "|sibling"))
+        st = sum(sw)
+        mix["sibling_mix"] = {
+            "rule": f"seeded draw among {len(sibs)} legal sibling variants of {play.variant.formation} "
+                    f"{play.variant.base_play} within {SIBLING_MARGIN} utility of the best sibling (tau {SIBLING_TAU})",
+            "play_drawn": play.variant.variant_id, "chosen": chosen.variant.variant_id,
+            "pool": [[s.variant.variant_id, round(wi / st, 3)] for s, wi in zip(sibs, sw)]}
+    else:
+        mix["sibling_mix"] = {"rule": "no legal near-best sibling variant", "play_drawn": play.variant.variant_id,
+                              "chosen": play.variant.variant_id, "pool": [[play.variant.variant_id, 1.0]]}
+    mix["rank"] = ranked.index(chosen) + 1
+    return chosen, mix
 
 
 def _dist_bucket(distance: Any) -> str | None:
@@ -227,10 +294,31 @@ def run_prior_logit(down: Any, distance: Any) -> float:
     return RUN_PRIOR_LOGIT.get(dn, {}).get(b, 0.0) if b else 0.0
 
 
-def run_probability(ranked: Sequence[Scored], *, down: Any, distance: Any, recent_families: Sequence[str] = ()
-                    ) -> tuple[float | None, dict[str, Any]]:
+def trailing_late(sit: Any) -> dict[str, Any] | None:
+    """Trailing late (owner t370u) from the live score + quarter/two-minute flag, or None (also when no score is set).
+    Late = 4th quarter / OT or two-minute (``game_score.classify``)."""
+    from cfb_coach.game_score import classify
+    try:
+        ctx = classify(sit)
+    except Exception:  # noqa: BLE001 — a bad score field means "unknown", never a forced mode
+        return None
+    if ctx is None or ctx.phase != "trail" or not ctx.late or ctx.margin >= 0:
+        return None
+    return {"margin": ctx.margin, "quarter": ctx.quarter, "two_minute": bool(getattr(sit, "two_minute", False)),
+            "strength": ctx.strength, "score": f"{ctx.us}-{ctx.them}"}
+
+
+def _is_long(distance: Any) -> bool:
+    try:
+        return int(distance) >= TRAIL_LONG
+    except (TypeError, ValueError):
+        return False
+
+
+def run_probability(ranked: Sequence[Scored], *, down: Any, distance: Any, recent_families: Sequence[str] = (),
+                    trail: Mapping[str, Any] | None = None) -> tuple[float | None, dict[str, Any]]:
     """P(call a run) for this snap, or None when only one family is legal. Pure function of the scored
-    candidates (learned) + the situation prior + this game's recent family calls."""
+    candidates (learned) + the situation prior + this game's recent family calls + trailing late (t370u)."""
     runs = [s for s in ranked if s.variant.is_run]
     passes = [s for s in ranked if not s.variant.is_run]
     if not runs or not passes:
@@ -239,23 +327,63 @@ def run_probability(ranked: Sequence[Scored], *, down: Any, distance: Any, recen
     prior = run_prior_logit(down, distance)
     rec = list(recent_families)[:RUN_TEND_WINDOW]
     tend = RUN_TEND_W * (sum(1 for f in rec if f != sc.RUN) - sum(1 for f in rec if f == sc.RUN)) / RUN_TEND_WINDOW
-    z = prior + RUN_LEARN_W * gap + tend
+    trail_z = -TRAIL_RUN_LOGIT * float(trail["strength"]) if trail else 0.0
+    z = prior + RUN_LEARN_W * gap + tend + trail_z
     p = min(RUN_P_MAX, max(RUN_P_MIN, ln.sigmoid(z)))
-    return p, {"p_run": round(p, 4), "prior_logit": prior, "learned_gap": round(gap, 4),
-               "learned_logit": round(RUN_LEARN_W * gap, 4), "tendency_logit": round(tend, 4),
-               "recent_families": rec}
+    info: dict[str, Any] = {"p_run": round(p, 4), "prior_logit": prior, "learned_gap": round(gap, 4),
+                            "learned_logit": round(RUN_LEARN_W * gap, 4), "tendency_logit": round(tend, 4),
+                            "recent_families": rec}
+    if trail:
+        rule = f"run logit {trail_z:+.2f}, P(run) <= {TRAIL_RUN_P_MAX}"
+        p = min(p, TRAIL_RUN_P_MAX)
+        if gap <= 0:
+            p, rule = 0.0, "a pass is ranked above the best designed run: pass only"
+        elif _is_long(distance):
+            p, rule = 0.0, f"distance >= {TRAIL_LONG}: pass only"
+        info.update(p_run=round(p, 4), trailing_late={**trail, "logit": round(trail_z, 4), "rule": rule})
+    return p, info
+
+
+def _trailing_red_zone_pass_probability(ranked: Sequence[Scored], *, distance: Any,
+                                        trail: Mapping[str, Any]) -> tuple[float | None, dict[str, Any]]:
+    runs = [s for s in ranked if s.variant.is_run]
+    passes = [s for s in ranked if not s.variant.is_run]
+    if not runs or not passes:
+        return None, {}
+    p = TRAIL_RZ_PASS_BASE + TRAIL_RZ_PASS_STRENGTH * float(trail["strength"])
+    try:
+        long_ = int(distance) >= 4
+    except (TypeError, ValueError):
+        long_ = False
+    if long_:
+        p += TRAIL_RZ_LONG_BONUS
+    if max(s.utility for s in passes) >= max(s.utility for s in runs):
+        p = max(p, TRAIL_RZ_PASS_TOP)
+    p = min(TRAIL_RZ_PASS_MAX, p)
+    return p, {"p_pass": round(p, 4), "trailing_late": {**trail, "rule": "inside the 10: red-zone passes mixed in "
+                                                         f"(P(pass) {p:.2f}); runs incl. RPO Alert QB Draw stay legal"}}
 
 
 def pick_mixed(ranked: Sequence[Scored], seed: str, *, down: Any, distance: Any, yardline: Any,
-               recent_families: Sequence[str] = ()) -> tuple[Scored, dict[str, Any]]:
+               recent_families: Sequence[str] = (), trail: Mapping[str, Any] | None = None
+               ) -> tuple[Scored, dict[str, Any]]:
     """Run-pass mix (owner t348u/t349u) then the near-best draw inside the drawn family.
 
-    Inside the opponent 10 the gate is off: the red-zone plays are mixed exactly as before (``pick``)."""
+    Inside the opponent 10 the gate is off (red-zone plays mixed as before) unless trailing late (t370u), when a
+    family draw mixes the legal red-zone passes in."""
     import random
     if sc.field_band(yardline) == "inside_10":
-        top, mix = pick(ranked, seed)
-        return top, mix | {"family_gate": "off (inside the opponent 10: red-zone selection unchanged)"}
-    p_run, info = run_probability(ranked, down=down, distance=distance, recent_families=recent_families)
+        p_pass, info = (_trailing_red_zone_pass_probability(ranked, distance=distance, trail=trail)
+                        if trail else (None, {}))
+        if p_pass is None:
+            top, mix = pick(ranked, seed)
+            return top, mix | {"family_gate": "off (inside the opponent 10: red-zone selection unchanged)"}
+        fam = sc.PASS if random.Random(seed + "|family").random() < p_pass else sc.RUN
+        pool = [s for s in ranked if (s.variant.is_run) == (fam == sc.RUN)]
+        top, mix = pick(pool, seed)
+        mix["rank"] = list(ranked).index(top) + 1
+        return top, mix | {"family_gate": "on (inside the 10, trailing late)", "family": fam, **info}
+    p_run, info = run_probability(ranked, down=down, distance=distance, recent_families=recent_families, trail=trail)
     if p_run is None:
         top, mix = pick(ranked, seed)
         return top, mix | {"family_gate": "off (only one family legal)"}
@@ -380,11 +508,32 @@ def explain(top: Scored, belief: bl.Belief, runner_up: Scored | None) -> str:
     if p["repeat_penalty"]:
         bits.append(f"repeat penalty -{p['repeat_penalty']:.2f}")
     if p["verified_variant_outcomes"]:
-        bits.append(f"{int(p['verified_variant_outcomes'])} verified outcomes of this variant ({p['variant_residual']:+.2f})")
+        bits.append(f"{int(p['verified_variant_outcomes'])} verified outcomes of this variant ({p['variant_residual']:+.2f}, "
+                    f"lift capped at +{RESIDUAL_POS_CAP})")
+    if p.get("novelty_bonus"):
+        bits.append(f"underused-variant lift {p['novelty_bonus']:+.2f}")
     top_cov = ", ".join(f"{k} {v:.0%}" for k, v in sorted(belief.mix.items(), key=lambda kv: -kv[1])[:3]) or "no coverage history"
     bits.append(f"coverage belief: {top_cov}; pressure {belief.pressure:.0%}")
     if runner_up is not None:
         bits.append(f"next: {runner_up.variant.variant_name} ({runner_up.utility - top.utility:+.3f})")
+    return "; ".join(bits)
+
+
+def mix_explanation(mix: Mapping[str, Any]) -> str:
+    """Audit text for the t370u terms: sibling mix and trailing-late aggression (also in the decision log)."""
+    bits = []
+    sm_ = mix.get("sibling_mix") or {}
+    if len(sm_.get("pool") or []) > 1:
+        pool = ", ".join(f"{vid.replace('civil_', '')} {w:.0%}" for vid, w in sm_["pool"])
+        bits.append(f"sibling mix: {pool}")
+    tl = mix.get("trailing_late")
+    if tl:
+        p = (f"P(run) {mix['p_run']:.0%}" if "p_run" in mix else
+             f"P(pass) {mix['p_pass']:.0%}" if "p_pass" in mix else "")
+        bits.append(f"trailing late {tl.get('score')} (margin {tl.get('margin')}, Q{tl.get('quarter')}, "
+                    f"strength {tl.get('strength')}): {tl.get('rule')}" + (f"; {p}" if p else ""))
+    else:
+        bits.append("trailing late: off")
     return "; ".join(bits)
 
 
@@ -484,10 +633,16 @@ def select(scorer: Scorer, cat: sc.SchemeCatalog, conn: Any, *, db: Any, sit: An
                           opponent_id=opponent_id, opponent_type=opp_type, belief=belief,
                           recent_calls=game[:REPEAT_WINDOW], game_calls=game, variant_stats=variant_stats(conn, cat))
     seed = f"{session_id}|{len(game)}|{sit.down}|{sit.distance}|{sit.yardline}"
+    trail = trailing_late(sit)
     top, mix = pick_mixed(ranked, seed, down=sit.down, distance=sit.distance, yardline=sit.yardline,
-                          recent_families=families_of(game, cat))
+                          recent_families=families_of(game, cat), trail=trail)
+    mix["trailing_late"] = mix.get("trailing_late") or ({**trail, "rule": "only one family legal"} if trail else None)
     call = build_call(top, ranked, belief, book=book, shadow=shadow, ledger=lg.load_verified(db))
     call.scheme_variant["mix"] = mix
+    extra = mix_explanation(mix)
+    if extra:
+        call.scheme_variant["explanation"] = f"{call.scheme_variant['explanation']}; {extra}"
+        call.rationale = f"{call.rationale}; {extra}"
     call.scheme_variant["yardline"] = sit.yardline     # re-validation applies the same field-position gate
     call.scheme_variant["candidates"] = [v.variant_id for v in legal]   # the legal set that was scored
     return call, ranked
@@ -532,7 +687,8 @@ def call_civil(sit: Any, opponent_id: str, db: Any, book: Mapping[str, Any] | No
                 "prediction": {k: sv.get(k) for k in ("p_success", "uncertainty_logit_sd", "p_first_down", "p_explosive",
                                                        "p_negative", "exp_yards", "utility", "latency_ms")}
                 | ({"variation": variation_text(sv["variant_name"], sv["variant_id"], sv.get("adjustment_lines") or []),
-                    "variant_name": sv["variant_name"], "field_zone": sv.get("field_zone")}
+                    "variant_name": sv["variant_name"], "field_zone": sv.get("field_zone"),
+                    "mix": sv.get("mix")}          # t370u: sibling mix + trailing-late terms for later audits
                    if sv.get("status") == "CALL" else {}),
                 "ranking": [[r["variant_id"], r["utility"]] for r in sv.get("ranking") or []],
                 "model_version": (md.load_state(db) or {}).get("model_sha256"), "catalog_version": sc.load_cached().version(),
