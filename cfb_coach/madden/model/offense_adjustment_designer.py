@@ -205,7 +205,7 @@ def _named_audible_play(row: Mapping[str, Any]) -> str | None:
 
 def validate_live_call(db: Any, call: Any, *, opponent_id: str,
                        confirmations: Mapping[str, Any] | None = None,
-                       loadout: ex.Loadout | None = None) -> None:
+                       loadout: ex.Loadout | None = None, yardline: Any = None) -> None:
     """Fail closed before displaying a Madden offense call outside confirmed inventory.
 
     The play-installed lock always applies. Heuristic display suggestions are not
@@ -216,6 +216,13 @@ def validate_live_call(db: Any, call: Any, *, opponent_id: str,
     from cfb_coach.madden import playbook
     from cfb_coach.madden.model.offense_designer import verified_created_macros
 
+    if isinstance(getattr(call, "scheme_variant", None), Mapping):
+        # civil_scheme_only: re-validate the exact variant through the one legal filter.
+        from cfb_coach.madden.scheme import catalog as scheme_catalog
+        from cfb_coach.madden.scheme import legality as scheme_legality
+
+        scheme_legality.revalidate_call(db, call, scheme_catalog.load_cached(), yardline=yardline)
+        return
     book = playbook.load_books(db).get("offense") or {}
     installed = (book.get("formations") or {}).get(call.formation, [])
     if call.play not in installed:

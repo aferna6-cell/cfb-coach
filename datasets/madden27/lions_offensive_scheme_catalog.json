@@ -1,0 +1,1429 @@
+{
+  "schema_version": "1.0",
+  "catalog_id": "lions_civil_bucs_5wr_v4",
+  "catalog_scope": "User-submitted Civil.gg Bucs and 5WR Tight scheme screenshots, November 10 2026",
+  "game": "Madden 27",
+  "installed_offensive_playbook": "Buccaneers",
+  "state": "User-curated offensive scheme metadata, stored for review; not integrated with the active Lions model or installed playbook.",
+  "selection_contract": {
+    "allowed_candidate_ids": "the catalog plays[].variant_id entries only, for scheme-only mode",
+    "ranking_owner": "existing Lions ML play scorer (not hard-coded play selection)",
+    "expert_tags_role": "weak contextual features / positive prior for five expert go-to variants; not hard candidate bans or automatic ranking",
+    "learning_owner": "existing per-snap logger and opponent model, with postgame retraining",
+    "variant_outcome_key": "variant_id",
+    "reads": "not required; do not fabricate",
+    "coverage_unknown": "5WR guide screenshots contain no coverage tags; represent as unknown, not as evidence a play is bad against any coverage."
+  },
+  "source_note": "Structured play names, setup metadata, and situation/coverage guidance summarized from user-provided screenshots (Nov 10, 2026). No original screenshots or videos included. Verify third-party content rights before redistribution.",
+  "plays": [
+    {
+      "variant_id": "civil_bucs_texas_y_stutter_wheel_1",
+      "variant_name": "Texas Y Stutter Wheel 1",
+      "playbook": "Buccaneers",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Texas Y-Stutter Wheel",
+      "variation_source_name": "Texas Y Stutter Wheel 1",
+      "role": "expert_core_go_to",
+      "scheme_category": "Everything Beater",
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Corner route",
+          "macro_marked": true
+        },
+        {
+          "target": "HB",
+          "action": "Out route",
+          "macro_marked": true
+        },
+        {
+          "target": "Inside slot WR",
+          "action": "Streak",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Long Yardage",
+        "Medium Yardage",
+        "Short Yardage",
+        "Inside Own 10"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_mtn_flood_hb_sneak_1",
+      "variant_name": "Mtn Flood HB Sneak 1",
+      "playbook": "Buccaneers",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "MTN Flood HB Sneak",
+      "variation_source_name": "Mtn Flood HB Sneak 1",
+      "role": "expert_core_go_to",
+      "scheme_category": "Match Beater",
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "Existing corner route",
+          "action": "Stem down all the way",
+          "macro_marked": false
+        },
+        {
+          "target": "Inside slot WR",
+          "action": "Slot fade",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside WR on the 2 WR side",
+          "action": "Short cross",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Medium Yardage",
+        "Short Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 4"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_bunch_te_mesh_post_outside_bunch_wr",
+      "variant_name": "Mesh - Outside Bunch WR Post",
+      "playbook": "Buccaneers",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mesh",
+      "variation_source_name": "Mesh - Outside Bunch WR Post",
+      "role": "expert_core_go_to",
+      "scheme_category": "Everything Beater",
+      "adjustments": [
+        {
+          "target": "Outside bunch WR",
+          "action": "Post route",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Medium Yardage",
+        "Short Yardage",
+        "Inside Own 10",
+        "Redzone 10 20"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_mtn_cross_hb_sneak_2",
+      "variant_name": "Mtn Cross HB Sneak 2",
+      "playbook": "Buccaneers",
+      "formation": "Gun Tight Doubles",
+      "base_play": "MTN Cross HB Sneak",
+      "variation_source_name": "Mtn Cross HB Sneak 2",
+      "role": "expert_core_go_to",
+      "scheme_category": "Man & Match Beater",
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Wheel route",
+          "macro_marked": true
+        },
+        {
+          "target": "Inside doubles WR",
+          "action": "Drag route",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside doubles WR",
+          "action": "Custom stem up one press on D-pad",
+          "macro_marked": false
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Slant route",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Medium Yardage",
+        "Short Yardage",
+        "Inside Own 10"
+      ],
+      "expert_coverage_tags": [
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_cross_wheels_1",
+      "variant_name": "Cross Wheels 1",
+      "playbook": "Buccaneers",
+      "formation": "Gun Tight Doubles",
+      "base_play": "Cross Wheels",
+      "variation_source_name": "Cross Wheels 1",
+      "role": "expert_core_go_to",
+      "scheme_category": "Everything Beater",
+      "adjustments": [
+        {
+          "target": "Inside doubles WR",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Medium Yardage",
+        "Long Yardage",
+        "Short Yardage",
+        "Inside Own 10"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_texas_y_stutter_wheel_2",
+      "variant_name": "Texas Y Stutter Wheel 2",
+      "playbook": "Buccaneers",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Texas Y-Stutter Wheel",
+      "variation_source_name": "Texas Y Stutter Wheel 2",
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Corner route",
+          "macro_marked": true
+        },
+        {
+          "target": "HB",
+          "action": "Flat route, then motion out",
+          "macro_marked": true
+        },
+        {
+          "target": "Inside slot WR",
+          "action": "Streak",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Long Yardage",
+        "Medium Yardage",
+        "Short Yardage",
+        "Inside Own 10"
+      ],
+      "expert_coverage_tags": [
+        "Man Coverage"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "variant_name_verified_in_screenshot": true,
+      "verification_notes": null,
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_texas_y_stutter_wheel_3",
+      "variant_name": "Texas Y Stutter Wheel 3",
+      "playbook": "Buccaneers",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Texas Y-Stutter Wheel",
+      "variation_source_name": "Texas Y Stutter Wheel 3",
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Wheel route",
+          "macro_marked": true
+        },
+        {
+          "target": "HB",
+          "action": "In route",
+          "macro_marked": true
+        },
+        {
+          "target": "Inside slot WR",
+          "action": "Streak",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Long Yardage",
+        "Medium Yardage",
+        "Short Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Man Coverage"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "variant_name_verified_in_screenshot": true,
+      "verification_notes": null,
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_mtn_shuffle_verts_smash_1",
+      "variant_name": "Mtn Shuffle Verts Smash 1",
+      "playbook": "Buccaneers",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "MTN Shuffle Verts Smash",
+      "variation_source_name": "Mtn Shuffle Verts Smash 1",
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "In route",
+          "macro_marked": true
+        },
+        {
+          "target": "Inside slot WR",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside WR on 2 WR side",
+          "action": "Drag",
+          "macro_marked": false
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Streak",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Long Yardage",
+        "Medium Yardage",
+        "Short Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "variant_name_verified_in_screenshot": true,
+      "verification_notes": null,
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_mtn_shuffle_verts_smash_return_motion_unverified",
+      "variant_name": "MTN Shuffle Verts Smash — Return Motion (name unverified)",
+      "playbook": "Buccaneers",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "MTN Shuffle Verts Smash",
+      "variation_source_name": null,
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Flat route; motion out toward TE; then return route",
+          "macro_marked": false
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Streak",
+          "macro_marked": false
+        },
+        {
+          "target": "TE post",
+          "action": "Custom stem up one D-pad click",
+          "macro_marked": false
+        },
+        {
+          "target": "Inside slot WR",
+          "action": "Streak",
+          "macro_marked": false
+        },
+        {
+          "target": "Outside WR on 2 WR side",
+          "action": "Short cross",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "Bomb Plays"
+      ],
+      "expert_coverage_tags": [
+        "Cover 4"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "variant_name_verified_in_screenshot": false,
+      "verification_notes": "Setup and tags visible; official named variant not shown. Possibly the next numbered version, but must confirm.",
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_mesh_2_provisional",
+      "variant_name": "Mesh 2 (name unverified)",
+      "playbook": "Buccaneers",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mesh",
+      "variation_source_name": null,
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "Outside bunch WR",
+          "action": "Post route",
+          "macro_marked": false
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Drag route",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Medium Yardage",
+        "Short Yardage",
+        "Inside Own 10"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "variant_name_verified_in_screenshot": false,
+      "verification_notes": "Setup and tags visible, official variation header cropped. Mesh 2 is inferred from position between Mesh 1 and Mesh 3.",
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_mesh_3",
+      "variant_name": "Mesh 3",
+      "playbook": "Buccaneers",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mesh",
+      "variation_source_name": "Mesh 3",
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "Outside bunch WR",
+          "action": "Post route",
+          "macro_marked": false
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Drag route",
+          "macro_marked": false
+        },
+        {
+          "target": "TE",
+          "action": "Corner route",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Medium Yardage",
+        "Short Yardage",
+        "Inside Own 10"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "variant_name_verified_in_screenshot": true,
+      "verification_notes": null,
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_mesh_4_provisional",
+      "variant_name": "Mesh 4 (name unverified)",
+      "playbook": "Buccaneers",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mesh",
+      "variation_source_name": null,
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "Outside bunch WR",
+          "action": "Flat route",
+          "macro_marked": false
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Corner route; custom stem all the way down",
+          "macro_marked": false
+        },
+        {
+          "target": "HB",
+          "action": "In route",
+          "macro_marked": true
+        },
+        {
+          "target": "TE",
+          "action": "Post route",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Medium Yardage",
+        "Inside Own 10",
+        "Short Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "variant_name_verified_in_screenshot": false,
+      "verification_notes": "Setup and tags visible, official variation header cropped; Mesh 4 is inferred from position between Mesh 3 and Mesh 5.",
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_mesh_5",
+      "variant_name": "Mesh 5",
+      "playbook": "Buccaneers",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mesh",
+      "variation_source_name": "Mesh 5",
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "Outside bunch WR",
+          "action": "Post route",
+          "macro_marked": false
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Drag route",
+          "macro_marked": false
+        },
+        {
+          "target": "TE",
+          "action": "Corner route",
+          "macro_marked": true
+        },
+        {
+          "target": "HB",
+          "action": "In route",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "Medium Yardage",
+        "1st And 10",
+        "Short Yardage",
+        "Inside Own 10"
+      ],
+      "expert_coverage_tags": [
+        "Cover 4"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "variant_name_verified_in_screenshot": true,
+      "verification_notes": null,
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_cheat_te_hitch_hb_seam_1",
+      "variant_name": "Cheat TE Hitch HB Seam 1",
+      "playbook": "Buccaneers",
+      "formation": "Gun Bunch TE",
+      "base_play": "Cheat TE Hitch HB Seam",
+      "variation_source_name": "Cheat TE Hitch HB Seam 1",
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "Middle bunch WR",
+          "action": "Post route",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Drag route",
+          "macro_marked": false
+        },
+        {
+          "target": "HB",
+          "action": "Flat route",
+          "macro_marked": true
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "Long Yardage",
+        "1st And 10",
+        "Medium Yardage",
+        "Short Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "variant_name_verified_in_screenshot": true,
+      "verification_notes": null,
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_cheat_te_hitch_n_go_1",
+      "variant_name": "Cheat TE Hitch N Go 1",
+      "playbook": "Buccaneers",
+      "formation": "Gun Bunch TE",
+      "base_play": "Cheat TE Hitch N Go",
+      "variation_source_name": "Cheat TE Hitch N Go 1",
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Drag route",
+          "macro_marked": false
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "TE",
+          "action": "Wheel route",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Medium Yardage",
+        "Short Yardage",
+        "Inside Own 10"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "variant_name_verified_in_screenshot": true,
+      "verification_notes": "Macro title and setup visible; verify precise stock base-play spelling and heading in game.",
+      "optional_read_progression": null,
+      "training_observations": 0
+    },
+    {
+      "variant_id": "civil_bucs_mtn_cross_hb_sneak_1",
+      "variant_name": "Mtn Cross HB Sneak 1",
+      "playbook": "Buccaneers",
+      "formation": "Gun Tight Doubles",
+      "base_play": "MTN Cross HB Sneak",
+      "variation_source_name": "MTN Cross HB Sneak 1",
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Wheel route",
+          "macro_marked": true
+        },
+        {
+          "target": "Inside doubles WR",
+          "action": "Drag route",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside doubles WR",
+          "action": "Custom stem up one press on D-pad",
+          "macro_marked": false
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Streak",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Long Yardage",
+        "Short Yardage",
+        "Inside Own 10",
+        "Medium Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0,
+      "variant_name_verified_in_screenshot": true
+    },
+    {
+      "variant_id": "civil_bucs_mtn_cross_hb_sneak_corner_flat_unverified",
+      "variant_name": "Mtn Cross HB Sneak — Corner/Flat (name unverified)",
+      "playbook": "Buccaneers",
+      "formation": "Gun Tight Doubles",
+      "base_play": "MTN Cross HB Sneak",
+      "variation_source_name": null,
+      "role": "expert_scheme_expansion",
+      "scheme_category": null,
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "Inside doubles WR",
+          "action": "Drag route",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside doubles WR",
+          "action": "Custom stem up one press on D-pad",
+          "macro_marked": false
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Corner route; custom stem down all the way",
+          "macro_marked": false
+        },
+        {
+          "target": "HB",
+          "action": "Flat route",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Long Yardage",
+        "Medium Yardage",
+        "Short Yardage",
+        "Inside Own 10"
+      ],
+      "expert_coverage_tags": [
+        "Cover 3",
+        "Cover 2",
+        "Cover 4"
+      ],
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0,
+      "variant_name_verified_in_screenshot": false,
+      "verification_notes": "Setup and tags visible, but exact header and numbered macro name cropped; do not assert variant number."
+    },
+    {
+      "variant_id": "civil_5wr_clear_deep_1",
+      "variant_name": "Clear Deep 1",
+      "playbook": "Buccaneers",
+      "formation": "Gun 5WR Tight",
+      "base_play": "Clear Deep",
+      "variation_source_name": "Clear Deep 1",
+      "role": "expert_scheme_expansion",
+      "scheme_category": "5WR Tight Offense",
+      "adjustments": [
+        {
+          "target": "Outside bunch WR",
+          "action": "Slot fade",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "Slot fade",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Medium Yardage",
+        "Long Yardage",
+        "Bomb Plays"
+      ],
+      "expert_coverage_tags": [],
+      "coverage_guidance_status": "not_provided_in_screenshots",
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0,
+      "variant_name_verified_by": "screenshot",
+      "source_lesson_url": "https://www.civil.gg/members/schemes/madden/5wr-tight-offense?sid=88"
+    },
+    {
+      "variant_id": "civil_5wr_clear_deep_2",
+      "variant_name": "Clear Deep 2",
+      "playbook": "Buccaneers",
+      "formation": "Gun 5WR Tight",
+      "base_play": "Clear Deep",
+      "variation_source_name": "Clear Deep 2",
+      "role": "expert_scheme_expansion",
+      "scheme_category": "5WR Tight Offense",
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Corner route",
+          "macro_marked": true
+        },
+        {
+          "target": "HB corner route",
+          "action": "Stem down",
+          "macro_marked": false
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Flat route",
+          "macro_marked": false
+        },
+        {
+          "target": "TE",
+          "action": "Short cross",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "In route",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Inside Own 10",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "coverage_guidance_status": "not_provided_in_screenshots",
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0,
+      "variant_name_verified_by": "screenshot",
+      "source_lesson_url": "https://www.civil.gg/members/schemes/madden/5wr-tight-offense?sid=88"
+    },
+    {
+      "variant_id": "civil_5wr_mesh_post_1",
+      "variant_name": "Mesh Post 1",
+      "playbook": "Buccaneers",
+      "formation": "Gun 5WR Tight",
+      "base_play": "Mesh Post",
+      "variation_source_name": "Mesh Post 1",
+      "role": "expert_scheme_expansion",
+      "scheme_category": "5WR Tight Offense",
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Slant",
+          "macro_marked": true
+        },
+        {
+          "target": "HB",
+          "action": "Drag",
+          "macro_marked": false
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "Flat route",
+          "macro_marked": false
+        },
+        {
+          "target": "Slot WR",
+          "action": "Flat route",
+          "macro_marked": true
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Inside Own 10",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "coverage_guidance_status": "not_provided_in_screenshots",
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0,
+      "variant_name_verified_by": "screenshot",
+      "source_lesson_url": "https://www.civil.gg/members/schemes/madden/5wr-tight-offense?sid=88"
+    },
+    {
+      "variant_id": "civil_5wr_mesh_post_2",
+      "variant_name": "Mesh Post 2",
+      "playbook": "Buccaneers",
+      "formation": "Gun 5WR Tight",
+      "base_play": "Mesh Post",
+      "variation_source_name": "Mesh Post 2",
+      "role": "expert_scheme_expansion",
+      "scheme_category": "5WR Tight Offense",
+      "adjustments": [
+        {
+          "target": "Slot WR",
+          "action": "Slot fade",
+          "macro_marked": true
+        },
+        {
+          "target": "HB",
+          "action": "Corner route",
+          "macro_marked": true
+        },
+        {
+          "target": "HB corner route",
+          "action": "Stem down",
+          "macro_marked": false
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "In route",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Inside Own 10",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "coverage_guidance_status": "not_provided_in_screenshots",
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0,
+      "variant_name_verified_by": "screenshot",
+      "source_lesson_url": "https://www.civil.gg/members/schemes/madden/5wr-tight-offense?sid=88"
+    },
+    {
+      "variant_id": "civil_5wr_clear_deep_3",
+      "variant_name": "Clear Deep 3",
+      "playbook": "Buccaneers",
+      "formation": "Gun 5WR Tight",
+      "base_play": "Clear Deep",
+      "variation_source_name": "Clear Deep 3",
+      "role": "expert_scheme_expansion",
+      "scheme_category": "5WR Tight Offense",
+      "adjustments": [
+        {
+          "target": "Outside bunch WR",
+          "action": "Flat route",
+          "macro_marked": false
+        },
+        {
+          "target": "Slot WR",
+          "action": "Post route",
+          "macro_marked": true
+        },
+        {
+          "target": "Slot WR post route",
+          "action": "Stem down",
+          "macro_marked": false
+        },
+        {
+          "target": "TE",
+          "action": "Short cross",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "In route",
+          "macro_marked": false
+        },
+        {
+          "target": "Outside stack WR in route",
+          "action": "Custom stem up once",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "coverage_guidance_status": "not_provided_in_screenshots",
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0,
+      "variant_name_verified_by": "screenshot",
+      "source_lesson_url": "https://www.civil.gg/members/schemes/madden/5wr-tight-offense?sid=88"
+    },
+    {
+      "variant_id": "civil_5wr_clear_deep_4",
+      "variant_name": "Clear Deep 4",
+      "playbook": "Buccaneers",
+      "formation": "Gun 5WR Tight",
+      "base_play": "Clear Deep",
+      "variation_source_name": "Clear Deep 4",
+      "role": "expert_scheme_expansion",
+      "scheme_category": "5WR Tight Offense",
+      "adjustments": [
+        {
+          "target": "Slot WR",
+          "action": "Short cross",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "In route",
+          "macro_marked": false
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "Slot fade",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Inside Own 10",
+        "Medium Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "coverage_guidance_status": "not_provided_in_screenshots",
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0,
+      "variant_name_verified_by": "screenshot",
+      "source_lesson_url": "https://www.civil.gg/members/schemes/madden/5wr-tight-offense?sid=88"
+    },
+    {
+      "variant_id": "civil_5wr_mesh_post_3",
+      "variant_name": "Mesh Post 3",
+      "playbook": "Buccaneers",
+      "formation": "Gun 5WR Tight",
+      "base_play": "Mesh Post",
+      "variation_source_name": "Mesh Post 3",
+      "role": "expert_scheme_expansion",
+      "scheme_category": "5WR Tight Offense",
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Short cross",
+          "macro_marked": false
+        },
+        {
+          "target": "Slot WR",
+          "action": "In route",
+          "macro_marked": true
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "Slot fade",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Inside Own 10",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "coverage_guidance_status": "not_provided_in_screenshots",
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0,
+      "variant_name_verified_by": "screenshot",
+      "source_lesson_url": "https://www.civil.gg/members/schemes/madden/5wr-tight-offense?sid=88"
+    },
+    {
+      "variant_id": "civil_5wr_z_spot_shake_1",
+      "variant_name": "Z Spot Shake 1",
+      "playbook": "Buccaneers",
+      "formation": "Gun 5WR Tight",
+      "base_play": "Z Spot Shake",
+      "variation_source_name": "Z Spot Shake 1",
+      "role": "expert_scheme_expansion",
+      "scheme_category": "5WR Tight Offense",
+      "adjustments": [
+        {
+          "target": "Slot WR",
+          "action": "Short cross",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "In route",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Inside Own 10",
+        "Medium Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "coverage_guidance_status": "not_provided_in_screenshots",
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0,
+      "variant_name_verified_by": "screenshot",
+      "source_lesson_url": "https://www.civil.gg/members/schemes/madden/5wr-tight-offense?sid=88"
+    },
+    {
+      "variant_id": "civil_5wr_z_spot_1",
+      "variant_name": "Z Spot 1",
+      "playbook": "Buccaneers",
+      "formation": "Gun 5WR Tight",
+      "base_play": "Z Spot",
+      "variation_source_name": "Z Spot 1",
+      "role": "expert_scheme_expansion",
+      "scheme_category": "5WR Tight Offense",
+      "adjustments": [
+        {
+          "target": "Outside bunch WR",
+          "action": "Slot fade",
+          "macro_marked": false
+        },
+        {
+          "target": "TE",
+          "action": "Short cross",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "In route",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Inside Own 10",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "coverage_guidance_status": "not_provided_in_screenshots",
+      "availability": {
+        "present_in_buccaneers_playbook_as_shown": true,
+        "verified_in_user_game": false,
+        "adjustments_verified_in_user_game": false
+      },
+      "optional_read_progression": null,
+      "training_observations": 0,
+      "variant_name_verified_by": "user_confirmation",
+      "source_lesson_url": "https://www.civil.gg/members/schemes/madden/5wr-tight-offense?sid=88"
+    }
+  ],
+  "data_quality_flags": [
+    "Official guide situation categories use qualitative labels (short/medium/long); no yard thresholds inferred.",
+    "Coverage labels such as Cover 4 combine several distinct coverages; model should retain exact opponent coverage labels where observed.",
+    "Not all variants are verified executable until tested in the user game.",
+    "No actual outcome measurements are included; all expert tags are guidance only.",
+    "Provisional names for Mesh 2, Mesh 4 and MTN Shuffle Verts Smash second variation: screens show setup/metadata but not the official variant heading.",
+    "The Cheat TE Hitch N Go underlying formation/base play are inferred from the macro label and surrounding sequence; confirm from the lesson header.",
+    "Bomb Plays is a guide category, not an assumed down/distance tag; it must not be equated to ordinary long yardage.",
+    "Core five (first batch) retain expert_core_go_to role; added variations are expert_scheme_expansion, not automatically equal-priority go-tos.",
+    "Bucs final screenshot batch adds MTN Cross HB Sneak 1 and an unnumbered Corner/Flat variation. MTN Cross HB Sneak 2 already in v2; no duplicate.",
+    "Two red-zone lesson packages are stored separately, not scored as executable plays until base play/formation and setup mappings are confirmed.",
+    "Bucs screenshot footer says 0/19 mastered. Catalog has 17 individual variants plus 2 red-zone lesson packages; this equals 19 captured items but may not correspond one-to-one to platform lesson units.",
+    "5WR Tight: 9 named variants (4 Clear Deep, 3 Mesh Post, 1 Z Spot Shake, 1 user-confirmed Z Spot 1) plus 1 pending unnamed setup. A lesson counter shows 12, not proof that 12 named variations were provided.",
+    "5WR Tight: screenshot-derived situations but no explicit coverage tags, so coverage preferences must be learned rather than invented.",
+    "One 5WR Tight screenshot shows Streak Slot / Post HB / Stem Down HB / Streak TE / In Route Outside Stack, but the lesson title is cropped. Stored separately from callable plays.",
+    "All 5WR Tight setups need individual Madden 27 execution verification before promotion to live calling."
+  ],
+  "red_zone_packages": [
+    {
+      "package_id": "civil_bucs_redzone_spot_y_options_unverified",
+      "display_name": "Red-zone HB Zone / Speed Option / Spot Y Option 1",
+      "role": "expert_red_zone_package",
+      "source_lesson_heading_verified": false,
+      "ready_for_live_call": false,
+      "base_plays": [
+        "HB Zone",
+        "Speed Option",
+        "Spot Y Option 1"
+      ],
+      "formation": null,
+      "passing_setup_applies_to": "Spot Y Option 1 (association with listed plays requires confirmation)",
+      "adjustments": [
+        {
+          "target": "Inside bunch WR",
+          "action": "Drag"
+        },
+        {
+          "target": "TE",
+          "action": "Drag"
+        },
+        {
+          "target": "HB",
+          "action": "Swing toward TE"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Crosser"
+        }
+      ],
+      "expert_situation_tags": [
+        "Redzone Inside 10"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "verification_notes": "Video segment shows three play labels plus setup but not lesson title/formation. Must determine if listed calls are choices or separate packages before scoring."
+    },
+    {
+      "package_id": "civil_bucs_redzone_qb_runs_unverified",
+      "display_name": "Red-zone QB Blast / RPO Alert QB Draw",
+      "role": "expert_red_zone_package",
+      "source_lesson_heading_verified": false,
+      "ready_for_live_call": false,
+      "base_plays": [
+        "QB Blast",
+        "RPO Alert QB Draw"
+      ],
+      "formation": null,
+      "adjustments": [],
+      "expert_situation_tags": [
+        "Redzone Inside 10"
+      ],
+      "expert_coverage_tags": [
+        "Cover 4",
+        "Cover 3",
+        "Cover 2",
+        "Man Coverage"
+      ],
+      "verification_notes": "Screenshot tells player to watch lesson for blocking; exact formation and execution unavailable. Not eligible as a live variant until verified."
+    }
+  ],
+  "pending_5wr_variants": [
+    {
+      "pending_id": "civil_5wr_unidentified_setup_between_z_spot_shake_1_and_z_spot_1",
+      "playbook": "Buccaneers",
+      "formation": "Gun 5WR Tight",
+      "base_play": null,
+      "variant_name": null,
+      "reason_not_callable": "Lesson heading and base play cropped; possible distinct scheme variant.",
+      "adjustments": [
+        {
+          "target": "Slot WR",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "HB",
+          "action": "Post route",
+          "macro_marked": true
+        },
+        {
+          "target": "HB post route",
+          "action": "Stem down",
+          "macro_marked": false
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "In route",
+          "macro_marked": false
+        }
+      ],
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Inside Own 10",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "source_lesson_url": "https://www.civil.gg/members/schemes/madden/5wr-tight-offense?sid=88",
+      "ready_for_live_call": false
+    }
+  ]
+}

@@ -1,7 +1,12 @@
-"""Madden Franchise profiles (primary / lab) + configurable primary team.
+"""Madden Franchise profiles (primary / lab / online) + configurable teams.
 
 primary = serious Franchise save — Detroit Lions by default (multi-user league).
 lab     = optional practice save (mirrors CFB ohio_state → alabama promote).
+online  = online Madden league, separate from the Franchise saves. User team is
+          the Kansas City Chiefs by default (``online_team``); every game needs
+          the opponent's NFL team (``--opponent-team``). Never written as the
+          sticky DB profile, so a later ``play`` without ``--franchise`` stays on
+          primary (Lions).
 
 Team config lives in <data dir>/madden27_config.json and can be overridden by
 CFB_COACH_MADDEN_PRIMARY_TEAM / CFB_COACH_MADDEN_LAB_TEAM. With no config file the
@@ -22,15 +27,18 @@ from cfb_coach.madden.data import _load_json, load_macro_catalog
 
 PRIMARY = "primary"
 LAB = "lab"
+ONLINE = "online"
 DEFAULT_PROFILE = PRIMARY
-PROFILE_CHOICES = ("primary", "lab")
+PROFILE_CHOICES = ("primary", "lab", "online")
 META_KEY = "franchise_profile"
 CONFIG_FILENAME = "madden27_config.json"
 DEFAULT_PRIMARY_TEAM = "Detroit Lions"
+DEFAULT_ONLINE_TEAM = "Kansas City Chiefs"
 DEFAULT_START_BOOK = {"offense": "Buccaneers", "defense": "49ers"}
 DEFAULT_CONFIG: dict[str, Any] = {
     "primary_team": DEFAULT_PRIMARY_TEAM,
     "lab_team": None,
+    "online_team": DEFAULT_ONLINE_TEAM,  # online league user team (separate from primary)
     "offense_book": "auto",  # auto = start on stock Buccaneers, research may recommend a switch
     "defense_book": "auto",  # auto = start on stock 49ers
     "live_macros": True,  # False = play shows no Custom Adjustment (config --no-macros)
@@ -52,6 +60,9 @@ _PROFILE_ALIASES = {
     "franchise_lab": LAB,
     "practice": LAB,
     "experimental": LAB,
+    "online": ONLINE,
+    "online_league": ONLINE,
+    "league": ONLINE,
 }
 
 _TEAM_ABBR = {
@@ -74,7 +85,7 @@ def normalize_profile(raw: str | None) -> str:
     key = (raw or DEFAULT_PROFILE).strip().lower().replace("-", "_").replace(" ", "_")
     out = _PROFILE_ALIASES.get(key)
     if out is None:
-        raise ValueError(f"Unknown franchise profile {raw!r}. Use: primary | lab.")
+        raise ValueError(f"Unknown franchise profile {raw!r}. Use: primary | lab | online.")
     return out
 
 
@@ -140,6 +151,7 @@ def save_config(
     *,
     primary_team: str | None = None,
     lab_team: str | None = None,
+    online_team: str | None = None,
     clear_primary: bool = False,
     clear_lab: bool = False,
     offense_book: str | None = None,
@@ -164,6 +176,7 @@ def save_config(
     for key, raw, clear in (
         ("primary_team", primary_team, clear_primary),
         ("lab_team", lab_team, clear_lab),
+        ("online_team", online_team, False),
     ):
         if clear:
             cfg[key] = None
@@ -206,7 +219,10 @@ def save_config(
 
 def team_for_profile(profile: str | None, cfg: dict[str, Any] | None = None) -> str | None:
     cfg = cfg if cfg is not None else load_config()
-    key = "lab_team" if normalize_profile(profile) == LAB else "primary_team"
+    pid = normalize_profile(profile)
+    if pid == ONLINE:
+        return cfg.get("online_team") or DEFAULT_ONLINE_TEAM
+    key = "lab_team" if pid == LAB else "primary_team"
     return cfg.get(key) or None
 
 
@@ -228,13 +244,16 @@ def profile_config(profile: str | None = None) -> dict[str, Any]:
     pid = normalize_profile(profile)
     league = (_load_json("seed.json").get("league") or {}).get("franchise_profiles") or {}
     block = league.get(pid) or {}
-    cat = (load_macro_catalog().get("franchise_profiles") or {}).get(pid) or {}
+    cats = load_macro_catalog().get("franchise_profiles") or {}
+    # online plays the same serious doctrine as primary unless the catalog names it.
+    cat = cats.get(pid) or (cats.get(PRIMARY) if pid == ONLINE else None) or {}
     experimental = bool(cat.get("allow_experimental_active", pid == LAB))
     team = team_for_profile(pid)
+    default_label = {LAB: "Franchise lab", ONLINE: "Online league"}.get(pid, "Franchise primary")
     return {
         "id": pid,
-        "profile_id": block.get("id") or f"franchise_{pid}",
-        "label": block.get("label") or ("Franchise lab" if pid == LAB else "Franchise primary"),
+        "profile_id": block.get("id") or (f"franchise_{pid}" if pid != ONLINE else "online_league"),
+        "label": block.get("label") or default_label,
         "mode": block.get("mode") or ("experimental" if pid == LAB else "serious"),
         "description": block.get("description") or "",
         "team": team,
@@ -249,14 +268,16 @@ def profile_config(profile: str | None = None) -> dict[str, Any]:
 def get_session_profile(db: Any) -> str:
     try:
         raw = db.get_meta(META_KEY) if db is not None else None
-        return normalize_profile(raw) if raw else DEFAULT_PROFILE
+        pid = normalize_profile(raw) if raw else DEFAULT_PROFILE
+        # online is per-run only; a stale meta value must not pull Lions games into it.
+        return DEFAULT_PROFILE if pid == ONLINE else pid
     except (ValueError, Exception):  # noqa: BLE001
         return DEFAULT_PROFILE
 
 
 def set_session_profile(db: Any, profile: str | None) -> str:
     pid = normalize_profile(profile)
-    if db is not None:
+    if db is not None and pid != ONLINE:  # online is never the sticky default
         db.set_meta(META_KEY, pid)
     return pid
 

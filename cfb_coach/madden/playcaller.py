@@ -63,7 +63,15 @@ class MaddenCall:
     def headline(self) -> str:
         """'PLAY: Mesh Post (Gun 5WR Tight) + ADJ: Hot route WR1 → Slant' (offense) or
         'PLAY: Tampa 2 (Nickel Over) + MACRO: TAMPA MABLE' (defense)."""
+        rd = getattr(self, "ravens_defense", None)
+        if isinstance(rd, dict) and rd.get("card"):
+            return rd["card"][0]
         head = f"PLAY: {self.play} ({self.formation})"
+        sv = getattr(self, "scheme_variant", None)
+        if isinstance(sv, dict) and sv.get("status") == "CALL":
+            from cfb_coach.madden.scheme.coordinator import variation_text
+
+            return head + " + " + variation_text(sv["variant_name"], sv["variant_id"], sv.get("adjustment_lines") or [])
         if self.macro:
             head += f" + MACRO: {(self.macro_info or {}).get('name') or self.macro}"
         elif self.adjustment:
@@ -71,6 +79,12 @@ class MaddenCall:
         return head
 
     def format(self) -> str:
+        rd = getattr(self, "ravens_defense", None)
+        if isinstance(rd, dict) and rd.get("card"):
+            # ravens_defense_ml live card: PLAY / USER / MACRO only (full trace stays on call.ravens_defense)
+            status = rd.get("outcome_model_status")
+            tag = " (" + " · ".join(x for x in (status, "scheme book" if rd.get("scheme_book") else None) if x) + ")"
+            return "\n".join(rd["card"]) + "\n  LABEL: RAVENS_DEFENSE_ML" + (tag if tag != " ()" else "")
         if self.side == "offense":
             line = format_offense(self.formation, self.play, self.adj_or_macro, self.read_or_user)
         else:
@@ -81,12 +95,17 @@ class MaddenCall:
             line += f"\n  {self.macro_line()}"
         if self.adjustment_line():
             line += f"\n  {self.adjustment_line()}"
+        sv = getattr(self, "scheme_variant", None)
+        if isinstance(sv, dict):
+            from cfb_coach.madden.scheme.coordinator import format_lines
+
+            line += "\n  " + "\n  ".join(format_lines(self))
         if self.conditional_action:
             hint = self.conditional_action
             line += (f"\n  IF {hint['condition']}: {hint['name']} — {hint['buttons']}"
                      " | OTHERWISE use the play unchanged (optional; not logged as executed)")
         label = getattr(self, "call_label", None)
-        if label in ("EXPERIMENTAL", "HEURISTIC"):
+        if label in ("EXPERIMENTAL", "HEURISTIC", "CIVIL_SCHEME_ONLY"):
             line += f"\n  LABEL: {label}"
         log = getattr(self, "defense_v1_log", None)
         if isinstance(log, dict) and log.get("policy"):
@@ -914,6 +933,39 @@ def _sit_stamp(sit: Situation) -> str:
     return "sit " + " ".join(bits) if bits else ""
 
 
+def _civil_scheme_only(db: Any) -> bool:
+    """Offense mode switch (default: the existing unrestricted coordinator)."""
+    from cfb_coach.madden.scheme.mode import CIVIL, offense_mode
+
+    return offense_mode(db) == CIVIL
+
+
+def _ravens_defense_ml(db: Any) -> bool:
+    """Defense mode switch (default: the existing defensive caller). Independent of the offense mode."""
+    from cfb_coach.madden.ravens_defense.mode import RAVENS, defense_mode
+
+    return defense_mode(db) == RAVENS
+
+
+def _scheme_side(side: str, db: Any) -> bool:
+    """True when this side's legal book is its civil scheme dataset.
+
+    Defense: any ``ravens_defense_ml`` session (``--ravens-defense`` or the online default).
+    That lets a Lions human game actually call the Ravens book (owner t366u) using the same
+    untrained prior + scheme-book legality as ``--franchise online``, instead of
+    NO_LEGAL_RAVENS_CALL against a non-Ravens locked Lions book.
+    Offense: the online civil profile only (t351u). A Lions ``--civil-scheme-only``
+    session still validates against the applied offensive book.
+    """
+    try:
+        if side == "defense":
+            return _ravens_defense_ml(db)
+        from cfb_coach.madden.online_league import civil_profile_active
+        return civil_profile_active() and _civil_scheme_only(db)
+    except Exception:  # noqa: BLE001 — unknown = the normal book rules
+        return False
+
+
 def make_call(
     sit: Situation,
     opponent_id: str,
@@ -978,8 +1030,18 @@ def make_call(
             note = "CPU = offense-only (no D calls) — switched to O | "
 
     audibles: dict[str, list[str]] | None = None
+    raw: dict[str, Any] | None = None
+    scheme_side = _scheme_side(sit.side, db)
     if playbook is None:
-        raw = active_books(db, (sit.side,))
+        if scheme_side:
+            # Online civil profile (t351u): the scheme dataset is the legal book for this side, so a
+            # missing / old Lions installed_playbook never blocks the call. Legality is the scheme's own.
+            from cfb_coach.madden.playbook import load_books
+
+            raw = {k: v for k, v in load_books(db).items() if k == sit.side and k != "defense"}
+            raw.setdefault(sit.side, {"formations": {}})
+        else:
+            raw = active_books(db, (sit.side,))
         books = eligible(raw)
         audibles = (raw.get("offense") or {}).get("audibles")
     else:
@@ -994,7 +1056,14 @@ def make_call(
 
         offense_book = books.get("offense") or {}
         sel["offense"] = [mid for mid in sel["offense"] if pairs_in_book(mid, offense_book, cap=1)]
-    if sit.side == "defense":
+    if sit.side == "defense" and _ravens_defense_ml(db):
+        # ravens_defense_ml: Nickel 2-4 Wide / Dime 2-3 Odd candidates only. Never the existing defensive
+        # pickers, never a fallback play: an empty legal set returns NO_LEGAL_RAVENS_CALL.
+        from cfb_coach.madden.ravens_defense.coordinator import call_ravens
+
+        call = call_ravens(sit, opponent_id, db, (raw or {}).get("defense") if playbook is None else
+                           {"formations": books.get("defense") or {}}, scheme_book=scheme_side)
+    elif sit.side == "defense":
         call = _pick_defense(sit, opp, bl, db, rng, sel["defense"], books["defense"])
         # A cold-start human (John) keeps the established caller unless this
         # session opted into defense ML. Offense mode is not consulted.
@@ -1025,6 +1094,13 @@ def make_call(
                     }
                 except Exception:  # noqa: BLE001
                     pass
+    elif _civil_scheme_only(db):
+        # civil_scheme_only: the 26 catalog variants + 12 designed runs + red-zone plays only. Never the heuristic or experimental pickers,
+        # never a fallback play: an empty legal set returns NO_LEGAL_SCHEME_PLAY.
+        from cfb_coach.madden.scheme.coordinator import call_civil
+
+        call = call_civil(sit, opponent_id, db, (raw or {}).get("offense") if playbook is None else
+                          {"formations": books.get("offense") or {}})
     else:
         call = _pick_offense(sit, opp, bl, db, rng, sel["offense"], books["offense"], audibles=audibles)
         # Opt-in experimental ML: sealed rebuild of reads/macros when ML selects.
@@ -1059,7 +1135,7 @@ def make_call(
                 pass
     # Optional look-specific instructions require no live coverage input. They
     # do not change the selected play, selected action, or execution log.
-    if not cpu and sit.side == "offense":
+    if not cpu and sit.side == "offense" and not getattr(call, "scheme_variant", None):
         try:
             from cfb_coach.madden.model.conditional_look_actions import suggest_conditional_action
 
@@ -1089,4 +1165,8 @@ def make_call(
         stamp_displayed_label(call)
     except Exception:  # noqa: BLE001 — the label must not change the play
         pass
+    if isinstance(getattr(call, "ravens_defense", None), dict):
+        call.call_label = "RAVENS_DEFENSE_ML"   # the existing defensive pickers did not run
+    if isinstance(getattr(call, "scheme_variant", None), dict):
+        call.call_label = "CIVIL_SCHEME_ONLY"   # never shown as HEURISTIC: the heuristic picker did not run
     return call

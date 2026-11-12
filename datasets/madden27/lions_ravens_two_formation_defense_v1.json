@@ -1,0 +1,598 @@
+{
+  "schema_version": "1.0",
+  "catalog_id": "lions_ravens_match_and_nickel_stock_v1",
+  "game": "Madden NFL 27",
+  "source_defensive_playbook": "Baltimore Ravens",
+  "status": "data_only_inert_no_live_training_or_activation",
+  "formations": [
+    {
+      "name": "Nickel 2-4 Wide",
+      "role": "primary_match_nickel_stock_redzone_and_zone_fallback",
+      "allowed_packages": [
+        "match_coverage",
+        "nickel_stock",
+        "spot_drop_fallback"
+      ]
+    },
+    {
+      "name": "Dime 2-3 Odd",
+      "role": "blitz_only",
+      "allowed_packages": [
+        "dime_blitz"
+      ]
+    }
+  ],
+  "macro_catalog": {
+    "24_BASE": {
+      "display_name": "24 Base",
+      "required_for": "EVERY nickel_stock call, including red-zone Tampa 2 Contain",
+      "verification": "owner_game_setup_required",
+      "default_application": "always"
+    },
+    "DB_FIRE": {
+      "display_name": "DB Fire",
+      "required_for": "EVERY dime_blitz DB Fire 2 call",
+      "verification": "owner_game_setup_required",
+      "default_application": "always"
+    },
+    "ZONE_IT": {
+      "display_name": "Zone It",
+      "required_for": "none",
+      "optional_for": [
+        "match_quarters",
+        "match_palms"
+      ],
+      "verification": "owner_game_check_required",
+      "effect": "match rules off; defenders play spot zones based on selected coverage/check; does not universally convert Cover 6/Cover 9/Cover 3 to Cover 4"
+    }
+  },
+  "stock_calls": [
+    {
+      "call_id": "match_quarters",
+      "formation": "Nickel 2-4 Wide",
+      "base_play": "Cover 4 Quarters",
+      "package": "match_coverage",
+      "required_macro_id": null,
+      "user_assignment_source": "match_guide_by_look",
+      "optional_macros": [
+        "ZONE_IT"
+      ],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false
+    },
+    {
+      "call_id": "match_palms",
+      "formation": "Nickel 2-4 Wide",
+      "base_play": "Cover 4 Palms",
+      "package": "match_coverage",
+      "required_macro_id": null,
+      "user_assignment_source": "match_guide_by_look",
+      "optional_macros": [
+        "ZONE_IT"
+      ],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false
+    },
+    {
+      "call_id": "match_cover9_show2",
+      "formation": "Nickel 2-4 Wide",
+      "base_play": "Cover 9 Show 2",
+      "package": "match_coverage",
+      "required_macro_id": null,
+      "user_assignment_source": "match_guide_by_look",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false,
+      "coverage_alias_status": "owner_allowed_t358u",
+      "live_eligible": true,
+      "owner_note": "Owner t358u allowed Cover 9 Show 2 into the live playbook. The Match-package call is now live-eligible. USER assignments stay UNVERIFIED until confirmed in game; this does not invent a verified USER."
+    },
+    {
+      "call_id": "match_cover3",
+      "formation": "Nickel 2-4 Wide",
+      "base_play": "Cover 3 Match",
+      "package": "match_coverage",
+      "required_macro_id": null,
+      "user_assignment_source": "match_guide_by_look",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false
+    },
+    {
+      "call_id": "match_cover2",
+      "formation": "Nickel 2-4 Wide",
+      "base_play": "Cover 2 Match",
+      "package": "match_coverage",
+      "required_macro_id": null,
+      "user_assignment_source": "match_guide_by_look",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false
+    },
+    {
+      "call_id": "match_cover6",
+      "formation": "Nickel 2-4 Wide",
+      "base_play": "Cover 6",
+      "package": "match_coverage",
+      "required_macro_id": null,
+      "user_assignment_source": "match_guide_by_look",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false
+    },
+    {
+      "call_id": "nickel_cloud",
+      "formation": "Nickel 2-4 Wide",
+      "base_play": "Cover 3 Cloud",
+      "package": "nickel_stock",
+      "required_macro_id": "24_BASE",
+      "user_assignment_source": "unknown_for_stock_setup",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false
+    },
+    {
+      "call_id": "nickel_cover2",
+      "formation": "Nickel 2-4 Wide",
+      "base_play": "Cover 2 Match",
+      "package": "nickel_stock",
+      "required_macro_id": "24_BASE",
+      "user_assignment_source": "unknown_for_stock_setup",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false,
+      "separate_from_match_variant": true
+    },
+    {
+      "call_id": "nickel_tampa2",
+      "formation": "Nickel 2-4 Wide",
+      "base_play": "Tampa 2 Contain",
+      "package": "nickel_stock",
+      "required_macro_id": "24_BASE",
+      "user_assignment_source": "unknown_for_stock_setup",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false,
+      "redzone_priority_context": "inside_opponent_10_not_forced"
+    },
+    {
+      "call_id": "nickel_cover9",
+      "formation": "Nickel 2-4 Wide",
+      "base_play": "Cover 9 Show 2",
+      "package": "nickel_stock",
+      "required_macro_id": "24_BASE",
+      "user_assignment_source": "unknown_for_stock_setup",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false
+    },
+    {
+      "call_id": "stock_cover4_zone",
+      "formation": "Nickel 2-4 Wide",
+      "base_play": "Cover 4 Zone",
+      "package": "spot_drop_fallback",
+      "required_macro_id": null,
+      "user_assignment_source": "unknown_until_practice",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false,
+      "stock_zone_fallback": true
+    },
+    {
+      "call_id": "dime_dbfire2",
+      "formation": "Dime 2-3 Odd",
+      "base_play": "DB Fire 2",
+      "package": "dime_blitz",
+      "required_macro_id": "DB_FIRE",
+      "user_assignment_source": "unknown_until_practice",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "applied_book_verified_in_xbox": false,
+      "eligible_only_if_model_selects_blitz": true
+    }
+  ],
+  "user_assignment_rules": [
+    {
+      "assignment_id": "quarters_vs_trips",
+      "call_id": "match_quarters",
+      "intended_guide_play": "Cover 4 Quarters",
+      "opponent_shape_key": "trips",
+      "guide_user": "Backside safety",
+      "guide_checks": [
+        "Quarters on trips side",
+        "Solo on backside"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "quarters_vs_bunch",
+      "call_id": "match_quarters",
+      "intended_guide_play": "Cover 4 Quarters",
+      "opponent_shape_key": "bunch",
+      "guide_user": "Weak-side safety",
+      "guide_checks": [
+        "Box on bunch",
+        "Solo on backside"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "quarters_vs_5wr_tight",
+      "call_id": "match_quarters",
+      "intended_guide_play": "Cover 4 Quarters",
+      "opponent_shape_key": "5wr_tight",
+      "guide_user": "Weak-side safety",
+      "guide_checks": [
+        "Box"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "palms_vs_2x2",
+      "call_id": "match_palms",
+      "intended_guide_play": "Cover 4 Palms",
+      "opponent_shape_key": "2x2",
+      "guide_user": "Short-side safety",
+      "guide_checks": [
+        "Default / two-read"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "palms_vs_stacks",
+      "call_id": "match_palms",
+      "intended_guide_play": "Cover 4 Palms",
+      "opponent_shape_key": "stacks",
+      "guide_user": "Safety opposite the stack",
+      "guide_checks": [
+        "Palms"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "palms_vs_4x1",
+      "call_id": "match_palms",
+      "intended_guide_play": "Cover 4 Palms",
+      "opponent_shape_key": "4x1",
+      "guide_user": "Backside safety",
+      "guide_checks": [
+        "Solo on backside",
+        "If halfback in box: Box plus hook defender on halfback",
+        "If halfback releases out: two-read on #1/#2, nickel on #3, hook on #4"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "cover9_vs_trips",
+      "call_id": "match_cover9_show2",
+      "intended_guide_play": "Cover 9",
+      "opponent_shape_key": "trips",
+      "guide_user": "Weak-side safety",
+      "guide_checks": [
+        "Stubbie"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": "Guide names Cover 9 without identifying Show 2; mapping to Ravens Nickel Cover 9 Show 2 must be confirmed."
+    },
+    {
+      "assignment_id": "cover9_vs_bunch",
+      "call_id": "match_cover9_show2",
+      "intended_guide_play": "Cover 9",
+      "opponent_shape_key": "bunch",
+      "guide_user": "Weak-side safety",
+      "guide_checks": [
+        "Box"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": "Guide names Cover 9 without identifying Show 2; mapping to Ravens Nickel Cover 9 Show 2 must be confirmed."
+    },
+    {
+      "assignment_id": "cover9_two_three_receiver_sides",
+      "call_id": "match_cover9_show2",
+      "intended_guide_play": "Cover 9",
+      "opponent_shape_key": "3_plus_2_uncertain",
+      "guide_user": "Weak-side safety on two-receiver side",
+      "guide_checks": [
+        "Box"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "inferred_alignment_not_live_eligible",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": "Guide names Cover 9 without identifying Show 2; mapping to Ravens Nickel Cover 9 Show 2 must be confirmed."
+    },
+    {
+      "assignment_id": "cover3_match_vs_trips",
+      "call_id": "match_cover3",
+      "intended_guide_play": "Cover 3 Match",
+      "opponent_shape_key": "trips",
+      "guide_user": "Hook Curl",
+      "guide_checks": [
+        "Skinny MEG"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "cover3_match_vs_bunch",
+      "call_id": "match_cover3",
+      "intended_guide_play": "Cover 3 Match",
+      "opponent_shape_key": "bunch",
+      "guide_user": "Hook Curl",
+      "guide_checks": [
+        "Skinny MEG"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "cover3_match_vs_stacks",
+      "call_id": "match_cover3",
+      "intended_guide_play": "Cover 3 Match",
+      "opponent_shape_key": "stacks",
+      "guide_user": "Hook Curl",
+      "guide_checks": [
+        "Default"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "cover2_match_vs_2x2",
+      "call_id": "match_cover2",
+      "intended_guide_play": "Cover 2 Match",
+      "opponent_shape_key": "2x2",
+      "guide_user": "Short-side deep-half safety",
+      "guide_checks": [
+        "Default"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "cover2_match_vs_stacks",
+      "call_id": "match_cover2",
+      "intended_guide_play": "Cover 2 Match",
+      "opponent_shape_key": "stacks",
+      "guide_user": "Short-side deep-half safety",
+      "guide_checks": [
+        "Default"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "cover2_match_vs_5wr_tight",
+      "call_id": "match_cover2",
+      "intended_guide_play": "Cover 2 Match",
+      "opponent_shape_key": "5wr_tight",
+      "guide_user": "Short-side deep-half safety",
+      "guide_checks": [
+        "Default"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "cover2_match_vs_bunch",
+      "call_id": "match_cover2",
+      "intended_guide_play": "Cover 2 Match",
+      "opponent_shape_key": "bunch",
+      "guide_user": "Short-side deep-half safety",
+      "guide_checks": [
+        "Default"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "cover6_vs_trips",
+      "call_id": "match_cover6",
+      "intended_guide_play": "Cover 6",
+      "opponent_shape_key": "trips",
+      "guide_user": "Backside safety",
+      "guide_checks": [
+        "Stubbie"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    },
+    {
+      "assignment_id": "cover6_vs_bunch",
+      "call_id": "match_cover6",
+      "intended_guide_play": "Cover 6",
+      "opponent_shape_key": "bunch",
+      "guide_user": "Weak-side safety",
+      "guide_checks": [
+        "Box"
+      ],
+      "provenance": "user_supplied_civil_match_guide_screenshots",
+      "user_status": "guide_documented_requires_in_game_confirmation",
+      "transfer_to_nickel_formation": "requires_owner_in_game_confirmation",
+      "notes": null
+    }
+  ],
+  "nickel_guide_examples_reference_only": [
+    {
+      "reference_id": "nw_base_c2match",
+      "play": "Cover 2 Match",
+      "offense_shape": "base",
+      "guide_user": "Weak-side Deep Half Safety",
+      "extra_setup_required": [
+        "narrow both deep halves"
+      ],
+      "transfer_to_stock_without_setup": "NOT_VERIFIED",
+      "source": "civil_nickel_reference_only"
+    },
+    {
+      "reference_id": "nw_stack_c2match",
+      "play": "Cover 2 Match",
+      "offense_shape": "doubles_clamp_stack",
+      "guide_user": "Stack-side Deep Half Safety",
+      "extra_setup_required": [
+        "man assignments to stack receivers"
+      ],
+      "transfer_to_stock_without_setup": "NOT_VERIFIED",
+      "source": "civil_nickel_reference_only"
+    },
+    {
+      "reference_id": "nw_5wr_c2match",
+      "play": "Cover 2 Match",
+      "offense_shape": "5wr_tight",
+      "guide_user": "Doubles-side Deep Half Safety",
+      "extra_setup_required": [
+        "man assignments to doubles receivers"
+      ],
+      "transfer_to_stock_without_setup": "NOT_VERIFIED",
+      "source": "civil_nickel_reference_only"
+    },
+    {
+      "reference_id": "nw_bunch_c3cloud",
+      "play": "Cover 3 Cloud",
+      "offense_shape": "bunch_te",
+      "guide_user": "Bunch-TE-side Linebacker",
+      "extra_setup_required": [
+        "quarter/third assignment changes"
+      ],
+      "transfer_to_stock_without_setup": "NOT_VERIFIED",
+      "source": "civil_nickel_reference_only"
+    },
+    {
+      "reference_id": "nw_base_cloud",
+      "play": "Cover 3 Cloud",
+      "offense_shape": "base",
+      "guide_user": null,
+      "extra_setup_required": [
+        "adjust cloud-side safety",
+        "narrow safeties"
+      ],
+      "transfer_to_stock_without_setup": "NOT_VERIFIED",
+      "source": "civil_nickel_reference_only"
+    },
+    {
+      "reference_id": "nw_rz_tampa2",
+      "play": "Tampa 2 Contain",
+      "offense_shape": "inside_10",
+      "guide_user": null,
+      "extra_setup_required": [
+        "man TE and two outside receivers"
+      ],
+      "transfer_to_stock_without_setup": "NOT_VERIFIED",
+      "source": "civil_nickel_reference_only"
+    },
+    {
+      "reference_id": "nw_stack_c9",
+      "play": "Cover 9 Show 2",
+      "offense_shape": "doubles_clamp_stack",
+      "guide_user": null,
+      "extra_setup_required": [
+        "reposition vertical hook"
+      ],
+      "transfer_to_stock_without_setup": "NOT_VERIFIED",
+      "source": "civil_nickel_reference_only"
+    },
+    {
+      "reference_id": "nw_5wr_tampa2",
+      "play": "Tampa 2 Contain",
+      "offense_shape": "5wr_tight",
+      "guide_user": null,
+      "extra_setup_required": [
+        "safety zone and hook priority changes"
+      ],
+      "transfer_to_stock_without_setup": "NOT_VERIFIED",
+      "source": "civil_nickel_reference_only"
+    },
+    {
+      "reference_id": "nw_trips_c9",
+      "play": "Cover 9 Show 2",
+      "offense_shape": "trips_te",
+      "guide_user": null,
+      "extra_setup_required": [
+        "multiple receiver matchups and zone priority changes"
+      ],
+      "transfer_to_stock_without_setup": "NOT_VERIFIED",
+      "source": "civil_nickel_reference_only"
+    },
+    {
+      "reference_id": "nw_blitz_dbfire2",
+      "play": "DB Fire 2",
+      "offense_shape": "blitz",
+      "guide_user": null,
+      "extra_setup_required": [
+        "optional coverage changes and spy adjustment"
+      ],
+      "transfer_to_stock_without_setup": "NOT_VERIFIED",
+      "source": "civil_nickel_reference_only"
+    }
+  ],
+  "selection_contract": {
+    "candidate_selection_owner": "existing Lions defensive ML scorer",
+    "default_formation": "Nickel 2-4 Wide",
+    "dime_policy": "ONLY WHEN the ML model intentionally chooses a blitz",
+    "macro_policy": "mandatory 24 Base on nickel_stock; mandatory DB Fire on dime_blitz; Zone It optional and separately scored when verified",
+    "stock_vs_guide": "Stock play plus required macro only. Never apply unrequested per-player man-up/zone manual transformations from guide recipes.",
+    "match_check_profile": "owner has configured match checks; coaching adjustment conflict compatibility unknown until verified in Madden. Match and Nickel packages must share a verified coherent active profile.",
+    "red_zone_policy": "Model may favor Tampa 2 Contain from nickel_stock with 24 Base when red-zone context supports it, but not forced; no extra red-zone formation.",
+    "guide_role_policy": "Match guide user role keyed by EXACT candidate + offensive alignment + configured check; do not transfer to modified Nickel stock variant or Zone It without validation.",
+    "unknown_user": "Explicitly mark USER UNVERIFIED / do not claim a verified player, not eligible for unattended live recommendation until owner validates.",
+    "match_cover9_note": "Owner t358u allowed the Match-package Cover 9 Show 2 call into the live book (live_eligible true). The Civil match guide still names generic Cover 9; USER transfer from that guide stays UNVERIFIED until confirmed in game.",
+    "playbook_policy": "exact names only; do not add Dime 2-3, Nickel 2-4 (not Wide), Nickel Mug or other formations",
+    "no_outcome_claims": "These are expert source tags, NOT learned performance, verified outcomes, or evidence of game-winning rates.",
+    "adaptation": "rank legal candidates using historical opponent information and earlier closed same-game snaps only; record executed call_id and macro separately for next-game training"
+  },
+  "sources": {
+    "matchup_reference": "User-provided screenshots of Civil.gg Complete Match Coverage Guide; 18 extracted matchups",
+    "nickel_reference": "User-provided screenshots of Civil.gg Nickel 2-4 Wide defense; 10 examples",
+    "playbook_inventory": [
+      "https://madden.tools/playbooks/formation/nickel/2-4-wide",
+      "https://madden.tools/playbooks/formation/dime/2-3-6-will/db-fire-2",
+      "https://playbookprofessor.gg/playbooks/madden/ravens-defense/?filter=match"
+    ]
+  },
+  "validation_notes": [
+    "No raw screenshots or videos are included. Verify rights for redistribution of guide-derived annotations in this public repo.",
+    "User assignment for all 18 match guide examples is transcribed from previously user-provided structured notes, not independently Xbox-tested.",
+    "Guide roles are conditioned on the configured match check; changing to Zone It can invalidate a match USER recommendation.",
+    "Nickel guide reference USER positions frequently depend on omitted manual changes, so they cannot automatically be reused for stock-only calls.",
+    "Coaching adjustment conflicts remain unresolved. Formation switching does not change persistent coaching adjustments.",
+    "All playbook inventory claims are third-party catalog confirmation, not physical installed-book attestation.",
+    "Live caller, defense model and installed book are not changed by this dataset."
+  ]
+}

@@ -53,10 +53,38 @@ class LogRow:
             "look": self.look,
             "call_text": self.call_text,
             "side": self.side,
+            "variation": _variation_from_call_text(self.call_text),
             "label": f"{self.formation} — {self.play}"
+            + (f" · {_variation_from_call_text(self.call_text)}" if _variation_from_call_text(self.call_text) else "")
             + (f" · {self.result}" if self.result else "")
             + (f" vs {self.look}" if self.look else ""),
         }
+
+
+_VARIATION_RE = re.compile(r"VARIATION: (.+?) \[([a-z0-9_]+)\]")
+
+
+def _variation_from_call_text(text: str | None) -> str | None:
+    """civil_scheme_only call lines carry 'VARIATION: <name> [<id>]' (owner t336u/t338u)."""
+    m = _VARIATION_RE.search(text or "")
+    return f"{m.group(1)} [{m.group(2)}]" if m else None
+
+
+def _scheme_variation(call: Any) -> dict[str, Any] | None:
+    """The civil_scheme_only variation shown next to the play name in the HTML page (owner t338u)."""
+    sv = getattr(call, "scheme_variant", None)
+    if not isinstance(sv, dict) or sv.get("status") != "CALL":
+        return None
+    adj = list(sv.get("adjustment_lines") or [])
+    return {"name": sv.get("variant_name"), "id": sv.get("variant_id"),
+            "label": f"{sv.get('variant_name')} [{sv.get('variant_id')}]",
+            "adjustments": adj or ["none (catalog lists no adjustments: stock play)"]}
+
+
+def _variation_block(v: dict[str, Any] | None) -> str:
+    if not v:
+        return ""
+    return "VARIATION: " + v["label"] + "\nADJUSTMENTS:\n" + "\n".join(v["adjustments"])
 
 
 _RAW_DOWN = re.compile(
@@ -115,6 +143,8 @@ class LivePlayController:
     dynasty: str = "alabama"
     dynasty_label: str = ""  # e.g. "Ohio State (experimental)"
     dynasty_source: str = ""  # where the dynasty came from (--dynasty / latest prep / default)
+    # Madden online league tags for this game (league / user_team / opponent_team / ...); None elsewhere.
+    league_context: dict[str, Any] | None = None
     cpu_only: bool = False
     default_side: str = "offense"
     session_id: str = ""
@@ -143,6 +173,9 @@ class LivePlayController:
     # self-attested as following the final recommendation unless overridden.
     # This is user-reported evidence, NOT independently observed controller input.
     standing_execution_attestation: bool = False
+    # Online civil profile only: the standing commitment also covers a displayed Ravens civil-defense
+    # CALL (formation, play, required / optional macro). Never applies to NO_LEGAL_RAVENS_CALL.
+    standing_defense_attestation: bool = False
     # Explicit user-confirmed Madden action inventory; never generated from a proposal.
     madden_adjustment_loadout: Any | None = None
     madden_adjustment_confirmations: dict[str, Any] | None = None
@@ -175,7 +208,8 @@ class LivePlayController:
         except Exception:  # noqa: BLE001 — a failed recovery must not block the new game
             pass
         sess = start_session(
-            self.opponent_id, dynasty=self.dynasty, db=self.db, notes="html-live"
+            self.opponent_id, dynasty=self.dynasty, db=self.db, notes="html-live",
+            league=self.league_context,
         )
         self.session_id = sess.session_id
         try:
@@ -199,6 +233,9 @@ class LivePlayController:
             "dynasty": self.dynasty,
             "dynasty_label": self.dynasty_label or self.dynasty,
             "dynasty_source": self.dynasty_source,
+            "opponent_team": (self.league_context or {}).get("opponent_team"),
+            "user_team": (self.league_context or {}).get("user_team"),
+            "league": (self.league_context or {}).get("league"),
             "call_text": self.call_text,
             "heard": self.heard,
             "cpu_only": self.cpu_only,
@@ -238,11 +275,14 @@ class LivePlayController:
         call = self.last_call
         if call is None or self.ended:
             return None
+        var = _scheme_variation(call)
         return {
             "formation": getattr(call, "formation", None),
             "play": getattr(call, "play", None),
             "macro": getattr(call, "macro", None),
             "side": getattr(call, "side", None),
+            "variation": var["label"] if var else None,
+            "variation_block": _variation_block(var) or None,
         }
 
     def _pending_offense_action(self) -> dict[str, Any] | None:
@@ -704,11 +744,23 @@ class LivePlayController:
             and str(executed_status or "unknown").strip().lower() == "unknown"
             and str(getattr(self.last_call, "side", "")).startswith("o")
         )
+        rd = getattr(self.last_call, "ravens_defense", None)
+        ravens_attested = bool(
+            self.standing_defense_attestation
+            and not verify_touched
+            and str(executed_status or "unknown").strip().lower() == "unknown"
+            and str(getattr(self.last_call, "side", "")).startswith("d")
+            and isinstance(rd, dict) and rd.get("status") == "CALL"
+        )
         if standing_attested:
             executed_status = "used_recommended"
             verify_touched = True
             applied_recommended_action = self._pending_offense_action() is not None
             confirmed_no_adjustment = not applied_recommended_action
+        if ravens_attested:
+            executed_status = "used_recommended"
+            verify_touched = True
+            standing_attested = True
 
         # Only an action actually offered with the final call can be
         # explicitly confirmed. A stale hidden checkbox must not fabricate it.
@@ -739,6 +791,7 @@ class LivePlayController:
             executed_play=executed_play,
             executed_macro=executed_macro,
             applied_recommended_macro=(
+                True if ravens_attested else
                 applied_recommended_action
                 if str(self.brand).lower().startswith("madden") else None
             ),
@@ -908,7 +961,8 @@ class LivePlayController:
             from cfb_coach.madden.model.offense_adjustment_designer import validate_live_call
             validate_live_call(self.db, call, opponent_id=self.opponent_id,
                                confirmations=self.madden_adjustment_confirmations,
-                               loadout=self.madden_adjustment_loadout)
+                               loadout=self.madden_adjustment_loadout,
+                               yardline=getattr(sit, "yardline", None))
         return call
 
     def call_only(
@@ -1420,6 +1474,7 @@ def render_live_html(ctrl: LivePlayController) -> str:
   <div class="dyn" id="dyn"{' hidden' if compact_madden else ''}>{_dyn_line(ctrl)}</div>
   <div class="heard" id="heard"{' hidden' if compact_madden else ''}>vs {_esc(ctrl.opponent_id)}</div>
   <div class="call" id="call"{' aria-live="polite"' if compact_madden else ''}>{_esc(_call_main(ctrl))}</div>
+  <div class="action-now" id="call-variation"{'' if _call_variation(ctrl) else ' hidden'}>{_esc(_call_variation(ctrl))}</div>
   {'<section id="qb-reads" class="qbreads" aria-live="polite"><div id="qb-reads-label" class="qbl"></div><ol id="qb-reads-list"></ol><div id="qb-reads-note" class="qbn"></div></section>' if compact_madden else ''}
   {_macro_box_html(None if compact_madden else ctrl.macro_state())}
   {"""<div id="offense-action-now" class="action-now" hidden></div>
@@ -1610,8 +1665,13 @@ function renderState(st) {{
   if (compactMadden) {{
     const rec = st.pending_recommendation;
     $("call").textContent = rec && rec.formation && rec.play
-      ? rec.formation + " — " + rec.play
+      ? rec.formation + " — " + rec.play + (rec.variation ? " · " + rec.variation : "")
       : (st.ended ? "GAME OVER" : "Waiting for next play");
+    const varBox = $("call-variation");
+    if (varBox) {{
+      const vb = rec && rec.variation_block ? rec.variation_block : "";
+      varBox.textContent = vb; varBox.hidden = !vb;
+    }}
     renderMacro(null);
     renderQbReads(st.qb_reads);
     const mlBox = $("ml-experimental");
@@ -1697,7 +1757,7 @@ function renderState(st) {{
   }} else {{
     log.innerHTML = st.log.map(r => {{
       const look = r.look ? " vs " + r.look : "";
-      return "<div><b>" + (r.formation||"?") + " — " + (r.play||"?") + "</b> · "
+      return "<div><b>" + (r.formation||"?") + " — " + (r.play||"?") + (r.variation ? " · " + r.variation : "") + "</b> · "
         + (r.result||"") + look + "</div>";
     }}).join("");
     log.scrollTop = log.scrollHeight;
@@ -2133,8 +2193,14 @@ def _call_main(ctrl: LivePlayController) -> str:
     if recommendation:
         formation, play = recommendation.get("formation"), recommendation.get("play")
         if formation and play:
-            return f"{formation} — {play}"
+            var = recommendation.get("variation")
+            return f"{formation} — {play}" + (f" · {var}" if var else "")
     return "GAME OVER" if ctrl.ended else "Waiting for next play"
+
+
+def _call_variation(ctrl: LivePlayController) -> str:
+    rec = ctrl._pending_recommendation() or {}
+    return rec.get("variation_block") or ""
 
 
 def _macro_box_html(m: dict[str, Any] | None) -> str:
