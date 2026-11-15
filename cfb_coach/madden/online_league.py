@@ -1,8 +1,9 @@
-"""Madden 27 online league: per-game opponent NFL team tags, stock-book scout, inventory.
+"""Madden 27 team-keyed leagues: per-game opponent NFL team tags, stock-book scout, inventory.
 
-Aidan plays this league as the Kansas City Chiefs (``franchise.online_team``).
-It is separate from the Detroit Lions Franchise (``primary``) and never writes
-``primary_team``.
+The Chiefs online league (``--franchise online``, ``franchise.online_team``) and
+the Titans franchise (``--franchise titans``) both log by opponent NFL team.
+They stay separate from each other and from the Detroit Lions Franchise
+(``primary``), and never write ``primary_team``.
 
 Every online game must name the opponent's NFL team (``--opponent-team``). The
 team is stored on the session row and copied onto every snap, together with
@@ -31,7 +32,9 @@ from typing import Any
 
 from cfb_coach.madden.franchise import (
     DEFAULT_ONLINE_TEAM,
+    DEFAULT_TITANS_TEAM,
     ONLINE,
+    TITANS,
     load_config,
     nfl_teams,
     resolve_nfl_team,
@@ -39,6 +42,8 @@ from cfb_coach.madden.franchise import (
 
 LEAGUE_ID = ONLINE
 ONLINE_ID_PREFIX = "online_"
+TITANS_LEAGUE_ID = TITANS
+TITANS_ID_PREFIX = "titans_"
 # Set for one process by `play --franchise online`: the civil scheme datasets are the legal book
 # (offense: the t337u catalog; defense: the Ravens two-formation dataset), so a missing or Lions
 # installed_playbook snapshot never blocks an online session. Never written to a DB.
@@ -51,14 +56,40 @@ def civil_profile_active() -> bool:
     return (os.environ.get(ENV_CIVIL_PROFILE) or "").strip() == "1"
 
 
-def team_opponent_id(team: str) -> str:
-    """Stable synthetic opponent id for an NFL team (``Buffalo Bills`` -> ``online_buffalo_bills``)."""
+def team_opponent_id(team: str, prefix: str | None = None) -> str:
+    """Stable synthetic opponent id (``Buffalo Bills`` -> ``online_buffalo_bills``).
+
+    ``prefix`` defaults to ``online_``. The Titans franchise uses ``titans_`` so
+    Chiefs and Titans games against the same NFL team never share an id.
+    """
+    pfx = prefix if prefix is not None else ONLINE_ID_PREFIX
     slug = re.sub(r"[^a-z0-9]+", "_", str(team).strip().lower()).strip("_")
-    return (ONLINE_ID_PREFIX + slug)[:32]
+    return (pfx + slug)[:32]
 
 
 def is_team_opponent_id(oid: str | None) -> bool:
-    return bool(oid) and str(oid).startswith(ONLINE_ID_PREFIX)
+    text = str(oid or "")
+    return text.startswith(ONLINE_ID_PREFIX) or text.startswith(TITANS_ID_PREFIX)
+
+
+def league_id_for_user(user: str | None = None) -> str:
+    """League tag for a user team. Chiefs stay ``online`` (backward compatible)."""
+    me = user or user_team()
+    if me == DEFAULT_ONLINE_TEAM:
+        return LEAGUE_ID
+    if me == DEFAULT_TITANS_TEAM:
+        return TITANS_LEAGUE_ID
+    slug = re.sub(r"[^a-z0-9]+", "_", str(me).strip().lower()).strip("_")
+    return slug or LEAGUE_ID
+
+
+def id_prefix_for_user(user: str | None = None) -> str:
+    me = user or user_team()
+    if me == DEFAULT_TITANS_TEAM:
+        return TITANS_ID_PREFIX
+    return ONLINE_ID_PREFIX
+
+
 STOCK_SCOUT_LABEL = "stock-book scout (Huddle team playbook; NOT learned user tendencies)"
 LOGGED_LABEL = "logged online-league games vs this team (actual users)"
 
@@ -79,7 +110,7 @@ def resolve_opponent_team(raw: str | None, user: str | None = None) -> str:
     me = user or user_team()
     if not raw or not str(raw).strip():
         raise ValueError(
-            "--opponent-team is required for --franchise online "
+            "--opponent-team is required for --franchise online and --franchise titans "
             '(e.g. --opponent-team "Buffalo Bills" or BUF).'
         )
     name, known = resolve_nfl_team(str(raw))
@@ -90,7 +121,7 @@ def resolve_opponent_team(raw: str | None, user: str | None = None) -> str:
         )
     if name == me:
         raise ValueError(
-            f"{name} is your team in the online league; it cannot be the opponent team "
+            f"{name} is your team in this league; it cannot be the opponent team "
             "(no opponent data is collected on it)."
         )
     return name
@@ -194,8 +225,8 @@ def _has_league_columns(db: Any) -> bool:
     return {"league", "opponent_team"} <= cols and {"league", "opponent_team"} <= scols
 
 
-def logged_summary(db: Any, team: str) -> dict[str, Any]:
-    """Games / snaps / coverage mix / success for this team in the online league."""
+def logged_summary(db: Any, team: str, user: str | None = None, *, league: str | None = None) -> dict[str, Any]:
+    """Games / snaps / coverage mix / success for this team in one team-keyed league."""
     out: dict[str, Any] = {
         "team": team, "source": LOGGED_LABEL, "games": 0, "snaps": 0,
         "offense_snaps": 0, "defense_snaps": 0, "last_played": None,
@@ -204,18 +235,30 @@ def logged_summary(db: Any, team: str) -> dict[str, Any]:
     }
     if db is None or not _has_league_columns(db):
         return out
-    sess = db.conn.execute(
-        "SELECT session_id, opponent_id, started_ts FROM game_sessions "
-        "WHERE league = ? AND opponent_team = ? ORDER BY started_ts",
-        (LEAGUE_ID, team),
-    ).fetchall()
+    lid = league or (league_id_for_user(user) if user else LEAGUE_ID)
+    if user:
+        sess = db.conn.execute(
+            "SELECT session_id, opponent_id, started_ts FROM game_sessions "
+            "WHERE league = ? AND opponent_team = ? AND user_team = ? ORDER BY started_ts",
+            (lid, team, user),
+        ).fetchall()
+        rows = db.conn.execute(
+            "SELECT * FROM snaps WHERE league = ? AND opponent_team = ? AND user_team = ?",
+            (lid, team, user),
+        ).fetchall()
+    else:
+        sess = db.conn.execute(
+            "SELECT session_id, opponent_id, started_ts FROM game_sessions "
+            "WHERE league = ? AND opponent_team = ? ORDER BY started_ts",
+            (lid, team),
+        ).fetchall()
+        rows = db.conn.execute(
+            "SELECT * FROM snaps WHERE league = ? AND opponent_team = ?",
+            (lid, team),
+        ).fetchall()
     out["games"] = len(sess)
     out["last_played"] = sess[-1][2] if sess else None
     out["opponents"] = sorted({str(r[1]) for r in sess if not is_team_opponent_id(r[1])})
-    rows = db.conn.execute(
-        "SELECT * FROM snaps WHERE league = ? AND opponent_team = ?",
-        (LEAGUE_ID, team),
-    ).fetchall()
     from cfb_coach.madden.postgame import snap_success
 
     cov: Counter[str] = Counter()
@@ -253,8 +296,9 @@ def inventory(db: Any, user: str | None = None) -> list[dict[str, Any]]:
     """One row per possible opponent team (31; never our own team)."""
     me = user or user_team()
     rows = []
+    lid = league_id_for_user(me)
     for team in opponent_teams(me):
-        s = logged_summary(db, team)
+        s = logged_summary(db, team, me, league=lid)
         rows.append({
             "team": team,
             "games": s["games"],
@@ -282,7 +326,7 @@ def format_inventory(db: Any, user: str | None = None) -> str:
     rows = inventory(db, me)
     have = sum(1 for r in rows if r["games"])
     lines = [
-        f"Online league — you: {me}. Opponent teams with data: {have}/{len(rows)}",
+        f"{'Titans franchise' if me == DEFAULT_TITANS_TEAM else 'Online league'} — you: {me}. Opponent teams with data: {have}/{len(rows)}",
         f"{'Team':<24} {'Games':>5} {'Snaps':>6}  {'Last played (local)':<26} Opponents",
     ]
     for r in rows:
@@ -292,8 +336,10 @@ def format_inventory(db: Any, user: str | None = None) -> str:
     return "\n".join(lines)
 
 
-def scout_report(db: Any, team: str, user: str | None = None) -> dict[str, Any]:
-    return {"stock": stock_scout(team, user), "logged": logged_summary(db, team)}
+def scout_report(db: Any, team: str, user: str | None = None, *, league: str | None = None) -> dict[str, Any]:
+    me = user or user_team()
+    lid = league or league_id_for_user(me)
+    return {"stock": stock_scout(team, me), "logged": logged_summary(db, team, me, league=lid)}
 
 
 def format_scout(report: dict[str, Any]) -> str:
@@ -335,15 +381,17 @@ def format_scout(report: dict[str, Any]) -> str:
 
 
 def league_context(db: Any, opponent_id: str, opponent_team: str, *, cpu: bool,
-                   opponent_label: str | None = None) -> dict[str, Any]:
+                   opponent_label: str | None = None, user: str | None = None,
+                   league: str | None = None) -> dict[str, Any]:
     """Tags stored on the session row (and copied onto each snap). Keyed by team, never by person."""
-    me = user_team()
+    me = user or user_team()
+    lid = league or league_id_for_user(me)
     team = resolve_opponent_team(opponent_team, me)
-    report = scout_report(db, team, me)
+    report = scout_report(db, team, me, league=lid)
     if opponent_label:
         report["opponent_label"] = str(opponent_label)
     return {
-        "league": LEAGUE_ID,
+        "league": lid,
         "user_team": me,
         "opponent_team": team,
         "opponent_type": "cpu" if cpu else "human",

@@ -7,6 +7,10 @@ online  = online Madden league, separate from the Franchise saves. User team is
           the opponent's NFL team (``--opponent-team``). Never written as the
           sticky DB profile, so a later ``play`` without ``--franchise`` stays on
           primary (Lions).
+titans  = Tennessee Titans franchise, also never sticky. Same team-keyed logging
+          and civil offense + Ravens civil defense defaults as online, but a
+          distinct league id / opponent-id prefix / user team so games never
+          mix with the Chiefs online league or the Lions franchise.
 
 Team config lives in <data dir>/madden27_config.json and can be overridden by
 CFB_COACH_MADDEN_PRIMARY_TEAM / CFB_COACH_MADDEN_LAB_TEAM. With no config file the
@@ -28,12 +32,14 @@ from cfb_coach.madden.data import _load_json, load_macro_catalog
 PRIMARY = "primary"
 LAB = "lab"
 ONLINE = "online"
+TITANS = "titans"
 DEFAULT_PROFILE = PRIMARY
-PROFILE_CHOICES = ("primary", "lab", "online")
+PROFILE_CHOICES = ("primary", "lab", "online", "titans")
 META_KEY = "franchise_profile"
 CONFIG_FILENAME = "madden27_config.json"
 DEFAULT_PRIMARY_TEAM = "Detroit Lions"
 DEFAULT_ONLINE_TEAM = "Kansas City Chiefs"
+DEFAULT_TITANS_TEAM = "Tennessee Titans"
 DEFAULT_START_BOOK = {"offense": "Buccaneers", "defense": "49ers"}
 DEFAULT_CONFIG: dict[str, Any] = {
     "primary_team": DEFAULT_PRIMARY_TEAM,
@@ -63,6 +69,28 @@ _PROFILE_ALIASES = {
     "online": ONLINE,
     "online_league": ONLINE,
     "league": ONLINE,
+    "titans": TITANS,
+    "tennessee": TITANS,
+    "tennessee_titans": TITANS,
+    "titans_franchise": TITANS,
+}
+
+# Team-keyed leagues log by opponent NFL team, never by gamertag. They are
+# per-run only (never the sticky DB profile). Specs keep Chiefs and Titans data
+# in separate buckets (league id + opponent_id prefix + user_team).
+_TEAM_KEYED: dict[str, dict[str, str]] = {
+    ONLINE: {
+        "league": ONLINE,
+        "id_prefix": "online_",
+        "user_team": DEFAULT_ONLINE_TEAM,
+        "label": "Online league",
+    },
+    TITANS: {
+        "league": TITANS,
+        "id_prefix": "titans_",
+        "user_team": DEFAULT_TITANS_TEAM,
+        "label": "Titans franchise",
+    },
 }
 
 _TEAM_ABBR = {
@@ -85,8 +113,27 @@ def normalize_profile(raw: str | None) -> str:
     key = (raw or DEFAULT_PROFILE).strip().lower().replace("-", "_").replace(" ", "_")
     out = _PROFILE_ALIASES.get(key)
     if out is None:
-        raise ValueError(f"Unknown franchise profile {raw!r}. Use: primary | lab | online.")
+        raise ValueError(f"Unknown franchise profile {raw!r}. Use: primary | lab | online | titans.")
     return out
+
+
+def is_team_keyed_profile(profile: str | None) -> bool:
+    """True for online / titans: log by opponent NFL team, never sticky."""
+    if not profile:
+        return False
+    try:
+        return normalize_profile(profile) in _TEAM_KEYED
+    except ValueError:
+        return False
+
+
+def team_keyed_spec(profile: str | None) -> dict[str, str]:
+    """Return league / id_prefix / user_team / label for a team-keyed profile."""
+    pid = normalize_profile(profile)
+    spec = _TEAM_KEYED.get(pid)
+    if spec is None:
+        raise ValueError(f"{pid} is not a team-keyed franchise (online | titans).")
+    return dict(spec)
 
 
 def nfl_teams() -> list[str]:
@@ -222,6 +269,8 @@ def team_for_profile(profile: str | None, cfg: dict[str, Any] | None = None) -> 
     pid = normalize_profile(profile)
     if pid == ONLINE:
         return cfg.get("online_team") or DEFAULT_ONLINE_TEAM
+    if pid == TITANS:
+        return DEFAULT_TITANS_TEAM
     key = "lab_team" if pid == LAB else "primary_team"
     return cfg.get(key) or None
 
@@ -245,14 +294,22 @@ def profile_config(profile: str | None = None) -> dict[str, Any]:
     league = (_load_json("seed.json").get("league") or {}).get("franchise_profiles") or {}
     block = league.get(pid) or {}
     cats = load_macro_catalog().get("franchise_profiles") or {}
-    # online plays the same serious doctrine as primary unless the catalog names it.
-    cat = cats.get(pid) or (cats.get(PRIMARY) if pid == ONLINE else None) or {}
+    # team-keyed leagues play the same serious doctrine as primary unless named.
+    cat = cats.get(pid) or (cats.get(PRIMARY) if pid in _TEAM_KEYED else None) or {}
     experimental = bool(cat.get("allow_experimental_active", pid == LAB))
     team = team_for_profile(pid)
-    default_label = {LAB: "Franchise lab", ONLINE: "Online league"}.get(pid, "Franchise primary")
+    default_label = {
+        LAB: "Franchise lab",
+        ONLINE: "Online league",
+        TITANS: "Titans franchise",
+    }.get(pid, "Franchise primary")
+    default_profile_id = {
+        ONLINE: "online_league",
+        TITANS: "titans_franchise",
+    }.get(pid, f"franchise_{pid}")
     return {
         "id": pid,
-        "profile_id": block.get("id") or (f"franchise_{pid}" if pid != ONLINE else "online_league"),
+        "profile_id": block.get("id") or default_profile_id,
         "label": block.get("label") or default_label,
         "mode": block.get("mode") or ("experimental" if pid == LAB else "serious"),
         "description": block.get("description") or "",
@@ -269,15 +326,16 @@ def get_session_profile(db: Any) -> str:
     try:
         raw = db.get_meta(META_KEY) if db is not None else None
         pid = normalize_profile(raw) if raw else DEFAULT_PROFILE
-        # online is per-run only; a stale meta value must not pull Lions games into it.
-        return DEFAULT_PROFILE if pid == ONLINE else pid
+        # team-keyed leagues are per-run only; a stale meta value must not
+        # pull Lions games into them.
+        return DEFAULT_PROFILE if pid in _TEAM_KEYED else pid
     except (ValueError, Exception):  # noqa: BLE001
         return DEFAULT_PROFILE
 
 
 def set_session_profile(db: Any, profile: str | None) -> str:
     pid = normalize_profile(profile)
-    if db is not None and pid != ONLINE:  # online is never the sticky default
+    if db is not None and pid not in _TEAM_KEYED:  # team-keyed are never the sticky default
         db.set_meta(META_KEY, pid)
     return pid
 
