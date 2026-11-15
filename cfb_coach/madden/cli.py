@@ -179,7 +179,7 @@ def _open_opponent(args: argparse.Namespace) -> tuple[str, CoachDB]:
         keyed = is_team_keyed_profile(getattr(args, "franchise", None))
         if keyed and (
                 getattr(args, "opponent_team", None) or not getattr(args, "opponent", None)):
-            from cfb_coach.madden.human_opponents import register_cold_start
+            from cfb_coach.madden.human_opponents import ensure_team_opponent
             from cfb_coach.madden.online_league import resolve_opponent_team, team_opponent_id
 
             try:
@@ -192,12 +192,13 @@ def _open_opponent(args: argparse.Namespace) -> tuple[str, CoachDB]:
             args.opponent_label = str(label).strip() if label and str(label).strip() else None
             args.opponent_team = team
             args.opponent = team_opponent_id(team, prefix=spec["id_prefix"])
-            if not resolve_madden_opponent(args.opponent, db):
-                try:
-                    prof = register_cold_start(db, args.opponent, display_name=team)
-                except ValueError as exc:
-                    print(f"Cannot register opponent team {team!r}: {exc}", file=sys.stderr)
-                    raise SystemExit(2) from None
+            try:
+                existed = bool(db.get_opponent(args.opponent))
+                prof = ensure_team_opponent(db, args.opponent, display_name=team)
+            except ValueError as exc:
+                print(f"Cannot register opponent team {team!r}: {exc}", file=sys.stderr)
+                raise SystemExit(2) from None
+            if not existed:
                 print(f"New {spec['label'].lower()} opponent team registered: {prof['id']} ({team})")
         elif keyed and not resolve_madden_opponent(args.opponent, db):
             # legacy (447b5e3) gamertag-only call, e.g. postgame for an older session

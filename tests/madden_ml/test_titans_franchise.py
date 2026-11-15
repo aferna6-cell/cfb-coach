@@ -111,3 +111,54 @@ def test_logged_summary_does_not_mix_chiefs_and_titans(tmp_path):
         assert chiefs["snaps"] == 1 and titans["snaps"] == 1
     finally:
         db.close()
+
+
+def _insert_incomplete_refile_opponent(db_path, oid, display_name):
+    """Reproduce the pre-fix refile insert: cold_start but not madden_only."""
+    import json
+    con = sqlite3.connect(db_path)
+    try:
+        profile = {
+            "id": oid,
+            "display_name": display_name,
+            "skill": "human",
+            "confidence": "cold",
+            "cold_start": True,
+        }
+        con.execute(
+            "INSERT INTO opponents (id, display_name, team_now, skill, confidence, profile_json) "
+            "VALUES (?, ?, ?, 'human', 'cold', ?)",
+            (oid, display_name, display_name, json.dumps(profile)),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def test_refile_team_opponent_row_is_accepted_on_play(tmp_db):
+    """A refile-created team opponent (missing madden_only) must not block play."""
+    from cfb_coach.madden.human_opponents import is_cold_start_profile
+
+    colts = "Indianapolis Colts"
+    _insert_incomplete_refile_opponent(tmp_db / "madden27.db", "titans_indianapolis_colts", colts)
+    _insert_incomplete_refile_opponent(tmp_db / "madden27.db", "online_indianapolis_colts", colts)
+
+    r = _play(tmp_db, "--franchise", "titans", "--opponent-team", colts, stdin="q\n")
+    assert r.returncode == 0, r.stderr
+    assert "TITANS FRANCHISE: Tennessee Titans vs Indianapolis Colts" in r.stdout
+    assert "Cannot register opponent team" not in r.stderr
+
+    r2 = _play(tmp_db, "--franchise", "online", "--opponent-team", colts, stdin="q\n")
+    assert r2.returncode == 0, r2.stderr
+    assert "ONLINE LEAGUE: Kansas City Chiefs vs Indianapolis Colts" in r2.stdout
+    assert "Cannot register opponent team" not in r2.stderr
+
+    con = sqlite3.connect(tmp_db / "madden27.db")
+    try:
+        import json
+        for oid in ("titans_indianapolis_colts", "online_indianapolis_colts"):
+            raw = json.loads(con.execute("SELECT profile_json FROM opponents WHERE id=?", (oid,)).fetchone()[0])
+            assert is_cold_start_profile(raw), (oid, raw)
+            assert raw["madden_only"] is True and raw["cold_start"] is True
+    finally:
+        con.close()

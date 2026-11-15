@@ -194,33 +194,57 @@ def counts(conn: sqlite3.Connection, session_id: str) -> dict[str, int]:
 
 
 def ensure_opponent(conn: sqlite3.Connection, oid: str, display_name: str) -> None:
+    """Insert or repair a proper Madden cold-start team-opponent profile."""
+    from cfb_coach.madden.human_opponents import cold_start_profile, is_cold_start_profile
+
     cols = table_cols(conn, "opponents")
     if not cols or "id" not in cols:
         return
-    existing = conn.execute("SELECT id FROM opponents WHERE id = ?", (oid,)).fetchone()
+    profile = cold_start_profile(oid, display_name=display_name)
+    existing = conn.execute("SELECT * FROM opponents WHERE id = ?", (oid,)).fetchone()
     if existing:
+        raw = None
+        if "profile_json" in cols:
+            try:
+                raw = json.loads(existing["profile_json"] or "") if existing["profile_json"] else {}
+            except (TypeError, ValueError, json.JSONDecodeError):
+                raw = {}
+        if is_cold_start_profile(raw if isinstance(raw, dict) else None):
+            return
+        assignments, values = [], []
+        if "display_name" in cols:
+            assignments.append("display_name = ?")
+            values.append(profile["display_name"])
+        if "team_now" in cols:
+            assignments.append("team_now = ?")
+            values.append(profile["team_now"])
+        if "skill" in cols:
+            assignments.append("skill = ?")
+            values.append(profile["skill"])
+        if "confidence" in cols:
+            assignments.append("confidence = ?")
+            values.append(profile["confidence"])
+        if "profile_json" in cols:
+            assignments.append("profile_json = ?")
+            values.append(json.dumps(profile))
+        if assignments:
+            values.append(oid)
+            conn.execute(f"UPDATE opponents SET {', '.join(assignments)} WHERE id = ?", values)
         return
-    profile = {
-        "id": oid,
-        "display_name": display_name,
-        "skill": "human",
-        "confidence": "cold",
-        "cold_start": True,
-    }
     fields = ["id"]
     values: list[Any] = [oid]
     if "display_name" in cols:
         fields.append("display_name")
-        values.append(display_name)
+        values.append(profile["display_name"])
     if "team_now" in cols:
         fields.append("team_now")
-        values.append(display_name)
+        values.append(profile["team_now"])
     if "skill" in cols:
         fields.append("skill")
-        values.append("human")
+        values.append(profile["skill"])
     if "confidence" in cols:
         fields.append("confidence")
-        values.append("cold")
+        values.append(profile["confidence"])
     if "profile_json" in cols:
         fields.append("profile_json")
         values.append(json.dumps(profile))

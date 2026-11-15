@@ -159,6 +159,56 @@ def register_cold_start(
     return profile
 
 
+def _update_profile(db: Any, profile: dict[str, Any]) -> None:
+    oid = str(profile["id"])
+    db.conn.execute(
+        """
+        UPDATE opponents
+           SET display_name = ?, team_now = ?, skill = ?, confidence = ?, profile_json = ?
+         WHERE id = ?
+        """,
+        (
+            profile.get("display_name") or oid,
+            profile.get("team_now"),
+            profile.get("skill"),
+            profile.get("confidence"),
+            json.dumps(profile),
+            oid,
+        ),
+    )
+    db.conn.commit()
+
+
+def ensure_team_opponent(
+    db: Any,
+    raw: str,
+    *,
+    display_name: str | None = None,
+) -> dict[str, Any]:
+    """Register or repair a team-keyed opponent (``online_*`` / ``titans_*``).
+
+    The refile script once wrote rows with ``cold_start`` but without
+    ``madden_only``, which ``register_cold_start`` then refused. Those rows
+    are upgraded in place to a proper cold-start profile (tendencies kept).
+    A complete cold-start row is left unchanged. Shared personas are refused.
+    """
+    from cfb_coach.madden.online_league import is_team_opponent_id
+
+    key = _norm(raw).replace(" ", "_")
+    if not is_team_opponent_id(key):
+        raise ValueError(f"{raw!r} is not a team-keyed opponent id")
+    existing = db.get_opponent(key) if db is not None else None
+    if existing and is_cold_start_profile(existing):
+        return existing
+    name = (display_name or "").strip() or (existing or {}).get("display_name")
+    if existing:
+        # Incomplete team row (e.g. a refile insert): make it a real cold start.
+        profile = cold_start_profile(key, display_name=name)
+        _update_profile(db, profile)
+        return profile
+    return register_cold_start(db, key, display_name=name)
+
+
 def ensure_madden_opponent(db: Any, oid: str) -> dict[str, Any] | None:
     """Insert John (or another registered cold start) if the row is missing.
 
