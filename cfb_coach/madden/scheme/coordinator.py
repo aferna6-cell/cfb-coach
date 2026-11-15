@@ -2,7 +2,11 @@
 (26 catalog pass variants + 12 owner-confirmed designed runs (t349u) + the 7 red-zone plays, by field band).
 
 Order per snap (never calls the heuristic ``_pick_offense`` or the experimental offense path):
-  1. legal filter    ``legality.legal_set``: catalog + Bucs stock + applied book + owner-verified
+  1. legal filter    ``legality.legal_set``: catalog + Bucs stock + applied book + owner-verified.
+                     Titans sessions only (t390u): then the 5-snap play-family cooldown — a called
+                     base-play family (all of its variants) cannot be recommended for the next 5
+                     offensive snaps. If every legal family is cooling down, the least-recently-used
+                     legal family is used and the fallback is logged. Lions / Chiefs online: no-op.
   2. belief          opponent coverage / pressure belief (earlier games + this game's closed snaps, recency weighted)
   3. score           existing-model offset + learned head + regularized adjustment transfer + expert/beater terms
                      + per-variant learned residual from verified variant outcomes - repetition penalty
@@ -12,7 +16,8 @@ Order per snap (never calls the heuristic ``_pick_offense`` or the experimental 
                      (owner t370u): a near-best legal variation of the drawn play. Trailing late (t370u): pass-first
                      outside the 10, red-zone passes mixed in inside the 10. Re-validated by
                      ``legality.revalidate_call`` before display
-  5. nothing legal   NO_LEGAL_SCHEME_PLAY with the reasons; no fallback to any other play
+  5. nothing legal   NO_LEGAL_SCHEME_PLAY with the reasons; no fallback to a non-scheme play
+                     (the Titans cooldown fallback still stays inside the legal scheme set)
 """
 from __future__ import annotations
 
@@ -33,6 +38,7 @@ from cfb_coach.madden.scheme import features as ft
 from cfb_coach.madden.scheme import learners as ln
 from cfb_coach.madden.scheme import legality as lg
 from cfb_coach.madden.scheme import mode as md
+from cfb_coach.madden.scheme import play_cooldown as pcd
 from cfb_coach.madden.scheme import model as sm
 from cfb_coach.madden.scheme import priors as pr
 
@@ -625,9 +631,17 @@ def select(scorer: Scorer, cat: sc.SchemeCatalog, conn: Any, *, db: Any, sit: An
     if not legal:
         return no_legal_call(_summarize_block(verdicts), verdicts=verdicts, shadow=shadow,
                              explanation="no catalog variant passes the legal filter: " + " | ".join(_summarize_block(verdicts))), None
+    extras = sit.extras if isinstance(getattr(sit, "extras", None), dict) else {}
+    session_id = extras.get("session_id")
+    cooldown_info = None
+    if pcd.is_titans_session(db, session_id, extras):
+        hist = pcd.recent_offense_families(db, session_id, cat)
+        legal, cooldown_info = pcd.apply_play_cooldown(legal, hist, cat=cat)
+        if not legal:
+            return no_legal_call(_summarize_block(verdicts), verdicts=verdicts, shadow=shadow,
+                                 explanation="no catalog variant passes the legal filter after the Titans play cooldown"), None
     opp_type = "cpu" if is_cpu_opponent(opponent_id) else "human"
     belief = belief or _belief_for(conn, sit, opponent_id, opp_type)
-    session_id = (sit.extras or {}).get("session_id") if isinstance(getattr(sit, "extras", None), dict) else None
     game = recent_calls(conn, session_id)
     ranked = scorer.score(legal, down=sit.down, distance=sit.distance, yardline=sit.yardline,
                           opponent_id=opponent_id, opponent_type=opp_type, belief=belief,
@@ -645,6 +659,12 @@ def select(scorer: Scorer, cat: sc.SchemeCatalog, conn: Any, *, db: Any, sit: An
         call.rationale = f"{call.rationale}; {extra}"
     call.scheme_variant["yardline"] = sit.yardline     # re-validation applies the same field-position gate
     call.scheme_variant["candidates"] = [v.variant_id for v in legal]   # the legal set that was scored
+    if cooldown_info:
+        call.scheme_variant["play_cooldown"] = cooldown_info
+        note = pcd.cooldown_explanation(cooldown_info)
+        if note:
+            call.scheme_variant["explanation"] = f"{call.scheme_variant['explanation']}; {note}"
+            call.rationale = f"{call.rationale}; {note}"
     return call, ranked
 
 
@@ -688,7 +708,8 @@ def call_civil(sit: Any, opponent_id: str, db: Any, book: Mapping[str, Any] | No
                                                        "p_negative", "exp_yards", "utility", "latency_ms")}
                 | ({"variation": variation_text(sv["variant_name"], sv["variant_id"], sv.get("adjustment_lines") or []),
                     "variant_name": sv["variant_name"], "field_zone": sv.get("field_zone"),
-                    "mix": sv.get("mix")}          # t370u: sibling mix + trailing-late terms for later audits
+                    "mix": sv.get("mix"),          # t370u: sibling mix + trailing-late terms for later audits
+                    "play_cooldown": sv.get("play_cooldown")}  # t390u: Titans 5-snap family cooldown
                    if sv.get("status") == "CALL" else {}),
                 "ranking": [[r["variant_id"], r["utility"]] for r in sv.get("ranking") or []],
                 "model_version": (md.load_state(db) or {}).get("model_sha256"), "catalog_version": sc.load_cached().version(),
@@ -712,6 +733,9 @@ def format_lines(call: Any) -> list[str]:
                  f"1st down {sv['p_first_down']:.0%}  explosive {sv['p_explosive']:.0%}  sack/TO/loss {sv['p_negative']:.0%}"
                  + (f"  exp yards {sv['exp_yards']:.1f}" if sv.get("exp_yards") is not None else ""))
     lines.append("WARNINGS: " + " | ".join(sv["warnings"]))
+    note = pcd.cooldown_explanation(sv.get("play_cooldown"))
+    if note:
+        lines.append(note)
     lines.append("WHY: " + sv["explanation"])
     lines.append("READS: none shown (no verified read progression)")
     return lines
