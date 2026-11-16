@@ -3,10 +3,11 @@
 
 Order per snap (never calls the heuristic ``_pick_offense`` or the experimental offense path):
   1. legal filter    ``legality.legal_set``: catalog + Bucs stock + applied book + owner-verified.
-                     Titans sessions only (t390u): then the 5-snap play-family cooldown — a called
-                     base-play family (all of its variants) cannot be recommended for the next 5
-                     offensive snaps. If every legal family is cooling down, the least-recently-used
-                     legal family is used and the fallback is logged. Lions / Chiefs online: no-op.
+                     Then the play-family cooldown when the session is Titans or Chiefs online
+                     (t390u / t403u): a called base-play family (all of its variants) cannot be
+                     recommended for the next N offensive snaps (Titans 5, Chiefs 3). If every
+                     legal family is cooling down, the least-recently-used legal family is used
+                     and the fallback is logged. Lions: no-op. Titans defense is not cooled.
   2. belief          opponent coverage / pressure belief (earlier games + this game's closed snaps, recency weighted)
   3. score           existing-model offset + learned head + regularized adjustment transfer + expert/beater terms
                      + per-variant learned residual from verified variant outcomes - repetition penalty
@@ -17,7 +18,7 @@ Order per snap (never calls the heuristic ``_pick_offense`` or the experimental 
                      outside the 10, red-zone passes mixed in inside the 10. Re-validated by
                      ``legality.revalidate_call`` before display
   5. nothing legal   NO_LEGAL_SCHEME_PLAY with the reasons; no fallback to a non-scheme play
-                     (the Titans cooldown fallback still stays inside the legal scheme set)
+                     (the play-family cooldown fallback still stays inside the legal scheme set)
 """
 from __future__ import annotations
 
@@ -643,12 +644,15 @@ def select(scorer: Scorer, cat: sc.SchemeCatalog, conn: Any, *, db: Any, sit: An
     extras = sit.extras if isinstance(getattr(sit, "extras", None), dict) else {}
     session_id = extras.get("session_id")
     cooldown_info = None
-    if pcd.is_titans_session(db, session_id, extras):
+    spec = pcd.cooldown_spec(db, session_id, extras, side="offense")
+    if spec is not None:
         hist = pcd.recent_offense_families(db, session_id, cat)
-        legal, cooldown_info = pcd.apply_play_cooldown(legal, hist, cat=cat)
+        legal, cooldown_info = pcd.apply_play_cooldown(
+            legal, hist, window=spec["window"], cat=cat, league=spec["league"])
         if not legal:
             return no_legal_call(_summarize_block(verdicts), verdicts=verdicts, shadow=shadow,
-                                 explanation="no catalog variant passes the legal filter after the Titans play cooldown"), None
+                                 explanation="no catalog variant passes the legal filter after the "
+                                 f"{spec['league']} play cooldown"), None
     opp_type = "cpu" if is_cpu_opponent(opponent_id) else "human"
     belief = belief or _belief_for(conn, sit, opponent_id, opp_type)
     game = recent_calls(conn, session_id)
@@ -718,7 +722,7 @@ def call_civil(sit: Any, opponent_id: str, db: Any, book: Mapping[str, Any] | No
                 | ({"variation": variation_text(sv["variant_name"], sv["variant_id"], sv.get("adjustment_lines") or []),
                     "variant_name": sv["variant_name"], "field_zone": sv.get("field_zone"),
                     "mix": sv.get("mix"),          # t370u: sibling mix + trailing-late terms for later audits
-                    "play_cooldown": sv.get("play_cooldown")}  # t390u: Titans 5-snap family cooldown
+                    "play_cooldown": sv.get("play_cooldown")}  # t390u/t403u: play-family cooldown
                    if sv.get("status") == "CALL" else {}),
                 "ranking": [[r["variant_id"], r["utility"]] for r in sv.get("ranking") or []],
                 "model_version": (md.load_state(db) or {}).get("model_sha256"), "catalog_version": sc.load_cached().version(),

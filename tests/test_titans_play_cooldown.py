@@ -167,18 +167,17 @@ def test_titans_mesh_call_blocks_all_mesh_variants_for_five_snaps(tmp_path, civi
     assert "mesh" in db2_families  # the original Mesh call is still on the session
 
 
-def test_online_and_lions_sessions_have_no_play_cooldown(tmp_path, civil_env):
+def test_lions_sessions_have_no_play_cooldown(tmp_path, civil_env):
     from cfb_coach.madden import playcaller
 
     db = _db(tmp_path)
     _verify_all(db)
-    for sid, setup in (("online1", _online), ("lions1", _lions)):
-        setup(db, sid)
-        _close_snap(db, sid, "civil_bucs_mesh_2_provisional", 40)
-        call = playcaller.make_call(_sit(1, 10, 40, session=sid), "cpu", db)
-        assert call.scheme_variant.get("play_cooldown") is None
-        # Mesh remains a legal candidate immediately after a Mesh call.
-        assert any(v in MESH_IDS for v in call.scheme_variant["candidates"])
+    _lions(db, "lions1")
+    _close_snap(db, "lions1", "civil_bucs_mesh_2_provisional", 40)
+    call = playcaller.make_call(_sit(1, 10, 40, session="lions1"), "cpu", db)
+    assert call.scheme_variant.get("play_cooldown") is None
+    # Mesh remains a legal candidate immediately after a Mesh call.
+    assert any(v in MESH_IDS for v in call.scheme_variant["candidates"])
 
 
 def test_red_zone_exhaustion_falls_back_to_lru_and_logs(tmp_path, civil_env, monkeypatch):

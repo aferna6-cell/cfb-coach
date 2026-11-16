@@ -1,10 +1,17 @@
-"""Titans-only offensive play-family cooldown (owner t390u).
+"""Play-family cooldown for Titans and Chiefs sessions (owner t390u / t403u).
 
 In ``--franchise titans`` sessions, once a play family is called it cannot be
-recommended again for the next ``COOLDOWN_SNAPS`` (5) offensive snaps of that
-session. The key is the catalog *base play* family, not the variant: calling
-any Mesh variant blocks every Mesh variant (including Redzone Mesh). Lions
-and Chiefs online sessions are untouched.
+recommended again for the next ``TITANS_COOLDOWN_SNAPS`` (5) *offensive* snaps
+of that session. Titans defense is not cooled down.
+
+In ``--franchise online`` (Chiefs) sessions, the same family-key rule applies
+on *both* offense and defense, with ``CHIEFS_COOLDOWN_SNAPS`` (3). Offense and
+defense histories are tracked separately.
+
+The key is the catalog *base play* family, not the variant: calling any Mesh
+variant blocks every Mesh variant (including Redzone Mesh); on defense, a
+base play and its Zone It (or other package) siblings share one family.
+Lions sessions are untouched.
 
 If every currently legal family is inside the window, fall back to the
 least-recently-used legal family rather than returning no call.
@@ -12,14 +19,23 @@ least-recently-used legal family rather than returning no call.
 from __future__ import annotations
 
 import re
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
-from cfb_coach.madden.franchise import DEFAULT_TITANS_TEAM, TITANS
+from cfb_coach.madden.franchise import (
+    DEFAULT_ONLINE_TEAM,
+    DEFAULT_TITANS_TEAM,
+    ONLINE,
+    TITANS,
+)
 from cfb_coach.madden.scheme import catalog as sc
 from cfb_coach.madden.scheme import evidence as ev
 from cfb_coach.madden.scheme.legality import NO_LEGAL
 
-COOLDOWN_SNAPS = 5
+COOLDOWN_SNAPS = 5  # Titans default; kept as the apply_play_cooldown window default
+TITANS_COOLDOWN_SNAPS = 5
+CHIEFS_COOLDOWN_SNAPS = 3
+
+_LEAGUE_LABEL = {TITANS: "Titans", ONLINE: "Chiefs"}
 
 # Variant qualifiers that appear on a name after the in-game play (never part of the family).
 # Do not strip semantic play-name words such as "Post" or "Shake".
@@ -54,6 +70,25 @@ def family_of_variant(v: sc.SchemeVariant) -> str:
     return play_family_key(v.base_play)
 
 
+def defense_family_key(base_play: str | None) -> str:
+    """Normalize a defensive base-play name into a cooldown family key.
+
+    Unlike ``play_family_key``, this does not strip trailing numbers: names such
+    as ``DB Fire 2`` and ``Cover 9 Show 2`` are the in-game plays, not variants.
+    Zone It / package siblings still share a family because they share base_play.
+    """
+    text = " ".join(str(base_play or "").strip().split())
+    if not text:
+        return ""
+    text = text.replace("—", " ").replace("–", " ").replace("-", " ").replace("_", " ")
+    return " ".join(text.lower().split())
+
+
+def family_of_defense_candidate(c: Any) -> str:
+    """Family key of a Ravens defensive candidate (catalog base_play)."""
+    return defense_family_key(getattr(c, "base_play", None))
+
+
 def family_label(key: str, cat: sc.SchemeCatalog | None = None) -> str:
     """Human-readable family name (catalog base_play spelling when known)."""
     if cat is not None:
@@ -71,19 +106,62 @@ def catalog_families(cat: sc.SchemeCatalog) -> dict[str, list[str]]:
     return {k: sorted(vs) for k, vs in out.items()}
 
 
-def is_titans_session(db: Any, session_id: str | None, extras: Mapping[str, Any] | None = None) -> bool:
-    """True only for a Titans franchise session. Never inferred from env alone."""
+def _franchise_from_fields(league: Any, dynasty: Any, user: Any) -> str | None:
+    league_s = str(league or "").strip().lower()
+    dynasty_s = str(dynasty or "").strip().lower()
+    user_s = str(user or "").strip()
+    if league_s == TITANS or dynasty_s == TITANS or user_s == DEFAULT_TITANS_TEAM:
+        return TITANS
+    if league_s == ONLINE or dynasty_s == ONLINE or user_s == DEFAULT_ONLINE_TEAM:
+        return ONLINE
+    return None
+
+
+def session_franchise(db: Any, session_id: str | None, extras: Mapping[str, Any] | None = None) -> str | None:
+    """``titans`` / ``online`` / None. A real session row always wins over extras."""
     extras = extras or {}
     if session_id and db is not None:
         row = _session_row(db, session_id)
         if row is not None:
-            league = str(row.get("league") or "").strip().lower()
-            dynasty = str(row.get("dynasty") or "").strip().lower()
-            user = str(row.get("user_team") or "").strip()
-            return league == TITANS or dynasty == TITANS or user == DEFAULT_TITANS_TEAM
-    # Tests (and a session not yet written) may tag extras; a real session row wins above.
-    tag = str(extras.get("league") or extras.get("franchise") or "").strip().lower()
-    return tag == TITANS
+            return _franchise_from_fields(row.get("league"), row.get("dynasty"), row.get("user_team"))
+    return _franchise_from_fields(
+        extras.get("league") or extras.get("franchise"),
+        extras.get("dynasty"),
+        extras.get("user_team") or extras.get("user"),
+    )
+
+
+def is_titans_session(db: Any, session_id: str | None, extras: Mapping[str, Any] | None = None) -> bool:
+    """True only for a Titans franchise session. Never inferred from env alone."""
+    return session_franchise(db, session_id, extras) == TITANS
+
+
+def is_online_session(db: Any, session_id: str | None, extras: Mapping[str, Any] | None = None) -> bool:
+    """True only for a Chiefs online-league session. Never inferred from env alone."""
+    return session_franchise(db, session_id, extras) == ONLINE
+
+
+def cooldown_spec(
+    db: Any,
+    session_id: str | None,
+    extras: Mapping[str, Any] | None = None,
+    *,
+    side: str = "offense",
+) -> dict[str, Any] | None:
+    """Return ``{window, league, league_key, side}`` if a play-family cooldown applies.
+
+    Titans: offense only, window 5. Chiefs online: offense and defense, window 3.
+    Lions (and any other profile): no cooldown.
+    """
+    key = session_franchise(db, session_id, extras)
+    side_name = "defense" if str(side or "").lower().startswith("d") else "offense"
+    if key == TITANS and side_name == "offense":
+        return {"window": TITANS_COOLDOWN_SNAPS, "league": _LEAGUE_LABEL[TITANS],
+                "league_key": TITANS, "side": side_name}
+    if key == ONLINE:
+        return {"window": CHIEFS_COOLDOWN_SNAPS, "league": _LEAGUE_LABEL[ONLINE],
+                "league_key": ONLINE, "side": side_name}
+    return None
 
 
 def _conn(db: Any) -> Any:
@@ -194,57 +272,118 @@ def recent_offense_families(
     return out
 
 
+def recent_defense_families(
+    db: Any,
+    session_id: str | None,
+    *,
+    limit: int | None = None,
+) -> list[str]:
+    """Family keys of this session's logged Ravens defensive calls, newest first.
+
+    Reads ``ravens_defense_decisions`` (written when the call is recommended) so a
+    restart of the same session keeps the cooldown history.
+    """
+    if not session_id or db is None:
+        return []
+    conn = _conn(db)
+    try:
+        if not ev._has_table(conn, "ravens_defense_decisions"):
+            return []
+        sql = ("SELECT base_play, call_id FROM ravens_defense_decisions "
+               "WHERE session_id = ? AND status = 'CALL' ORDER BY id DESC")
+        args: list[Any] = [session_id]
+        if limit:
+            sql += " LIMIT ?"
+            args.append(limit)
+        rows = conn.execute(sql, args).fetchall()
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[str] = []
+    for row in rows:
+        if isinstance(row, Mapping):
+            rec = dict(row)
+        elif hasattr(row, "keys"):
+            rec = {k: row[k] for k in row.keys()}
+        else:
+            rec = {"base_play": row[0], "call_id": row[1]}
+        fam = defense_family_key(rec.get("base_play")) or defense_family_key(rec.get("call_id"))
+        if fam:
+            out.append(fam)
+    return out
+
+
 def apply_play_cooldown(
-    legal: Sequence[sc.SchemeVariant],
+    legal: Sequence[Any],
     recent_families: Sequence[str],
     *,
     window: int = COOLDOWN_SNAPS,
     cat: sc.SchemeCatalog | None = None,
-) -> tuple[list[sc.SchemeVariant], dict[str, Any]]:
-    """Filter legal variants by the Titans play-family cooldown.
+    family_of: Callable[[Any], str] | None = None,
+    label_of: Callable[[str], str] | None = None,
+    league: str = "Titans",
+) -> tuple[list[Any], dict[str, Any]]:
+    """Filter legal candidates by the play-family cooldown.
 
     If the filter would empty the set, return the least-recently-used legal
     family instead and mark ``fallback`` on the info dict.
     """
+    fam_of = family_of or family_of_variant
+
+    def _label(key: str) -> str:
+        if label_of is not None:
+            return label_of(key)
+        return family_label(key, cat)
+
     legal = list(legal)
     blocked = [f for f in list(recent_families)[:window] if f]
     blocked_set = set(blocked)
     info: dict[str, Any] = {
         "active": True,
         "window": window,
-        "blocked_families": [family_label(f, cat) for f in dict.fromkeys(blocked)],
+        "league": league,
+        "blocked_families": [_label(f) for f in dict.fromkeys(blocked)],
         "fallback": False,
     }
     if not legal:
         return legal, info
-    kept = [v for v in legal if family_of_variant(v) not in blocked_set]
+    kept = [v for v in legal if fam_of(v) not in blocked_set]
     if kept:
-        info["candidates"] = [v.variant_id for v in kept]
+        info["candidates"] = [_candidate_id(v) for v in kept]
         return kept, info
     # Every currently legal family is inside the window: LRU fallback.
     last_age: dict[str, int] = {}
     for i, fam in enumerate(recent_families):
         if fam and fam not in last_age:
             last_age[fam] = i
-    legal_fams = {family_of_variant(v) for v in legal}
+    legal_fams = {fam_of(v) for v in legal}
 
     def _lru_key(fam: str) -> tuple[int, str]:
         # Larger age = older last use; never-seen families (shouldn't happen here) win.
         return (last_age.get(fam, 10**9), fam)
 
     lru = max(legal_fams, key=_lru_key)
-    kept = [v for v in legal if family_of_variant(v) == lru]
-    label = family_label(lru, cat)
+    kept = [v for v in legal if fam_of(v) == lru]
+    label = _label(lru)
     info.update({
         "fallback": True,
         "fallback_family": label,
         "fallback_rule": (
-            f"every legal play is inside the {window}-snap Titans cooldown; "
+            f"every legal play is inside the {window}-snap {league} cooldown; "
             f"used least-recently-used family {label}"
         ),
-        "candidates": [v.variant_id for v in kept],
+        "candidates": [_candidate_id(v) for v in kept],
     })
     return kept, info
+
+
+def _candidate_id(v: Any) -> str:
+    vid = getattr(v, "variant_id", None)
+    if vid:
+        return str(vid)
+    cid = getattr(v, "candidate_id", None)
+    if cid:
+        return str(cid)
+    return play_family_key(getattr(v, "base_play", None)) or ""
 
 
 def cooldown_explanation(info: Mapping[str, Any] | None) -> str | None:

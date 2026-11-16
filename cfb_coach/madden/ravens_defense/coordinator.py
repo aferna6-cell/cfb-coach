@@ -22,6 +22,7 @@ from cfb_coach.madden.ravens_defense import opponent as op
 from cfb_coach.madden.ravens_defense import users as us
 from cfb_coach.madden.ravens_defense.concepts import CLASSES
 from cfb_coach.madden.ravens_defense.confirmations import Confirmations
+from cfb_coach.madden.scheme import play_cooldown as pcd
 
 LABEL = "RAVENS_DEFENSE_ML"
 LATENCY_TARGET_MS = 150.0
@@ -117,6 +118,9 @@ def card_lines(decision: Mapping[str, Any]) -> list[str]:
              "USER: " + (decision["user"]["user"] if decision["user"]["status"] == "LIVE_VALID" else us.UNVERIFIED)]
     if decision.get("macro_display"):
         lines.append(f"MACRO: {decision['macro_display']}")
+    note = pcd.cooldown_explanation(decision.get("play_cooldown"))
+    if note:
+        lines.append(note)
     return lines
 
 
@@ -246,6 +250,14 @@ def call_ravens(sit: Any, opponent_id: str, db: Any, defense_book: Mapping[str, 
                                        scheme_book=scheme_book)
         conn = getattr(db, "conn", None)
         session = str(extras.get("session_id") or "")
+        cooldown_info = None
+        spec = pcd.cooldown_spec(db, session or None, extras, side="defense")
+        if spec is not None and legal:
+            labels = {pcd.defense_family_key(c.base_play): c.base_play for c in cat.candidates}
+            legal, cooldown_info = pcd.apply_play_cooldown(
+                legal, pcd.recent_defense_families(db, session or None),
+                window=spec["window"], family_of=pcd.family_of_defense_candidate,
+                label_of=lambda k, _labels=labels: _labels.get(k, k), league=spec["league"])
         same_game = _live_rows(conn, session) if conn is not None else []
         snap = SnapCtx(session, opponent_id, 10 ** 9, getattr(sit, "down", None), getattr(sit, "distance", None),
                        getattr(sit, "yardline", None),
@@ -258,6 +270,8 @@ def call_ravens(sit: Any, opponent_id: str, db: Any, defense_book: Mapping[str, 
                    "avoid": _last_session_candidate(conn, session)}
         decision = decide(model, legal=legal, snap=snap, same_game=same_game, history=hist, conf=conf, cat=cat,
                           installed=installed, assume_setup=assume_setup, scheme_book=scheme_book, mix=mix)
+        if cooldown_info:
+            decision["play_cooldown"] = cooldown_info
         if decision["status"] != "CALL":
             decision["blocked"] = {k: list(v.reasons) for k, v in verdicts.items() if not v.legal}
         decision["model_sha256"] = rm.manifest(art).get("model_sha256") if art else None
