@@ -34,7 +34,7 @@ RUNS = {v.variant_id for v in CAT.run_variants}                                 
 OWNER_PASS = {v.variant_id for v in CAT.owner_pass_variants}                          # owner t398u pass variants
 REG = CORE | OWNER_PASS | RUNS                                                         # regular: outside the 10
 # t398u setup steps that are real in-game steps but not route geometry (shown verbatim, not modeled)
-T398_UNMODELED = {("civil_t398_gun_bunch_te_mtn_spacing_3", 0), ("civil_t398_pistol_strong_y_off_close_pa_slide", 3)}
+T398_UNMODELED = {("civil_t398_pistol_strong_y_off_close_pa_slide", 3)}
 
 
 def _db(tmp_path, *, formations=FORMS_ALL):
@@ -79,8 +79,8 @@ def _sit(down=1, distance=10, yardline=35, session="g1", look=None):
 
 # 1 -------------------------------------------------------------- catalog contract
 def test_01_catalog_has_exactly_26_variants_and_blocked_entries_are_never_candidates():
-    assert len(CAT.core_variants) == 26 and len(CAT.redzone_variants) == 8 and len(set(CAT.ids)) == 56
-    assert len(RUNS) == 14 and not (RUNS & CORE) and not (RUNS & RZ) and len(OWNER_PASS) == 8
+    assert len(CAT.core_variants) == 26 and len(CAT.redzone_variants) == 8 and len(set(CAT.ids)) == 49
+    assert len(RUNS) == 14 and not (RUNS & CORE) and not (RUNS & RZ) and len(OWNER_PASS) == 1
     assert RZ20 == CLOSE_FLEX | {"civil_rz_gun_bunch_te_mesh"} and len(RZ10) == 5
     assert sc.contract_errors(CAT) == []
     blocked = CAT.blocked_ids
@@ -97,11 +97,11 @@ def test_02_stock_book_membership_exact_names_no_alias():
     for f in FORMS:
         assert lg.stock_has(f, "x")[0], f
     ok = {v.variant_id for v in CAT.variants if all(lg.stock_has(v.formation, v.base_play))}
-    # 43 before t398u + PA Slide, Gun Bunch TE Mesh (red zone), HB Zone, HB Dive; the 7 Mtn Spacing / Mtn Fork
-    # Y-Corner variants are owner-provided names the repo's stock data does not have
+    # 43 before t398u + PA Slide, Gun Bunch TE Mesh (red zone), HB Zone, HB Dive; t414u removed the 7 Mtn
+    # Spacing / Mtn Fork Y-Corner names that were not in the repo's stock data
     assert len(ok) == 47 and not (ok & Z_SPOT) and RZ <= ok and RUNS <= ok
     missing = {v.variant_id for v in CAT.owner_pass_variants if not v.name_in_stock_data}
-    assert missing == OWNER_PASS - ok and len(missing) == 7
+    assert missing == OWNER_PASS - ok and len(missing) == 0
 
 
 # 3 -------------------------------------------------------------- live legality
@@ -439,7 +439,7 @@ def test_15_only_the_listed_catalog_variants_can_be_output(tmp_path, civil_env, 
     from cfb_coach.madden import playcaller
     db = _db(tmp_path)
     allowed = set(CAT.ids)
-    assert len(allowed) == 56 and allowed == CORE | OWNER_PASS | RZ | RUNS
+    assert len(allowed) == 49 and allowed == CORE | OWNER_PASS | RZ | RUNS
     rng = random.Random(3)
     seen = set()
     labels = ["cover_3_sky", "cover_1_unspecified", "cover_2_man", "cover_4_quarters", "tampa_2", "cover_6"]
@@ -508,7 +508,7 @@ def test_16_every_variant_lists_all_adjustments_and_stems_are_applied(tmp_path):
                 without = dz.adjusted_design(v, geo, applied=[i for i in range(len(v.adjustments)) if i != sp.index])
                 assert dz.route_features(without) != dz.route_features(d), (v.variant_id, sp.index)
         assert "verify in game" not in text and "hot-route vocabulary" not in text
-    assert n_stems == 17          # 11 + one stem in each of Mtn Spacing 2/3/4 and Mtn Fork Y-Corner 1/2/3 (t398u)
+    assert n_stems == 11          # t414u: the six t398u Mtn Spacing / Mtn Fork stems were removed with those plays
 
 
 def test_17_civil_call_is_labeled_civil_not_heuristic(tmp_path, civil_env):

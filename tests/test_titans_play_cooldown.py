@@ -79,11 +79,14 @@ def test_family_keys_group_variants_not_distinct_plays():
     assert key("QB Draw") != key("RPO Alert QB Draw") != key("HB Draw")
     # Hyphenated catalog spelling.
     assert key("Texas Y-Stutter Wheel") == key("Texas Y Stutter Wheel 2") == "texas y stutter wheel"
-    # Every catalog variant lands in exactly one of the 27 families.
+    # Every catalog variant lands in exactly one family.
     families = pcd.catalog_families(CAT)
-    # 27 + the t398u families Mtn Spacing, Mtn Fork Y-Corner, PA Slide, HB Dive (HB Zone and Mesh already existed)
-    assert len(families) == 31
-    assert sum(len([v for v in CAT.variants if pcd.family_of_variant(v) == k]) for k in families) == 56
+    # 27 + the remaining t398u families PA Slide and HB Dive (HB Zone and Mesh already existed;
+    # t414u dropped Mtn Spacing and Mtn Fork Y-Corner)
+    assert len(families) == 29
+    assert "mtn spacing" not in families and "mtn fork y corner" not in families
+    assert {"pa slide", "hb dive", "hb zone", "mesh"} <= set(families)
+    assert sum(len([v for v in CAT.variants if pcd.family_of_variant(v) == k]) for k in families) == 49
 
 
 def test_apply_cooldown_blocks_family_and_falls_back_to_lru():

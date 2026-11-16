@@ -18,12 +18,13 @@ previously unverified variation names are owner-confirmed correct. Display names
 file; ``variant_id`` strings and the 26-variant catalog bytes stay unchanged, so no retrain is required.
 The unnamed 5WR Tight setup stays ineligible.
 
-Owner instruction 2026-11-15 (t398u, ``datasets/madden27/civil_owner_additions_t398u.json``): 8 new pass
-variants (Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3, Pistol Strong Y Off Close PA Slide; group
-``owner_pass``, regular field zone), 1 red-zone pass (Gun Bunch TE Mesh, ``red_zone``) and 2 designed runs
-(Pistol Strong Y Off Close HB Zone and HB Dive). Same separate-file pattern: the 26-variant catalog bytes and
-catalog_version stay unchanged. Owner-provided names missing from the repo's stock data are allowed only when the
-file lists them under ``name_not_in_stock_data`` (flagged on the card).
+Owner instruction 2026-11-15 (t398u, ``datasets/madden27/civil_owner_additions_t398u.json``): 1 pass
+variant (Pistol Strong Y Off Close PA Slide; group ``owner_pass``, regular field zone), 1 red-zone pass
+(Gun Bunch TE Mesh, ``red_zone``) and 2 designed runs (Pistol Strong Y Off Close HB Zone and HB Dive). Same
+separate-file pattern: the 26-variant catalog bytes and catalog_version stay unchanged. Owner t414u removed the
+Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3 variants that t398u had added; the loader still allows a
+name missing from the repo's stock data only when the file lists it under ``name_not_in_stock_data`` (flagged on
+the card), but the current file lists none.
 """
 from __future__ import annotations
 
@@ -51,9 +52,9 @@ EXPECTED_REDZONE_FORMATIONS = {"Pistol Bunch TE": 3, "Gun Empty Quads": 2, "I Fo
 EXPECTED_RUN_VARIANTS = 14
 EXPECTED_RUN_FORMATIONS = {"Gun Doubles Clamp Stack": 4, "Gun Bunch TE": 5, "Gun Tight Doubles": 2, "Gun 5WR Tight": 1,
                            "Pistol Strong Y Off Close": 2}
-# owner t398u: new regular pass variants (Mtn Spacing 1-4, Mtn Fork Y-Corner 1-3, PA Slide)
-EXPECTED_OWNER_PASS_VARIANTS = 8
-EXPECTED_OWNER_PASS_FORMATIONS = {"Gun Bunch TE": 7, "Pistol Strong Y Off Close": 1}
+# owner t398u / t414u: remaining regular pass variant is PA Slide (Mtn Spacing / Mtn Fork Y-Corner removed)
+EXPECTED_OWNER_PASS_VARIANTS = 1
+EXPECTED_OWNER_PASS_FORMATIONS = {"Pistol Strong Y Off Close": 1}
 RUN, PASS = "run", "pass"       # play_family: the run-pass mix (coordinator.pick_mixed) gates on it
 CORE, REDZONE_GROUP, DESIGNED_RUN = "core", "red_zone", "designed_run"
 OWNER_PASS = "owner_pass"       # owner t398u regular pass variants (outside the opponent 10, like the 26)
@@ -596,7 +597,7 @@ def load_cached(path: str | None = None) -> SchemeCatalog:
 
 def contract_errors(cat: SchemeCatalog) -> list[str]:
     """Every way the loaded catalog differs from the approved 26 / 12 / 4 contract (+ 8 red-zone, + 14 runs,
-    + 8 owner-added passes)."""
+    + 1 owner-added pass)."""
     errs: list[str] = []
     core = cat.core_variants
     if len(core) != EXPECTED_VARIANTS:

@@ -106,8 +106,8 @@ def cmd_checklist(args) -> int:
     print("  inside the opponent 10: ONLY the 8 red-zone plays (5 package plays + 2 I Form Close Flex plays + Gun Bunch TE"
           " Mesh, t398u)")
     print("  10-20: the 3 red_zone-tagged plays (I Form Close Flex Stretch/Mesh, Gun Bunch TE Mesh) + the 26 pass variants"
-          " + the 8 owner-added passes (t398u) + the 14 designed runs (t349u, t398u)")
-    print("  outside the 20: the 34 pass variants + the 14 designed runs. Every call is model-scored and mixed, never")
+          " + the 1 owner-added pass (t398u PA Slide) + the 14 designed runs (t349u, t398u)")
+    print("  outside the 20: the 27 pass variants + the 14 designed runs. Every call is model-scored and mixed, never")
     print("  forced; outside the 10 a situation-gated run-pass draw (learned utility gap + down/distance prior) picks")
     print("  run or pass first, then the near-best draw inside that family.")
     by_form: dict[str, list] = {}
