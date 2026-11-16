@@ -54,6 +54,9 @@ OWNER_CONFIRMED_BOOK = {
     "scope": "every catalog variant and red-zone package play: formation and play installed under the dataset's name",
     # t338u: the owner sent the two I Form Close Flex red-zone plays (5WR Tight sheet) as plays from his book.
     "t338u_addition": "I Form Close Flex: Stretch, Mesh (owner screenshots 2026-11-10; in the Buccaneers stock data)",
+    # t398u: the owner sent these as plays from his book (civil.gg screenshots); datasets/madden27/civil_owner_additions_t398u.json
+    "t398u_addition": "Gun Bunch TE: Mtn Spacing 1-4, Mtn Fork Y-Corner 1-3, Mesh (red zone); Pistol Strong Y Off Close: "
+                      "PA Slide, HB Zone, HB Dive (owner 2026-11-15)",
     "catalog_id": "lions_civil_bucs_5wr_v4",
     "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
 }

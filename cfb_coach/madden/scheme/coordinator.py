@@ -137,11 +137,13 @@ class Scorer:
         self.stock = {v.pair: dz.stock_design(v.formation, v.base_play, geo) for v in cat.variants}
         self.rf_adj = {k: dz.route_features(d) for k, d in self.adjusted.items()}
         self.rf_stock = {k: dz.route_features(d) for k, d in self.stock.items()}
-        pairs: dict[tuple[str, str], int] = {}
+        pairs: dict[tuple[str, str, str], int] = {}
         for v in cat.variants:
-            pairs[v.pair] = pairs.get(v.pair, 0) + 1
-        # pass variants that share formation + base play with another catalog variant (t370u novelty lift)
-        self.has_siblings = {v.variant_id: (not v.is_run and pairs[v.pair] > 1) for v in cat.variants}
+            pairs[v.pair + (v.field_zone,)] = pairs.get(v.pair + (v.field_zone,), 0) + 1
+        # pass variants that share formation + base play with another catalog variant (t370u novelty lift), in the
+        # same field zone (t398u: the red-zone Gun Bunch TE Mesh is not lifted by the regular Mesh variants, which
+        # are never legal next to it inside the 10)
+        self.has_siblings = {v.variant_id: (not v.is_run and pairs[v.pair + (v.field_zone,)] > 1) for v in cat.variants}
 
     def offset_p(self, v: sc.SchemeVariant, *, down, distance, yardline, opponent_id, opponent_type) -> float:
         if self.model.existing is None:
@@ -571,7 +573,8 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
         warnings.append(f"'{v.base_play}' is called by the dataset name: the repo's stock data spells it differently, "
                         "but you confirmed every dataset play is in your book (t337u)")
     if v.group == sc.DESIGNED_RUN:
-        warnings.append("DESIGNED RUN (owner 2026-11-11, t349u): stock play from your Buccaneers book, no adjustments; "
+        src = "2026-11-15, t398u" if v.owner_source == "t398u" else "2026-11-11, t349u"
+        warnings.append(f"DESIGNED RUN (owner {src}): stock play from your Buccaneers book, no adjustments; "
                         "not callable inside the opponent 10")
     elif lg.owner_confirmation_applies(sc.load_cached()):
         warnings.append("adjustments owner-confirmed executable (2026-11-10, t333u); no recorded outcome for this "
@@ -579,9 +582,15 @@ def build_call(top: Scored, ranked: Sequence[Scored], belief: bl.Belief, *, book
     if v.field_zone == sc.INSIDE_10:
         warnings.append("RED-ZONE play (owner 2026-11-10, t335u/t338u): inside the opponent 10 only; "
                         "formation mapped from the sheet name + stock book")
+    elif v.field_zone == sc.RED_ZONE and v.owner_source == "t398u":
+        warnings.append("RED-ZONE play (owner 2026-11-15, t398u): inside the 20 only (Inside 10 and 10-20); "
+                        "no coverage tags given")
     elif v.field_zone == sc.RED_ZONE:
         warnings.append("RED-ZONE play (owner 2026-11-10, t338u, 5WR Tight sheet): inside the 20 only "
                         "(Inside 10 and 10-20); no coverage tags on the sheet")
+    if v.group == sc.OWNER_PASS:
+        warnings.append("OWNER-ADDED PLAY (2026-11-15, t398u, civil.gg screenshots); macro name: "
+                        + str((v.raw or {}).get("macro_name") or v.variant_name))
     if v.field_zone != "any":
         if not v.adjustments:
             warnings.append("the catalog lists NO adjustments for this package play: run it as the stock play")

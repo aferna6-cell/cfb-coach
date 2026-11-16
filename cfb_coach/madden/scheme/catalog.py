@@ -17,6 +17,13 @@ Owner instruction 2026-11-11 (t358u, ``datasets/madden27/civil_variant_names_own
 previously unverified variation names are owner-confirmed correct. Display names are overlaid from that
 file; ``variant_id`` strings and the 26-variant catalog bytes stay unchanged, so no retrain is required.
 The unnamed 5WR Tight setup stays ineligible.
+
+Owner instruction 2026-11-15 (t398u, ``datasets/madden27/civil_owner_additions_t398u.json``): 8 new pass
+variants (Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3, Pistol Strong Y Off Close PA Slide; group
+``owner_pass``, regular field zone), 1 red-zone pass (Gun Bunch TE Mesh, ``red_zone``) and 2 designed runs
+(Pistol Strong Y Off Close HB Zone and HB Dive). Same separate-file pattern: the 26-variant catalog bytes and
+catalog_version stay unchanged. Owner-provided names missing from the repo's stock data are allowed only when the
+file lists them under ``name_not_in_stock_data`` (flagged on the card).
 """
 from __future__ import annotations
 
@@ -31,18 +38,25 @@ DATASET_RELPATH = Path("datasets") / "madden27" / "lions_offensive_scheme_catalo
 REDZONE_RELPATH = Path("datasets") / "madden27" / "civil_redzone_owner_t335u.json"
 RUNS_RELPATH = Path("datasets") / "madden27" / "civil_designed_runs_owner_t349u.json"
 NAMES_RELPATH = Path("datasets") / "madden27" / "civil_variant_names_owner_t358u.json"
+ADDITIONS_RELPATH = Path("datasets") / "madden27" / "civil_owner_additions_t398u.json"
 STOCK_PLAYBOOKS_RELPATH = Path("cfb_coach") / "data" / "madden27" / "playbooks_full.json"
 STOCK_BOOK = "Buccaneers"
 EXPECTED_VARIANTS = 26          # core variants (any field position)
-EXPECTED_REDZONE_VARIANTS = 7   # red-zone plays: 5 catalog package plays (t335u) + 2 Close Flex plays (t338u)
+EXPECTED_REDZONE_VARIANTS = 8   # red-zone plays: 5 catalog package plays (t335u) + 2 Close Flex plays (t338u) + Gun Bunch TE Mesh (t398u)
 INSIDE_10 = "inside_10"         # red-zone play callable only inside the opponent 10
 RED_ZONE = "red_zone"           # red-zone play callable inside the 20 (inside the 10 and 10-20)
-EXPECTED_REDZONE_FORMATIONS = {"Pistol Bunch TE": 3, "Gun Empty Quads": 2, "I Form Close Flex": 2}
+EXPECTED_REDZONE_FORMATIONS = {"Pistol Bunch TE": 3, "Gun Empty Quads": 2, "I Form Close Flex": 2, "Gun Bunch TE": 1}
 # owner t349u: designed runs from the Buccaneers book in the scheme formations (no screens, no new RPOs)
-EXPECTED_RUN_VARIANTS = 12
-EXPECTED_RUN_FORMATIONS = {"Gun Doubles Clamp Stack": 4, "Gun Bunch TE": 5, "Gun Tight Doubles": 2, "Gun 5WR Tight": 1}
+# + owner t398u: HB Zone and HB Dive from Pistol Strong Y Off Close
+EXPECTED_RUN_VARIANTS = 14
+EXPECTED_RUN_FORMATIONS = {"Gun Doubles Clamp Stack": 4, "Gun Bunch TE": 5, "Gun Tight Doubles": 2, "Gun 5WR Tight": 1,
+                           "Pistol Strong Y Off Close": 2}
+# owner t398u: new regular pass variants (Mtn Spacing 1-4, Mtn Fork Y-Corner 1-3, PA Slide)
+EXPECTED_OWNER_PASS_VARIANTS = 8
+EXPECTED_OWNER_PASS_FORMATIONS = {"Gun Bunch TE": 7, "Pistol Strong Y Off Close": 1}
 RUN, PASS = "run", "pass"       # play_family: the run-pass mix (coordinator.pick_mixed) gates on it
 CORE, REDZONE_GROUP, DESIGNED_RUN = "core", "red_zone", "designed_run"
+OWNER_PASS = "owner_pass"       # owner t398u regular pass variants (outside the opponent 10, like the 26)
 FORBIDDEN_RUN_WORDS = ("screen", "rpo")   # t349u: "no need for screens and rpos besides the goal to go one"
 
 
@@ -109,7 +123,9 @@ class SchemeVariant:
     field_zone: str = "any"        # "any" | "inside_10" | "red_zone"  (owner instructions t335u, t338u)
     package_id: str = ""
     play_family: str = PASS        # "pass" | "run" (explicit in the data files, never guessed from a name)
-    group: str = CORE              # "core" (26) | "red_zone" | "designed_run" (owner t349u)
+    group: str = CORE              # "core" (26) | "red_zone" | "designed_run" (owner t349u/t398u) | "owner_pass" (t398u)
+    owner_source: str = ""         # owner instruction id for owner-added plays (e.g. "t398u")
+    name_in_stock_data: bool = True  # False: owner-provided base play name the repo's stock data does not have
 
     @property
     def is_run(self) -> bool:
@@ -173,6 +189,8 @@ class SchemeCatalog:
     runs_owner: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
     names_digest: str = ""
     names_owner: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
+    additions_digest: str = ""
+    additions_owner: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def core_variants(self) -> tuple[SchemeVariant, ...]:
@@ -180,13 +198,18 @@ class SchemeCatalog:
         return tuple(v for v in self.variants if v.group == CORE)
 
     @property
+    def owner_pass_variants(self) -> tuple[SchemeVariant, ...]:
+        """The owner-added regular pass variants (t398u)."""
+        return tuple(v for v in self.variants if v.group == OWNER_PASS)
+
+    @property
     def run_variants(self) -> tuple[SchemeVariant, ...]:
-        """The 12 owner-confirmed designed runs (t349u)."""
+        """The owner-confirmed designed runs (12 from t349u + 2 from t398u)."""
         return tuple(v for v in self.variants if v.group == DESIGNED_RUN)
 
     @property
     def regular_variants(self) -> tuple[SchemeVariant, ...]:
-        """Everything callable outside the opponent 10: the 26 pass variants + the designed runs."""
+        """Everything callable outside the opponent 10: the 26 + owner-added pass variants + the designed runs."""
         return tuple(v for v in self.variants if v.field_zone == "any")
 
     @property
@@ -309,6 +332,10 @@ def load(path: str | Path | None = None) -> SchemeCatalog:
     if runs.is_file():
         rb = runs.read_bytes()
         cat = with_designed_runs(cat, json.loads(rb.decode("utf-8")), digest=hashlib.sha256(rb).hexdigest())
+    adds = p.parent / ADDITIONS_RELPATH.name
+    if adds.is_file():
+        ab = adds.read_bytes()
+        cat = with_owner_additions(cat, json.loads(ab.decode("utf-8")), digest=hashlib.sha256(ab).hexdigest())
     names = p.parent / NAMES_RELPATH.name
     if names.is_file():
         nb = names.read_bytes()
@@ -405,6 +432,104 @@ def with_designed_runs(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: 
                    runs_owner=dict(owner.get("owner_instruction") or {}))
 
 
+def _owner_adjustments(vid: str, rows: Any) -> tuple[Adjustment, ...]:
+    if not isinstance(rows, list):
+        raise CatalogError(f"{vid}: adjustments must be a list")
+    out = []
+    for i, a in enumerate(rows):
+        if not str(a.get("target") or "").strip() or not str(a.get("action") or "").strip():
+            raise CatalogError(f"{vid}: adjustment {i} missing target/action")
+        out.append(Adjustment(str(a["target"]).strip(), str(a["action"]).strip(), bool(a.get("macro_marked")), i,
+                              str(a.get("guide_text") or "")))
+    return tuple(out)
+
+
+def with_owner_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: str) -> SchemeCatalog:
+    """Owner instruction t398u: new pass variants, a red-zone pass and two designed runs (civil.gg screenshots).
+
+    Fails closed (CatalogError) on: a different catalog version; a formation missing from the in-repo Buccaneers
+    stock book; a base play missing from that formation unless the file lists it under ``name_not_in_stock_data``
+    (owner-provided name, flagged); a run that is not a stock play, has adjustments, or is a screen/RPO; a pass
+    with no adjustments; a red-zone play without the red_zone gate; duplicate ids."""
+    if owner.get("catalog_version") != cat.version():
+        raise CatalogError(f"t398u owner file is for {owner.get('catalog_version')}, catalog is {cat.version()}")
+    src = str((owner.get("owner_instruction") or {}).get("source") or "")
+    stock = stock_offense_plays(STOCK_BOOK)
+    allowed_missing = {(str(e.get("formation")), str(e.get("base_play"))) for e in owner.get("name_not_in_stock_data") or ()}
+    extra: list[SchemeVariant] = []
+
+    def _check_names(vid: str, form: str, play: str) -> bool:
+        if not vid or not form or not play:
+            raise CatalogError(f"owner addition {vid!r}: missing variant_id/formation/base_play")
+        if form not in stock:
+            raise CatalogError(f"{vid}: formation '{form}' is not in the {STOCK_BOOK} stock book")
+        if play in stock[form]:
+            return True
+        if (form, play) in allowed_missing:
+            return False
+        raise CatalogError(f"{vid}: '{play}' is not a stock play in {STOCK_BOOK} '{form}' and is not listed as an "
+                           "owner-provided name (name_not_in_stock_data)")
+
+    for m in owner.get("pass_variants") or ():
+        vid, form, play = str(m.get("variant_id") or ""), str(m.get("formation") or ""), str(m.get("base_play") or "")
+        in_stock = _check_names(vid, form, play)
+        if m.get("play_family") != PASS:
+            raise CatalogError(f"{vid}: owner pass variant must have play_family 'pass'")
+        adjs = _owner_adjustments(vid, m.get("adjustments"))
+        if not adjs:
+            raise CatalogError(f"{vid}: an owner pass variant needs its setup steps")
+        cov = tuple(str(t) for t in (m.get("expert_coverage_tags") or ()))
+        extra.append(SchemeVariant(
+            variant_id=vid, variant_name=str(m.get("variant_name") or ""), playbook=cat.playbook, formation=form,
+            base_play=play, role="owner_scheme_addition", scheme_category=str(m.get("scheme_category") or ""),
+            adjustments=adjs, expert_situation_tags=tuple(str(t) for t in (m.get("expert_situation_tags") or ())),
+            expert_coverage_tags=cov, coverage_tags_known=bool(cov), name_verified=True,
+            present_in_book_as_shown=True, verified_in_user_game=False, adjustments_verified_in_user_game=False,
+            unadjusted_allowed=False, verification_notes=str(m.get("note") or ""), raw=m, field_zone="any",
+            package_id="", play_family=PASS, group=OWNER_PASS, owner_source=src, name_in_stock_data=in_stock))
+    for m in owner.get("red_zone_variants") or ():
+        vid, form, play = str(m.get("variant_id") or ""), str(m.get("formation") or ""), str(m.get("base_play") or "")
+        in_stock = _check_names(vid, form, play)
+        zone = str(m.get("field_zone") or "")
+        if zone not in (INSIDE_10, RED_ZONE):
+            raise CatalogError(f"{vid}: red-zone play needs field_zone inside_10 or red_zone")
+        adjs = _owner_adjustments(vid, m.get("adjustments"))
+        extra.append(SchemeVariant(
+            variant_id=vid, variant_name=str(m.get("variant_name") or ""), playbook=cat.playbook, formation=form,
+            base_play=play, role="expert_red_zone_play", scheme_category="Red Zone", adjustments=adjs,
+            expert_situation_tags=tuple(str(t) for t in (m.get("expert_situation_tags") or ())),
+            expert_coverage_tags=(), coverage_tags_known=False, name_verified=True, present_in_book_as_shown=True,
+            verified_in_user_game=False, adjustments_verified_in_user_game=False, unadjusted_allowed=not adjs,
+            verification_notes=str(m.get("note") or ""), raw=m, field_zone=zone, package_id="",
+            play_family=_family(m), group=REDZONE_GROUP, owner_source=src, name_in_stock_data=in_stock))
+    for m in owner.get("designed_runs") or ():
+        vid, form, play = str(m.get("variant_id") or ""), str(m.get("formation") or ""), str(m.get("base_play") or "")
+        if not _check_names(vid, form, play):
+            raise CatalogError(f"{vid}: designed runs must be exact stock plays")
+        if any(w in play.lower().split() for w in FORBIDDEN_RUN_WORDS):
+            raise CatalogError(f"{vid}: screens and RPOs are not designed runs (owner t349u)")
+        if m.get("play_family") != RUN or m.get("adjustments"):
+            raise CatalogError(f"{vid}: designed run must be play_family 'run' with no adjustments")
+        if str(m.get("variant_name") or "") != play:
+            raise CatalogError(f"{vid}: the variation of a stock run is the stock play name itself")
+        extra.append(SchemeVariant(
+            variant_id=vid, variant_name=play, playbook=cat.playbook, formation=form, base_play=play,
+            role="owner_designed_run", scheme_category="Run", adjustments=(), expert_situation_tags=(),
+            expert_coverage_tags=(), coverage_tags_known=False, name_verified=True, present_in_book_as_shown=True,
+            verified_in_user_game=False, adjustments_verified_in_user_game=False, unadjusted_allowed=True,
+            verification_notes=str(m.get("note") or ""), raw=m, field_zone="any", package_id="", play_family=RUN,
+            group=DESIGNED_RUN, owner_source=src))
+    for v in extra:
+        if not v.variant_name:
+            raise CatalogError(f"{v.variant_id}: missing variant_name")
+    ids = [v.variant_id for v in cat.variants] + [v.variant_id for v in extra]
+    if len(set(ids)) != len(ids):
+        raise CatalogError("duplicate variant_id in the t398u owner file")
+    from dataclasses import replace
+    return replace(cat, variants=cat.variants + tuple(extra), additions_digest=digest,
+                   additions_owner=dict(owner.get("owner_instruction") or {}))
+
+
 def with_redzone(cat: SchemeCatalog, raw: Mapping[str, Any], owner: Mapping[str, Any], *, digest: str) -> SchemeCatalog:
     """Owner instruction t335u: the two catalog red-zone packages become inside-10 candidates.
 
@@ -470,7 +595,8 @@ def load_cached(path: str | None = None) -> SchemeCatalog:
 
 
 def contract_errors(cat: SchemeCatalog) -> list[str]:
-    """Every way the loaded catalog differs from the approved 26 / 12 / 4 contract (+ 7 red-zone, + 12 runs)."""
+    """Every way the loaded catalog differs from the approved 26 / 12 / 4 contract (+ 8 red-zone, + 14 runs,
+    + 8 owner-added passes)."""
     errs: list[str] = []
     core = cat.core_variants
     if len(core) != EXPECTED_VARIANTS:
@@ -498,6 +624,15 @@ def contract_errors(cat: SchemeCatalog) -> list[str]:
                 errs.append(f"{v.variant_id}: designed run must be a regular-field stock run")
         if len(runs) != EXPECTED_RUN_VARIANTS or rc2 != EXPECTED_RUN_FORMATIONS:
             errs.append(f"designed runs {rc2} != {EXPECTED_RUN_FORMATIONS}")
+    owner_pass = cat.owner_pass_variants
+    if owner_pass:
+        oc: dict[str, int] = {}
+        for v in owner_pass:
+            oc[v.formation] = oc.get(v.formation, 0) + 1
+            if v.field_zone != "any" or v.is_run or not v.adjustments:
+                errs.append(f"{v.variant_id}: owner pass variant must be a regular-field pass with its setup")
+        if len(owner_pass) != EXPECTED_OWNER_PASS_VARIANTS or oc != EXPECTED_OWNER_PASS_FORMATIONS:
+            errs.append(f"owner pass variants {oc} != {EXPECTED_OWNER_PASS_FORMATIONS}")
     counts: dict[str, int] = {}
     for v in core:
         counts[v.formation] = counts.get(v.formation, 0) + 1

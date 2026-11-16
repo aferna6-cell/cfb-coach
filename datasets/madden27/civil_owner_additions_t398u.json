@@ -1,0 +1,526 @@
+{
+  "schema_version": "civil_owner_additions_mapping.v1",
+  "owner_instruction": {
+    "date": "2026-11-15",
+    "source": "t398u",
+    "by": "Aidan (owner)",
+    "statement": "okay I have some new plays for the model, and then out of the pistol formation I want to use hb zone and hb dive for new runs, and a new redzone mesh play. Update the model so it can call these plays as well",
+    "source_material": "Owner civil.gg Eagles offense scheme screenshots (t398u attachments; images not committed).",
+    "effect": "Adds 8 pass variants (Gun Bunch TE: Mtn Spacing 1-4, Mtn Fork Y-Corner 1-3; Pistol Strong Y Off Close: PA Slide), 1 red-zone pass (Gun Bunch TE Mesh, red_zone: inside the 10 and 10-20) and 2 designed runs (Pistol Strong Y Off Close: HB Zone, HB Dive). Each its own variant_id. The 26-variant catalog bytes and catalog_version stay unchanged, so the trained artifact and the t333u/t337u confirmations still apply."
+  },
+  "catalog_id": "lions_civil_bucs_5wr_v4",
+  "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
+  "stock_source": "cfb_coach/data/madden27/playbooks_full.json -> books.offense.Buccaneers.formations (exact names checked by the loader; owner-provided names that are not in the stock data are allowed only when listed under name_not_in_stock_data)",
+  "coverage_tag_mapping": {
+    "Everything Beater": [
+      "Cover 2",
+      "Cover 3",
+      "Cover 4",
+      "Man Coverage"
+    ],
+    "Zone Beater": [
+      "Cover 2",
+      "Cover 3",
+      "Cover 4"
+    ],
+    "Man/Match Beater": [
+      "Cover 4",
+      "Man Coverage"
+    ],
+    "no label / Gotcha Pass": "none (unknown, not negative)"
+  },
+  "situation_tags_note": "Down-and-distance tags were not transcribed from the screenshots; every new regular pass gets the same broad tags (1st And 10, Short, Medium, Long) so no situation is favored. Coverage tags follow the beater label.",
+  "name_not_in_stock_data": [
+    {
+      "formation": "Gun Bunch TE",
+      "base_play": "Mtn Spacing",
+      "closest_stock": "Spacing"
+    },
+    {
+      "formation": "Gun Bunch TE",
+      "base_play": "Mtn Fork Y-Corner",
+      "closest_stock": null
+    }
+  ],
+  "cooldown_families": {
+    "Mtn Spacing": "new",
+    "Mtn Fork Y-Corner": "new",
+    "PA Slide": "new",
+    "HB Zone": "existing HB Zone family",
+    "HB Dive": "new",
+    "Mesh": "existing Mesh family"
+  },
+  "pass_variants": [
+    {
+      "variant_id": "civil_t398_gun_bunch_te_mtn_spacing_1",
+      "variant_name": "Mtn Spacing 1",
+      "macro_name": "Mtn Spacing 1",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mtn Spacing",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Inside Bunch WR"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "In route",
+          "macro_marked": false,
+          "guide_text": "In Route Outside Bunch WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak TE (macro)",
+        "Drag Inside Bunch WR",
+        "In Route Outside Bunch WR"
+      ],
+      "note": "Owner-provided name. The repo's Buccaneers stock data for 'Gun Bunch TE' has 'Spacing' but no 'Mtn Spacing' (flagged; called by the owner's name)."
+    },
+    {
+      "variant_id": "civil_t398_gun_bunch_te_mtn_spacing_2",
+      "variant_name": "Mtn Spacing 2",
+      "macro_name": "Mtn Spacing 2",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mtn Spacing",
+      "play_family": "pass",
+      "scheme_category": "Zone Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag TE"
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Corner route; custom stem down",
+          "macro_marked": false,
+          "guide_text": "Corner Route Inside Bunch WR & Custom Stem Down"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Middle Bunch WR"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Slot fade",
+          "macro_marked": false,
+          "guide_text": "Slot Fade Outside Bunch WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Drag TE (macro)",
+        "Corner Route Inside Bunch WR & Custom Stem Down",
+        "Streak Middle Bunch WR (macro)",
+        "Slot Fade Outside Bunch WR"
+      ],
+      "note": "Owner-provided name. The repo's Buccaneers stock data for 'Gun Bunch TE' has 'Spacing' but no 'Mtn Spacing' (flagged; called by the owner's name)."
+    },
+    {
+      "variant_id": "civil_t398_gun_bunch_te_mtn_spacing_3",
+      "variant_name": "Mtn Spacing 3",
+      "macro_name": "Mtn Spacing 3",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mtn Spacing",
+      "play_family": "pass",
+      "scheme_category": "Man/Match Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Trail",
+          "macro_marked": true,
+          "guide_text": "Trail TE"
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Corner route; custom stem down",
+          "macro_marked": false,
+          "guide_text": "Corner Route Inside Bunch WR & Custom Stem Down"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Middle Bunch WR"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Outside Bunch WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Trail TE (macro)",
+        "Corner Route Inside Bunch WR & Custom Stem Down",
+        "Streak Middle Bunch WR (macro)",
+        "Drag Outside Bunch WR"
+      ],
+      "note": "Owner-provided name. The repo's Buccaneers stock data for 'Gun Bunch TE' has 'Spacing' but no 'Mtn Spacing' (flagged; called by the owner's name). 'Trail' has no route family in the repo taxonomy: shown verbatim, not modeled on geometry."
+    },
+    {
+      "variant_id": "civil_t398_gun_bunch_te_mtn_spacing_4",
+      "variant_name": "Mtn Spacing 4",
+      "macro_name": "Mtn Spacing 4",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mtn Spacing",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "In route; custom stem up 2x on D-pad",
+          "macro_marked": true,
+          "guide_text": "In Route TE & Custom Stem Up 2x On Dpad"
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Slant",
+          "macro_marked": false,
+          "guide_text": "Slant Inside Bunch WR"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Middle Bunch WR"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "In route",
+          "macro_marked": false,
+          "guide_text": "In Route Outside Bunch WR"
+        }
+      ],
+      "guide_setup_text": [
+        "In Route TE & Custom Stem Up 2x On Dpad (macro)",
+        "Slant Inside Bunch WR",
+        "Streak Middle Bunch WR (macro)",
+        "In Route Outside Bunch WR"
+      ],
+      "note": "Owner-provided name. The repo's Buccaneers stock data for 'Gun Bunch TE' has 'Spacing' but no 'Mtn Spacing' (flagged; called by the owner's name)."
+    },
+    {
+      "variant_id": "civil_t398_gun_bunch_te_mtn_fork_y_corner_1",
+      "variant_name": "Mtn Fork Y-Corner 1",
+      "macro_name": "Mtn Fork Y-Corner 1",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mtn Fork Y-Corner",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "In route",
+          "macro_marked": true,
+          "guide_text": "In Route TE"
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Flat route",
+          "macro_marked": false,
+          "guide_text": "Flat Inside Bunch WR"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag Middle Bunch WR"
+        },
+        {
+          "target": "HB",
+          "action": "Flat route",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "Existing post route",
+          "action": "Custom stem down 1x on D-pad",
+          "macro_marked": false,
+          "guide_text": "Custom Stem Post Down 1x On Dpad"
+        }
+      ],
+      "guide_setup_text": [
+        "In Route TE (macro)",
+        "Flat Inside Bunch WR",
+        "Drag Middle Bunch WR (macro)",
+        "Flat HB (macro)",
+        "Custom Stem Post Down 1x On Dpad"
+      ],
+      "note": "Owner-provided name. The repo's Buccaneers stock data for 'Gun Bunch TE' has no 'Mtn Fork Y-Corner' (flagged; called by the owner's name)."
+    },
+    {
+      "variant_id": "civil_t398_gun_bunch_te_mtn_fork_y_corner_2",
+      "variant_name": "Mtn Fork Y-Corner 2",
+      "macro_name": "Mtn Fork Y-Corner 2",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mtn Fork Y-Corner",
+      "play_family": "pass",
+      "scheme_category": "Zone Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "adjustments": [
+        {
+          "target": "Inside bunch WR",
+          "action": "In route",
+          "macro_marked": false,
+          "guide_text": "In Route Inside Bunch WR"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Middle Bunch WR"
+        },
+        {
+          "target": "HB",
+          "action": "Flat route",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "Existing post route",
+          "action": "Custom stem down 1x on D-pad",
+          "macro_marked": false,
+          "guide_text": "Custom Stem Post Down 1x On Dpad"
+        }
+      ],
+      "guide_setup_text": [
+        "In Route Inside Bunch WR",
+        "Streak Middle Bunch WR (macro)",
+        "Flat HB (macro)",
+        "Custom Stem Post Down 1x On Dpad"
+      ],
+      "note": "Owner-provided name. The repo's Buccaneers stock data for 'Gun Bunch TE' has no 'Mtn Fork Y-Corner' (flagged; called by the owner's name)."
+    },
+    {
+      "variant_id": "civil_t398_gun_bunch_te_mtn_fork_y_corner_3",
+      "variant_name": "Mtn Fork Y-Corner 3",
+      "macro_name": "Mtn Fork Y-Corner 3",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mtn Fork Y-Corner",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Flat route",
+          "macro_marked": false,
+          "guide_text": "Flat Route Inside Bunch WR"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag Middle Bunch WR"
+        },
+        {
+          "target": "HB",
+          "action": "In route",
+          "macro_marked": true,
+          "guide_text": "In Route HB"
+        },
+        {
+          "target": "Existing post route",
+          "action": "Custom stem down 1x on D-pad",
+          "macro_marked": false,
+          "guide_text": "Custom Stem Post Down 1x On Dpad"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak TE (macro)",
+        "Flat Route Inside Bunch WR",
+        "Drag Middle Bunch WR (macro)",
+        "In Route HB (macro)",
+        "Custom Stem Post Down 1x On Dpad"
+      ],
+      "note": "Owner-provided name. The repo's Buccaneers stock data for 'Gun Bunch TE' has no 'Mtn Fork Y-Corner' (flagged; called by the owner's name). No beater label given: no coverage tags (unknown, not negative)."
+    },
+    {
+      "variant_id": "civil_t398_pistol_strong_y_off_close_pa_slide",
+      "variant_name": "PA Slide",
+      "macro_name": "PA Slide",
+      "formation": "Pistol Strong Y Off Close",
+      "base_play": "PA Slide",
+      "play_family": "pass",
+      "scheme_category": "Gotcha Pass",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Iso WR",
+          "action": "Streak",
+          "macro_marked": false,
+          "guide_text": "Streak Iso WR"
+        },
+        {
+          "target": "TE",
+          "action": "Slant",
+          "macro_marked": false,
+          "guide_text": "Slant TE"
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Slant",
+          "macro_marked": false,
+          "guide_text": "Slant WR Next To TE"
+        },
+        {
+          "target": "QB",
+          "action": "At the snap, immediately cancel the play action (RT/R1)",
+          "macro_marked": false,
+          "guide_text": "When You Snap IMMEDIATELY Hit RT/R1 To Cancel Playaction"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak Iso WR",
+        "Slant TE",
+        "Slant WR Next To TE",
+        "When You Snap IMMEDIATELY Hit RT/R1 To Cancel Playaction"
+      ],
+      "note": "Exact stock name 'PA Slide' in Buccaneers 'Pistol Strong Y Off Close'. Gotcha pass: no coverage tags (unknown, not negative). Step 4 is a snap timing instruction, shown verbatim, not modeled on geometry."
+    }
+  ],
+  "red_zone_variants": [
+    {
+      "variant_id": "civil_rz_gun_bunch_te_mesh",
+      "variant_name": "Gun Bunch TE Mesh (Redzone Pass)",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mesh",
+      "field_zone": "red_zone",
+      "play_family": "pass",
+      "guide_setup_text": [
+        "Crosser Outside Bunch WR"
+      ],
+      "adjustments": [
+        {
+          "target": "Outside bunch WR",
+          "action": "Crosser",
+          "macro_marked": false,
+          "guide_text": "Crosser Outside Bunch WR"
+        }
+      ],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "Owner t398u red-zone pass. Exact stock name 'Mesh' in Buccaneers 'Gun Bunch TE'. Red-zone rules: inside the 10 (red-zone plays only) and 10-20 (mixed with the regular plays); never outside the 20. Mesh family for the Titans cooldown."
+    }
+  ],
+  "designed_runs": [
+    {
+      "variant_id": "civil_run_pistol_strong_y_off_close_hb_zone",
+      "variant_name": "HB Zone",
+      "formation": "Pistol Strong Y Off Close",
+      "base_play": "HB Zone",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'HB Zone' in 'Pistol Strong Y Off Close' (exact stock name). Call it as the stock play; no adjustments."
+    },
+    {
+      "variant_id": "civil_run_pistol_strong_y_off_close_hb_dive",
+      "variant_name": "HB Dive",
+      "formation": "Pistol Strong Y Off Close",
+      "base_play": "HB Dive",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "Designed run in your Buccaneers book: 'HB Dive' in 'Pistol Strong Y Off Close' (exact stock name). Call it as the stock play; no adjustments."
+    }
+  ]
+}

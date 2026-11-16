@@ -81,8 +81,9 @@ def test_family_keys_group_variants_not_distinct_plays():
     assert key("Texas Y-Stutter Wheel") == key("Texas Y Stutter Wheel 2") == "texas y stutter wheel"
     # Every catalog variant lands in exactly one of the 27 families.
     families = pcd.catalog_families(CAT)
-    assert len(families) == 27
-    assert sum(len([v for v in CAT.variants if pcd.family_of_variant(v) == k]) for k in families) == 45
+    # 27 + the t398u families Mtn Spacing, Mtn Fork Y-Corner, PA Slide, HB Dive (HB Zone and Mesh already existed)
+    assert len(families) == 31
+    assert sum(len([v for v in CAT.variants if pcd.family_of_variant(v) == k]) for k in families) == 56
 
 
 def test_apply_cooldown_blocks_family_and_falls_back_to_lru():

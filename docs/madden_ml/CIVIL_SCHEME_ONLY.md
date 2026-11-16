@@ -139,6 +139,35 @@ Tests: `python3 -m pytest -q tests/madden_ml/test_online_league.py tests/madden_
 
 The Ravens defense commits from draft PRs #154 (`c5033df`, dataset and docs) and #155 (`ead5ad4`, coordinator) were cherry-picked onto this branch in order. They are defense-only and touch no offense, catalog, run, or online-logging file. Only `cfb_coach/cli.py`, `cfb_coach/madden/cli.py`, and `cfb_coach/madden/playcaller.py` were touched by both sides, and they applied without conflicts. #155's offense-pin test was re-pinned to this branch's offense files (designed runs plus online logging), not #155's older offense.
 
+## New plays (owner instruction 2026-11-15, t398u)
+
+Owner file: `datasets/madden27/civil_owner_additions_t398u.json` (civil.gg Eagles offense scheme screenshots; images
+are not committed). Loaded like the t335u/t349u/t358u files, so the 26-variant catalog bytes, `catalog_version`
+`lions_civil_bucs_5wr_v4@15c120decc4b`, the trained artifact and the t333u/t337u confirmations are unchanged.
+Callable variants: 45 -> 56.
+
+| Variant | Formation | Kind | Label | Titans cooldown family |
+|---|---|---|---|---|
+| Mtn Spacing 1-4 | Gun Bunch TE | pass (`owner_pass`) | Everything / Zone / Man-Match / Everything | Mtn Spacing (new) |
+| Mtn Fork Y-Corner 1-3 | Gun Bunch TE | pass (`owner_pass`) | Everything / Zone / none | Mtn Fork Y-Corner (new) |
+| PA Slide | Pistol Strong Y Off Close | pass (`owner_pass`) | Gotcha Pass | PA Slide (new) |
+| Gun Bunch TE Mesh (Redzone Pass) | Gun Bunch TE | red-zone pass (`red_zone`: inside the 10 and 10-20) | — | Mesh (existing) |
+| HB Zone | Pistol Strong Y Off Close | designed run | — | HB Zone (existing) |
+| HB Dive | Pistol Strong Y Off Close | designed run | — | HB Dive (new) |
+
+- Setup steps are stored verbatim (`guide_text`, macro flag) and shown on the card; the macro name is the variant name.
+- Coverage tags follow the beater label (Everything = Cover 2/3/4 + Man; Zone = Cover 2/3/4; Man/Match = Cover 4 +
+  Man). No label / Gotcha Pass = no tags (unknown, not negative). Down-and-distance tags are the same broad set for
+  every new regular pass.
+- Name check against the repo's Buccaneers stock data: PA Slide, HB Zone, HB Dive (Pistol Strong Y Off Close) and Mesh
+  (Gun Bunch TE) are exact. "Mtn Spacing" and "Mtn Fork Y-Corner" are not in the stock data for Gun Bunch TE (closest:
+  "Spacing"); they are allowed only because the owner file lists them under `name_not_in_stock_data`, and the card
+  flags them.
+- "Trail TE" (Mtn Spacing 3) has no route family in the repo taxonomy and PA Slide's step 4 is a snap-timing
+  instruction; both are shown verbatim and counted as unrepresented on the geometry (extra uncertainty), never dropped.
+- The t370u novelty lift now counts siblings within the same field zone, so the red-zone Gun Bunch TE Mesh is not
+  lifted by the regular Mesh variants that are never legal next to it inside the 10. Existing variants are unaffected.
+
 ## Field bands, play mixing and variant independence (owner instruction 2026-11-10, t338u)
 
 Aidan, after game 2: "when we are in goal to go sitations for example inside the 10 I want the model to only call the redzone plays from our book and the other redzone plays I sent from the previous book. These plays are to be called in the redzone only so inside the 10 and 10-20 you can call these and a mix of some other stuff. Also there has to be more variability in the plays … The variants should count as seperate play calls too … and I also still did not see variants next to the play call name in the html browser".

@@ -103,9 +103,11 @@ def cmd_checklist(args) -> int:
     led = lg.load_verified(db)
     print("PREGAME CHECKLIST — civil_scheme_only (no controller buttons are given; set each adjustment by hand)")
     print("Field bands (owner instruction 2026-11-10, t338u):")
-    print("  inside the opponent 10: ONLY the 7 red-zone plays (5 package plays + 2 I Form Close Flex plays)")
-    print("  10-20: the 2 I Form Close Flex red-zone plays + the 26 pass variants + the 12 designed runs (t349u)")
-    print("  outside the 20: the 26 pass variants + the 12 designed runs. Every call is model-scored and mixed, never")
+    print("  inside the opponent 10: ONLY the 8 red-zone plays (5 package plays + 2 I Form Close Flex plays + Gun Bunch TE"
+          " Mesh, t398u)")
+    print("  10-20: the 3 red_zone-tagged plays (I Form Close Flex Stretch/Mesh, Gun Bunch TE Mesh) + the 26 pass variants"
+          " + the 8 owner-added passes (t398u) + the 14 designed runs (t349u, t398u)")
+    print("  outside the 20: the 34 pass variants + the 14 designed runs. Every call is model-scored and mixed, never")
     print("  forced; outside the 10 a situation-gated run-pass draw (learned utility gap + down/distance prior) picks")
     print("  run or pass first, then the near-best draw inside that family.")
     by_form: dict[str, list] = {}
@@ -118,8 +120,13 @@ def cmd_checklist(args) -> int:
             where = {sc.INSIDE_10: " — INSIDE THE OPPONENT 10 ONLY (t335u/t338u)",
                      sc.RED_ZONE: " — INSIDE THE OPPONENT 20 ONLY: inside the 10 and 10-20 (t338u)"}.get(
                 v.field_zone, " — outside the opponent 10 (t338u)")
-            src = ("designed run: owner-confirmed 2026-11-11 t349u; stock play, no adjustments"
-                   if v.group == sc.DESIGNED_RUN else "installed: owner-confirmed 2026-11-10 t337u; adjustments: t333u")
+            if v.group == sc.DESIGNED_RUN:
+                src = f"designed run: owner-confirmed {v.owner_source or 't349u'}; stock play, no adjustments"
+            elif v.owner_source:
+                src = f"owner-added {v.owner_source}" + ("" if v.name_in_stock_data else
+                                                          "; name not in the repo stock data (owner-provided)")
+            else:
+                src = "installed: owner-confirmed 2026-11-10 t337u; adjustments: t333u"
             status = (f"LIVE-LEGAL ({src}){where}" if vd.legal else
                       "BLOCKED: " + "; ".join(vd.reasons) + where)
             print(f"[ ] {v.variant_name}  [{v.variant_id}]  — {status}")

@@ -30,8 +30,11 @@ RZ = {v.variant_id for v in CAT.redzone_variants}
 RZ10 = {v.variant_id for v in CAT.redzone_variants if v.field_zone == sc.INSIDE_10}    # inside the 10 only
 RZ20 = {v.variant_id for v in CAT.redzone_variants if v.field_zone == sc.RED_ZONE}     # inside the 10 AND 10-20
 CLOSE_FLEX = {"civil_rz_i_form_close_flex_stretch", "civil_rz_i_form_close_flex_mesh"}
-RUNS = {v.variant_id for v in CAT.run_variants}                                       # owner t349u designed runs
-REG = CORE | RUNS                                                                      # regular: outside the 10
+RUNS = {v.variant_id for v in CAT.run_variants}                                       # owner t349u + t398u designed runs
+OWNER_PASS = {v.variant_id for v in CAT.owner_pass_variants}                          # owner t398u pass variants
+REG = CORE | OWNER_PASS | RUNS                                                         # regular: outside the 10
+# t398u setup steps that are real in-game steps but not route geometry (shown verbatim, not modeled)
+T398_UNMODELED = {("civil_t398_gun_bunch_te_mtn_spacing_3", 0), ("civil_t398_pistol_strong_y_off_close_pa_slide", 3)}
 
 
 def _db(tmp_path, *, formations=FORMS_ALL):
@@ -76,9 +79,9 @@ def _sit(down=1, distance=10, yardline=35, session="g1", look=None):
 
 # 1 -------------------------------------------------------------- catalog contract
 def test_01_catalog_has_exactly_26_variants_and_blocked_entries_are_never_candidates():
-    assert len(CAT.core_variants) == 26 and len(CAT.redzone_variants) == 7 and len(set(CAT.ids)) == 45
-    assert len(RUNS) == 12 and not (RUNS & CORE) and not (RUNS & RZ)
-    assert RZ20 == CLOSE_FLEX and len(RZ10) == 5
+    assert len(CAT.core_variants) == 26 and len(CAT.redzone_variants) == 8 and len(set(CAT.ids)) == 56
+    assert len(RUNS) == 14 and not (RUNS & CORE) and not (RUNS & RZ) and len(OWNER_PASS) == 8
+    assert RZ20 == CLOSE_FLEX | {"civil_rz_gun_bunch_te_mesh"} and len(RZ10) == 5
     assert sc.contract_errors(CAT) == []
     blocked = CAT.blocked_ids
     # t335u: the red-zone packages are now mapped to callable plays; the unnamed 5WR setup stays blocked
@@ -94,7 +97,11 @@ def test_02_stock_book_membership_exact_names_no_alias():
     for f in FORMS:
         assert lg.stock_has(f, "x")[0], f
     ok = {v.variant_id for v in CAT.variants if all(lg.stock_has(v.formation, v.base_play))}
-    assert len(ok) == 43 and not (ok & Z_SPOT) and RZ <= ok and RUNS <= ok
+    # 43 before t398u + PA Slide, Gun Bunch TE Mesh (red zone), HB Zone, HB Dive; the 7 Mtn Spacing / Mtn Fork
+    # Y-Corner variants are owner-provided names the repo's stock data does not have
+    assert len(ok) == 47 and not (ok & Z_SPOT) and RZ <= ok and RUNS <= ok
+    missing = {v.variant_id for v in CAT.owner_pass_variants if not v.name_in_stock_data}
+    assert missing == OWNER_PASS - ok and len(missing) == 7
 
 
 # 3 -------------------------------------------------------------- live legality
@@ -432,7 +439,7 @@ def test_15_only_the_listed_catalog_variants_can_be_output(tmp_path, civil_env, 
     from cfb_coach.madden import playcaller
     db = _db(tmp_path)
     allowed = set(CAT.ids)
-    assert len(allowed) == 45 and allowed == CORE | RZ | RUNS
+    assert len(allowed) == 56 and allowed == CORE | OWNER_PASS | RZ | RUNS
     rng = random.Random(3)
     seen = set()
     labels = ["cover_3_sky", "cover_1_unspecified", "cover_2_man", "cover_4_quarters", "tampa_2", "cover_6"]
@@ -489,7 +496,7 @@ def test_16_every_variant_lists_all_adjustments_and_stems_are_applied(tmp_path):
         assert call.scheme_variant["adjustments"] == [[a.target, a.action] for a in v.adjustments]
         assert all(f"{a.target}: {a.action}" in call.adjustment["buttons"] for a in v.adjustments)
         specs = adjm.parse_variant(v)
-        assert all(sp.representable for sp in specs)
+        assert all(sp.representable for sp in specs if (v.variant_id, sp.index) not in T398_UNMODELED), v.variant_id
         d = dz.adjusted_design(v, geo)
         stem_idx = [sp.index for sp in specs if sp.stem_shift]
         assert sorted(i for i, _sh, _m in d.stems) == sorted(stem_idx), v.variant_id   # no stem dropped
@@ -497,11 +504,11 @@ def test_16_every_variant_lists_all_adjustments_and_stems_are_applied(tmp_path):
             if sp.stem_shift:
                 n_stems += 1
                 tag = "STEM UP" if sp.stem_shift > 0 else "STEM DOWN"
-                assert f"{sp.index + 1}) {sp.target}: {sp.action} [{tag}" in text
+                assert f"{sp.index + 1}) {v.adjustments[sp.index].line()} [{tag}" in text
                 without = dz.adjusted_design(v, geo, applied=[i for i in range(len(v.adjustments)) if i != sp.index])
                 assert dz.route_features(without) != dz.route_features(d), (v.variant_id, sp.index)
         assert "verify in game" not in text and "hot-route vocabulary" not in text
-    assert n_stems == 11
+    assert n_stems == 17          # 11 + one stem in each of Mtn Spacing 2/3/4 and Mtn Fork Y-Corner 1/2/3 (t398u)
 
 
 def test_17_civil_call_is_labeled_civil_not_heuristic(tmp_path, civil_env):
@@ -738,8 +745,8 @@ def test_22_designed_runs_are_exactly_the_owner_list_of_stock_plays():
         assert v.variant_name == v.base_play and not v.adjustments and v.unadjusted_allowed   # variation = stock play
         assert v.is_run and v.field_zone == "any" and v.group == sc.DESIGNED_RUN
         assert "screen" not in v.base_play.lower() and "rpo" not in v.base_play.lower()
-    assert got == OWNER_RUNS
-    assert len({v.pair for v in CAT.run_variants}) == 12                        # each formation+play its own id
+    assert got == {**OWNER_RUNS, "Pistol Strong Y Off Close": ["HB Zone", "HB Dive"]}     # + t398u
+    assert len({v.pair for v in CAT.run_variants}) == 14                        # each formation+play its own id
     assert {v.play_family for v in CAT.core_variants} == {sc.PASS}             # the 26 stay passes
     # the goal-to-go RPO Alert QB Draw stays a red-zone (inside the 10) play; no other RPO or screen anywhere
     rpo = [v for v in CAT.variants if "rpo" in v.base_play.lower()]
