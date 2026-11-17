@@ -40,19 +40,30 @@ def check(cat: rc.RavensCatalog, cand: rc.Candidate, *, installed: Mapping[str, 
     reasons: list[str] = []
     notes: list[str] = []
     known = cat.by_id().get(cand.candidate_id)
-    if known is None or known != cand or cand.call_id not in rc.APPROVED_CALL_IDS:
+    approved = getattr(cat, "approved_call_ids", rc.APPROVED_CALL_IDS)
+    if known is None or known != cand or cand.call_id not in approved:
         return Verdict(cand.candidate_id, False, ("NOT_AN_APPROVED_CANDIDATE",))
-    if cand.formation not in rc.FORMATIONS:
+    allowed = getattr(cat, "allowed_formations", rc.FORMATIONS)
+    if cand.formation not in allowed:
         reasons.append("FORMATION_NOT_ALLOWED")
     if cand.formation == rc.DIME and not (cand.is_blitz and cand.call_id == "dime_dbfire2"):
         reasons.append("DIME_ONLY_FOR_DB_FIRE_2_BLITZ")
-    expected = rc.REQUIRED_MACRO_BY_PACKAGE.get(cand.package)
-    if cand.required_macro != expected:
-        reasons.append("REQUIRED_MACRO_MISSING_OR_WRONG")
+    if cand.package == "nickel_single_mug":
+        macros = (cat.raw.get("macro_catalog") or {})
+        if cand.required_macro and cand.required_macro not in macros:
+            reasons.append("REQUIRED_MACRO_MISSING_OR_WRONG")
+    else:
+        expected = rc.REQUIRED_MACRO_BY_PACKAGE.get(cand.package)
+        if cand.required_macro != expected:
+            reasons.append("REQUIRED_MACRO_MISSING_OR_WRONG")
     if cand.optional_macro and cand.optional_macro not in (cand.raw.get("optional_macros") or []):
         reasons.append("OPTIONAL_MACRO_NOT_ALLOWED_ON_CALL")
-    if cand.base_play not in rc.ravens_stock_book().get(cand.formation, ()):
-        reasons.append("NOT_IN_RAVENS_STOCK_INVENTORY")
+    stock = cat.stock_book() if hasattr(cat, "stock_book") else rc.ravens_stock_book()
+    if cand.base_play not in stock.get(cand.formation, ()):
+        if getattr(cat, "stock_team", rc.RAVENS) == rc.STEELERS or cand.formation == rc.NSM:
+            reasons.append("NOT_IN_STEELERS_STOCK_INVENTORY")
+        else:
+            reasons.append("NOT_IN_RAVENS_STOCK_INVENTORY")
     if scheme_book and not assume_setup:
         book = rc.scheme_book(cat)
         if cand.base_play not in book.get(cand.formation, ()):

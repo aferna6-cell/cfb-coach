@@ -54,7 +54,11 @@ def axes(cand: rc.Candidate) -> dict[str, float]:
 def structural_lift(candidate_id: str, concept: str) -> tuple[float, tuple[str, ...]]:
     """Offense logit lift ALLOWED by this candidate vs this concept class, from the sourced prior table."""
     from cfb_coach.madden.model import football_priors as fp
-    cand = rc.load().by_id()[candidate_id]
+    cand = rc.load().by_id().get(candidate_id)
+    if cand is None:
+        cand = rc.load_lions_franchise().by_id().get(candidate_id)
+    if cand is None:
+        return 0.0, ()
     desc = {k: cand.structure[k] for k in ("shell", "type", "variants", "press")}
     lift, ids = 0.0, []
     for fc, w in FP_CONCEPTS[concept].items():

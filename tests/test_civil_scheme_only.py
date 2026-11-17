@@ -42,6 +42,7 @@ REG_LIONS = {v.variant_id for v in CAT_LIONS.variants if v.field_zone == "any"}
 RZ_LIONS = {v.variant_id for v in CAT_LIONS.redzone_variants}
 RZ20_LIONS = {v.variant_id for v in CAT_LIONS.redzone_variants if v.field_zone == sc.RED_ZONE}
 RZ10_LIONS = {v.variant_id for v in CAT_LIONS.redzone_variants if v.field_zone == sc.INSIDE_10}
+LIONS_RUNS = {v.variant_id for v in CAT_LIONS.variants if v.is_run}  # designed + red-zone runs still on Lions/CPU
 # t398u setup steps that are real in-game steps but not route geometry (shown verbatim, not modeled)
 T398_UNMODELED = {("civil_t398_pistol_strong_y_off_close_pa_slide", 3)}
 
@@ -816,7 +817,8 @@ def _first_and_ten_run_share(db, session, n=60):
 def test_24_first_and_ten_between_the_20s_calls_a_real_share_of_designed_runs(tmp_path, civil_env):
     db = _db(tmp_path)
     picks = _first_and_ten_run_share(db, "mix")
-    runs = [p for p in picks if p in RUNS]
+    lions_designed = {v.variant_id for v in CAT_LIONS.run_variants}
+    runs = [p for p in picks if p in lions_designed]
     share = len(runs) / len(picks)
     assert 0.25 <= share <= 0.75, (share, picks)            # not pass-pass-pass, not run-run-run
     assert len(set(runs)) >= 6, runs                        # mixed among the runs themselves
@@ -827,7 +829,7 @@ def test_24_first_and_ten_between_the_20s_calls_a_real_share_of_designed_runs(tm
     for i in range(40):
         y = 25 + i
         vid = playcaller.make_call(_sit(3, 12, y, session="long"), "cpu", db).scheme_variant["variant_id"]
-        long_runs += vid in RUNS
+        long_runs += vid in lions_designed
         _close_snap(db, "long", vid, y)
     assert long_runs / 40 < share - 0.15, (long_runs, share)
     # the mix record says why

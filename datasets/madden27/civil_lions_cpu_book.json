@@ -3,13 +3,21 @@
   "book_id": "lions_cpu",
   "owner_instruction": {
     "date": "2026-11-17",
-    "source": "t448u",
+    "source": "t449u",
     "by": "Aidan (owner)",
-    "statement": "this is the rest of the book there may be some duplicates, but after you finish this give me the amount of plays the model has etc, there may also be mutliple variations of the same play so you have to keep track of all that etc",
-    "source_material": "Owner 74 MB 'Madden Custrom Playbook' PDF (Civil.gg scheme screenshots; file not committed).",
-    "effect": "Lions franchise and CPU games keep the t445u book (shared 49 + Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3) and then add the remaining owner-supplied offensive plays from the PDF after dedupe. New variations of an already-catalogued play are numbered with the next free variation and keep the PDF's original label in the note. Chiefs online and Titans franchise stay on the shared 49-play book and never call these additions. Defense pages, lesson lists without a formation, and unreadable or ambiguous cards were not added."
+    "statement": "its a different play, what redzone plays are missing formations, I dont wan the commanders best inside the 5 tab. I also think we are at a point where we can only use runs that are in the civil playbooks not runs we had been using previously so figure out if each run in the book is a civil run or a run from our old offense before we started using the civil book. For the lions franchise lets add Nickel Single mug as a defensive package or if we can find a playbook that has nickel single mug and our current defenseive formations that would be best",
+    "source_material": "Owner follow-up on the t448u Civil.gg PDF (p05_bot Mesh TE, p06_top red-zone runs without formations) plus the instruction to use only Civil.gg runs on the Lions/CPU book.",
+    "effect": "Adds the p05_bot Gun Bunch TE Mesh setup 'Crosser Outside Bunch TE' as its own Lions/CPU red-zone pass variant (the existing WR Mesh stays). Drops the Commanders Best Inside the 5 / Gun Heavy Redzone tab from the flagged list (not added). Does not add the p06_top red-zone run list (HB Off Tackle, HB Draw, QB Blast, HB Dive) because none of those four names has a formation. Removes 10 pre-civil t349u designed runs from the Lions/CPU book only; the shared Chiefs/Titans book stays byte-identical and still has them. Two t349u Clamp Stack runs that also appear in the PDF (p28 Inside Zone and Same Side Zone) stay. t398u Pistol HB Zone/HB Dive are kept and flagged as ambiguous. t335u/t338u Civil.GG sheet red-zone runs, including the goal-to-go RPO Alert QB Draw, stay. Nickel Single Mug defense is a Lions-franchise-only package in the Steelers stock-book context."
   },
   "prior_instructions": [
+    {
+      "date": "2026-11-17",
+      "source": "t448u",
+      "by": "Aidan (owner)",
+      "statement": "this is the rest of the book there may be some duplicates, but after you finish this give me the amount of plays the model has etc, there may also be mutliple variations of the same play so you have to keep track of all that etc",
+      "source_material": "Owner 74 MB 'Madden Custrom Playbook' PDF (Civil.gg scheme screenshots; file not committed).",
+      "effect": "Lions franchise and CPU games keep the t445u book (shared 49 + Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3) and then add the remaining owner-supplied offensive plays from the PDF after dedupe. New variations of an already-catalogued play are numbered with the next free variation and keep the PDF's original label in the note. Chiefs online and Titans franchise stay on the shared 49-play book and never call these additions. Defense pages, lesson lists without a formation, and unreadable or ambiguous cards were not added."
+    },
     {
       "date": "2026-11-17",
       "source": "t445u",
@@ -3320,6 +3328,30 @@
         "Redzone 10-20"
       ],
       "note": "t448u p25_top raiders-offense red-zone running list. 'HB Draw' is not in the Buccaneers Gun Bunch TE, but is an exact stock play in Benkert's Dimes / Bills / Falcons / Raiders / Rams / Run Heavy / Shotgun Classic / Vikings Gun Bunch TE."
+    },
+    {
+      "variant_id": "civil_t449_rz_gun_bunch_te_mesh_crosser_outside_bunch_te",
+      "variant_name": "Gun Bunch TE Mesh (Redzone Pass, Crosser Outside Bunch TE)",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mesh",
+      "field_zone": "red_zone",
+      "play_family": "pass",
+      "guide_setup_text": [
+        "Crosser Outside Bunch TE"
+      ],
+      "adjustments": [
+        {
+          "target": "Outside bunch TE",
+          "action": "Crosser",
+          "macro_marked": false,
+          "guide_text": "Crosser Outside Bunch TE"
+        }
+      ],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "t449u p05_bot benkert-dimes, Redzone tab 'Mesh - Redzone / Redzone Pass Play'. Owner confirmed this is a different play from the existing Gun Bunch TE Mesh with setup 'Crosser Outside Bunch WR' (civil_rz_gun_bunch_te_mesh). Added as its own red-zone variant with this exact setup. field_zone red_zone: callable inside the 10 and 10-20, never outside the 20."
     }
   ],
   "designed_runs": [
@@ -3368,5 +3400,18 @@
       "adjustments": [],
       "note": "t448u p31_top gun-doubles-clamp-stack-offense. The existing catalog entry is the inside_10 red-zone HB Zone only; this adds the same stock play as a regular (field_zone any) designed run. Setup is a usage note only: 'Look to \"Flip\" this run using the Right Stick.' Flagged. Shares the HB Zone cooldown family."
     }
-  ]
+  ],
+  "exclude_inherited_variant_ids": [
+    "civil_run_gun_doubles_clamp_stack_counter_y",
+    "civil_run_gun_doubles_clamp_stack_hb_mid_zone",
+    "civil_run_gun_bunch_te_inside_zone",
+    "civil_run_gun_bunch_te_read_option",
+    "civil_run_gun_bunch_te_hb_off_tackle",
+    "civil_run_gun_bunch_te_boomerang_hb_off_tackle",
+    "civil_run_gun_bunch_te_same_side_zone",
+    "civil_run_gun_tight_doubles_inside_zone",
+    "civil_run_gun_tight_doubles_hb_draw",
+    "civil_run_gun_5wr_tight_qb_draw"
+  ],
+  "exclude_inherited_reason": "Owner t449u: Lions/CPU may only use runs that appear in the Civil.gg playbooks (the t448u PDF schemes and earlier civil.gg screenshots/sheets), not runs carried over from the pre-civil Bucs/heuristic designed-run set. These 10 t349u runs were added in commit e5df3d1 as 'already in the Buccaneers book in the four scheme formations' and do not appear as formed Civil.gg play cards. Gun Doubles Clamp Stack Inside Zone and Same Side Zone also appear in the PDF (p28) and are kept. The shared Chiefs/Titans book is not changed and still includes all 12 t349u runs."
 }

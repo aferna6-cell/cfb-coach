@@ -17,14 +17,22 @@ from typing import Any, Mapping, Sequence
 REPO = Path(__file__).resolve().parents[3]
 DATASET = REPO / "datasets/madden27/lions_ravens_two_formation_defense_v1.json"
 STOCK_BOOKS = REPO / "cfb_coach/data/madden27/playbooks_full.json"
+LIONS_NSM_DATASET = REPO / "datasets/madden27/lions_franchise_nickel_single_mug_v1.json"
 CATALOG_ID = "lions_ravens_match_and_nickel_stock_v1"
+LIONS_FRANCHISE_CATALOG_ID = "lions_franchise_ravens_plus_nickel_single_mug_v1"
 
 NICKEL = "Nickel 2-4 Wide"
 DIME = "Dime 2-3 Odd"
+NSM = "Nickel Single Mug"
 FORMATIONS = (NICKEL, DIME)
-PACKAGES = {"match_coverage": NICKEL, "nickel_stock": NICKEL, "spot_drop_fallback": NICKEL, "dime_blitz": DIME}
+LIONS_FRANCHISE_FORMATIONS = (NICKEL, DIME, NSM)
+PACKAGES = {"match_coverage": NICKEL, "nickel_stock": NICKEL, "spot_drop_fallback": NICKEL, "dime_blitz": DIME,
+            "nickel_single_mug": NSM}
 REQUIRED_MACRO_BY_PACKAGE = {"nickel_stock": "24_BASE", "dime_blitz": "DB_FIRE",
-                             "match_coverage": None, "spot_drop_fallback": None}
+                             "match_coverage": None, "spot_drop_fallback": None,
+                             "nickel_single_mug": None}
+STEELERS = "Steelers"
+RAVENS = "Ravens"
 ZONE_IT = "ZONE_IT"
 APPROVED_CALL_IDS = (
     "match_quarters", "match_palms", "match_cover9_show2", "match_cover3", "match_cover2", "match_cover6",
@@ -41,7 +49,16 @@ _DK_KEY = {
     "nickel_cloud": "dk:cover_3_cloud", "nickel_cover2": "dk:cover_2_match",
     "nickel_tampa2": "dk:tampa_2", "nickel_cover9": "dk:cover_9_show_2",
     "stock_cover4_zone": "dk:cover_4_zone", "dime_dbfire2": "dk:db_fire_2",
+    "nsm_quarters_left_tex": "dk:cover_4_quarters", "nsm_quarters_texas_4": "dk:cover_4_quarters",
+    "nsm_quarters_manup_short": "dk:cover_4_quarters", "nsm_quarters_manup_long": "dk:cover_4_quarters",
+    "nsm_quarters_4man_rush": "dk:cover_4_quarters", "nsm_quarters_run_support": "dk:cover_4_quarters",
+    "nsm_tampa2_shade": "dk:tampa_2",
 }
+NSM_CALL_IDS = (
+    "nsm_quarters_left_tex", "nsm_quarters_texas_4", "nsm_quarters_manup_short",
+    "nsm_quarters_manup_long", "nsm_quarters_4man_rush", "nsm_quarters_run_support",
+    "nsm_tampa2_shade",
+)
 
 
 @dataclass(frozen=True)
@@ -76,6 +93,9 @@ class RavensCatalog:
     raw: Mapping[str, Any]
     sha256: str
     candidates: tuple[Candidate, ...]
+    approved_call_ids: tuple[str, ...] = APPROVED_CALL_IDS
+    allowed_formations: tuple[str, ...] = FORMATIONS
+    stock_team: str = RAVENS
 
     @property
     def calls(self) -> dict[str, Mapping[str, Any]]:
@@ -89,6 +109,16 @@ class RavensCatalog:
 
     def version(self) -> str:
         return f"{self.raw.get('catalog_id')}@{self.sha256[:12]}"
+
+    @property
+    def is_lions_franchise(self) -> bool:
+        return self.stock_team == STEELERS or self.raw.get("catalog_id") == LIONS_FRANCHISE_CATALOG_ID
+
+    def stock_book(self) -> dict[str, list[str]]:
+        """In-repo Huddle.gg inventory for this catalog's stock team and formations."""
+        if self.stock_team == STEELERS:
+            return steelers_stock_book()
+        return ravens_stock_book()
 
 
 def _structure(call_id: str, zone_it: bool) -> dict[str, Any]:
@@ -185,7 +215,7 @@ def ravens_stock_book() -> dict[str, list[str]]:
 
 
 def stock_catalog_check(cat: RavensCatalog) -> dict[str, bool]:
-    stock = ravens_stock_book()
+    stock = cat.stock_book()
     return {c.candidate_id: c.base_play in stock.get(c.formation, ()) for c in cat.candidates}
 
 
@@ -204,7 +234,8 @@ def scheme_book(cat: RavensCatalog | None = None) -> dict[str, list[str]]:
     out: dict[str, set[str]] = {}
     for c in cat.candidates:
         out.setdefault(c.formation, set()).add(c.base_play)
-    return {f: sorted(out[f]) for f in FORMATIONS if f in out}
+    forms = getattr(cat, "allowed_formations", FORMATIONS)
+    return {f: sorted(out[f]) for f in forms if f in out}
 
 
 def installed_fingerprint(two_formation_book: Mapping[str, Sequence[str]]) -> str | None:
@@ -222,7 +253,7 @@ def candidate_for_execution(cat: RavensCatalog, formation: str | None, play: str
     ``macros=None`` means NO macro evidence (not "no macro"): then a play that has a macro'd sibling
     (Cover 2 Match Match/Nickel, Quarters/Palms +/- Zone It) or a required macro is ambiguous.
     """
-    if formation not in FORMATIONS:
+    if formation not in getattr(cat, "allowed_formations", FORMATIONS):
         return None, "not_two_formation"
     hits = [c for c in cat.candidates if c.formation == formation and c.base_play == play]
     if not hits:
@@ -237,3 +268,144 @@ def candidate_for_execution(cat: RavensCatalog, formation: str | None, play: str
     if len(exact) == 1:
         return exact[0], "ok"
     return None, "macro_mismatch"
+
+
+def steelers_stock_book() -> dict[str, list[str]]:
+    """The in-repo third-party Steelers defensive inventory (huddle.gg).
+
+    Steelers is the only Madden 27 stock book that contains Nickel Single Mug
+    together with Nickel 2-4 Wide and Dime 2-3 Odd. All 12 current civil-defense
+    base plays also exist in those two Steelers formations.
+    """
+    data = json.loads(STOCK_BOOKS.read_text(encoding="utf-8"))
+    forms = data["books"]["defense"][STEELERS]["formations"]
+    return {f: list(forms[f]["plays"]) for f in LIONS_FRANCHISE_FORMATIONS if f in forms}
+
+
+def books_with_current_formations_and_nsm() -> list[str]:
+    """Stock defensive playbooks that contain all three exact formation names."""
+    data = json.loads(STOCK_BOOKS.read_text(encoding="utf-8"))
+    hits = []
+    for team, book in data["books"]["defense"].items():
+        forms = set((book.get("formations") or {}))
+        if set(LIONS_FRANCHISE_FORMATIONS) <= forms:
+            hits.append(team)
+    return hits
+
+
+@lru_cache(maxsize=4)
+def _load_lions_franchise(path: str, mtime_ns: int, base_sha: str) -> RavensCatalog:
+    base = load()
+    blob = Path(path).read_bytes()
+    owner = json.loads(blob)
+    if owner.get("formation") != NSM or owner.get("package") != "nickel_single_mug":
+        raise ValueError("Lions Nickel Single Mug file must name formation Nickel Single Mug / package nickel_single_mug")
+    steel = steelers_stock_book()
+    nsm_plays = steel.get(NSM, ())
+    extra_calls = list(owner.get("stock_calls") or [])
+    ids = [c.get("call_id") for c in extra_calls]
+    if tuple(ids) != NSM_CALL_IDS or len(set(ids)) != len(NSM_CALL_IDS):
+        raise ValueError("Nickel Single Mug call IDs are not exactly the 7 PDF stock-play setups")
+    for c in extra_calls:
+        if c.get("formation") != NSM or c.get("package") != "nickel_single_mug":
+            raise ValueError(f"{c.get('call_id')}: must be Nickel Single Mug / nickel_single_mug")
+        if c.get("base_play") not in nsm_plays:
+            raise ValueError(f"{c.get('call_id')}: '{c.get('base_play')}' is not in Steelers Nickel Single Mug")
+        if c.get("required_macro_id") != REQUIRED_MACRO_BY_PACKAGE["nickel_single_mug"] and c.get("required_macro_id") not in (owner.get("macro_catalog") or {}):
+            # allowed: None, or a macro defined in this file
+            if c.get("required_macro_id") is not None:
+                raise ValueError(f"{c.get('call_id')}: unknown required macro {c.get('required_macro_id')}")
+        if not c.get("setup_steps"):
+            raise ValueError(f"{c.get('call_id')}: setup_steps must be the PDF steps verbatim")
+    merged = dict(base.raw)
+    macros = dict(base.raw.get("macro_catalog") or {})
+    macros.update(owner.get("macro_catalog") or {})
+    merged.update({
+        "catalog_id": LIONS_FRANCHISE_CATALOG_ID,
+        "source_defensive_playbook": "Pittsburgh Steelers (context for Nickel 2-4 Wide + Dime 2-3 Odd + Nickel Single Mug); the original 12 calls also exist in the Baltimore Ravens book",
+        "formations": list(base.raw.get("formations") or []) + [
+            {"name": NSM, "role": "lions_franchise_nickel_single_mug_package",
+             "allowed_packages": ["nickel_single_mug"],
+             "label": owner.get("label")},
+        ],
+        "macro_catalog": macros,
+        "stock_calls": list(base.raw.get("stock_calls") or []) + extra_calls,
+        "lions_nsm_owner": owner.get("owner_instruction") or {},
+        "omitted_pdf_pages": owner.get("omitted_pdf_pages") or [],
+        "confirmation_status": owner.get("confirmation_status"),
+    })
+    cands = list(base.candidates)
+    for c in extra_calls:
+        cands.append(Candidate(c["call_id"], c["call_id"], c["formation"], c["base_play"], c["package"],
+                               c.get("required_macro_id"), None, False,
+                               _structure(c["call_id"], False), c))
+    sha = hashlib.sha256(base.sha256.encode() + b"+" + blob).hexdigest()
+    return RavensCatalog(merged, sha, tuple(cands),
+                         approved_call_ids=APPROVED_CALL_IDS + NSM_CALL_IDS,
+                         allowed_formations=LIONS_FRANCHISE_FORMATIONS,
+                         stock_team=STEELERS)
+
+
+def load_lions_franchise(path: str | Path | None = None) -> RavensCatalog:
+    """Current Ravens two-formation civil defense plus the t449u Nickel Single Mug package.
+
+    Used only for Lions human franchise games. CPU, Chiefs, and Titans keep ``load()``.
+    """
+    p = Path(path or LIONS_NSM_DATASET)
+    return _load_lions_franchise(str(p.resolve()), p.stat().st_mtime_ns, load().sha256)
+
+
+def is_lions_human_defense_session(db: Any, session_id: str | None, extras: Mapping[str, Any] | None,
+                                   opponent_id: str | None) -> bool:
+    """True only for a Lions (primary) franchise game against a human opponent.
+
+    Chiefs online, Titans, CPU opponents, and untagged sessions stay on the two-formation
+    Ravens catalog.
+    """
+    from cfb_coach.madden.scheme import play_cooldown as pcd
+    from cfb_coach.opponents import is_cpu_opponent
+    extras = extras or {}
+    if pcd.is_titans_session(db, session_id, extras) or pcd.is_online_session(db, session_id, extras):
+        return False
+    if is_cpu_opponent(opponent_id):
+        return False
+    league = extras.get("league") or extras.get("franchise")
+    dynasty = extras.get("dynasty")
+    user_team = extras.get("user_team") or extras.get("user")
+    sess_opp = None
+    sess_opp_type = extras.get("opponent_type")
+    if db is not None and session_id:
+        try:
+            row = db.conn.execute(
+                "SELECT league, dynasty, user_team, opponent_id, opponent_type "
+                "FROM game_sessions WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+        except Exception:  # noqa: BLE001
+            row = None
+        if row:
+            def _col(name, idx):
+                try:
+                    return row[name]
+                except Exception:  # noqa: BLE001
+                    return row[idx] if len(row) > idx else None
+            league = league or _col("league", 0)
+            dynasty = dynasty or _col("dynasty", 1)
+            user_team = user_team or _col("user_team", 2)
+            sess_opp = _col("opponent_id", 3)
+            sess_opp_type = sess_opp_type or _col("opponent_type", 4)
+    if is_cpu_opponent(sess_opp) or str(sess_opp_type or "").strip().lower() in {"cpu", "cpu_dynasty"}:
+        return False
+    team = " ".join(str(user_team or "").strip().split()).lower()
+    if team in {"detroit lions", "lions", "det"} or team.endswith(" lions"):
+        return True
+    if str(dynasty or "").strip().lower() in {"primary", "franchise_primary"}:
+        return True
+    return False
+
+
+def catalog_for_defense_session(db: Any, session_id: str | None, extras: Mapping[str, Any] | None,
+                                opponent_id: str | None) -> RavensCatalog:
+    if is_lions_human_defense_session(db, session_id, extras, opponent_id):
+        return load_lions_franchise()
+    return load()

@@ -153,8 +153,9 @@ families stay at 29 (those two families are not in the shared book).
 Lions franchise and CPU games use a separate, swappable book slot: `datasets/madden27/civil_lions_cpu_book.json`.
 It starts as a copy of the current shared catalog, adds the seven Eagles plays (Gun Bunch TE Mtn Spacing
 1-4 and Mtn Fork Y-Corner 1-3) with their setup steps and macro flags verbatim (t445u), and then adds the
-rest of the owner's compiled Civil.gg PDF after dedupe (t448u). Callable variants: 124 (88 regular passes,
-19 designed runs, 17 red-zone). Chiefs and Titans never load this file, so they never call the Mtn plays or
+rest of the owner's compiled Civil.gg PDF after dedupe (t448u), the t449u Mesh TE red-zone variant, and a
+Civil-only run filter (10 pre-civil t349u designed runs dropped from this book only). Callable variants: 115
+(88 regular passes, 9 designed runs, 18 red-zone). Chiefs and Titans never load this file, so they never call the Mtn plays or
 any later Lions/CPU addition. Further owner plays dropped into that file change only Lions and CPU; do not
 invent play names, formations, or setups there. Formations that are exact names in another in-repo Madden
 playbook (but not the Buccaneers book) are allowed on this book only. Lions sessions have no play-family

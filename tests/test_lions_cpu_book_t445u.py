@@ -56,12 +56,14 @@ def test_shared_book_stays_at_49_without_mtn_plays():
 
 def test_lions_cpu_book_is_the_shared_book_plus_the_seven_mtn_plays():
     assert CAT_LIONS.book_id == sc.LIONS_CPU_BOOK
-    assert set(CAT.ids) < set(CAT_LIONS.ids)
+    excluded = set(_owner().get("exclude_inherited_variant_ids") or ())
+    assert excluded <= set(CAT.ids) and excluded.isdisjoint(CAT_LIONS.ids)
+    assert set(CAT.ids) - excluded < set(CAT_LIONS.ids)
     assert MTN_IDS == MTN_PASS <= set(CAT_LIONS.ids) - set(CAT.ids)
     assert len(CAT_LIONS.variants) == sc.EXPECTED_LIONS_CPU_VARIANTS and sc.contract_errors(CAT_LIONS) == []
     assert CAT_LIONS.version() == CAT.version() == "lions_civil_bucs_5wr_v4@15c120decc4b"
     fam = pcd.catalog_families(CAT_LIONS)
-    assert len(fam) == 63 and {"mtn spacing", "mtn fork y corner"} <= set(fam)
+    assert len(fam) == 57 and {"mtn spacing", "mtn fork y corner"} <= set(fam)
     owner = _owner()
     assert [v["variant_id"] for v in owner["pass_variants"][:7]] == MTN_SPACING + MTN_FORK
     assert owner["red_zone_variants"] and owner["designed_runs"]
@@ -88,7 +90,8 @@ def test_lions_cpu_slot_does_not_change_the_shared_catalog():
     cat = sc.with_lions_cpu_additions(sc.load(), owner, digest="test-slot")
     assert dropped["variant_id"] not in cat.ids
     assert dropped["variant_id"] not in CAT.ids
-    assert set(CAT.ids) < set(cat.ids)
+    excluded = set(owner.get("exclude_inherited_variant_ids") or ())
+    assert set(CAT.ids) - excluded < set(cat.ids)
     assert len(cat.variants) == len(CAT_LIONS.variants) - 1
     assert sc.load_cached() is CAT or set(sc.load_cached().ids) == set(CAT.ids)
     assert set(sc.load_cached().ids).isdisjoint(MTN_IDS)

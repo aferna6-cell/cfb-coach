@@ -87,7 +87,8 @@ def decide(model: Any, *, legal: Sequence[rc.Candidate], snap: SnapCtx, same_gam
     user = us.resolve(cat, top, snap.shape, conf)
     best_without_zone_it = next((s for s in scored if not cat.by_id()[s["candidate_id"]].optional_macro), None)
     return {
-        "status": "CALL", "candidate": top.as_dict(), "macro_display": top.macro_display(cat),
+        "status": "CALL", "candidate": top.as_dict(), "candidate_raw": dict(top.raw),
+        "macro_display": top.macro_display(cat),
         "user": user, "belief": {c: round(belief[k], 4) for k, c in enumerate(CLASSES)},
         "belief_method": model.belief_method, "context": ctx,
         "earlier_same_game_snaps": len(earlier),
@@ -118,6 +119,12 @@ def card_lines(decision: Mapping[str, Any]) -> list[str]:
              "USER: " + (decision["user"]["user"] if decision["user"]["status"] == "LIVE_VALID" else us.UNVERIFIED)]
     if decision.get("macro_display"):
         lines.append(f"MACRO: {decision['macro_display']}")
+    if c.get("package") == "nickel_single_mug":
+        lines.append("PACKAGE: Nickel Single Mug (Lions franchise only; Steelers stock)")
+        raw = (decision.get("candidate_raw") or {})
+        for i, step in enumerate(raw.get("setup_steps") or [], 1):
+            lines.append(f"SETUP {i}: {step}")
+        lines.append("NOTE: NSM macros and user assignments are not yet owner-confirmed in game (UNVERIFIED)")
     note = pcd.cooldown_explanation(decision.get("play_cooldown"))
     if note:
         lines.append(note)
@@ -236,11 +243,15 @@ def call_ravens(sit: Any, opponent_id: str, db: Any, defense_book: Mapping[str, 
     extras = getattr(sit, "extras", None) or {}
     decision: dict[str, Any]
     try:
-        cat = rc.load()
+        cat = rc.catalog_for_defense_session(db, extras.get("session_id"), extras, opponent_id)
         conf = cf.load(confirmations_path)
         installed = rc.scheme_book(cat) if scheme_book else rc.installed_two_formation_book(defense_book)
         art = artifact or (str(md.artifact_dir(db)) if md.artifact_dir(db) else None)
-        if art and not (scheme_book and not Path(art, "model.json").is_file()):
+        # A Ravens-trained artifact does not score the Lions-only Nickel Single Mug
+        # candidates; use the untrained prior on the Lions franchise catalog (honest label).
+        if cat.is_lions_franchise:
+            art, model = None, prior_only_model(cat)
+        elif art and not (scheme_book and not Path(art, "model.json").is_file()):
             model = rm.load(art)
         elif scheme_book:
             art, model = None, prior_only_model(cat)

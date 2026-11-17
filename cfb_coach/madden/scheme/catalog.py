@@ -35,6 +35,13 @@ Owner instruction 2026-11-17 (t448u, same Lions/CPU file): the rest of the owner
 deduped against the 56-variant Lions/CPU book and added only there. Formations and play names that are not in
 the Buccaneers stock book but are exact names in another in-repo Madden playbook are allowed on this book
 only (still never invented). catalog_version and the 26-play bytes stay unchanged so the trained artifact still loads.
+
+Owner instruction 2026-11-17 (t449u, same Lions/CPU file): add the p05_bot Gun Bunch TE Mesh
+"Crosser Outside Bunch TE" red-zone variant; drop ten pre-civil t349u designed runs from this
+book only via ``exclude_inherited_variant_ids`` (shared Chiefs/Titans book unchanged); keep
+ambiguous t398u Pistol HB Zone/HB Dive and the Civil.GG sheet red-zone runs including RPO
+Alert QB Draw. The Commanders Best Inside the 5 tab is not added. p06_top red-zone runs stay
+out until they have formations.
 """
 from __future__ import annotations
 
@@ -74,19 +81,18 @@ EXPECTED_LIONS_CPU_OWNER_PASS_FORMATIONS = {
     "Gun Doubles Clamp Stack": 12, "Gun Bunch Str Offset": 6, "Gun Trips TE": 2,
     "Gun Trips TE Flex": 3, "Gun Doubles Flex Y Off Close": 2, "Pistol Strong Y Off Close": 1,
 }
-EXPECTED_LIONS_CPU_REDZONE_VARIANTS = 17  # 8 shared + 9 t448u
+EXPECTED_LIONS_CPU_REDZONE_VARIANTS = 18  # 8 shared + 9 t448u + 1 t449u Mesh TE
 EXPECTED_LIONS_CPU_REDZONE_FORMATIONS = {
-    "Pistol Bunch TE": 4, "Gun Empty Quads": 2, "I Form Close Flex": 2, "Gun Bunch TE": 3,
+    "Pistol Bunch TE": 4, "Gun Empty Quads": 2, "I Form Close Flex": 2, "Gun Bunch TE": 4,
     "Gun Trio Y-Flex": 1, "Gun Trips TE": 1, "Gun Heavy Saint": 1, "Pistol Tight Y Off Flex": 1,
     "I Form Slot Close": 1, "Pistol Deuce Close": 1,
 }
-EXPECTED_LIONS_CPU_RUN_VARIANTS = 19  # 14 shared + 5 t448u
+EXPECTED_LIONS_CPU_RUN_VARIANTS = 9  # 4 kept from shared (2 PDF Clamp Stack + 2 t398u Pistol) + 5 t448u
 EXPECTED_LIONS_CPU_RUN_FORMATIONS = {
-    "Gun Doubles Clamp Stack": 4, "Gun Bunch TE": 5, "Gun Tight Doubles": 2, "Gun 5WR Tight": 1,
-    "Pistol Strong Y Off Close": 2, "Gun Empty Sketch Stack": 1, "Pistol Deuce Close": 1,
-    "Gun Bunch TE Wk": 1, "Gun Bunch Str Offset": 1, "Pistol Bunch TE": 1,
+    "Gun Doubles Clamp Stack": 2, "Pistol Strong Y Off Close": 2, "Gun Empty Sketch Stack": 1,
+    "Pistol Deuce Close": 1, "Gun Bunch TE Wk": 1, "Gun Bunch Str Offset": 1, "Pistol Bunch TE": 1,
 }
-EXPECTED_LIONS_CPU_VARIANTS = 124  # 49 shared + 61 file passes + 9 rz + 5 runs
+EXPECTED_LIONS_CPU_VARIANTS = 115  # 49 shared - 10 excluded t349u runs + 61 file passes + 10 rz + 5 runs
 SHARED_BOOK, LIONS_CPU_BOOK = "civil_shared", "lions_cpu"
 RUN, PASS = "run", "pass"       # play_family: the run-pass mix (coordinator.pick_mixed) gates on it
 CORE, REDZONE_GROUP, DESIGNED_RUN = "core", "red_zone", "designed_run"
@@ -667,9 +673,25 @@ def lions_cpu_book_path() -> Path:
 
 
 def with_lions_cpu_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: str) -> SchemeCatalog:
-    """Layer Lions/CPU-only owner plays onto a copy of the shared catalog without touching shared metadata."""
+    """Layer Lions/CPU-only owner plays onto a copy of the shared catalog without touching shared metadata.
+
+    ``exclude_inherited_variant_ids`` (t449u) drops shared-catalog variants from this book only.
+    The shared ``load()`` catalog is unchanged. Only ids that already exist on the shared catalog
+    may be listed; they are removed after the additions are applied so a later Civil.gg card can
+    replace a dropped inherited run under a new variant_id.
+    """
     from dataclasses import replace
     added = with_owner_additions(cat, owner, digest=digest, label="lions/cpu owner book", allow_any_stock=True)
+    drop = {str(x) for x in (owner.get("exclude_inherited_variant_ids") or ())}
+    if drop:
+        shared_ids = {v.variant_id for v in cat.variants}
+        missing = sorted(drop - shared_ids)
+        if missing:
+            raise CatalogError("exclude_inherited_variant_ids not on the shared catalog: " + ", ".join(missing))
+        added_ids = {v.variant_id for v in added.variants if v.variant_id not in shared_ids}
+        if drop & added_ids:
+            raise CatalogError("exclude_inherited_variant_ids must not also be re-added in the Lions/CPU file")
+        added = replace(added, variants=tuple(v for v in added.variants if v.variant_id not in drop))
     return replace(
         added,
         additions_digest=cat.additions_digest,
@@ -680,10 +702,12 @@ def with_lions_cpu_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, di
 
 
 def load_lions_cpu(path: str | Path | None = None) -> SchemeCatalog:
-    """Shared civil catalog plus the Lions/CPU book slot (t445u Mtn plays, t448u rest of the owner PDF).
+    """Shared civil catalog plus the Lions/CPU book slot (t445u Mtn plays, t448u rest of the owner PDF,
+    t449u Mesh TE and Civil-only run filter).
 
-    If the slot file is missing or lists no plays, this is identical to ``load()``. Plays listed in
-    the slot file are appended; they never change the shared catalog used by Chiefs and Titans.
+    If the slot file is missing or lists no plays and no exclusions, this is identical to ``load()``.
+    Plays listed in the slot file are appended and ``exclude_inherited_variant_ids`` are dropped;
+    they never change the shared catalog used by Chiefs and Titans.
     """
     cat = load(path)
     slot = (Path(path).resolve().parent / LIONS_CPU_RELPATH.name) if path else lions_cpu_book_path()
@@ -691,7 +715,8 @@ def load_lions_cpu(path: str | Path | None = None) -> SchemeCatalog:
         return cat
     raw = slot.read_bytes()
     owner = json.loads(raw.decode("utf-8"))
-    if not (owner.get("pass_variants") or owner.get("red_zone_variants") or owner.get("designed_runs")):
+    if not (owner.get("pass_variants") or owner.get("red_zone_variants") or owner.get("designed_runs")
+            or owner.get("exclude_inherited_variant_ids")):
         return cat
     return with_lions_cpu_additions(cat, owner, digest=hashlib.sha256(raw).hexdigest())
 
