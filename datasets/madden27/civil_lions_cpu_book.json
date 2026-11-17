@@ -3,13 +3,21 @@
   "book_id": "lions_cpu",
   "owner_instruction": {
     "date": "2026-11-17",
-    "source": "t445u",
+    "source": "t448u",
     "by": "Aidan (owner)",
-    "statement": "Do you remember the Eagles plays I sent you the ones I told you not to include in the madden model, I want you to include them. ... For Lions, CPU, ... I want the custom playbooks I will give you plays for the model to call out of those. For Chiefs and Titans the model should call the plays exactly as are.",
-    "source_material": "Owner civil.gg Eagles offense scheme screenshots (t398u attachments; images not committed).",
-    "effect": "Lions franchise and CPU games use a separate book that starts as a copy of the current shared civil scheme (the 49 callable variants after t414u, including PA Slide, red-zone Gun Bunch TE Mesh, and Pistol HB Zone / HB Dive) and then adds Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3 with their setup steps and macro flags verbatim. Further owner plays dropped into this file change only Lions and CPU. Chiefs online and Titans franchise stay on the shared current book and never call the Mtn plays."
+    "statement": "this is the rest of the book there may be some duplicates, but after you finish this give me the amount of plays the model has etc, there may also be mutliple variations of the same play so you have to keep track of all that etc",
+    "source_material": "Owner 74 MB 'Madden Custrom Playbook' PDF (Civil.gg scheme screenshots; file not committed).",
+    "effect": "Lions franchise and CPU games keep the t445u book (shared 49 + Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3) and then add the remaining owner-supplied offensive plays from the PDF after dedupe. New variations of an already-catalogued play are numbered with the next free variation and keep the PDF's original label in the note. Chiefs online and Titans franchise stay on the shared 49-play book and never call these additions. Defense pages, lesson lists without a formation, and unreadable or ambiguous cards were not added."
   },
   "prior_instructions": [
+    {
+      "date": "2026-11-17",
+      "source": "t445u",
+      "by": "Aidan (owner)",
+      "statement": "Do you remember the Eagles plays I sent you the ones I told you not to include in the madden model, I want you to include them. ... For Lions, CPU, ... I want the custom playbooks I will give you plays for the model to call out of those. For Chiefs and Titans the model should call the plays exactly as are.",
+      "source_material": "Owner civil.gg Eagles offense scheme screenshots (t398u attachments; images not committed).",
+      "effect": "Lions franchise and CPU games use a separate book that starts as a copy of the current shared civil scheme (the 49 callable variants after t414u, including PA Slide, red-zone Gun Bunch TE Mesh, and Pistol HB Zone / HB Dive) and then adds Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3 with their setup steps and macro flags verbatim. Further owner plays dropped into this file change only Lions and CPU. Chiefs online and Titans franchise stay on the shared current book and never call the Mtn plays."
+    },
     {
       "date": "2026-11-15",
       "source": "t398u",
@@ -58,9 +66,47 @@
   ],
   "cooldown_families": {
     "Mtn Spacing": "new in the Lions/CPU book (Lions and CPU sessions have no play-family cooldown; Chiefs/Titans never see this family)",
-    "Mtn Fork Y-Corner": "new in the Lions/CPU book (Lions and CPU sessions have no play-family cooldown; Chiefs/Titans never see this family)"
+    "Mtn Fork Y-Corner": "new in the Lions/CPU book (Lions and CPU sessions have no play-family cooldown; Chiefs/Titans never see this family)",
+    "Inside Switch": "new",
+    "Inside Cross": "new",
+    "Mtn Divide X-Under": "new",
+    "Spacing X-Wheel": "new",
+    "Tight Crosses": "new",
+    "Post Zreturn": "new",
+    "Mtn Smash Y-Shake": "new",
+    "RPO Alert Out": "new",
+    "Mtn Inside Post": "new",
+    "Mtn Mesh Spot": "new",
+    "Dragon Spacing": "new",
+    "Mtn H-Texas": "new",
+    "RPO Read Cheat Wheel Flat": "new",
+    "Mtn Shuffle Verts Smash": "new",
+    "Return Bench": "new",
+    "Portland Y Wheel": "new",
+    "PA Post Shot Choice": "new",
+    "Texas Smash": "new",
+    "Texas Y-Stutter Wheel": "new",
+    "Mtn Shuffle Mesh Rail": "new",
+    "Seattle": "new",
+    "Flood": "new",
+    "Dagger": "new",
+    "Mtn Bench": "new",
+    "China Y Post": "new",
+    "Mtn Y Post": "new",
+    "Y-Sail": "new",
+    "Mtn Dig Under": "new",
+    "RPO Zone Alert Omaha": "new",
+    "Slot Out": "new",
+    "Cross Drag": "new",
+    "QB Blast": "new",
+    "HB Zone": "existing HB Zone family",
+    "HB Stretch": "new",
+    "HB Dive": "existing HB Dive family",
+    "HB Draw": "new",
+    "QB Zone": "new",
+    "Duo": "new"
   },
-  "note": "This file is layered onto the shared civil catalog (core 26 + t335u/t338u red zone + t349u/t398u designed runs + remaining t398u owner passes). It is not a standalone catalog. Empty future lists are placeholders for later Lions/CPU-only plays; do not invent names here.",
+  "note": "t448u: additional Lions/CPU-only plays from the owner's compiled Civil.gg PDF. The 7 t445u Gun Bunch TE Mtn Spacing / Mtn Fork Y-Corner variants are unchanged. The shared Chiefs/Titans book (civil_owner_additions_t398u.json) is not modified. catalog_version stays lions_civil_bucs_5wr_v4@15c120decc4b so the trained artifact still loads. Formations and play names that are not in the Buccaneers stock book but are exact names in another in-repo Madden playbook are allowed on this book only.",
   "pass_variants": [
     {
       "variant_id": "civil_t398_gun_bunch_te_mtn_spacing_1",
@@ -437,8 +483,2890 @@
         "Custom Stem Post Down 1x On Dpad"
       ],
       "note": "Owner-provided name. The repo's Buccaneers stock data for 'Gun Bunch TE' has no 'Mtn Fork Y-Corner' (flagged; called by the owner's name). No beater label given: no coverage tags (unknown, not negative)."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_te_inside_switch_1",
+      "variant_name": "Inside Switch 1",
+      "macro_name": "Inside Switch 1",
+      "formation": "Gun Bunch TE",
+      "base_play": "Inside Switch",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Middle bunch WR",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag Middle Bunch WR"
+        },
+        {
+          "target": "TE",
+          "action": "In route",
+          "macro_marked": true,
+          "guide_text": "In Route TE"
+        }
+      ],
+      "guide_setup_text": [
+        "Drag Middle Bunch WR (macro)",
+        "In Route TE (macro)"
+      ],
+      "note": "t448u p01_bot benkert-dimes. No beater label on the card. Base play is stock in Benkert's Dimes / Rams / Run Heavy Gun Bunch TE, not in the Buccaneers book."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_te_mtn_spacing_5",
+      "variant_name": "Mtn Spacing 5",
+      "macro_name": "MTN Spacing 2",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mtn Spacing",
+      "play_family": "pass",
+      "scheme_category": "Zone Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "adjustments": [
+        {
+          "target": "Inside bunch WR",
+          "action": "Corner route; custom stem down",
+          "macro_marked": false,
+          "guide_text": "Corner Route Inside Bunch WR & Custom Stem Down"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Middle Bunch WR"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Slot fade",
+          "macro_marked": false,
+          "guide_text": "Slot Fade Outside Bunch WR"
+        },
+        {
+          "target": "TE",
+          "action": "In route",
+          "macro_marked": true,
+          "guide_text": "In Route TE"
+        }
+      ],
+      "guide_setup_text": [
+        "Corner Route Inside Bunch WR & Custom Stem Down",
+        "Streak Middle Bunch WR (macro)",
+        "Slot Fade Outside Bunch WR",
+        "In Route TE (macro)"
+      ],
+      "note": "t448u p02_top benkert-dimes. PDF macro labeled MTN Spacing 2 / Zone Beater, but the setup differs from the already-catalogued Mtn Spacing 2 (In Route TE vs Drag TE). Kept as a new variation numbered 5. Shares the Mtn Spacing cooldown family."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_te_inside_switch_2",
+      "variant_name": "Inside Switch 2",
+      "macro_name": "Inside Switch 2",
+      "formation": "Gun Bunch TE",
+      "base_play": "Inside Switch",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Middle Bunch WR"
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Inside Bunch WR"
+        },
+        {
+          "target": "HB",
+          "action": "Wheel",
+          "macro_marked": true,
+          "guide_text": "Wheel HB"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak Middle Bunch WR (macro)",
+        "Streak TE (macro)",
+        "Drag Inside Bunch WR",
+        "Wheel HB (macro)"
+      ],
+      "note": "t448u p02_bot benkert-dimes. The visible title crop showed the macro 'Inside Switch 2'; the formation/play title is taken from that macro and from Inside Switch 1 on the previous page."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_te_inside_cross_1",
+      "variant_name": "Inside Cross 1",
+      "macro_name": "Inside Cross 1",
+      "formation": "Gun Bunch TE",
+      "base_play": "Inside Cross",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Post",
+          "action": "Stem down all the way",
+          "macro_marked": false,
+          "guide_text": "Stem Down Post All The Way"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Slot fade",
+          "macro_marked": true,
+          "guide_text": "Slot Fade Middle Bunch WR"
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Slant",
+          "macro_marked": false,
+          "guide_text": "Slant Inside Bunch WR"
+        },
+        {
+          "target": "TE",
+          "action": "Slant",
+          "macro_marked": false,
+          "guide_text": "Slant TE"
+        },
+        {
+          "target": "HB",
+          "action": "Swing (or block)",
+          "macro_marked": false,
+          "guide_text": "Swing HB (Or Block)"
+        }
+      ],
+      "guide_setup_text": [
+        "Stem Down Post All The Way",
+        "Slot Fade Middle Bunch WR (macro)",
+        "Slant Inside Bunch WR",
+        "Slant TE",
+        "Swing HB (Or Block)"
+      ],
+      "note": "t448u p03_top benkert-dimes. Exact Buccaneers stock name 'Inside Cross' in Gun Bunch TE."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_te_wk_mtn_divide_x_under_1",
+      "variant_name": "Mtn Divide X-Under 1",
+      "macro_name": "Mtn Divide X Under 1",
+      "formation": "Gun Bunch TE Wk",
+      "base_play": "Mtn Divide X-Under",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Inside bunch WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Inside Bunch WR"
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "Post",
+          "action": "Custom stem down 1x on D-pad",
+          "macro_marked": false,
+          "guide_text": "Custom Stem Down Post 1x On Dpad"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Flat",
+          "macro_marked": false,
+          "guide_text": "Flat Outside Bunch WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Drag Inside Bunch WR",
+        "Streak TE (macro)",
+        "Streak HB (macro)",
+        "Custom Stem Down Post 1x On Dpad",
+        "Flat Outside Bunch WR"
+      ],
+      "note": "t448u p03_bot benkert-dimes. Formation is Gun Bunch TE Wk (not Gun Bunch TE). Stock in Benkert's Dimes / Chargers / Jaguars / Saints. Formation is not in the Buccaneers book."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_te_wk_spacing_x_wheel_1",
+      "variant_name": "Spacing X-Wheel 1",
+      "macro_name": "Spacing X Wheel 1",
+      "formation": "Gun Bunch TE Wk",
+      "base_play": "Spacing X-Wheel",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Inside bunch WR",
+          "action": "Corner route; custom stem down",
+          "macro_marked": false,
+          "guide_text": "Corner Route Inside Bunch WR & Custom Stem Down"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Middle Bunch WR"
+        },
+        {
+          "target": "TE",
+          "action": "Post",
+          "macro_marked": true,
+          "guide_text": "Post TE"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Slot fade",
+          "macro_marked": false,
+          "guide_text": "Slot Fade Outside Bunch WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Corner Route Inside Bunch WR & Custom Stem Down",
+        "Streak Middle Bunch WR (macro)",
+        "Post TE (macro)",
+        "Slot Fade Outside Bunch WR"
+      ],
+      "note": "t448u p04_top benkert-dimes. Stock play 'Spacing X-Wheel' in Gun Bunch TE Wk."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_te_wk_spacing_x_wheel_2",
+      "variant_name": "Spacing X-Wheel 2",
+      "macro_name": "Spacing X Wheel 2",
+      "formation": "Gun Bunch TE Wk",
+      "base_play": "Spacing X-Wheel",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Inside bunch WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Inside Bunch WR"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Crosser",
+          "macro_marked": true,
+          "guide_text": "Crosser Middle Bunch WR"
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "In route; custom stem up 1x on D-pad",
+          "macro_marked": false,
+          "guide_text": "In Route Outside Bunch WR & Custom Stem Up 1x On Dpad"
+        }
+      ],
+      "guide_setup_text": [
+        "Drag Inside Bunch WR",
+        "Crosser Middle Bunch WR (macro)",
+        "Streak TE (macro)",
+        "In Route Outside Bunch WR & Custom Stem Up 1x On Dpad"
+      ],
+      "note": "t448u p04_bot benkert-dimes."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_tight_crosses_1",
+      "variant_name": "Tight Crosses 1",
+      "macro_name": "Tight Crosses 1",
+      "formation": "Gun Tight",
+      "base_play": "Tight Crosses",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Out route",
+          "macro_marked": true,
+          "guide_text": "HB Out Route"
+        },
+        {
+          "target": "Outside WR on HB side",
+          "action": "Flat",
+          "macro_marked": false,
+          "guide_text": "Flat Outside WR on HB Side"
+        },
+        {
+          "target": "TE",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag TE"
+        }
+      ],
+      "guide_setup_text": [
+        "HB Out Route (macro)",
+        "Flat Outside WR on HB Side",
+        "Drag TE (macro)"
+      ],
+      "note": "t448u p11_bot texans-offense. Formation 'Gun Tight' is not in the Buccaneers book; stock in the Texans (and other) books."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_post_zreturn_1",
+      "variant_name": "Post Z Return 1",
+      "macro_name": "Post Z Return 1",
+      "formation": "Gun Tight",
+      "base_play": "Post Zreturn",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "Outside WR opposite HB side",
+          "action": "Corner",
+          "macro_marked": false,
+          "guide_text": "Corner Outside WR Opposite HB Side"
+        },
+        {
+          "target": "WR1",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak WR1"
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        }
+      ],
+      "guide_setup_text": [
+        "Corner Outside WR Opposite HB Side",
+        "Streak WR1 (macro)",
+        "Streak HB (macro)"
+      ],
+      "note": "t448u p12_top texans-offense. PDF title is 'Post Z Return'; the in-repo stock name in Gun Tight is 'Post Zreturn' (no space). base_play uses the stock spelling; variant/macro names keep the PDF wording. Flagged."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_post_zreturn_2",
+      "variant_name": "Post Z Return 2",
+      "macro_name": "Post Z Return 2",
+      "formation": "Gun Tight",
+      "base_play": "Post Zreturn",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "WR1",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak WR1"
+        },
+        {
+          "target": "Outside WR opposite HB side",
+          "action": "Short crosser",
+          "macro_marked": false,
+          "guide_text": "Short Crosser Outside WR Opposite HB Side"
+        },
+        {
+          "target": "Slot",
+          "action": "Streak",
+          "macro_marked": false,
+          "guide_text": "Streak Slot"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak WR1 (macro)",
+        "Short Crosser Outside WR Opposite HB Side",
+        "Streak Slot"
+      ],
+      "note": "t448u p12_bot texans-offense. base_play is the stock spelling 'Post Zreturn' (PDF title 'Post Z Return'). Flagged."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_mtn_smash_y_shake_1",
+      "variant_name": "Mtn Smash Y-Shake 1",
+      "macro_name": "MTN Smash Y-Shake 1",
+      "formation": "Gun Tight",
+      "base_play": "Mtn Smash Y-Shake",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "WR1",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag WR1"
+        },
+        {
+          "target": "Outside WR on HB side",
+          "action": "Post",
+          "macro_marked": false,
+          "guide_text": "Post Outside WR on HB Side"
+        }
+      ],
+      "guide_setup_text": [
+        "Flat HB (macro)",
+        "Streak TE (macro)",
+        "Drag WR1 (macro)",
+        "Post Outside WR on HB Side"
+      ],
+      "note": "t448u p13_top texans-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_tight_crosses_2",
+      "variant_name": "Tight Crosses 2",
+      "macro_name": "Tight Crosses 2",
+      "formation": "Gun Tight",
+      "base_play": "Tight Crosses",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "WR1",
+          "action": "In route",
+          "macro_marked": true,
+          "guide_text": "In Route WR1"
+        },
+        {
+          "target": "Outside WR on HB side",
+          "action": "Slot fade",
+          "macro_marked": false,
+          "guide_text": "Slot Fade Outside WR on HB Side"
+        }
+      ],
+      "guide_setup_text": [
+        "Flat HB (macro)",
+        "Streak TE (macro)",
+        "In Route WR1 (macro)",
+        "Slot Fade Outside WR on HB Side"
+      ],
+      "note": "t448u p13_bot texans-offense. Tab label is 'Gun Tight' (no beater chip on this card)."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_tight_crosses_3",
+      "variant_name": "Tight Crosses 3",
+      "macro_name": "Tight Crosses 3",
+      "formation": "Gun Tight",
+      "base_play": "Tight Crosses",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "TE",
+          "action": "Short cross",
+          "macro_marked": false,
+          "guide_text": "Short Cross TE"
+        },
+        {
+          "target": "WR1",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag WR1"
+        },
+        {
+          "target": "Outside WR on HB side",
+          "action": "Streak",
+          "macro_marked": false,
+          "guide_text": "Streak Outside WR on HB Side"
+        }
+      ],
+      "guide_setup_text": [
+        "Flat HB (macro)",
+        "Short Cross TE",
+        "Drag WR1 (macro)",
+        "Streak Outside WR on HB Side"
+      ],
+      "note": "t448u p14_top texans-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_tight_crosses_4",
+      "variant_name": "Tight Crosses 4",
+      "macro_name": "Tight Crosses 4",
+      "formation": "Gun Tight",
+      "base_play": "Tight Crosses",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Texas",
+          "macro_marked": true,
+          "guide_text": "Texas HB"
+        },
+        {
+          "target": "WR1",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat WR1"
+        },
+        {
+          "target": "TE",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag TE"
+        },
+        {
+          "target": "Outside WR on HB side",
+          "action": "Streak",
+          "macro_marked": false,
+          "guide_text": "Streak Outside WR on HB Side"
+        }
+      ],
+      "guide_setup_text": [
+        "Texas HB (macro)",
+        "Flat WR1 (macro)",
+        "Drag TE (macro)",
+        "Streak Outside WR on HB Side"
+      ],
+      "note": "t448u p14_bot texans-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_tight_crosses_5",
+      "variant_name": "Tight Crosses 5",
+      "macro_name": "Tight Crosses 5",
+      "formation": "Gun Tight",
+      "base_play": "Tight Crosses",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "In route",
+          "macro_marked": true,
+          "guide_text": "HB In Route"
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "WR1",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag WR1"
+        }
+      ],
+      "guide_setup_text": [
+        "HB In Route (macro)",
+        "Streak TE (macro)",
+        "Drag WR1 (macro)"
+      ],
+      "note": "t448u p15_top texans-offense. Three setup steps were visible; no fourth step was shown."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_mtn_smash_y_shake_2",
+      "variant_name": "Mtn Smash Y-Shake 2",
+      "macro_name": "MTN Smash Y-Shake 2",
+      "formation": "Gun Tight",
+      "base_play": "Mtn Smash Y-Shake",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag TE"
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        }
+      ],
+      "guide_setup_text": [
+        "Drag TE (macro)",
+        "Streak HB (macro)"
+      ],
+      "note": "t448u p15_bot texans-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_y_flex_rpo_alert_out_1",
+      "variant_name": "RPO Alert Out",
+      "macro_name": "RPO Alert Out",
+      "formation": "Gun Bunch Y-Flex",
+      "base_play": "RPO Alert Out",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Slot WR",
+          "action": "Flat",
+          "macro_marked": false,
+          "guide_text": "Flat Slot WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Flat Slot WR"
+      ],
+      "note": "t448u p16_bot texans-offense. Owner-supplied RPO with a route setup; added as a pass variant (t349u forbids new RPOs as designed runs). Flagged. Exact stock name in Gun Bunch Y-Flex (not in the Buccaneers book for this formation)."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_y_flex_mtn_inside_post_1",
+      "variant_name": "Mtn Inside Post 1",
+      "macro_name": "Mtn Inside Post 1",
+      "formation": "Gun Bunch Y-Flex",
+      "base_play": "Mtn Inside Post",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Point",
+          "action": "Crosser",
+          "macro_marked": false,
+          "guide_text": "Crosser Point"
+        },
+        {
+          "target": "Slot",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Slot"
+        }
+      ],
+      "guide_setup_text": [
+        "Crosser Point",
+        "Drag Slot"
+      ],
+      "note": "t448u p17_top texans-offense. No macro on the card. Exact Buccaneers stock name 'Mtn Inside Post' in Gun Bunch Y-Flex."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_flex_offset_mtn_fork_y_corner_1",
+      "variant_name": "Mtn Fork Y-Corner 1",
+      "macro_name": "Mtn Fork Y Corner 1",
+      "formation": "Gun Tight Flex Offset",
+      "base_play": "Mtn Fork Y-Corner",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Slant",
+          "macro_marked": true,
+          "guide_text": "Slant TE"
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Streak",
+          "macro_marked": false,
+          "guide_text": "Streak WR Next To TE"
+        },
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag Slot WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Slant TE (macro)",
+        "Streak WR Next To TE",
+        "Flat HB (macro)",
+        "Drag Slot WR (macro)"
+      ],
+      "note": "t448u p17_bot raiders-offense. Same base-play name as the existing Gun Bunch TE Mtn Fork Y-Corner family (shared cooldown family) but a different formation. Stock in Raiders / Seahawks. Formation is not in the Buccaneers book."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_flex_offset_mtn_fork_y_corner_2",
+      "variant_name": "Mtn Fork Y-Corner 2",
+      "macro_name": "Mtn Fork Y Corner 2",
+      "formation": "Gun Tight Flex Offset",
+      "base_play": "Mtn Fork Y-Corner",
+      "play_family": "pass",
+      "scheme_category": "Zone Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Slot fade",
+          "macro_marked": false,
+          "guide_text": "Slot Fade WR Next To TE"
+        },
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag Slot WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak TE (macro)",
+        "Slot Fade WR Next To TE",
+        "Flat HB (macro)",
+        "Drag Slot WR (macro)"
+      ],
+      "note": "t448u p18_top raiders-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_flex_offset_mtn_fork_y_corner_3",
+      "variant_name": "Mtn Fork Y-Corner 3",
+      "macro_name": "Mtn Fork Y Corner 3",
+      "formation": "Gun Tight Flex Offset",
+      "base_play": "Mtn Fork Y-Corner",
+      "play_family": "pass",
+      "scheme_category": "Zone Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "adjustments": [
+        {
+          "target": "Slot WR",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat Slot WR"
+        },
+        {
+          "target": "TE",
+          "action": "Slant",
+          "macro_marked": true,
+          "guide_text": "Slant TE"
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Flat",
+          "macro_marked": false,
+          "guide_text": "Flat WR Next To TE"
+        }
+      ],
+      "guide_setup_text": [
+        "Flat Slot WR (macro)",
+        "Slant TE (macro)",
+        "Streak HB (macro)",
+        "Flat WR Next To TE"
+      ],
+      "note": "t448u p21_top raiders-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_flex_offset_mtn_fork_y_corner_4",
+      "variant_name": "Mtn Fork Y-Corner 4",
+      "macro_name": "Mtn Fork Y Corner 4",
+      "formation": "Gun Tight Flex Offset",
+      "base_play": "Mtn Fork Y-Corner",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Post",
+          "macro_marked": true,
+          "guide_text": "Post TE"
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag WR Next To TE"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Slot WR"
+        },
+        {
+          "target": "Outside WR opposite of HB",
+          "action": "Slot fade",
+          "macro_marked": false,
+          "guide_text": "Slot Fade Outside WR Opposite Of HB"
+        }
+      ],
+      "guide_setup_text": [
+        "Post TE (macro)",
+        "Streak HB (macro)",
+        "Drag WR Next To TE",
+        "Streak Slot WR (macro)",
+        "Slot Fade Outside WR Opposite Of HB"
+      ],
+      "note": "t448u p18_bot raiders-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_flex_offset_mtn_fork_y_corner_5",
+      "variant_name": "Mtn Fork Y-Corner 5",
+      "macro_name": "Mtn Fork Y Corner 5",
+      "formation": "Gun Tight Flex Offset",
+      "base_play": "Mtn Fork Y-Corner",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag Slot WR"
+        },
+        {
+          "target": "HB",
+          "action": "Flat; motion out to TE side",
+          "macro_marked": true,
+          "guide_text": "Flat HB & Motion Out To TE Side"
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Corner route; custom stem down 1x on D-pad",
+          "macro_marked": false,
+          "guide_text": "Corner WR Next To TE & Custom Stem Down 1x On Dpad"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak TE (macro)",
+        "Drag Slot WR (macro)",
+        "Flat HB & Motion Out To TE Side (macro)",
+        "Corner WR Next To TE & Custom Stem Down 1x On Dpad"
+      ],
+      "note": "t448u p21_bot raiders-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_flex_wk_mtn_mesh_spot_1",
+      "variant_name": "Mtn Mesh Spot 1",
+      "macro_name": "Mtn Mesh Spot 1",
+      "formation": "Gun Tight Flex Wk",
+      "base_play": "Mtn Mesh Spot",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "WR next to TE",
+          "action": "Corner route; custom stem down 1x on D-pad",
+          "macro_marked": false,
+          "guide_text": "Corner Route WR Next To TE & Custom Stem Down 1x On Dpad"
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "Outside WR next to Slot WR",
+          "action": "Post; custom stem down 1x on D-pad",
+          "macro_marked": false,
+          "guide_text": "Post Outside WR Next To Slot WR & Custom Stem Down 1x On Dpad"
+        }
+      ],
+      "guide_setup_text": [
+        "Corner Route WR Next To TE & Custom Stem Down 1x On Dpad",
+        "Streak TE (macro)",
+        "Post Outside WR Next To Slot WR & Custom Stem Down 1x On Dpad"
+      ],
+      "note": "t448u p19_top raiders-offense. Formation is not in the Buccaneers book; stock in Raiders / Rams / Seahawks / Steelers / Vikings."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_flex_wk_mtn_mesh_spot_2",
+      "variant_name": "Mtn Mesh Spot 2",
+      "macro_name": "Mtn Mesh Spot 2",
+      "formation": "Gun Tight Flex Wk",
+      "base_play": "Mtn Mesh Spot",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Post",
+          "macro_marked": true,
+          "guide_text": "Post TE"
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag WR Next To TE"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Slot WR"
+        },
+        {
+          "target": "Outside WR next to Slot WR",
+          "action": "Slot fade",
+          "macro_marked": false,
+          "guide_text": "Slot Fade Outside WR Next To Slot WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Post TE (macro)",
+        "Drag WR Next To TE",
+        "Streak Slot WR (macro)",
+        "Slot Fade Outside WR Next To Slot WR"
+      ],
+      "note": "t448u p23_top raiders-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_flex_offset_dragon_spacing_1",
+      "variant_name": "Dragon Spacing 1",
+      "macro_name": "Dragon Spacing 1",
+      "formation": "Gun Tight Flex Offset",
+      "base_play": "Dragon Spacing",
+      "play_family": "pass",
+      "scheme_category": "Quick Snap Play",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Slot fade",
+          "macro_marked": true,
+          "guide_text": "Slot Fade TE"
+        }
+      ],
+      "guide_setup_text": [
+        "Slot Fade TE (macro)"
+      ],
+      "note": "t448u p22_top raiders-offense. Beater label is 'Quick Snap Play' (no coverage-tag mapping; coverage tags left empty)."
+    },
+    {
+      "variant_id": "civil_t448_gun_tight_flex_offset_mtn_h_texas_1",
+      "variant_name": "Mtn H-Texas 1",
+      "macro_name": "Mtn H-Texas 1",
+      "formation": "Gun Tight Flex Offset",
+      "base_play": "Mtn H-Texas",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Flat; motion towards 2 WR side",
+          "macro_marked": true,
+          "guide_text": "Flat HB & Motion Towards 2 WR Side"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Slot WR"
+        },
+        {
+          "target": "TE",
+          "action": "Post",
+          "macro_marked": true,
+          "guide_text": "Post TE"
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag WR Next To TE"
+        }
+      ],
+      "guide_setup_text": [
+        "Flat HB & Motion Towards 2 WR Side (macro)",
+        "Streak Slot WR (macro)",
+        "Post TE (macro)",
+        "Drag WR Next To TE"
+      ],
+      "note": "t448u p22_bot raiders-offense."
+    },
+    {
+      "variant_id": "civil_t448_pistol_deuce_close_rpo_read_cheat_wheel_flat_1",
+      "variant_name": "RPO Read Cheat Wheel Flat",
+      "macro_name": "RPO Read Cheat Wheel Flat",
+      "formation": "Pistol Deuce Close",
+      "base_play": "RPO Read Cheat Wheel Flat",
+      "play_family": "pass",
+      "scheme_category": "Elite RPO",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Both TEs",
+          "action": "Wheel",
+          "macro_marked": false,
+          "guide_text": "Wheel Both TEs"
+        }
+      ],
+      "guide_setup_text": [
+        "Wheel Both TEs"
+      ],
+      "note": "t448u p23_bot raiders-offense. Owner-supplied RPO with a route setup; added as a pass variant (t349u forbids new RPOs as designed runs). Flagged. Exact stock name in Pistol Deuce Close (not in the Buccaneers book)."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_mtn_shuffle_verts_smash_4",
+      "variant_name": "Mtn Shuffle Verts Smash 4",
+      "macro_name": "MTN Shuffle Verts Smash 1",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Mtn Shuffle Verts Smash",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Slot WR"
+        },
+        {
+          "target": "Iso WR",
+          "action": "In",
+          "macro_marked": false,
+          "guide_text": "In Iso WR"
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "Fade",
+          "macro_marked": false,
+          "guide_text": "Fade Outside Stack WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak HB (macro)",
+        "Streak Slot WR (macro)",
+        "In Iso WR",
+        "Fade Outside Stack WR"
+      ],
+      "note": "t448u p26_top gun-doubles-clamp-stack-offense. PDF macro labeled MTN Shuffle Verts Smash 1, but the setup differs from the already-catalogued Mtn Shuffle Verts Smash 1. Kept as a new variation numbered 4. Shares the Mtn Shuffle Verts Smash cooldown family. base_play uses the catalog/stock spelling 'Mtn Shuffle Verts Smash' (PDF title 'MTN Shuffle Verts Smash')."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_mtn_shuffle_verts_smash_2",
+      "variant_name": "Mtn Shuffle Verts Smash 2",
+      "macro_name": "MTN Shuffle Verts Smash 2",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Mtn Shuffle Verts Smash",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Slot WR"
+        },
+        {
+          "target": "Iso WR",
+          "action": "In",
+          "macro_marked": false,
+          "guide_text": "In Iso WR"
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Outside Stack WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Flat HB (macro)",
+        "Streak Slot WR (macro)",
+        "In Iso WR",
+        "Drag Outside Stack WR"
+      ],
+      "note": "t448u p26_bot gun-doubles-clamp-stack-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_mtn_shuffle_verts_smash_3",
+      "variant_name": "Mtn Shuffle Verts Smash 3",
+      "macro_name": "MTN Shuffle Verts Smash 3",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Mtn Shuffle Verts Smash",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Slot WR"
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Outside Stack WR"
+        },
+        {
+          "target": "Iso WR",
+          "action": "Streak",
+          "macro_marked": false,
+          "guide_text": "Streak Iso WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak HB (macro)",
+        "Streak Slot WR (macro)",
+        "Drag Outside Stack WR",
+        "Streak Iso WR"
+      ],
+      "note": "t448u p30_bot gun-doubles-clamp-stack-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_mtn_shuffle_verts_smash_5",
+      "variant_name": "Mtn Shuffle Verts Smash 5",
+      "macro_name": "MTN Shuffle Verts Smash 1",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Mtn Shuffle Verts Smash",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "Outside WR on HB side",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Outside WR on HB Side"
+        },
+        {
+          "target": "Slot WR opposite HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Slot WR Opposite HB"
+        },
+        {
+          "target": "Outside WR opposite HB",
+          "action": "Slot fade",
+          "macro_marked": false,
+          "guide_text": "Slot Fade Outside WR Opposite HB"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak HB (macro)",
+        "Drag Outside WR on HB Side",
+        "Streak Slot WR Opposite HB (macro)",
+        "Slot Fade Outside WR Opposite HB"
+      ],
+      "note": "t448u p39_top saints-offense. PDF macro labeled MTN Shuffle Verts Smash 1 with a third distinct setup (also different from the catalogued 1 and from p26_top). Kept as a new variation numbered 5."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_return_bench_1",
+      "variant_name": "Return Bench 1",
+      "macro_name": "Return Bench 1",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Return Bench",
+      "play_family": "pass",
+      "scheme_category": "Best Man Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "Outside",
+          "action": "Stem corner",
+          "macro_marked": false,
+          "guide_text": "Stem Corner Outside"
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Outside Stack WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Flat HB (macro)",
+        "Streak TE (macro)",
+        "Stem Corner Outside",
+        "Drag Outside Stack WR"
+      ],
+      "note": "t448u p27_top gun-doubles-clamp-stack-offense. Step 3 is transcribed verbatim as 'Stem Corner Outside' (confirmed at higher resolution; not 'Stern'). Exact Buccaneers stock name 'Return Bench'."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_return_bench_2",
+      "variant_name": "Return Bench 2",
+      "macro_name": "Return Bench 2",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Return Bench",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "TE",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag TE"
+        },
+        {
+          "target": "Iso WR",
+          "action": "Streak",
+          "macro_marked": false,
+          "guide_text": "Streak Iso WR"
+        },
+        {
+          "target": "Outside stack WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Outside Stack WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Flat HB (macro)",
+        "Drag TE (macro)",
+        "Streak Iso WR",
+        "Drag Outside Stack WR"
+      ],
+      "note": "t448u p29_top gun-doubles-clamp-stack-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_portland_y_wheel_1",
+      "variant_name": "Portland Y Wheel 1",
+      "macro_name": "Portland Y Wheel 1",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Portland Y Wheel",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "TE",
+          "action": "Wheel",
+          "macro_marked": true,
+          "guide_text": "Wheel TE"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Slot WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak HB (macro)",
+        "Wheel TE (macro)",
+        "Streak Slot WR (macro)"
+      ],
+      "note": "t448u p27_bot gun-doubles-clamp-stack-offense. PDF and several stock books use 'Portland Y Wheel'; the Buccaneers book spells the same play 'Portland Ywheel'. base_play follows the PDF / Saints-group stock spelling, which is an exact name in those books."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_pa_post_shot_choice_1",
+      "variant_name": "PA Post Shot Choice 1",
+      "macro_name": "PA Post Shot Choice 1",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "PA Post Shot Choice",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Blocking",
+          "action": "Empty blocking",
+          "macro_marked": true,
+          "guide_text": "Empty Blocking"
+        },
+        {
+          "target": "TE",
+          "action": "Corner",
+          "macro_marked": true,
+          "guide_text": "TE Corner"
+        },
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        }
+      ],
+      "guide_setup_text": [
+        "Empty Blocking (macro)",
+        "TE Corner (macro)",
+        "Flat HB (macro)"
+      ],
+      "note": "t448u p29_bot gun-doubles-clamp-stack-offense. Exact Buccaneers stock name."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_texas_smash_1",
+      "variant_name": "Texas Smash 1",
+      "macro_name": "Texas Smash 1",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Texas Smash",
+      "play_family": "pass",
+      "scheme_category": "Bomb Play",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "In route",
+          "macro_marked": true,
+          "guide_text": "In Route HB"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Slot WR"
+        },
+        {
+          "target": "Iso WR",
+          "action": "Streak",
+          "macro_marked": false,
+          "guide_text": "Streak Iso WR"
+        },
+        {
+          "target": "Outside WR",
+          "action": "Slot fade",
+          "macro_marked": false,
+          "guide_text": "Slot Fade Outside WR"
+        }
+      ],
+      "guide_setup_text": [
+        "In Route HB (macro)",
+        "Streak Slot WR (macro)",
+        "Streak Iso WR",
+        "Slot Fade Outside WR"
+      ],
+      "note": "t448u p30_top gun-doubles-clamp-stack-offense. Beater label is 'Bomb Play' (no coverage-tag mapping; coverage tags left empty). Exact Buccaneers stock name."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_texas_y_stutter_wheel_4",
+      "variant_name": "Texas Y Stutter Wheel 4",
+      "macro_name": "Texas Y Stutter Wheel 1",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Texas Y-Stutter Wheel",
+      "play_family": "pass",
+      "scheme_category": "Zone Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Wheel",
+          "macro_marked": true,
+          "guide_text": "Wheel TE"
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "Inside doubles WR",
+          "action": "Streak",
+          "macro_marked": false,
+          "guide_text": "Streak Inside Doubles WR"
+        },
+        {
+          "target": "Outside doubles WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Outside Doubles WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Wheel TE (macro)",
+        "Streak HB (macro)",
+        "Streak Inside Doubles WR",
+        "Drag Outside Doubles WR"
+      ],
+      "note": "t448u p34_top commanders-offense. PDF macro labeled Texas Y Stutter Wheel 1, but the setup differs from the already-catalogued Texas Y Stutter Wheel 1 (and from 2 and 3). Kept as a new variation numbered 4. Shares the Texas Y-Stutter Wheel cooldown family."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_texas_y_stutter_wheel_5",
+      "variant_name": "Texas Y Stutter Wheel 5",
+      "macro_name": "Texas Y Stutter Wheel 2",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Texas Y-Stutter Wheel",
+      "play_family": "pass",
+      "scheme_category": "Zone Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag TE"
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "Inside doubles WR",
+          "action": "Slot fade",
+          "macro_marked": false,
+          "guide_text": "Slot Fade Inside Doubles WR"
+        },
+        {
+          "target": "Outside doubles WR",
+          "action": "Corner route; custom stem down 1x on D-pad",
+          "macro_marked": false,
+          "guide_text": "Corner Route Outside Doubles WR & Custom Stem Down On Dpad 1x"
+        }
+      ],
+      "guide_setup_text": [
+        "Drag TE (macro)",
+        "Streak HB (macro)",
+        "Slot Fade Inside Doubles WR",
+        "Corner Route Outside Doubles WR & Custom Stem Down On Dpad 1x"
+      ],
+      "note": "t448u p34_bot commanders-offense. PDF macro labeled Texas Y Stutter Wheel 2, but the setup differs from the already-catalogued variation 2. Kept as a new variation numbered 5."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_clamp_stack_mtn_shuffle_mesh_rail_1",
+      "variant_name": "Mtn Shuffle Mesh Rail 1",
+      "macro_name": "Mtn Shuffle Mesh Rail 1",
+      "formation": "Gun Doubles Clamp Stack",
+      "base_play": "Mtn Shuffle Mesh Rail",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Post",
+          "macro_marked": true,
+          "guide_text": "Post TE"
+        },
+        {
+          "target": "WR next to TE",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag WR Next To TE"
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "Outside doubles WR",
+          "action": "Flat",
+          "macro_marked": false,
+          "guide_text": "Flat Outside Doubles WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Post TE (macro)",
+        "Drag WR Next To TE",
+        "Streak HB (macro)",
+        "Flat Outside Doubles WR"
+      ],
+      "note": "t448u p37_bot commanders-offense. Exact Buccaneers stock name 'Mtn Shuffle Mesh Rail'."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_str_offset_seattle_1",
+      "variant_name": "Seattle 1",
+      "macro_name": "Seattle 1",
+      "formation": "Gun Bunch Str Offset",
+      "base_play": "Seattle",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag TE"
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Flat",
+          "macro_marked": false,
+          "guide_text": "Flat Outside Bunch WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Drag TE (macro)",
+        "Streak HB (macro)",
+        "Flat Outside Bunch WR"
+      ],
+      "note": "t448u p32_bot commanders-offense. Formation is not in the Buccaneers book; stock in Cardinals / Commanders / Shotgun Classic."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_str_offset_seattle_2",
+      "variant_name": "Seattle 2",
+      "macro_name": "Seattle 2",
+      "formation": "Gun Bunch Str Offset",
+      "base_play": "Seattle",
+      "play_family": "pass",
+      "scheme_category": "Zone Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "adjustments": [
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Middle Bunch WR"
+        },
+        {
+          "target": "HB",
+          "action": "Swing",
+          "macro_marked": true,
+          "guide_text": "Swing HB"
+        },
+        {
+          "target": "Iso WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Iso WR"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Corner route; stem all the way down",
+          "macro_marked": false,
+          "guide_text": "Corner Route Outside Bunch WR & Stem All The Way Down"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak Middle Bunch WR (macro)",
+        "Swing HB (macro)",
+        "Drag Iso WR",
+        "Corner Route Outside Bunch WR & Stem All The Way Down"
+      ],
+      "note": "t448u p35_top commanders-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_str_offset_flood_1",
+      "variant_name": "Flood 1",
+      "macro_name": "Flood 1",
+      "formation": "Gun Bunch Str Offset",
+      "base_play": "Flood",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Stem down all the way",
+          "macro_marked": false,
+          "guide_text": "Stem Down TE All The Way"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "In route; custom stem up 2x on D-pad",
+          "macro_marked": true,
+          "guide_text": "In Route Middle Bunch WR & Custom Stem Up 2x On Dpad"
+        },
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "Iso",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Iso"
+        }
+      ],
+      "guide_setup_text": [
+        "Stem Down TE All The Way",
+        "In Route Middle Bunch WR & Custom Stem Up 2x On Dpad (macro)",
+        "Flat HB (macro)",
+        "Drag Iso"
+      ],
+      "note": "t448u p33_top commanders-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_str_offset_flood_2",
+      "variant_name": "Flood 2",
+      "macro_name": "Flood 2",
+      "formation": "Gun Bunch Str Offset",
+      "base_play": "Flood",
+      "play_family": "pass",
+      "scheme_category": "Zone Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Stem down all the way",
+          "macro_marked": false,
+          "guide_text": "Stem Down TE All The Way"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Middle Bunch WR"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Slot fade",
+          "macro_marked": false,
+          "guide_text": "Slot Fade Outside Bunch WR"
+        },
+        {
+          "target": "HB",
+          "action": "Swing",
+          "macro_marked": true,
+          "guide_text": "Swing HB"
+        },
+        {
+          "target": "Iso WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Iso WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Stem Down TE All The Way",
+        "Streak Middle Bunch WR (macro)",
+        "Slot Fade Outside Bunch WR",
+        "Swing HB (macro)",
+        "Drag Iso WR"
+      ],
+      "note": "t448u p35_bot commanders-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_str_offset_flood_3",
+      "variant_name": "Flood 3",
+      "macro_name": "Flood 3",
+      "formation": "Gun Bunch Str Offset",
+      "base_play": "Flood",
+      "play_family": "pass",
+      "scheme_category": "Man Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Stem down all the way",
+          "macro_marked": false,
+          "guide_text": "Stem Down TE All The Way"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Middle Bunch WR"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Outside Bunch WR"
+        },
+        {
+          "target": "HB",
+          "action": "Out route",
+          "macro_marked": true,
+          "guide_text": "Out Route HB"
+        }
+      ],
+      "guide_setup_text": [
+        "Stem Down TE All The Way",
+        "Streak Middle Bunch WR (macro)",
+        "Drag Outside Bunch WR",
+        "Out Route HB (macro)"
+      ],
+      "note": "t448u p36_top commanders-offense. Four setup steps were visible (Flood 1 and 2 also had a Drag Iso step; none was shown here)."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_str_offset_dagger_1",
+      "variant_name": "Dagger 1",
+      "macro_name": "Dagger 1",
+      "formation": "Gun Bunch Str Offset",
+      "base_play": "Dagger",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Post",
+          "macro_marked": true,
+          "guide_text": "Post TE"
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        }
+      ],
+      "guide_setup_text": [
+        "Post TE (macro)",
+        "Streak HB (macro)"
+      ],
+      "note": "t448u p36_bot commanders-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_trips_te_mtn_bench_1",
+      "variant_name": "Mtn Bench 1",
+      "macro_name": "Mtn Bench 1",
+      "formation": "Gun Trips TE",
+      "base_play": "Mtn Bench",
+      "play_family": "pass",
+      "scheme_category": null,
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Middle trips WR",
+          "action": "Custom stem up 1 time on D-pad",
+          "macro_marked": false,
+          "guide_text": "Custom Stem Up Middle Trips WR 1 Time On Dpad"
+        },
+        {
+          "target": "Inside trips WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Inside Trips WR"
+        },
+        {
+          "target": "Outside trips WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Outside Trips WR"
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        },
+        {
+          "target": "HB",
+          "action": "Wheel",
+          "macro_marked": true,
+          "guide_text": "Wheel HB"
+        }
+      ],
+      "guide_setup_text": [
+        "Custom Stem Up Middle Trips WR 1 Time On Dpad",
+        "Drag Inside Trips WR",
+        "Drag Outside Trips WR",
+        "Streak TE (macro)",
+        "Wheel HB (macro)"
+      ],
+      "note": "t448u p33_bot commanders-offense. Exact Buccaneers stock name 'Mtn Bench' in Gun Trips TE."
+    },
+    {
+      "variant_id": "civil_t448_gun_trips_te_china_y_post_1",
+      "variant_name": "China Y Post 1",
+      "macro_name": "China Y Post 1",
+      "formation": "Gun Trips TE",
+      "base_play": "China Y Post",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "Middle trips WR",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak Middle Trips WR"
+        },
+        {
+          "target": "Inside trips WR",
+          "action": "Drag",
+          "macro_marked": true,
+          "guide_text": "Drag Inside Trips WR"
+        },
+        {
+          "target": "Outside trips WR",
+          "action": "Comeback",
+          "macro_marked": true,
+          "guide_text": "Comeback Outside Trips WR"
+        },
+        {
+          "target": "TE",
+          "action": "In route; custom stem up 2x on D-pad",
+          "macro_marked": true,
+          "guide_text": "In Route TE & Custom Stem Up 2x On Dpad"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak Middle Trips WR (macro)",
+        "Drag Inside Trips WR (macro)",
+        "Comeback Outside Trips WR (macro)",
+        "In Route TE & Custom Stem Up 2x On Dpad (macro)"
+      ],
+      "note": "t448u p37_top commanders-offense. Exact Buccaneers stock name 'China Y Post' in Gun Trips TE."
+    },
+    {
+      "variant_id": "civil_t448_gun_trips_te_flex_mtn_y_post_1",
+      "variant_name": "Mtn Y Post 1",
+      "macro_name": "MTN Y Post 1",
+      "formation": "Gun Trips TE Flex",
+      "base_play": "Mtn Y Post",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "Inside trips WR",
+          "action": "Slant",
+          "macro_marked": false,
+          "guide_text": "Slant Inside Trips WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Slant Inside Trips WR"
+      ],
+      "note": "t448u p39_bot saints-offense. PDF note: 'There's no \"Macro\" for this play because when you \"Flip\", the WR on the Slant changes.' Formation is not in the Buccaneers book; stock in Saints / Bears / Browns / Colts / Eagles / Falcons / Steelers / Titans."
+    },
+    {
+      "variant_id": "civil_t448_gun_trips_te_flex_mtn_y_post_2",
+      "variant_name": "Mtn Y Post 2",
+      "macro_name": "MTN Y Post 2",
+      "formation": "Gun Trips TE Flex",
+      "base_play": "Mtn Y Post",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "Inside trips WR",
+          "action": "Slant",
+          "macro_marked": false,
+          "guide_text": "Slant Inside Trips WR"
+        },
+        {
+          "target": "Middle trips WR",
+          "action": "Flat",
+          "macro_marked": false,
+          "guide_text": "Flat Middle Trips WR"
+        },
+        {
+          "target": "Outside trips WR",
+          "action": "In route",
+          "macro_marked": false,
+          "guide_text": "In Route Outside Trips WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Slant Inside Trips WR",
+        "Flat Middle Trips WR",
+        "In Route Outside Trips WR"
+      ],
+      "note": "t448u p41_top saints-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_flex_y_off_close_y_sail_1",
+      "variant_name": "Y-Sail 1",
+      "macro_name": "Y Sail 1",
+      "formation": "Gun Doubles Flex Y Off Close",
+      "base_play": "Y-Sail",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Custom stem down (use D-pad)",
+          "macro_marked": false,
+          "guide_text": "Custom Stem Down TE (Use D-Pad)"
+        },
+        {
+          "target": "Slot WR",
+          "action": "Drag or in",
+          "macro_marked": true,
+          "guide_text": "Drag or In Slot WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Custom Stem Down TE (Use D-Pad)",
+        "Drag or In Slot WR (macro)"
+      ],
+      "note": "t448u p40_top saints-offense. Formation is not in the Buccaneers book. Exact stock name 'Y-Sail'."
+    },
+    {
+      "variant_id": "civil_t448_gun_bunch_te_wk_spacing_x_wheel_3",
+      "variant_name": "Spacing X-Wheel 3",
+      "macro_name": "Spacing X Wheel 1",
+      "formation": "Gun Bunch TE Wk",
+      "base_play": "Spacing X-Wheel",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "Point WR",
+          "action": "Post",
+          "macro_marked": true,
+          "guide_text": "Post Point WR"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Outside Bunch WR"
+        },
+        {
+          "target": "TE",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak TE"
+        }
+      ],
+      "guide_setup_text": [
+        "Streak HB (macro)",
+        "Post Point WR (macro)",
+        "Drag Outside Bunch WR",
+        "Streak TE (macro)"
+      ],
+      "note": "t448u p40_bot saints-offense. PDF macro labeled Spacing X-Wheel 1, but the setup differs from the already-added benkert-dimes Spacing X-Wheel 1 and 2 on Gun Bunch TE Wk. Kept as a new variation numbered 3."
+    },
+    {
+      "variant_id": "civil_t448_gun_doubles_flex_y_off_close_mtn_dig_under_1",
+      "variant_name": "Mtn Dig Under 1",
+      "macro_name": "MTN Dig Under 1",
+      "formation": "Gun Doubles Flex Y Off Close",
+      "base_play": "Mtn Dig Under",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Wheel",
+          "macro_marked": true,
+          "guide_text": "Wheel TE"
+        },
+        {
+          "target": "HB",
+          "action": "Streak",
+          "macro_marked": true,
+          "guide_text": "Streak HB"
+        },
+        {
+          "target": "Outside WR on HB side",
+          "action": "Custom stem up 1x (use D-pad)",
+          "macro_marked": false,
+          "guide_text": "Custom Stem Up Outside WR on HB Side 1x (Use D-Pad)"
+        }
+      ],
+      "guide_setup_text": [
+        "Wheel TE (macro)",
+        "Streak HB (macro)",
+        "Custom Stem Up Outside WR on HB Side 1x (Use D-Pad)"
+      ],
+      "note": "t448u p41_bot saints-offense."
+    },
+    {
+      "variant_id": "civil_t448_gun_trips_te_flex_rpo_zone_alert_omaha_1",
+      "variant_name": "RPO Zone Alert Omaha",
+      "macro_name": "RPO Zone Alert Omaha",
+      "formation": "Gun Trips TE Flex",
+      "base_play": "RPO Zone Alert Omaha",
+      "play_family": "pass",
+      "scheme_category": "Great RPO",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [],
+      "adjustments": [
+        {
+          "target": "Inside trips WR",
+          "action": "Flat",
+          "macro_marked": false,
+          "guide_text": "Flat Inside Trips WR"
+        },
+        {
+          "target": "TE",
+          "action": "Flat",
+          "macro_marked": false,
+          "guide_text": "Flat TE"
+        }
+      ],
+      "guide_setup_text": [
+        "Flat Inside Trips WR",
+        "Flat TE"
+      ],
+      "note": "t448u p42_top saints-offense. Owner-supplied RPO with a route setup; added as a pass variant (t349u forbids new RPOs as designed runs). Flagged. Exact stock name in Gun Trips TE Flex."
     }
   ],
-  "red_zone_variants": [],
-  "designed_runs": []
+  "red_zone_variants": [
+    {
+      "variant_id": "civil_t448_rz_gun_bunch_te_mtn_spacing_4",
+      "variant_name": "Mtn Spacing 4 (Redzone Pass)",
+      "formation": "Gun Bunch TE",
+      "base_play": "Mtn Spacing",
+      "field_zone": "red_zone",
+      "play_family": "pass",
+      "guide_setup_text": [
+        "Wheel TE (macro)",
+        "Drag Inside Bunch WR",
+        "Deep Cross Middle Bunch WR (macro)",
+        "In Route Outside Bunch WR"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Wheel",
+          "macro_marked": true,
+          "guide_text": "Wheel TE"
+        },
+        {
+          "target": "Inside bunch WR",
+          "action": "Drag",
+          "macro_marked": false,
+          "guide_text": "Drag Inside Bunch WR"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Deep cross",
+          "macro_marked": true,
+          "guide_text": "Deep Cross Middle Bunch WR"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "In route",
+          "macro_marked": false,
+          "guide_text": "In Route Outside Bunch WR"
+        }
+      ],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "t448u p05_top benkert-dimes, Redzone tab. PDF macro labeled MTN Spacing 4, but the setup differs from the regular-field Mtn Spacing 4 already in the book. Added as a red-zone variant (field_zone red_zone, callable inside the 20), not a replacement of regular Spacing 4. Shares the Mtn Spacing cooldown family.",
+      "macro_name": "MTN Spacing 4"
+    },
+    {
+      "variant_id": "civil_t448_rz_gun_trio_y_flex_slot_out_1",
+      "variant_name": "Slot Out 1 (Redzone Pass)",
+      "formation": "Gun Trio Y-Flex",
+      "base_play": "Slot Out",
+      "field_zone": "red_zone",
+      "play_family": "pass",
+      "guide_setup_text": [
+        "Flat Slot WR (macro)",
+        "Slant Inside WR",
+        "Flat HB (macro)",
+        "Deep Cross TE (macro)"
+      ],
+      "adjustments": [
+        {
+          "target": "Slot WR",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat Slot WR"
+        },
+        {
+          "target": "Inside WR",
+          "action": "Slant",
+          "macro_marked": false,
+          "guide_text": "Slant Inside WR"
+        },
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat HB"
+        },
+        {
+          "target": "TE",
+          "action": "Deep cross",
+          "macro_marked": true,
+          "guide_text": "Deep Cross TE"
+        }
+      ],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "t448u p25_bot raiders-offense, Redzone Pass tab. Exact Buccaneers stock name 'Slot Out' in Gun Trio Y-Flex.",
+      "macro_name": "Slot Out 1"
+    },
+    {
+      "variant_id": "civil_t448_rz_pistol_bunch_te_cross_drag_1",
+      "variant_name": "Cross Drags 1 (Redzone Pass)",
+      "formation": "Pistol Bunch TE",
+      "base_play": "Cross Drag",
+      "field_zone": "inside_10",
+      "play_family": "pass",
+      "guide_setup_text": [
+        "Block HB (macro)"
+      ],
+      "adjustments": [
+        {
+          "target": "HB",
+          "action": "Block",
+          "macro_marked": true,
+          "guide_text": "Block HB"
+        }
+      ],
+      "expert_situation_tags": [
+        "Redzone Inside 10"
+      ],
+      "note": "t448u p32_top gun-doubles-clamp-stack-offense, Redzone (3) tab with HB Zone and Speed Option (those two already exist as inside_10 red-zone runs). PDF title/macro is 'Cross Drags'; the in-repo stock name is 'Cross Drag'. base_play uses the stock spelling; variant/macro names keep the PDF wording. Flagged. field_zone inside_10 to match the other plays in this red-zone package.",
+      "macro_name": "Cross Drags 1"
+    },
+    {
+      "variant_id": "civil_t448_rz_gun_trips_te_china_y_post_2",
+      "variant_name": "China Y Post 2 (Redzone Pass)",
+      "formation": "Gun Trips TE",
+      "base_play": "China Y Post",
+      "field_zone": "red_zone",
+      "play_family": "pass",
+      "guide_setup_text": [
+        "Slant Inside Trips WR",
+        "Flat Middle Trips WR (macro)",
+        "In Route Outside Trips WR",
+        "Crosser TE",
+        "Flat HB"
+      ],
+      "adjustments": [
+        {
+          "target": "Inside trips WR",
+          "action": "Slant",
+          "macro_marked": false,
+          "guide_text": "Slant Inside Trips WR"
+        },
+        {
+          "target": "Middle trips WR",
+          "action": "Flat",
+          "macro_marked": true,
+          "guide_text": "Flat Middle Trips WR"
+        },
+        {
+          "target": "Outside trips WR",
+          "action": "In route",
+          "macro_marked": false,
+          "guide_text": "In Route Outside Trips WR"
+        },
+        {
+          "target": "TE",
+          "action": "Crosser",
+          "macro_marked": false,
+          "guide_text": "Crosser TE"
+        },
+        {
+          "target": "HB",
+          "action": "Flat",
+          "macro_marked": false,
+          "guide_text": "Flat HB"
+        }
+      ],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "t448u p38_bot commanders-offense, Redzone Pass Play tab. Same base play as regular China Y Post 1; this is the red-zone variation. Shares the China Y Post cooldown family.",
+      "macro_name": "China Y Post 2"
+    },
+    {
+      "variant_id": "civil_t448_rz_gun_heavy_saint_qb_blast",
+      "variant_name": "Redzone - Gun Heavy Saint: QB Blast",
+      "formation": "Gun Heavy Saint",
+      "base_play": "QB Blast",
+      "field_zone": "inside_10",
+      "play_family": "run",
+      "guide_setup_text": [],
+      "adjustments": [],
+      "expert_situation_tags": [
+        "Redzone Inside 10"
+      ],
+      "note": "t448u p43_bot saints-offense, Redzone / Great Short Yardage tab. Setup text is a usage note only: 'Run this \"Slow\" - You can cut inside or out.' No route adjustments (allowed for a red-zone run). field_zone inside_10 to match the existing Gun Empty Quads QB Blast short-yardage convention. Formation is Saints-only; not in the Buccaneers book. Flagged (usage-note setup)."
+    },
+    {
+      "variant_id": "civil_t448_rz_pistol_tight_y_off_flex_hb_zone",
+      "variant_name": "Redzone - Pistol Tight Y Off Flex: HB Zone",
+      "formation": "Pistol Tight Y Off Flex",
+      "base_play": "HB Zone",
+      "field_zone": "red_zone",
+      "play_family": "run",
+      "guide_setup_text": [],
+      "adjustments": [],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "t448u p25_top raiders-offense, 'Redzone Running / Use These Runs In The Redzone!' list. Formation and play named on the card. Exact stock play in Pistol Tight Y Off Flex (not in the Buccaneers book). No adjustments."
+    },
+    {
+      "variant_id": "civil_t448_rz_i_form_slot_close_hb_stretch",
+      "variant_name": "Redzone - I Form Slot Close: HB Stretch",
+      "formation": "I Form Slot Close",
+      "base_play": "HB Stretch",
+      "field_zone": "red_zone",
+      "play_family": "run",
+      "guide_setup_text": [],
+      "adjustments": [],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "t448u p25_top raiders-offense red-zone running list. Exact stock play 'HB Stretch' in I Form Slot Close (not in the Buccaneers book; distinct from the existing I Form Close Flex Stretch). No adjustments."
+    },
+    {
+      "variant_id": "civil_t448_rz_pistol_deuce_close_hb_dive",
+      "variant_name": "Redzone - Pistol Deuce Close: HB Dive",
+      "formation": "Pistol Deuce Close",
+      "base_play": "HB Dive",
+      "field_zone": "red_zone",
+      "play_family": "run",
+      "guide_setup_text": [],
+      "adjustments": [],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "t448u p25_top raiders-offense red-zone running list. Exact Buccaneers (and Raiders) stock play. Also added as a regular designed run from the p24_top card. Shares the HB Dive cooldown family."
+    },
+    {
+      "variant_id": "civil_t448_rz_gun_bunch_te_hb_draw",
+      "variant_name": "Redzone - Gun Bunch TE: HB Draw",
+      "formation": "Gun Bunch TE",
+      "base_play": "HB Draw",
+      "field_zone": "red_zone",
+      "play_family": "run",
+      "guide_setup_text": [],
+      "adjustments": [],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "t448u p25_top raiders-offense red-zone running list. 'HB Draw' is not in the Buccaneers Gun Bunch TE, but is an exact stock play in Benkert's Dimes / Bills / Falcons / Raiders / Rams / Run Heavy / Shotgun Classic / Vikings Gun Bunch TE."
+    }
+  ],
+  "designed_runs": [
+    {
+      "variant_id": "civil_t448_run_gun_empty_sketch_stack_qb_zone",
+      "variant_name": "QB Zone",
+      "formation": "Gun Empty Sketch Stack",
+      "base_play": "QB Zone",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "t448u p16_top texans-offense. Setup is a usage note only: 'Snap the ball - Great Short Yardage.' Added as a no-adjustment designed run (field_zone any). Flagged. Formation is Texans-only; not in the Buccaneers book."
+    },
+    {
+      "variant_id": "civil_t448_run_pistol_deuce_close_hb_dive",
+      "variant_name": "HB Dive",
+      "formation": "Pistol Deuce Close",
+      "base_play": "HB Dive",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "t448u p24_top raiders-offense, Great Run tab. Setup is a usage note only: 'Untarget Either Top Safety' (not stored as a route adjustment; designed runs must have none). Exact Buccaneers stock play. Flagged. A separate red-zone copy comes from the p25_top list."
+    },
+    {
+      "variant_id": "civil_t448_run_gun_bunch_te_wk_hb_dive",
+      "variant_name": "HB Dive",
+      "formation": "Gun Bunch TE Wk",
+      "base_play": "HB Dive",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "t448u p43_top saints-offense, Great Run tab. Setup is a usage note only: 'This is a slow Developing Run, look to hit the hole inside, or out.' Flagged. Exact stock play in Gun Bunch TE Wk."
+    },
+    {
+      "variant_id": "civil_t448_run_gun_bunch_str_offset_duo",
+      "variant_name": "Duo",
+      "formation": "Gun Bunch Str Offset",
+      "base_play": "Duo",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "t448u p38_top commanders-offense lesson card (not a dedicated play card). The card names the play and formation verbatim: 'My Favorite Run is \"Duo\" Out Of Gun Bunch Str Offset.' Added as a no-adjustment designed run. Flagged as coming from a lesson note. Exact stock play in that formation."
+    },
+    {
+      "variant_id": "civil_t448_run_pistol_bunch_te_hb_zone",
+      "variant_name": "HB Zone",
+      "formation": "Pistol Bunch TE",
+      "base_play": "HB Zone",
+      "play_family": "run",
+      "adjustments": [],
+      "note": "t448u p31_top gun-doubles-clamp-stack-offense. The existing catalog entry is the inside_10 red-zone HB Zone only; this adds the same stock play as a regular (field_zone any) designed run. Setup is a usage note only: 'Look to \"Flip\" this run using the Right Stick.' Flagged. Shares the HB Zone cooldown family."
+    }
+  ]
 }

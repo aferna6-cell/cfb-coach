@@ -110,9 +110,9 @@ def cmd_checklist(args) -> int:
     print("  outside the 20: the 27 pass variants + the 14 designed runs. Every call is model-scored and mixed, never")
     print("  forced; outside the 10 a situation-gated run-pass draw (learned utility gap + down/distance prior) picks")
     print("  run or pass first, then the near-best draw inside that family.")
-    print("  Books (t445u): Chiefs online and Titans franchise use this shared 49-play book (no Mtn Spacing /")
-    print("  Mtn Fork Y-Corner). Lions franchise and CPU games use a separate book that adds Mtn Spacing 1-4 and")
-    print("  Mtn Fork Y-Corner 1-3 (56 callable variants). More Lions/CPU plays go in datasets/madden27/civil_lions_cpu_book.json.")
+    print("  Books (t445u/t448u): Chiefs online and Titans franchise use this shared 49-play book (no Mtn plays")
+    print("  and none of the later Lions/CPU additions). Lions franchise and CPU games use a separate book that")
+    print("  adds Mtn Spacing 1-4, Mtn Fork Y-Corner 1-3, and the rest of the owner PDF (124 callable variants).")
     by_form: dict[str, list] = {}
     for v in cat.variants:
         by_form.setdefault(v.formation, []).append(v)

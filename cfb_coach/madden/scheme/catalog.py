@@ -30,6 +30,11 @@ Owner instruction 2026-11-17 (t445u, ``datasets/madden27/civil_lions_cpu_book.js
 games use a separate book that starts as a copy of the shared catalog and then adds the 7 Gun Bunch TE Mtn
 Spacing / Mtn Fork Y-Corner owner_pass variants (setup steps + macro flags verbatim). Further plays dropped into
 that file change only Lions and CPU. ``load()`` / ``load_cached()`` stay on the shared 49-variant book.
+
+Owner instruction 2026-11-17 (t448u, same Lions/CPU file): the rest of the owner's compiled Civil.gg PDF is
+deduped against the 56-variant Lions/CPU book and added only there. Formations and play names that are not in
+the Buccaneers stock book but are exact names in another in-repo Madden playbook are allowed on this book
+only (still never invented). catalog_version and the 26-play bytes stay unchanged so the trained artifact still loads.
 """
 from __future__ import annotations
 
@@ -61,10 +66,27 @@ EXPECTED_RUN_FORMATIONS = {"Gun Doubles Clamp Stack": 4, "Gun Bunch TE": 5, "Gun
 # owner t398u / t414u: shared catalog regular pass variant is PA Slide (Mtn plays live only on the Lions/CPU book)
 EXPECTED_OWNER_PASS_VARIANTS = 1
 EXPECTED_OWNER_PASS_FORMATIONS = {"Pistol Strong Y Off Close": 1}
-# owner t445u: Lions/CPU book = shared catalog + Mtn Spacing 1-4 + Mtn Fork Y-Corner 1-3
-EXPECTED_LIONS_CPU_OWNER_PASS_VARIANTS = 8
-EXPECTED_LIONS_CPU_OWNER_PASS_FORMATIONS = {"Gun Bunch TE": 7, "Pistol Strong Y Off Close": 1}
-EXPECTED_LIONS_CPU_VARIANTS = 56  # 49 shared + 7 Mtn owner_pass variants
+# owner t445u / t448u: Lions/CPU book = shared catalog + Mtn plays + the rest of the owner PDF
+EXPECTED_LIONS_CPU_OWNER_PASS_VARIANTS = 62  # 1 shared PA Slide + 7 t445u Mtn + 54 t448u passes
+EXPECTED_LIONS_CPU_OWNER_PASS_FORMATIONS = {
+    "Gun Bunch TE": 11, "Gun Bunch TE Wk": 4, "Gun Tight": 9, "Gun Bunch Y-Flex": 2,
+    "Gun Tight Flex Offset": 7, "Gun Tight Flex Wk": 2, "Pistol Deuce Close": 1,
+    "Gun Doubles Clamp Stack": 12, "Gun Bunch Str Offset": 6, "Gun Trips TE": 2,
+    "Gun Trips TE Flex": 3, "Gun Doubles Flex Y Off Close": 2, "Pistol Strong Y Off Close": 1,
+}
+EXPECTED_LIONS_CPU_REDZONE_VARIANTS = 17  # 8 shared + 9 t448u
+EXPECTED_LIONS_CPU_REDZONE_FORMATIONS = {
+    "Pistol Bunch TE": 4, "Gun Empty Quads": 2, "I Form Close Flex": 2, "Gun Bunch TE": 3,
+    "Gun Trio Y-Flex": 1, "Gun Trips TE": 1, "Gun Heavy Saint": 1, "Pistol Tight Y Off Flex": 1,
+    "I Form Slot Close": 1, "Pistol Deuce Close": 1,
+}
+EXPECTED_LIONS_CPU_RUN_VARIANTS = 19  # 14 shared + 5 t448u
+EXPECTED_LIONS_CPU_RUN_FORMATIONS = {
+    "Gun Doubles Clamp Stack": 4, "Gun Bunch TE": 5, "Gun Tight Doubles": 2, "Gun 5WR Tight": 1,
+    "Pistol Strong Y Off Close": 2, "Gun Empty Sketch Stack": 1, "Pistol Deuce Close": 1,
+    "Gun Bunch TE Wk": 1, "Gun Bunch Str Offset": 1, "Pistol Bunch TE": 1,
+}
+EXPECTED_LIONS_CPU_VARIANTS = 124  # 49 shared + 61 file passes + 9 rz + 5 runs
 SHARED_BOOK, LIONS_CPU_BOOK = "civil_shared", "lions_cpu"
 RUN, PASS = "run", "pass"       # play_family: the run-pass mix (coordinator.pick_mixed) gates on it
 CORE, REDZONE_GROUP, DESIGNED_RUN = "core", "red_zone", "designed_run"
@@ -370,6 +392,17 @@ def stock_offense_plays(book: str = STOCK_BOOK) -> dict[str, tuple[str, ...]]:
     return {f: tuple(str(x) for x in (d.get("plays") or ())) for f, d in forms.items()}
 
 
+@lru_cache(maxsize=1)
+def stock_offense_plays_all() -> dict[str, tuple[str, ...]]:
+    """formation -> union of exact play names across every in-repo stock offense book."""
+    data = json.loads((repo_root() / STOCK_PLAYBOOKS_RELPATH).read_text())
+    out: dict[str, set[str]] = {}
+    for book in (data["books"]["offense"] or {}).values():
+        for form, d in (book.get("formations") or {}).items():
+            out.setdefault(str(form), set()).update(str(x) for x in (d.get("plays") or ()))
+    return {f: tuple(sorted(plays)) for f, plays in out.items()}
+
+
 def with_owner_verified_names(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: str) -> SchemeCatalog:
     """Owner instruction t358u: four previously unverified variation names are confirmed correct.
 
@@ -463,35 +496,50 @@ def _owner_adjustments(vid: str, rows: Any) -> tuple[Adjustment, ...]:
     return tuple(out)
 
 
-def with_owner_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: str, label: str = "t398u owner file") -> SchemeCatalog:
+def with_owner_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: str, label: str = "t398u owner file",
+                         allow_any_stock: bool = False) -> SchemeCatalog:
     """Owner instruction t398u: new pass variants, a red-zone pass and two designed runs (civil.gg screenshots).
 
     Fails closed (CatalogError) on: a different catalog version; a formation missing from the in-repo Buccaneers
-    stock book; a base play missing from that formation unless the file lists it under ``name_not_in_stock_data``
-    (owner-provided name, flagged); a run that is not a stock play, has adjustments, or is a screen/RPO; a pass
-    with no adjustments; a red-zone play without the red_zone gate; duplicate ids."""
+    stock book (unless ``allow_any_stock``, in which case the formation must be an exact name in some in-repo
+    stock offense book); a base play missing from that formation unless the file lists it under
+    ``name_not_in_stock_data`` (owner-provided name, flagged) or, when ``allow_any_stock``, the play is an exact
+    name in that formation in some in-repo book; a run that is not a stock play, has adjustments, or is a
+    screen/RPO; a pass with no adjustments; a red-zone play without the red_zone gate; duplicate ids.
+
+    ``name_in_stock_data`` stays Buccaneers-specific so existing t445u flags are unchanged. Designed runs still
+    require an exact stock play (Buccaneers, or any book when ``allow_any_stock``)."""
     if owner.get("catalog_version") != cat.version():
         raise CatalogError(f"{label} is for {owner.get('catalog_version')}, catalog is {cat.version()}")
     src = str((owner.get("owner_instruction") or {}).get("source") or "")
     stock = stock_offense_plays(STOCK_BOOK)
+    stock_all = stock_offense_plays_all() if allow_any_stock else {}
     allowed_missing = {(str(e.get("formation")), str(e.get("base_play"))) for e in owner.get("name_not_in_stock_data") or ()}
     extra: list[SchemeVariant] = []
 
-    def _check_names(vid: str, form: str, play: str) -> bool:
+    def _in_any(form: str, play: str) -> bool:
+        return allow_any_stock and play in stock_all.get(form, ())
+
+    def _check_names(vid: str, form: str, play: str) -> tuple[bool, bool]:
+        """Return (in_bucs, exact_stock_somewhere)."""
         if not vid or not form or not play:
             raise CatalogError(f"owner addition {vid!r}: missing variant_id/formation/base_play")
-        if form not in stock:
-            raise CatalogError(f"{vid}: formation '{form}' is not in the {STOCK_BOOK} stock book")
-        if play in stock[form]:
-            return True
+        if form not in stock and not (allow_any_stock and form in stock_all):
+            raise CatalogError(f"{vid}: formation '{form}' is not in the {STOCK_BOOK} stock book"
+                               + (" or any other in-repo stock offense book" if allow_any_stock else ""))
+        in_bucs = form in stock and play in stock[form]
+        in_any = in_bucs or _in_any(form, play)
+        if in_any:
+            return in_bucs, True
         if (form, play) in allowed_missing:
-            return False
-        raise CatalogError(f"{vid}: '{play}' is not a stock play in {STOCK_BOOK} '{form}' and is not listed as an "
+            return False, False
+        where = f"{STOCK_BOOK} '{form}'" if form in stock else f"any in-repo book '{form}'"
+        raise CatalogError(f"{vid}: '{play}' is not a stock play in {where} and is not listed as an "
                            "owner-provided name (name_not_in_stock_data)")
 
     for m in owner.get("pass_variants") or ():
         vid, form, play = str(m.get("variant_id") or ""), str(m.get("formation") or ""), str(m.get("base_play") or "")
-        in_stock = _check_names(vid, form, play)
+        in_stock, _exact = _check_names(vid, form, play)
         if m.get("play_family") != PASS:
             raise CatalogError(f"{vid}: owner pass variant must have play_family 'pass'")
         adjs = _owner_adjustments(vid, m.get("adjustments"))
@@ -508,7 +556,7 @@ def with_owner_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest
             package_id="", play_family=PASS, group=OWNER_PASS, owner_source=src, name_in_stock_data=in_stock))
     for m in owner.get("red_zone_variants") or ():
         vid, form, play = str(m.get("variant_id") or ""), str(m.get("formation") or ""), str(m.get("base_play") or "")
-        in_stock = _check_names(vid, form, play)
+        in_stock, _exact = _check_names(vid, form, play)
         zone = str(m.get("field_zone") or "")
         if zone not in (INSIDE_10, RED_ZONE):
             raise CatalogError(f"{vid}: red-zone play needs field_zone inside_10 or red_zone")
@@ -523,7 +571,8 @@ def with_owner_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest
             play_family=_family(m), group=REDZONE_GROUP, owner_source=src, name_in_stock_data=in_stock))
     for m in owner.get("designed_runs") or ():
         vid, form, play = str(m.get("variant_id") or ""), str(m.get("formation") or ""), str(m.get("base_play") or "")
-        if not _check_names(vid, form, play):
+        _in_bucs, exact = _check_names(vid, form, play)
+        if not exact:
             raise CatalogError(f"{vid}: designed runs must be exact stock plays")
         if any(w in play.lower().split() for w in FORBIDDEN_RUN_WORDS):
             raise CatalogError(f"{vid}: screens and RPOs are not designed runs (owner t349u)")
@@ -620,7 +669,7 @@ def lions_cpu_book_path() -> Path:
 def with_lions_cpu_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: str) -> SchemeCatalog:
     """Layer Lions/CPU-only owner plays onto a copy of the shared catalog without touching shared metadata."""
     from dataclasses import replace
-    added = with_owner_additions(cat, owner, digest=digest, label="lions/cpu owner book")
+    added = with_owner_additions(cat, owner, digest=digest, label="lions/cpu owner book", allow_any_stock=True)
     return replace(
         added,
         additions_digest=cat.additions_digest,
@@ -631,7 +680,7 @@ def with_lions_cpu_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, di
 
 
 def load_lions_cpu(path: str | Path | None = None) -> SchemeCatalog:
-    """Shared civil catalog plus the Lions/CPU book slot (Mtn Spacing / Mtn Fork Y-Corner, t445u).
+    """Shared civil catalog plus the Lions/CPU book slot (t445u Mtn plays, t448u rest of the owner PDF).
 
     If the slot file is missing or lists no plays, this is identical to ``load()``. Plays listed in
     the slot file are appended; they never change the shared catalog used by Chiefs and Titans.
@@ -675,7 +724,7 @@ def catalog_for_variant(variant_id: str | None = None, book_id: str | None = Non
 
 def contract_errors(cat: SchemeCatalog, *, book: str | None = None) -> list[str]:
     """Every way the loaded catalog differs from the approved 26 / 12 / 4 contract (+ 8 red-zone, + 14 runs,
-    + 1 owner-added pass on the shared book, or + 8 owner-added passes on the Lions/CPU book)."""
+    + 1 owner-added pass on the shared book; Lions/CPU book uses the t445u/t448u expected counts)."""
     errs: list[str] = []
     core = cat.core_variants
     if len(core) != EXPECTED_VARIANTS:
@@ -690,8 +739,10 @@ def contract_errors(cat: SchemeCatalog, *, book: str | None = None) -> list[str]
             rc[v.formation] = rc.get(v.formation, 0) + 1
             if v.field_zone not in (INSIDE_10, RED_ZONE):
                 errs.append(f"{v.variant_id}: red-zone play without a red-zone gate")
-        if len(rz) != EXPECTED_REDZONE_VARIANTS or rc != EXPECTED_REDZONE_FORMATIONS:
-            errs.append(f"red-zone plays {rc} != {EXPECTED_REDZONE_FORMATIONS}")
+        want_rz_n = EXPECTED_LIONS_CPU_REDZONE_VARIANTS if (book or cat.book_id) == LIONS_CPU_BOOK else EXPECTED_REDZONE_VARIANTS
+        want_rz_f = EXPECTED_LIONS_CPU_REDZONE_FORMATIONS if (book or cat.book_id) == LIONS_CPU_BOOK else EXPECTED_REDZONE_FORMATIONS
+        if len(rz) != want_rz_n or rc != want_rz_f:
+            errs.append(f"red-zone plays {rc} != {want_rz_f}")
     if any(v.is_run for v in core):
         errs.append("a core catalog variant is marked as a run (the 26 are passes)")
     runs = cat.run_variants
@@ -701,8 +752,10 @@ def contract_errors(cat: SchemeCatalog, *, book: str | None = None) -> list[str]
             rc2[v.formation] = rc2.get(v.formation, 0) + 1
             if v.field_zone != "any" or not v.is_run or v.adjustments:
                 errs.append(f"{v.variant_id}: designed run must be a regular-field stock run")
-        if len(runs) != EXPECTED_RUN_VARIANTS or rc2 != EXPECTED_RUN_FORMATIONS:
-            errs.append(f"designed runs {rc2} != {EXPECTED_RUN_FORMATIONS}")
+        want_run_n = EXPECTED_LIONS_CPU_RUN_VARIANTS if (book or cat.book_id) == LIONS_CPU_BOOK else EXPECTED_RUN_VARIANTS
+        want_run_f = EXPECTED_LIONS_CPU_RUN_FORMATIONS if (book or cat.book_id) == LIONS_CPU_BOOK else EXPECTED_RUN_FORMATIONS
+        if len(runs) != want_run_n or rc2 != want_run_f:
+            errs.append(f"designed runs {rc2} != {want_run_f}")
     owner_pass = cat.owner_pass_variants
     if owner_pass:
         oc: dict[str, int] = {}

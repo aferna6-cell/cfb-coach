@@ -18,7 +18,7 @@ from cfb_coach.madden.scheme import design as dz
 from cfb_coach.madden.scheme import legality as lg
 from cfb_coach.madden.scheme import model as sm
 from cfb_coach.madden.scheme import play_cooldown as pcd
-from tests.test_civil_scheme_only import CAT, _artifact, _close_snap, _db, _sit, _verify_all
+from tests.test_civil_scheme_only import CAT, CAT_LIONS, _artifact, _close_snap, _db, _sit, _verify_all
 from tests.test_civil_scheme_only import civil_env  # noqa: F401 — pytest fixture
 from tests.test_titans_play_cooldown import _titans
 
@@ -189,7 +189,7 @@ def test_t398_live_calls_include_red_zone_mesh_inside_10_and_pistol_runs(tmp_pat
         y = 91 + i % 8
         call = playcaller.make_call(_sit(1 + i % 3, min(1 + i % 9, 100 - y), y, session=f"rz{i}"), "cpu", db)
         vid = call.scheme_variant["variant_id"]
-        assert vid in {v.variant_id for v in CAT.redzone_variants}
+        assert vid in {v.variant_id for v in CAT_LIONS.redzone_variants}
         assert vid not in REMOVED
         inside[vid] += 1
     for i in range(240):

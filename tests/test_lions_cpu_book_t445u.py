@@ -57,16 +57,16 @@ def test_shared_book_stays_at_49_without_mtn_plays():
 def test_lions_cpu_book_is_the_shared_book_plus_the_seven_mtn_plays():
     assert CAT_LIONS.book_id == sc.LIONS_CPU_BOOK
     assert set(CAT.ids) < set(CAT_LIONS.ids)
-    assert set(CAT_LIONS.ids) - set(CAT.ids) == MTN_IDS == MTN_PASS
-    assert len(CAT_LIONS.variants) == 56 and sc.contract_errors(CAT_LIONS) == []
+    assert MTN_IDS == MTN_PASS <= set(CAT_LIONS.ids) - set(CAT.ids)
+    assert len(CAT_LIONS.variants) == sc.EXPECTED_LIONS_CPU_VARIANTS and sc.contract_errors(CAT_LIONS) == []
     assert CAT_LIONS.version() == CAT.version() == "lions_civil_bucs_5wr_v4@15c120decc4b"
     fam = pcd.catalog_families(CAT_LIONS)
-    assert len(fam) == 31 and {"mtn spacing", "mtn fork y corner"} <= set(fam)
+    assert len(fam) == 63 and {"mtn spacing", "mtn fork y corner"} <= set(fam)
     owner = _owner()
-    assert [v["variant_id"] for v in owner["pass_variants"]] == MTN_SPACING + MTN_FORK
-    assert owner["red_zone_variants"] == [] and owner["designed_runs"] == []
+    assert [v["variant_id"] for v in owner["pass_variants"][:7]] == MTN_SPACING + MTN_FORK
+    assert owner["red_zone_variants"] and owner["designed_runs"]
     names = {(e["formation"], e["base_play"]) for e in owner["name_not_in_stock_data"]}
-    assert names == {("Gun Bunch TE", "Mtn Spacing"), ("Gun Bunch TE", "Mtn Fork Y-Corner")}
+    assert {("Gun Bunch TE", "Mtn Spacing"), ("Gun Bunch TE", "Mtn Fork Y-Corner")} <= names
     stock = sc.stock_offense_plays()
     assert "Mtn Spacing" not in stock["Gun Bunch TE"] and "Mtn Fork Y-Corner" not in stock["Gun Bunch TE"]
     for vid in MTN_IDS:
@@ -89,7 +89,7 @@ def test_lions_cpu_slot_does_not_change_the_shared_catalog():
     assert dropped["variant_id"] not in cat.ids
     assert dropped["variant_id"] not in CAT.ids
     assert set(CAT.ids) < set(cat.ids)
-    assert len(cat.variants) == 55
+    assert len(cat.variants) == len(CAT_LIONS.variants) - 1
     assert sc.load_cached() is CAT or set(sc.load_cached().ids) == set(CAT.ids)
     assert set(sc.load_cached().ids).isdisjoint(MTN_IDS)
 
@@ -169,7 +169,8 @@ def test_lions_and_cpu_call_mtn_plays_with_no_cooldown(tmp_path, civil_env):
         mid = {v.variant_id for v in lg.legal_set(CAT_LIONS, db=db, yardline=40)[0]}
         rz = {v.variant_id for v in lg.legal_set(CAT_LIONS, db=db, yardline=95)[0]}
         assert MTN_IDS <= mid and mid == REG_LIONS
-        assert rz == RZ and rz.isdisjoint(MTN_IDS)
+        assert RZ <= rz and rz.isdisjoint(MTN_IDS)
+        assert rz == {v.variant_id for v in CAT_LIONS.redzone_variants}
 
     # One card still shows the owner's setup steps and macro flags verbatim.
     call = playcaller.make_call(_sit(1, 10, 35, session="lions-card"), "jaxon", db)
@@ -205,7 +206,8 @@ def test_chiefs_and_titans_never_call_mtn_and_keep_cooldowns(tmp_path, civil_env
     ):
         assert rec["statuses"].count("CALL") == SNAPS and lg.NO_LEGAL not in rec["statuses"], label
         assert rec["books"] == {sc.SHARED_BOOK}, (label, rec["books"])
-        assert set(rec["counts"]).isdisjoint(MTN_IDS), (label, set(rec["counts"]) & MTN_IDS)
+        lions_only = set(CAT_LIONS.ids) - set(CAT.ids)
+        assert set(rec["counts"]).isdisjoint(lions_only), (label, set(rec["counts"]) & lions_only)
         assert set(rec["counts"]) <= set(CAT.ids)
         # Family cooldown is on and the window matches; non-fallback snaps do not repeat inside the window
         # (already asserted inside _simulate). Confirm the metadata.
