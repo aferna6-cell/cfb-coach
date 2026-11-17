@@ -247,8 +247,8 @@ def call_ravens(sit: Any, opponent_id: str, db: Any, defense_book: Mapping[str, 
         conf = cf.load(confirmations_path)
         installed = rc.scheme_book(cat) if scheme_book else rc.installed_two_formation_book(defense_book)
         art = artifact or (str(md.artifact_dir(db)) if md.artifact_dir(db) else None)
-        # A Ravens-trained artifact does not score Nickel Single Mug candidates; use
-        # the untrained prior on the Steelers three-formation catalog (honest label).
+        # The unused Steelers+NSM catalog is not scored by a Ravens-trained artifact.
+        # If it is ever loaded again, stay on the untrained prior (honest label).
         if cat.is_lions_franchise:
             art, model = None, prior_only_model(cat)
         elif art and not (scheme_book and not Path(art, "model.json").is_file()):

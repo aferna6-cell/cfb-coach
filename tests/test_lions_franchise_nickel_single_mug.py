@@ -1,8 +1,8 @@
-"""t449u/t451u: every league uses the Steelers book with the Nickel Single Mug package.
+"""t457u: every league is back on the Ravens two-formation book (no NSM in the live pool).
 
 The Ravens two-formation dataset bytes and the default 14-candidate ``rc.load()`` contract
-stay unchanged. Live civil defense calls use ``load_lions_franchise()`` for Lions, Chiefs,
-Titans, and CPU.
+stay unchanged. The Steelers+NSM catalog file and ``load_lions_franchise()`` remain in the
+repo but are not used for live civil defense calls.
 """
 from __future__ import annotations
 
@@ -64,11 +64,13 @@ def test_lions_franchise_catalog_adds_pdf_stock_nsm_plays_only():
         assert "UNCONFIRMED" in notes or "PROFILE_UNCONFIRMED" in notes
 
 
-def test_session_routing_nsm_is_used_in_every_league(tmp_path, civil_env):
+def test_session_routing_uses_ravens_two_formation_in_every_league(tmp_path, civil_env):
     db = _db(tmp_path, formations=["Gun Bunch TE"])
     _lions(db, "lions-cpu")
     _online(db, "online1")
     _titans(db, "titans1")
+    from tests.test_titans_play_cooldown import _giants
+    _giants(db, "giants1")
     db.conn.execute(
         "INSERT INTO game_sessions (session_id, opponent_id, dynasty, started_ts, "
         "league, user_team, opponent_team, opponent_type) "
@@ -82,25 +84,32 @@ def test_session_routing_nsm_is_used_in_every_league(tmp_path, civil_env):
         ("lions-human", "jaxon"),
         ("online1", "online_indianapolis_colts"),
         ("titans1", "titans_indianapolis_colts"),
+        ("giants1", "giants_indianapolis_colts"),
         ("g1", "jaxon"),  # untagged
     )
+    base = rc.load()
     for sid, opp in sessions:
         cat = rc.catalog_for_defense_session(db, sid, {}, opp)
-        assert cat.is_lions_franchise and cat.stock_team == rc.STEELERS
-        assert cat.allowed_formations == rc.LIONS_FRANCHISE_FORMATIONS
-        assert NSM_IDS <= set(cat.by_id())
-        assert "Baltimore Ravens" not in (cat.raw.get("source_defensive_playbook") or "") or "Steelers" in (cat.raw.get("source_defensive_playbook") or "")
-        assert "Steelers" in (cat.raw.get("source_defensive_playbook") or "")
+        assert cat.sha256 == base.sha256
+        assert cat.stock_team == rc.RAVENS and not cat.is_lions_franchise
+        assert cat.allowed_formations == rc.FORMATIONS
+        assert NSM_IDS.isdisjoint(cat.by_id())
+        assert cat.raw.get("source_defensive_playbook") == "Baltimore Ravens"
+    # Unused NSM catalog still loads and is distinct from the live book.
+    unused = rc.load_lions_franchise()
+    assert unused.stock_team == rc.STEELERS and NSM_IDS <= set(unused.by_id())
 
 
-def test_every_league_defense_calls_can_be_nsm_and_stay_legal(tmp_path, civil_env, ravens_env):
+def test_every_league_defense_calls_stay_on_ravens_two_formations(tmp_path, civil_env, ravens_env):
     from cfb_coach.madden import playcaller
     from cfb_coach.situation import Situation
+    from tests.test_titans_play_cooldown import _giants
 
     db = _db(tmp_path, formations=["Gun Bunch TE"])
     _lions(db, "lions-cpu")
     _online(db, "online1")
     _titans(db, "titans1")
+    _giants(db, "giants1")
     db.conn.execute(
         "INSERT INTO game_sessions (session_id, opponent_id, dynasty, started_ts, "
         "league, user_team, opponent_team, opponent_type) "
@@ -113,6 +122,7 @@ def test_every_league_defense_calls_can_be_nsm_and_stay_legal(tmp_path, civil_en
         ("lions-human", "jaxon", False),
         ("online1", "online_indianapolis_colts", False),
         ("titans1", "titans_indianapolis_colts", False),
+        ("giants1", "giants_indianapolis_colts", False),
         ("lions-cpu", "cpu", True),
     )
     for sid, opp, cpu_defense in sessions:
@@ -125,15 +135,14 @@ def test_every_league_defense_calls_can_be_nsm_and_stay_legal(tmp_path, civil_en
             call = playcaller.make_call(s, opp, db, cpu_defense=cpu_defense)
             rd = call.ravens_defense
             assert rd["status"] == "CALL", (sid, rd)
-            assert call.formation in rc.LIONS_FRANCHISE_FORMATIONS
-            seen.add(rd["candidate"]["call_id"])
+            assert call.formation in rc.FORMATIONS
+            assert call.formation != rc.NSM
+            text = "\n".join(rd["card"])
+            assert "PACKAGE: Nickel Single Mug" not in text
+            cid = rd["candidate"]["call_id"]
+            assert cid not in NSM_IDS, (sid, cid)
+            seen.add(cid)
             forms.add(call.formation)
-            if call.formation == rc.NSM:
-                text = "\n".join(rd["card"])
-                assert "PACKAGE: Nickel Single Mug" in text
-                assert "UNVERIFIED" in text
-                assert "SETUP 1:" in text
-                assert "Lions franchise only" not in text
-        assert seen & NSM_IDS, (sid, seen)
-        assert seen - NSM_IDS, (sid, seen)
-        assert rc.NSM in forms, (sid, forms)
+        assert seen
+        assert forms <= {rc.NICKEL, rc.DIME}
+        assert rc.NSM not in forms

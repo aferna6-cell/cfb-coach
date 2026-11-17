@@ -347,10 +347,11 @@ def _load_lions_franchise(path: str, mtime_ns: int, base_sha: str) -> RavensCata
 
 
 def load_lions_franchise(path: str | Path | None = None) -> RavensCatalog:
-    """Steelers-context civil defense: Nickel 2-4 Wide, Dime 2-3 Odd, and Nickel Single Mug.
+    """Unused Steelers+NSM catalog kept for the on-disk NSM dataset.
 
-    Used for every league (Lions franchise, Chiefs online, Titans franchise, and CPU).
-    ``load()`` remains the unchanged Ravens two-formation base dataset.
+    Owner t457u: live sessions no longer load this catalog. ``load()`` is the
+    Ravens two-formation book used in every league. The NSM file stays in the
+    repo and this loader still validates it.
     """
     p = Path(path or LIONS_NSM_DATASET)
     return _load_lions_franchise(str(p.resolve()), p.stat().st_mtime_ns, load().sha256)
@@ -407,5 +408,5 @@ def is_lions_human_defense_session(db: Any, session_id: str | None, extras: Mapp
 
 def catalog_for_defense_session(db: Any, session_id: str | None, extras: Mapping[str, Any] | None,
                                 opponent_id: str | None) -> RavensCatalog:
-    """t451u: every league uses the Steelers three-formation civil defense (including NSM)."""
-    return load_lions_franchise()
+    """t457u: every league uses the Ravens two-formation civil defense (no NSM)."""
+    return load()

@@ -96,10 +96,11 @@ def test_giants_600_snap_sim_and_other_leagues_unchanged(tmp_path, civil_env, ra
         assert set(rec["counts"]) <= set(CAT_LIONS.ids)
         assert set(rec["counts"]) & lions_only, (label, "expected Lions-only plays")
 
-    # Giants unique-play count should be close to the 128-variant book.
+    # Unique-play counts stay on the current books.
     g_unique = len(giants["counts"])
-    assert g_unique <= 128
-    assert g_unique >= 90, g_unique
+    assert g_unique == 128, g_unique
+    assert len(lions["counts"]) == 128, len(lions["counts"])
+    assert len(cpu["counts"]) == 128, len(cpu["counts"])
     # Lions keep no cooldown; Giants use the 3-snap offensive family cooldown.
     assert all(not (cd or {}).get("active") for cd in lions["cooldowns"])
     assert all(not (cd or {}).get("active") for cd in cpu["cooldowns"])
@@ -134,28 +135,54 @@ def test_giants_600_snap_sim_and_other_leagues_unchanged(tmp_path, civil_env, ra
         "chiefs_lions_only": len(set(chiefs["counts"]) & lions_only),
         "titans_lions_only": len(set(titans["counts"]) & lions_only),
     }
-    assert summary["chiefs_unique"] <= 49 and summary["titans_unique"] <= 49, summary
-    print("GIANTS_SIM_SUMMARY", summary)
+    assert summary["chiefs_unique"] == 49 and summary["titans_unique"] == 49, summary
+    print("OFFENSE_SIM_SUMMARY", summary)
 
-    # Giants defense calls NSM and has no play-family cooldown.
+    # 600-snap defense sims: Ravens two-formation only, 0 NSM, 0 NO_LEGAL.
     from cfb_coach.madden import playcaller
 
     nsm_ids = set(rc.NSM_CALL_IDS)
-    seen, forms = set(), set()
-    for i in range(80):
-        s = _sit(1, 10, 40, session="giants-sim")
-        s.side = "defense"
-        s.extras = {"session_id": "giants-sim", "snap_seq": i}
-        call = playcaller.make_call(s, "giants_indianapolis_colts", db)
-        rd = call.ravens_defense
-        assert rd["status"] == "CALL", rd
-        assert pcd.cooldown_spec(db, "giants-sim", side="defense") is None
-        assert not (rd.get("play_cooldown") or {}).get("active")
-        assert call.formation in rc.LIONS_FRANCHISE_FORMATIONS
-        seen.add(rd["candidate"]["call_id"])
-        forms.add(call.formation)
-    assert seen & nsm_ids, seen
-    assert rc.NSM in forms, forms
-    summary["giants_nsm"] = True
-    summary["giants_def_forms"] = sorted(forms)
-    print("GIANTS_DEFENSE_SUMMARY", {"nsm": True, "forms": sorted(forms), "calls": len(seen)})
+    defense_summary = {}
+    defense_sessions = (
+        ("giants-sim", "giants_indianapolis_colts", False, "Giants", False),
+        ("lions-sim", "jaxon", False, "Lions", False),
+        ("cpu-sim", "cpu", True, "CPU", False),
+        ("chiefs-sim", "online_indianapolis_colts", False, "Chiefs", True),
+        ("titans-sim", "titans_indianapolis_colts", False, "Titans", False),
+    )
+    for sid, opponent, cpu_defense, label, chiefs_cd in defense_sessions:
+        seen, forms, statuses = set(), set(), []
+        fams = []
+        for i in range(SNAPS):
+            s = _sit(1 + i % 3, 5 + i % 8, 30 + i % 40, session=sid)
+            s.side = "defense"
+            s.extras = {"session_id": sid, "snap_seq": i}
+            call = playcaller.make_call(s, opponent, db, cpu_defense=cpu_defense)
+            rd = call.ravens_defense
+            statuses.append(rd["status"])
+            assert rd["status"] == "CALL", (label, rd)
+            assert call.formation in rc.FORMATIONS
+            assert call.formation != rc.NSM
+            cid = rd["candidate"]["call_id"]
+            assert cid not in nsm_ids, (label, cid)
+            text = "\n".join(rd["card"])
+            assert "PACKAGE: Nickel Single Mug" not in text
+            cd = rd.get("play_cooldown") or {}
+            if chiefs_cd:
+                if not cd.get("fallback"):
+                    fam = pcd.defense_family_key(rd["candidate"]["base_play"])
+                    assert fam not in set(fams[-3:]), (label, i, fam, fams[-3:], cd)
+                    assert cd.get("active") is True and cd.get("window") == 3
+                    fams.append(fam)
+            else:
+                assert pcd.cooldown_spec(db, sid, side="defense") is None
+                assert not cd.get("active")
+            seen.add(cid)
+            forms.add(call.formation)
+        assert "NO_LEGAL_RAVENS_CALL" not in statuses and statuses.count("CALL") == SNAPS, label
+        assert seen.isdisjoint(nsm_ids) and rc.NSM not in forms, (label, seen, forms)
+        assert forms <= {rc.NICKEL, rc.DIME}, (label, forms)
+        defense_summary[label] = {"unique_calls": len(seen), "forms": sorted(forms), "no_legal": 0, "nsm": 0}
+    print("DEFENSE_SIM_SUMMARY", defense_summary)
+    summary["defense"] = defense_summary
+    print("GIANTS_SIM_SUMMARY", summary)

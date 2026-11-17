@@ -335,7 +335,7 @@ def test_13b_make_call_defense_uses_ravens_only_when_mode_on(live_db, monkeypatc
     monkeypatch.setattr(playcaller, "_pick_defense", lambda *a, **k: (_ for _ in ()).throw(AssertionError("old D")))
     call = playcaller.make_call(_dsit(), "jaxon", live_db)
     assert call.ravens_defense["status"] == "CALL" and call.call_label == co.LABEL
-    assert call.formation in rc.LIONS_FRANCHISE_FORMATIONS
+    assert call.formation in rc.FORMATIONS
     text = call.format()
     assert text.splitlines()[0] == call.headline() and "USER: UNVERIFIED" in text
     assert call.ravens_defense["end_to_end_ms"] < co.LATENCY_TARGET_MS * 3                # generous CI bound

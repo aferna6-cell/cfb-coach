@@ -67,7 +67,7 @@ def test_team_only_start_no_gamertag_civil_offense_and_defense(tmp_db):
     assert "has no explicit offense mode" not in r.stderr
     assert "ONLINE LEAGUE: Kansas City Chiefs vs Buffalo Bills (logged as online_buffalo_bills" in out
     assert "LABEL: RAVENS_DEFENSE_ML (UNTRAINED_PRIOR_ONLY · scheme book)" in out
-    assert any(f"PLAY: {form} — " in out for form in rc.LIONS_FRANCHISE_FORMATIONS)
+    assert any(f"PLAY: {form} — " in out for form in rc.FORMATIONS)
     con = sqlite3.connect(tmp_db / "madden27.db")
     try:
         sess = con.execute("SELECT opponent_id, league, user_team, opponent_team, opponent_type "
@@ -77,10 +77,10 @@ def test_team_only_start_no_gamertag_civil_offense_and_defense(tmp_db):
                             "WHERE data_source != 'session_close' OR data_source IS NULL").fetchall()
         assert {s[0] for s in snaps} >= {"defense"}
         assert all(s[1] == "Buffalo Bills" and s[2] == "online_buffalo_bills" for s in snaps)
-        assert all(s[3] in rc.LIONS_FRANCHISE_FORMATIONS for s in snaps if s[0] == "defense")
+        assert all(s[3] in rc.FORMATIONS for s in snaps if s[0] == "defense")
         dec = con.execute("SELECT status, league, opponent_team, formation FROM ravens_defense_decisions").fetchall()
         assert dec and all(d[0] == "CALL" and d[1] == "online" and d[2] == "Buffalo Bills" for d in dec)
-        assert all(d[3] in rc.LIONS_FRANCHISE_FORMATIONS for d in dec)
+        assert all(d[3] in rc.FORMATIONS for d in dec)
     finally:
         con.close()
 
@@ -134,14 +134,14 @@ def test_lions_ravens_defense_flag_calls_scheme_book(tmp_db):
     assert "UNTRAINED_PRIOR_ONLY" in out
     assert "ONLINE LEAGUE" not in out
     assert "team: Detroit Lions" in out
-    assert any(f"PLAY: {form} — " in out for form in rc.LIONS_FRANCHISE_FORMATIONS)
+    assert any(f"PLAY: {form} — " in out for form in rc.FORMATIONS)
     assert "LABEL: RAVENS_DEFENSE_ML (UNTRAINED_PRIOR_ONLY · scheme book)" in out
     con = sqlite3.connect(tmp_db / "madden27.db")
     try:
         sess = con.execute("SELECT opponent_id, league, user_team FROM game_sessions").fetchall()
         assert sess and sess[0][0] == "jaxon" and sess[0][1] != "online"
         dec = con.execute("SELECT status, formation FROM ravens_defense_decisions").fetchall()
-        assert dec and all(d[0] == "CALL" and d[1] in rc.LIONS_FRANCHISE_FORMATIONS for d in dec)
+        assert dec and all(d[0] == "CALL" and d[1] in rc.FORMATIONS for d in dec)
     finally:
         con.close()
 
@@ -172,11 +172,9 @@ def test_defense_calls_need_no_installed_book_and_show_required_macros(tmp_db, o
         calls = _calls(160, db=db)
     finally:
         db.close()
-    # Live civil defense uses the Steelers three-formation catalog (t451u).
-    # The base Ravens dataset contract below is still 14 candidates.
-    steel = rc.load_lions_franchise()
-    by = steel.by_id()
+    # Live civil defense uses the Ravens two-formation catalog (t457u).
     cat = rc.load()
+    by = cat.by_id()
     seen = set()
     prev = None
     for c in calls:
