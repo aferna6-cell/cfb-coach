@@ -22,9 +22,14 @@ Owner instruction 2026-11-15 (t398u, ``datasets/madden27/civil_owner_additions_t
 variant (Pistol Strong Y Off Close PA Slide; group ``owner_pass``, regular field zone), 1 red-zone pass
 (Gun Bunch TE Mesh, ``red_zone``) and 2 designed runs (Pistol Strong Y Off Close HB Zone and HB Dive). Same
 separate-file pattern: the 26-variant catalog bytes and catalog_version stay unchanged. Owner t414u removed the
-Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3 variants that t398u had added; the loader still allows a
-name missing from the repo's stock data only when the file lists it under ``name_not_in_stock_data`` (flagged on
-the card), but the current file lists none.
+Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3 variants that t398u had added from the *shared* catalog
+(Chiefs online and Titans franchise). The loader still allows a name missing from the repo's stock data only
+when the file lists it under ``name_not_in_stock_data`` (flagged on the card); the shared file lists none.
+
+Owner instruction 2026-11-17 (t445u, ``datasets/madden27/civil_lions_cpu_book.json``): Lions franchise and CPU
+games use a separate book that starts as a copy of the shared catalog and then adds the 7 Gun Bunch TE Mtn
+Spacing / Mtn Fork Y-Corner owner_pass variants (setup steps + macro flags verbatim). Further plays dropped into
+that file change only Lions and CPU. ``load()`` / ``load_cached()`` stay on the shared 49-variant book.
 """
 from __future__ import annotations
 
@@ -40,6 +45,7 @@ REDZONE_RELPATH = Path("datasets") / "madden27" / "civil_redzone_owner_t335u.jso
 RUNS_RELPATH = Path("datasets") / "madden27" / "civil_designed_runs_owner_t349u.json"
 NAMES_RELPATH = Path("datasets") / "madden27" / "civil_variant_names_owner_t358u.json"
 ADDITIONS_RELPATH = Path("datasets") / "madden27" / "civil_owner_additions_t398u.json"
+LIONS_CPU_RELPATH = Path("datasets") / "madden27" / "civil_lions_cpu_book.json"
 STOCK_PLAYBOOKS_RELPATH = Path("cfb_coach") / "data" / "madden27" / "playbooks_full.json"
 STOCK_BOOK = "Buccaneers"
 EXPECTED_VARIANTS = 26          # core variants (any field position)
@@ -52,9 +58,14 @@ EXPECTED_REDZONE_FORMATIONS = {"Pistol Bunch TE": 3, "Gun Empty Quads": 2, "I Fo
 EXPECTED_RUN_VARIANTS = 14
 EXPECTED_RUN_FORMATIONS = {"Gun Doubles Clamp Stack": 4, "Gun Bunch TE": 5, "Gun Tight Doubles": 2, "Gun 5WR Tight": 1,
                            "Pistol Strong Y Off Close": 2}
-# owner t398u / t414u: remaining regular pass variant is PA Slide (Mtn Spacing / Mtn Fork Y-Corner removed)
+# owner t398u / t414u: shared catalog regular pass variant is PA Slide (Mtn plays live only on the Lions/CPU book)
 EXPECTED_OWNER_PASS_VARIANTS = 1
 EXPECTED_OWNER_PASS_FORMATIONS = {"Pistol Strong Y Off Close": 1}
+# owner t445u: Lions/CPU book = shared catalog + Mtn Spacing 1-4 + Mtn Fork Y-Corner 1-3
+EXPECTED_LIONS_CPU_OWNER_PASS_VARIANTS = 8
+EXPECTED_LIONS_CPU_OWNER_PASS_FORMATIONS = {"Gun Bunch TE": 7, "Pistol Strong Y Off Close": 1}
+EXPECTED_LIONS_CPU_VARIANTS = 56  # 49 shared + 7 Mtn owner_pass variants
+SHARED_BOOK, LIONS_CPU_BOOK = "civil_shared", "lions_cpu"
 RUN, PASS = "run", "pass"       # play_family: the run-pass mix (coordinator.pick_mixed) gates on it
 CORE, REDZONE_GROUP, DESIGNED_RUN = "core", "red_zone", "designed_run"
 OWNER_PASS = "owner_pass"       # owner t398u regular pass variants (outside the opponent 10, like the 26)
@@ -192,6 +203,8 @@ class SchemeCatalog:
     names_owner: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
     additions_digest: str = ""
     additions_owner: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
+    lions_cpu_digest: str = ""
+    lions_cpu_owner: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def core_variants(self) -> tuple[SchemeVariant, ...]:
@@ -238,6 +251,11 @@ class SchemeCatalog:
 
     def version(self) -> str:
         return f"{self.catalog_id}@{self.digest[:12]}"
+
+    @property
+    def book_id(self) -> str:
+        """``lions_cpu`` after the t445u additions are layered on; otherwise the shared Chiefs/Titans book."""
+        return LIONS_CPU_BOOK if self.lions_cpu_digest else SHARED_BOOK
 
 
 def repo_root() -> Path:
@@ -445,7 +463,7 @@ def _owner_adjustments(vid: str, rows: Any) -> tuple[Adjustment, ...]:
     return tuple(out)
 
 
-def with_owner_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: str) -> SchemeCatalog:
+def with_owner_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: str, label: str = "t398u owner file") -> SchemeCatalog:
     """Owner instruction t398u: new pass variants, a red-zone pass and two designed runs (civil.gg screenshots).
 
     Fails closed (CatalogError) on: a different catalog version; a formation missing from the in-repo Buccaneers
@@ -453,7 +471,7 @@ def with_owner_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest
     (owner-provided name, flagged); a run that is not a stock play, has adjustments, or is a screen/RPO; a pass
     with no adjustments; a red-zone play without the red_zone gate; duplicate ids."""
     if owner.get("catalog_version") != cat.version():
-        raise CatalogError(f"t398u owner file is for {owner.get('catalog_version')}, catalog is {cat.version()}")
+        raise CatalogError(f"{label} is for {owner.get('catalog_version')}, catalog is {cat.version()}")
     src = str((owner.get("owner_instruction") or {}).get("source") or "")
     stock = stock_offense_plays(STOCK_BOOK)
     allowed_missing = {(str(e.get("formation")), str(e.get("base_play"))) for e in owner.get("name_not_in_stock_data") or ()}
@@ -525,7 +543,7 @@ def with_owner_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest
             raise CatalogError(f"{v.variant_id}: missing variant_name")
     ids = [v.variant_id for v in cat.variants] + [v.variant_id for v in extra]
     if len(set(ids)) != len(ids):
-        raise CatalogError("duplicate variant_id in the t398u owner file")
+        raise CatalogError(f"duplicate variant_id in the {label}")
     from dataclasses import replace
     return replace(cat, variants=cat.variants + tuple(extra), additions_digest=digest,
                    additions_owner=dict(owner.get("owner_instruction") or {}))
@@ -595,9 +613,69 @@ def load_cached(path: str | None = None) -> SchemeCatalog:
     return load(path)
 
 
-def contract_errors(cat: SchemeCatalog) -> list[str]:
+def lions_cpu_book_path() -> Path:
+    return repo_root() / LIONS_CPU_RELPATH
+
+
+def with_lions_cpu_additions(cat: SchemeCatalog, owner: Mapping[str, Any], *, digest: str) -> SchemeCatalog:
+    """Layer Lions/CPU-only owner plays onto a copy of the shared catalog without touching shared metadata."""
+    from dataclasses import replace
+    added = with_owner_additions(cat, owner, digest=digest, label="lions/cpu owner book")
+    return replace(
+        added,
+        additions_digest=cat.additions_digest,
+        additions_owner=cat.additions_owner,
+        lions_cpu_digest=digest,
+        lions_cpu_owner=dict(owner.get("owner_instruction") or {}),
+    )
+
+
+def load_lions_cpu(path: str | Path | None = None) -> SchemeCatalog:
+    """Shared civil catalog plus the Lions/CPU book slot (Mtn Spacing / Mtn Fork Y-Corner, t445u).
+
+    If the slot file is missing or lists no plays, this is identical to ``load()``. Plays listed in
+    the slot file are appended; they never change the shared catalog used by Chiefs and Titans.
+    """
+    cat = load(path)
+    slot = (Path(path).resolve().parent / LIONS_CPU_RELPATH.name) if path else lions_cpu_book_path()
+    if not slot.is_file():
+        return cat
+    raw = slot.read_bytes()
+    owner = json.loads(raw.decode("utf-8"))
+    if not (owner.get("pass_variants") or owner.get("red_zone_variants") or owner.get("designed_runs")):
+        return cat
+    return with_lions_cpu_additions(cat, owner, digest=hashlib.sha256(raw).hexdigest())
+
+
+@lru_cache(maxsize=4)
+def load_lions_cpu_cached(path: str | None = None) -> SchemeCatalog:
+    return load_lions_cpu(path)
+
+
+def clear_catalog_caches() -> None:
+    load_cached.cache_clear()
+    load_lions_cpu_cached.cache_clear()
+
+
+def catalog_for_variant(variant_id: str | None = None, book_id: str | None = None) -> SchemeCatalog:
+    """Pick the shared or Lions/CPU book for a already-made civil call (live re-validation)."""
+    if book_id == LIONS_CPU_BOOK:
+        return load_lions_cpu_cached()
+    if book_id == SHARED_BOOK:
+        return load_cached()
+    if variant_id:
+        shared = load_cached()
+        if shared.get(variant_id) is not None:
+            return shared
+        lions = load_lions_cpu_cached()
+        if lions.get(variant_id) is not None:
+            return lions
+    return load_cached()
+
+
+def contract_errors(cat: SchemeCatalog, *, book: str | None = None) -> list[str]:
     """Every way the loaded catalog differs from the approved 26 / 12 / 4 contract (+ 8 red-zone, + 14 runs,
-    + 1 owner-added pass)."""
+    + 1 owner-added pass on the shared book, or + 8 owner-added passes on the Lions/CPU book)."""
     errs: list[str] = []
     core = cat.core_variants
     if len(core) != EXPECTED_VARIANTS:
@@ -632,8 +710,12 @@ def contract_errors(cat: SchemeCatalog) -> list[str]:
             oc[v.formation] = oc.get(v.formation, 0) + 1
             if v.field_zone != "any" or v.is_run or not v.adjustments:
                 errs.append(f"{v.variant_id}: owner pass variant must be a regular-field pass with its setup")
-        if len(owner_pass) != EXPECTED_OWNER_PASS_VARIANTS or oc != EXPECTED_OWNER_PASS_FORMATIONS:
-            errs.append(f"owner pass variants {oc} != {EXPECTED_OWNER_PASS_FORMATIONS}")
+        want_n = EXPECTED_LIONS_CPU_OWNER_PASS_VARIANTS if (book or cat.book_id) == LIONS_CPU_BOOK else EXPECTED_OWNER_PASS_VARIANTS
+        want_f = EXPECTED_LIONS_CPU_OWNER_PASS_FORMATIONS if (book or cat.book_id) == LIONS_CPU_BOOK else EXPECTED_OWNER_PASS_FORMATIONS
+        if len(owner_pass) != want_n or oc != want_f:
+            errs.append(f"owner pass variants {oc} != {want_f}")
+    if (book or cat.book_id) == LIONS_CPU_BOOK and len(cat.variants) != EXPECTED_LIONS_CPU_VARIANTS:
+        errs.append(f"lions/cpu catalog has {len(cat.variants)} variants, expected {EXPECTED_LIONS_CPU_VARIANTS}")
     counts: dict[str, int] = {}
     for v in core:
         counts[v.formation] = counts.get(v.formation, 0) + 1

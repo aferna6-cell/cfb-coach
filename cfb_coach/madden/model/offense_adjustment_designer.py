@@ -221,7 +221,9 @@ def validate_live_call(db: Any, call: Any, *, opponent_id: str,
         from cfb_coach.madden.scheme import catalog as scheme_catalog
         from cfb_coach.madden.scheme import legality as scheme_legality
 
-        scheme_legality.revalidate_call(db, call, scheme_catalog.load_cached(), yardline=yardline)
+        sv = call.scheme_variant
+        cat = scheme_catalog.catalog_for_variant(sv.get("variant_id"), sv.get("catalog_book"))
+        scheme_legality.revalidate_call(db, call, cat, yardline=yardline)
         return
     book = playbook.load_books(db).get("offense") or {}
     installed = (book.get("formations") or {}).get(call.formation, [])

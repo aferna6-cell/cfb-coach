@@ -275,14 +275,14 @@ def test_12_decision_latency_under_150ms():
 
 
 # 13 ------------------------------------------------------------- offense unchanged, modes independent
-# The 26-play catalog JSON stays pinned so trained artifacts still load. catalog.py may gain owner overlays
-# (t358u verified names) without changing that JSON hash. Other scheme files stay pinned.
+# The 26-play catalog JSON stays pinned so trained artifacts still load. catalog.py / coordinator.py may gain
+# owner overlays (t358u names, t398u/t414u/t445u book slot) without changing that JSON hash.
 OFFENSE_PINS = {
-    "cfb_coach/madden/scheme/coordinator.py": "b8551f47d03b8ef599c01544a53b0b6f4f07b3d1487ce42f6b4564549af3dd57",
+    "cfb_coach/madden/scheme/coordinator.py": "cf8232ab5ce452eab6a07d312f3dc1024063c492563106f6b63b75c6d49b737d",
     "cfb_coach/madden/scheme/legality.py": "e6c959dd4912a7f036c9c831ac31e1c6193c9c587e1fc10ac1167731d2393d36",
     "cfb_coach/madden/scheme/mode.py": "ef99c16e697b1fe25ab5f1709cf3d7ee307762856f370ffab2b48deb844fb031",
     "cfb_coach/madden/scheme/model.py": "af793fd4dfbe03c234ccf11cd0d6afeec8a555507ea041604222e637aab778a7",
-    "cfb_coach/madden/scheme/catalog.py": "42cc6289114fcf674e7b9c3c79182fd6db89f60d4db4daddf4431d0087810166",
+    "cfb_coach/madden/scheme/catalog.py": "f5c839acd63b418ad0e295a54892ece8e7479437b6ca4ff6d089b6ae9867b3e1",
     "datasets/madden27/lions_offensive_scheme_catalog.json": "15c120decc4bba0ae3dc23f1c5a4c33f183f42a1dd8bd44a4a823526692a77ee",
 }
 

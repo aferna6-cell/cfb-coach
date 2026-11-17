@@ -21,6 +21,7 @@ from cfb_coach.madden.scheme import priors as pr
 from cfb_coach.situation import Situation
 
 CAT = sc.load()
+CAT_LIONS = sc.load_lions_cpu()
 FORMS = ["Gun Doubles Clamp Stack", "Gun Bunch TE", "Gun Tight Doubles", "Gun 5WR Tight"]
 RZ_FORMS = ["Pistol Bunch TE", "Gun Empty Quads", "I Form Close Flex"]
 FORMS_ALL = FORMS + RZ_FORMS
@@ -32,7 +33,9 @@ RZ20 = {v.variant_id for v in CAT.redzone_variants if v.field_zone == sc.RED_ZON
 CLOSE_FLEX = {"civil_rz_i_form_close_flex_stretch", "civil_rz_i_form_close_flex_mesh"}
 RUNS = {v.variant_id for v in CAT.run_variants}                                       # owner t349u + t398u designed runs
 OWNER_PASS = {v.variant_id for v in CAT.owner_pass_variants}                          # owner t398u pass variants
-REG = CORE | OWNER_PASS | RUNS                                                         # regular: outside the 10
+REG = CORE | OWNER_PASS | RUNS                                                         # regular: outside the 10 (shared book)
+MTN_PASS = {v.variant_id for v in CAT_LIONS.owner_pass_variants} - OWNER_PASS         # t445u Lions/CPU Mtn plays
+REG_LIONS = REG | MTN_PASS                                                             # regular set for Lions and CPU live calls
 # t398u setup steps that are real in-game steps but not route geometry (shown verbatim, not modeled)
 T398_UNMODELED = {("civil_t398_pistol_strong_y_off_close_pa_slide", 3)}
 
@@ -157,7 +160,7 @@ def test_05_civil_mode_only_returns_exact_catalog_variants(tmp_path, civil_env, 
         call = playcaller.make_call(_sit(*dd), "cpu", db)
         first = first or call
         sv = call.scheme_variant
-        v = CAT.get(sv["variant_id"])
+        v = CAT_LIONS.get(sv["variant_id"])
         assert v is not None
         from cfb_coach.madden.catalog import norm
         assert (norm(call.formation), norm(call.play)) == (norm(v.formation), norm(v.base_play))  # book spelling
@@ -172,7 +175,7 @@ def test_05_civil_mode_only_returns_exact_catalog_variants(tmp_path, civil_env, 
     call = first
     call.scheme_variant["adjustments"] = call.scheme_variant["adjustments"][:-1]
     with pytest.raises(ValueError):
-        lg.revalidate_call(db, call, CAT)
+        lg.revalidate_call(db, call, CAT_LIONS)
 
 
 # 6 -------------------------------------------------------------- unrestricted mode preserved
@@ -313,7 +316,7 @@ def test_12_decisions_are_logged_with_variant_belief_and_joined_to_outcomes(tmp_
     assert (time.perf_counter() - t0) * 1000 < 150 * 3            # generous CI bound; target 150 ms
     assert call.scheme_variant["latency_ms"] < co.LATENCY_TARGET_MS * 3
     vid = call.scheme_variant["variant_id"]
-    v = CAT.get(vid)
+    v = CAT_LIONS.get(vid)
     rows = db.conn.execute("SELECT variant_id, base_play, adjustments_json, belief_json, session_id, down"
                            " FROM civil_scheme_decisions").fetchall()
     assert rows[-1][0] == vid and rows[-1][1] == v.base_play and json.loads(rows[-1][2])
@@ -323,7 +326,7 @@ def test_12_decisions_are_logged_with_variant_belief_and_joined_to_outcomes(tmp_
                     " executed_adjustment_id, yards) VALUES (datetime('now', '+1 minute'),'cpu','offense',2,5,50,'+12',"
                     "'cover 3','g1','identified',?,?,?,?,12)", (v.formation, v.base_play, "scheme:" + vid, "scheme:" + vid))
     db.conn.commit()
-    log = ev.variant_log(db.conn, CAT)
+    log = ev.variant_log(db.conn, CAT_LIONS)
     hit = [r for r in log if r.get("snap_id")]
     assert hit and hit[-1]["followed"] and hit[-1]["actual_coverage"] == "cover 3" and hit[-1]["yards"] == 12
     assert hit[-1]["actual_adjustments"] == [[a.target, a.action] for a in v.adjustments]
@@ -438,8 +441,9 @@ def test_15_only_the_listed_catalog_variants_can_be_output(tmp_path, civil_env, 
     import random
     from cfb_coach.madden import playcaller
     db = _db(tmp_path)
-    allowed = set(CAT.ids)
-    assert len(allowed) == 49 and allowed == CORE | OWNER_PASS | RZ | RUNS
+    allowed = set(CAT_LIONS.ids)
+    assert len(set(CAT.ids)) == 49 and set(CAT.ids) == CORE | OWNER_PASS | RZ | RUNS
+    assert len(allowed) == 56 and allowed == CORE | OWNER_PASS | MTN_PASS | RZ | RUNS
     rng = random.Random(3)
     seen = set()
     labels = ["cover_3_sky", "cover_1_unspecified", "cover_2_man", "cover_4_quarters", "tampa_2", "cover_6"]
@@ -451,7 +455,7 @@ def test_15_only_the_listed_catalog_variants_can_be_output(tmp_path, civil_env, 
         sv = call.scheme_variant
         assert sv["status"] == "CALL" and sv["variant_id"] in allowed
         y = call_yard(call)
-        assert sv["variant_id"] in (RZ if y >= 90 else REG | RZ20 if y >= 80 else REG), (y, sv["variant_id"])
+        assert sv["variant_id"] in (RZ if y >= 90 else REG_LIONS | RZ20 if y >= 80 else REG_LIONS), (y, sv["variant_id"])
         seen.add(sv["variant_id"])
     assert seen <= allowed
     # no other path: anything that is not an exact catalog variant is rejected before display
@@ -544,9 +548,9 @@ def test_18_field_bands_inside_10_red_zone_only_10_20_mix_outside_never(tmp_path
             if y >= 90:
                 assert sv["variant_id"] in RZ and cands == RZ, (y, sv["variant_id"])
             elif y >= 80:
-                assert cands == REG | RZ20 and sv["variant_id"] in cands
+                assert cands == REG_LIONS | RZ20 and sv["variant_id"] in cands
             else:
-                assert sv["variant_id"] in REG and not (cands & RZ), (y, sv["variant_id"])
+                assert sv["variant_id"] in REG_LIONS and not (cands & RZ), (y, sv["variant_id"])
     # before display: a play injected outside its band is rejected (fail closed, no fallback)
     orig = co.Scorer.score
     for bad, y in (("civil_rz_pistol_bunch_te_hb_zone", 50), ("civil_rz_pistol_bunch_te_hb_zone", 85),
@@ -685,7 +689,7 @@ def test_19_every_call_shows_and_logs_its_variation_and_all_adjustments(tmp_path
     row = db.conn.execute("SELECT variant_id, prediction_json, adjustments_json FROM civil_scheme_decisions "
                           "ORDER BY id DESC LIMIT 1").fetchone()
     pred = _json.loads(row[1])
-    v = CAT.get(row[0])
+    v = CAT_LIONS.get(row[0])
     assert pred["variation"].startswith(f"VARIATION: {v.variant_name} [{v.variant_id}]")
     assert all(f"{a.target}: {a.action}" in pred["variation"] for a in v.adjustments)
     assert _json.loads(row[2]) == [[a.target, a.action] for a in v.adjustments]
@@ -797,7 +801,7 @@ def _first_and_ten_run_share(db, session, n=60):
         y = 20 + (i * 7) % 55                               # between the 20s
         call = playcaller.make_call(_sit(1, 10, y, session=session), "cpu", db)
         sv = call.scheme_variant
-        assert sv["status"] == "CALL" and sv["variant_id"] in REG, sv
+        assert sv["status"] == "CALL" and sv["variant_id"] in REG_LIONS, sv
         picks.append(sv["variant_id"])
         _close_snap(db, session, sv["variant_id"], y)
     return picks
@@ -874,7 +878,7 @@ def test_24d_ten_to_twenty_mixes_designed_runs_and_stretch_with_passes(tmp_path,
     for i in range(40):
         y = 80 + i % 10
         vid = playcaller.make_call(_sit(1 + i % 2, 10, y, session="b1020"), "cpu", db).scheme_variant["variant_id"]
-        assert vid in REG | RZ20, vid
+        assert vid in REG_LIONS | RZ20, vid
         picks.append(vid)
         _close_snap(db, "b1020", vid, y)
     run_ids = RUNS | {"civil_rz_i_form_close_flex_stretch"}
@@ -1061,7 +1065,7 @@ def test_27e_trailing_late_live_calls_pass_and_early_keeps_runs(tmp_path, civil_
     for i in range(30):
         call = playcaller.make_call(_sit_score(2, 20, 32 + i, 21, 38, 4, session=f"late{i}"), "michael", db)
         sv = call.scheme_variant
-        assert sv["status"] == "CALL" and sv["variant_id"] in REG
+        assert sv["status"] == "CALL" and sv["variant_id"] in REG_LIONS
         late.append(sv["variant_id"])
         assert sv["mix"]["trailing_late"]["margin"] == -17 and "trailing late 21-38" in sv["explanation"]
     assert not set(late) & RUNS, late

@@ -409,19 +409,27 @@ _SCORER: dict[tuple[str, str], Scorer] = {}
 def load_scorer(art_dir: str | Path, cat: sc.SchemeCatalog | None = None) -> Scorer:
     art = Path(art_dir)
     meta = art / "metadata.json"
-    key = (str(art.resolve()), str(meta.stat().st_mtime_ns) if meta.is_file() else "")
+    cat = cat or sc.load_cached()
+    key = (str(art.resolve()), str(meta.stat().st_mtime_ns) if meta.is_file() else "", getattr(cat, "book_id", sc.SHARED_BOOK))
     hit = _SCORER.get(key)
     if hit is not None:
         return hit
     model = sm.load(art)
-    cat = cat or sc.load_cached()
     want = (model.meta or {}).get("catalog_version")
     if want and want != cat.version():
         raise ValueError(f"model was trained for catalog {want}, the repo catalog is {cat.version()}: retrain")
     s = Scorer(model, cat, dz.GeometrySource())
-    _SCORER.clear()
     _SCORER[key] = s
     return s
+
+
+def catalog_for_call(db: Any, sit: Any) -> sc.SchemeCatalog:
+    """Chiefs online and Titans franchise use the shared current book; Lions and CPU use the Lions/CPU book."""
+    extras = sit.extras if isinstance(getattr(sit, "extras", None), dict) else {}
+    session_id = extras.get("session_id")
+    if pcd.is_titans_session(db, session_id, extras) or pcd.is_online_session(db, session_id, extras):
+        return sc.load_cached()
+    return sc.load_lions_cpu_cached()
 
 
 def warm_up(db: Any) -> float:
@@ -431,9 +439,10 @@ def warm_up(db: Any) -> float:
     art = md.artifact_dir(db)
     if art is None or not (Path(art) / "model.json").is_file():
         return 0.0
-    scorer = load_scorer(art, sc.load_cached())
-    for v in scorer.cat.variants:
-        dz.adjusted_design(v, scorer.geo)
+    for cat in (sc.load_cached(), sc.load_lions_cpu_cached()):
+        scorer = load_scorer(art, cat)
+        for v in scorer.cat.variants:
+            dz.adjusted_design(v, scorer.geo)
     return (time.perf_counter() - t0) * 1000.0
 
 
@@ -686,7 +695,7 @@ def call_civil(sit: Any, opponent_id: str, db: Any, book: Mapping[str, Any] | No
     """Entry point from ``playcaller.make_call``. Never raises into the caller; never falls back to another play."""
     t0 = time.perf_counter()
     try:
-        cat = sc.load_cached()
+        cat = catalog_for_call(db, sit)
         art = md.artifact_dir(db)
         if art is None or not (Path(art) / "model.json").is_file():
             return no_legal_call(["no trained civil-scheme model"], explanation="civil_scheme_only is on but no trained "
@@ -701,6 +710,8 @@ def call_civil(sit: Any, opponent_id: str, db: Any, book: Mapping[str, Any] | No
             from cfb_coach.madden import playbook
             applied = playbook.load_books(db).get("offense")
         call, ranked = select(scorer, cat, db.conn, db=db, sit=sit, opponent_id=opponent_id, book=applied, shadow=shadow)
+        if isinstance(getattr(call, "scheme_variant", None), dict):
+            call.scheme_variant["catalog_book"] = cat.book_id
         lg.revalidate_call(db, call, cat, yardline=sit.yardline)
     except Exception as exc:  # noqa: BLE001 — fail closed with the reason, never a hidden fallback
         call, ranked = no_legal_call([f"error: {exc.__class__.__name__}"], explanation=f"civil coordinator error: {exc}",
@@ -725,7 +736,8 @@ def call_civil(sit: Any, opponent_id: str, db: Any, book: Mapping[str, Any] | No
                     "play_cooldown": sv.get("play_cooldown")}  # t390u/t403u: play-family cooldown
                    if sv.get("status") == "CALL" else {}),
                 "ranking": [[r["variant_id"], r["utility"]] for r in sv.get("ranking") or []],
-                "model_version": (md.load_state(db) or {}).get("model_sha256"), "catalog_version": sc.load_cached().version(),
+                "model_version": (md.load_state(db) or {}).get("model_sha256"), "catalog_version": cat.version(),
+                "catalog_book": cat.book_id,
                 "explanation": sv.get("explanation"),
             })
         except Exception:  # noqa: BLE001 — logging must not block the call

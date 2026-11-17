@@ -56,7 +56,9 @@ OWNER_CONFIRMED_BOOK = {
     "t338u_addition": "I Form Close Flex: Stretch, Mesh (owner screenshots 2026-11-10; in the Buccaneers stock data)",
     # t398u: the owner sent these as plays from his book (civil.gg screenshots); datasets/madden27/civil_owner_additions_t398u.json
     "t398u_addition": "Gun Bunch TE: Mesh (red zone); Pistol Strong Y Off Close: "
-                      "PA Slide, HB Zone, HB Dive (owner 2026-11-15; t414u removed Mtn Spacing / Mtn Fork Y-Corner)",
+                      "PA Slide, HB Zone, HB Dive (owner 2026-11-15; t414u removed Mtn Spacing / Mtn Fork Y-Corner "
+                      "from the shared book; t445u restored those 7 plays on the Lions/CPU book only)",
+    "t445u_lions_cpu_book": "Lions/CPU book = shared civil catalog + Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3",
     "catalog_id": "lions_civil_bucs_5wr_v4",
     "catalog_version": "lions_civil_bucs_5wr_v4@15c120decc4b",
 }

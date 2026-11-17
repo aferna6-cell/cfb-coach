@@ -139,13 +139,23 @@ Tests: `python3 -m pytest -q tests/madden_ml/test_online_league.py tests/madden_
 
 The Ravens defense commits from draft PRs #154 (`c5033df`, dataset and docs) and #155 (`ead5ad4`, coordinator) were cherry-picked onto this branch in order. They are defense-only and touch no offense, catalog, run, or online-logging file. Only `cfb_coach/cli.py`, `cfb_coach/madden/cli.py`, and `cfb_coach/madden/playcaller.py` were touched by both sides, and they applied without conflicts. #155's offense-pin test was re-pinned to this branch's offense files (designed runs plus online logging), not #155's older offense.
 
-## New plays (owner instruction 2026-11-15, t398u; Mtn plays removed t414u)
+## New plays (owner instruction 2026-11-15, t398u; Mtn plays removed from the shared book t414u)
 
 Owner file: `datasets/madden27/civil_owner_additions_t398u.json` (civil.gg Eagles offense scheme screenshots; images
 are not committed). Loaded like the t335u/t349u/t358u files, so the 26-variant catalog bytes, `catalog_version`
 `lions_civil_bucs_5wr_v4@15c120decc4b`, the trained artifact and the t333u/t337u confirmations are unchanged.
-Callable variants: 45 -> 56 after t398u, then 56 -> 49 after t414u removed Gun Bunch TE Mtn Spacing 1-4 and
-Mtn Fork Y-Corner 1-3. Titans/Chiefs offense cooldown families: 31 -> 29 (those two families dropped).
+Callable variants on the *shared* book (Chiefs online and Titans franchise): 45 -> 56 after t398u, then 56 -> 49
+after t414u removed Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3. Titans/Chiefs offense cooldown
+families stay at 29 (those two families are not in the shared book).
+
+## Lions/CPU book (owner instruction 2026-11-17, t445u)
+
+Lions franchise and CPU games use a separate, swappable book slot: `datasets/madden27/civil_lions_cpu_book.json`.
+It starts as a copy of the current shared catalog and then adds the seven Eagles plays (Gun Bunch TE Mtn Spacing
+1-4 and Mtn Fork Y-Corner 1-3) with their setup steps and macro flags verbatim. Callable variants: 56.
+Chiefs and Titans never load this file, so they never call the Mtn plays. Further owner plays dropped into that
+file change only Lions and CPU; do not invent play names there. Lions sessions have no play-family cooldown
+(Chiefs stay at 3, Titans at 5).
 
 | Variant | Formation | Kind | Label | Titans/Chiefs cooldown family |
 |---|---|---|---|---|
@@ -157,7 +167,9 @@ Mtn Fork Y-Corner 1-3. Titans/Chiefs offense cooldown families: 31 -> 29 (those 
 - Setup steps are stored verbatim (`guide_text`, macro flag) and shown on the card; the macro name is the variant name.
 - PA Slide is a Gotcha Pass: no coverage tags (unknown, not negative).
 - Name check against the repo's Buccaneers stock data: PA Slide, HB Zone, HB Dive (Pistol Strong Y Off Close) and Mesh
-  (Gun Bunch TE) are exact. The current owner file lists nothing under `name_not_in_stock_data`.
+  (Gun Bunch TE) are exact. The shared owner file lists nothing under `name_not_in_stock_data`. The Lions/CPU book
+  lists Gun Bunch TE `Mtn Spacing` (closest stock: `Spacing`) and `Mtn Fork Y-Corner` (no stock name) and flags them
+  on the card.
 - PA Slide's step 4 is a snap-timing instruction; it is shown verbatim and counted as unrepresented on the geometry
   (extra uncertainty), never dropped.
 - The t370u novelty lift now counts siblings within the same field zone, so the red-zone Gun Bunch TE Mesh is not

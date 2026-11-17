@@ -1,6 +1,7 @@
-"""Owner t398u plays that remain after t414u: Pistol Strong Y Off Close PA Slide,
+"""Owner t398u plays that remain on the *shared* catalog after t414u: Pistol Strong Y Off Close PA Slide,
 red-zone Gun Bunch TE Mesh, Pistol Strong Y Off Close HB Zone / HB Dive.
-Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3 were removed from the callable model."""
+Gun Bunch TE Mtn Spacing 1-4 and Mtn Fork Y-Corner 1-3 stay out of the shared book (Chiefs/Titans).
+They are re-added only on the Lions/CPU book (t445u); see tests/test_lions_cpu_book_t445u.py."""
 from __future__ import annotations
 
 import collections
@@ -194,7 +195,8 @@ def test_t398_live_calls_include_red_zone_mesh_inside_10_and_pistol_runs(tmp_pat
     for i in range(240):
         call = playcaller.make_call(_sit(1 + i % 4, (3, 7, 10, 2)[i % 4], 25 + i % 50, session=f"mid{i}"), "cpu", db)
         vid = call.scheme_variant["variant_id"]
-        assert vid not in REMOVED
+        # CPU sessions use the Lions/CPU book, so the Mtn plays may be called here.
+        assert call.scheme_variant.get("catalog_book") == sc.LIONS_CPU_BOOK
         outside[vid] += 1
     assert inside[RZ_MESH] > 0, inside
     assert inside[RZ_MESH] < sum(inside.values()) * 0.6, inside        # mixed with the other red-zone plays
