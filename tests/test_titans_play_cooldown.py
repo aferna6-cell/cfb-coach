@@ -47,6 +47,11 @@ def _lions(db, sid="lions1"):
              opponent="cpu")
 
 
+def _giants(db, sid="giants1"):
+    _session(db, sid, league="giants", user_team="New York Giants",
+             opponent="giants_indianapolis_colts")
+
+
 # --------------------------------------------------------------------------- family grouping
 def test_family_keys_group_variants_not_distinct_plays():
     key = pcd.play_family_key

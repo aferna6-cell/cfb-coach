@@ -11,6 +11,10 @@ titans  = Tennessee Titans franchise, also never sticky. Same team-keyed logging
           and civil offense + Ravens civil defense defaults as online, but a
           distinct league id / opponent-id prefix / user team so games never
           mix with the Chiefs online league or the Lions franchise.
+giants  = New York Giants franchise, also never sticky. Same team-keyed logging
+          and civil defaults as titans, but offense calls from the Lions/CPU
+          custom book and a 3-snap offensive play-family cooldown. Kept
+          separate from Lions, Chiefs, and Titans.
 
 Team config lives in <data dir>/madden27_config.json and can be overridden by
 CFB_COACH_MADDEN_PRIMARY_TEAM / CFB_COACH_MADDEN_LAB_TEAM. With no config file the
@@ -33,13 +37,15 @@ PRIMARY = "primary"
 LAB = "lab"
 ONLINE = "online"
 TITANS = "titans"
+GIANTS = "giants"
 DEFAULT_PROFILE = PRIMARY
-PROFILE_CHOICES = ("primary", "lab", "online", "titans")
+PROFILE_CHOICES = ("primary", "lab", "online", "titans", "giants")
 META_KEY = "franchise_profile"
 CONFIG_FILENAME = "madden27_config.json"
 DEFAULT_PRIMARY_TEAM = "Detroit Lions"
 DEFAULT_ONLINE_TEAM = "Kansas City Chiefs"
 DEFAULT_TITANS_TEAM = "Tennessee Titans"
+DEFAULT_GIANTS_TEAM = "New York Giants"
 DEFAULT_START_BOOK = {"offense": "Buccaneers", "defense": "49ers"}
 DEFAULT_CONFIG: dict[str, Any] = {
     "primary_team": DEFAULT_PRIMARY_TEAM,
@@ -73,11 +79,16 @@ _PROFILE_ALIASES = {
     "tennessee": TITANS,
     "tennessee_titans": TITANS,
     "titans_franchise": TITANS,
+    "giants": GIANTS,
+    "ny_giants": GIANTS,
+    "new_york_giants": GIANTS,
+    "giants_franchise": GIANTS,
 }
 
 # Team-keyed leagues log by opponent NFL team, never by gamertag. They are
 # per-run only (never the sticky DB profile). Specs keep Chiefs and Titans data
 # in separate buckets (league id + opponent_id prefix + user_team).
+# Giants is a third team-keyed bucket, isolated from Chiefs and Titans.
 _TEAM_KEYED: dict[str, dict[str, str]] = {
     ONLINE: {
         "league": ONLINE,
@@ -90,6 +101,12 @@ _TEAM_KEYED: dict[str, dict[str, str]] = {
         "id_prefix": "titans_",
         "user_team": DEFAULT_TITANS_TEAM,
         "label": "Titans franchise",
+    },
+    GIANTS: {
+        "league": GIANTS,
+        "id_prefix": "giants_",
+        "user_team": DEFAULT_GIANTS_TEAM,
+        "label": "Giants franchise",
     },
 }
 
@@ -113,12 +130,12 @@ def normalize_profile(raw: str | None) -> str:
     key = (raw or DEFAULT_PROFILE).strip().lower().replace("-", "_").replace(" ", "_")
     out = _PROFILE_ALIASES.get(key)
     if out is None:
-        raise ValueError(f"Unknown franchise profile {raw!r}. Use: primary | lab | online | titans.")
+        raise ValueError(f"Unknown franchise profile {raw!r}. Use: primary | lab | online | titans | giants.")
     return out
 
 
 def is_team_keyed_profile(profile: str | None) -> bool:
-    """True for online / titans: log by opponent NFL team, never sticky."""
+    """True for online / titans / giants: log by opponent NFL team, never sticky."""
     if not profile:
         return False
     try:
@@ -132,7 +149,7 @@ def team_keyed_spec(profile: str | None) -> dict[str, str]:
     pid = normalize_profile(profile)
     spec = _TEAM_KEYED.get(pid)
     if spec is None:
-        raise ValueError(f"{pid} is not a team-keyed franchise (online | titans).")
+        raise ValueError(f"{pid} is not a team-keyed franchise (online | titans | giants).")
     return dict(spec)
 
 
@@ -271,6 +288,8 @@ def team_for_profile(profile: str | None, cfg: dict[str, Any] | None = None) -> 
         return cfg.get("online_team") or DEFAULT_ONLINE_TEAM
     if pid == TITANS:
         return DEFAULT_TITANS_TEAM
+    if pid == GIANTS:
+        return DEFAULT_GIANTS_TEAM
     key = "lab_team" if pid == LAB else "primary_team"
     return cfg.get(key) or None
 
@@ -302,10 +321,12 @@ def profile_config(profile: str | None = None) -> dict[str, Any]:
         LAB: "Franchise lab",
         ONLINE: "Online league",
         TITANS: "Titans franchise",
+        GIANTS: "Giants franchise",
     }.get(pid, "Franchise primary")
     default_profile_id = {
         ONLINE: "online_league",
         TITANS: "titans_franchise",
+        GIANTS: "giants_franchise",
     }.get(pid, f"franchise_{pid}")
     return {
         "id": pid,

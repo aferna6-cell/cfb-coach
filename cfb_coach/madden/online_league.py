@@ -1,9 +1,10 @@
 """Madden 27 team-keyed leagues: per-game opponent NFL team tags, stock-book scout, inventory.
 
-The Chiefs online league (``--franchise online``, ``franchise.online_team``) and
-the Titans franchise (``--franchise titans``) both log by opponent NFL team.
-They stay separate from each other and from the Detroit Lions Franchise
-(``primary``), and never write ``primary_team``.
+The Chiefs online league (``--franchise online``, ``franchise.online_team``),
+the Titans franchise (``--franchise titans``), and the Giants franchise
+(``--franchise giants``) all log by opponent NFL team. They stay separate
+from each other and from the Detroit Lions Franchise (``primary``), and
+never write ``primary_team``.
 
 Every online game must name the opponent's NFL team (``--opponent-team``). The
 team is stored on the session row and copied onto every snap, together with
@@ -31,8 +32,10 @@ from collections import Counter
 from typing import Any
 
 from cfb_coach.madden.franchise import (
+    DEFAULT_GIANTS_TEAM,
     DEFAULT_ONLINE_TEAM,
     DEFAULT_TITANS_TEAM,
+    GIANTS,
     ONLINE,
     TITANS,
     load_config,
@@ -44,6 +47,8 @@ LEAGUE_ID = ONLINE
 ONLINE_ID_PREFIX = "online_"
 TITANS_LEAGUE_ID = TITANS
 TITANS_ID_PREFIX = "titans_"
+GIANTS_LEAGUE_ID = GIANTS
+GIANTS_ID_PREFIX = "giants_"
 # Set for one process by `play --franchise online`: the civil scheme datasets are the legal book
 # (offense: the t337u catalog; defense: the Ravens two-formation dataset), so a missing or Lions
 # installed_playbook snapshot never blocks an online session. Never written to a DB.
@@ -59,8 +64,9 @@ def civil_profile_active() -> bool:
 def team_opponent_id(team: str, prefix: str | None = None) -> str:
     """Stable synthetic opponent id (``Buffalo Bills`` -> ``online_buffalo_bills``).
 
-    ``prefix`` defaults to ``online_``. The Titans franchise uses ``titans_`` so
-    Chiefs and Titans games against the same NFL team never share an id.
+    ``prefix`` defaults to ``online_``. The Titans franchise uses ``titans_``
+    and the Giants franchise uses ``giants_`` so games against the same NFL
+    team never share an id across leagues.
     """
     pfx = prefix if prefix is not None else ONLINE_ID_PREFIX
     slug = re.sub(r"[^a-z0-9]+", "_", str(team).strip().lower()).strip("_")
@@ -69,7 +75,11 @@ def team_opponent_id(team: str, prefix: str | None = None) -> str:
 
 def is_team_opponent_id(oid: str | None) -> bool:
     text = str(oid or "")
-    return text.startswith(ONLINE_ID_PREFIX) or text.startswith(TITANS_ID_PREFIX)
+    return (
+        text.startswith(ONLINE_ID_PREFIX)
+        or text.startswith(TITANS_ID_PREFIX)
+        or text.startswith(GIANTS_ID_PREFIX)
+    )
 
 
 def league_id_for_user(user: str | None = None) -> str:
@@ -79,6 +89,8 @@ def league_id_for_user(user: str | None = None) -> str:
         return LEAGUE_ID
     if me == DEFAULT_TITANS_TEAM:
         return TITANS_LEAGUE_ID
+    if me == DEFAULT_GIANTS_TEAM:
+        return GIANTS_LEAGUE_ID
     slug = re.sub(r"[^a-z0-9]+", "_", str(me).strip().lower()).strip("_")
     return slug or LEAGUE_ID
 
@@ -87,6 +99,8 @@ def id_prefix_for_user(user: str | None = None) -> str:
     me = user or user_team()
     if me == DEFAULT_TITANS_TEAM:
         return TITANS_ID_PREFIX
+    if me == DEFAULT_GIANTS_TEAM:
+        return GIANTS_ID_PREFIX
     return ONLINE_ID_PREFIX
 
 
@@ -110,8 +124,8 @@ def resolve_opponent_team(raw: str | None, user: str | None = None) -> str:
     me = user or user_team()
     if not raw or not str(raw).strip():
         raise ValueError(
-            "--opponent-team is required for --franchise online and --franchise titans "
-            '(e.g. --opponent-team "Buffalo Bills" or BUF).'
+            "--opponent-team is required for --franchise online, --franchise titans, "
+            'and --franchise giants (e.g. --opponent-team "Buffalo Bills" or BUF).'
         )
     name, known = resolve_nfl_team(str(raw))
     if not known:
@@ -321,12 +335,22 @@ def _local(ts: str | None) -> str:
         return ts[:19]
 
 
+def _league_title(user: str) -> str:
+    if user == DEFAULT_TITANS_TEAM:
+        return "Titans franchise"
+    if user == DEFAULT_GIANTS_TEAM:
+        return "Giants franchise"
+    if user == DEFAULT_ONLINE_TEAM:
+        return "Online league"
+    return user
+
+
 def format_inventory(db: Any, user: str | None = None) -> str:
     me = user or user_team()
     rows = inventory(db, me)
     have = sum(1 for r in rows if r["games"])
     lines = [
-        f"{'Titans franchise' if me == DEFAULT_TITANS_TEAM else 'Online league'} — you: {me}. Opponent teams with data: {have}/{len(rows)}",
+        f"{_league_title(me)} — you: {me}. Opponent teams with data: {have}/{len(rows)}",
         f"{'Team':<24} {'Games':>5} {'Snaps':>6}  {'Last played (local)':<26} Opponents",
     ]
     for r in rows:

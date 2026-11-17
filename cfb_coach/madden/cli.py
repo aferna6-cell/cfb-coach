@@ -165,12 +165,13 @@ def _require_opponent(raw: str, db: Any = None) -> str:
 def _open_opponent(args: argparse.Namespace) -> tuple[str, CoachDB]:
     """Resolve the opponent, open the DB, and register a missing cold start.
 
-    Team-keyed leagues (``--franchise online`` / ``--franchise titans``): no
-    gamertag. The opponent is the NFL team: ``opponent_id`` is
-    ``online_<team>`` (Chiefs) or ``titans_<team>`` (Titans), registered once as
-    a neutral cold-start human, so every game vs one team is one bucket and two
-    teams never share one. An ``--opponent`` name, if given, is a display
-    label only (``args.opponent_label``); it never keys data.
+    Team-keyed leagues (``--franchise online`` / ``--franchise titans`` /
+    ``--franchise giants``): no gamertag. The opponent is the NFL team:
+    ``opponent_id`` is ``online_<team>`` (Chiefs), ``titans_<team>`` (Titans),
+    or ``giants_<team>`` (Giants), registered once as a neutral cold-start
+    human, so every game vs one team is one bucket and two teams never share
+    one. An ``--opponent`` name, if given, is a display label only
+    (``args.opponent_label``); it never keys data.
     """
     db = open_db(getattr(args, "db", None))
     try:
@@ -211,7 +212,7 @@ def _open_opponent(args: argparse.Namespace) -> tuple[str, CoachDB]:
                 raise SystemExit(2) from None
             print(f"New online-league opponent registered as cold start: {prof['id']}")
         elif not getattr(args, "opponent", None):
-            print("--opponent / -o is required (only --franchise online and --franchise titans "
+            print("--opponent / -o is required (only --franchise online, titans, and giants "
                   "games are keyed by --opponent-team alone).", file=sys.stderr)
             raise SystemExit(2)
         oid = _require_opponent(args.opponent, db)
@@ -393,9 +394,11 @@ def cmd_config(args: argparse.Namespace) -> int:
 
     print(f"  online team  (online league):     {cfg.get('online_team') or DEFAULT_ONLINE_TEAM}"
           " — play --franchise online --opponent-team <NFL team>")
-    from cfb_coach.madden.franchise import DEFAULT_TITANS_TEAM
+    from cfb_coach.madden.franchise import DEFAULT_GIANTS_TEAM, DEFAULT_TITANS_TEAM
     print(f"  titans team  (titans franchise):  {DEFAULT_TITANS_TEAM}"
           " — play --franchise titans --opponent-team <NFL team>")
+    print(f"  giants team  (giants franchise):  {DEFAULT_GIANTS_TEAM}"
+          " — play --franchise giants --opponent-team <NFL team>")
     from cfb_coach.madden.franchise import DEFAULT_START_BOOK
 
     for side, key in (("offense", "offense_book"), ("defense", "defense_book")):
@@ -700,6 +703,7 @@ def _team_keyed_user(args: argparse.Namespace, profile: str | None) -> tuple[str
         raise ValueError(
             f"--user-team {raw!r} does not match --franchise {spec['league']} "
             f"(expected {me}). For the Titans franchise use --franchise titans; "
+            "for the Giants franchise use --franchise giants; "
             "for the Chiefs online league use --franchise online."
         )
     return me, spec
@@ -715,8 +719,9 @@ def _online_league_context(
     if not is_team_keyed_profile(pid):
         if raw:
             print(
-                "--opponent-team is only for team-keyed leagues: add --franchise online "
-                "or --franchise titans (Franchise primary/lab games are not tagged by NFL team).",
+                "--opponent-team is only for team-keyed leagues: add --franchise online, "
+                "--franchise titans, or --franchise giants (Franchise primary/lab games are "
+                "not tagged by NFL team).",
                 file=sys.stderr,
             )
             return False
@@ -742,7 +747,7 @@ def cmd_league(args: argparse.Namespace) -> int:
     action = getattr(args, "league_action", None) or "teams"
     pid = getattr(args, "franchise", None) or "online"
     if not is_team_keyed_profile(pid):
-        print("--franchise for league must be online or titans.", file=sys.stderr)
+        print("--franchise for league must be online, titans, or giants.", file=sys.stderr)
         return 2
     db = open_db(getattr(args, "db", None))
     try:
@@ -776,7 +781,7 @@ RAVENS_CIVIL_DEFENSE_BANNER = (
 
 
 def _apply_online_civil_modes(args: argparse.Namespace) -> dict[str, bool]:
-    """--franchise online / titans: civil offense + Ravens two-formation civil defense for THIS process.
+    """--franchise online / titans / giants: civil offense + Ravens two-formation civil defense for THIS process.
 
     Env-only (never a DB write, never `ml ... enable`). ``--unrestricted-offense`` /
     ``--previous-defense`` opt the session out of either side.
@@ -950,8 +955,13 @@ def cmd_play(args: argparse.Namespace) -> int:
         from cfb_coach.madden.online_league import format_scout
 
         label = f", name {league_ctx['opponent_label']!r}" if league_ctx.get("opponent_label") else ""
-        from cfb_coach.madden.franchise import TITANS
-        banner = "TITANS FRANCHISE" if pid == TITANS else "ONLINE LEAGUE"
+        from cfb_coach.madden.franchise import GIANTS, TITANS
+        if pid == TITANS:
+            banner = "TITANS FRANCHISE"
+        elif pid == GIANTS:
+            banner = "GIANTS FRANCHISE"
+        else:
+            banner = "ONLINE LEAGUE"
         print(f"{banner}: {league_ctx['user_team']} vs {league_ctx['opponent_team']} "
               f"(logged as {oid}{label}, {league_ctx['opponent_type']}) — every game and snap is keyed by "
               "this team, never by a gamertag.")

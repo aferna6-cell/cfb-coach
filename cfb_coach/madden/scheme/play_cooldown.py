@@ -1,4 +1,4 @@
-"""Play-family cooldown for Titans and Chiefs sessions (owner t390u / t403u).
+"""Play-family cooldown for Titans, Chiefs, and Giants sessions (owner t390u / t403u / t456u).
 
 In ``--franchise titans`` sessions, once a play family is called it cannot be
 recommended again for the next ``TITANS_COOLDOWN_SNAPS`` (5) *offensive* snaps
@@ -7,6 +7,10 @@ of that session. Titans defense is not cooled down.
 In ``--franchise online`` (Chiefs) sessions, the same family-key rule applies
 on *both* offense and defense, with ``CHIEFS_COOLDOWN_SNAPS`` (3). Offense and
 defense histories are tracked separately.
+
+In ``--franchise giants`` sessions, the same family-key rule applies on
+*offense only*, with ``GIANTS_COOLDOWN_SNAPS`` (3). Giants defense is not
+cooled down.
 
 The key is the catalog *base play* family, not the variant: calling any Mesh
 variant blocks every Mesh variant (including Redzone Mesh); on defense, a
@@ -22,8 +26,10 @@ import re
 from typing import Any, Callable, Mapping, Sequence
 
 from cfb_coach.madden.franchise import (
+    DEFAULT_GIANTS_TEAM,
     DEFAULT_ONLINE_TEAM,
     DEFAULT_TITANS_TEAM,
+    GIANTS,
     ONLINE,
     TITANS,
 )
@@ -34,8 +40,9 @@ from cfb_coach.madden.scheme.legality import NO_LEGAL
 COOLDOWN_SNAPS = 5  # Titans default; kept as the apply_play_cooldown window default
 TITANS_COOLDOWN_SNAPS = 5
 CHIEFS_COOLDOWN_SNAPS = 3
+GIANTS_COOLDOWN_SNAPS = 3
 
-_LEAGUE_LABEL = {TITANS: "Titans", ONLINE: "Chiefs"}
+_LEAGUE_LABEL = {TITANS: "Titans", ONLINE: "Chiefs", GIANTS: "Giants"}
 
 # Variant qualifiers that appear on a name after the in-game play (never part of the family).
 # Do not strip semantic play-name words such as "Post" or "Shake".
@@ -112,13 +119,15 @@ def _franchise_from_fields(league: Any, dynasty: Any, user: Any) -> str | None:
     user_s = str(user or "").strip()
     if league_s == TITANS or dynasty_s == TITANS or user_s == DEFAULT_TITANS_TEAM:
         return TITANS
+    if league_s == GIANTS or dynasty_s == GIANTS or user_s == DEFAULT_GIANTS_TEAM:
+        return GIANTS
     if league_s == ONLINE or dynasty_s == ONLINE or user_s == DEFAULT_ONLINE_TEAM:
         return ONLINE
     return None
 
 
 def session_franchise(db: Any, session_id: str | None, extras: Mapping[str, Any] | None = None) -> str | None:
-    """``titans`` / ``online`` / None. A real session row always wins over extras."""
+    """``titans`` / ``giants`` / ``online`` / None. A real session row always wins over extras."""
     extras = extras or {}
     if session_id and db is not None:
         row = _session_row(db, session_id)
@@ -141,6 +150,11 @@ def is_online_session(db: Any, session_id: str | None, extras: Mapping[str, Any]
     return session_franchise(db, session_id, extras) == ONLINE
 
 
+def is_giants_session(db: Any, session_id: str | None, extras: Mapping[str, Any] | None = None) -> bool:
+    """True only for a Giants franchise session. Never inferred from env alone."""
+    return session_franchise(db, session_id, extras) == GIANTS
+
+
 def cooldown_spec(
     db: Any,
     session_id: str | None,
@@ -150,7 +164,8 @@ def cooldown_spec(
 ) -> dict[str, Any] | None:
     """Return ``{window, league, league_key, side}`` if a play-family cooldown applies.
 
-    Titans: offense only, window 5. Chiefs online: offense and defense, window 3.
+    Titans: offense only, window 5. Giants: offense only, window 3.
+    Chiefs online: offense and defense, window 3.
     Lions (and any other profile): no cooldown.
     """
     key = session_franchise(db, session_id, extras)
@@ -158,6 +173,9 @@ def cooldown_spec(
     if key == TITANS and side_name == "offense":
         return {"window": TITANS_COOLDOWN_SNAPS, "league": _LEAGUE_LABEL[TITANS],
                 "league_key": TITANS, "side": side_name}
+    if key == GIANTS and side_name == "offense":
+        return {"window": GIANTS_COOLDOWN_SNAPS, "league": _LEAGUE_LABEL[GIANTS],
+                "league_key": GIANTS, "side": side_name}
     if key == ONLINE:
         return {"window": CHIEFS_COOLDOWN_SNAPS, "league": _LEAGUE_LABEL[ONLINE],
                 "league_key": ONLINE, "side": side_name}

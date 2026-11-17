@@ -28,7 +28,7 @@ from tests.test_civil_scheme_only import (
     civil_env,  # noqa: F401
 )
 from tests.test_chiefs_play_cooldown import _defense_call, ravens_env  # noqa: F401
-from tests.test_titans_play_cooldown import _lions, _online, _titans
+from tests.test_titans_play_cooldown import _giants, _lions, _online, _titans
 
 MTN_SPACING = [f"civil_t398_gun_bunch_te_mtn_spacing_{i}" for i in (1, 2, 3, 4)]
 MTN_FORK = [f"civil_t398_gun_bunch_te_mtn_fork_y_corner_{i}" for i in (1, 2, 3)]
@@ -102,6 +102,7 @@ def test_lions_cpu_slot_does_not_change_the_shared_catalog():
     ("cpu", None, sc.LIONS_CPU_BOOK),
     ("online", _online, sc.SHARED_BOOK),
     ("titans", _titans, sc.SHARED_BOOK),
+    ("giants", _giants, sc.LIONS_CPU_BOOK),
 ])
 def test_catalog_for_call_routes_by_session(tmp_path, league, make_session, book):
     from cfb_coach.madden.scheme.coordinator import catalog_for_call

@@ -15,7 +15,7 @@ from tests.test_civil_scheme_only import (
     _verify_all,
     civil_env,  # noqa: F401 — pytest fixture
 )
-from tests.test_titans_play_cooldown import MESH_IDS, MESH_POST, _lions, _online, _titans
+from tests.test_titans_play_cooldown import MESH_IDS, MESH_POST, _giants, _lions, _online, _titans
 
 CAT_D = rc.load()
 CAT_STEEL = rc.load_lions_franchise()
@@ -57,6 +57,7 @@ def test_cooldown_spec_windows_and_sides(tmp_path):
     _titans(db, "t1")
     _online(db, "o1")
     _lions(db, "l1")
+    _giants(db, "g1")
 
     t_off = pcd.cooldown_spec(db, "t1", side="offense")
     t_def = pcd.cooldown_spec(db, "t1", side="defense")
@@ -68,6 +69,11 @@ def test_cooldown_spec_windows_and_sides(tmp_path):
     assert c_off["window"] == c_def["window"] == 3
     assert c_off["league"] == c_def["league"] == "Chiefs"
     assert c_off["side"] == "offense" and c_def["side"] == "defense"
+
+    g_off = pcd.cooldown_spec(db, "g1", side="offense")
+    g_def = pcd.cooldown_spec(db, "g1", side="defense")
+    assert g_off == {"window": 3, "league": "Giants", "league_key": "giants", "side": "offense"}
+    assert g_def is None  # Giants cooldown is offense-only
 
     assert pcd.cooldown_spec(db, "l1", side="offense") is None
     assert pcd.cooldown_spec(db, "l1", side="defense") is None

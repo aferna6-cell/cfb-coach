@@ -9,7 +9,7 @@ from cfb_coach.madden.scheme import catalog as sc
 from cfb_coach.madden.scheme import legality as lg
 from tests.test_civil_scheme_only import CAT, CAT_LIONS, _db, _sit, civil_env  # noqa: F401
 from tests.test_chiefs_play_cooldown import ravens_env  # noqa: F401
-from tests.test_titans_play_cooldown import _lions, _online, _titans
+from tests.test_titans_play_cooldown import _giants, _lions, _online, _titans
 
 SHARED_ADDITIONS_SHA256 = "22a93b0f3e3e644de22e2d2c69d10ff39c813a3bdd08e391259996e5a4e972e3"
 RAVENS_DATASET_SHA256 = "5e0673b91112b272b19e715c1153bfb04bf9f109cc66e43cddfe1e7c2b960788"
@@ -107,13 +107,14 @@ def test_shared_ravens_dataset_stays_two_formation_but_live_catalog_is_steelers(
     assert "Steelers" in (cat.raw.get("source_defensive_playbook") or "")
 
 
-def test_lions_chiefs_titans_and_cpu_defense_calls_include_nsm(tmp_path, civil_env, ravens_env):
+def test_lions_chiefs_titans_giants_and_cpu_defense_calls_include_nsm(tmp_path, civil_env, ravens_env):
     from cfb_coach.madden import playcaller
 
     db = _db(tmp_path, formations=["Gun Bunch TE"])
     _lions(db, "lions-human")
     _online(db, "online1")
     _titans(db, "titans1")
+    _giants(db, "giants1")
     db.conn.execute(
         "INSERT INTO game_sessions (session_id, opponent_id, dynasty, started_ts, "
         "league, user_team, opponent_team, opponent_type) "
@@ -126,6 +127,7 @@ def test_lions_chiefs_titans_and_cpu_defense_calls_include_nsm(tmp_path, civil_e
         ("lions-human", "jaxon", False),
         ("online1", "online_indianapolis_colts", False),
         ("titans1", "titans_indianapolis_colts", False),
+        ("giants1", "giants_indianapolis_colts", False),
         ("cpu1", "cpu", True),
     )
     nsm_ids = set(rc.NSM_CALL_IDS)
