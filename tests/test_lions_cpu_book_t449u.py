@@ -1,4 +1,4 @@
-"""t449u: Mesh TE red-zone variant, Civil-only runs on Lions/CPU, shared book unchanged."""
+"""t449u: Mesh TE red-zone variant; shared book unchanged. t453u restored the t349u designed runs to Lions/CPU."""
 from __future__ import annotations
 
 import hashlib
@@ -50,12 +50,13 @@ def test_shared_book_is_byte_identical_and_still_has_old_runs():
     assert CAT.get(MESH_TE) is None
 
 
-def test_lions_cpu_adds_mesh_te_and_drops_only_old_runs():
+def test_lions_cpu_adds_mesh_te_and_includes_restored_t349u_runs():
     owner = _owner()
     prior_sources = {p.get("source") for p in owner.get("prior_instructions") or []}
-    assert owner["owner_instruction"]["source"] in {"t449u", "t450u"}
+    assert owner["owner_instruction"]["source"] in {"t449u", "t450u", "t453u"}
     assert "t449u" in prior_sources | {owner["owner_instruction"]["source"]}
-    assert set(owner["exclude_inherited_variant_ids"]) == set(OLD_RUNS)
+    # t453u: the ten t349u designed runs are back on Lions/CPU; exclusion list is cleared.
+    assert not owner.get("exclude_inherited_variant_ids")
     assert len(CAT_LIONS.variants) == sc.EXPECTED_LIONS_CPU_VARIANTS
     assert sc.contract_errors(CAT_LIONS) == []
     assert CAT_LIONS.version() == CAT.version() == "lions_civil_bucs_5wr_v4@15c120decc4b"
@@ -67,14 +68,22 @@ def test_lions_cpu_adds_mesh_te_and_drops_only_old_runs():
     assert [a.guide_text for a in te.adjustments] == ["Crosser Outside Bunch TE"]
     assert [a.guide_text for a in wr.adjustments] == ["Crosser Outside Bunch WR"]
     for vid in OLD_RUNS:
-        assert CAT_LIONS.get(vid) is None, vid
+        v = CAT_LIONS.get(vid)
+        assert v is not None and v.is_run and v.field_zone == "any", vid
+    # Designed Gun Bunch TE HB Off Tackle is distinct from the t450u Civil red-zone copy.
+    designed_off = CAT_LIONS.get("civil_run_gun_bunch_te_hb_off_tackle")
+    rz_off = CAT_LIONS.get("civil_t450_rz_gun_bunch_te_hb_off_tackle")
+    assert designed_off is not None and rz_off is not None
+    assert designed_off.field_zone == "any" and rz_off.field_zone == sc.RED_ZONE
+    assert designed_off.formation == rz_off.formation == "Gun Bunch TE"
+    assert designed_off.base_play == rz_off.base_play == "HB Off Tackle"
     for vid in KEPT_CLAMP + KEPT_PISTOL:
         assert CAT_LIONS.get(vid) is not None and CAT_LIONS.get(vid).is_run, vid
     assert CAT_LIONS.get(RPO) is not None and CAT_LIONS.get(RPO).is_run
     assert CAT_LIONS.get(RPO).field_zone == sc.INSIDE_10
     assert len(CAT_LIONS.run_variants) == sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
     assert len(CAT_LIONS.redzone_variants) == sc.EXPECTED_LIONS_CPU_REDZONE_VARIANTS
-    assert len(REG_LIONS) == 88 + 9
+    assert len(REG_LIONS) == 88 + sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
     assert MESH_TE in RZ_LIONS
 
 

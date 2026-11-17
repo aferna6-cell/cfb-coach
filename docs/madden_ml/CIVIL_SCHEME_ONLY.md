@@ -154,8 +154,9 @@ Lions franchise and CPU games use a separate, swappable book slot: `datasets/mad
 It starts as a copy of the current shared catalog, adds the seven Eagles plays (Gun Bunch TE Mtn Spacing
 1-4 and Mtn Fork Y-Corner 1-3) with their setup steps and macro flags verbatim (t445u), and then adds the
 rest of the owner's compiled Civil.gg PDF after dedupe (t448u), the t449u Mesh TE red-zone variant, and a
-Civil-only run filter (10 pre-civil t349u designed runs dropped from this book only) and the t450u
-p06_top red-zone run placements. Callable variants: 118 (88 regular passes, 9 designed runs, 21 red-zone).
+the t450u p06_top red-zone run placements, and the t453u restoration of the ten pre-civil t349u
+designed runs to this book (alongside the Civil runs). Callable variants: 128 (88 regular passes,
+19 designed runs, 21 red-zone).
 Chiefs and Titans never load this file, so they never call the Mtn plays or
 any later Lions/CPU addition. Further owner plays dropped into that file change only Lions and CPU; do not
 invent play names, formations, or setups there. Formations that are exact names in another in-repo Madden

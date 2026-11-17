@@ -3,13 +3,20 @@
   "book_id": "lions_cpu",
   "owner_instruction": {
     "date": "2026-11-17",
-    "source": "t450u",
+    "source": "t453u",
     "by": "Aidan (owner)",
-    "statement": "same formations we already use for those, what runs do exist now in the lions playbook. Also for each league I am in change our defensive playbook from steelers to ravens",
-    "source_material": "Owner follow-up on p06_top red-zone runs (HB Off Tackle, HB Draw, QB Blast, HB Dive) and the instruction to put every league back on the Ravens defensive playbook.",
-    "effect": "Adds Civil red-zone variants for p06_top runs only in formations the Lions/CPU book already uses for those run names, and only when an identical red-zone entry is not already present. Restores HB Off Tackle as a Civil red-zone run in Gun Bunch TE (the only already-used formation where it is a legal stock play). HB Draw in Gun Bunch TE, QB Blast in Gun Empty Quads and Gun Heavy Saint, and HB Dive in Pistol Deuce Close are counted as duplicates of existing red-zone entries. Adds red-zone HB Dive in Gun Bunch TE Wk and Pistol Strong Y Off Close (those formations already have the designed run, but not a red-zone copy). Reverts the Lions-only Steelers/Nickel Single Mug package; Lions, Chiefs, Titans, and CPU all use the Ravens two-formation civil defense again."
+    "statement": "Okay add the runs back into the lions book please",
+    "effect": "Restores the ten pre-civil t349u designed runs to the Lions/CPU book alongside all current Civil runs, by clearing exclude_inherited_variant_ids. The t450u Civil red-zone Gun Bunch TE HB Off Tackle stays as its own red-zone entry (not an identical duplicate of the restored designed run, which is field_zone=any). Shared Chiefs/Titans book, Steelers+NSM defense in every league, cooldowns, and catalog_version are unchanged."
   },
   "prior_instructions": [
+    {
+      "date": "2026-11-17",
+      "source": "t450u",
+      "by": "Aidan (owner)",
+      "statement": "same formations we already use for those, what runs do exist now in the lions playbook. Also for each league I am in change our defensive playbook from steelers to ravens",
+      "source_material": "Owner follow-up on p06_top red-zone runs (HB Off Tackle, HB Draw, QB Blast, HB Dive) and the instruction to put every league back on the Ravens defensive playbook.",
+      "effect": "Adds Civil red-zone variants for p06_top runs only in formations the Lions/CPU book already uses for those run names, and only when an identical red-zone entry is not already present. Restores HB Off Tackle as a Civil red-zone run in Gun Bunch TE (the only already-used formation where it is a legal stock play). HB Draw in Gun Bunch TE, QB Blast in Gun Empty Quads and Gun Heavy Saint, and HB Dive in Pistol Deuce Close are counted as duplicates of existing red-zone entries. Adds red-zone HB Dive in Gun Bunch TE Wk and Pistol Strong Y Off Close (those formations already have the designed run, but not a red-zone copy). Reverts the Lions-only Steelers/Nickel Single Mug package; Lions, Chiefs, Titans, and CPU all use the Ravens two-formation civil defense again."
+    },
     {
       "date": "2026-11-17",
       "source": "t449u",
@@ -3454,17 +3461,6 @@
       "note": "t448u p31_top gun-doubles-clamp-stack-offense. The existing catalog entry is the inside_10 red-zone HB Zone only; this adds the same stock play as a regular (field_zone any) designed run. Setup is a usage note only: 'Look to \"Flip\" this run using the Right Stick.' Flagged. Shares the HB Zone cooldown family."
     }
   ],
-  "exclude_inherited_variant_ids": [
-    "civil_run_gun_doubles_clamp_stack_counter_y",
-    "civil_run_gun_doubles_clamp_stack_hb_mid_zone",
-    "civil_run_gun_bunch_te_inside_zone",
-    "civil_run_gun_bunch_te_read_option",
-    "civil_run_gun_bunch_te_hb_off_tackle",
-    "civil_run_gun_bunch_te_boomerang_hb_off_tackle",
-    "civil_run_gun_bunch_te_same_side_zone",
-    "civil_run_gun_tight_doubles_inside_zone",
-    "civil_run_gun_tight_doubles_hb_draw",
-    "civil_run_gun_5wr_tight_qb_draw"
-  ],
+  "exclude_inherited_variant_ids": [],
   "exclude_inherited_reason": "Owner t449u: Lions/CPU may only use runs that appear in the Civil.gg playbooks (the t448u PDF schemes and earlier civil.gg screenshots/sheets), not runs carried over from the pre-civil Bucs/heuristic designed-run set. These 10 t349u runs were added in commit e5df3d1 as 'already in the Buccaneers book in the four scheme formations' and do not appear as formed Civil.gg play cards. Gun Doubles Clamp Stack Inside Zone and Same Side Zone also appear in the PDF (p28) and are kept. The shared Chiefs/Titans book is not changed and still includes all 12 t349u runs."
 }

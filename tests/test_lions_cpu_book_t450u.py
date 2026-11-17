@@ -40,20 +40,22 @@ def test_shared_book_and_ravens_dataset_are_byte_identical():
 
 
 def test_lions_cpu_gains_three_p06_red_zone_runs_and_skips_identical_duplicates():
-    assert len(CAT_LIONS.variants) == 118 == sc.EXPECTED_LIONS_CPU_VARIANTS
+    assert len(CAT_LIONS.variants) == sc.EXPECTED_LIONS_CPU_VARIANTS
     assert sc.contract_errors(CAT_LIONS) == []
     assert NEW_IDS <= set(CAT_LIONS.ids)
     regular_passes = {v.variant_id for v in CAT_LIONS.variants if v.field_zone == "any" and not v.is_run}
     assert len(regular_passes) == 88
-    assert len(CAT_LIONS.run_variants) == 9 == sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
+    assert len(CAT_LIONS.run_variants) == sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
     assert len(CAT_LIONS.redzone_variants) == 21 == sc.EXPECTED_LIONS_CPU_REDZONE_VARIANTS
 
     off = CAT_LIONS.get("civil_t450_rz_gun_bunch_te_hb_off_tackle")
     assert off.formation == "Gun Bunch TE" and off.base_play == "HB Off Tackle"
     assert off.field_zone == sc.RED_ZONE and off.is_run and not off.adjustments
-    # The old t349u designed run stays excluded from Lions/CPU (it remains on the shared book).
-    assert CAT_LIONS.get("civil_run_gun_bunch_te_hb_off_tackle") is None
+    # t453u restored the t349u designed run alongside the t450u Civil red-zone copy.
+    designed = CAT_LIONS.get("civil_run_gun_bunch_te_hb_off_tackle")
+    assert designed is not None and designed.field_zone == "any" and designed.is_run
     assert CAT.get("civil_run_gun_bunch_te_hb_off_tackle") is not None
+    assert designed.variant_id != off.variant_id
 
     wk = CAT_LIONS.get("civil_t450_rz_gun_bunch_te_wk_hb_dive")
     assert wk.formation == "Gun Bunch TE Wk" and wk.base_play == "HB Dive"
