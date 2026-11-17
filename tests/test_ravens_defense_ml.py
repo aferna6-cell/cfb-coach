@@ -282,7 +282,7 @@ OFFENSE_PINS = {
     "cfb_coach/madden/scheme/legality.py": "e6c959dd4912a7f036c9c831ac31e1c6193c9c587e1fc10ac1167731d2393d36",
     "cfb_coach/madden/scheme/mode.py": "ef99c16e697b1fe25ab5f1709cf3d7ee307762856f370ffab2b48deb844fb031",
     "cfb_coach/madden/scheme/model.py": "af793fd4dfbe03c234ccf11cd0d6afeec8a555507ea041604222e637aab778a7",
-    "cfb_coach/madden/scheme/catalog.py": "2819f8441b39f7979ea3eac39c7a8317dc4ef8ba0322a588c4812f62200925a9",
+    "cfb_coach/madden/scheme/catalog.py": "9090a7572e01c061106acc1d2288b96bdf82a64a0524f09e7fc797b0229e4e93",
     "datasets/madden27/lions_offensive_scheme_catalog.json": "15c120decc4bba0ae3dc23f1c5a4c33f183f42a1dd8bd44a4a823526692a77ee",
 }
 
@@ -335,7 +335,7 @@ def test_13b_make_call_defense_uses_ravens_only_when_mode_on(live_db, monkeypatc
     monkeypatch.setattr(playcaller, "_pick_defense", lambda *a, **k: (_ for _ in ()).throw(AssertionError("old D")))
     call = playcaller.make_call(_dsit(), "jaxon", live_db)
     assert call.ravens_defense["status"] == "CALL" and call.call_label == co.LABEL
-    assert call.formation in rc.FORMATIONS
+    assert call.formation in rc.LIONS_FRANCHISE_FORMATIONS
     text = call.format()
     assert text.splitlines()[0] == call.headline() and "USER: UNVERIFIED" in text
     assert call.ravens_defense["end_to_end_ms"] < co.LATENCY_TARGET_MS * 3                # generous CI bound

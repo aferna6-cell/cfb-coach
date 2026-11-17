@@ -52,9 +52,11 @@ def test_shared_book_is_byte_identical_and_still_has_old_runs():
 
 def test_lions_cpu_adds_mesh_te_and_drops_only_old_runs():
     owner = _owner()
-    assert owner["owner_instruction"]["source"] == "t449u"
+    prior_sources = {p.get("source") for p in owner.get("prior_instructions") or []}
+    assert owner["owner_instruction"]["source"] in {"t449u", "t450u"}
+    assert "t449u" in prior_sources | {owner["owner_instruction"]["source"]}
     assert set(owner["exclude_inherited_variant_ids"]) == set(OLD_RUNS)
-    assert len(CAT_LIONS.variants) == 115 == sc.EXPECTED_LIONS_CPU_VARIANTS
+    assert len(CAT_LIONS.variants) == sc.EXPECTED_LIONS_CPU_VARIANTS
     assert sc.contract_errors(CAT_LIONS) == []
     assert CAT_LIONS.version() == CAT.version() == "lions_civil_bucs_5wr_v4@15c120decc4b"
     te = CAT_LIONS.get(MESH_TE)
@@ -70,8 +72,8 @@ def test_lions_cpu_adds_mesh_te_and_drops_only_old_runs():
         assert CAT_LIONS.get(vid) is not None and CAT_LIONS.get(vid).is_run, vid
     assert CAT_LIONS.get(RPO) is not None and CAT_LIONS.get(RPO).is_run
     assert CAT_LIONS.get(RPO).field_zone == sc.INSIDE_10
-    assert len(CAT_LIONS.run_variants) == 9 == sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
-    assert len(CAT_LIONS.redzone_variants) == 18 == sc.EXPECTED_LIONS_CPU_REDZONE_VARIANTS
+    assert len(CAT_LIONS.run_variants) == sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
+    assert len(CAT_LIONS.redzone_variants) == sc.EXPECTED_LIONS_CPU_REDZONE_VARIANTS
     assert len(REG_LIONS) == 88 + 9
     assert MESH_TE in RZ_LIONS
 

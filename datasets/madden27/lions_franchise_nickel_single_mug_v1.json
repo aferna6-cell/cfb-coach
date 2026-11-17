@@ -4,25 +4,46 @@
   "game": "Madden NFL 27",
   "owner_instruction": {
     "date": "2026-11-17",
-    "source": "t449u",
+    "source": "t451u",
     "by": "Aidan (owner)",
-    "statement": "For the lions franchise lets add Nickel Single mug as a defensive package or if we can find a playbook that has nickel single mug and our current defenseive formations that would be best",
-    "effect": "Lions human franchise games only. The in-repo Huddle.gg Madden 27 defensive inventory has exactly one stock book that contains Nickel Single Mug AND the current Ravens civil formations (Nickel 2-4 Wide and Dime 2-3 Odd): Pittsburgh Steelers. Every current 12-call base play also exists in that Steelers book. This package adds the PDF p06_bot-p11_top Nickel Single Mug setups whose base plays exist in Steelers Nickel Single Mug (Cover 4 Quarters variants and Tampa 2). Cover 9 (p08_bot) and the Base Coverage 4/5 pages (p09_bot, p10_top) are not added because they have no legal stock play in that formation. CPU, Chiefs, and Titans keep the existing Ravens two-formation catalog unchanged. Macros and user assignments from the PDF are shown as setup steps and are not owner-confirmed in game (UNVERIFIED)."
+    "statement": "No lets use Steelers instead of ravens so we can use single mug in addition to 2-4 wide and dime 2-3",
+    "effect": "Every league (Lions franchise, Chiefs online, Titans franchise, and CPU) uses the Pittsburgh Steelers defensive playbook context, with Nickel Single Mug (the 7 PDF stock setups: six Cover 4 Quarters plus Tampa 2 Shade Coverage Underneath) alongside Nickel 2-4 Wide and Dime 2-3 Odd. Cooldowns stay Chiefs 3 on offense and defense, Titans 5 on offense, none for Lions. NSM macros and user assignments stay UNVERIFIED. The 7 stock calls are unchanged from t449u."
   },
   "stock_context_playbook": "Pittsburgh Steelers",
   "stock_context_source": "cfb_coach/data/madden27/playbooks_full.json (Huddle.gg Madden 27, accessed 2026-11-05)",
   "package": "nickel_single_mug",
   "formation": "Nickel Single Mug",
-  "label": "Nickel Single Mug package (Lions franchise only; Steelers stock-book context)",
+  "label": "Nickel Single Mug package (all leagues; Steelers stock-book context)",
   "confirmation_status": "setups_unconfirmed_in_game",
   "macro_catalog": {
-    "LEFT_TEX_2_MAN": {"display_name": "Left Tex 2 Man", "source": "PDF p06_bot / p07_bot / p08_top titled Macro"},
-    "TEXAS_4_MAN": {"display_name": "Texas 4 Man", "source": "PDF p07_top / p07_bot / p08_top titled Macro"},
-    "FOUR_MAN_RUSH": {"display_name": "4 Man Rush Macro", "source": "PDF p09_top titled Macro"},
-    "SPREAD_DLINE": {"display_name": "Spread D-Line", "source": "PDF setup step marked MACRO"},
-    "SHOW_BLITZ_LBS": {"display_name": "Show Blitz LBs", "source": "PDF setup step marked MACRO"},
-    "CONTAIN_RIGHT_DE": {"display_name": "Contain Right of Screen DE", "source": "PDF p06_bot setup step marked MACRO"},
-    "CONTAIN": {"display_name": "Contain", "source": "PDF p09_top setup step marked MACRO"}
+    "LEFT_TEX_2_MAN": {
+      "display_name": "Left Tex 2 Man",
+      "source": "PDF p06_bot / p07_bot / p08_top titled Macro"
+    },
+    "TEXAS_4_MAN": {
+      "display_name": "Texas 4 Man",
+      "source": "PDF p07_top / p07_bot / p08_top titled Macro"
+    },
+    "FOUR_MAN_RUSH": {
+      "display_name": "4 Man Rush Macro",
+      "source": "PDF p09_top titled Macro"
+    },
+    "SPREAD_DLINE": {
+      "display_name": "Spread D-Line",
+      "source": "PDF setup step marked MACRO"
+    },
+    "SHOW_BLITZ_LBS": {
+      "display_name": "Show Blitz LBs",
+      "source": "PDF setup step marked MACRO"
+    },
+    "CONTAIN_RIGHT_DE": {
+      "display_name": "Contain Right of Screen DE",
+      "source": "PDF p06_bot setup step marked MACRO"
+    },
+    "CONTAIN": {
+      "display_name": "Contain",
+      "source": "PDF p09_top setup step marked MACRO"
+    }
   },
   "stock_calls": [
     {
@@ -76,7 +97,10 @@
       "user_assignment_source": "guide_unverified",
       "suggested_user": "Weak Side Safety (Side With Less Receivers)",
       "pdf_page": "p07_bot",
-      "titled_macros": ["Texas 4 Man", "Left Tex 2 Man"],
+      "titled_macros": [
+        "Texas 4 Man",
+        "Left Tex 2 Man"
+      ],
       "setup_steps": [
         "Select Macro: Left Tex 2 Man",
         "Or Select Macro: Texas 4 Man",
@@ -97,7 +121,10 @@
       "user_assignment_source": "guide_unverified",
       "suggested_user": "Weak Side Safety (Side With Less Receivers)",
       "pdf_page": "p08_top",
-      "titled_macros": ["Left Tex 2 Man", "Texas 4 Man"],
+      "titled_macros": [
+        "Left Tex 2 Man",
+        "Texas 4 Man"
+      ],
       "setup_steps": [
         "Select Macro: Left Tex 2 Man",
         "Or Select Macro: Texas 4 Man",
@@ -207,6 +234,15 @@
         "Put Sub LB 1 on \"Hook Curl\" (MACRO)"
       ],
       "reason": "The card has no stock play name, only Base Coverage 5 plus individual assignment macros. Not added (adding it would invent a base play)."
+    }
+  ],
+  "prior_instructions": [
+    {
+      "date": "2026-11-17",
+      "source": "t449u",
+      "by": "Aidan (owner)",
+      "statement": "For the lions franchise lets add Nickel Single mug as a defensive package or if we can find a playbook that has nickel single mug and our current defenseive formations that would be best",
+      "effect": "Lions human franchise games only. The in-repo Huddle.gg Madden 27 defensive inventory has exactly one stock book that contains Nickel Single Mug AND the current Ravens civil formations (Nickel 2-4 Wide and Dime 2-3 Odd): Pittsburgh Steelers. Every current 12-call base play also exists in that Steelers book. This package adds the PDF p06_bot-p11_top Nickel Single Mug setups whose base plays exist in Steelers Nickel Single Mug (Cover 4 Quarters variants and Tampa 2). Cover 9 (p08_bot) and the Base Coverage 4/5 pages (p09_bot, p10_top) are not added because they have no legal stock play in that formation. CPU, Chiefs, and Titans keep the existing Ravens two-formation catalog unchanged. Macros and user assignments from the PDF are shown as setup steps and are not owner-confirmed in game (UNVERIFIED)."
     }
   ]
 }

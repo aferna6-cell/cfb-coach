@@ -1,7 +1,8 @@
-"""t449u: Lions human franchise gets the Nickel Single Mug package in the Steelers book context.
+"""t449u/t451u: every league uses the Steelers book with the Nickel Single Mug package.
 
-CPU, Chiefs, and Titans keep the existing Ravens two-formation catalog. The Ravens dataset
-bytes and the default 14-candidate contract stay unchanged.
+The Ravens two-formation dataset bytes and the default 14-candidate ``rc.load()`` contract
+stay unchanged. Live civil defense calls use ``load_lions_franchise()`` for Lions, Chiefs,
+Titans, and CPU.
 """
 from __future__ import annotations
 
@@ -63,57 +64,76 @@ def test_lions_franchise_catalog_adds_pdf_stock_nsm_plays_only():
         assert "UNCONFIRMED" in notes or "PROFILE_UNCONFIRMED" in notes
 
 
-def test_session_routing_nsm_is_lions_human_only(tmp_path, civil_env):
+def test_session_routing_nsm_is_used_in_every_league(tmp_path, civil_env):
     db = _db(tmp_path, formations=["Gun Bunch TE"])
-    _lions(db, "lions-cpu")  # helper defaults to opponent cpu
+    _lions(db, "lions-cpu")
     _online(db, "online1")
     _titans(db, "titans1")
     db.conn.execute(
         "INSERT INTO game_sessions (session_id, opponent_id, dynasty, started_ts, "
         "league, user_team, opponent_team, opponent_type) "
-        "VALUES ('lions-human', 'jaxon', 'primary', '2026-11-17T10:00:00+00:00', "
+        "VALUES ('lions-human', 'jaxon', 'primary', '2026-11-17T16:00:00+00:00', "
         "NULL, 'Detroit Lions', 'Dallas Cowboys', 'human')"
     )
     db.conn.commit()
 
-    assert not rc.is_lions_human_defense_session(db, "lions-cpu", {}, "cpu")
-    assert not rc.is_lions_human_defense_session(db, "online1", {}, "online_indianapolis_colts")
-    assert not rc.is_lions_human_defense_session(db, "titans1", {}, "titans_indianapolis_colts")
-    assert not rc.is_lions_human_defense_session(db, "g1", {"session_id": "g1"}, "jaxon")  # untagged
-    assert rc.is_lions_human_defense_session(db, "lions-human", {}, "jaxon")
+    sessions = (
+        ("lions-cpu", "cpu"),
+        ("lions-human", "jaxon"),
+        ("online1", "online_indianapolis_colts"),
+        ("titans1", "titans_indianapolis_colts"),
+        ("g1", "jaxon"),  # untagged
+    )
+    for sid, opp in sessions:
+        cat = rc.catalog_for_defense_session(db, sid, {}, opp)
+        assert cat.is_lions_franchise and cat.stock_team == rc.STEELERS
+        assert cat.allowed_formations == rc.LIONS_FRANCHISE_FORMATIONS
+        assert NSM_IDS <= set(cat.by_id())
+        assert "Baltimore Ravens" not in (cat.raw.get("source_defensive_playbook") or "") or "Steelers" in (cat.raw.get("source_defensive_playbook") or "")
+        assert "Steelers" in (cat.raw.get("source_defensive_playbook") or "")
 
-    assert not rc.catalog_for_defense_session(db, "lions-cpu", {}, "cpu").is_lions_franchise
-    assert not rc.catalog_for_defense_session(db, "online1", {}, "online_indianapolis_colts").is_lions_franchise
-    assert not rc.catalog_for_defense_session(db, "titans1", {}, "titans_indianapolis_colts").is_lions_franchise
-    lions = rc.catalog_for_defense_session(db, "lions-human", {}, "jaxon")
-    assert lions.is_lions_franchise and NSM_IDS <= set(lions.by_id())
 
-
-def test_lions_human_defense_calls_can_be_nsm_and_stay_legal(tmp_path, civil_env, ravens_env):
+def test_every_league_defense_calls_can_be_nsm_and_stay_legal(tmp_path, civil_env, ravens_env):
     from cfb_coach.madden import playcaller
     from cfb_coach.situation import Situation
 
     db = _db(tmp_path, formations=["Gun Bunch TE"])
+    _lions(db, "lions-cpu")
+    _online(db, "online1")
+    _titans(db, "titans1")
     db.conn.execute(
         "INSERT INTO game_sessions (session_id, opponent_id, dynasty, started_ts, "
         "league, user_team, opponent_team, opponent_type) "
-        "VALUES ('lions-nsm', 'jaxon', 'primary', '2026-11-17T10:00:00+00:00', "
+        "VALUES ('lions-human', 'jaxon', 'primary', '2026-11-17T16:00:00+00:00', "
         "NULL, 'Detroit Lions', 'Dallas Cowboys', 'human')"
     )
     db.conn.commit()
-    seen = set()
-    for i in range(80):
-        s = Situation(raw=f"t{i}", down=1, distance=10, yardline=40)
-        s.side = "defense"
-        s.extras = {"session_id": "lions-nsm", "snap_seq": i}
-        call = playcaller.make_call(s, "jaxon", db)
-        assert call.ravens_defense["status"] == "CALL", call.ravens_defense
-        assert call.formation in rc.LIONS_FRANCHISE_FORMATIONS
-        seen.add(call.ravens_defense["candidate"]["call_id"])
-        if call.formation == rc.NSM:
-            text = "\n".join(call.ravens_defense["card"])
-            assert "PACKAGE: Nickel Single Mug" in text
-            assert "UNVERIFIED" in text
-            assert "SETUP 1:" in text
-    assert seen & NSM_IDS, seen
-    assert seen - NSM_IDS, seen  # still calls the existing Ravens packages too
+
+    sessions = (
+        ("lions-human", "jaxon", False),
+        ("online1", "online_indianapolis_colts", False),
+        ("titans1", "titans_indianapolis_colts", False),
+        ("lions-cpu", "cpu", True),
+    )
+    for sid, opp, cpu_defense in sessions:
+        seen = set()
+        forms = set()
+        for i in range(80):
+            s = Situation(raw=f"t{i}", down=1, distance=10, yardline=40)
+            s.side = "defense"
+            s.extras = {"session_id": sid, "snap_seq": i}
+            call = playcaller.make_call(s, opp, db, cpu_defense=cpu_defense)
+            rd = call.ravens_defense
+            assert rd["status"] == "CALL", (sid, rd)
+            assert call.formation in rc.LIONS_FRANCHISE_FORMATIONS
+            seen.add(rd["candidate"]["call_id"])
+            forms.add(call.formation)
+            if call.formation == rc.NSM:
+                text = "\n".join(rd["card"])
+                assert "PACKAGE: Nickel Single Mug" in text
+                assert "UNVERIFIED" in text
+                assert "SETUP 1:" in text
+                assert "Lions franchise only" not in text
+        assert seen & NSM_IDS, (sid, seen)
+        assert seen - NSM_IDS, (sid, seen)
+        assert rc.NSM in forms, (sid, forms)

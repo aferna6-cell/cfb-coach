@@ -890,7 +890,12 @@ def test_24d_ten_to_twenty_mixes_designed_runs_and_stretch_with_passes(tmp_path,
         picks.append(vid)
         _close_snap(db, "b1020", vid, y)
     run_ids = {v.variant_id for v in CAT_LIONS.variants if v.is_run}
-    assert sum(p in run_ids for p in picks) >= 8 and sum(p in CORE for p in picks) >= 8, picks
+    # 10-20 legal set includes designed runs, red-zone runs, red-zone passes, and regular
+    # passes (CORE plus later Lions/CPU additions). After t450u the red-zone run count grew,
+    # so require a mix of runs and passes rather than pinning the original 26 CORE ids.
+    n_runs = sum(p in run_ids for p in picks)
+    n_passes = sum(p not in run_ids for p in picks)
+    assert n_runs >= 8 and n_passes >= 8, picks
 
 
 def test_25_run_call_shows_its_variation_in_html_live(tmp_path, civil_env):

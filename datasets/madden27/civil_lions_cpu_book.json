@@ -3,13 +3,21 @@
   "book_id": "lions_cpu",
   "owner_instruction": {
     "date": "2026-11-17",
-    "source": "t449u",
+    "source": "t450u",
     "by": "Aidan (owner)",
-    "statement": "its a different play, what redzone plays are missing formations, I dont wan the commanders best inside the 5 tab. I also think we are at a point where we can only use runs that are in the civil playbooks not runs we had been using previously so figure out if each run in the book is a civil run or a run from our old offense before we started using the civil book. For the lions franchise lets add Nickel Single mug as a defensive package or if we can find a playbook that has nickel single mug and our current defenseive formations that would be best",
-    "source_material": "Owner follow-up on the t448u Civil.gg PDF (p05_bot Mesh TE, p06_top red-zone runs without formations) plus the instruction to use only Civil.gg runs on the Lions/CPU book.",
-    "effect": "Adds the p05_bot Gun Bunch TE Mesh setup 'Crosser Outside Bunch TE' as its own Lions/CPU red-zone pass variant (the existing WR Mesh stays). Drops the Commanders Best Inside the 5 / Gun Heavy Redzone tab from the flagged list (not added). Does not add the p06_top red-zone run list (HB Off Tackle, HB Draw, QB Blast, HB Dive) because none of those four names has a formation. Removes 10 pre-civil t349u designed runs from the Lions/CPU book only; the shared Chiefs/Titans book stays byte-identical and still has them. Two t349u Clamp Stack runs that also appear in the PDF (p28 Inside Zone and Same Side Zone) stay. t398u Pistol HB Zone/HB Dive are kept and flagged as ambiguous. t335u/t338u Civil.GG sheet red-zone runs, including the goal-to-go RPO Alert QB Draw, stay. Nickel Single Mug defense is a Lions-franchise-only package in the Steelers stock-book context."
+    "statement": "same formations we already use for those, what runs do exist now in the lions playbook. Also for each league I am in change our defensive playbook from steelers to ravens",
+    "source_material": "Owner follow-up on p06_top red-zone runs (HB Off Tackle, HB Draw, QB Blast, HB Dive) and the instruction to put every league back on the Ravens defensive playbook.",
+    "effect": "Adds Civil red-zone variants for p06_top runs only in formations the Lions/CPU book already uses for those run names, and only when an identical red-zone entry is not already present. Restores HB Off Tackle as a Civil red-zone run in Gun Bunch TE (the only already-used formation where it is a legal stock play). HB Draw in Gun Bunch TE, QB Blast in Gun Empty Quads and Gun Heavy Saint, and HB Dive in Pistol Deuce Close are counted as duplicates of existing red-zone entries. Adds red-zone HB Dive in Gun Bunch TE Wk and Pistol Strong Y Off Close (those formations already have the designed run, but not a red-zone copy). Reverts the Lions-only Steelers/Nickel Single Mug package; Lions, Chiefs, Titans, and CPU all use the Ravens two-formation civil defense again."
   },
   "prior_instructions": [
+    {
+      "date": "2026-11-17",
+      "source": "t449u",
+      "by": "Aidan (owner)",
+      "statement": "its a different play, what redzone plays are missing formations, I dont wan the commanders best inside the 5 tab. I also think we are at a point where we can only use runs that are in the civil playbooks not runs we had been using previously so figure out if each run in the book is a civil run or a run from our old offense before we started using the civil book. For the lions franchise lets add Nickel Single mug as a defensive package or if we can find a playbook that has nickel single mug and our current defenseive formations that would be best",
+      "source_material": "Owner follow-up on the t448u Civil.gg PDF (p05_bot Mesh TE, p06_top red-zone runs without formations) plus the instruction to use only Civil.gg runs on the Lions/CPU book.",
+      "effect": "Adds the p05_bot Gun Bunch TE Mesh setup 'Crosser Outside Bunch TE' as its own Lions/CPU red-zone pass variant (the existing WR Mesh stays). Drops the Commanders Best Inside the 5 / Gun Heavy Redzone tab from the flagged list (not added). Does not add the p06_top red-zone run list (HB Off Tackle, HB Draw, QB Blast, HB Dive) because none of those four names has a formation. Removes 10 pre-civil t349u designed runs from the Lions/CPU book only; the shared Chiefs/Titans book stays byte-identical and still has them. Two t349u Clamp Stack runs that also appear in the PDF (p28 Inside Zone and Same Side Zone) stay. t398u Pistol HB Zone/HB Dive are kept and flagged as ambiguous. t335u/t338u Civil.GG sheet red-zone runs, including the goal-to-go RPO Alert QB Draw, stay. Nickel Single Mug defense is a Lions-franchise-only package in the Steelers stock-book context."
+    },
     {
       "date": "2026-11-17",
       "source": "t448u",
@@ -3352,6 +3360,51 @@
         "Redzone 10-20"
       ],
       "note": "t449u p05_bot benkert-dimes, Redzone tab 'Mesh - Redzone / Redzone Pass Play'. Owner confirmed this is a different play from the existing Gun Bunch TE Mesh with setup 'Crosser Outside Bunch WR' (civil_rz_gun_bunch_te_mesh). Added as its own red-zone variant with this exact setup. field_zone red_zone: callable inside the 10 and 10-20, never outside the 20."
+    },
+    {
+      "variant_id": "civil_t450_rz_gun_bunch_te_hb_off_tackle",
+      "variant_name": "Redzone - Gun Bunch TE: HB Off Tackle",
+      "formation": "Gun Bunch TE",
+      "base_play": "HB Off Tackle",
+      "field_zone": "red_zone",
+      "play_family": "run",
+      "guide_setup_text": [],
+      "adjustments": [],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "t450u p06_top benkert-dimes, tab 'Running Inside The Redzone / Redzone Runs'. Owner: use the same formations already used for these runs. The only prior use was the t349u Gun Bunch TE designed run, removed in t449u as pre-civil; p06_top now gives it a Civil source, so it is restored as a Civil red-zone run (not a regular designed run). Exact stock play in Buccaneers and Benkert's Dimes Gun Bunch TE. Not legal in any other formation already in the Lions/CPU book."
+    },
+    {
+      "variant_id": "civil_t450_rz_gun_bunch_te_wk_hb_dive",
+      "variant_name": "Redzone - Gun Bunch TE Wk: HB Dive",
+      "formation": "Gun Bunch TE Wk",
+      "base_play": "HB Dive",
+      "field_zone": "red_zone",
+      "play_family": "run",
+      "guide_setup_text": [],
+      "adjustments": [],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "t450u p06_top benkert-dimes red-zone runs. Gun Bunch TE Wk already has the regular designed run (civil_t448_run_gun_bunch_te_wk_hb_dive, p43_top). This is the red-zone variant of that same stock play, not a replacement. Exact stock play in Benkert's Dimes / Chargers / Jaguars / Saints Gun Bunch TE Wk."
+    },
+    {
+      "variant_id": "civil_t450_rz_pistol_strong_y_off_close_hb_dive",
+      "variant_name": "Redzone - Pistol Strong Y Off Close: HB Dive",
+      "formation": "Pistol Strong Y Off Close",
+      "base_play": "HB Dive",
+      "field_zone": "red_zone",
+      "play_family": "run",
+      "guide_setup_text": [],
+      "adjustments": [],
+      "expert_situation_tags": [
+        "Redzone Inside 10",
+        "Redzone 10-20"
+      ],
+      "note": "t450u p06_top benkert-dimes red-zone runs. Pistol Strong Y Off Close already has the regular designed run (civil_run_pistol_strong_y_off_close_hb_dive, t398u). This is the red-zone variant of that same stock play, not a replacement. Exact Buccaneers stock play."
     }
   ],
   "designed_runs": [

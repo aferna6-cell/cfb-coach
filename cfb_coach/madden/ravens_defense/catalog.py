@@ -227,9 +227,9 @@ def installed_two_formation_book(defense_book: Mapping[str, Any] | None) -> dict
 
 
 def scheme_book(cat: RavensCatalog | None = None) -> dict[str, list[str]]:
-    """The two-formation dataset itself as a book ({formation: [base plays]}), only plays the 14
-    candidates use. The online civil profile (t351u) treats this as the legal book: Aidan installs the
-    same civil package in the Chiefs league. Never adds a play that is not a dataset candidate."""
+    """The civil defense dataset itself as a book ({formation: [base plays]}), only plays the
+    catalog candidates use (14 Ravens-base candidates, plus NSM when ``cat`` is the Steelers catalog).
+    Never adds a play that is not a dataset candidate."""
     cat = cat or load()
     out: dict[str, set[str]] = {}
     for c in cat.candidates:
@@ -347,9 +347,10 @@ def _load_lions_franchise(path: str, mtime_ns: int, base_sha: str) -> RavensCata
 
 
 def load_lions_franchise(path: str | Path | None = None) -> RavensCatalog:
-    """Current Ravens two-formation civil defense plus the t449u Nickel Single Mug package.
+    """Steelers-context civil defense: Nickel 2-4 Wide, Dime 2-3 Odd, and Nickel Single Mug.
 
-    Used only for Lions human franchise games. CPU, Chiefs, and Titans keep ``load()``.
+    Used for every league (Lions franchise, Chiefs online, Titans franchise, and CPU).
+    ``load()`` remains the unchanged Ravens two-formation base dataset.
     """
     p = Path(path or LIONS_NSM_DATASET)
     return _load_lions_franchise(str(p.resolve()), p.stat().st_mtime_ns, load().sha256)
@@ -406,6 +407,5 @@ def is_lions_human_defense_session(db: Any, session_id: str | None, extras: Mapp
 
 def catalog_for_defense_session(db: Any, session_id: str | None, extras: Mapping[str, Any] | None,
                                 opponent_id: str | None) -> RavensCatalog:
-    if is_lions_human_defense_session(db, session_id, extras, opponent_id):
-        return load_lions_franchise()
-    return load()
+    """t451u: every league uses the Steelers three-formation civil defense (including NSM)."""
+    return load_lions_franchise()

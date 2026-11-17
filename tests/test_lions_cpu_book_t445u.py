@@ -63,7 +63,7 @@ def test_lions_cpu_book_is_the_shared_book_plus_the_seven_mtn_plays():
     assert len(CAT_LIONS.variants) == sc.EXPECTED_LIONS_CPU_VARIANTS and sc.contract_errors(CAT_LIONS) == []
     assert CAT_LIONS.version() == CAT.version() == "lions_civil_bucs_5wr_v4@15c120decc4b"
     fam = pcd.catalog_families(CAT_LIONS)
-    assert len(fam) == 57 and {"mtn spacing", "mtn fork y corner"} <= set(fam)
+    assert len(fam) == 58 and {"mtn spacing", "mtn fork y corner", "hb off tackle"} <= set(fam)
     owner = _owner()
     assert [v["variant_id"] for v in owner["pass_variants"][:7]] == MTN_SPACING + MTN_FORK
     assert owner["red_zone_variants"] and owner["designed_runs"]

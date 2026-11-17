@@ -18,6 +18,7 @@ from tests.test_civil_scheme_only import (
 from tests.test_titans_play_cooldown import MESH_IDS, MESH_POST, _lions, _online, _titans
 
 CAT_D = rc.load()
+CAT_STEEL = rc.load_lions_franchise()
 COVER2 = [c for c in CAT_D.candidates if c.base_play == "Cover 2 Match"]
 QUARTERS = [c for c in CAT_D.candidates if c.base_play == "Cover 4 Quarters"]
 
@@ -232,14 +233,14 @@ def test_chiefs_defense_family_blocked_for_three_snaps(tmp_path, civil_env, rave
         fam = pcd.defense_family_key(rd["candidate"]["base_play"])
         assert fam != blocked, (i, rd["candidate"], cd)
         # The filtered legal set must not include the blocked family.
-        ranked_fams = {pcd.defense_family_key(CAT_D.by_id()[r["candidate_id"]].base_play) for r in rd["ranked"]}
+        ranked_fams = {pcd.defense_family_key((CAT_STEEL.by_id().get(r["candidate_id"]) or CAT_D.by_id()[r["candidate_id"]]).base_play) for r in rd["ranked"]}
         assert blocked not in ranked_fams
         seen.append(fam)
     # After three other defensive calls, Cover 3 Match is legal again.
     fourth = _defense_call(db, "cdef", yardline=50)
     rd = fourth.ravens_defense
     assert rd["status"] == "CALL"
-    ranked_fams = {pcd.defense_family_key(CAT_D.by_id()[r["candidate_id"]].base_play) for r in rd["ranked"]}
+    ranked_fams = {pcd.defense_family_key((CAT_STEEL.by_id().get(r["candidate_id"]) or CAT_D.by_id()[r["candidate_id"]]).base_play) for r in rd["ranked"]}
     assert blocked in ranked_fams
     # History is the decisions table, not process memory.
     hist = pcd.recent_defense_families(db, "cdef")
@@ -288,7 +289,7 @@ def test_titans_and_lions_defense_have_no_play_cooldown(tmp_path, civil_env, rav
         assert rd["status"] == "CALL"
         assert rd.get("play_cooldown") is None
         # The just-called family remains in the scored legal set.
-        ranked_fams = {pcd.defense_family_key(CAT_D.by_id()[r["candidate_id"]].base_play) for r in rd["ranked"]}
+        ranked_fams = {pcd.defense_family_key((CAT_STEEL.by_id().get(r["candidate_id"]) or CAT_D.by_id()[r["candidate_id"]]).base_play) for r in rd["ranked"]}
         assert "cover 3 match" in ranked_fams
 
 

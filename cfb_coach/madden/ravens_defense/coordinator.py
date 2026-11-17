@@ -120,7 +120,7 @@ def card_lines(decision: Mapping[str, Any]) -> list[str]:
     if decision.get("macro_display"):
         lines.append(f"MACRO: {decision['macro_display']}")
     if c.get("package") == "nickel_single_mug":
-        lines.append("PACKAGE: Nickel Single Mug (Lions franchise only; Steelers stock)")
+        lines.append("PACKAGE: Nickel Single Mug (Steelers stock)")
         raw = (decision.get("candidate_raw") or {})
         for i, step in enumerate(raw.get("setup_steps") or [], 1):
             lines.append(f"SETUP {i}: {step}")
@@ -247,8 +247,8 @@ def call_ravens(sit: Any, opponent_id: str, db: Any, defense_book: Mapping[str, 
         conf = cf.load(confirmations_path)
         installed = rc.scheme_book(cat) if scheme_book else rc.installed_two_formation_book(defense_book)
         art = artifact or (str(md.artifact_dir(db)) if md.artifact_dir(db) else None)
-        # A Ravens-trained artifact does not score the Lions-only Nickel Single Mug
-        # candidates; use the untrained prior on the Lions franchise catalog (honest label).
+        # A Ravens-trained artifact does not score Nickel Single Mug candidates; use
+        # the untrained prior on the Steelers three-formation catalog (honest label).
         if cat.is_lions_franchise:
             art, model = None, prior_only_model(cat)
         elif art and not (scheme_book and not Path(art, "model.json").is_file()):

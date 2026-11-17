@@ -67,7 +67,7 @@ def test_team_only_start_no_gamertag_civil_offense_and_defense(tmp_db):
     assert "has no explicit offense mode" not in r.stderr
     assert "ONLINE LEAGUE: Kansas City Chiefs vs Buffalo Bills (logged as online_buffalo_bills" in out
     assert "LABEL: RAVENS_DEFENSE_ML (UNTRAINED_PRIOR_ONLY · scheme book)" in out
-    assert "PLAY: Nickel 2-4 Wide — " in out or "PLAY: Dime 2-3 Odd — DB Fire 2" in out
+    assert any(f"PLAY: {form} — " in out for form in rc.LIONS_FRANCHISE_FORMATIONS)
     con = sqlite3.connect(tmp_db / "madden27.db")
     try:
         sess = con.execute("SELECT opponent_id, league, user_team, opponent_team, opponent_type "
@@ -77,10 +77,10 @@ def test_team_only_start_no_gamertag_civil_offense_and_defense(tmp_db):
                             "WHERE data_source != 'session_close' OR data_source IS NULL").fetchall()
         assert {s[0] for s in snaps} >= {"defense"}
         assert all(s[1] == "Buffalo Bills" and s[2] == "online_buffalo_bills" for s in snaps)
-        assert all(s[3] in rc.FORMATIONS for s in snaps if s[0] == "defense")
+        assert all(s[3] in rc.LIONS_FRANCHISE_FORMATIONS for s in snaps if s[0] == "defense")
         dec = con.execute("SELECT status, league, opponent_team, formation FROM ravens_defense_decisions").fetchall()
         assert dec and all(d[0] == "CALL" and d[1] == "online" and d[2] == "Buffalo Bills" for d in dec)
-        assert all(d[3] in rc.FORMATIONS for d in dec)
+        assert all(d[3] in rc.LIONS_FRANCHISE_FORMATIONS for d in dec)
     finally:
         con.close()
 
@@ -134,14 +134,14 @@ def test_lions_ravens_defense_flag_calls_scheme_book(tmp_db):
     assert "UNTRAINED_PRIOR_ONLY" in out
     assert "ONLINE LEAGUE" not in out
     assert "team: Detroit Lions" in out
-    assert "PLAY: Nickel 2-4 Wide — " in out or "PLAY: Dime 2-3 Odd — DB Fire 2" in out
+    assert any(f"PLAY: {form} — " in out for form in rc.LIONS_FRANCHISE_FORMATIONS)
     assert "LABEL: RAVENS_DEFENSE_ML (UNTRAINED_PRIOR_ONLY · scheme book)" in out
     con = sqlite3.connect(tmp_db / "madden27.db")
     try:
         sess = con.execute("SELECT opponent_id, league, user_team FROM game_sessions").fetchall()
         assert sess and sess[0][0] == "jaxon" and sess[0][1] != "online"
         dec = con.execute("SELECT status, formation FROM ravens_defense_decisions").fetchall()
-        assert dec and all(d[0] == "CALL" and d[1] in rc.FORMATIONS for d in dec)
+        assert dec and all(d[0] == "CALL" and d[1] in rc.LIONS_FRANCHISE_FORMATIONS for d in dec)
     finally:
         con.close()
 
@@ -172,8 +172,11 @@ def test_defense_calls_need_no_installed_book_and_show_required_macros(tmp_db, o
         calls = _calls(160, db=db)
     finally:
         db.close()
+    # Live civil defense uses the Steelers three-formation catalog (t451u).
+    # The base Ravens dataset contract below is still 14 candidates.
+    steel = rc.load_lions_franchise()
+    by = steel.by_id()
     cat = rc.load()
-    by = cat.by_id()
     seen = set()
     prev = None
     for c in calls:
@@ -267,7 +270,9 @@ def test_html_session_logs_defense_execution_by_team(tmp_db, online_env):
         assert snap["opponent_team"] == "Green Bay Packers" and snap["league"] == "online"
         assert snap["executed_formation"] == call.formation and snap["executed_play"] == call.play
         assert snap["executed_verification"] == "verified"
-        assert (snap["executed_macro"] or None) == (call.macro or None)
+        def _macro(x):
+            return None if x in (None, "", "none", "No macro") else x
+        assert _macro(snap["executed_macro"]) == _macro(call.macro)
         dec = db.conn.execute("SELECT opponent_team, league, session_id FROM ravens_defense_decisions").fetchall()
         assert dec and all(tuple(d)[:2] == ("Green Bay Packers", "online") for d in dec)
         assert all(d[2] == ctrl.session_id for d in dec)

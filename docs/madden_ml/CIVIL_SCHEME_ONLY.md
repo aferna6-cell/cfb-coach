@@ -154,12 +154,21 @@ Lions franchise and CPU games use a separate, swappable book slot: `datasets/mad
 It starts as a copy of the current shared catalog, adds the seven Eagles plays (Gun Bunch TE Mtn Spacing
 1-4 and Mtn Fork Y-Corner 1-3) with their setup steps and macro flags verbatim (t445u), and then adds the
 rest of the owner's compiled Civil.gg PDF after dedupe (t448u), the t449u Mesh TE red-zone variant, and a
-Civil-only run filter (10 pre-civil t349u designed runs dropped from this book only). Callable variants: 115
-(88 regular passes, 9 designed runs, 18 red-zone). Chiefs and Titans never load this file, so they never call the Mtn plays or
+Civil-only run filter (10 pre-civil t349u designed runs dropped from this book only) and the t450u
+p06_top red-zone run placements. Callable variants: 118 (88 regular passes, 9 designed runs, 21 red-zone).
+Chiefs and Titans never load this file, so they never call the Mtn plays or
 any later Lions/CPU addition. Further owner plays dropped into that file change only Lions and CPU; do not
 invent play names, formations, or setups there. Formations that are exact names in another in-repo Madden
 playbook (but not the Buccaneers book) are allowed on this book only. Lions sessions have no play-family
 cooldown (Chiefs stay at 3, Titans at 5).
+
+t451u puts every league (Lions franchise, Chiefs online, Titans franchise, and CPU) on the
+Steelers defensive playbook context so Nickel Single Mug can be used alongside Nickel 2-4 Wide
+and Dime 2-3 Odd. The callable Nickel Single Mug package is the same 7 t449u PDF stock setups
+(six Cover 4 Quarters plus Tampa 2 Shade Coverage Underneath). Macros stay flagged UNVERIFIED.
+Chiefs keep a 3-snap play-family cooldown on offense and defense; Titans keep 5 on offense; Lions
+have no play-family cooldown.
+
 
 | Variant | Formation | Kind | Label | Titans/Chiefs cooldown family |
 |---|---|---|---|---|

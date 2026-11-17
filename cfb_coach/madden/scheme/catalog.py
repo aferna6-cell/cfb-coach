@@ -40,8 +40,16 @@ Owner instruction 2026-11-17 (t449u, same Lions/CPU file): add the p05_bot Gun B
 "Crosser Outside Bunch TE" red-zone variant; drop ten pre-civil t349u designed runs from this
 book only via ``exclude_inherited_variant_ids`` (shared Chiefs/Titans book unchanged); keep
 ambiguous t398u Pistol HB Zone/HB Dive and the Civil.GG sheet red-zone runs including RPO
-Alert QB Draw. The Commanders Best Inside the 5 tab is not added. p06_top red-zone runs stay
-out until they have formations.
+Alert QB Draw. The Commanders Best Inside the 5 tab is not added.
+
+Owner instruction 2026-11-17 (t450u, same Lions/CPU file): place the p06_top red-zone runs
+(HB Off Tackle, HB Draw, QB Blast, HB Dive) in formations the Lions/CPU book already uses
+for those run names. Add a red-zone variant only when an identical red-zone entry is not
+already present. Restore HB Off Tackle as a Civil red-zone run in Gun Bunch TE.
+
+Owner instruction 2026-11-17 (t451u): every league (Lions franchise, Chiefs online, Titans
+franchise, and CPU) uses the Steelers defensive playbook so Nickel Single Mug can be called
+alongside Nickel 2-4 Wide and Dime 2-3 Odd. Offense books are unchanged by that defense switch.
 """
 from __future__ import annotations
 
@@ -81,18 +89,18 @@ EXPECTED_LIONS_CPU_OWNER_PASS_FORMATIONS = {
     "Gun Doubles Clamp Stack": 12, "Gun Bunch Str Offset": 6, "Gun Trips TE": 2,
     "Gun Trips TE Flex": 3, "Gun Doubles Flex Y Off Close": 2, "Pistol Strong Y Off Close": 1,
 }
-EXPECTED_LIONS_CPU_REDZONE_VARIANTS = 18  # 8 shared + 9 t448u + 1 t449u Mesh TE
+EXPECTED_LIONS_CPU_REDZONE_VARIANTS = 21  # 18 + t450u HB Off Tackle + HB Dive (Bunch TE Wk, Pistol Strong)
 EXPECTED_LIONS_CPU_REDZONE_FORMATIONS = {
-    "Pistol Bunch TE": 4, "Gun Empty Quads": 2, "I Form Close Flex": 2, "Gun Bunch TE": 4,
+    "Pistol Bunch TE": 4, "Gun Empty Quads": 2, "I Form Close Flex": 2, "Gun Bunch TE": 5,
     "Gun Trio Y-Flex": 1, "Gun Trips TE": 1, "Gun Heavy Saint": 1, "Pistol Tight Y Off Flex": 1,
-    "I Form Slot Close": 1, "Pistol Deuce Close": 1,
+    "I Form Slot Close": 1, "Pistol Deuce Close": 1, "Gun Bunch TE Wk": 1, "Pistol Strong Y Off Close": 1,
 }
 EXPECTED_LIONS_CPU_RUN_VARIANTS = 9  # 4 kept from shared (2 PDF Clamp Stack + 2 t398u Pistol) + 5 t448u
 EXPECTED_LIONS_CPU_RUN_FORMATIONS = {
     "Gun Doubles Clamp Stack": 2, "Pistol Strong Y Off Close": 2, "Gun Empty Sketch Stack": 1,
     "Pistol Deuce Close": 1, "Gun Bunch TE Wk": 1, "Gun Bunch Str Offset": 1, "Pistol Bunch TE": 1,
 }
-EXPECTED_LIONS_CPU_VARIANTS = 115  # 49 shared - 10 excluded t349u runs + 61 file passes + 10 rz + 5 runs
+EXPECTED_LIONS_CPU_VARIANTS = 118  # 115 + 3 t450u red-zone runs (HB Off Tackle, two HB Dive)
 SHARED_BOOK, LIONS_CPU_BOOK = "civil_shared", "lions_cpu"
 RUN, PASS = "run", "pass"       # play_family: the run-pass mix (coordinator.pick_mixed) gates on it
 CORE, REDZONE_GROUP, DESIGNED_RUN = "core", "red_zone", "designed_run"
