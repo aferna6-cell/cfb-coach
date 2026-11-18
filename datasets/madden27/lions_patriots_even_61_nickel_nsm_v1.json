@@ -12,19 +12,19 @@
   },
   "stock_context_playbook": "New England Patriots",
   "stock_context_source": "cfb_coach/data/madden27/playbooks_full.json (Huddle.gg Madden 27, accessed 2026-11-05)",
-  "playbook_choice_reason": "Aidan believed the 6-1 was out of the Vikings playbook. The in-repo snapshot confirms Minnesota Vikings has 4-3 Even 6-1 with all four PDF plays (Cover 4 Quarters, Sam Will Blitz, Tampa 2, Cover 3 Buzz) and also has Nickel 2-4 Wide (all 11 current civil nickel base plays). New England Patriots has the same 6-1 four-play set and the same Nickel 2-4 Wide plays, and additionally has Nickel Single Mug with all 7 existing NSM setups. No stock book contains 6-1 plus all three old formations. Chargers also has Nickel 2-4 Wide + NSM but lacks Tampa 2 in 6-1, so the red-zone and Gun 5 WR Tight Tampa 2 calls would be illegal there. Patriots is the playbook with the most legal overlap.",
+  "playbook_choice_reason": "Aidan believed the 6-1 was out of the Vikings playbook. The in-repo snapshot confirms Minnesota Vikings has 4-3 Even 6-1 with all four PDF plays (Cover 4 Quarters, Sam Will Blitz, Tampa 2, Cover 3 Buzz) and also has Nickel 2-4 Wide (all 11 current civil nickel base plays). New England Patriots has the same 6-1 four-play set and the same Nickel 2-4 Wide plays, and additionally has Nickel Single Mug with all 7 existing NSM setups. No stock book contains 6-1 plus all three old formations. Chargers also has Nickel 2-4 Wide + NSM but lacks Tampa 2 in 6-1, so the red-zone and Gun 5 WR Tight Tampa 2 calls would be illegal there. Patriots is the playbook with the most legal overlap. Owner t463u kept the Patriots book but dropped Nickel Single Mug from the live call pool; the NSM file stays in the repo for rollback.",
   "package": "even_61",
   "formation": "4-3 Even 6-1",
-  "label": "Patriots 4-3 Even 6-1 + Nickel 2-4 Wide + Nickel Single Mug civil defense",
+  "label": "Patriots 4-3 Even 6-1 + Nickel 2-4 Wide civil defense",
   "confirmation_status": "setups_unconfirmed_in_game",
   "kept_old_formations": [
-    "Nickel 2-4 Wide",
-    "Nickel Single Mug"
+    "Nickel 2-4 Wide"
   ],
   "dropped_old_formations": [
-    "Dime 2-3 Odd"
+    "Dime 2-3 Odd",
+    "Nickel Single Mug"
   ],
-  "dropped_reason": "Dime 2-3 Odd (and DB Fire 2) is not in the Patriots book. The only 6-1 book that also has Dime 2-3 Odd is the Raiders, which lacks Nickel 2-4 Wide and Nickel Single Mug.",
+  "dropped_reason": "Dime 2-3 Odd (and DB Fire 2) is not in the Patriots book. The only 6-1 book that also has Dime 2-3 Odd is the Raiders, which lacks Nickel 2-4 Wide and Nickel Single Mug. Owner t463u: do not call Nickel Single Mug. The NSM dataset file remains in the repo unused.",
   "macro_catalog": {
     "COVER_2_MATCH": {
       "display_name": "Cover 2 Match",
@@ -406,7 +406,8 @@
     "6-1 macros (61 Base, 61 Murple, Cover 2 Match, C2 Man Match, HB Dive Run D, HB Zone Stretch D) and all user assignments are unverified in Xbox.",
     "Owner asked for some situations to get their own macros later (red-zone D; Gun 5 WR Tight Defense 3; Advanced Blitz; Gun Tight). Those cards currently use 61 Base or Cover 2 Match as shown.",
     "Gun Tight Defense 1 is inferred: the p08_top screenshot has no situation tab bar in frame.",
-    "The PDF has no Prevent, no dime pass-rush, and no separate goal-line formation. Inside the 10, the PDF's Tampa 2 call plus the remaining midfield 6-1/nickel/NSM calls stay available.",
-    "The Civil.gg scheme is not situation-gated to the named offensive formations in the live caller (those tags are on the card); only the Inside The 10 Tampa 2 call is field-gated."
+    "The PDF has no Prevent, no dime pass-rush, and no separate goal-line formation. Inside the 10, the PDF's Tampa 2 call plus the remaining midfield 6-1/nickel calls stay available.",
+    "The Civil.gg scheme is not situation-gated to the named offensive formations in the live caller (those tags are on the card); only the Inside The 10 Tampa 2 call is field-gated.",
+    "Owner t463u: do not call Nickel Single Mug. The seven NSM setups are not in the live pool; the NSM dataset file remains in the repo unused."
   ]
 }

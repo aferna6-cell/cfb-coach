@@ -1,4 +1,4 @@
-"""t462u: live defense is Patriots 4-3 Even 6-1 + Nickel 2-4 Wide + Nickel Single Mug."""
+"""t462u/t463u: live defense is Patriots 4-3 Even 6-1 + Nickel 2-4 Wide (no NSM)."""
 from __future__ import annotations
 
 import hashlib
@@ -119,17 +119,17 @@ def test_live_catalog_is_patriots_61_combined_scheme():
     assert cat.raw.get("catalog_id") == rc.SIXTY_ONE_CATALOG_ID
     assert cat.stock_team == rc.PATRIOTS and cat.uses_prior_only
     assert cat.allowed_formations == rc.SIXTY_ONE_FORMATIONS
-    assert {c.formation for c in cat.candidates} == {rc.EVEN_61, rc.NICKEL, rc.NSM}
-    assert len(cat.candidates) == 34
+    assert {c.formation for c in cat.candidates} == {rc.EVEN_61, rc.NICKEL}
+    assert len(cat.candidates) == 27
     assert set(rc.EVEN_61_CALL_IDS) <= set(cat.by_id())
-    assert set(rc.NSM_CALL_IDS) <= set(cat.by_id())
+    assert set(rc.NSM_CALL_IDS).isdisjoint(cat.by_id())
     assert set(rc.NICKEL_CIVIL_CALL_IDS) <= {c.call_id for c in cat.candidates}
     assert "dime_dbfire2" not in cat.by_id()
     assert cat.raw.get("source_defensive_playbook") == "New England Patriots"
     assert "4-3 Even 6-1" in (cat.raw.get("label") or "")
     stock = rc.stock_catalog_check(cat)
     assert all(stock.values()), {k: v for k, v in stock.items() if not v}
-    # Every 6-1 / nickel / NSM base play is in the Patriots stock book.
+    # Every 6-1 / nickel base play is in the Patriots stock book.
     book = rc.patriots_stock_book()
     for c in cat.candidates:
         assert c.base_play in book[c.formation], (c.candidate_id, c.formation, c.base_play)
@@ -150,9 +150,9 @@ def test_inside_10_tampa2_is_gated_from_our_goal():
     assert "even61_rz_tampa2_61_base" not in {c.candidate_id for c in backed}
     assert "even61_rz_tampa2_61_base" in gl_ids
     assert "even61_rz_tampa2_61_base" in {c.candidate_id for c in ten}
-    assert len(mid) == 33 and len(gl) == 34 and len(ten) == 34
-    # Midfield still has a legal call in every formation, including long-yardage nickel / 6-1 base.
-    assert {c.formation for c in mid} == {rc.EVEN_61, rc.NICKEL, rc.NSM}
+    assert len(mid) == 26 and len(gl) == 27 and len(ten) == 27
+    # Midfield still has a legal call in every live formation, including long-yardage nickel / 6-1 base.
+    assert {c.formation for c in mid} == {rc.EVEN_61, rc.NICKEL}
     assert any(c.candidate_id.startswith("even61_base_") for c in mid)
 
 
@@ -186,7 +186,7 @@ def test_launcher_banner_names_patriots_61():
     assert RAVENS_CIVIL_DEFENSE_BANNER.startswith("PATRIOTS_EVEN_61_CIVIL")
     assert "4-3 Even 6-1" in RAVENS_CIVIL_DEFENSE_BANNER
     assert "Nickel 2-4 Wide" in RAVENS_CIVIL_DEFENSE_BANNER
-    assert "Nickel Single Mug" in RAVENS_CIVIL_DEFENSE_BANNER
+    assert "Nickel Single Mug" not in RAVENS_CIVIL_DEFENSE_BANNER
     assert "NO_LEGAL_RAVENS_CALL" in RAVENS_CIVIL_DEFENSE_BANNER
     assert "Dime 2-3 Odd" not in RAVENS_CIVIL_DEFENSE_BANNER
 
@@ -273,9 +273,11 @@ def test_600_snap_offense_and_defense_sims_all_leagues(tmp_path, civil_env, rave
             cov[rd["candidate"]["base_play"]] += 1
             sit_mix[name][cid] += 1
         assert "NO_LEGAL_RAVENS_CALL" not in statuses and statuses.count("CALL") == SNAPS, label
-        assert "dime_dbfire2" not in seen and rc.DIME not in forms
+        assert "dime_dbfire2" not in seen and set(seen).isdisjoint(set(rc.NSM_CALL_IDS))
+        assert rc.DIME not in forms and rc.NSM not in forms
         assert set(forms) <= set(rc.SIXTY_ONE_FORMATIONS)
         assert any(cid.startswith("even61_") for cid in seen), (label, sorted(seen))
+        assert set(rc.NSM_CALL_IDS).isdisjoint(seen)
         defense_summary[label] = {
             "unique_calls": len(seen),
             "forms": dict(forms),

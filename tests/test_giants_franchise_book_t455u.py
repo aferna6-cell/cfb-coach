@@ -164,7 +164,7 @@ def test_giants_600_snap_sim_and_other_leagues_unchanged(tmp_path, civil_env, ra
             assert call.formation in rc.SIXTY_ONE_FORMATIONS
             assert call.formation != rc.DIME
             cid = rd["candidate"]["call_id"]
-            assert cid != "dime_dbfire2"
+            assert cid != "dime_dbfire2" and cid not in nsm_ids
             text = "\n".join(rd["card"])
             cd = rd.get("play_cooldown") or {}
             if chiefs_cd:
@@ -179,11 +179,12 @@ def test_giants_600_snap_sim_and_other_leagues_unchanged(tmp_path, civil_env, ra
             seen.add(cid)
             forms.add(call.formation)
         assert "NO_LEGAL_RAVENS_CALL" not in statuses and statuses.count("CALL") == SNAPS, label
-        assert "dime_dbfire2" not in seen and rc.DIME not in forms, (label, seen, forms)
+        assert "dime_dbfire2" not in seen and seen.isdisjoint(nsm_ids), (label, seen)
+        assert rc.DIME not in forms and rc.NSM not in forms, (label, forms)
         assert forms <= set(rc.SIXTY_ONE_FORMATIONS), (label, forms)
         defense_summary[label] = {
             "unique_calls": len(seen), "forms": sorted(forms), "no_legal": 0,
-            "nsm": sum(1 for x in seen if x in nsm_ids),
+            "nsm": 0,
             "even61": sum(1 for x in seen if x.startswith("even61_")),
         }
     print("DEFENSE_SIM_SUMMARY", defense_summary)

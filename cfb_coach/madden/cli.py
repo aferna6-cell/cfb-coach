@@ -774,8 +774,8 @@ def cmd_league(args: argparse.Namespace) -> int:
 
 
 RAVENS_CIVIL_DEFENSE_BANNER = (
-    "PATRIOTS_EVEN_61_CIVIL (4-3 Even 6-1 + Nickel 2-4 Wide + Nickel Single Mug; "
-    "scheme dataset = legal book; 6-1 / NSM macros unverified; outcome model UNTRAINED_PRIOR_ONLY; "
+    "PATRIOTS_EVEN_61_CIVIL (4-3 Even 6-1 + Nickel 2-4 Wide; "
+    "scheme dataset = legal book; 6-1 macros unverified; outcome model UNTRAINED_PRIOR_ONLY; "
     "NO_LEGAL_RAVENS_CALL on failure, no fallback to the old defensive caller)"
 )
 
@@ -804,7 +804,7 @@ def _ravens_scheme_book_record() -> dict[str, Any]:
     from cfb_coach.madden.ravens_defense import catalog as rc
 
     cat = rc.catalog_for_defense_session(None, None, {}, None)
-    label = (cat.raw or {}).get("label") or "Patriots 4-3 Even 6-1 + Nickel 2-4 Wide + Nickel Single Mug civil defense"
+    label = (cat.raw or {}).get("label") or "Patriots 4-3 Even 6-1 + Nickel 2-4 Wide civil defense"
     return {"name": label, "mode": "scheme dataset",
             "rev": cat.version(), "formations": rc.scheme_book(cat)}
 

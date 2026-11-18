@@ -75,7 +75,7 @@ EVEN_61 = "4-3 Even 6-1"
 PATRIOTS = "Patriots"
 SIXTY_ONE_DATASET = REPO / "datasets/madden27/lions_patriots_even_61_nickel_nsm_v1.json"
 SIXTY_ONE_CATALOG_ID = "lions_patriots_even_61_nickel_nsm_v1"
-SIXTY_ONE_FORMATIONS = (EVEN_61, NICKEL, NSM)
+SIXTY_ONE_FORMATIONS = (EVEN_61, NICKEL)
 NICKEL_CIVIL_CALL_IDS = tuple(c for c in APPROVED_CALL_IDS if c != "dime_dbfire2")
 EVEN_61_CALL_IDS = (
     "even61_base_c4_c2_match", "even61_base_c4_61_base", "even61_base_swblitz_61_murple",
@@ -86,7 +86,7 @@ EVEN_61_CALL_IDS = (
     "even61_gun5wrtight_d3_c4_c2_match", "even61_gun5wrtight_advblitz_61_base",
     "even61_guntight_c4_61_base", "even61_guntripste_swblitz_c2mm",
 )
-SIXTY_ONE_APPROVED_CALL_IDS = NICKEL_CIVIL_CALL_IDS + NSM_CALL_IDS + EVEN_61_CALL_IDS
+SIXTY_ONE_APPROVED_CALL_IDS = NICKEL_CIVIL_CALL_IDS + EVEN_61_CALL_IDS
 
 
 @dataclass(frozen=True)
@@ -439,7 +439,7 @@ def is_lions_human_defense_session(db: Any, session_id: str | None, extras: Mapp
 
 def catalog_for_defense_session(db: Any, session_id: str | None, extras: Mapping[str, Any] | None,
                                 opponent_id: str | None) -> RavensCatalog:
-    """t462u: every league uses the Patriots 6-1 + Nickel 2-4 Wide + NSM civil defense."""
+    """t463u: every league uses the Patriots 6-1 + Nickel 2-4 Wide civil defense (no NSM)."""
     return load_61_defense()
 
 
@@ -451,11 +451,12 @@ def patriots_stock_book() -> dict[str, list[str]]:
 
 
 @lru_cache(maxsize=4)
-def _load_61_defense(path: str, mtime_ns: int, nsm_mtime_ns: int, base_sha: str) -> RavensCatalog:
-    """Live t462u catalog: Patriots 4-3 Even 6-1 PDF calls + legal Nickel 2-4 Wide civil calls + NSM.
+def _load_61_defense(path: str, mtime_ns: int, base_sha: str) -> RavensCatalog:
+    """Live t463u catalog: Patriots 4-3 Even 6-1 PDF calls + legal Nickel 2-4 Wide civil calls.
 
-    The Ravens two-formation dataset and the NSM file are only read; they are not modified.
-    Dime 2-3 Odd / DB Fire 2 is omitted because it is not in the Patriots stock book.
+    The Ravens two-formation dataset and the NSM file stay on disk for rollback and are
+    not modified. NSM is not in the live candidate pool (owner t463u). Dime 2-3 Odd /
+    DB Fire 2 remains omitted because it is not in the Patriots stock book.
     """
     base = load()
     blob = Path(path).read_bytes()
@@ -478,24 +479,12 @@ def _load_61_defense(path: str, mtime_ns: int, nsm_mtime_ns: int, base_sha: str)
         if not c.get("setup_steps"):
             raise ValueError(f"{c.get('call_id')}: setup_steps must be the PDF steps verbatim")
 
-    nsm_path = LIONS_NSM_DATASET
-    nsm_owner = json.loads(nsm_path.read_text())
-    nsm_calls = list(nsm_owner.get("stock_calls") or [])
-    nsm_ids = [c.get("call_id") for c in nsm_calls]
-    if tuple(nsm_ids) != NSM_CALL_IDS:
-        raise ValueError("Nickel Single Mug call IDs are not exactly the 7 PDF stock-play setups")
-    nsm_plays = stock.get(NSM, ())
-    for c in nsm_calls:
-        if c.get("formation") != NSM or c.get("base_play") not in nsm_plays:
-            raise ValueError(f"{c.get('call_id')}: '{c.get('base_play')}' is not in Patriots Nickel Single Mug")
-
     nickel_calls = [c for c in (base.raw.get("stock_calls") or []) if c.get("call_id") in NICKEL_CIVIL_CALL_IDS]
     for c in nickel_calls:
         if c.get("base_play") not in stock.get(c["formation"], ()):
             raise ValueError(f"{c.get('call_id')}: '{c.get('base_play')}' is not in Patriots {c.get('formation')}")
 
     macros = dict(base.raw.get("macro_catalog") or {})
-    macros.update(nsm_owner.get("macro_catalog") or {})
     macros.update(owner.get("macro_catalog") or {})
     # Drop DB Fire; it is only for the omitted Dime call.
     macros.pop("DB_FIRE", None)
@@ -504,9 +493,6 @@ def _load_61_defense(path: str, mtime_ns: int, nsm_mtime_ns: int, base_sha: str)
         {"name": EVEN_61, "role": "primary_pdf_61_scheme", "allowed_packages": ["even_61"],
          "label": owner.get("label")},
         *[f for f in (base.raw.get("formations") or []) if f.get("name") != DIME],
-        {"name": NSM, "role": "kept_old_formation_nickel_single_mug",
-         "allowed_packages": ["nickel_single_mug"],
-         "label": "Nickel Single Mug package (Patriots stock-book context)"},
     ]
     merged = dict(base.raw)
     merged.update({
@@ -514,7 +500,7 @@ def _load_61_defense(path: str, mtime_ns: int, nsm_mtime_ns: int, base_sha: str)
         "source_defensive_playbook": "New England Patriots",
         "formations": formations,
         "macro_catalog": macros,
-        "stock_calls": nickel_calls + nsm_calls + even_calls,
+        "stock_calls": nickel_calls + even_calls,
         "label": owner.get("label"),
         "sixty_one_owner": owner.get("owner_instruction") or {},
         "playbook_choice_reason": owner.get("playbook_choice_reason"),
@@ -531,15 +517,11 @@ def _load_61_defense(path: str, mtime_ns: int, nsm_mtime_ns: int, base_sha: str)
         for m in c.get("optional_macros") or []:
             cands.append(Candidate(f"{c['call_id']}+zone_it", c["call_id"], c["formation"], c["base_play"], pkg,
                                    c.get("required_macro_id"), m, False, _structure(c["call_id"], True), c))
-    for c in nsm_calls:
-        cands.append(Candidate(c["call_id"], c["call_id"], c["formation"], c["base_play"], c["package"],
-                               c.get("required_macro_id"), None, False,
-                               _structure(c["call_id"], False), c))
     for c in even_calls:
         cands.append(Candidate(c["call_id"], c["call_id"], c["formation"], c["base_play"], c["package"],
                                c.get("required_macro_id"), None, bool(c.get("is_blitz")),
                                _structure(c["call_id"], False), c))
-    sha = hashlib.sha256(base_sha.encode() + b"+61+" + blob + b"+" + nsm_path.read_bytes()).hexdigest()
+    sha = hashlib.sha256(base_sha.encode() + b"+61+" + blob).hexdigest()
     return RavensCatalog(merged, sha, tuple(cands),
                          approved_call_ids=SIXTY_ONE_APPROVED_CALL_IDS,
                          allowed_formations=SIXTY_ONE_FORMATIONS,
@@ -548,7 +530,6 @@ def _load_61_defense(path: str, mtime_ns: int, nsm_mtime_ns: int, base_sha: str)
 
 
 def load_61_defense(path: str | Path | None = None) -> RavensCatalog:
-    """Live t462u Patriots 6-1 + Nickel 2-4 Wide + NSM catalog used in every league."""
+    """Live t463u Patriots 6-1 + Nickel 2-4 Wide catalog used in every league (no NSM)."""
     p = Path(path or SIXTY_ONE_DATASET)
-    return _load_61_defense(str(p.resolve()), p.stat().st_mtime_ns,
-                            LIONS_NSM_DATASET.stat().st_mtime_ns, load().sha256)
+    return _load_61_defense(str(p.resolve()), p.stat().st_mtime_ns, load().sha256)

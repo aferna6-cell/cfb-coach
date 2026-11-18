@@ -208,7 +208,7 @@ def test_defense_calls_need_no_installed_book_and_show_required_macros(tmp_db, o
     assert "match_cover9_show2" in {c.candidate_id for c in legal}
     assert "dime_dbfire2" not in {c.candidate_id for c in legal}
     assert "even61_base_c4_c2_match" in {c.candidate_id for c in legal}
-    assert len(legal) == 33  # RZ Tampa 2 is inside-the-10 only
+    assert len(legal) == 26  # RZ Tampa 2 is inside-the-10 only; NSM is not live
 
 
 def test_no_silent_fallback_to_previous_defense(tmp_db, online_env, monkeypatch):

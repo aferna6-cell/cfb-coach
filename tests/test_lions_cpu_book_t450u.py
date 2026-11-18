@@ -100,8 +100,8 @@ def test_shared_ravens_dataset_stays_intact_and_live_catalog_is_patriots_61():
     assert cat.sha256 != base.sha256
     assert cat.stock_team == rc.PATRIOTS and cat.uses_prior_only
     assert cat.allowed_formations == rc.SIXTY_ONE_FORMATIONS
-    assert {c.formation for c in cat.candidates} == {rc.EVEN_61, rc.NICKEL, rc.NSM}
-    assert set(rc.NSM_CALL_IDS) <= set(cat.by_id())
+    assert {c.formation for c in cat.candidates} == {rc.EVEN_61, rc.NICKEL}
+    assert set(rc.NSM_CALL_IDS).isdisjoint(cat.by_id())
     assert set(rc.EVEN_61_CALL_IDS) <= set(cat.by_id())
     assert "dime_dbfire2" not in cat.by_id()
     assert cat.raw.get("source_defensive_playbook") == "New England Patriots"
@@ -151,8 +151,8 @@ def test_lions_chiefs_titans_giants_and_cpu_defense_calls_are_patriots_61(tmp_pa
             text = "\n".join(rd["card"])
             assert "Lions franchise only" not in text
             cid = rd["candidate"]["call_id"]
-            assert cid != "dime_dbfire2"
+            assert cid != "dime_dbfire2" and cid not in nsm_ids
             seen.add(cid)
             forms.add(call.formation)
-        assert seen and "dime_dbfire2" not in seen, (sid, seen)
-        assert forms <= set(rc.SIXTY_ONE_FORMATIONS) and rc.DIME not in forms, (sid, forms)
+        assert seen and "dime_dbfire2" not in seen and seen.isdisjoint(nsm_ids), (sid, seen)
+        assert forms <= set(rc.SIXTY_ONE_FORMATIONS) and rc.DIME not in forms and rc.NSM not in forms, (sid, forms)

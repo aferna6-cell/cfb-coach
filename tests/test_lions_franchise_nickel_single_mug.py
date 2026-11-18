@@ -92,7 +92,7 @@ def test_session_routing_uses_patriots_61_in_every_league(tmp_path, civil_env):
         assert cat.sha256 != base.sha256
         assert cat.stock_team == rc.PATRIOTS and cat.uses_prior_only
         assert cat.allowed_formations == rc.SIXTY_ONE_FORMATIONS
-        assert NSM_IDS <= set(cat.by_id())
+        assert NSM_IDS.isdisjoint(cat.by_id())
         assert set(rc.EVEN_61_CALL_IDS) <= set(cat.by_id())
         assert cat.raw.get("source_defensive_playbook") == "New England Patriots"
     # Unused Steelers+NSM catalog still loads and is distinct from the live book.
@@ -140,8 +140,8 @@ def test_every_league_defense_calls_stay_on_patriots_61_formations(tmp_path, civ
             assert call.formation != rc.DIME
             text = "\n".join(rd["card"])
             cid = rd["candidate"]["call_id"]
-            assert cid != "dime_dbfire2"
+            assert cid != "dime_dbfire2" and cid not in NSM_IDS
             seen.add(cid)
             forms.add(call.formation)
-        assert seen and "dime_dbfire2" not in seen
-        assert forms <= set(rc.SIXTY_ONE_FORMATIONS) and rc.DIME not in forms
+        assert seen and "dime_dbfire2" not in seen and seen.isdisjoint(NSM_IDS)
+        assert forms <= set(rc.SIXTY_ONE_FORMATIONS) and rc.DIME not in forms and rc.NSM not in forms
