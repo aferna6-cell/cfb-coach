@@ -52,7 +52,7 @@ def test_titans_colts_start_civil_and_stays_separate_from_chiefs(tmp_db):
     assert r.returncode == 0, r.stderr
     out = r.stdout
     assert "OFFENSE CONTROLLER: CIVIL_SCHEME_ONLY" in out
-    assert "DEFENSE CONTROLLER: RAVENS_TWO_FORMATION_CIVIL" in out
+    assert "DEFENSE CONTROLLER: PATRIOTS_EVEN_61_CIVIL" in out
     assert "TITANS FRANCHISE: Tennessee Titans vs Indianapolis Colts (logged as titans_indianapolis_colts" in out
     assert "ONLINE LEAGUE:" not in out
 

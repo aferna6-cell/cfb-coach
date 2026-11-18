@@ -1057,8 +1057,8 @@ def make_call(
         offense_book = books.get("offense") or {}
         sel["offense"] = [mid for mid in sel["offense"] if pairs_in_book(mid, offense_book, cap=1)]
     if sit.side == "defense" and _ravens_defense_ml(db):
-        # ravens_defense_ml: Nickel 2-4 Wide / Dime 2-3 Odd candidates only. Never the existing defensive
-        # pickers, never a fallback play: an empty legal set returns NO_LEGAL_RAVENS_CALL.
+        # ravens_defense_ml: live catalog is Patriots 6-1 + Nickel + NSM (t462u). Never the existing
+        # defensive pickers, never a fallback play: an empty legal set returns NO_LEGAL_RAVENS_CALL.
         from cfb_coach.madden.ravens_defense.coordinator import call_ravens
 
         call = call_ravens(sit, opponent_id, db, (raw or {}).get("defense") if playbook is None else

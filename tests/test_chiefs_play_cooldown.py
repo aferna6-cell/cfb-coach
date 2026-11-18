@@ -19,6 +19,7 @@ from tests.test_titans_play_cooldown import MESH_IDS, MESH_POST, _giants, _lions
 
 CAT_D = rc.load()
 CAT_STEEL = rc.load_lions_franchise()
+CAT_LIVE = rc.load_61_defense()
 COVER2 = [c for c in CAT_D.candidates if c.base_play == "Cover 2 Match"]
 QUARTERS = [c for c in CAT_D.candidates if c.base_play == "Cover 4 Quarters"]
 
@@ -38,7 +39,7 @@ def _dsit(session, down=1, distance=10, yardline=40):
 
 def _log_defense(db, session, candidate_id):
     from cfb_coach.madden.ravens_defense.coordinator import log_decision
-    c = CAT_D.by_id()[candidate_id]
+    c = CAT_LIVE.by_id().get(candidate_id) or CAT_D.by_id()[candidate_id]
     log_decision(db.conn, {
         "session_id": session, "status": "CALL",
         "candidate_id": c.candidate_id, "call_id": c.call_id,
@@ -239,14 +240,14 @@ def test_chiefs_defense_family_blocked_for_three_snaps(tmp_path, civil_env, rave
         fam = pcd.defense_family_key(rd["candidate"]["base_play"])
         assert fam != blocked, (i, rd["candidate"], cd)
         # The filtered legal set must not include the blocked family.
-        ranked_fams = {pcd.defense_family_key((CAT_STEEL.by_id().get(r["candidate_id"]) or CAT_D.by_id()[r["candidate_id"]]).base_play) for r in rd["ranked"]}
+        ranked_fams = {pcd.defense_family_key((CAT_LIVE.by_id().get(r["candidate_id"]) or CAT_STEEL.by_id().get(r["candidate_id"]) or CAT_D.by_id()[r["candidate_id"]]).base_play) for r in rd["ranked"]}
         assert blocked not in ranked_fams
         seen.append(fam)
     # After three other defensive calls, Cover 3 Match is legal again.
     fourth = _defense_call(db, "cdef", yardline=50)
     rd = fourth.ravens_defense
     assert rd["status"] == "CALL"
-    ranked_fams = {pcd.defense_family_key((CAT_STEEL.by_id().get(r["candidate_id"]) or CAT_D.by_id()[r["candidate_id"]]).base_play) for r in rd["ranked"]}
+    ranked_fams = {pcd.defense_family_key((CAT_LIVE.by_id().get(r["candidate_id"]) or CAT_STEEL.by_id().get(r["candidate_id"]) or CAT_D.by_id()[r["candidate_id"]]).base_play) for r in rd["ranked"]}
     assert blocked in ranked_fams
     # History is the decisions table, not process memory.
     hist = pcd.recent_defense_families(db, "cdef")
@@ -259,7 +260,7 @@ def test_chiefs_defense_exhaustion_falls_back_to_lru_and_logs(tmp_path, civil_en
 
     db = _db(tmp_path)
     _online(db, "cdefb")
-    subset = [CAT_D.by_id()[i] for i in ("match_cover3", "nickel_cloud", "dime_dbfire2")]
+    subset = [CAT_LIVE.by_id()[i] for i in ("match_cover3", "nickel_cloud", "even61_base_swblitz_61_murple")]
     real = lg.legal_set
 
     def _restricted(*a, **k):
@@ -268,8 +269,8 @@ def test_chiefs_defense_exhaustion_falls_back_to_lru_and_logs(tmp_path, civil_en
         return [c for c in legal if c.candidate_id in keep], verdicts
 
     monkeypatch.setattr(lg, "legal_set", _restricted)
-    # Newest-first history will be Cover 3 Match, Cover 3 Cloud, DB Fire 2 → LRU is DB Fire 2.
-    for cid in ("dime_dbfire2", "nickel_cloud", "match_cover3"):
+    # Newest-first history will be Cover 3 Match, Cover 3 Cloud, Sam Will Blitz → LRU is Sam Will Blitz.
+    for cid in ("even61_base_swblitz_61_murple", "nickel_cloud", "match_cover3"):
         _log_defense(db, "cdefb", cid)
 
     call = _defense_call(db, "cdefb")
@@ -277,8 +278,8 @@ def test_chiefs_defense_exhaustion_falls_back_to_lru_and_logs(tmp_path, civil_en
     assert rd["status"] == "CALL"
     cd = rd["play_cooldown"]
     assert cd["active"] is True and cd["fallback"] is True and cd["window"] == 3
-    assert cd["fallback_family"] == "DB Fire 2"
-    assert rd["candidate"]["candidate_id"] == "dime_dbfire2"
+    assert cd["fallback_family"] == "Sam Will Blitz"
+    assert rd["candidate"]["candidate_id"] == "even61_base_swblitz_61_murple"
     assert "PLAY COOLDOWN FALLBACK" in "\n".join(rd["card"])
     assert any("PLAY COOLDOWN FALLBACK" in line for line in card_lines(rd))
 
@@ -295,7 +296,7 @@ def test_titans_and_lions_defense_have_no_play_cooldown(tmp_path, civil_env, rav
         assert rd["status"] == "CALL"
         assert rd.get("play_cooldown") is None
         # The just-called family remains in the scored legal set.
-        ranked_fams = {pcd.defense_family_key((CAT_STEEL.by_id().get(r["candidate_id"]) or CAT_D.by_id()[r["candidate_id"]]).base_play) for r in rd["ranked"]}
+        ranked_fams = {pcd.defense_family_key((CAT_LIVE.by_id().get(r["candidate_id"]) or CAT_STEEL.by_id().get(r["candidate_id"]) or CAT_D.by_id()[r["candidate_id"]]).base_play) for r in rd["ranked"]}
         assert "cover 3 match" in ranked_fams
 
 

@@ -1,0 +1,412 @@
+{
+  "schema_version": "1.0",
+  "catalog_id": "lions_patriots_even_61_nickel_nsm_v1",
+  "game": "Madden NFL 27",
+  "owner_instruction": {
+    "date": "2026-11-18",
+    "source": "t462u",
+    "by": "Aidan (owner)",
+    "statement": "I want to update our defense to this more meta 6-1 defense, espeically since we started getting cooked in the playoffs a bit. This defense is a bit more risky and startegic but I want to try it out. I believe this is out of the Vikings playbook but if this formation shares a playbook with any of our old formations let me know and we can run a scheme with both formations",
+    "source_material": "Owner 13.5 MB '6-1 Defense' PDF of Civil.gg 61 Defense scheme screenshots (https://www.civil.gg/members/schemes/madden/61-defense-v3?sid=95; file not committed). Eight pages, 14 call cards, all in 4-3 Even 6-1. The PDF does not name an NFL playbook on the cards.",
+    "effect": "Every league (Lions, CPU, Chiefs, Titans, Giants) uses a new Patriots-context defensive scheme: the 14 transcribed 4-3 Even 6-1 PDF calls, plus the 11 current Nickel 2-4 Wide civil calls that exist in the Patriots book, plus the 7 existing Nickel Single Mug stock setups that also exist there. Dime 2-3 Odd / DB Fire 2 is dropped (not in the Patriots book; no stock book has 6-1 + Nickel 2-4 Wide + Dime 2-3 Odd + Nickel Single Mug). Patriots is preferred over Vikings because it has the most overlap with our old formations while still containing all four PDF 6-1 plays (including Tampa 2). The Ravens two-formation dataset and the NSM dataset file stay in the repo for rollback. 6-1 macros and user assignments are UNVERIFIED. Offense books, cooldowns, catalog version, and the shared additions SHA are unchanged."
+  },
+  "stock_context_playbook": "New England Patriots",
+  "stock_context_source": "cfb_coach/data/madden27/playbooks_full.json (Huddle.gg Madden 27, accessed 2026-11-05)",
+  "playbook_choice_reason": "Aidan believed the 6-1 was out of the Vikings playbook. The in-repo snapshot confirms Minnesota Vikings has 4-3 Even 6-1 with all four PDF plays (Cover 4 Quarters, Sam Will Blitz, Tampa 2, Cover 3 Buzz) and also has Nickel 2-4 Wide (all 11 current civil nickel base plays). New England Patriots has the same 6-1 four-play set and the same Nickel 2-4 Wide plays, and additionally has Nickel Single Mug with all 7 existing NSM setups. No stock book contains 6-1 plus all three old formations. Chargers also has Nickel 2-4 Wide + NSM but lacks Tampa 2 in 6-1, so the red-zone and Gun 5 WR Tight Tampa 2 calls would be illegal there. Patriots is the playbook with the most legal overlap.",
+  "package": "even_61",
+  "formation": "4-3 Even 6-1",
+  "label": "Patriots 4-3 Even 6-1 + Nickel 2-4 Wide + Nickel Single Mug civil defense",
+  "confirmation_status": "setups_unconfirmed_in_game",
+  "kept_old_formations": [
+    "Nickel 2-4 Wide",
+    "Nickel Single Mug"
+  ],
+  "dropped_old_formations": [
+    "Dime 2-3 Odd"
+  ],
+  "dropped_reason": "Dime 2-3 Odd (and DB Fire 2) is not in the Patriots book. The only 6-1 book that also has Dime 2-3 Odd is the Raiders, which lacks Nickel 2-4 Wide and Nickel Single Mug.",
+  "macro_catalog": {
+    "COVER_2_MATCH": {
+      "display_name": "Cover 2 Match",
+      "source": "Civil.gg 61 Defense cards (p01_top, p04_top, p07_top)"
+    },
+    "SIXTY_ONE_BASE": {
+      "display_name": "61 Base",
+      "source": "Civil.gg 61 Defense cards (multiple pages)"
+    },
+    "SIXTY_ONE_MURPLE": {
+      "display_name": "61 Murple",
+      "source": "Civil.gg 61 Defense p02 card (spelling as shown)"
+    },
+    "C2_MAN_MATCH": {
+      "display_name": "C2 Man Match",
+      "source": "Civil.gg 61 Defense cards (p05, p06_top, p08_bot)"
+    },
+    "HB_DIVE_RUN_D": {
+      "display_name": "HB Dive Run D",
+      "source": "Civil.gg 61 Defense p03_top Run Defense card"
+    },
+    "HB_ZONE_STRETCH_D": {
+      "display_name": "HB Zone Stretch D",
+      "source": "Civil.gg 61 Defense p03_top Run Defense card"
+    }
+  },
+  "stock_calls": [
+    {
+      "call_id": "even61_base_c4_c2_match",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Cover 4 Quarters",
+      "package": "even_61",
+      "required_macro_id": "COVER_2_MATCH",
+      "optional_macros": [],
+      "is_blitz": false,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "Weakside Safety",
+      "situation_tab": "Base Coverage 1",
+      "situation_play_label": "Cover 2 Match",
+      "pdf_page": "p01_top",
+      "titled_macro": "Cover 2 Match",
+      "setup_steps": [
+        "Call The Play Cover 4 Quarters and Select Macro: Cover 2 Match",
+        "User The Weakside Safety",
+        "Switch Between Aggressive & Conservative Zone Strategy On Your Soft Squats!",
+        "Watch FULL Video For In Depth Explanation"
+      ],
+      "card_note": "Call This Vs Tighter Sets",
+      "note": "t462u Civil.gg 61 Defense p01_top (Base Coverage 1). Stock play Cover 4 Quarters in Patriots 4-3 Even 6-1. Macro Cover 2 Match and user are not owner-confirmed in game."
+    },
+    {
+      "call_id": "even61_base_c4_61_base",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Cover 4 Quarters",
+      "package": "even_61",
+      "required_macro_id": "SIXTY_ONE_BASE",
+      "optional_macros": [],
+      "is_blitz": false,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "3 Rec",
+      "situation_tab": "Base Coverage 2",
+      "situation_play_label": "Cover 4 Quarters",
+      "pdf_page": "p01_bot",
+      "titled_macro": "61 Base",
+      "setup_steps": [
+        "Select Macro: 61 Base",
+        "User 3 Rec & Take First Thing Route The Middle!",
+        "Watch The Video For IN DEPTH Explanation"
+      ],
+      "note": "t462u Civil.gg 61 Defense p01_bot (Base Coverage 2). Stock play Cover 4 Quarters. Macro 61 Base and user are not owner-confirmed in game."
+    },
+    {
+      "call_id": "even61_base_swblitz_61_murple",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Sam Will Blitz",
+      "package": "even_61",
+      "required_macro_id": "SIXTY_ONE_MURPLE",
+      "optional_macros": [],
+      "is_blitz": true,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "Wide Side Curl Flat OLB",
+      "situation_tab": "Base Coverage 3",
+      "situation_play_label": "Sam Will Blitz",
+      "pdf_page": "p02",
+      "titled_macro": "61 Murple",
+      "setup_steps": [
+        "Select Macro: 61 Murple",
+        "User Wide Side Curl Flat OLB & Take Away Deep Outbreaking Routes!",
+        "Watch Video For In Depth Explanation!"
+      ],
+      "note": "t462u Civil.gg 61 Defense p02 (Base Coverage 3). Stock play Sam Will Blitz. Macro spelling is the card's '61 Murple' (not Purple). Macro and user are not owner-confirmed in game."
+    },
+    {
+      "call_id": "even61_run_swblitz_hb",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Sam Will Blitz",
+      "package": "even_61",
+      "required_macro_id": null,
+      "optional_macros": [],
+      "is_blitz": true,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "Weakside Safety",
+      "situation_tab": "Run Defense",
+      "situation_play_label": "Sam Will Blitz",
+      "pdf_page": "p03_top",
+      "titled_macros": [
+        "HB Dive Run D",
+        "HB Zone Stretch D"
+      ],
+      "setup_steps": [
+        "Cover 2 Shell",
+        "Select Macro: HB Dive Run D or HB Zone Stretch D",
+        "User Weakside Safety & Flow",
+        "Watch Video For In Depth Explanation"
+      ],
+      "note": "t462u Civil.gg 61 Defense p03_top (Run Defense). One setup with an OR choice of macros (HB Dive Run D or HB Zone Stretch D). Shown verbatim; macros and user are not owner-confirmed in game."
+    },
+    {
+      "call_id": "even61_rz_tampa2_61_base",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Tampa 2",
+      "package": "even_61",
+      "required_macro_id": "SIXTY_ONE_BASE",
+      "optional_macros": [],
+      "is_blitz": false,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "field_zone": "inside_10",
+      "suggested_user": "Switch Stick Hook On Non Manned Up WR",
+      "situation_tab": "Inside The 10 Redzone Defense",
+      "situation_play_label": "Tampa 2",
+      "pdf_page": "p03_bot",
+      "titled_macro": "61 Base",
+      "setup_steps": [
+        "Select Macro: 61 Base",
+        "Man Up Safeties To Outside WRs",
+        "Man Up MLB To TE",
+        "Switch Stick Hook On Non Manned Up WR",
+        "Watch Video For In Depth Explanation"
+      ],
+      "owner_annotation": "Redzone D should be its own macro,",
+      "note": "t462u Civil.gg 61 Defense p03_bot (Inside The 10 Redzone Defense). Stock play Tampa 2. Owner PDF annotation: 'Redzone D should be its own macro,'. Currently uses the card's 61 Base macro (unverified). Gated to inside our 10 (yardline <= 10, yards from our goal)."
+    },
+    {
+      "call_id": "even61_gundoubles_c4_c2_match",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Cover 4 Quarters",
+      "package": "even_61",
+      "required_macro_id": "COVER_2_MATCH",
+      "optional_macros": [],
+      "is_blitz": false,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "Weakside Safety",
+      "situation_tab": "Gun Doubles Clamp Stack Defense 1",
+      "situation_play_label": "Cover 4 Quarters",
+      "pdf_page": "p04_top",
+      "titled_macro": "Cover 2 Match",
+      "setup_steps": [
+        "Select Macro: Cover 2 Match",
+        "Man Up OLB To Outside Tight WR",
+        "Man Up CB To Inside Tight WR",
+        "User Weakside Safety",
+        "Watch Video For In Depth Explanation!"
+      ],
+      "note": "t462u Civil.gg 61 Defense p04_top (Gun Doubles Clamp Stack Defense 1). Macro and user are not owner-confirmed in game."
+    },
+    {
+      "call_id": "even61_gundoubles_c3buzz_61_base",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Cover 3 Buzz",
+      "package": "even_61",
+      "required_macro_id": "SIXTY_ONE_BASE",
+      "optional_macros": [],
+      "is_blitz": false,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "situation_tab": "Gun Doubles Clamp Stack Defense 2",
+      "situation_play_label": "Cover 3 Buzz",
+      "pdf_page": "p04_bot",
+      "titled_macro": "61 Base",
+      "setup_steps": [
+        "Select Macro: 61 Base",
+        "Be Ready To Switch Safeties If They Attack Vertically",
+        "Watch Video For In Depth Explanation"
+      ],
+      "note": "t462u Civil.gg 61 Defense p04_bot (Gun Doubles Clamp Stack Defense 2). Macro is not owner-confirmed in game."
+    },
+    {
+      "call_id": "even61_gunbunchte_swblitz_c2mm",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Sam Will Blitz",
+      "package": "even_61",
+      "required_macro_id": "C2_MAN_MATCH",
+      "optional_macros": [],
+      "is_blitz": true,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "Deep Half On TE Side (or HB if they run MTN Spacing)",
+      "situation_tab": "Gun Bunch TE Defense 1",
+      "situation_play_label": "Sam Will Blitz",
+      "pdf_page": "p05",
+      "titled_macro": "C2 Man Match",
+      "setup_steps": [
+        "Select Macro: C2 Man Match",
+        "User Deep Half On TE Side Unless They Run MTN Spacing, Then User HB",
+        "Watch Video For In Depth Explanation"
+      ],
+      "note": "t462u Civil.gg 61 Defense p05 (Gun Bunch TE Defense 1). Macro and user are not owner-confirmed in game."
+    },
+    {
+      "call_id": "even61_gun5wrtight_d1_swblitz_c2mm",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Sam Will Blitz",
+      "package": "even_61",
+      "required_macro_id": "C2_MAN_MATCH",
+      "optional_macros": [],
+      "is_blitz": true,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "TE With MLB (switch Deep Half if they go vertical)",
+      "situation_tab": "Gun 5 WR Tight Defense 1",
+      "situation_play_label": "Sam Will Blitz",
+      "pdf_page": "p06_top",
+      "titled_macro": "C2 Man Match",
+      "setup_steps": [
+        "Cover 2 Man Shell",
+        "Select Macro: C2 Man Match",
+        "User TE With MLB, Switch Deep Half If They Go Vertical",
+        "Watch Video For In Depth Explanation"
+      ],
+      "note": "t462u Civil.gg 61 Defense p06_top (Gun 5 WR Tight Defense 1). Macro and user are not owner-confirmed in game."
+    },
+    {
+      "call_id": "even61_gun5wrtight_d2_tampa2_61_base",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Tampa 2",
+      "package": "even_61",
+      "required_macro_id": "SIXTY_ONE_BASE",
+      "optional_macros": [],
+      "is_blitz": false,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "situation_tab": "Gun 5 WR Tight Defense 2",
+      "situation_play_label": "Tampa 2",
+      "pdf_page": "p06_bot",
+      "titled_macro": "61 Base",
+      "setup_steps": [
+        "Default Shell",
+        "Select Macro: 61 Base",
+        "Put Safety On Tight Side On Outside 3rd",
+        "Put Safety On Bunch Side On Inside Quarter",
+        "Conservative Zone Strategy Entire Defense",
+        "Aggressive Zone Strategy Both Hooks",
+        "Watch Video For In Depth Explanation"
+      ],
+      "note": "t462u Civil.gg 61 Defense p06_bot (Gun 5 WR Tight Defense 2). Macro is not owner-confirmed in game."
+    },
+    {
+      "call_id": "even61_gun5wrtight_d3_c4_c2_match",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Cover 4 Quarters",
+      "package": "even_61",
+      "required_macro_id": "COVER_2_MATCH",
+      "optional_macros": [],
+      "is_blitz": false,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "situation_tab": "Gun 5 WR Tight Defense 3",
+      "situation_play_label": "Cover 2 Match",
+      "pdf_page": "p07_top",
+      "titled_macro": "Cover 2 Match",
+      "setup_steps": [
+        "Default Shell",
+        "Select Macro: Cover 2 Match",
+        "This Defense Is Good When They Call An Checkdown Play, If They Go Vertical Switch The Deep Safeties",
+        "Switch Between Aggressive & Conservative Zone Strategy On Your Soft Squats!",
+        "Watch Video For In Depth Explanation"
+      ],
+      "owner_annotation": "This will aslo be its own macro",
+      "note": "t462u Civil.gg 61 Defense p07_top (Gun 5 WR Tight Defense 3). Good vs a checkdown; switch the deep safeties if they go vertical. Owner PDF annotation (verbatim typo kept): 'This will aslo be its own macro'. Currently uses the card's Cover 2 Match macro (unverified)."
+    },
+    {
+      "call_id": "even61_gun5wrtight_advblitz_61_base",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Sam Will Blitz",
+      "package": "even_61",
+      "required_macro_id": "SIXTY_ONE_BASE",
+      "optional_macros": [],
+      "is_blitz": true,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "OLB (after Dpad switch stick from blitzing MLB)",
+      "situation_tab": "Gun 5 WR Tight Advanced Blitz Defense",
+      "situation_play_label": "Sam Will Blitz",
+      "pdf_page": "p07_bot",
+      "titled_macro": "61 Base",
+      "setup_steps": [
+        "C2 Man Shell",
+        "Select Macro: 61 Base",
+        "Man Up OLB On Bunch Side To Inside Bunch WR",
+        "Blitz MLB & Dpad Switch Stick To OLB"
+      ],
+      "card_note": "This Is An All Out Blitz The Will Come In Free, With That Being Said, Every WR is 1on1. Be Strategic With This Call",
+      "owner_annotation": "This will aslo probably be its own macro",
+      "note": "t462u Civil.gg 61 Defense p07_bot (Gun 5 WR Tight Advanced Blitz Defense). Card note transcribed verbatim, including 'The Will Come In Free'. Owner PDF annotation (verbatim typo kept): 'This will aslo probably be its own macro'. Macro is not owner-confirmed in game."
+    },
+    {
+      "call_id": "even61_guntight_c4_61_base",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Cover 4 Quarters",
+      "package": "even_61",
+      "required_macro_id": "SIXTY_ONE_BASE",
+      "optional_macros": [],
+      "is_blitz": false,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "3 Rec",
+      "situation_tab": "Gun Tight Defense 1",
+      "situation_play_label": "Cover 4 Quarters",
+      "situation_tab_visible": false,
+      "situation_inferred": true,
+      "pdf_page": "p08_top",
+      "titled_macro": "61 Base",
+      "setup_steps": [
+        "Select Macro: 61 Base",
+        "Man Up Outside CB To Outside WR on Non HB Side",
+        "User 3 Rec and Take First Route Over The Middle",
+        "Watch Video For In Depth Explanation"
+      ],
+      "owner_annotation": "This may also be its own macro",
+      "note": "t462u Civil.gg 61 Defense p08_top. The situation tab bar is not visible in this screenshot. Situation is inferred as Gun Tight Defense 1 (that tab is labeled Cover 4 Quarters and sits immediately before Gun Trips TE Defense 1 on the following card). Owner PDF annotation: 'This may also be its own macro'. Macro and user are not owner-confirmed in game."
+    },
+    {
+      "call_id": "even61_guntripste_swblitz_c2mm",
+      "formation": "4-3 Even 6-1",
+      "base_play": "Sam Will Blitz",
+      "package": "even_61",
+      "required_macro_id": "C2_MAN_MATCH",
+      "optional_macros": [],
+      "is_blitz": true,
+      "manual_setup_changes_allowed": true,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "MLB Manned Up To HB (switch stick safety if they go vertical)",
+      "situation_tab": "Gun Trips TE Defense 1",
+      "situation_play_label": "Sam Will Blitz",
+      "pdf_page": "p08_bot",
+      "titled_macro": "C2 Man Match",
+      "setup_steps": [
+        "Select Macro: C2 Man Match",
+        "User MLB Manned Up To HB",
+        "Switch Stick Safety If They Go Vertical",
+        "Watch Video For In Depth Explanation"
+      ],
+      "note": "t462u Civil.gg 61 Defense p08_bot (Gun Trips TE Defense 1). Macro and user are not owner-confirmed in game."
+    }
+  ],
+  "gaps_and_caveats": [
+    "The PDF does not name an NFL playbook; Vikings was Aidan's belief. Videos are shot in a Buccaneers stadium (Civil.gg branding), which is not treated as a playbook claim.",
+    "No stock book has 4-3 Even 6-1 together with Nickel 2-4 Wide, Dime 2-3 Odd, and Nickel Single Mug. Dime 2-3 Odd / DB Fire 2 cannot be included in the Patriots scheme.",
+    "6-1 macros (61 Base, 61 Murple, Cover 2 Match, C2 Man Match, HB Dive Run D, HB Zone Stretch D) and all user assignments are unverified in Xbox.",
+    "Owner asked for some situations to get their own macros later (red-zone D; Gun 5 WR Tight Defense 3; Advanced Blitz; Gun Tight). Those cards currently use 61 Base or Cover 2 Match as shown.",
+    "Gun Tight Defense 1 is inferred: the p08_top screenshot has no situation tab bar in frame.",
+    "The PDF has no Prevent, no dime pass-rush, and no separate goal-line formation. Inside the 10, the PDF's Tampa 2 call plus the remaining midfield 6-1/nickel/NSM calls stay available.",
+    "The Civil.gg scheme is not situation-gated to the named offensive formations in the live caller (those tags are on the card); only the Inside The 10 Tampa 2 call is field-gated."
+  ]
+}

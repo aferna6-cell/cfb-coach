@@ -138,7 +138,7 @@ def test_giants_600_snap_sim_and_other_leagues_unchanged(tmp_path, civil_env, ra
     assert summary["chiefs_unique"] == 49 and summary["titans_unique"] == 49, summary
     print("OFFENSE_SIM_SUMMARY", summary)
 
-    # 600-snap defense sims: Ravens two-formation only, 0 NSM, 0 NO_LEGAL.
+    # 600-snap defense sims: Patriots 6-1 + Nickel + NSM, 0 Dime, 0 NO_LEGAL.
     from cfb_coach.madden import playcaller
 
     nsm_ids = set(rc.NSM_CALL_IDS)
@@ -161,12 +161,11 @@ def test_giants_600_snap_sim_and_other_leagues_unchanged(tmp_path, civil_env, ra
             rd = call.ravens_defense
             statuses.append(rd["status"])
             assert rd["status"] == "CALL", (label, rd)
-            assert call.formation in rc.FORMATIONS
-            assert call.formation != rc.NSM
+            assert call.formation in rc.SIXTY_ONE_FORMATIONS
+            assert call.formation != rc.DIME
             cid = rd["candidate"]["call_id"]
-            assert cid not in nsm_ids, (label, cid)
+            assert cid != "dime_dbfire2"
             text = "\n".join(rd["card"])
-            assert "PACKAGE: Nickel Single Mug" not in text
             cd = rd.get("play_cooldown") or {}
             if chiefs_cd:
                 if not cd.get("fallback"):
@@ -180,9 +179,13 @@ def test_giants_600_snap_sim_and_other_leagues_unchanged(tmp_path, civil_env, ra
             seen.add(cid)
             forms.add(call.formation)
         assert "NO_LEGAL_RAVENS_CALL" not in statuses and statuses.count("CALL") == SNAPS, label
-        assert seen.isdisjoint(nsm_ids) and rc.NSM not in forms, (label, seen, forms)
-        assert forms <= {rc.NICKEL, rc.DIME}, (label, forms)
-        defense_summary[label] = {"unique_calls": len(seen), "forms": sorted(forms), "no_legal": 0, "nsm": 0}
+        assert "dime_dbfire2" not in seen and rc.DIME not in forms, (label, seen, forms)
+        assert forms <= set(rc.SIXTY_ONE_FORMATIONS), (label, forms)
+        defense_summary[label] = {
+            "unique_calls": len(seen), "forms": sorted(forms), "no_legal": 0,
+            "nsm": sum(1 for x in seen if x in nsm_ids),
+            "even61": sum(1 for x in seen if x.startswith("even61_")),
+        }
     print("DEFENSE_SIM_SUMMARY", defense_summary)
     summary["defense"] = defense_summary
     print("GIANTS_SIM_SUMMARY", summary)

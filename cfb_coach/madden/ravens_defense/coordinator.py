@@ -80,7 +80,8 @@ def decide(model: Any, *, legal: Sequence[rc.Candidate], snap: SnapCtx, same_gam
                  "avoided_repeat": avoid if (avoid in in_band and len(band) > 1) else None}
     top = cat.by_id()[scored[0]["candidate_id"]]
     # re-validate the chosen candidate with the same filter before anything is displayed
-    v = lg.check(cat, top, installed=installed, conf=conf, assume_setup=assume_setup, scheme_book=scheme_book)
+    v = lg.check(cat, top, installed=installed, conf=conf, assume_setup=assume_setup, scheme_book=scheme_book,
+                 yardline=getattr(snap, "yards_to_goal", None))
     if not v.legal:
         return {"status": "NO_LEGAL_RAVENS_CALL", "ranked": scored, "reasons": list(v.reasons),
                 "latency_ms": round((time.perf_counter() - t0) * 1000, 3)}
@@ -119,12 +120,20 @@ def card_lines(decision: Mapping[str, Any]) -> list[str]:
              "USER: " + (decision["user"]["user"] if decision["user"]["status"] == "LIVE_VALID" else us.UNVERIFIED)]
     if decision.get("macro_display"):
         lines.append(f"MACRO: {decision['macro_display']}")
+    raw = (decision.get("candidate_raw") or {})
     if c.get("package") == "nickel_single_mug":
-        lines.append("PACKAGE: Nickel Single Mug (Steelers stock)")
-        raw = (decision.get("candidate_raw") or {})
+        lines.append("PACKAGE: Nickel Single Mug")
+    elif c.get("package") == "even_61":
+        lines.append("PACKAGE: 4-3 Even 6-1")
+        if raw.get("situation_tab"):
+            lines.append("SITUATION: " + str(raw["situation_tab"]))
+    if raw.get("setup_steps"):
         for i, step in enumerate(raw.get("setup_steps") or [], 1):
             lines.append(f"SETUP {i}: {step}")
-        lines.append("NOTE: NSM macros and user assignments are not yet owner-confirmed in game (UNVERIFIED)")
+        if raw.get("card_note"):
+            lines.append("NOTE: " + str(raw["card_note"]))
+        if c.get("package") in {"nickel_single_mug", "even_61"}:
+            lines.append("NOTE: macros and user assignments are not yet owner-confirmed in game (UNVERIFIED)")
     note = pcd.cooldown_explanation(decision.get("play_cooldown"))
     if note:
         lines.append(note)
@@ -249,7 +258,7 @@ def call_ravens(sit: Any, opponent_id: str, db: Any, defense_book: Mapping[str, 
         art = artifact or (str(md.artifact_dir(db)) if md.artifact_dir(db) else None)
         # The unused Steelers+NSM catalog is not scored by a Ravens-trained artifact.
         # If it is ever loaded again, stay on the untrained prior (honest label).
-        if cat.is_lions_franchise:
+        if cat.is_lions_franchise or getattr(cat, "uses_prior_only", False):
             art, model = None, prior_only_model(cat)
         elif art and not (scheme_book and not Path(art, "model.json").is_file()):
             model = rm.load(art)
@@ -258,7 +267,7 @@ def call_ravens(sit: Any, opponent_id: str, db: Any, defense_book: Mapping[str, 
         else:
             raise ValueError("no trained Ravens defensive artifact (run `ml ravens-defense train`)")
         legal, verdicts = lg.legal_set(cat, installed=installed, conf=conf, assume_setup=assume_setup,
-                                       scheme_book=scheme_book)
+                                       scheme_book=scheme_book, yardline=getattr(sit, "yardline", None))
         conn = getattr(db, "conn", None)
         session = str(extras.get("session_id") or "")
         cooldown_info = None

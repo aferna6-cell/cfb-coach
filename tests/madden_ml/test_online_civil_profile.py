@@ -61,13 +61,13 @@ def test_team_only_start_no_gamertag_civil_offense_and_defense(tmp_db):
     assert r.returncode == 0, r.stderr
     out = r.stdout
     assert "OFFENSE CONTROLLER: CIVIL_SCHEME_ONLY" in out
-    assert "DEFENSE CONTROLLER: RAVENS_TWO_FORMATION_CIVIL" in out
+    assert "DEFENSE CONTROLLER: PATRIOTS_EVEN_61_CIVIL" in out
     assert "UNTRAINED_PRIOR_ONLY" in out
     assert "HUMAN OFFENSE ML PILOT: OFF (heuristic offense" not in out
     assert "has no explicit offense mode" not in r.stderr
     assert "ONLINE LEAGUE: Kansas City Chiefs vs Buffalo Bills (logged as online_buffalo_bills" in out
     assert "LABEL: RAVENS_DEFENSE_ML (UNTRAINED_PRIOR_ONLY · scheme book)" in out
-    assert any(f"PLAY: {form} — " in out for form in rc.FORMATIONS)
+    assert any(f"PLAY: {form} — " in out for form in rc.SIXTY_ONE_FORMATIONS)
     con = sqlite3.connect(tmp_db / "madden27.db")
     try:
         sess = con.execute("SELECT opponent_id, league, user_team, opponent_team, opponent_type "
@@ -77,10 +77,10 @@ def test_team_only_start_no_gamertag_civil_offense_and_defense(tmp_db):
                             "WHERE data_source != 'session_close' OR data_source IS NULL").fetchall()
         assert {s[0] for s in snaps} >= {"defense"}
         assert all(s[1] == "Buffalo Bills" and s[2] == "online_buffalo_bills" for s in snaps)
-        assert all(s[3] in rc.FORMATIONS for s in snaps if s[0] == "defense")
+        assert all(s[3] in rc.SIXTY_ONE_FORMATIONS for s in snaps if s[0] == "defense")
         dec = con.execute("SELECT status, league, opponent_team, formation FROM ravens_defense_decisions").fetchall()
         assert dec and all(d[0] == "CALL" and d[1] == "online" and d[2] == "Buffalo Bills" for d in dec)
-        assert all(d[3] in rc.FORMATIONS for d in dec)
+        assert all(d[3] in rc.SIXTY_ONE_FORMATIONS for d in dec)
     finally:
         con.close()
 
@@ -114,7 +114,7 @@ def test_lions_primary_unchanged(tmp_db):
     _apply_books(tmp_db / "madden27.db")
     r = _play(tmp_db, "-o", "cpu", stdin="1&10 my 25\nq\n")
     assert r.returncode == 0, r.stderr
-    assert "RAVENS_TWO_FORMATION_CIVIL" not in r.stdout
+    assert "RAVENS_TWO_FORMATION_CIVIL" not in r.stdout and "PATRIOTS_EVEN_61_CIVIL" not in r.stdout
     assert "ONLINE LEAGUE" not in r.stdout
     assert "team: Detroit Lions" in r.stdout
     r = _play(tmp_db)   # non-online still needs an opponent
@@ -130,18 +130,18 @@ def test_lions_ravens_defense_flag_calls_scheme_book(tmp_db):
     assert r.returncode == 0, r.stderr
     out = r.stdout
     assert "OFFENSE CONTROLLER: CIVIL_SCHEME_ONLY" in out
-    assert "DEFENSE CONTROLLER: RAVENS_TWO_FORMATION_CIVIL" in out
+    assert "DEFENSE CONTROLLER: PATRIOTS_EVEN_61_CIVIL" in out
     assert "UNTRAINED_PRIOR_ONLY" in out
     assert "ONLINE LEAGUE" not in out
     assert "team: Detroit Lions" in out
-    assert any(f"PLAY: {form} — " in out for form in rc.FORMATIONS)
+    assert any(f"PLAY: {form} — " in out for form in rc.SIXTY_ONE_FORMATIONS)
     assert "LABEL: RAVENS_DEFENSE_ML (UNTRAINED_PRIOR_ONLY · scheme book)" in out
     con = sqlite3.connect(tmp_db / "madden27.db")
     try:
         sess = con.execute("SELECT opponent_id, league, user_team FROM game_sessions").fetchall()
         assert sess and sess[0][0] == "jaxon" and sess[0][1] != "online"
         dec = con.execute("SELECT status, formation FROM ravens_defense_decisions").fetchall()
-        assert dec and all(d[0] == "CALL" and d[1] in rc.FORMATIONS for d in dec)
+        assert dec and all(d[0] == "CALL" and d[1] in rc.SIXTY_ONE_FORMATIONS for d in dec)
     finally:
         con.close()
 
@@ -151,7 +151,7 @@ def test_previous_defense_and_unrestricted_offense_opt_out(tmp_db):
     r = _play(tmp_db, "--franchise", "online", "--opponent-team", "BUF", "--previous-defense",
               "--unrestricted-offense", "--heuristic-offense", stdin="q\n")
     assert r.returncode == 0, r.stderr
-    assert "RAVENS_TWO_FORMATION_CIVIL" not in r.stdout
+    assert "RAVENS_TWO_FORMATION_CIVIL" not in r.stdout and "PATRIOTS_EVEN_61_CIVIL" not in r.stdout
     assert "OFFENSE CONTROLLER: CIVIL_SCHEME_ONLY" not in r.stdout
 
 
@@ -172,8 +172,8 @@ def test_defense_calls_need_no_installed_book_and_show_required_macros(tmp_db, o
         calls = _calls(160, db=db)
     finally:
         db.close()
-    # Live civil defense uses the Ravens two-formation catalog (t457u).
-    cat = rc.load()
+    # Live civil defense uses the Patriots 6-1 + Nickel + NSM catalog (t462u).
+    cat = rc.load_61_defense()
     by = cat.by_id()
     seen = set()
     prev = None
@@ -198,11 +198,17 @@ def test_defense_calls_need_no_installed_book_and_show_required_macros(tmp_db, o
         assert cand.candidate_id != prev                        # no back-to-back repeat
         prev = cand.candidate_id
         assert c.call_label == "RAVENS_DEFENSE_ML"
-    assert "dime_dbfire2" in seen and {"nickel_cloud", "nickel_tampa2"} & seen and len(seen) >= 8
+    assert "dime_dbfire2" not in seen
+    assert {"nickel_cloud", "nickel_tampa2"} & seen
+    assert any(cid.startswith("even61_") for cid in seen)
+    assert len(seen) >= 8
     from cfb_coach.madden.ravens_defense import legality as rlg
     from cfb_coach.madden.ravens_defense.confirmations import Confirmations
-    legal, _ = rlg.legal_set(cat, installed=None, conf=Confirmations(), scheme_book=True)
-    assert "match_cover9_show2" in {c.candidate_id for c in legal} and len(legal) == 14
+    legal, _ = rlg.legal_set(cat, installed=None, conf=Confirmations(), scheme_book=True, yardline=35)
+    assert "match_cover9_show2" in {c.candidate_id for c in legal}
+    assert "dime_dbfire2" not in {c.candidate_id for c in legal}
+    assert "even61_base_c4_c2_match" in {c.candidate_id for c in legal}
+    assert len(legal) == 33  # RZ Tampa 2 is inside-the-10 only
 
 
 def test_no_silent_fallback_to_previous_defense(tmp_db, online_env, monkeypatch):

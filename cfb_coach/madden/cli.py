@@ -774,14 +774,14 @@ def cmd_league(args: argparse.Namespace) -> int:
 
 
 RAVENS_CIVIL_DEFENSE_BANNER = (
-    "RAVENS_TWO_FORMATION_CIVIL (Nickel 2-4 Wide + Dime 2-3 Odd only; required 24 Base / DB Fire shown; "
-    "scheme dataset = legal book; outcome model UNTRAINED_PRIOR_ONLY; NO_LEGAL_RAVENS_CALL on failure, "
-    "no fallback to the old defensive caller)"
+    "PATRIOTS_EVEN_61_CIVIL (4-3 Even 6-1 + Nickel 2-4 Wide + Nickel Single Mug; "
+    "scheme dataset = legal book; 6-1 / NSM macros unverified; outcome model UNTRAINED_PRIOR_ONLY; "
+    "NO_LEGAL_RAVENS_CALL on failure, no fallback to the old defensive caller)"
 )
 
 
 def _apply_online_civil_modes(args: argparse.Namespace) -> dict[str, bool]:
-    """--franchise online / titans / giants: civil offense + Ravens two-formation civil defense for THIS process.
+    """--franchise online / titans / giants: civil offense + Patriots 6-1 civil defense for THIS process.
 
     Env-only (never a DB write, never `ml ... enable`). ``--unrestricted-offense`` /
     ``--previous-defense`` opt the session out of either side.
@@ -803,8 +803,9 @@ def _apply_online_civil_modes(args: argparse.Namespace) -> dict[str, bool]:
 def _ravens_scheme_book_record() -> dict[str, Any]:
     from cfb_coach.madden.ravens_defense import catalog as rc
 
-    cat = rc.load()
-    return {"name": f"Ravens two-formation civil defense ({rc.DATASET.name})", "mode": "scheme dataset",
+    cat = rc.catalog_for_defense_session(None, None, {}, None)
+    label = (cat.raw or {}).get("label") or "Patriots 4-3 Even 6-1 + Nickel 2-4 Wide + Nickel Single Mug civil defense"
+    return {"name": label, "mode": "scheme dataset",
             "rev": cat.version(), "formations": rc.scheme_book(cat)}
 
 
@@ -834,7 +835,7 @@ def cmd_play(args: argparse.Namespace) -> int:
     online_civil = _apply_online_civil_modes(args) if league_ctx else {"offense": False, "defense": False}
     if online_civil["defense"] and (getattr(args, "ml_defense_control", False)
                                     or getattr(args, "defense_model", None)):
-        print("Refusing to start: online and Titans sessions call the Ravens civil defense. "
+        print("Refusing to start: online and Titans sessions call the Patriots 6-1 civil defense. "
               "Add --previous-defense to use --ml-defense-control / --defense-model instead.",
               file=sys.stderr)
         db.close()

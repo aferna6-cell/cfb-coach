@@ -87,7 +87,7 @@ def test_new_red_zone_runs_are_legal_only_inside_the_20():
     assert chiefs_rz.isdisjoint(NEW_IDS)
 
 
-def test_shared_ravens_dataset_is_the_live_catalog_and_nsm_file_is_unused():
+def test_shared_ravens_dataset_stays_intact_and_live_catalog_is_patriots_61():
     assert hasattr(rc, "load_lions_franchise") and hasattr(rc, "NSM_CALL_IDS")
     base = rc.load()
     assert rc.contract_errors(base.raw) == []
@@ -97,21 +97,23 @@ def test_shared_ravens_dataset_is_the_live_catalog_and_nsm_file_is_unused():
     assert "Nickel Single Mug" not in {f["name"] for f in base.raw["formations"]}
 
     cat = rc.catalog_for_defense_session(None, None, {}, None)
-    assert cat.sha256 == base.sha256
-    assert cat.stock_team == rc.RAVENS and not cat.is_lions_franchise
-    assert cat.allowed_formations == rc.FORMATIONS
-    assert {c.formation for c in cat.candidates} == {rc.NICKEL, rc.DIME}
-    assert set(rc.NSM_CALL_IDS).isdisjoint(cat.by_id())
-    assert cat.raw.get("source_defensive_playbook") == "Baltimore Ravens"
+    assert cat.sha256 != base.sha256
+    assert cat.stock_team == rc.PATRIOTS and cat.uses_prior_only
+    assert cat.allowed_formations == rc.SIXTY_ONE_FORMATIONS
+    assert {c.formation for c in cat.candidates} == {rc.EVEN_61, rc.NICKEL, rc.NSM}
+    assert set(rc.NSM_CALL_IDS) <= set(cat.by_id())
+    assert set(rc.EVEN_61_CALL_IDS) <= set(cat.by_id())
+    assert "dime_dbfire2" not in cat.by_id()
+    assert cat.raw.get("source_defensive_playbook") == "New England Patriots"
 
-    # The NSM dataset remains in the repo and still loads; it is not the live catalog.
+    # The Ravens two-formation file and the Steelers+NSM loader stay in the repo for rollback.
     unused = rc.load_lions_franchise()
-    assert unused.stock_team == rc.STEELERS and unused.sha256 != base.sha256
+    assert unused.stock_team == rc.STEELERS and unused.sha256 != cat.sha256
     assert set(rc.NSM_CALL_IDS) <= set(unused.by_id())
     assert rc.LIONS_NSM_DATASET.is_file()
 
 
-def test_lions_chiefs_titans_giants_and_cpu_defense_calls_are_ravens_two_formation(tmp_path, civil_env, ravens_env):
+def test_lions_chiefs_titans_giants_and_cpu_defense_calls_are_patriots_61(tmp_path, civil_env, ravens_env):
     from cfb_coach.madden import playcaller
 
     db = _db(tmp_path, formations=["Gun Bunch TE"])
@@ -145,13 +147,12 @@ def test_lions_chiefs_titans_giants_and_cpu_defense_calls_are_ravens_two_formati
             call = playcaller.make_call(s, opponent, db, cpu_defense=cpu_defense)
             rd = call.ravens_defense
             assert rd["status"] == "CALL", (sid, rd)
-            assert call.formation in rc.FORMATIONS
+            assert call.formation in rc.SIXTY_ONE_FORMATIONS
             text = "\n".join(rd["card"])
             assert "Lions franchise only" not in text
-            assert "PACKAGE: Nickel Single Mug" not in text
             cid = rd["candidate"]["call_id"]
-            assert cid not in nsm_ids, (sid, cid)
+            assert cid != "dime_dbfire2"
             seen.add(cid)
             forms.add(call.formation)
-        assert seen and seen.isdisjoint(nsm_ids), (sid, seen)
-        assert forms <= {rc.NICKEL, rc.DIME} and rc.NSM not in forms, (sid, forms)
+        assert seen and "dime_dbfire2" not in seen, (sid, seen)
+        assert forms <= set(rc.SIXTY_ONE_FORMATIONS) and rc.DIME not in forms, (sid, forms)

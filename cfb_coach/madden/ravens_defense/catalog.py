@@ -27,7 +27,7 @@ NSM = "Nickel Single Mug"
 FORMATIONS = (NICKEL, DIME)
 LIONS_FRANCHISE_FORMATIONS = (NICKEL, DIME, NSM)
 PACKAGES = {"match_coverage": NICKEL, "nickel_stock": NICKEL, "spot_drop_fallback": NICKEL, "dime_blitz": DIME,
-            "nickel_single_mug": NSM}
+            "nickel_single_mug": NSM, "even_61": "4-3 Even 6-1"}
 REQUIRED_MACRO_BY_PACKAGE = {"nickel_stock": "24_BASE", "dime_blitz": "DB_FIRE",
                              "match_coverage": None, "spot_drop_fallback": None,
                              "nickel_single_mug": None}
@@ -53,12 +53,40 @@ _DK_KEY = {
     "nsm_quarters_manup_short": "dk:cover_4_quarters", "nsm_quarters_manup_long": "dk:cover_4_quarters",
     "nsm_quarters_4man_rush": "dk:cover_4_quarters", "nsm_quarters_run_support": "dk:cover_4_quarters",
     "nsm_tampa2_shade": "dk:tampa_2",
+    "even61_base_c4_c2_match": "dk:cover_4_quarters", "even61_base_c4_61_base": "dk:cover_4_quarters",
+    "even61_base_swblitz_61_murple": "dk:cover_0", "even61_run_swblitz_hb": "dk:cover_0",
+    "even61_rz_tampa2_61_base": "dk:tampa_2",
+    "even61_gundoubles_c4_c2_match": "dk:cover_4_quarters",
+    "even61_gundoubles_c3buzz_61_base": "dk:cover_3_buzz",
+    "even61_gunbunchte_swblitz_c2mm": "dk:cover_0",
+    "even61_gun5wrtight_d1_swblitz_c2mm": "dk:cover_0",
+    "even61_gun5wrtight_d2_tampa2_61_base": "dk:tampa_2",
+    "even61_gun5wrtight_d3_c4_c2_match": "dk:cover_4_quarters",
+    "even61_gun5wrtight_advblitz_61_base": "dk:cover_0",
+    "even61_guntight_c4_61_base": "dk:cover_4_quarters",
+    "even61_guntripste_swblitz_c2mm": "dk:cover_0",
 }
 NSM_CALL_IDS = (
     "nsm_quarters_left_tex", "nsm_quarters_texas_4", "nsm_quarters_manup_short",
     "nsm_quarters_manup_long", "nsm_quarters_4man_rush", "nsm_quarters_run_support",
     "nsm_tampa2_shade",
 )
+EVEN_61 = "4-3 Even 6-1"
+PATRIOTS = "Patriots"
+SIXTY_ONE_DATASET = REPO / "datasets/madden27/lions_patriots_even_61_nickel_nsm_v1.json"
+SIXTY_ONE_CATALOG_ID = "lions_patriots_even_61_nickel_nsm_v1"
+SIXTY_ONE_FORMATIONS = (EVEN_61, NICKEL, NSM)
+NICKEL_CIVIL_CALL_IDS = tuple(c for c in APPROVED_CALL_IDS if c != "dime_dbfire2")
+EVEN_61_CALL_IDS = (
+    "even61_base_c4_c2_match", "even61_base_c4_61_base", "even61_base_swblitz_61_murple",
+    "even61_run_swblitz_hb", "even61_rz_tampa2_61_base",
+    "even61_gundoubles_c4_c2_match", "even61_gundoubles_c3buzz_61_base",
+    "even61_gunbunchte_swblitz_c2mm",
+    "even61_gun5wrtight_d1_swblitz_c2mm", "even61_gun5wrtight_d2_tampa2_61_base",
+    "even61_gun5wrtight_d3_c4_c2_match", "even61_gun5wrtight_advblitz_61_base",
+    "even61_guntight_c4_61_base", "even61_guntripste_swblitz_c2mm",
+)
+SIXTY_ONE_APPROVED_CALL_IDS = NICKEL_CIVIL_CALL_IDS + NSM_CALL_IDS + EVEN_61_CALL_IDS
 
 
 @dataclass(frozen=True)
@@ -96,6 +124,7 @@ class RavensCatalog:
     approved_call_ids: tuple[str, ...] = APPROVED_CALL_IDS
     allowed_formations: tuple[str, ...] = FORMATIONS
     stock_team: str = RAVENS
+    uses_prior_only: bool = False
 
     @property
     def calls(self) -> dict[str, Mapping[str, Any]]:
@@ -118,6 +147,8 @@ class RavensCatalog:
         """In-repo Huddle.gg inventory for this catalog's stock team and formations."""
         if self.stock_team == STEELERS:
             return steelers_stock_book()
+        if self.stock_team == PATRIOTS:
+            return patriots_stock_book()
         return ravens_stock_book()
 
 
@@ -408,5 +439,116 @@ def is_lions_human_defense_session(db: Any, session_id: str | None, extras: Mapp
 
 def catalog_for_defense_session(db: Any, session_id: str | None, extras: Mapping[str, Any] | None,
                                 opponent_id: str | None) -> RavensCatalog:
-    """t457u: every league uses the Ravens two-formation civil defense (no NSM)."""
-    return load()
+    """t462u: every league uses the Patriots 6-1 + Nickel 2-4 Wide + NSM civil defense."""
+    return load_61_defense()
+
+
+def patriots_stock_book() -> dict[str, list[str]]:
+    """The in-repo third-party Patriots defensive inventory (huddle.gg)."""
+    data = json.loads(STOCK_BOOKS.read_text(encoding="utf-8"))
+    forms = data["books"]["defense"][PATRIOTS]["formations"]
+    return {f: list(forms[f]["plays"]) for f in SIXTY_ONE_FORMATIONS if f in forms}
+
+
+@lru_cache(maxsize=4)
+def _load_61_defense(path: str, mtime_ns: int, nsm_mtime_ns: int, base_sha: str) -> RavensCatalog:
+    """Live t462u catalog: Patriots 4-3 Even 6-1 PDF calls + legal Nickel 2-4 Wide civil calls + NSM.
+
+    The Ravens two-formation dataset and the NSM file are only read; they are not modified.
+    Dime 2-3 Odd / DB Fire 2 is omitted because it is not in the Patriots stock book.
+    """
+    base = load()
+    blob = Path(path).read_bytes()
+    owner = json.loads(blob)
+    if owner.get("catalog_id") != SIXTY_ONE_CATALOG_ID or owner.get("formation") != EVEN_61:
+        raise ValueError("6-1 defense file must be lions_patriots_even_61_nickel_nsm_v1 / 4-3 Even 6-1")
+    stock = patriots_stock_book()
+    even_calls = list(owner.get("stock_calls") or [])
+    ids = [c.get("call_id") for c in even_calls]
+    if tuple(ids) != EVEN_61_CALL_IDS or len(set(ids)) != len(EVEN_61_CALL_IDS):
+        raise ValueError("6-1 call IDs are not exactly the 14 transcribed PDF setups")
+    for c in even_calls:
+        if c.get("formation") != EVEN_61 or c.get("package") != "even_61":
+            raise ValueError(f"{c.get('call_id')}: must be 4-3 Even 6-1 / even_61")
+        if c.get("base_play") not in stock.get(EVEN_61, ()):
+            raise ValueError(f"{c.get('call_id')}: '{c.get('base_play')}' is not in Patriots 4-3 Even 6-1")
+        mid = c.get("required_macro_id")
+        if mid is not None and mid not in (owner.get("macro_catalog") or {}):
+            raise ValueError(f"{c.get('call_id')}: unknown required macro {mid}")
+        if not c.get("setup_steps"):
+            raise ValueError(f"{c.get('call_id')}: setup_steps must be the PDF steps verbatim")
+
+    nsm_path = LIONS_NSM_DATASET
+    nsm_owner = json.loads(nsm_path.read_text())
+    nsm_calls = list(nsm_owner.get("stock_calls") or [])
+    nsm_ids = [c.get("call_id") for c in nsm_calls]
+    if tuple(nsm_ids) != NSM_CALL_IDS:
+        raise ValueError("Nickel Single Mug call IDs are not exactly the 7 PDF stock-play setups")
+    nsm_plays = stock.get(NSM, ())
+    for c in nsm_calls:
+        if c.get("formation") != NSM or c.get("base_play") not in nsm_plays:
+            raise ValueError(f"{c.get('call_id')}: '{c.get('base_play')}' is not in Patriots Nickel Single Mug")
+
+    nickel_calls = [c for c in (base.raw.get("stock_calls") or []) if c.get("call_id") in NICKEL_CIVIL_CALL_IDS]
+    for c in nickel_calls:
+        if c.get("base_play") not in stock.get(c["formation"], ()):
+            raise ValueError(f"{c.get('call_id')}: '{c.get('base_play')}' is not in Patriots {c.get('formation')}")
+
+    macros = dict(base.raw.get("macro_catalog") or {})
+    macros.update(nsm_owner.get("macro_catalog") or {})
+    macros.update(owner.get("macro_catalog") or {})
+    # Drop DB Fire; it is only for the omitted Dime call.
+    macros.pop("DB_FIRE", None)
+
+    formations = [
+        {"name": EVEN_61, "role": "primary_pdf_61_scheme", "allowed_packages": ["even_61"],
+         "label": owner.get("label")},
+        *[f for f in (base.raw.get("formations") or []) if f.get("name") != DIME],
+        {"name": NSM, "role": "kept_old_formation_nickel_single_mug",
+         "allowed_packages": ["nickel_single_mug"],
+         "label": "Nickel Single Mug package (Patriots stock-book context)"},
+    ]
+    merged = dict(base.raw)
+    merged.update({
+        "catalog_id": SIXTY_ONE_CATALOG_ID,
+        "source_defensive_playbook": "New England Patriots",
+        "formations": formations,
+        "macro_catalog": macros,
+        "stock_calls": nickel_calls + nsm_calls + even_calls,
+        "label": owner.get("label"),
+        "sixty_one_owner": owner.get("owner_instruction") or {},
+        "playbook_choice_reason": owner.get("playbook_choice_reason"),
+        "confirmation_status": owner.get("confirmation_status"),
+        "gaps_and_caveats": owner.get("gaps_and_caveats") or [],
+    })
+
+    cands: list[Candidate] = []
+    for c in nickel_calls:
+        pkg = c["package"]
+        base_c = Candidate(c["call_id"], c["call_id"], c["formation"], c["base_play"], pkg,
+                           c.get("required_macro_id"), None, False, _structure(c["call_id"], False), c)
+        cands.append(base_c)
+        for m in c.get("optional_macros") or []:
+            cands.append(Candidate(f"{c['call_id']}+zone_it", c["call_id"], c["formation"], c["base_play"], pkg,
+                                   c.get("required_macro_id"), m, False, _structure(c["call_id"], True), c))
+    for c in nsm_calls:
+        cands.append(Candidate(c["call_id"], c["call_id"], c["formation"], c["base_play"], c["package"],
+                               c.get("required_macro_id"), None, False,
+                               _structure(c["call_id"], False), c))
+    for c in even_calls:
+        cands.append(Candidate(c["call_id"], c["call_id"], c["formation"], c["base_play"], c["package"],
+                               c.get("required_macro_id"), None, bool(c.get("is_blitz")),
+                               _structure(c["call_id"], False), c))
+    sha = hashlib.sha256(base_sha.encode() + b"+61+" + blob + b"+" + nsm_path.read_bytes()).hexdigest()
+    return RavensCatalog(merged, sha, tuple(cands),
+                         approved_call_ids=SIXTY_ONE_APPROVED_CALL_IDS,
+                         allowed_formations=SIXTY_ONE_FORMATIONS,
+                         stock_team=PATRIOTS,
+                         uses_prior_only=True)
+
+
+def load_61_defense(path: str | Path | None = None) -> RavensCatalog:
+    """Live t462u Patriots 6-1 + Nickel 2-4 Wide + NSM catalog used in every league."""
+    p = Path(path or SIXTY_ONE_DATASET)
+    return _load_61_defense(str(p.resolve()), p.stat().st_mtime_ns,
+                            LIONS_NSM_DATASET.stat().st_mtime_ns, load().sha256)

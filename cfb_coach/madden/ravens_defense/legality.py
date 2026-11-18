@@ -36,7 +36,8 @@ class Verdict:
 
 
 def check(cat: rc.RavensCatalog, cand: rc.Candidate, *, installed: Mapping[str, Sequence[str]] | None,
-          conf: Confirmations, assume_setup: bool = False, scheme_book: bool = False) -> Verdict:
+          conf: Confirmations, assume_setup: bool = False, scheme_book: bool = False,
+          yardline: Any = None) -> Verdict:
     reasons: list[str] = []
     notes: list[str] = []
     known = cat.by_id().get(cand.candidate_id)
@@ -48,7 +49,7 @@ def check(cat: rc.RavensCatalog, cand: rc.Candidate, *, installed: Mapping[str, 
         reasons.append("FORMATION_NOT_ALLOWED")
     if cand.formation == rc.DIME and not (cand.is_blitz and cand.call_id == "dime_dbfire2"):
         reasons.append("DIME_ONLY_FOR_DB_FIRE_2_BLITZ")
-    if cand.package == "nickel_single_mug":
+    if cand.package in {"nickel_single_mug", "even_61"}:
         macros = (cat.raw.get("macro_catalog") or {})
         if cand.required_macro and cand.required_macro not in macros:
             reasons.append("REQUIRED_MACRO_MISSING_OR_WRONG")
@@ -60,10 +61,23 @@ def check(cat: rc.RavensCatalog, cand: rc.Candidate, *, installed: Mapping[str, 
         reasons.append("OPTIONAL_MACRO_NOT_ALLOWED_ON_CALL")
     stock = cat.stock_book() if hasattr(cat, "stock_book") else rc.ravens_stock_book()
     if cand.base_play not in stock.get(cand.formation, ()):
-        if getattr(cat, "stock_team", rc.RAVENS) == rc.STEELERS or cand.formation == rc.NSM:
+        team = getattr(cat, "stock_team", rc.RAVENS)
+        if team == rc.STEELERS or cand.formation == rc.NSM and team != getattr(rc, "PATRIOTS", ""):
             reasons.append("NOT_IN_STEELERS_STOCK_INVENTORY")
+        elif team == getattr(rc, "PATRIOTS", "Patriots"):
+            reasons.append("NOT_IN_PATRIOTS_STOCK_INVENTORY")
         else:
             reasons.append("NOT_IN_RAVENS_STOCK_INVENTORY")
+    zone = (cand.raw or {}).get("field_zone")
+    if zone == "inside_10" and yardline is not None:
+        try:
+            y = int(yardline)
+        except (TypeError, ValueError):
+            y = None
+        # Defense yardline is yards from OUR goal, so inside-our-10 is y <= 10.
+        # (Offense red-zone uses y >= 90 because that is inside the opponent 10.)
+        if y is not None and y > 10:
+            reasons.append("FIELD_ZONE_INSIDE_10_ONLY")
     if scheme_book and not assume_setup:
         book = rc.scheme_book(cat)
         if cand.base_play not in book.get(cand.formation, ()):
@@ -102,9 +116,10 @@ def check(cat: rc.RavensCatalog, cand: rc.Candidate, *, installed: Mapping[str, 
 
 
 def legal_set(cat: rc.RavensCatalog, *, installed: Mapping[str, Sequence[str]] | None, conf: Confirmations,
-              assume_setup: bool = False, scheme_book: bool = False) -> tuple[list[rc.Candidate], dict[str, Verdict]]:
+              assume_setup: bool = False, scheme_book: bool = False,
+              yardline: Any = None) -> tuple[list[rc.Candidate], dict[str, Verdict]]:
     verdicts = {c.candidate_id: check(cat, c, installed=installed, conf=conf, assume_setup=assume_setup,
-                                      scheme_book=scheme_book)
+                                      scheme_book=scheme_book, yardline=yardline)
                 for c in cat.candidates}
     return [c for c in cat.candidates if verdicts[c.candidate_id].legal], verdicts
 
