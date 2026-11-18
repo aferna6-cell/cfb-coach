@@ -44,7 +44,7 @@ def test_lions_cpu_gains_three_p06_red_zone_runs_and_skips_identical_duplicates(
     assert sc.contract_errors(CAT_LIONS) == []
     assert NEW_IDS <= set(CAT_LIONS.ids)
     regular_passes = {v.variant_id for v in CAT_LIONS.variants if v.field_zone == "any" and not v.is_run}
-    assert len(regular_passes) == 88
+    assert len(regular_passes) == 89
     assert len(CAT_LIONS.run_variants) == sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
     assert len(CAT_LIONS.redzone_variants) == 21 == sc.EXPECTED_LIONS_CPU_REDZONE_VARIANTS
 

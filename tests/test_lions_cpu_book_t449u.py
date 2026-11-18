@@ -53,7 +53,7 @@ def test_shared_book_is_byte_identical_and_still_has_old_runs():
 def test_lions_cpu_adds_mesh_te_and_includes_restored_t349u_runs():
     owner = _owner()
     prior_sources = {p.get("source") for p in owner.get("prior_instructions") or []}
-    assert owner["owner_instruction"]["source"] in {"t449u", "t450u", "t453u"}
+    assert owner["owner_instruction"]["source"] in {"t449u", "t450u", "t453u", "t461u"}
     assert "t449u" in prior_sources | {owner["owner_instruction"]["source"]}
     # t453u: the ten t349u designed runs are back on Lions/CPU; exclusion list is cleared.
     assert not owner.get("exclude_inherited_variant_ids")
@@ -83,7 +83,7 @@ def test_lions_cpu_adds_mesh_te_and_includes_restored_t349u_runs():
     assert CAT_LIONS.get(RPO).field_zone == sc.INSIDE_10
     assert len(CAT_LIONS.run_variants) == sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
     assert len(CAT_LIONS.redzone_variants) == sc.EXPECTED_LIONS_CPU_REDZONE_VARIANTS
-    assert len(REG_LIONS) == 88 + sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
+    assert len(REG_LIONS) == 89 + sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
     assert MESH_TE in RZ_LIONS
 
 

@@ -54,6 +54,12 @@ alongside Nickel 2-4 Wide and Dime 2-3 Odd. Offense books are unchanged by that 
 Owner instruction 2026-11-17 (t453u, same Lions/CPU file): restore the ten pre-civil t349u
 designed runs to this book alongside the Civil runs. The t450u Civil red-zone HB Off Tackle
 stays as its own red-zone entry. Shared Chiefs/Titans book unchanged.
+
+Owner instruction 2026-11-18 (t461u, same Lions/CPU file): add Packers Gun Bunch X Nasty
+X Post Return as one owner_pass variant (three hot-route setup steps from the owner's
+screenshot). The formation exists in other in-repo stock books; the play name does not, so
+it is listed under name_not_in_stock_data and flagged, the same way the Eagles Mtn plays
+were made legal. Lions, CPU, and Giants only. Shared Chiefs/Titans book unchanged.
 """
 from __future__ import annotations
 
@@ -86,12 +92,13 @@ EXPECTED_RUN_FORMATIONS = {"Gun Doubles Clamp Stack": 4, "Gun Bunch TE": 5, "Gun
 EXPECTED_OWNER_PASS_VARIANTS = 1
 EXPECTED_OWNER_PASS_FORMATIONS = {"Pistol Strong Y Off Close": 1}
 # owner t445u / t448u: Lions/CPU book = shared catalog + Mtn plays + the rest of the owner PDF
-EXPECTED_LIONS_CPU_OWNER_PASS_VARIANTS = 62  # 1 shared PA Slide + 7 t445u Mtn + 54 t448u passes
+EXPECTED_LIONS_CPU_OWNER_PASS_VARIANTS = 63  # 1 shared PA Slide + 7 t445u Mtn + 54 t448u + t461u X Post Return
 EXPECTED_LIONS_CPU_OWNER_PASS_FORMATIONS = {
     "Gun Bunch TE": 11, "Gun Bunch TE Wk": 4, "Gun Tight": 9, "Gun Bunch Y-Flex": 2,
     "Gun Tight Flex Offset": 7, "Gun Tight Flex Wk": 2, "Pistol Deuce Close": 1,
     "Gun Doubles Clamp Stack": 12, "Gun Bunch Str Offset": 6, "Gun Trips TE": 2,
     "Gun Trips TE Flex": 3, "Gun Doubles Flex Y Off Close": 2, "Pistol Strong Y Off Close": 1,
+    "Gun Bunch X Nasty": 1,
 }
 EXPECTED_LIONS_CPU_REDZONE_VARIANTS = 21  # 18 + t450u HB Off Tackle + HB Dive (Bunch TE Wk, Pistol Strong)
 EXPECTED_LIONS_CPU_REDZONE_FORMATIONS = {
@@ -105,7 +112,7 @@ EXPECTED_LIONS_CPU_RUN_FORMATIONS = {
     "Pistol Deuce Close": 1, "Gun Bunch TE Wk": 1, "Gun Bunch Str Offset": 1, "Pistol Bunch TE": 1,
     "Gun Bunch TE": 5, "Gun Tight Doubles": 2, "Gun 5WR Tight": 1,
 }
-EXPECTED_LIONS_CPU_VARIANTS = 128  # 118 + 10 restored t349u designed runs
+EXPECTED_LIONS_CPU_VARIANTS = 129  # 128 + t461u X Post Return
 SHARED_BOOK, LIONS_CPU_BOOK = "civil_shared", "lions_cpu"
 RUN, PASS = "run", "pass"       # play_family: the run-pass mix (coordinator.pick_mixed) gates on it
 CORE, REDZONE_GROUP, DESIGNED_RUN = "core", "red_zone", "designed_run"

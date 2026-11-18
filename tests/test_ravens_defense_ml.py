@@ -282,7 +282,7 @@ OFFENSE_PINS = {
     "cfb_coach/madden/scheme/legality.py": "e6c959dd4912a7f036c9c831ac31e1c6193c9c587e1fc10ac1167731d2393d36",
     "cfb_coach/madden/scheme/mode.py": "ef99c16e697b1fe25ab5f1709cf3d7ee307762856f370ffab2b48deb844fb031",
     "cfb_coach/madden/scheme/model.py": "af793fd4dfbe03c234ccf11cd0d6afeec8a555507ea041604222e637aab778a7",
-    "cfb_coach/madden/scheme/catalog.py": "2f4504b936b108ca2e61a36cf0caee175c12ee7e51953d7efb8366c43de5b803",
+    "cfb_coach/madden/scheme/catalog.py": "910c82a087706d219fa8ef8538c3a7550dc51ed83859f893df77285877c29776",
     "datasets/madden27/lions_offensive_scheme_catalog.json": "15c120decc4bba0ae3dc23f1c5a4c33f183f42a1dd8bd44a4a823526692a77ee",
 }
 

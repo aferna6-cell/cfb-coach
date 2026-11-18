@@ -2,13 +2,21 @@
   "schema_version": "civil_owner_additions_mapping.v1",
   "book_id": "lions_cpu",
   "owner_instruction": {
-    "date": "2026-11-17",
-    "source": "t453u",
+    "date": "2026-11-18",
+    "source": "t461u",
     "by": "Aidan (owner)",
-    "statement": "Okay add the runs back into the lions book please",
-    "effect": "Restores the ten pre-civil t349u designed runs to the Lions/CPU book alongside all current Civil runs, by clearing exclude_inherited_variant_ids. The t450u Civil red-zone Gun Bunch TE HB Off Tackle stays as its own red-zone entry (not an identical duplicate of the restored designed run, which is field_zone=any). Shared Chiefs/Titans book, Steelers+NSM defense in every league, cooldowns, and catalog_version are unchanged."
+    "statement": "Add this okay to the lions book",
+    "source_material": "Owner Discord screenshot (Hexied, Madden 27 new playbook update): Packers playbook, Gun Bunch X Nasty, X Post Return. Setup: 1. Slant your TE  2. Streak your middle bunch WR  3. In route your outside bunch WR. Described as elite vs man and match coverage, with a high-low read over the middle vs zone.",
+    "effect": "Adds one new owner-requested pass variant, X Post Return 1, in Gun Bunch X Nasty (source playbook Packers) to the Lions/CPU/Giants book only, with those three hot-route setup steps as adjustments, field_zone any, Everything Beater coverage tags (man/match + zone), and its own cooldown family. The play name is not in any in-repo stock book (the Packers snapshot also lacks the formation); it is listed under name_not_in_stock_data and flagged, the same way the Eagles Mtn plays were made legal. Shared Chiefs/Titans 49 book, catalog_version, shared additions SHA, Ravens defense, and cooldowns are unchanged."
   },
   "prior_instructions": [
+    {
+      "date": "2026-11-17",
+      "source": "t453u",
+      "by": "Aidan (owner)",
+      "statement": "Okay add the runs back into the lions book please",
+      "effect": "Restores the ten pre-civil t349u designed runs to the Lions/CPU book alongside all current Civil runs, by clearing exclude_inherited_variant_ids. The t450u Civil red-zone Gun Bunch TE HB Off Tackle stays as its own red-zone entry (not an identical duplicate of the restored designed run, which is field_zone=any). Shared Chiefs/Titans book, Steelers+NSM defense in every league, cooldowns, and catalog_version are unchanged."
+    },
     {
       "date": "2026-11-17",
       "source": "t450u",
@@ -85,6 +93,11 @@
       "formation": "Gun Bunch TE",
       "base_play": "Mtn Fork Y-Corner",
       "closest_stock": null
+    },
+    {
+      "formation": "Gun Bunch X Nasty",
+      "base_play": "X Post Return",
+      "closest_stock": null
     }
   ],
   "cooldown_families": {
@@ -127,7 +140,8 @@
     "HB Dive": "existing HB Dive family",
     "HB Draw": "new",
     "QB Zone": "new",
-    "Duo": "new"
+    "Duo": "new",
+    "X Post Return": "new in the Lions/CPU book (Lions and CPU sessions have no play-family cooldown; Giants uses the 3-snap offensive family cooldown; Chiefs/Titans never see this family)"
   },
   "note": "t448u: additional Lions/CPU-only plays from the owner's compiled Civil.gg PDF. The 7 t445u Gun Bunch TE Mtn Spacing / Mtn Fork Y-Corner variants are unchanged. The shared Chiefs/Titans book (civil_owner_additions_t398u.json) is not modified. catalog_version stays lions_civil_bucs_5wr_v4@15c120decc4b so the trained artifact still loads. Formations and play names that are not in the Buccaneers stock book but are exact names in another in-repo Madden playbook are allowed on this book only.",
   "pass_variants": [
@@ -3098,6 +3112,53 @@
         "Flat TE"
       ],
       "note": "t448u p42_top saints-offense. Owner-supplied RPO with a route setup; added as a pass variant (t349u forbids new RPOs as designed runs). Flagged. Exact stock name in Gun Trips TE Flex."
+    },
+    {
+      "variant_id": "civil_t461_gun_bunch_x_nasty_x_post_return_1",
+      "variant_name": "X Post Return 1",
+      "macro_name": "X Post Return 1",
+      "formation": "Gun Bunch X Nasty",
+      "base_play": "X Post Return",
+      "play_family": "pass",
+      "scheme_category": "Everything Beater",
+      "expert_situation_tags": [
+        "1st And 10",
+        "Short Yardage",
+        "Medium Yardage",
+        "Long Yardage"
+      ],
+      "expert_coverage_tags": [
+        "Cover 2",
+        "Cover 3",
+        "Cover 4",
+        "Man Coverage"
+      ],
+      "adjustments": [
+        {
+          "target": "TE",
+          "action": "Slant",
+          "macro_marked": false,
+          "guide_text": "Slant TE"
+        },
+        {
+          "target": "Middle bunch WR",
+          "action": "Streak",
+          "macro_marked": false,
+          "guide_text": "Streak Middle Bunch WR"
+        },
+        {
+          "target": "Outside bunch WR",
+          "action": "In route",
+          "macro_marked": false,
+          "guide_text": "In Route Outside Bunch WR"
+        }
+      ],
+      "guide_setup_text": [
+        "Slant TE",
+        "Streak Middle Bunch WR",
+        "In Route Outside Bunch WR"
+      ],
+      "note": "t461u owner Discord screenshot (Hexied, Madden 27 new playbook update; Packers playbook). Owner-provided name. The in-repo huddle.gg stock snapshot has 'Gun Bunch X Nasty' in 16 other offense books (including the Lions) but not in the Packers book, and no book lists the play name 'X Post Return' (flagged; called by the owner's name). Coverage tags follow the Everything Beater mapping because the post described it as elite vs man and match, with a high-low read over the middle vs zone."
     }
   ],
   "red_zone_variants": [

@@ -36,9 +36,9 @@ def test_lions_cpu_book_has_the_t448u_additions():
     assert NEW_IDS and NEW_IDS <= set(CAT_LIONS.ids) - set(CAT.ids)
     assert len(NEW_IDS) == 54 + 9 + 5
     regular_passes = {v.variant_id for v in CAT_LIONS.variants if v.field_zone == "any" and not v.is_run}
-    assert regular_passes and len(regular_passes) == 88
+    assert regular_passes and len(regular_passes) == 89
     # REG_LIONS is regular passes + designed runs (t449u dropped 10 inherited t349u runs).
-    assert len(REG_LIONS) == 88 + sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
+    assert len(REG_LIONS) == 89 + sc.EXPECTED_LIONS_CPU_RUN_VARIANTS
     assert len(RZ_LIONS) == sc.EXPECTED_LIONS_CPU_REDZONE_VARIANTS
     # Every new pass has setup steps; every new designed run has none.
     owner = json.loads((sc.repo_root() / sc.LIONS_CPU_RELPATH).read_text())

@@ -33,7 +33,7 @@ def test_shared_catalog_and_additions_hash_are_unchanged():
     raw = (sc.repo_root() / sc.ADDITIONS_RELPATH).read_bytes()
     assert hashlib.sha256(raw).hexdigest() == SHARED_ADDITIONS_SHA256
     assert CAT.version() == CAT_LIONS.version() == "lions_civil_bucs_5wr_v4@15c120decc4b"
-    assert len(CAT.variants) == 49 and len(CAT_LIONS.variants) == sc.EXPECTED_LIONS_CPU_VARIANTS == 128
+    assert len(CAT.variants) == 49 and len(CAT_LIONS.variants) == sc.EXPECTED_LIONS_CPU_VARIANTS == 129
     assert sc.contract_errors(CAT) == [] and sc.contract_errors(CAT_LIONS) == []
 
 
@@ -98,9 +98,9 @@ def test_giants_600_snap_sim_and_other_leagues_unchanged(tmp_path, civil_env, ra
 
     # Unique-play counts stay on the current books.
     g_unique = len(giants["counts"])
-    assert g_unique == 128, g_unique
-    assert len(lions["counts"]) == 128, len(lions["counts"])
-    assert len(cpu["counts"]) == 128, len(cpu["counts"])
+    assert g_unique == 129, g_unique
+    assert len(lions["counts"]) == 129, len(lions["counts"])
+    assert len(cpu["counts"]) == 129, len(cpu["counts"])
     # Lions keep no cooldown; Giants use the 3-snap offensive family cooldown.
     assert all(not (cd or {}).get("active") for cd in lions["cooldowns"])
     assert all(not (cd or {}).get("active") for cd in cpu["cooldowns"])
