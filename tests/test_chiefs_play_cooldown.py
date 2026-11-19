@@ -15,7 +15,7 @@ from tests.test_civil_scheme_only import (
     _verify_all,
     civil_env,  # noqa: F401 — pytest fixture
 )
-from tests.test_titans_play_cooldown import MESH_IDS, MESH_POST, _giants, _lions, _online, _titans
+from tests.test_titans_play_cooldown import MESH_IDS, MESH_POST, _bucs, _giants, _lions, _online, _titans
 
 CAT_D = rc.load()
 CAT_STEEL = rc.load_lions_franchise()
@@ -59,6 +59,7 @@ def test_cooldown_spec_windows_and_sides(tmp_path):
     _online(db, "o1")
     _lions(db, "l1")
     _giants(db, "g1")
+    _bucs(db, "b1")
 
     t_off = pcd.cooldown_spec(db, "t1", side="offense")
     t_def = pcd.cooldown_spec(db, "t1", side="defense")
@@ -78,6 +79,13 @@ def test_cooldown_spec_windows_and_sides(tmp_path):
 
     assert pcd.cooldown_spec(db, "l1", side="offense") is None
     assert pcd.cooldown_spec(db, "l1", side="defense") is None
+    assert pcd.is_bucs_session(db, "b1")
+    assert not pcd.is_bucs_session(db, "g1")
+    assert not pcd.is_giants_session(db, "b1")
+    assert not pcd.is_online_session(db, "b1")
+    assert not pcd.is_titans_session(db, "b1")
+    assert pcd.cooldown_spec(db, "b1", side="offense") is None
+    assert pcd.cooldown_spec(db, "b1", side="defense") is None
     assert pcd.cooldown_spec(db, "missing", side="offense") is None
 
     assert pcd.is_online_session(db, "o1")

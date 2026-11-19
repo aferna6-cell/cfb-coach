@@ -276,9 +276,9 @@ def test_12_decision_latency_under_150ms():
 
 # 13 ------------------------------------------------------------- offense unchanged, modes independent
 # The 26-play catalog JSON stays pinned so trained artifacts still load. catalog.py / coordinator.py may gain
-# owner overlays (t358u names, t398u/t414u/t445u book slot) without changing that JSON hash.
+# owner overlays (t358u names, t398u/t414u/t445u book slot, t473u/t474u Bucs shared-book routing) without changing that JSON hash.
 OFFENSE_PINS = {
-    "cfb_coach/madden/scheme/coordinator.py": "cf8232ab5ce452eab6a07d312f3dc1024063c492563106f6b63b75c6d49b737d",
+    "cfb_coach/madden/scheme/coordinator.py": "98b6c9098354ee9c9e8cd6dff28ccba0b0fd99e58ba5fdf7e9f238e480e0482b",
     "cfb_coach/madden/scheme/legality.py": "e6c959dd4912a7f036c9c831ac31e1c6193c9c587e1fc10ac1167731d2393d36",
     "cfb_coach/madden/scheme/mode.py": "ef99c16e697b1fe25ab5f1709cf3d7ee307762856f370ffab2b48deb844fb031",
     "cfb_coach/madden/scheme/model.py": "af793fd4dfbe03c234ccf11cd0d6afeec8a555507ea041604222e637aab778a7",

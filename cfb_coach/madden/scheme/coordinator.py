@@ -424,10 +424,12 @@ def load_scorer(art_dir: str | Path, cat: sc.SchemeCatalog | None = None) -> Sco
 
 
 def catalog_for_call(db: Any, sit: Any) -> sc.SchemeCatalog:
-    """Chiefs online and Titans franchise use the shared current book; Lions and CPU use the Lions/CPU book."""
+    """Chiefs online, Titans, and Bucs use the shared current book; Lions, CPU, and Giants use the Lions/CPU book."""
     extras = sit.extras if isinstance(getattr(sit, "extras", None), dict) else {}
     session_id = extras.get("session_id")
-    if pcd.is_titans_session(db, session_id, extras) or pcd.is_online_session(db, session_id, extras):
+    if (pcd.is_titans_session(db, session_id, extras)
+            or pcd.is_online_session(db, session_id, extras)
+            or pcd.is_bucs_session(db, session_id, extras)):
         return sc.load_cached()
     return sc.load_lions_cpu_cached()
 

@@ -1,5 +1,7 @@
 """Play-family cooldown for Titans, Chiefs, and Giants sessions (owner t390u / t403u / t456u).
 
+Bucs sessions have no play-family cooldown (owner t474u).
+
 In ``--franchise titans`` sessions, once a play family is called it cannot be
 recommended again for the next ``TITANS_COOLDOWN_SNAPS`` (5) *offensive* snaps
 of that session. Titans defense is not cooled down.
@@ -15,7 +17,7 @@ cooled down.
 The key is the catalog *base play* family, not the variant: calling any Mesh
 variant blocks every Mesh variant (including Redzone Mesh); on defense, a
 base play and its Zone It (or other package) siblings share one family.
-Lions sessions are untouched.
+Lions and Bucs sessions are untouched (no play-family cooldown).
 
 If every currently legal family is inside the window, fall back to the
 least-recently-used legal family rather than returning no call.
@@ -26,9 +28,11 @@ import re
 from typing import Any, Callable, Mapping, Sequence
 
 from cfb_coach.madden.franchise import (
+    DEFAULT_BUCS_TEAM,
     DEFAULT_GIANTS_TEAM,
     DEFAULT_ONLINE_TEAM,
     DEFAULT_TITANS_TEAM,
+    BUCS,
     GIANTS,
     ONLINE,
     TITANS,
@@ -121,13 +125,15 @@ def _franchise_from_fields(league: Any, dynasty: Any, user: Any) -> str | None:
         return TITANS
     if league_s == GIANTS or dynasty_s == GIANTS or user_s == DEFAULT_GIANTS_TEAM:
         return GIANTS
+    if league_s == BUCS or dynasty_s == BUCS or user_s == DEFAULT_BUCS_TEAM:
+        return BUCS
     if league_s == ONLINE or dynasty_s == ONLINE or user_s == DEFAULT_ONLINE_TEAM:
         return ONLINE
     return None
 
 
 def session_franchise(db: Any, session_id: str | None, extras: Mapping[str, Any] | None = None) -> str | None:
-    """``titans`` / ``giants`` / ``online`` / None. A real session row always wins over extras."""
+    """``titans`` / ``giants`` / ``bucs`` / ``online`` / None. A real session row always wins over extras."""
     extras = extras or {}
     if session_id and db is not None:
         row = _session_row(db, session_id)
@@ -155,6 +161,11 @@ def is_giants_session(db: Any, session_id: str | None, extras: Mapping[str, Any]
     return session_franchise(db, session_id, extras) == GIANTS
 
 
+def is_bucs_session(db: Any, session_id: str | None, extras: Mapping[str, Any] | None = None) -> bool:
+    """True only for a Bucs franchise session. Never inferred from env alone."""
+    return session_franchise(db, session_id, extras) == BUCS
+
+
 def cooldown_spec(
     db: Any,
     session_id: str | None,
@@ -166,7 +177,7 @@ def cooldown_spec(
 
     Titans: offense only, window 5. Giants: offense only, window 3.
     Chiefs online: offense and defense, window 3.
-    Lions (and any other profile): no cooldown.
+    Lions, Bucs, and any other profile: no cooldown.
     """
     key = session_franchise(db, session_id, extras)
     side_name = "defense" if str(side or "").lower().startswith("d") else "offense"
