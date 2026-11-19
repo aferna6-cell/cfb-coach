@@ -1,0 +1,248 @@
+{
+  "schema_version": "1.0",
+  "catalog_id": "lions_franchise_ravens_plus_nickel_single_mug_v1",
+  "game": "Madden NFL 27",
+  "owner_instruction": {
+    "date": "2026-11-17",
+    "source": "t451u",
+    "by": "Aidan (owner)",
+    "statement": "No lets use Steelers instead of ravens so we can use single mug in addition to 2-4 wide and dime 2-3",
+    "effect": "Every league (Lions franchise, Chiefs online, Titans franchise, and CPU) uses the Pittsburgh Steelers defensive playbook context, with Nickel Single Mug (the 7 PDF stock setups: six Cover 4 Quarters plus Tampa 2 Shade Coverage Underneath) alongside Nickel 2-4 Wide and Dime 2-3 Odd. Cooldowns stay Chiefs 3 on offense and defense, Titans 5 on offense, none for Lions. NSM macros and user assignments stay UNVERIFIED. The 7 stock calls are unchanged from t449u."
+  },
+  "stock_context_playbook": "Pittsburgh Steelers",
+  "stock_context_source": "cfb_coach/data/madden27/playbooks_full.json (Huddle.gg Madden 27, accessed 2026-11-05)",
+  "package": "nickel_single_mug",
+  "formation": "Nickel Single Mug",
+  "label": "Nickel Single Mug package (all leagues; Steelers stock-book context)",
+  "confirmation_status": "setups_unconfirmed_in_game",
+  "macro_catalog": {
+    "LEFT_TEX_2_MAN": {
+      "display_name": "Left Tex 2 Man",
+      "source": "PDF p06_bot / p07_bot / p08_top titled Macro"
+    },
+    "TEXAS_4_MAN": {
+      "display_name": "Texas 4 Man",
+      "source": "PDF p07_top / p07_bot / p08_top titled Macro"
+    },
+    "FOUR_MAN_RUSH": {
+      "display_name": "4 Man Rush Macro",
+      "source": "PDF p09_top titled Macro"
+    },
+    "SPREAD_DLINE": {
+      "display_name": "Spread D-Line",
+      "source": "PDF setup step marked MACRO"
+    },
+    "SHOW_BLITZ_LBS": {
+      "display_name": "Show Blitz LBs",
+      "source": "PDF setup step marked MACRO"
+    },
+    "CONTAIN_RIGHT_DE": {
+      "display_name": "Contain Right of Screen DE",
+      "source": "PDF p06_bot setup step marked MACRO"
+    },
+    "CONTAIN": {
+      "display_name": "Contain",
+      "source": "PDF p09_top setup step marked MACRO"
+    }
+  },
+  "stock_calls": [
+    {
+      "call_id": "nsm_quarters_left_tex",
+      "formation": "Nickel Single Mug",
+      "base_play": "Cover 4 Quarters",
+      "package": "nickel_single_mug",
+      "required_macro_id": "LEFT_TEX_2_MAN",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "pdf_page": "p06_bot",
+      "titled_macro": "Left Tex 2 Man",
+      "setup_steps": [
+        "Left TEX 2 Man (MACRO)",
+        "Spread D-Line (MACRO)",
+        "Show Blitz LBs (MACRO)",
+        "Contain Right of Screen DE (MACRO)"
+      ],
+      "note": "t449u PDF p06_bot. Stock play Cover 4 Quarters in Steelers Nickel Single Mug. Macros unconfirmed in game."
+    },
+    {
+      "call_id": "nsm_quarters_texas_4",
+      "formation": "Nickel Single Mug",
+      "base_play": "Cover 4 Quarters",
+      "package": "nickel_single_mug",
+      "required_macro_id": "TEXAS_4_MAN",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "pdf_page": "p07_top",
+      "titled_macro": "Texas 4 Man",
+      "setup_steps": [
+        "Texas 4 Man (MACRO)",
+        "Spread D-Line (MACRO)",
+        "Show Blitz LBs (MACRO)"
+      ],
+      "note": "t449u PDF p07_top. Stock play Cover 4 Quarters in Steelers Nickel Single Mug. Macros unconfirmed in game."
+    },
+    {
+      "call_id": "nsm_quarters_manup_short",
+      "formation": "Nickel Single Mug",
+      "base_play": "Cover 4 Quarters",
+      "package": "nickel_single_mug",
+      "required_macro_id": null,
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "Weak Side Safety (Side With Less Receivers)",
+      "pdf_page": "p07_bot",
+      "titled_macros": [
+        "Texas 4 Man",
+        "Left Tex 2 Man"
+      ],
+      "setup_steps": [
+        "Select Macro: Left Tex 2 Man",
+        "Or Select Macro: Texas 4 Man",
+        "Man Up TE With 3 Rec",
+        "User Weak Side Safety (Side With Less Receivers)"
+      ],
+      "note": "t449u PDF p07_bot. One setup with an OR choice of macros, plus man-up and user. Shown verbatim; user is UNVERIFIED."
+    },
+    {
+      "call_id": "nsm_quarters_manup_long",
+      "formation": "Nickel Single Mug",
+      "base_play": "Cover 4 Quarters",
+      "package": "nickel_single_mug",
+      "required_macro_id": null,
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "Weak Side Safety (Side With Less Receivers)",
+      "pdf_page": "p08_top",
+      "titled_macros": [
+        "Left Tex 2 Man",
+        "Texas 4 Man"
+      ],
+      "setup_steps": [
+        "Select Macro: Left Tex 2 Man",
+        "Or Select Macro: Texas 4 Man",
+        "Man Up TE With 3 Rec",
+        "IF 3x1 Man Up Iso WR",
+        "IF 2x2 Man Up Wide Side WR",
+        "User Weak Side Safety (Side With Less Receivers)"
+      ],
+      "note": "t449u PDF p08_top. Longer man-up package with the same OR macros. Shown verbatim; user is UNVERIFIED."
+    },
+    {
+      "call_id": "nsm_quarters_4man_rush",
+      "formation": "Nickel Single Mug",
+      "base_play": "Cover 4 Quarters",
+      "package": "nickel_single_mug",
+      "required_macro_id": "FOUR_MAN_RUSH",
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "pdf_page": "p09_top",
+      "titled_macro": "4 Man Rush Macro",
+      "setup_steps": [
+        "4 Man Rush (MACRO)",
+        "Spread D-Line (MACRO)",
+        "Show Blitz LBs (MACRO)",
+        "Contain (MACRO)"
+      ],
+      "note": "t449u PDF p09_top. Stock play Cover 4 Quarters in Steelers Nickel Single Mug. Macros unconfirmed in game."
+    },
+    {
+      "call_id": "nsm_quarters_run_support",
+      "formation": "Nickel Single Mug",
+      "base_play": "Cover 4 Quarters",
+      "package": "nickel_single_mug",
+      "required_macro_id": null,
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "suggested_user": "Safety",
+      "pdf_page": "p10_bot",
+      "setup_steps": [
+        "Spread D-Line",
+        "User Safety",
+        "If You See a Running Play, Flow Towards Ball"
+      ],
+      "note": "t449u PDF p10_bot. Cover 4 Quarters run-support setup. User is UNVERIFIED."
+    },
+    {
+      "call_id": "nsm_tampa2_shade",
+      "formation": "Nickel Single Mug",
+      "base_play": "Tampa 2",
+      "package": "nickel_single_mug",
+      "required_macro_id": null,
+      "optional_macros": [],
+      "manual_setup_changes_allowed": false,
+      "live_eligible": true,
+      "user_assignment_source": "guide_unverified",
+      "pdf_page": "p11_top",
+      "setup_steps": [
+        "Shade Coverage Underneath"
+      ],
+      "note": "t449u PDF p11_top. Stock play Tampa 2 in Steelers Nickel Single Mug. Shade is a coverage adjustment shown verbatim; not owner-confirmed in game."
+    }
+  ],
+  "omitted_pdf_pages": [
+    {
+      "pages": "p08_bot",
+      "title": "Nickel Single Mug - COVER 9",
+      "setup_steps": [
+        "Select Macro: Left Tex 2 Man",
+        "Or Select Macro: Texas 4 Man",
+        "User Inside Quarter",
+        "\"Poach\" - As shown in video"
+      ],
+      "reason": "No Madden 27 stock defensive playbook (including Steelers, the only book that also has Nickel 2-4 Wide and Dime 2-3 Odd) lists Cover 9 or Cover 9 Show 2 in Nickel Single Mug. Not added; it would not be a legal stock call."
+    },
+    {
+      "pages": "p09_bot",
+      "title": "Nickel Single Mug (Macro: Base Coverage 4, Left Tex 2 Man, Texas 4 Man)",
+      "setup_steps": [
+        "Select Macro: Left Tex 2 Man",
+        "Or Select Macro: Texas 4 Man",
+        "Put CB1 on \"Cloud Flat\" (MACRO)",
+        "Put CB2 on \"Outside Third\" (MACRO)",
+        "Put SLCB on \"Vertical Hook\" (MACRO)",
+        "Put FS on \"Deep Half\" (MACRO)",
+        "Put SS on \"Inside Third\" (MACRO)",
+        "Put Sub LB 2 on \"Curl Flat\" (MACRO)",
+        "Put Sub LB 1 on \"Hook Curl\" (MACRO)"
+      ],
+      "reason": "The card has no stock play name, only Base Coverage 4 plus individual assignment macros. Not added (adding it would invent a base play)."
+    },
+    {
+      "pages": "p10_top",
+      "title": "Nickel Single Mug (Macro: Base Coverage 5, Left Tex 2 Man, Texas 4 Man)",
+      "setup_steps": [
+        "Select Macro: Left Tex 2 Man",
+        "Or Select Macro: Texas 4 Man",
+        "Put CB1 on \"Outside Third\" (MACRO)",
+        "Put CB2 on \"Cloud Flat\" (MACRO)",
+        "Put SLCB1 on \"Hard Flat\" (MACRO)",
+        "Put FS on \"Inside Third\" (MACRO)",
+        "Put SS on \"Deep Half\" (MACRO)",
+        "Put Sub LB 2 on \"Hook Curl\" (MACRO)",
+        "Put Sub LB 1 on \"Hook Curl\" (MACRO)"
+      ],
+      "reason": "The card has no stock play name, only Base Coverage 5 plus individual assignment macros. Not added (adding it would invent a base play)."
+    }
+  ],
+  "prior_instructions": [
+    {
+      "date": "2026-11-17",
+      "source": "t449u",
+      "by": "Aidan (owner)",
+      "statement": "For the lions franchise lets add Nickel Single mug as a defensive package or if we can find a playbook that has nickel single mug and our current defenseive formations that would be best",
+      "effect": "Lions human franchise games only. The in-repo Huddle.gg Madden 27 defensive inventory has exactly one stock book that contains Nickel Single Mug AND the current Ravens civil formations (Nickel 2-4 Wide and Dime 2-3 Odd): Pittsburgh Steelers. Every current 12-call base play also exists in that Steelers book. This package adds the PDF p06_bot-p11_top Nickel Single Mug setups whose base plays exist in Steelers Nickel Single Mug (Cover 4 Quarters variants and Tampa 2). Cover 9 (p08_bot) and the Base Coverage 4/5 pages (p09_bot, p10_top) are not added because they have no legal stock play in that formation. CPU, Chiefs, and Titans keep the existing Ravens two-formation catalog unchanged. Macros and user assignments from the PDF are shown as setup steps and are not owner-confirmed in game (UNVERIFIED)."
+    }
+  ]
+}

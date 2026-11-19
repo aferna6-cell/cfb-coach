@@ -83,7 +83,7 @@ def _madden_handler(args: argparse.Namespace, name: str):
 
     madden = is_madden(getattr(args, "game", None))
     if madden and getattr(args, "dynasty", None):
-        raise SystemExit("--dynasty is CFB-only; Madden 27 uses --franchise primary|lab")
+        raise SystemExit("--dynasty is CFB-only; Madden 27 uses --franchise primary|lab|online|titans|giants|bucs")
     if not madden and getattr(args, "franchise", None):
         raise SystemExit("--franchise is Madden-only; add --game madden27")
     if not madden and (getattr(args, "o_book", None) or getattr(args, "d_book", None)):
@@ -209,6 +209,16 @@ def cmd_config(args: argparse.Namespace) -> int:
     from cfb_coach.madden import cli as madden_cli
 
     return madden_cli.cmd_config(args)
+
+
+def cmd_league(args: argparse.Namespace) -> int:
+    from cfb_coach.games import is_madden
+
+    if not is_madden(args.game):
+        raise SystemExit("league applies to --game madden27 (online league)")
+    from cfb_coach.madden import cli as madden_cli
+
+    return madden_cli.cmd_league(args)
 
 
 def cmd_macro_settings(args: argparse.Namespace) -> int:
@@ -423,10 +433,56 @@ def cmd_call(args: argparse.Namespace) -> int:
     return 0
 
 
+def _apply_offense_mode_flags(args: argparse.Namespace) -> None:
+    """Per-process offense mode override (civil_scheme_only vs the existing unrestricted coordinator)."""
+    civil = bool(getattr(args, "civil_scheme_only", False))
+    unrestricted = bool(getattr(args, "unrestricted_offense", False))
+    if civil and unrestricted:
+        raise SystemExit("choose one of --civil-scheme-only / --unrestricted-offense")
+    from cfb_coach.madden.scheme.mode import CIVIL, ENV_MODE, UNRESTRICTED
+
+    if civil:
+        os.environ[ENV_MODE] = CIVIL
+        print("OFFENSE MODE: civil_scheme_only (26 pass variants + 12 designed runs + red-zone plays only; NO_LEGAL_SCHEME_PLAY when none is legal)")
+    elif unrestricted:
+        os.environ[ENV_MODE] = UNRESTRICTED
+        print("OFFENSE MODE: unrestricted (existing coordinator)")
+
+
+def _apply_defense_mode_flags(args: argparse.Namespace) -> None:
+    """Per-process defense mode override (ravens_defense_ml vs the existing defensive caller)."""
+    ravens = bool(getattr(args, "ravens_defense", False))
+    previous = bool(getattr(args, "previous_defense", False))
+    if ravens and previous:
+        raise SystemExit("choose one of --ravens-defense / --previous-defense")
+    from cfb_coach.madden.ravens_defense.mode import ENV_MODE, PREVIOUS, RAVENS
+
+    if ravens:
+        os.environ[ENV_MODE] = RAVENS
+        print("DEFENSE MODE: ravens_defense_ml (Nickel 2-4 Wide / Dime 2-3 Odd candidates only; "
+              "NO_LEGAL_RAVENS_CALL when none is legal; card = PLAY / USER / MACRO)")
+        try:  # warm the artifact + catalog so the first snap stays under the 150 ms target
+            from cfb_coach.madden.ravens_defense import catalog as rc, model as rm
+            from cfb_coach.madden.ravens_defense.mode import artifact_dir
+            rc.load()
+            art = artifact_dir(None)
+            if art and (art / "model.json").is_file():
+                rm.load(art)
+        except Exception as exc:  # noqa: BLE001 — the live call fails closed on its own
+            print(f"  warm-up: {type(exc).__name__}: {exc}")
+    elif previous:
+        os.environ[ENV_MODE] = PREVIOUS
+        print("DEFENSE MODE: previous (existing defensive caller)")
+
+
 def cmd_play(args: argparse.Namespace) -> int:
+    _apply_offense_mode_flags(args)
+    _apply_defense_mode_flags(args)
     handler = _madden_handler(args, "cmd_play")
     if handler:
         return handler(args)
+    if not getattr(args, "opponent", None):
+        raise SystemExit("play: --opponent / -o is required")
     oid = _require_opponent(args.opponent)
     db = _call_db(getattr(args, "db", None))
     _ensure_rules(db)
@@ -789,11 +845,23 @@ def _add_game_args(p: argparse.ArgumentParser, *, franchise: bool = True) -> Non
         help="cfb27 (default) | madden27 (alias madden) — Madden 27 Franchise typed coach",
     )
     if franchise:
+        from cfb_coach.madden.franchise import PROFILE_CHOICES
+
         p.add_argument(
             "--franchise",
-            choices=("primary", "lab"),
+            choices=PROFILE_CHOICES,
             default=None,
-            help="Madden only: primary (serious Franchise, team TBD) | lab (experimental; promotes to primary)",
+            help="Madden only: primary (serious Franchise, Lions) | lab (experimental; promotes to primary) | "
+                 "online (Chiefs online league; needs --opponent-team; no gamertag; "
+                 "civil offense + Ravens civil defense by default) | "
+                 "titans (Tennessee Titans franchise; same logging and civil defaults as online, "
+                 "kept separate from the Chiefs league and Lions franchise) | "
+                 "giants (New York Giants franchise; same logging and civil defaults as titans, "
+                 "Lions/CPU custom book, 3-snap offensive play cooldown; kept separate from "
+                 "Lions, Chiefs, and Titans) | "
+                 "bucs (Tampa Bay Buccaneers online franchise; same logging and civil defaults, "
+                 "Lions/CPU custom book, no play cooldown; kept separate from "
+                 "Lions, Chiefs, Titans, and Giants)",
         )
 
 
@@ -897,7 +965,29 @@ def build_parser() -> argparse.ArgumentParser:
         "play",
         help="Live play: HTML input window (default) or --terminal sit> loop (CPU = offense-only)",
     )
-    p_play.add_argument("--opponent", "-o", required=True)
+    p_play.add_argument(
+        "--opponent", "-o", default=None,
+        help="Opponent id (required except for --franchise online, titans, giants, and bucs, where the game is keyed by "
+             "--opponent-team alone; a name given there is a display label only).",
+    )
+    p_play.add_argument(
+        "--opponent-team",
+        dest="opponent_team",
+        default=None,
+        metavar="NFL_TEAM",
+        help='Madden --franchise online, titans, giants, and bucs only (required there): the NFL team the '
+             'opponent uses THIS game, e.g. "Buffalo Bills" or BUF. Your own team (Chiefs / Titans / '
+             "Giants / Bucs) is refused. No gamertag needed: the game is logged under this team. These sessions "
+             "default to civil offense + Patriots 6-1 civil defense.",
+    )
+    p_play.add_argument(
+        "--user-team",
+        dest="user_team",
+        default=None,
+        metavar="NFL_TEAM",
+        help='Optional for --franchise online | titans | giants | bucs: confirm the user team for this run '
+             '(Chiefs, Titans, Giants, or Bucs). Must match the franchise. Per-run only; does not change config.',
+    )
     p_play.add_argument(
         "--once",
         help="Non-interactive: one situation string, print one call, exit",
@@ -908,6 +998,36 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Madden only: allow EXPERIMENTAL offensive ML calls during this human-opponent play session. "
              "Off by default; requires `ml experimental`; heuristic rollback: `ml heuristic`.",
+    )
+    p_play.add_argument(
+        "--civil-scheme-only",
+        action="store_true",
+        help="Madden only: this session's offense calls come ONLY from the 26 catalog scheme variants, the 12 "
+             "designed runs and the red-zone plays "
+             "(owner-verified, in the applied book), or NO_LEGAL_SCHEME_PLAY. Needs `ml civil-scheme train`. "
+             "Off by default. Rollback: omit the flag (and `ml civil-scheme disable` if enabled).",
+    )
+    p_play.add_argument(
+        "--unrestricted-offense",
+        action="store_true",
+        help="Madden only: force the existing unrestricted offense coordinator for this session even when "
+             "civil_scheme_only is enabled in the DB (also opts a --franchise online, titans, giants, or bucs session out of the "
+             "civil offense).",
+    )
+    p_play.add_argument(
+        "--ravens-defense",
+        action="store_true",
+        help="Madden only: this session's defensive calls come ONLY from the Ravens Nickel 2-4 Wide / Dime 2-3 "
+             "Odd ML coordinator (validated against the installed book), or NO_LEGAL_RAVENS_CALL. Needs "
+             "`ml ravens-defense train`. Off by default except --franchise online, titans, giants, and bucs (on by default there, "
+             "scheme dataset = legal book, untrained prior-only). Offense mode is independent. CPU games "
+             "also need --cpu-defense.",
+    )
+    p_play.add_argument(
+        "--previous-defense",
+        action="store_true",
+        help="Madden only: force the existing defensive caller for this session even when ravens_defense_ml "
+             "is enabled in the DB (also opts a --franchise online, titans, giants, or bucs session out of the civil defense).",
     )
     p_play.add_argument(
         "--heuristic-offense",
@@ -1162,6 +1282,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_cfg.set_defaults(game="madden27")
     p_cfg.add_argument("--primary-team", default=None, help='Primary Franchise NFL team, e.g. "Buccaneers" or TB')
     p_cfg.add_argument("--lab-team", default=None, help="Optional lab Franchise team")
+    p_cfg.add_argument("--online-team", dest="online_team", default=None,
+                       help="Online league user team (default Kansas City Chiefs); never changes --primary-team")
     p_cfg.add_argument("--clear-primary", action="store_true", help="Reset primary team to TBD")
     p_cfg.add_argument("--clear-lab", action="store_true", help="Reset lab team to TBD")
     p_cfg.add_argument("--o-book", dest="o_book", default=None, metavar="auto|custom|stock:NAME",
@@ -1191,6 +1313,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_cfg.add_argument("--vod-models", dest="vod_models", default=None, metavar="DIR",
                        help="Directory of LAST_TRAINED.json and vX.Y/ (else CFB_COACH_VOD_MODELS)")
     p_cfg.set_defaults(func=cmd_config)
+
+    p_league = sub.add_parser(
+        "league",
+        help="Madden team-keyed league: `league teams` = data per opponent NFL team (31, never yours); "
+             "`league scout --opponent-team BUF` = stock-book + logged scout. "
+             "Use --franchise titans, --franchise giants, or --franchise bucs for those franchise inventories.",
+    )
+    _add_game_args(p_league, franchise=False)
+    p_league.set_defaults(game="madden27")
+    p_league.add_argument("league_action", nargs="?", default="teams", choices=("teams", "scout"))
+    p_league.add_argument("--franchise", choices=("online", "titans", "giants", "bucs"), default="online",
+                         help="Which team-keyed league to show (default online / Chiefs)")
+    p_league.add_argument("--user-team", dest="user_team", default=None, metavar="NFL_TEAM",
+                         help="Optional confirm of the user team; must match --franchise")
+    p_league.add_argument("--opponent-team", dest="opponent_team", default=None, metavar="NFL_TEAM")
+    p_league.add_argument("--db", default=None, help="Madden DB path (default madden27.db)")
+    p_league.set_defaults(func=cmd_league)
 
     p_ms = sub.add_parser(
         "macro-settings",

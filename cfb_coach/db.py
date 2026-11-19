@@ -576,6 +576,7 @@ class CoachDB:
             ),
         )
         row_id = int(cur.lastrowid)
+        self._stamp_snap_league(row_id, session_id)
         if coverage_typed is not None:
             self.update_snap(row_id, coverage_typed=coverage_typed)
         if concept_typed is not None:
@@ -1094,6 +1095,52 @@ class CoachDB:
                     self.conn.commit()
                 except sqlite3.Error:
                     pass
+        self._migrate_league_columns()
+
+    # Online-league tags. Additive; NULL on every older (Franchise / CPU / CFB) row.
+    LEAGUE_SESSION_COLUMNS = {
+        "league": "TEXT",
+        "user_team": "TEXT",
+        "opponent_team": "TEXT",
+        "opponent_type": "TEXT",
+        "scout_json": "TEXT",
+    }
+    LEAGUE_SNAP_COLUMNS = {"league": "TEXT", "user_team": "TEXT", "opponent_team": "TEXT"}
+
+    def _migrate_league_columns(self) -> None:
+        for table, cols in (("game_sessions", self.LEAGUE_SESSION_COLUMNS), ("snaps", self.LEAGUE_SNAP_COLUMNS)):
+            try:
+                self._add_columns(table, cols)
+            except sqlite3.Error:
+                pass
+        try:
+            self.conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_league_team "
+                "ON game_sessions(league, opponent_team)"
+            )
+            self.conn.commit()
+        except sqlite3.Error:
+            pass
+
+    def _stamp_snap_league(self, row_id: int, session_id: str | None) -> None:
+        """Copy the session's league tags onto a snap (no-op for untagged sessions)."""
+        if not session_id:
+            return
+        try:
+            row = self.conn.execute(
+                "SELECT league, user_team, opponent_team FROM game_sessions WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+        except sqlite3.Error:
+            return
+        if not row or not row[0]:
+            return
+        self._migrate_league_columns()
+        self.conn.execute(
+            "UPDATE snaps SET league = ?, user_team = ?, opponent_team = ? WHERE id = ?",
+            (row[0], row[1], row[2], row_id),
+        )
+        self.conn.commit()
 
     def _migrate_ml_tables(self) -> None:
         """Additive Madden ML decision/outcome tables. Safe to run repeatedly."""
@@ -2022,6 +2069,14 @@ class CoachDB:
                 int(d.get("play_count") or 0),
             ),
         )
+        tags = {k: d.get(k) for k in self.LEAGUE_SESSION_COLUMNS if d.get(k) is not None}
+        if tags:
+            self._migrate_league_columns()
+            sets = ", ".join(f"{k} = ?" for k in tags)
+            self.conn.execute(
+                f"UPDATE game_sessions SET {sets} WHERE session_id = ?",
+                (*tags.values(), d["session_id"]),
+            )
         self.conn.commit()
         return str(d["session_id"])
 

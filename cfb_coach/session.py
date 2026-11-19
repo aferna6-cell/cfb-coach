@@ -50,6 +50,12 @@ class GameSession:
     ended_ts: str | None = None
     notes: str = ""
     play_count: int = 0
+    # Madden online league tags (NULL for Franchise / CFB sessions).
+    league: str | None = None
+    user_team: str | None = None
+    opponent_team: str | None = None
+    opponent_type: str | None = None
+    scout_json: str | None = None
 
     @property
     def game_id(self) -> str:
@@ -65,6 +71,11 @@ class GameSession:
             "ended_ts": self.ended_ts,
             "notes": self.notes,
             "play_count": self.play_count,
+            "league": self.league,
+            "user_team": self.user_team,
+            "opponent_team": self.opponent_team,
+            "opponent_type": self.opponent_type,
+            "scout_json": self.scout_json,
         }
 
 
@@ -74,14 +85,25 @@ def start_session(
     dynasty: str = "alabama",
     db: Any | None = None,
     notes: str = "",
+    league: dict[str, Any] | None = None,
 ) -> GameSession:
-    """Create a session; optionally persist via CoachDB.start_game_session."""
+    """Create a session; optionally persist via CoachDB.start_game_session.
+
+    ``league`` (Madden online league) stamps league / user_team / opponent_team /
+    opponent_type / scout_json on the session row; snaps inherit them.
+    """
     sid = uuid.uuid4().hex[:16]
+    tags = league or {}
     sess = GameSession(
         session_id=sid,
         opponent_id=(opponent_id or "unknown").lower(),
         dynasty=dynasty or "alabama",
         notes=notes,
+        league=tags.get("league"),
+        user_team=tags.get("user_team"),
+        opponent_team=tags.get("opponent_team"),
+        opponent_type=tags.get("opponent_type"),
+        scout_json=tags.get("scout_json"),
     )
     if db is not None:
         try:
