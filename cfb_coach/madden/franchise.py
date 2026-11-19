@@ -17,7 +17,7 @@ giants  = New York Giants franchise, also never sticky. Same team-keyed logging
           separate from Lions, Chiefs, and Titans.
 bucs    = Tampa Bay Buccaneers online franchise, also never sticky. Same
           team-keyed logging and civil defaults as titans, but offense calls
-          from the shared Buccaneers-stock civil book (``sc.load()``, 49
+          from the Lions/CPU custom book (``civil_lions_cpu_book.json``, 129
           variants) and no play-family cooldown. Kept separate from Lions,
           Chiefs, Titans, and Giants.
 

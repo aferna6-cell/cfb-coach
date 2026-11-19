@@ -176,14 +176,18 @@ def test_06_eighteen_users_unverified_unless_owner_verified_in_nickel_2_4_wide()
 
 
 # 7 -------------------------------------------------------------- live card
-def test_07_live_card_is_play_user_macro_only():
+def test_07_live_card_is_play_user_macro_and_adjustments():
     d = _decide(_model(), same=[_snap("live", i, "crossers") for i in range(8)], down=3, distance=8)
     lines = co.card_lines(d)
-    assert lines[0].startswith("PLAY: ") and lines[1] in ("USER: UNVERIFIED",) and len(lines) <= 3
-    if len(lines) == 3:
-        assert lines[2].startswith("MACRO: ")
+    assert lines[0].startswith("PLAY: ") and lines[1] in ("USER: UNVERIFIED",)
+    rest = lines[2:]
+    if rest and rest[0].startswith("MACRO: "):
+        rest = rest[1:]
+    assert rest and rest[0] == "ADJUSTMENTS:"
+    assert any(ln.startswith("  1. ") for ln in rest)
+    assert d.get("adjustments_shown") and d.get("adjustment_lines")
     for ln in lines:
-        assert not any(w in ln.lower() for w in ("prob", "loss", "belief", "%", "safety"))
+        assert not any(w in ln.lower() for w in ("defensive_loss", "belief_method", "p_data", "prob="))
 
 
 # 8 -------------------------------------------------------------- per-snap beliefs, no leakage
@@ -276,9 +280,9 @@ def test_12_decision_latency_under_150ms():
 
 # 13 ------------------------------------------------------------- offense unchanged, modes independent
 # The 26-play catalog JSON stays pinned so trained artifacts still load. catalog.py / coordinator.py may gain
-# owner overlays (t358u names, t398u/t414u/t445u book slot, t473u/t474u Bucs shared-book routing) without changing that JSON hash.
+# owner overlays (t358u names, t398u/t414u/t445u book slot, t473u/t474u Bucs routing, t477u Bucs custom-book routing) without changing that JSON hash.
 OFFENSE_PINS = {
-    "cfb_coach/madden/scheme/coordinator.py": "98b6c9098354ee9c9e8cd6dff28ccba0b0fd99e58ba5fdf7e9f238e480e0482b",
+    "cfb_coach/madden/scheme/coordinator.py": "ba0cfcd52af8669b9e6fbddb8ed182b4936e11b40be843def7920143302c8297",
     "cfb_coach/madden/scheme/legality.py": "e6c959dd4912a7f036c9c831ac31e1c6193c9c587e1fc10ac1167731d2393d36",
     "cfb_coach/madden/scheme/mode.py": "ef99c16e697b1fe25ab5f1709cf3d7ee307762856f370ffab2b48deb844fb031",
     "cfb_coach/madden/scheme/model.py": "af793fd4dfbe03c234ccf11cd0d6afeec8a555507ea041604222e637aab778a7",

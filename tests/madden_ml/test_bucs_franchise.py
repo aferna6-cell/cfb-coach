@@ -1,4 +1,4 @@
-"""Bucs franchise (t473u/t474u): team-keyed logging, shared Bucs civil book, isolated from other leagues."""
+"""Bucs franchise (t477u): team-keyed logging, Lions/CPU custom book, isolated from other leagues."""
 from __future__ import annotations
 
 import sqlite3

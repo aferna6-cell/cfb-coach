@@ -1,4 +1,4 @@
-"""t473u/t474u: Bucs franchise uses the shared Bucs civil book and has no play cooldown."""
+"""t477u: Bucs franchise uses the Lions/CPU custom book and has no play cooldown."""
 from __future__ import annotations
 
 import hashlib
@@ -39,12 +39,12 @@ def test_shared_catalog_and_additions_hash_are_unchanged():
     assert sc.contract_errors(CAT) == [] and sc.contract_errors(CAT_LIONS) == []
 
 
-def test_bucs_catalog_is_shared_book_and_has_no_cooldown(tmp_path):
+def test_bucs_catalog_is_custom_book_and_has_no_cooldown(tmp_path):
     db = _db(tmp_path, formations=_forms())
     _bucs(db, "b-route")
     sit = _sit(1, 10, 40, session="b-route")
-    assert catalog_for_call(db, sit).book_id == sc.SHARED_BOOK
-    assert len(catalog_for_call(db, sit).variants) == 49
+    assert catalog_for_call(db, sit).book_id == sc.LIONS_CPU_BOOK
+    assert len(catalog_for_call(db, sit).variants) == sc.EXPECTED_LIONS_CPU_VARIANTS == 129
     assert pcd.is_bucs_session(db, "b-route")
     assert not pcd.is_titans_session(db, "b-route")
     assert not pcd.is_online_session(db, "b-route")
@@ -75,7 +75,7 @@ def test_bucs_mesh_family_is_not_blocked_after_a_call(tmp_path, civil_env):
     _bucs(db, "bmesh")
     first = playcaller.make_call(_sit(1, 10, 40, session="bmesh"), "bucs_indianapolis_colts", db)
     assert first.scheme_variant["status"] == "CALL"
-    assert first.scheme_variant["catalog_book"] == sc.SHARED_BOOK
+    assert first.scheme_variant["catalog_book"] == sc.LIONS_CPU_BOOK
     _close_snap(db, "bmesh", "civil_bucs_mesh_2_provisional", 40)
 
     second = playcaller.make_call(_sit(1, 10, 35, session="bmesh"), "bucs_indianapolis_colts", db)
@@ -94,10 +94,10 @@ def test_bucs_600_snap_sim(tmp_path, civil_env, ravens_env):
     lions_only = set(CAT_LIONS.ids) - set(CAT.ids)
 
     assert bucs["statuses"].count("CALL") == SNAPS and lg.NO_LEGAL not in bucs["statuses"]
-    assert bucs["books"] == {sc.SHARED_BOOK}, bucs["books"]
-    assert set(bucs["counts"]) <= set(CAT.ids)
-    assert set(bucs["counts"]).isdisjoint(lions_only)
-    assert len(bucs["counts"]) == 49, len(bucs["counts"])
+    assert bucs["books"] == {sc.LIONS_CPU_BOOK}, bucs["books"]
+    assert set(bucs["counts"]) <= set(CAT_LIONS.ids)
+    assert set(bucs["counts"]) & lions_only, "expected Lions-only plays on the Bucs custom book"
+    assert len(bucs["counts"]) == 129, len(bucs["counts"])
     assert all(not (cd or {}).get("active") for cd in bucs["cooldowns"])
 
     summary = {
@@ -126,6 +126,8 @@ def test_bucs_600_snap_sim(tmp_path, civil_env, ravens_env):
         assert cid != "dime_dbfire2" and cid not in nsm_ids
         assert not (rd.get("play_cooldown") or {}).get("active")
         assert pcd.cooldown_spec(db, "bucs-sim", side="defense") is None
+        assert rd.get("adjustments_shown") and rd.get("adjustment_lines"), cid
+        assert any(ln == "ADJUSTMENTS:" or ln.startswith("ADJUSTMENTS:") for ln in (rd.get("card") or []))
         seen.add(cid)
         forms.add(call.formation)
     assert "NO_LEGAL_RAVENS_CALL" not in statuses and statuses.count("CALL") == SNAPS
@@ -134,7 +136,8 @@ def test_bucs_600_snap_sim(tmp_path, civil_env, ravens_env):
     assert forms <= set(rc.SIXTY_ONE_FORMATIONS), forms
     defense_summary = {
         "unique_calls": len(seen), "forms": sorted(forms), "no_legal": 0,
-        "nsm": 0, "even61": sum(1 for x in seen if x.startswith("even61_")),
+        "nsm": 0, "dime": 0, "adjustments_shown": SNAPS,
+        "even61": sum(1 for x in seen if x.startswith("even61_")),
     }
     print("DEFENSE_SIM_SUMMARY", defense_summary)
     summary["defense"] = defense_summary

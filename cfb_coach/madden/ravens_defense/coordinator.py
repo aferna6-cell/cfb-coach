@@ -1,10 +1,11 @@
 """Per-snap Ravens defensive call: legal filter -> pre-snap opponent belief -> score every complete
 candidate -> pick the lowest expected defensive loss -> re-validate -> USER -> 3-line card.
 
-The live card shows ONLY:
+The live card shows:
     PLAY: <Formation> — <Play>
     USER: <defender> | UNVERIFIED
     MACRO: <required macro, and Zone It only when selected>     (line omitted when none)
+    ADJUSTMENTS: <sourced pre-snap shells / technique / man-ups / blitz / guide checks>
 Full scores, beliefs, uncertainty and the decision trace stay on ``call.ravens_defense``.
 There is no fallback to another formation or caller: an empty legal set returns NO_LEGAL_RAVENS_CALL.
 """
@@ -87,7 +88,7 @@ def decide(model: Any, *, legal: Sequence[rc.Candidate], snap: SnapCtx, same_gam
                 "latency_ms": round((time.perf_counter() - t0) * 1000, 3)}
     user = us.resolve(cat, top, snap.shape, conf)
     best_without_zone_it = next((s for s in scored if not cat.by_id()[s["candidate_id"]].optional_macro), None)
-    return {
+    out = {
         "status": "CALL", "candidate": top.as_dict(), "candidate_raw": dict(top.raw),
         "macro_display": top.macro_display(cat),
         "user": user, "belief": {c: round(belief[k], 4) for k, c in enumerate(CLASSES)},
@@ -106,6 +107,8 @@ def decide(model: Any, *, legal: Sequence[rc.Candidate], snap: SnapCtx, same_gam
         "setup_notes": list(v.notes),
         "latency_ms": round((time.perf_counter() - t0) * 1000, 3),
     }
+    from cfb_coach.madden.ravens_defense import presnap as ps
+    return ps.attach(out, cat)
 
 
 def card_lines(decision: Mapping[str, Any]) -> list[str]:
@@ -134,6 +137,9 @@ def card_lines(decision: Mapping[str, Any]) -> list[str]:
             lines.append("NOTE: " + str(raw["card_note"]))
         if c.get("package") in {"nickel_single_mug", "even_61"}:
             lines.append("NOTE: macros and user assignments are not yet owner-confirmed in game (UNVERIFIED)")
+    from cfb_coach.madden.ravens_defense import presnap as ps
+    payload = decision.get("presnap") or ps.collect(decision)
+    lines.extend(ps.card_lines(payload))
     note = pcd.cooldown_explanation(decision.get("play_cooldown"))
     if note:
         lines.append(note)

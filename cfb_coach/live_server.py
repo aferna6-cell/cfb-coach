@@ -71,19 +71,33 @@ def _variation_from_call_text(text: str | None) -> str | None:
 
 
 def _scheme_variation(call: Any) -> dict[str, Any] | None:
-    """The civil_scheme_only variation shown next to the play name in the HTML page (owner t338u)."""
+    """The civil_scheme_only variation shown next to the play name in the HTML page (owner t338u).
+
+    For a Patriots 6-1 / Nickel civil-defense call, this is the sourced pre-snap
+    adjustment checklist (owner t477u) so the compact live UI is not just formation + play.
+    """
     sv = getattr(call, "scheme_variant", None)
-    if not isinstance(sv, dict) or sv.get("status") != "CALL":
-        return None
-    adj = list(sv.get("adjustment_lines") or [])
-    return {"name": sv.get("variant_name"), "id": sv.get("variant_id"),
-            "label": f"{sv.get('variant_name')} [{sv.get('variant_id')}]",
-            "adjustments": adj or ["none (catalog lists no adjustments: stock play)"]}
+    if isinstance(sv, dict) and sv.get("status") == "CALL":
+        adj = list(sv.get("adjustment_lines") or [])
+        return {"name": sv.get("variant_name"), "id": sv.get("variant_id"),
+                "label": f"{sv.get('variant_name')} [{sv.get('variant_id')}]",
+                "adjustments": adj or ["none (catalog lists no adjustments: stock play)"]}
+    rd = getattr(call, "ravens_defense", None)
+    if isinstance(rd, dict) and rd.get("status") == "CALL":
+        from cfb_coach.madden.ravens_defense import presnap as ps
+        payload = rd.get("presnap") or ps.collect(rd)
+        label = ps.variation_label(rd)
+        return {"name": label, "id": (rd.get("candidate") or {}).get("call_id"),
+                "label": label, "adjustments": list(payload.get("lines") or []),
+                "block": ps.variation_block(rd, payload)}
+    return None
 
 
 def _variation_block(v: dict[str, Any] | None) -> str:
     if not v:
         return ""
+    if v.get("block"):
+        return str(v["block"])
     return "VARIATION: " + v["label"] + "\nADJUSTMENTS:\n" + "\n".join(v["adjustments"])
 
 

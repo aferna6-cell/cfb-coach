@@ -860,7 +860,7 @@ def _add_game_args(p: argparse.ArgumentParser, *, franchise: bool = True) -> Non
                  "Lions/CPU custom book, 3-snap offensive play cooldown; kept separate from "
                  "Lions, Chiefs, and Titans) | "
                  "bucs (Tampa Bay Buccaneers online franchise; same logging and civil defaults, "
-                 "shared Buccaneers-stock civil book, no play cooldown; kept separate from "
+                 "Lions/CPU custom book, no play cooldown; kept separate from "
                  "Lions, Chiefs, Titans, and Giants)",
         )
 
